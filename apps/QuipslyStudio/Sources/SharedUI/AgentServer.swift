@@ -317,6 +317,19 @@ public class AgentServer: ObservableObject {
                         "mode": mode
                     ])
                 }
+            case "/quipsly_os_operator_board":
+                Task { @MainActor in
+                    if let board = self?.lastStatus?["quipslyOSOperatorBoard"] as? [String: Any] {
+                        self?.sendJSON(connection, object: board)
+                    } else {
+                        self?.sendJSON(connection, object: [
+                            "model": "quipsly-os-operator-board",
+                            "status": "no_state_yet",
+                            "hint": "Open QuipslyStudio, then run GET /left_workbench?mode=os before calling this endpoint again.",
+                            "truth": "No board state has been published by the running app yet. This is not a publication or readiness claim."
+                        ])
+                    }
+                }
             case "/nest_seed_context":
                 Task { @MainActor in
                     self?.enqueueCommand("nest_seed_context")
@@ -951,6 +964,33 @@ public class AgentServer: ObservableObject {
                         "index": index
                     ])
                 }
+            case "/transcript_set_speaker":
+                let segmentId = request.query["segment_id"] ?? request.query["id"] ?? ""
+                let speaker = request.query["speaker"] ?? ""
+                let actor = request.query["actor"] ?? ""
+                guard !speaker.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    Task { @MainActor in
+                        self?.sendJSON(connection, object: ["error": "missing_transcript_speaker"], statusCode: 400, reason: "Bad Request")
+                    }
+                    return
+                }
+                Task { @MainActor in
+                    var values: [String: String] = ["speaker": speaker]
+                    if !segmentId.isEmpty {
+                        values["segment_id"] = segmentId
+                    }
+                    if !actor.isEmpty {
+                        values["actor"] = actor
+                    }
+                    self?.enqueueCommand("transcript_set_speaker", values: values)
+                    self?.sendJSON(connection, object: [
+                        "status": "transcript_set_speaker_commanded",
+                        "segment_id": segmentId,
+                        "speaker": speaker,
+                        "actor": actor,
+                        "truth": "Changes only transcript speaker metadata for the selected/current segment. It does not alter source media, edit decisions, or exports."
+                    ])
+                }
             case "/transcript_search":
                 let query = request.query["query"] ?? request.query["q"] ?? ""
                 let mode = request.query["mode"] ?? "next"
@@ -1305,13 +1345,13 @@ public class AgentServer: ObservableObject {
                     ?? (selectedShortClip["title"] as? String)
                     ?? "")
                     : requestedShortTitle
-                let receipt = Self.startDirectProxyShortExportFromCachedState(
-                    directory: directory,
-                    basename: basename,
-                    sessionName: sessionName,
-                    selectedShortId: selectedShortId,
-                    selectedShortTitle: selectedShortTitle
-                )
+                let receipt = self?.scheduleHTTPCommand(AgentCommandRequest(name: "shorts_export_selected", values: [
+                    "directory": directory,
+                    "basename": basename,
+                    "sessionName": sessionName,
+                    "selectedShortId": selectedShortId,
+                    "selectedShortTitle": selectedShortTitle
+                ])) ?? [:]
                 self?.sendJSON(connection, object: [
                     "status": "shorts_export_selected_commanded",
                     "directory": directory,
@@ -1320,7 +1360,7 @@ public class AgentServer: ObservableObject {
                     "selectedShortId": selectedShortId,
                     "selectedShortTitle": selectedShortTitle,
                     "commandReceipt": receipt,
-                    "truth": "The HTTP control plane staged a proxy-only selected-short export from the canonical native session. Re-read /state for progress, manifest, output path, or failure."
+                    "truth": "The HTTP control plane handed selected-short export to the live editor state so humans and agents use the same selected recipe. Re-read /state for progress, manifest, output path, or failure."
                 ])
             case "/shorts_export_all":
                 let directory = request.query["directory"] ?? ""
@@ -2818,24 +2858,6 @@ public class AgentServer: ObservableObject {
             return cachedStatusResponseData()
         }
 
-        status["exportStatus"] = summary.status
-        status["exportOutputPaths"] = summary.outputPaths
-        status["lastMediaAction"] = summary.lastMediaAction
-        status["lastShortExportSessionName"] = summary.sessionName
-
-        var exportState = status["exportState"] as? [String: Any] ?? [:]
-        exportState["status"] = summary.status
-        exportState["healthStatus"] = summary.status
-        exportState["outputPaths"] = summary.outputPaths
-        exportState["manifestPath"] = summary.manifestPath
-        exportState["progressPath"] = summary.progressPath
-        exportState["currentOutputPath"] = summary.outputPaths.first ?? ""
-        exportState["currentItem"] = summary.clipTitle
-        exportState["error"] = summary.error
-        exportState["completedAt"] = summary.completedAt
-        exportState["isExporting"] = false
-        status["exportState"] = exportState
-
         var lastExportProof: [String: Any] = [
             "id": summary.clipId,
             "title": summary.clipTitle,
@@ -2852,6 +2874,24 @@ public class AgentServer: ObservableObject {
         let exportMatchesActiveSession = summary.sessionName.isEmpty || summary.sessionName == activeSessionName
 
         if exportMatchesActiveSession {
+            status["exportStatus"] = summary.status
+            status["exportOutputPaths"] = summary.outputPaths
+            status["lastMediaAction"] = summary.lastMediaAction
+            status["lastShortExportSessionName"] = summary.sessionName
+
+            var exportState = status["exportState"] as? [String: Any] ?? [:]
+            exportState["status"] = summary.status
+            exportState["healthStatus"] = summary.status
+            exportState["outputPaths"] = summary.outputPaths
+            exportState["manifestPath"] = summary.manifestPath
+            exportState["progressPath"] = summary.progressPath
+            exportState["currentOutputPath"] = summary.outputPaths.first ?? ""
+            exportState["currentItem"] = summary.clipTitle
+            exportState["error"] = summary.error
+            exportState["completedAt"] = summary.completedAt
+            exportState["isExporting"] = false
+            status["exportState"] = exportState
+
             status["selectedShortClipId"] = summary.clipId
 
             var selectedShort = status["selectedShortClip"] as? [String: Any] ?? [:]
@@ -3070,8 +3110,17 @@ public class AgentServer: ObservableObject {
 
             let clipId = staticStringValue(clip["id"])
             let clipTitle = staticStringValue(clip["title"]).isEmpty ? "Selected short" : staticStringValue(clip["title"])
-            let cleanBasename = safeAgentBasename(basename.isEmpty ? clipTitle : basename)
+            let clipIndex = shortQueue.firstIndex { candidate in
+                staticStringValue(candidate["id"]) == clipId
+            }
+            let requestedCleanBasename = safeSelectedShortExportBasename(
+                requestedBasename: basename,
+                clipTitle: clipTitle,
+                clipId: clipId,
+                queueIndex: clipIndex
+            )
             let outputDirectory = URL(fileURLWithPath: directory.isEmpty ? NSTemporaryDirectory() : directory, isDirectory: true)
+            let cleanBasename = uniqueSelectedShortExportBasename(requestedCleanBasename, in: outputDirectory)
             let outputURL = outputDirectory.appendingPathComponent("\(cleanBasename)-9x16-short.mp4")
             let batchId = UUID().uuidString
             let requestDirectory = localMediaVaultRootURL()
@@ -3364,6 +3413,46 @@ public class AgentServer: ObservableObject {
             .replacingOccurrences(of: "--", with: "-")
             .trimmingCharacters(in: CharacterSet(charactersIn: "-._"))
         return sanitized.isEmpty ? "selected-short" : sanitized
+    }
+
+    private nonisolated static func safeSelectedShortExportBasename(
+        requestedBasename: String,
+        clipTitle: String,
+        clipId: String,
+        queueIndex: Int?
+    ) -> String {
+        let base = safeAgentBasename(requestedBasename.isEmpty ? "selected-short" : requestedBasename)
+        let idPrefix = clipId.isEmpty ? "short" : String(clipId.prefix(8))
+        let titleSlug = safeAgentBasename(clipTitle.isEmpty ? "selected-short-\(idPrefix)" : clipTitle)
+        let ordinal = queueIndex.map { String(format: "%02d", $0 + 1) } ?? idPrefix
+        let selectedSuffix = "\(ordinal)-\(titleSlug)"
+        let lowerBase = base.lowercased()
+        let lowerSuffix = selectedSuffix.lowercased()
+
+        if lowerBase == lowerSuffix || lowerBase.hasSuffix("-\(lowerSuffix)") {
+            return base
+        }
+
+        return "\(base)-\(selectedSuffix)"
+    }
+
+    private nonisolated static func uniqueSelectedShortExportBasename(_ basename: String, in outputDirectory: URL) -> String {
+        let fileManager = FileManager.default
+        let suffixes = [
+            "-9x16-short.mp4",
+            "-short-export-manifest.json"
+        ]
+        var candidate = basename
+        var version = 2
+
+        while suffixes.contains(where: { suffix in
+            fileManager.fileExists(atPath: outputDirectory.appendingPathComponent("\(candidate)\(suffix)").path)
+        }) {
+            candidate = "\(basename)-v\(String(format: "%03d", version))"
+            version += 1
+        }
+
+        return candidate
     }
 
     private nonisolated static func staticDoubleValue(_ value: Any?) -> Double {
@@ -3749,7 +3838,8 @@ public class AgentServer: ObservableObject {
                 "GET /delete_selected_tag",
                 "GET /focus_monitors",
                 "GET /focus_timeline",
-                "GET /left_workbench?mode=nest|inspector|shorts|transcript|publish|agent|closed",
+                "GET /left_workbench?mode=os|nest|inspector|shorts|transcript|publish|agent|closed",
+                "GET /quipsly_os_operator_board",
                 "GET /nest_seed_context",
                 "GET /nest_writing_queue",
                 "GET /nest_writing_packet",
@@ -3782,6 +3872,7 @@ public class AgentServer: ObservableObject {
                 "GET /transcript_search?query=<text>&mode=first|next|previous|current",
                 "GET /transcript_select?mode=first|at_playhead|next|previous&id=<optional-transcript-segment-id>",
                 "GET /transcript_word?mode=current|next|previous|first|last&segment_id=<optional-transcript-segment-id>&index=<optional-word-index>",
+                "GET /transcript_set_speaker?segment_id=<optional-transcript-segment-id>&speaker=Charlie|Homer|Both|Speaker&actor=<optional>",
                 "GET /transcript_create_short?mode=current|selected|first|next|previous&padding_before=<seconds>&padding_after=<seconds>&title=<optional>&actor=<name>&actor_type=human|agent",
                 "GET /transcript_apply_to_short?field=caption|overlay|hook",
                 "GET /transcript_clear",
@@ -4294,9 +4385,19 @@ public class AgentServer: ObservableObject {
             "mode": "queued-for-view-drain"
         ]
 
+        if let commandExecutor {
+            receipt["status"] = "delivered_to_registered_view_bridge"
+            receipt["mode"] = "registered-view-bridge-direct"
+            receipt["pendingCommandCount"] = pendingCommandRequests.count + Self.httpCommandCount()
+            lastCommandReceipt = receipt
+            refreshCachedStatusCommandMetadata()
+            commandExecutor(request)
+            return receipt
+        }
+
         pendingCommandRequests.append(request)
         NotificationCenter.default.post(name: .quipslyAgentCommandQueued, object: nil)
-        receipt["status"] = executorRegistered ? "queued_for_registered_view_drain" : "queued"
+        receipt["status"] = "queued"
         receipt["pendingCommandCount"] = pendingCommandRequests.count
         lastCommandReceipt = receipt
         refreshCachedStatusCommandMetadata()

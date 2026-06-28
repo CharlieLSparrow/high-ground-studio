@@ -694,6 +694,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
         viewDefinitions: true,
         documents: {
           where: documentId ? { id: documentId } : undefined,
+          orderBy: { updatedAt: "desc" },
           include: {
             blocks: {
               where: { archivedAt: null },
@@ -716,6 +717,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
         tags: true,
         documents: {
           where: documentId ? { id: documentId } : undefined,
+          orderBy: { updatedAt: "desc" },
           include: {
             blocks: {
               where: { archivedAt: null },
@@ -734,12 +736,23 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
 
   if (!project) return null;
 
+  const projectDocuments = await prisma.studioDocument.findMany({
+    where: { projectId: project.id },
+    select: {
+      id: true,
+      title: true,
+      sourceLabel: true,
+      updatedAt: true,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
   // Format into our UI shape
   const document = project.documents[0];
   if (!document) return null;
 
   if (await ensureDevLabShowTags(prisma, project, document)) {
-    return loadWorkbenchState(projectSlug);
+    return loadWorkbenchState(projectSlug, documentId);
   }
 
   const blocks = document.blocks.map((b) => ({
@@ -777,6 +790,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
     workflowSystem: workflowSystemForNestKind(project.sourceLabel),
     documentId: document.id,
     documentTitle: document.title,
+    projectDocuments,
     persistenceMode: "database" as const
   };
 }

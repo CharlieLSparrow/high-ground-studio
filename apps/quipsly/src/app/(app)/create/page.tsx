@@ -13,6 +13,21 @@ import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
+function notebookSectionLabelFromSource(sourceLabel?: string | null, title?: string | null) {
+  const normalizedSource = String(sourceLabel ?? "").toLowerCase();
+  const normalizedTitle = String(title ?? "").toLowerCase();
+
+  if (normalizedSource.includes("study") || normalizedSource.includes("source") || normalizedSource.includes("research")) {
+    return "Sources and research";
+  }
+  if (normalizedSource.includes("note")) return "Notes";
+  if (normalizedSource.includes("draft") || normalizedSource.includes("article") || normalizedSource.includes("outline")) {
+    return "Drafts";
+  }
+  if (normalizedTitle.includes("source notes") || normalizedTitle.includes("research")) return "Sources and research";
+  return "Manuscript pages";
+}
+
 export default async function CreatePage({
   searchParams
 }: {
@@ -72,7 +87,7 @@ export default async function CreatePage({
       await seedTonightPack(projectSlug);
     }
     const documentId = typeof params?.document === "string" ? params.document : undefined;
-    state = await loadWorkbenchStateWithScope(projectSlug, scopeProjectSlugs);
+    state = await loadWorkbenchStateWithScope(projectSlug, scopeProjectSlugs, documentId);
   } catch (error) {
     console.warn(`Could not open Nest/project ${projectSlug}.`, error);
     redirect(`/projects?fallback=true&missing=${encodeURIComponent(projectSlug)}`);
@@ -99,6 +114,12 @@ export default async function CreatePage({
       : [];
   }
 
+  const activeProjectDocument = state.projectDocuments?.find((document) => document.id === state.documentId) ?? null;
+  const notebookSectionLabel = notebookSectionLabelFromSource(
+    activeProjectDocument?.sourceLabel,
+    state.documentTitle,
+  );
+
     return <Workspace
     initialBlocks={state.blocks}
     initialViews={state.views}
@@ -107,6 +128,7 @@ export default async function CreatePage({
     projectName={state.projectName}
     documentId={state.documentId}
     documentTitle={state.documentTitle}
+    notebookSectionLabel={notebookSectionLabel}
     persistenceMode={state.persistenceMode}
     projectNestKind={state.projectNestKind}
     workflowSystem={state.workflowSystem}

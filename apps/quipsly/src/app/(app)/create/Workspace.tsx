@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import PublisherModePanel from "./PublisherModePanel";
 import Tagger from "./Tagger";
@@ -18,6 +18,7 @@ import {
   normalizeNestKind,
   workflowSystemForNestKind,
 } from "@/lib/studio/project-registry";
+import { createHgoEpisodeDraftShellAction, type HgoSourceKey } from "../nests/[slug]/actions";
 
 export const DEFAULT_VIEW: ViewDefinition = {
   id: "default",
@@ -117,6 +118,63 @@ function deriveDocumentBoundaries(blocks: Array<{ id: string; text: string; tags
   }));
 }
 
+function documentKindFromSourceLabel(sourceLabel?: string | null, title?: string | null) {
+  const normalizedSource = String(sourceLabel ?? "").toLowerCase();
+  const normalizedTitle = String(title ?? "").toLowerCase();
+
+  if (normalizedSource.includes("document-kind:fixed-source")) return "Study Source";
+  if (normalizedSource.includes("document-kind:note")) return "Note";
+  if (normalizedSource.includes("document-kind:draft")) return "Draft";
+  if (normalizedSource.includes("document-kind:manuscript")) return "Manuscript";
+  if (normalizedTitle.includes("manuscript") || normalizedTitle.includes("book")) return "Manuscript";
+  return "Document";
+}
+
+function documentKindBadgeClasses(kind: string) {
+  if (kind === "Study Source") return "border-cyan-200 bg-cyan-50 text-cyan-800";
+  if (kind === "Note") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (kind === "Draft") return "border-amber-200 bg-amber-50 text-amber-800";
+  if (kind === "Manuscript") return "border-rose-200 bg-rose-50 text-rose-800";
+  return "border-stone-200 bg-stone-50 text-stone-700";
+}
+
+function documentKindGuidance(kind: string) {
+  if (kind === "Study Source") {
+    return "This is a fixed source surface. Tag, highlight, annotate, and cite over it; do not silently rewrite the original text.";
+  }
+  if (kind === "Note") {
+    return "This is a quick capture surface. Use it for ideas, research hunches, reminders, connective tissue, and rough thinking.";
+  }
+  if (kind === "Draft") {
+    return "This is a working draft. Experiment freely, branch ideas, and promote the good parts when they become manuscript material.";
+  }
+  if (kind === "Manuscript") {
+    return "This is the living manuscript spine. Rewrite intentionally; structure tags, snapshots, and recovery exports keep the trail visible.";
+  }
+  return "This document is editable. If the role is unclear, use notes or drafts for experiments and keep the manuscript spine deliberate.";
+}
+
+const HGO_SOURCE_KEYS: HgoSourceKey[] = [
+  "episode-1",
+  "episode-2",
+  "episode-3",
+  "episode-4",
+  "episode-5",
+  "episode-6",
+  "episode-7",
+  "episode-8",
+  "episode-9",
+];
+
+function hgoSourceKeyFromLabel(sourceLabel?: string | null): HgoSourceKey | null {
+  const normalized = String(sourceLabel ?? "").toLowerCase();
+  return HGO_SOURCE_KEYS.find((key) => normalized.includes(`hgo-source:${key}`)) ?? null;
+}
+
+function hgoEpisodeLabel(sourceKey: HgoSourceKey) {
+  return sourceKey.replace("episode-", "Episode ");
+}
+
 export default function Workspace({
   initialBlocks,
   initialViews,
@@ -127,6 +185,7 @@ export default function Workspace({
   workflowSystem,
   documentId,
   documentTitle,
+  notebookSectionLabel,
   projectDocuments = [],
   persistenceMode = "database",
   linkedProjects = [],
@@ -142,6 +201,7 @@ export default function Workspace({
   workflowSystem?: "data-ingestion" | "knowledge-processing" | "content-creation" | "content-publishing",
   documentId: string,
   documentTitle?: string,
+  notebookSectionLabel?: string,
   projectDocuments?: { id: string; title: string; sourceLabel: string | null; updatedAt: string | Date }[],
   persistenceMode?: "database" | "offline",
   linkedProjects?: WorkbenchScopeProjectSummary[],
@@ -181,6 +241,85 @@ export default function Workspace({
   const [views, setViews] = useState<ViewDefinition[]>(initialViews);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const activeProjectSlug = projectSlug ?? "";
+  const [recoveryExportState, setRecoveryExportState] = useState<"idle" | "exporting" | "copied" | "failed">("idle");
+  const [isDraftShellPending, startDraftShellTransition] = useTransition();
+  const activeProjectDocument = useMemo(
+    () => projectDocuments.find((doc) => doc.id === documentId) ?? null,
+    [documentId, projectDocuments]
+  );
+  const activeDocumentKind = documentKindFromSourceLabel(activeProjectDocument?.sourceLabel, documentTitle);
+  const activeDocumentKindGuidance = documentKindGuidance(activeDocumentKind);
+  const activeHgoSourceKey = hgoSourceKeyFromLabel(activeProjectDocument?.sourceLabel);
+
+  const handlePanicExport = async () => {
+    setRecoveryExportState("exporting");
+    const generatedAt = new Date().toISOString();
+    const safeSlug = (activeProjectSlug || "quipsly-draft").replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
+    const activeScope = activeBoundary
+      ? `${activeBoundary.kind}: ${activeBoundary.label}`
+      : activeView.name;
+    const exportScopeLabel = activeBoundary
+      ? `Current ${activeBoundary.kind} section`
+      : "Current notebook page / document";
+    const exportBlocks = activeBoundary
+      ? documentBlocks.slice(activeBoundary.startIndex, activeBoundary.endIndex + 1)
+      : documentBlocks;
+    const markdownBlocks = exportBlocks.map((block) => {
+      const tags = Array.from(new Set([
+        ...(block.tags ?? []),
+        ...((block.spans ?? []).map((span: { tagSlug: string }) => span.tagSlug))
+      ]));
+      const text = String(block.text ?? "").trimEnd();
+      const headingPrefix = tags.includes("chapter")
+        ? "## "
+        : tags.includes("episode")
+          ? "### "
+          : "";
+      const tagComment = tags.length > 0 ? `\n\n<!-- quipsly-tags: ${tags.join(", ")} -->` : "";
+      return `${headingPrefix}${text}${tagComment}`.trim();
+    }).filter(Boolean);
+    const markdown = [
+      `# ${documentTitle ?? projectName ?? "Quipsly Writing Draft"}`,
+      "",
+      "> Recovery export from Quipsly Nest.",
+      `> Nest: ${projectName ?? activeProjectSlug}`,
+      `> Document: ${documentTitle ?? documentId}`,
+      `> View: ${activeScope}`,
+      `> Export scope: ${exportScopeLabel}`,
+      `> Blocks exported: ${exportBlocks.length} of ${documentBlocks.length}`,
+      `> Save state when exported: ${saveState}`,
+      `> Generated: ${generatedAt}`,
+      "",
+      "---",
+      "",
+      ...markdownBlocks,
+      ""
+    ].join("\n\n");
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(markdown);
+      }
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${safeSlug}-${generatedAt.slice(0, 10)}-recovery-draft.md`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(url);
+      setRecoveryExportState("copied");
+      window.setTimeout(() => setRecoveryExportState("idle"), 2400);
+    } catch (error) {
+      console.error("Panic export failed.", error);
+      setRecoveryExportState("failed");
+    }
+  };
+
+  const handleShowRecentChanges = () => {
+    window.dispatchEvent(new CustomEvent("quipsly:show-recent-changes"));
+  };
 
   const handleDocumentBlocksChange = (blocks: any[]) => {
     setDocumentBlocks(blocks);
@@ -360,6 +499,11 @@ export default function Workspace({
     }
   };
 
+  const recoveryExportLabel = activeBoundary ? "Copy/export section" : "Copy/export page";
+  const recoveryExportScopeHelp = activeBoundary
+    ? "Copies and downloads Markdown for the focused Chapter/Episode section."
+    : "Copies and downloads Markdown for the current notebook page/document.";
+
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-[#fdfaf6] text-[#3d3122]">
       {/* Left sidebar - ViewFilter */}
@@ -382,6 +526,30 @@ export default function Workspace({
           <div className="mb-6 md:mb-8 rounded-2xl border border-[#e8dcc4] bg-white/80 p-4 md:p-5 shadow-sm">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
               <div>
+                <nav className="mb-3 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">
+                  <Link href="/notebooks" className="rounded-full border border-[#eadfca] bg-[#fffaf3] px-2.5 py-1 transition hover:bg-[#fff4df]">
+                    Writing Desk
+                  </Link>
+                  {activeProjectSlug ? (
+                    <>
+                      <span className="text-[#c1a57d]">/</span>
+                      <Link
+                        href={`/notebooks/${encodeURIComponent(activeProjectSlug)}`}
+                        className="rounded-full border border-[#eadfca] bg-[#fffaf3] px-2.5 py-1 transition hover:bg-[#fff4df]"
+                      >
+                        Notebook
+                      </Link>
+                    </>
+                  ) : null}
+                  {notebookSectionLabel ? (
+                    <>
+                      <span className="text-[#c1a57d]">/</span>
+                      <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-emerald-900">
+                        {notebookSectionLabel}
+                      </span>
+                    </>
+                  ) : null}
+                </nav>
                 <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#a36f2e] flex items-center gap-2">
                   <span title="This workspace is private to your organization" className="flex items-center gap-1"><span className="text-[10px]">🔒</span> Private</span>
                   <span className="opacity-50">•</span>
@@ -390,8 +558,16 @@ export default function Workspace({
                 <h1 className="mt-1 text-2xl md:text-3xl font-bold font-serif text-[#342618]">
                   {documentTitle ?? "High Ground Odyssey Tonight Pack"}
                 </h1>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${documentKindBadgeClasses(activeDocumentKind)}`}>
+                    {activeDocumentKind}
+                  </span>
+                  <span className="rounded-full border border-[#e8dcc4] bg-[#fffaf3] px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">
+                    {projectDocuments.length} Nest docs
+                  </span>
+                </div>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6b5b45]">
-                Write in one continuous original content document. Make a heading block, tag it Chapter or Episode, and the outline becomes your navigation from that point until the next heading.
+                  {activeDocumentKindGuidance}
                   <br />
                   <span className="font-medium text-[#8c6b4a] opacity-90 mt-1 inline-block">💡 <strong>Pro tip:</strong> Press Enter to split blocks. Backspace at the start of a block merges it up.</span>
                 </p>
@@ -460,6 +636,95 @@ export default function Workspace({
                   Publisher Mode On
                 </button>
               ) : null}
+            </div>
+            <div className="mb-4 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-[#fffaf3] to-amber-50 px-4 py-3 shadow-sm">
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-800">
+                    Daily Writing Safety
+                  </div>
+                  <p className="mt-1 text-xs leading-5 text-[#6b5b45]">
+                    Web is the canonical writing desk for now. Current document role: <strong>{activeDocumentKind}</strong>. {activeDocumentKindGuidance}
+                    If anything feels weird, export a local Markdown recovery packet before experimenting.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className={`rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] ${
+                    saveState === "saving"
+                      ? "border-blue-200 bg-blue-50 text-blue-800"
+                      : saveState === "unsaved"
+                        ? "border-orange-200 bg-orange-50 text-orange-800"
+                        : "border-emerald-200 bg-white text-emerald-800"
+                  }`}>
+                    {saveState === "saving" ? "Saving now" : saveState === "unsaved" ? "Unsaved edits" : "Saved"}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => void handlePanicExport()}
+                    title={recoveryExportScopeHelp}
+                    className="rounded-full border border-[#3d3122] bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#59442d]"
+                  >
+                    {recoveryExportState === "exporting"
+                      ? "Preparing..."
+                      : recoveryExportState === "copied"
+                        ? "Copied + Downloaded"
+                        : recoveryExportState === "failed"
+                          ? "Try Export Again"
+                          : recoveryExportLabel}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleShowRecentChanges}
+                    className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#5e4b33] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#f8f3e6]"
+                  >
+                    Recent Changes
+                  </button>
+                </div>
+              </div>
+            </div>
+            {activeHgoSourceKey ? (
+              <div className="mb-4 rounded-2xl border border-cyan-200 bg-cyan-50/80 px-4 py-3 shadow-sm">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-800">
+                      HGO source document
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-[#4f6470]">
+                      This is preserved source material for <strong>{hgoEpisodeLabel(activeHgoSourceKey)}</strong>. Tag and annotate here, then draft in a separate source-linked episode page so the source stays trustworthy.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      startDraftShellTransition(() => {
+                        createHgoEpisodeDraftShellAction(activeProjectSlug, activeHgoSourceKey);
+                      });
+                    }}
+                    className="rounded-full border border-cyan-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-100 disabled:opacity-50"
+                    disabled={isDraftShellPending}
+                  >
+                    {isDraftShellPending ? "Opening Draft..." : `Open ${hgoEpisodeLabel(activeHgoSourceKey)} Draft`}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            <div className="mb-4 grid gap-3 md:grid-cols-2">
+              <div className="rounded-2xl border border-[#e8dcc4] bg-white/80 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#a36f2e]">
+                  Living writing document
+                </div>
+                <p className="mt-1 text-xs leading-5 text-[#6b5b45]">
+                  Books, articles, scripts, and episode pages can be rewritten. Quipsly keeps structure tags, recent changes, snapshots, and recovery exports so changing the words does not mean losing the trail.
+                </p>
+              </div>
+              <div className="rounded-2xl border border-cyan-200 bg-cyan-50/70 px-4 py-3 shadow-sm">
+                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-800">
+                  Fixed study source
+                </div>
+                <p className="mt-1 text-xs leading-5 text-[#4f6470]">
+                  Imported books, PDFs, articles, and course pages should stay intact. Highlights, tags, notes, citations, and research packets live as overlays so the source remains trustworthy.
+                </p>
+              </div>
             </div>
             <div className="flex flex-nowrap overflow-x-auto hide-scrollbar items-center gap-2 pb-1">
               <div className="mr-2 shrink-0 flex flex-nowrap items-center gap-1 rounded-full border border-[#e6d7bc] bg-[#f8f1e3] p-1">

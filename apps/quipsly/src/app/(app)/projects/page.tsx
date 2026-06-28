@@ -158,6 +158,10 @@ function workflowChipColor(system: QuipslyWorkflowSystem) {
   return "border-rose-200 bg-rose-50 text-rose-900";
 }
 
+function hasWritingDesk(kind: StudioNestKind | undefined) {
+  return ["writing", "study", "research", "fiction", "course", "mixed"].includes(kind ?? "");
+}
+
 function ProjectCard({ project }: { project: CollaborationRow }) {
   return (
     <div className="flex flex-col justify-between rounded-3xl border border-[#eadfca] bg-white p-5 shadow-sm transition hover:shadow-md">
@@ -184,6 +188,14 @@ function ProjectCard({ project }: { project: CollaborationRow }) {
         >
           Open
         </Link>
+        {hasWritingDesk(project.nestKind) ? (
+          <Link
+            href={`/create?project=${encodeURIComponent(project.slug)}`}
+            className="rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-900 transition hover:-translate-y-0.5 hover:bg-emerald-100"
+          >
+            Write
+          </Link>
+        ) : null}
         <Link
           href={`/nests/${encodeURIComponent(project.slug)}/access`}
           className="rounded-full border border-[#eadfca] bg-[#fffaf3] px-4 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-[#8c6b4a] transition hover:bg-[#fff8eb]"
@@ -425,10 +437,10 @@ export default async function ProjectsHub({
                 </form>
                 <Link
                   href={`/create?project=${encodeURIComponent(HGO_PROJECT_SLUG)}`}
-                  className="inline-flex items-center gap-2 rounded-full border border-[#eadfca] bg-[#fffdf9] px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-[#8c6b4a] shadow-sm transition hover:bg-[#fff8eb]"
+                  className="inline-flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-emerald-900 shadow-sm transition hover:bg-emerald-100"
                 >
                   <BookOpen size={14} />
-                  Open HGO Manuscript
+                  Daily Writing Desk
                 </Link>
               </div>
             ) : null}

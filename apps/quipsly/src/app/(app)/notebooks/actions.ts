@@ -1,7 +1,14 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+
+import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  normalizeAccessEmail,
+  resolveStudioProjectAccess,
+} from "@/lib/server/studio-project-access";
 import { createStudioProject } from "@/lib/studio/project-registry";
 
 const DEFAULT_TAGS = [
@@ -47,4 +54,60 @@ export async function createNotebook(formData: FormData) {
   }
 
   redirect(`/create?project=${encodeURIComponent(project.slug)}`);
+}
+
+function slugish(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "page";
+}
+
+export async function createNotebookPage(formData: FormData) {
+  const prisma = getPrismaClient();
+  const session = await auth();
+  const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
+  const projectSlug = String(formData.get("projectSlug") || "").trim();
+  const title = String(formData.get("title") || "Untitled Page").trim() || "Untitled Page";
+  const kind = String(formData.get("kind") || "writing").trim() || "writing";
+
+  if (!projectSlug) {
+    redirect("/notebooks?missingNest=1");
+  }
+
+  const access = await resolveStudioProjectAccess({
+    projectSlug,
+    email: actorEmail,
+    action: "write",
+    prisma,
+  });
+
+  if (!access.allowed || !access.projectId) {
+    redirect("/notebooks?notAllowed=1");
+  }
+
+  const stableId = `${projectSlug}-${slugish(title)}-${Date.now().toString(36)}`;
+  const document = await prisma.studioDocument.create({
+    data: {
+      projectId: access.projectId,
+      stableId,
+      title,
+      sourceLabel: kind,
+    },
+  });
+
+  await prisma.studioDocumentBlock.create({
+    data: {
+      documentId: document.id,
+      stableId: `opening-${stableId}`,
+      order: 0,
+      body: `${title}\n\nStart writing here. This page can become a draft, article, chapter note, research packet, or source-linked page later.`,
+    },
+  });
+
+  revalidatePath("/notebooks");
+  revalidatePath(`/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(document.id)}`);
+  redirect(`/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(document.id)}`);
 }

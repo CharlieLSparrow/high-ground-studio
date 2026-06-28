@@ -436,6 +436,7 @@ private extension CGRect {
 }
 
 private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
+    case os
     case nest
     case inspector
     case shorts
@@ -447,6 +448,8 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .os:
+            return "OS"
         case .nest:
             return "Nest"
         case .inspector:
@@ -464,6 +467,8 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
 
     var shortTitle: String {
         switch self {
+        case .os:
+            return "OS"
         case .nest:
             return "Nest"
         case .inspector:
@@ -481,6 +486,8 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
+        case .os:
+            return "rectangle.3.group.fill"
         case .nest:
             return "leaf.fill"
         case .inspector:
@@ -498,6 +505,8 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
 
     var helperText: String {
         switch self {
+        case .os:
+            return "Start from the whole Quipsly production runway."
         case .nest:
             return "Write, paste, tag, and keep episode context connected."
         case .inspector:
@@ -515,6 +524,8 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
 
     var microLabel: String {
         switch self {
+        case .os:
+            return "Runway"
         case .nest:
             return "Context"
         case .inspector:
@@ -532,6 +543,8 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
 
     var tint: Color {
         switch self {
+        case .os:
+            return QuipslyStudioTheme.honey
         case .nest:
             return QuipslyStudioTheme.moss
         case .inspector:
@@ -545,6 +558,117 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
         case .agent:
             return QuipslyStudioTheme.creekMist
         }
+    }
+}
+
+private struct QuipslyOSRunwayLink: Identifiable {
+    let id: String
+    let title: String
+    let eyebrow: String
+    let detail: String
+    let pointerPath: String
+    let fallbackPath: String
+    let systemImage: String
+    let preferredKeys: [String]
+}
+
+private struct QuipslyOSOperatorRelatedPath: Identifiable {
+    let id: String
+    let field: String
+    let path: String
+}
+
+private struct QuipslyOSOperatorRow: Identifiable {
+    let id: String
+    let lane: String
+    let label: String
+    let status: String
+    let readiness: String
+    let nextMove: String
+    let microAction: String
+    let path: String
+    let openCommand: String
+    let safety: String
+    let relatedPaths: [QuipslyOSOperatorRelatedPath]
+
+    var shortStatus: String {
+        status.isEmpty ? "local evidence" : status.replacingOccurrences(of: "-", with: " ")
+    }
+
+    var hasPath: Bool {
+        !path.isEmpty && FileManager.default.fileExists(atPath: path)
+    }
+}
+
+private struct QuipslyOSOperatorBoard {
+    let status: String
+    let generatedAt: String
+    let boardPath: String
+    let returnBriefPath: String
+    let rows: [QuipslyOSOperatorRow]
+
+    var availableRows: Int {
+        rows.filter(\.hasPath).count
+    }
+
+    static let pointerPath = "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/latest-quipsly-return-brief.json"
+
+    static func current() -> QuipslyOSOperatorBoard {
+        guard
+            let data = try? Data(contentsOf: URL(fileURLWithPath: pointerPath)),
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+        else {
+            return QuipslyOSOperatorBoard(
+                status: "missing-return-brief",
+                generatedAt: "",
+                boardPath: "",
+                returnBriefPath: "",
+                rows: []
+            )
+        }
+
+        let conveyor = json["productionConveyor"] as? [String: Any] ?? [:]
+        let rawRows = conveyor["rows"] as? [[String: Any]] ?? []
+        let rows = rawRows.enumerated().map { offset, row -> QuipslyOSOperatorRow in
+            let lane = string(row["lane"])
+            let related = (row["relatedPaths"] as? [[String: Any]] ?? []).compactMap { related -> QuipslyOSOperatorRelatedPath? in
+                let field = string(related["field"])
+                let path = string(related["path"])
+                guard !path.isEmpty else { return nil }
+                return QuipslyOSOperatorRelatedPath(
+                    id: "\(field)-\(path)",
+                    field: field.isEmpty ? "surface" : field,
+                    path: path
+                )
+            }
+            return QuipslyOSOperatorRow(
+                id: lane.isEmpty ? "operator-row-\(offset + 1)" : lane,
+                lane: lane.isEmpty ? "Quipsly" : lane,
+                label: string(row["label"]),
+                status: string(row["status"]),
+                readiness: string(row["readiness"]),
+                nextMove: string(row["nextMove"]),
+                microAction: string(row["operatorMicroAction"]),
+                path: string(row["path"]),
+                openCommand: string(row["openCommand"]),
+                safety: string(row["safety"]),
+                relatedPaths: related
+            )
+        }
+
+        return QuipslyOSOperatorBoard(
+            status: string(json["status"]),
+            generatedAt: string(json["generatedAt"]) == "" ? string(json["updatedAt"]) : string(json["generatedAt"]),
+            boardPath: string(json["productionConveyorPath"]),
+            returnBriefPath: string(json["htmlPath"]),
+            rows: rows
+        )
+    }
+
+    private static func string(_ value: Any?) -> String {
+        if let value = value as? String { return value }
+        if let value { return "\(value)" }
+        return ""
     }
 }
 
@@ -940,6 +1064,9 @@ struct WorkspaceView: View {
         Group {
             if useCompactLayout {
                 TabView {
+                    quipslyOSWorkbenchSidebar
+                        .tabItem { Label("OS", systemImage: "rectangle.3.group.fill") }
+
                     nestWorkbenchSidebar
                         .tabItem { Label("Nest", systemImage: "leaf.fill") }
 
@@ -1051,6 +1178,8 @@ struct WorkspaceView: View {
                             workbenchModeDeck
 
                             switch leftWorkbenchMode {
+                            case .os:
+                                quipslyOSWorkbenchSidebar
                             case .nest:
                                 nestWorkbenchSidebar
                             case .inspector:
@@ -1635,7 +1764,7 @@ struct WorkspaceView: View {
         .onAppear {
             agentServer.claimCommandConsumer(agentCommandConsumerId)
             agentServer.registerCommandExecutor { request in
-                WorkspaceAgentCommandBridge.shared.enqueue(request)
+                handleAgentCommand(request)
             }
             installKeyboardMonitorIfNeeded()
             installProgramScrollMonitorIfNeeded()
@@ -4755,6 +4884,271 @@ struct WorkspaceView: View {
         .accessibilityIdentifier("quipsly.nest.outline")
     }
 
+    private var quipslyOSWorkbenchSidebar: some View {
+        let links = quipslyOSRunwayLinks()
+        let operatorBoard = QuipslyOSOperatorBoard.current()
+        let firstIds = [
+            "return-brief",
+            "human-help",
+            "studio-top-review",
+            "studio360-control-room",
+            "nest-control-room",
+            "photo-control-room",
+            "photo-first-pass",
+            "tower-first-review",
+            "photo-command",
+            "studio360-proof-review",
+            "os-board",
+            "validation"
+        ]
+        let firstIdSet = Set(firstIds)
+        let firstLinks = firstIds.compactMap { id in links.first { $0.id == id } }
+        let supportingLinks = links.filter { !firstIdSet.contains($0.id) }
+
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: "rectangle.3.group.fill")
+                        .font(.title3)
+                        .foregroundStyle(QuipslyStudioTheme.honey)
+                        .frame(width: 36, height: 36)
+                        .background(QuipslyStudioTheme.honey.opacity(0.14))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Quipsly OS")
+                            .font(.headline)
+                            .fontWeight(.black)
+                        Text("One calm runway for Studio, Nest, Tower, Photo Grove, and 360. Open first actions here before chasing individual tools.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    Label("Truth contract", systemImage: "checkmark.shield.fill")
+                        .font(.caption)
+                        .fontWeight(.black)
+                        .foregroundStyle(QuipslyStudioTheme.moss)
+                    Text("Prepared is not posted. Source files stay whole. Local review can move; external publication waits for explicit approval and real receipt proof.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(10)
+                .background(QuipslyStudioTheme.panelLift.opacity(0.20))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                quipslyOSOperatorBoardPanel(operatorBoard)
+
+                Button {
+                    copyAgentWorkbenchText(quipslyOSRefreshCommand(), note: "Copied Quipsly OS refresh command")
+                } label: {
+                    Label("Copy OS refresh command", systemImage: "terminal")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help("Copy the local command that refreshes current Quipsly OS boards and proof surfaces.")
+
+                Text("Start here")
+                    .font(.caption)
+                    .fontWeight(.black)
+                    .tracking(1.2)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .padding(.top, 3)
+
+                ForEach(firstLinks) { link in
+                    quipslyOSRunwayCard(link)
+                }
+
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 8) {
+                        ForEach(supportingLinks) { link in
+                            quipslyOSRunwayCompactRow(link)
+                        }
+                    }
+                    .padding(.top, 6)
+                } label: {
+                    Label("Supporting surfaces", systemImage: "folder.badge.gearshape")
+                        .font(.caption)
+                        .fontWeight(.black)
+                }
+                .padding(10)
+                .background(QuipslyStudioTheme.cardGradient)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 18)
+        }
+        .accessibilityIdentifier("quipsly.workbench.os")
+    }
+
+    private func quipslyOSOperatorBoardPanel(_ board: QuipslyOSOperatorBoard) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "map.fill")
+                    .font(.headline)
+                    .foregroundStyle(QuipslyStudioTheme.creekMist)
+                    .frame(width: 30, height: 30)
+                    .background(QuipslyStudioTheme.creek.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Production conveyor")
+                        .font(.subheadline)
+                        .fontWeight(.black)
+                    Text(board.rows.isEmpty ? "External drive or Return Brief missing. Refresh boards when the workspace is mounted." : "\(board.availableRows)/\(board.rows.count) lane doors are open. Each row is one reversible micro-action.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 6)
+
+                Text(board.status.isEmpty ? "local" : board.status.replacingOccurrences(of: "-", with: " "))
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background((board.rows.isEmpty ? QuipslyStudioTheme.clay : QuipslyStudioTheme.moss).opacity(0.15))
+                    .clipShape(Capsule())
+            }
+
+            if !board.boardPath.isEmpty {
+                HStack(spacing: 6) {
+                    Button("Open board") {
+                        openQuipslyOSPath(board.boardPath, title: "Production conveyor")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.mini)
+                    .disabled(!quipslyOSPathExists(board.boardPath))
+
+                    Button("Copy board") {
+                        copyAgentWorkbenchText(board.boardPath, note: "Copied Production conveyor path")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+
+                    if !board.returnBriefPath.isEmpty {
+                        Button("Return brief") {
+                            openQuipslyOSPath(board.returnBriefPath, title: "Return brief")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .disabled(!quipslyOSPathExists(board.returnBriefPath))
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(board.rows) { row in
+                    quipslyOSOperatorRowCard(row)
+                }
+            }
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.selectedRecipeGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(QuipslyStudioTheme.creekMist.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityIdentifier("quipsly.os.operatorBoard")
+    }
+
+    private func quipslyOSOperatorRowCard(_ row: QuipslyOSOperatorRow) -> some View {
+        let tint = quipslyOSLaneTint(row.lane)
+        let relatedAvailable = row.relatedPaths.filter { quipslyOSPathExists($0.path) }
+
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: quipslyOSLaneIcon(row.lane))
+                    .font(.caption)
+                    .foregroundStyle(tint)
+                    .frame(width: 22, height: 22)
+                    .background(tint.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(row.lane)
+                        .font(.caption)
+                        .fontWeight(.black)
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Text(row.label.isEmpty ? row.shortStatus : row.label)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 4)
+
+                Text(row.readiness.isEmpty ? row.shortStatus : row.readiness.replacingOccurrences(of: "-", with: " "))
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(tint.opacity(row.hasPath ? 0.16 : 0.08))
+                    .clipShape(Capsule())
+            }
+
+            Text(row.microAction.isEmpty ? row.nextMove : row.microAction)
+                .font(.caption2)
+                .foregroundStyle(.primary.opacity(0.88))
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !row.nextMove.isEmpty && row.nextMove != row.microAction {
+                Text(row.nextMove)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(3)
+            }
+
+            HStack(spacing: 6) {
+                Button("Open") {
+                    openQuipslyOSPath(row.path, title: row.lane)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.mini)
+                .disabled(!row.hasPath)
+
+                Button("Copy") {
+                    copyAgentWorkbenchText(row.path, note: "Copied \(row.lane) operator path")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                .disabled(row.path.isEmpty)
+
+                if !relatedAvailable.isEmpty {
+                    Menu("Related") {
+                        ForEach(relatedAvailable.prefix(7)) { related in
+                            Button(related.field) {
+                                openQuipslyOSPath(related.path, title: "\(row.lane) \(related.field)")
+                            }
+                        }
+                    }
+                    .controlSize(.mini)
+                    .help("Open another local surface for \(row.lane).")
+                }
+            }
+
+            Text(row.safety)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+        }
+        .padding(8)
+        .background(row.hasPath ? QuipslyStudioTheme.panelLift.opacity(0.24) : QuipslyStudioTheme.panelWarm.opacity(0.16))
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(tint.opacity(row.hasPath ? 0.18 : 0.08), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .accessibilityIdentifier("quipsly.os.operatorRow.\(row.id)")
+    }
+
     private var publishWorkbenchSidebar: some View {
         let sequence = projectStore.activeSequence
         let records = sequence?.publishReceipts ?? []
@@ -4764,6 +5158,7 @@ struct WorkspaceView: View {
         let remaining = receiptSummary["receiptRemainingCount"] as? Int ?? records.count
         let publicationComplete = receiptSummary["publicationComplete"] as? Bool ?? false
         let releaseFolderPath = currentPublicationReleaseFolderPath()
+        let runwayLinks = quipslyOSRunwayLinks()
         let nextAction = records.isEmpty
             ? "Run Full prep when the edit is ready. Quipsly creates artifacts, platform ledgers, handoff packets, and a receipt checklist without claiming anything is published."
             : publishLedgerNextActionText(records: records)
@@ -4796,6 +5191,7 @@ struct WorkspaceView: View {
                     publishStatPill("missing", remaining, remaining == 0 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
                 }
 
+                publishQuipslyOSRunwayPanel(runwayLinks)
                 publishShortsPlatformCopyPanel(sequence: sequence)
                 episodeSpineBridgePanel(sequence: sequence)
                 towerNestWritingContextPanel(sequence: sequence)
@@ -8331,6 +8727,8 @@ struct WorkspaceView: View {
                         .foregroundStyle(.secondary)
                 }
 
+                episodesShortsListenThroughBoardCard
+
                 if let selectedShort = selectedShortClipValue() {
                     selectedShortEditorPanel(selectedShort)
                 }
@@ -8618,6 +9016,7 @@ struct WorkspaceView: View {
         let folderPath = AgentProofReceipt.defaultFolderURL.path
         let sessionName = normalizedActiveSessionName()
         let proofCommand = "cd /Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio && ./script/studioctl.sh prove-agent-test-driver \(sessionName)"
+        let runwayLinks = quipslyOSRunwayLinks()
 
         return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
@@ -8700,6 +9099,48 @@ struct WorkspaceView: View {
                         .stroke(QuipslyStudioTheme.moss.opacity(0.16), lineWidth: 1)
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Image(systemName: "map.fill")
+                            .font(.headline)
+                            .foregroundStyle(QuipslyStudioTheme.honey)
+                            .frame(width: 30, height: 30)
+                            .background(QuipslyStudioTheme.honey.opacity(0.14))
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Quipsly OS runway")
+                                .font(.headline)
+                                .fontWeight(.black)
+                            Text("Open the current production truth without hunting through timestamped folders. These are review boards and packets, not publication receipts.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    ForEach(runwayLinks) { link in
+                        quipslyOSRunwayCard(link)
+                    }
+
+                    Button {
+                        copyAgentWorkbenchText(quipslyOSRefreshCommand(), note: "Copied Quipsly OS refresh command")
+                    } label: {
+                        Label("Copy refresh command", systemImage: "terminal")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("Copy the safe local command that regenerates the current Quipsly OS runway artifacts.")
+                }
+                .padding(10)
+                .background(QuipslyStudioTheme.cardGradient)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(QuipslyStudioTheme.honey.opacity(0.18), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
                 if receipts.isEmpty {
                     VStack(alignment: .leading, spacing: 8) {
@@ -8833,6 +9274,510 @@ struct WorkspaceView: View {
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
+    }
+
+    private func publishQuipslyOSRunwayPanel(_ links: [QuipslyOSRunwayLink]) -> some View {
+        let pinnedIds = ["return-start", "return-brief", "tower-first-review", "nest-control-room", "photo-command", "studio360-proof-review", "os-board", "validation"]
+        let pinnedLinks = pinnedIds.compactMap { id in links.first { $0.id == id } }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "binoculars.fill")
+                    .font(.headline)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .frame(width: 28, height: 28)
+                    .background(QuipslyStudioTheme.honey.opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Return runway")
+                        .font(.caption)
+                        .fontWeight(.black)
+                    Text("Current review and publishing truth. Open these before touching external platforms.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            ForEach(pinnedLinks) { link in
+                quipslyOSRunwayCompactRow(link)
+            }
+
+            Button {
+                copyAgentWorkbenchText(quipslyOSRefreshCommand(), note: "Copied Quipsly OS refresh command")
+            } label: {
+                Label("Copy refresh", systemImage: "terminal")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Copy the safe local command that refreshes the current review and publishing runway.")
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.cardGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(QuipslyStudioTheme.honey.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .accessibilityIdentifier("quipsly.publish.returnRunway")
+    }
+
+    private func quipslyOSRunwayCompactRow(_ link: QuipslyOSRunwayLink) -> some View {
+        let targetPath = quipslyOSRunwayTargetPath(for: link)
+        let isAvailable = targetPath != nil
+
+        return HStack(spacing: 7) {
+            Image(systemName: link.systemImage)
+                .font(.caption)
+                .foregroundStyle(isAvailable ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(link.title)
+                    .font(.caption)
+                    .fontWeight(.black)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Text(isAvailable ? "latest pointer resolved" : "missing or drive unmounted")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 4)
+
+            Button("Open") {
+                openQuipslyOSRunwayLink(link)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.mini)
+            .disabled(!isAvailable)
+            .help("Open \(link.title).")
+
+            Button {
+                copyQuipslyOSRunwayPath(link)
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.mini)
+            .disabled(!isAvailable)
+            .help("Copy the current \(link.title) path.")
+        }
+        .padding(7)
+        .background(QuipslyStudioTheme.panelLift.opacity(isAvailable ? 0.20 : 0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func quipslyOSRunwayCard(_ link: QuipslyOSRunwayLink) -> some View {
+        let targetPath = quipslyOSRunwayTargetPath(for: link)
+        let isAvailable = targetPath != nil
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: link.systemImage)
+                    .font(.headline)
+                    .foregroundStyle(isAvailable ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
+                    .frame(width: 28, height: 28)
+                    .background((isAvailable ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay).opacity(0.14))
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(link.eyebrow.uppercased())
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .tracking(1.1)
+                        .foregroundStyle(QuipslyStudioTheme.sage)
+                    Text(link.title)
+                        .font(.subheadline)
+                        .fontWeight(.black)
+                        .foregroundStyle(.primary)
+                    Text(link.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer()
+
+                Text(isAvailable ? "current" : "missing")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background((isAvailable ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay).opacity(0.16))
+                    .clipShape(Capsule())
+            }
+
+            Text(targetPath ?? link.fallbackPath)
+                .font(.caption2.monospaced())
+                .foregroundStyle(isAvailable ? QuipslyStudioTheme.lichen : .secondary)
+                .lineLimit(3)
+                .textSelection(.enabled)
+
+            HStack(spacing: 6) {
+                Button("Open") {
+                    openQuipslyOSRunwayLink(link)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.mini)
+                .disabled(!isAvailable)
+                .help("Open the current \(link.title) artifact.")
+
+                Button("Copy path") {
+                    copyQuipslyOSRunwayPath(link)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.mini)
+                .disabled(!isAvailable)
+                .help("Copy the resolved current artifact path.")
+
+                if !link.pointerPath.isEmpty {
+                    Button("Pointer") {
+                        copyAgentWorkbenchText(link.pointerPath, note: "Copied \(link.title) pointer path")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.mini)
+                    .help("Copy the stable latest-pointer JSON path.")
+                }
+            }
+        }
+        .padding(9)
+        .background(isAvailable ? QuipslyStudioTheme.selectedSourceCardGradient : QuipslyStudioTheme.recipeCardGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke((isAvailable ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay).opacity(0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("quipsly.os.runway.\(link.id)")
+    }
+
+    private func quipslyOSRunwayLinks() -> [QuipslyOSRunwayLink] {
+        [
+            QuipslyOSRunwayLink(
+                id: "return-start",
+                title: "Return start here",
+                eyebrow: "handoff",
+                detail: "The plain-English first page for Charlie/Mako/Homer when they return.",
+                pointerPath: "",
+                fallbackPath: "/Users/wall-e/Desktop/Quipsly_Return_Start_Here.md",
+                systemImage: "doc.text.magnifyingglass",
+                preferredKeys: []
+            ),
+            QuipslyOSRunwayLink(
+                id: "return-brief",
+                title: "Return brief",
+                eyebrow: "whole system",
+                detail: "Current safest opening move across Studio, Nest, Tower, Photo Grove, and 360.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/latest-quipsly-return-brief.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/ReturnBriefs",
+                systemImage: "signpost.right.fill",
+                preferredKeys: ["htmlPath", "markdownPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "human-help",
+                title: "Human help board",
+                eyebrow: "review routing",
+                detail: "Who needs to look at what: Charlie, Mako, Homer, or Codex, without turning review into fake approval.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/latest-quipsly-human-help-board.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/HumanHelpBoards",
+                systemImage: "person.2.badge.gearshape.fill",
+                preferredKeys: ["htmlPath", "markdownPath", "jsonPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "refresh-run",
+                title: "Refresh run report",
+                eyebrow: "proof",
+                detail: "Shows the latest multi-lane refresh results and whether any lane needs review.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/latest-quipsly-os-refresh.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/RefreshRuns",
+                systemImage: "arrow.triangle.2.circlepath",
+                preferredKeys: ["htmlPath", "markdownPath", "jsonPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "os-board",
+                title: "Quipsly OS board",
+                eyebrow: "lane map",
+                detail: "Cross-lane status board: what is ready, what is blocked, and what should move next.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/latest-quipsly-os-board.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS",
+                systemImage: "rectangle.3.group.fill",
+                preferredKeys: ["htmlPath", "markdownPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "action-deck",
+                title: "Action deck",
+                eyebrow: "next actions",
+                detail: "Ranked reversible actions so the system keeps moving without pretending to publish.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/latest-quipsly-action-deck.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/ActionDecks",
+                systemImage: "checklist",
+                preferredKeys: ["htmlPath", "markdownPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "validation",
+                title: "Validation report",
+                eyebrow: "proof",
+                detail: "Latest generated artifact sanity check: existence, pointers, warnings, and failures.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/latest-quipsly-os-validation.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/ValidationReports",
+                systemImage: "checkmark.shield.fill",
+                preferredKeys: ["htmlPath", "markdownPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "tower-first-review",
+                title: "Tower first review",
+                eyebrow: "publish runway",
+                detail: "One focused local review session: evidence, artifact, dry-run decisions, and receipt boundary.",
+                pointerPath: "/Volumes/My Passport/Episode_and_Shorts_Test/tower-first-review-session/latest-tower-first-review-session.json",
+                fallbackPath: "/Volumes/My Passport/Episode_and_Shorts_Test/tower-first-review-session",
+                systemImage: "person.crop.rectangle.badge.checkmark",
+                preferredKeys: ["htmlPath", "markdownPath", "jsonPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "studio-top-review",
+                title: "Studio top review",
+                eyebrow: "episodes",
+                detail: "The current focused podcast/video review companion: inspect the roughest warning before approving packages.",
+                pointerPath: "/Volumes/My Passport/Episode_and_Shorts_Test/review-board/latest-studio-top-review-companion.json",
+                fallbackPath: "/Volumes/My Passport/Episode_and_Shorts_Test/review-board/top-review-companions",
+                systemImage: "rectangle.stack.fill",
+                preferredKeys: ["htmlPath", "markdownPath", "jsonPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "nest-control-room",
+                title: "Nest writing session",
+                eyebrow: "book + research",
+                detail: "Open the first source-backed writing note or the current Nest writing control room.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/NestWriting/latest-nest-writing-control-room.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/NestWriting/ControlRooms",
+                systemImage: "leaf.circle.fill",
+                preferredKeys: ["firstWritingSessionNotePath", "htmlPath", "markdownPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "duration-repairs",
+                title: "Studio duration repairs",
+                eyebrow: "episodes",
+                detail: "Work orders for known A/V duration spread warnings. Repair only by new version.",
+                pointerPath: "/Volumes/My Passport/Episode_and_Shorts_Test/review-board/duration-repair-workorders/latest-duration-repair-workorders.json",
+                fallbackPath: "/Volumes/My Passport/Episode_and_Shorts_Test/review-board/duration-repair-workorders",
+                systemImage: "waveform.path.badge.minus",
+                preferredKeys: ["htmlPath", "markdownPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "tower-calendar",
+                title: "Tower manual calendar",
+                eyebrow: "publishing",
+                detail: "Draft posting runway and receipt slots. No row means published unless a real receipt exists.",
+                pointerPath: "/Volumes/My Passport/Episode_and_Shorts_Test/tower-manual-calendar/latest-tower-manual-calendar.json",
+                fallbackPath: "/Volumes/My Passport/Episode_and_Shorts_Test/tower-manual-calendar",
+                systemImage: "calendar.badge.clock",
+                preferredKeys: ["htmlPath", "markdownPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "photo-command",
+                title: "Photo Grove command sheet",
+                eyebrow: "photos",
+                detail: "External-drive culling suggestions, safe first actions, duplicate/problem groups, no original mutation.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove/latest-photo-grove-command-sheet.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove",
+                systemImage: "photo.stack.fill",
+                preferredKeys: ["htmlPath", "markdownPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "photo-control-room",
+                title: "Photo Grove control room",
+                eyebrow: "photos",
+                detail: "Cull, group, rate, and review external-drive photo work from one safe local control room.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove/latest-photo-grove-control-room.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove/ControlRooms",
+                systemImage: "photo.on.rectangle.angled",
+                preferredKeys: ["htmlPath", "markdownPath", "jsonPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "photo-first-pass",
+                title: "Photo first-pass triage",
+                eyebrow: "photos",
+                detail: "A calm first culling deck: compare groups, inspect source evidence, and rehearse metadata-only directions.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove/latest-photo-grove-first-pass-triage.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/PhotoGrove/FirstPassTriage",
+                systemImage: "camera.metering.matrix",
+                preferredKeys: ["htmlPath", "markdownPath", "jsonPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "studio360-proof-review",
+                title: "360 proof review",
+                eyebrow: "reframe",
+                detail: "Review rendered 360 proof clips with classification notes before full exports.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/Studio360/latest-360-proof-review-desk.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/Studio360/ProofReviewDesk",
+                systemImage: "view.3d",
+                preferredKeys: ["htmlPath", "markdownPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "studio360-control-room",
+                title: "360 proof control room",
+                eyebrow: "reframe",
+                detail: "Current 360 front door: ready groups can keep moving while damaged groups stay visible as repair tickets.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/Studio360/latest-studio360-proof-control-room.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/Studio360/ProofControlRooms",
+                systemImage: "view.3d",
+                preferredKeys: ["htmlPath", "markdownPath", "jsonPath"]
+            ),
+            QuipslyOSRunwayLink(
+                id: "writing-runway",
+                title: "Writing publication runway",
+                eyebrow: "nest",
+                detail: "Book/article draft packets and platform prep while keeping source truth separate.",
+                pointerPath: "/Volumes/My Passport/Quipsly Media Workspace/NestWriting/latest-writing-publication-runway.json",
+                fallbackPath: "/Volumes/My Passport/Quipsly Media Workspace/NestWriting",
+                systemImage: "text.book.closed.fill",
+                preferredKeys: ["htmlPath", "markdownPath"]
+            )
+        ]
+    }
+
+    private func quipslyOSRefreshCommand() -> String {
+        "cd /Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio && ./script/agentctl.sh quipsly-os-refresh"
+    }
+
+    private func quipslyOSRunwayTargetPath(for link: QuipslyOSRunwayLink) -> String? {
+        if !link.pointerPath.isEmpty,
+           let data = try? Data(contentsOf: URL(fileURLWithPath: link.pointerPath)),
+           let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            let keys = link.preferredKeys.isEmpty ? ["htmlPath", "markdownPath", "jsonPath"] : link.preferredKeys
+            for key in keys {
+                if let path = json[key] as? String, quipslyOSPathExists(path) {
+                    return path
+                }
+            }
+        }
+
+        if quipslyOSPathExists(link.fallbackPath) {
+            return link.fallbackPath
+        }
+
+        return nil
+    }
+
+    private func quipslyOSPathExists(_ path: String) -> Bool {
+        !path.isEmpty && FileManager.default.fileExists(atPath: path)
+    }
+
+    private func quipslyOSOperatorBoardPayload() -> [String: Any] {
+        let board = QuipslyOSOperatorBoard.current()
+        return [
+            "model": "quipsly-os-operator-board",
+            "status": board.status,
+            "generatedAt": board.generatedAt,
+            "boardPath": board.boardPath,
+            "returnBriefPath": board.returnBriefPath,
+            "pointerPath": QuipslyOSOperatorBoard.pointerPath,
+            "rowCount": board.rows.count,
+            "availableRows": board.availableRows,
+            "truth": "One calm runway for Studio, Nest, Tower, Photo Grove, and 360. Rows are reversible micro-actions, not external publication claims.",
+            "rows": board.rows.map { row in
+                [
+                    "id": row.id,
+                    "lane": row.lane,
+                    "label": row.label,
+                    "status": row.status,
+                    "readiness": row.readiness,
+                    "nextMove": row.nextMove,
+                    "microAction": row.microAction,
+                    "path": row.path,
+                    "pathExists": quipslyOSPathExists(row.path),
+                    "openCommand": row.openCommand,
+                    "safety": row.safety,
+                    "relatedPaths": row.relatedPaths.map { related in
+                        [
+                            "id": related.id,
+                            "field": related.field,
+                            "path": related.path,
+                            "pathExists": quipslyOSPathExists(related.path)
+                        ]
+                    }
+                ]
+            }
+        ]
+    }
+
+    private func quipslyOSLaneIcon(_ lane: String) -> String {
+        if lane.localizedCaseInsensitiveContains("studio") && lane.localizedCaseInsensitiveContains("video") {
+            return "rectangle.stack.fill"
+        }
+        if lane.localizedCaseInsensitiveContains("nest") {
+            return "leaf.circle.fill"
+        }
+        if lane.localizedCaseInsensitiveContains("photo") {
+            return "photo.stack.fill"
+        }
+        if lane.localizedCaseInsensitiveContains("360") {
+            return "view.3d"
+        }
+        if lane.localizedCaseInsensitiveContains("tower") || lane.localizedCaseInsensitiveContains("publish") {
+            return "paperplane.fill"
+        }
+        return "signpost.right.fill"
+    }
+
+    private func quipslyOSLaneTint(_ lane: String) -> Color {
+        if lane.localizedCaseInsensitiveContains("studio") && lane.localizedCaseInsensitiveContains("video") {
+            return QuipslyStudioTheme.creek
+        }
+        if lane.localizedCaseInsensitiveContains("nest") {
+            return QuipslyStudioTheme.moss
+        }
+        if lane.localizedCaseInsensitiveContains("photo") {
+            return QuipslyStudioTheme.lichen
+        }
+        if lane.localizedCaseInsensitiveContains("360") {
+            return QuipslyStudioTheme.creekMist
+        }
+        if lane.localizedCaseInsensitiveContains("tower") || lane.localizedCaseInsensitiveContains("publish") {
+            return QuipslyStudioTheme.honey
+        }
+        return QuipslyStudioTheme.sage
+    }
+
+    private func openQuipslyOSPath(_ path: String, title: String) {
+        guard quipslyOSPathExists(path) else {
+            lastMediaAction = "\(title) is missing or the external drive is not mounted"
+            updateAgentState()
+            return
+        }
+
+        #if os(macOS)
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        #endif
+        lastMediaAction = "Opened \(title)"
+        updateAgentState()
+    }
+
+    private func openQuipslyOSRunwayLink(_ link: QuipslyOSRunwayLink) {
+        guard let path = quipslyOSRunwayTargetPath(for: link) else {
+            lastMediaAction = "\(link.title) is missing or the external drive is not mounted"
+            updateAgentState()
+            return
+        }
+
+        #if os(macOS)
+        NSWorkspace.shared.open(URL(fileURLWithPath: path))
+        #endif
+        lastMediaAction = "Opened \(link.title)"
+        updateAgentState()
+    }
+
+    private func copyQuipslyOSRunwayPath(_ link: QuipslyOSRunwayLink) {
+        guard let path = quipslyOSRunwayTargetPath(for: link) else {
+            lastMediaAction = "\(link.title) path is not available"
+            updateAgentState()
+            return
+        }
+
+        copyAgentWorkbenchText(path, note: "Copied \(link.title) path")
     }
 
     private func copyAgentWorkbenchText(_ text: String, note: String) {
@@ -9224,9 +10169,7 @@ struct WorkspaceView: View {
                 .fontWeight(.black)
                 .tracking(0.7)
                 .foregroundStyle(.secondary)
-            Text(segment.speaker)
-                .font(.caption)
-                .fontWeight(.bold)
+            transcriptSpeakerCorrectionPanel(segment: segment, compact: false)
             Text(String(format: "%.2fs - %.2fs", segment.startTime, segment.endTime))
                 .font(.caption2.monospaced())
                 .foregroundStyle(.secondary)
@@ -9285,6 +10228,70 @@ struct WorkspaceView: View {
         .buttonStyle(.bordered)
         .controlSize(.mini)
         .disabled(!enabled)
+    }
+
+    private func transcriptSpeakerCorrectionPanel(segment: TranscriptSegment, compact: Bool) -> some View {
+        let speakerContext = transcriptSpeakerContext(for: segment, at: (segment.startTime + segment.endTime) / 2.0)
+        let storedSpeaker = segment.speaker.trimmingCharacters(in: .whitespacesAndNewlines)
+        let storedLabel = storedSpeaker.isEmpty ? "Speaker" : storedSpeaker
+        let inferred = transcriptSpeakerIsGeneric(storedSpeaker)
+
+        return VStack(alignment: .leading, spacing: compact ? 5 : 7) {
+            HStack(spacing: 6) {
+                Text(compact ? "Speaker" : "Speaker truth")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(.secondary)
+                Text(speakerContext.displayName)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(QuipslyStudioTheme.creek.opacity(0.16))
+                    .clipShape(Capsule())
+                    .help(speakerContext.detail)
+                if inferred {
+                    Text("assumed")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(QuipslyStudioTheme.honey)
+                }
+                if !compact {
+                    Spacer()
+                    Text("stored: \(storedLabel)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+
+            HStack(spacing: 6) {
+                transcriptSpeakerButton("Charlie", segment: segment, systemImage: "person.crop.circle")
+                transcriptSpeakerButton("Homer", segment: segment, systemImage: "person.crop.circle.fill")
+                transcriptSpeakerButton("Both", segment: segment, systemImage: "person.2.fill")
+                if !compact {
+                    transcriptSpeakerButton("Speaker", segment: segment, systemImage: "questionmark.circle")
+                }
+            }
+        }
+        .padding(compact ? 7 : 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(QuipslyStudioTheme.creek.opacity(compact ? 0.08 : 0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .help("Correct only the speaker label for this transcript segment. Text, timing, and media decisions stay untouched.")
+    }
+
+    private func transcriptSpeakerButton(_ speaker: String, segment: TranscriptSegment, systemImage: String) -> some View {
+        Button {
+            updateTranscriptSegmentSpeaker(segmentId: segment.id, speaker: speaker, actor: "Human")
+        } label: {
+            Label(speaker, systemImage: systemImage)
+                .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.mini)
+        .disabled(segment.speaker.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(speaker) == .orderedSame)
     }
 
     private func transcriptSegmentCountHeader(count: Int) -> some View {
@@ -9399,6 +10406,8 @@ struct WorkspaceView: View {
                     activeIndex: activeIndex,
                     timingLabel: timingLabel
                 )
+
+                transcriptSpeakerCorrectionPanel(segment: segment, compact: true)
 
                 HStack(spacing: 6) {
                     Button {
@@ -11894,6 +12903,431 @@ struct WorkspaceView: View {
                 index: index
             )
             }
+    }
+
+    private var episodesShortsListenThroughBoardCard: some View {
+        let stats = episodesShortsListenThroughBoardStats()
+        let boardExists = FileManager.default.fileExists(atPath: episodesShortsListenReviewBoardHTMLPath)
+
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "ear.and.waveform")
+                    .font(.caption)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Listen-through board")
+                        .font(.caption)
+                        .fontWeight(.black)
+                    Text("Episodes 1-3 have exported shorts plus visual/audio evidence. This is the watch-and-judge lane; it does not approve or publish anything by itself.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text(boardExists ? "READY" : "GENERATE")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .tracking(0.6)
+                    .foregroundStyle(boardExists ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background((boardExists ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey).opacity(0.13))
+                    .clipShape(Capsule())
+            }
+
+            if let stats {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 6) {
+                    shortBoardStat("Shorts", "\(stats.shorts)", color: QuipslyStudioTheme.honey)
+                    shortBoardStat("Ready", "\(stats.readyForListenThrough)", color: QuipslyStudioTheme.moss)
+                    shortBoardStat("Reviewed", "\(stats.listenThroughRecorded)", color: stats.listenThroughRecorded > 0 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
+                    shortBoardStat("Exports", "\(stats.exports)", color: QuipslyStudioTheme.sage)
+                    shortBoardStat("Sheets", "\(stats.contactSheets)", color: QuipslyStudioTheme.sage)
+                    shortBoardStat("Audio", "\(stats.audioSanity)", color: QuipslyStudioTheme.sage)
+                }
+
+                Text("Snapshot: \(stats.generatedAt)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+
+                if let target = stats.nextReadyTarget {
+                    nextListenThroughTargetCard(target)
+                }
+            } else {
+                Text("No board snapshot found yet. Generate it, then use the board to open each export/contact sheet and record keep/refine/reject decisions.")
+                    .font(.caption2)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            HStack(spacing: 6) {
+                Button {
+                    openEpisodesShortsListenThroughBoard()
+                } label: {
+                    Label("Open", systemImage: "safari")
+                }
+                .disabled(!boardExists)
+                .help(boardExists ? "Open the generated Episodes 1-3 listen-through board." : "Generate the board first.")
+
+                Button {
+                    copyEpisodesShortsListenThroughBoardCommand()
+                } label: {
+                    Label("Copy command", systemImage: "terminal")
+                }
+                .help("Copy the command that regenerates the broad listen-through board.")
+
+                Button {
+                    copyEpisodesShortsListenThroughBoardPaths()
+                } label: {
+                    Label("Copy paths", systemImage: "doc.on.doc")
+                }
+                .help("Copy JSON, HTML, and Markdown artifact paths for agent or human handoff.")
+            }
+            .buttonStyle(.bordered)
+            .font(.caption)
+        }
+        .padding(8)
+        .background(
+            LinearGradient(
+                colors: [
+                    QuipslyStudioTheme.honey.opacity(0.11),
+                    QuipslyStudioTheme.moss.opacity(0.08),
+                    QuipslyStudioTheme.night.opacity(0.18)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(QuipslyStudioTheme.honey.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .accessibilityIdentifier("quipsly.shorts.listenThroughBoard")
+    }
+
+    private func nextListenThroughTargetCard(_ target: EpisodesShortsListenThroughTarget) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("Next ready")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .tracking(0.7)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                Spacer(minLength: 6)
+                Text(target.episodeLabel.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.moss)
+                    .lineLimit(1)
+            }
+
+            Text(target.title)
+                .font(.caption)
+                .fontWeight(.black)
+                .lineLimit(2)
+
+            Text("\(target.sourceRangeLabel) | \(String(format: "%.2fs", target.durationSeconds))")
+                .font(.caption2.monospacedDigit())
+                .foregroundStyle(.secondary)
+
+            if !target.hookText.isEmpty {
+                Text("Hook: \(target.hookText)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Text(target.nextAction)
+                .font(.caption2)
+                .foregroundStyle(QuipslyStudioTheme.honey)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                Button {
+                    openEpisodesShortsListenThroughEvidence(target)
+                } label: {
+                    Label("Evidence", systemImage: "play.rectangle.on.rectangle")
+                }
+                .help("Open the exported short and contact sheet for the next ready listen-through target.")
+
+                Button {
+                    runEpisodesShortsListenThroughNextAction("--cue", label: "Cue next ready short")
+                } label: {
+                    Label("Cue", systemImage: "scope")
+                }
+                .help("Load the target session, select this short, and cue it in Quipsly Studio without marking review complete.")
+
+                Button {
+                    runEpisodesShortsListenThroughNextAction("--preview", label: "Preview next ready short")
+                } label: {
+                    Label("Preview", systemImage: "play.fill")
+                }
+                .help("Load the target session, select this short, and preview it in the app. This still does not approve the short.")
+            }
+            .buttonStyle(.bordered)
+            .font(.caption)
+
+            HStack(spacing: 6) {
+                Button {
+                    copyEpisodesShortsListenThroughNextCommands(target)
+                } label: {
+                    Label("Copy review commands", systemImage: "checklist")
+                }
+                .help("Copy mark-listened plus keep/refine/reject commands for the current next-ready short.")
+            }
+            .buttonStyle(.bordered)
+            .font(.caption)
+        }
+        .padding(8)
+        .background(QuipslyStudioTheme.panelLift.opacity(0.20))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(QuipslyStudioTheme.honey.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .accessibilityIdentifier("quipsly.shorts.listenThroughBoard.nextReady")
+    }
+
+    private func shortBoardStat(_ label: String, _ value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(.caption)
+                .fontWeight(.black)
+                .monospacedDigit()
+                .foregroundStyle(color)
+            Text(label.uppercased())
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .padding(.horizontal, 7)
+        .padding(.vertical, 5)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private var episodesShortsListenReviewBoardJSONPath: String {
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episodes-1-3-shorts-listen-review-board.json"
+    }
+
+    private var episodesShortsListenReviewBoardHTMLPath: String {
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episodes-1-3-shorts-listen-review-board.html"
+    }
+
+    private var episodesShortsListenReviewBoardMarkdownPath: String {
+        "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episodes-1-3-shorts-listen-review-board.md"
+    }
+
+    private var episodesShortsListenReviewBoardCommand: String {
+        "cd /Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio && ./script/shortsctl.sh listen-review-board --html"
+    }
+
+    private struct EpisodesShortsListenThroughTarget {
+        let title: String
+        let episodeLabel: String
+        let sourceRangeLabel: String
+        let durationSeconds: Double
+        let hookText: String
+        let nextAction: String
+        let exportPath: String
+        let contactSheetPath: String
+        let commands: [String: String]
+    }
+
+    private struct EpisodesShortsListenThroughBoardStats {
+        let shorts: Int
+        let exports: Int
+        let contactSheets: Int
+        let audioSanity: Int
+        let readyForListenThrough: Int
+        let listenThroughRecorded: Int
+        let generatedAt: String
+        let nextReadyTarget: EpisodesShortsListenThroughTarget?
+    }
+
+    private func episodesShortsListenThroughBoardStats() -> EpisodesShortsListenThroughBoardStats? {
+        guard
+            let data = try? Data(contentsOf: URL(fileURLWithPath: episodesShortsListenReviewBoardJSONPath)),
+            let payload = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let counts = payload["counts"] as? [String: Any]
+        else {
+            return nil
+        }
+
+        func intValue(_ key: String) -> Int {
+            if let value = counts[key] as? Int {
+                return value
+            }
+            if let value = counts[key] as? NSNumber {
+                return value.intValue
+            }
+            return 0
+        }
+
+        let target: EpisodesShortsListenThroughTarget?
+        if let rawTarget = payload["nextReadyCard"] as? [String: Any] {
+            let commands = (rawTarget["commands"] as? [String: Any] ?? [:]).reduce(into: [String: String]()) { partial, item in
+                if let value = item.value as? String {
+                    partial[item.key] = value
+                }
+            }
+            target = EpisodesShortsListenThroughTarget(
+                title: (rawTarget["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? rawTarget["title"] as? String ?? "Untitled short" : "Untitled short",
+                episodeLabel: (rawTarget["episodeKey"] as? String) ?? (rawTarget["episodeLabel"] as? String) ?? "episode",
+                sourceRangeLabel: (rawTarget["sourceRangeLabel"] as? String) ?? "unknown range",
+                durationSeconds: (rawTarget["durationSeconds"] as? Double) ?? (rawTarget["durationSeconds"] as? NSNumber)?.doubleValue ?? 0,
+                hookText: (rawTarget["hookText"] as? String) ?? "",
+                nextAction: (rawTarget["nextAction"] as? String) ?? "Open evidence, listen through, then decide keep/refine/reject.",
+                exportPath: (rawTarget["primaryExportPath"] as? String) ?? "",
+                contactSheetPath: (rawTarget["contactSheetPath"] as? String) ?? "",
+                commands: commands
+            )
+        } else {
+            target = nil
+        }
+
+        return EpisodesShortsListenThroughBoardStats(
+            shorts: intValue("shorts"),
+            exports: intValue("exports"),
+            contactSheets: intValue("contactSheets"),
+            audioSanity: intValue("audioSanity"),
+            readyForListenThrough: intValue("readyForListenThrough"),
+            listenThroughRecorded: intValue("listenThroughRecorded"),
+            generatedAt: (payload["generatedAt"] as? String) ?? "unknown",
+            nextReadyTarget: target
+        )
+    }
+
+    private func openEpisodesShortsListenThroughBoard() {
+        #if os(macOS)
+        NSWorkspace.shared.open(URL(fileURLWithPath: episodesShortsListenReviewBoardHTMLPath))
+        lastMediaAction = "Opened Episodes 1-3 listen-through board"
+        #else
+        lastMediaAction = "Open listen-through board is only available on macOS: \(episodesShortsListenReviewBoardHTMLPath)"
+        #endif
+        updateAgentState()
+    }
+
+    private func copyEpisodesShortsListenThroughBoardCommand() {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(episodesShortsListenReviewBoardCommand, forType: .string)
+        lastMediaAction = "Copied listen-through board command"
+        #else
+        lastMediaAction = episodesShortsListenReviewBoardCommand
+        #endif
+        updateAgentState()
+    }
+
+    private func copyEpisodesShortsListenThroughBoardPaths() {
+        let paths = [
+            episodesShortsListenReviewBoardJSONPath,
+            episodesShortsListenReviewBoardHTMLPath,
+            episodesShortsListenReviewBoardMarkdownPath
+        ].joined(separator: "\n")
+
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(paths, forType: .string)
+        lastMediaAction = "Copied listen-through board artifact paths"
+        #else
+        lastMediaAction = paths
+        #endif
+        updateAgentState()
+    }
+
+    private func openEpisodesShortsListenThroughEvidence(_ target: EpisodesShortsListenThroughTarget) {
+        #if os(macOS)
+        var opened: [String] = []
+        for path in [target.exportPath, target.contactSheetPath] where !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let url = URL(fileURLWithPath: path)
+            if FileManager.default.fileExists(atPath: url.path) {
+                NSWorkspace.shared.open(url)
+                opened.append(url.lastPathComponent)
+            }
+        }
+        lastMediaAction = opened.isEmpty ? "No next short evidence files found to open" : "Opened next short evidence: \(opened.joined(separator: ", "))"
+        #else
+        lastMediaAction = "Open next short evidence is only available on macOS"
+        #endif
+        updateAgentState()
+    }
+
+    private func copyEpisodesShortsListenThroughNextCommands(_ target: EpisodesShortsListenThroughTarget) {
+        let orderedKeys = ["markListened", "keep", "refine", "reject", "previewInApp", "jumpToSource"]
+        let lines = orderedKeys.compactMap { key -> String? in
+            guard let command = target.commands[key], !command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                return nil
+            }
+            return "\(key): \(command)"
+        }
+        let text = lines.joined(separator: "\n")
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        lastMediaAction = "Copied next listen-through review commands"
+        #else
+        lastMediaAction = text
+        #endif
+        updateAgentState()
+    }
+
+    private func runEpisodesShortsListenThroughNextAction(_ action: String, label: String) {
+        let allowedActions: Set<String> = ["--cue", "--preview", "--open-evidence", "--open-export", "--open-contact-sheet"]
+        guard allowedActions.contains(action) else {
+            lastMediaAction = "Blocked unsupported listen-through action: \(action)"
+            updateAgentState()
+            return
+        }
+
+        lastMediaAction = "\(label) started"
+        updateAgentState()
+
+        Task.detached(priority: .utility) {
+            let result = Self.runEpisodesShortsCtl(action)
+            await MainActor.run {
+                switch result {
+                case .success(let output):
+                    let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+                    lastMediaAction = trimmed.isEmpty ? "\(label) completed" : "\(label) completed: \(trimmed.prefix(180))"
+                case .failure(let error):
+                    lastMediaAction = "\(label) failed: \(error.localizedDescription)"
+                }
+                updateAgentState()
+            }
+        }
+    }
+
+    nonisolated private static func runEpisodesShortsCtl(_ action: String) -> Result<String, Error> {
+        do {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+            process.currentDirectoryURL = URL(fileURLWithPath: "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio", isDirectory: true)
+            process.environment = ProcessInfo.processInfo.environment.merging(["QUIPSLY_AGENT_TIMEOUT": "60"]) { _, new in new }
+            process.arguments = ["./script/shortsctl.sh", "listen-review-next", action]
+            let stdout = Pipe()
+            let stderr = Pipe()
+            process.standardOutput = stdout
+            process.standardError = stderr
+            try process.run()
+            process.waitUntilExit()
+            let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let errorOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            guard process.terminationStatus == 0 else {
+                throw NSError(
+                    domain: "QuipslyShortsListenThrough",
+                    code: Int(process.terminationStatus),
+                    userInfo: [NSLocalizedDescriptionKey: errorOutput.isEmpty ? "shortsctl exited with status \(process.terminationStatus)." : errorOutput]
+                )
+            }
+            return .success(output)
+        } catch {
+            return .failure(error)
+        }
     }
 
     private struct ShortVerticalFramingTarget: Identifiable {
@@ -18392,9 +19826,12 @@ struct WorkspaceView: View {
         if lane.metadata?.ignoreForProduction == true {
             return true
         }
-        let role = lane.metadata?.role.lowercased() ?? ""
         let kind = lane.metadata?.mediaKind.lowercased() ?? ""
-        if role.contains("audio") || kind == "audio" {
+        let role = lane.metadata?.role.lowercased() ?? ""
+        if kind == "audio" {
+            return true
+        }
+        if role.contains("audio") && kind != "video" {
             return true
         }
         if let source = lane.sourceVideo, isAudioPath(source.mediaURL.path) {
@@ -21902,7 +23339,9 @@ struct WorkspaceView: View {
     }
 
     private func publicationReceiptNextActionCardPayload(_ record: PublishReceiptRecord) -> [String: Any] {
-        [
+        let postingGate = publicationReceiptPostingGatePayload(record)
+        let postingAllowed = postingGate["postingAllowed"] as? Bool ?? false
+        return [
             "model": "quipsly-tower-next-receipt-action-card",
             "version": "2026-06-20.tower-next-receipt-action-card.v1",
             "receiptId": record.id.uuidString,
@@ -21913,17 +23352,16 @@ struct WorkspaceView: View {
             "artifactReady": publishRecordArtifactReady(record),
             "copyReady": publishRecordCopyReady(record),
             "publishStatus": record.publishStatus,
+            "postingAllowed": postingAllowed,
+            "manualPostingGate": postingGate,
+            "currentSafeAction": postingAllowed
+                ? "Watch/listen-check this artifact, manually post or schedule it, then capture the real destination receipt."
+                : "Do not post this row yet. Fix artifact, copy, or readiness issues first, then regenerate the Tower receipt card.",
             "publicURL": record.publicURL,
             "providerReceiptId": record.providerReceiptId,
             "captureCommand": publicationReceiptCaptureCommand(for: record),
             "genericCommand": "script/agentctl.sh publish-receipt-update \(record.id.uuidString) published <public-or-scheduled-url> <provider-id> \"manual receipt\"",
-            "operatorSteps": [
-                "Watch or listen-check the artifact.",
-                "Post or schedule it on the destination platform.",
-                "Copy the public URL, scheduled URL, provider ID, screenshot path, or equivalent proof.",
-                "Run the capture command for this exact receipt ID.",
-                "Re-open publication receipt cockpit and handle the next receipt."
-            ],
+            "operatorSteps": publicationReceiptNextOperatorSteps(record),
             "creativePartnerPolicy": publicationReceiptCreativePartnerPolicyPayload(),
             "markdown": publicationReceiptNextActionCardMarkdown(record),
             "proofRule": "Prepared artifacts are not publication proof. This row is not complete until external destination evidence is captured on the exact receipt.",
@@ -21932,8 +23370,70 @@ struct WorkspaceView: View {
         ] as [String: Any]
     }
 
+    private func publicationReceiptPostingGatePayload(_ record: PublishReceiptRecord) -> [String: Any] {
+        let artifactReady = publishRecordArtifactReady(record)
+        let copyReady = publishRecordCopyReady(record)
+        let receiptCaptured = publishRecordReceiptCaptured(record)
+        let blocked = publishRecordBlocked(record)
+        let postingAllowed = artifactReady && copyReady && !receiptCaptured && !blocked
+        let status: String
+        let nextAction: String
+        if receiptCaptured {
+            status = "receipt-already-captured"
+            nextAction = "No posting action needed for this row. Move to the next missing receipt."
+        } else if !artifactReady {
+            status = "blocked-artifact-not-ready"
+            nextAction = "Regenerate or repair the production artifact before any manual posting."
+        } else if !copyReady {
+            status = "blocked-copy-not-ready"
+            nextAction = "Complete title, description, and metadata before manual posting."
+        } else if blocked {
+            status = "blocked-by-publish-state"
+            nextAction = "Review publish status and artifact readiness before manual posting."
+        } else {
+            status = "manual-posting-allowed-after-human-review"
+            nextAction = "Watch/listen-check the artifact, then manually post or schedule and capture the receipt."
+        }
+        return [
+            "status": status,
+            "postingAllowed": postingAllowed,
+            "artifactReady": artifactReady,
+            "copyReady": copyReady,
+            "receiptCaptured": receiptCaptured,
+            "blocked": blocked,
+            "nextAction": nextAction,
+            "truth": "This gate guards local manual-posting readiness only. It does not publish, upload, schedule, or create receipt truth."
+        ] as [String: Any]
+    }
+
+    private func publicationReceiptNextOperatorSteps(_ record: PublishReceiptRecord) -> [String] {
+        let gate = publicationReceiptPostingGatePayload(record)
+        let postingAllowed = gate["postingAllowed"] as? Bool ?? false
+        if postingAllowed {
+            return [
+                "Watch or listen-check the artifact.",
+                "Post or schedule it on the destination platform.",
+                "Copy the public URL, scheduled URL, provider ID, screenshot path, or equivalent proof.",
+                "Run the capture command for this exact receipt ID.",
+                "Re-open publication receipt cockpit and handle the next receipt."
+            ]
+        }
+        return [
+            "Do not post or schedule this row yet.",
+            String(describing: gate["nextAction"] ?? "Fix the local readiness issue first."),
+            "Regenerate Tower/runway evidence after the fix.",
+            "Only capture a receipt after a real external destination URL or provider proof exists."
+        ]
+    }
+
     private func publicationReceiptNextActionCardMarkdown(_ record: PublishReceiptRecord) -> String {
-        """
+        let postingGate = publicationReceiptPostingGatePayload(record)
+        let postingAllowed = postingGate["postingAllowed"] as? Bool ?? false
+        let steps = publicationReceiptNextOperatorSteps(record)
+            .enumerated()
+            .map { index, step in "\(index + 1). \(step)" }
+            .joined(separator: "\n")
+        return """
         # Next Tower receipt
 
         - Receipt ID: `\(record.id.uuidString)`
@@ -21944,14 +23444,12 @@ struct WorkspaceView: View {
         - Artifact ready: `\(publishRecordArtifactReady(record))`
         - Copy ready: `\(publishRecordCopyReady(record))`
         - Publish status: `\(record.publishStatus)`
+        - Posting allowed: `\(postingAllowed)`
+        - Posting gate: `\(postingGate["status"] ?? "unknown")`
 
         ## What to do
 
-        1. Watch or listen-check the artifact.
-        2. Post or schedule it on the destination platform.
-        3. Copy the public URL, scheduled URL, provider ID, screenshot path, or equivalent proof.
-        4. Run the receipt capture command for this exact row.
-        5. Re-open the Tower receipt cockpit and handle the next receipt.
+        \(steps)
 
         ## Capture command
 
@@ -21967,7 +23465,7 @@ struct WorkspaceView: View {
 
         ## Boundary
 
-        Prepared artifacts are not publication proof. This row is not complete until external destination evidence is captured on the exact receipt.
+        Prepared artifacts are not publication proof. This row is not complete until external destination evidence is captured on the exact receipt. If posting allowed is false, this card is a repair/readiness handoff, not a posting instruction.
 
         Agent-authored or mixed-authorship copy is allowed when upstream provenance and review state are visible. This receipt card proves destination state, not human-only authorship.
         """
@@ -22203,7 +23701,12 @@ struct WorkspaceView: View {
             "/tmp/",
             "/var/folders/",
             "quipslystudio-publish-ledger-smoke",
-            "smoke-ledger"
+            "smoke-ledger",
+            "/v002_wait_smoke/",
+            "wait_smoke",
+            "wait-smoke",
+            "-smoke-",
+            "_smoke_"
         ]
         return !smokeOrTemporaryMarkers.contains { lowercased.contains($0) }
     }
@@ -32863,11 +34366,12 @@ struct WorkspaceView: View {
         }
 
         let requestedBasename = basename?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanBasename = sanitizedExportBasename(
-            requestedBasename?.isEmpty == false
-            ? requestedBasename!
-            : "\(normalizedActiveSessionName())-\(clip.title)"
+        let requestedCleanBasename = selectedShortExportBasename(
+            requestedBasename: requestedBasename?.isEmpty == false ? requestedBasename : normalizedActiveSessionName(),
+            clip: clip,
+            queueIndex: index
         )
+        let cleanBasename = uniqueSelectedShortExportBasename(requestedCleanBasename, in: outputDirectory)
         let outputURL = outputDirectory.appendingPathComponent("\(cleanBasename)-9x16-short.mp4")
 
         lastMediaAction = "Short export checkpoint: staging \(clip.title) export request to \(outputURL.path)"
@@ -33581,12 +35085,21 @@ struct WorkspaceView: View {
         )
         playbackEngine.playbackFormat = .vertical9x16
         lastMediaAction = "Batch short proxy export started: \(jobs.count) queued packet(s)"
+        let exportSessionAtStart = normalizedActiveSessionName()
 
         Task {
             do {
                 try await runProxyShortExportBridge(requestURL: requestURL)
 
                 await MainActor.run {
+                    guard normalizedActiveSessionName() == exportSessionAtStart,
+                          exportSessionName == exportSessionAtStart,
+                          exportStatus == "running" else {
+                        lastMediaAction = "Ignored stale batch short export completion for \(exportSessionAtStart)"
+                        updateAgentState()
+                        return
+                    }
+
                     let manifestClips = proxyShortExportManifestClips(at: manifestURL)
                     var completedURLs: [URL] = []
                     for job in jobs {
@@ -33623,6 +35136,14 @@ struct WorkspaceView: View {
                 }
             } catch {
                 await MainActor.run {
+                    guard normalizedActiveSessionName() == exportSessionAtStart,
+                          exportSessionName == exportSessionAtStart,
+                          exportStatus == "running" else {
+                        lastMediaAction = "Ignored stale batch short export failure for \(exportSessionAtStart): \(error.localizedDescription)"
+                        updateAgentState()
+                        return
+                    }
+
                     let manifestClips = proxyShortExportManifestClips(at: manifestURL)
                     let completedIds = Set(manifestClips.compactMap { key, value -> UUID? in
                         guard (value["status"] as? String) == "exported" else { return nil }
@@ -34091,7 +35612,7 @@ struct WorkspaceView: View {
             "expectedExportPath": expectedExportTarget.path,
             "suggestedExportDirectory": expectedExportTarget.directory,
             "suggestedExportBasename": expectedExportTarget.basename,
-            "exportCommand": "script/agentctl.sh shorts-select id \(clip.id.uuidString) >/dev/null && script/agentctl.sh shorts-export-selected \(shellQuoted(expectedExportTarget.directory)) \(shellQuoted(expectedExportTarget.basename))",
+            "exportCommand": "script/agentctl.sh shorts-export-selected \(shellQuoted(expectedExportTarget.directory)) \(shellQuoted(expectedExportTarget.basename)) id \(shellQuoted(clip.id.uuidString))",
             "contactSheetCommand": exportExists ? "script/agentctl.sh shorts-contact-sheet \(shellQuoted(exportPath))" : "",
             "postExportContactSheetCommand": "script/agentctl.sh shorts-contact-sheet \(shellQuoted(expectedExportTarget.path))",
             "previewCommand": "script/agentctl.sh shorts-preview-selected play",
@@ -34117,12 +35638,18 @@ struct WorkspaceView: View {
         let suffix = "-9x16-short"
         let fallbackDirectory = defaultLocalExportDirectory()
             .appendingPathComponent("short-review", isDirectory: true)
-        let fallbackBasename = sanitizedExportBasename("\(normalizedActiveSessionName())-\(clip.title)")
+        let queueIndex = projectStore.activeSequence?.shortClipQueue.firstIndex { $0.id == clip.id }
+        let fallbackBasename = selectedShortExportBasename(
+            requestedBasename: normalizedActiveSessionName(),
+            clip: clip,
+            queueIndex: queueIndex
+        )
 
         let directory: String
         let basename: String
+        let exportPathWasEmpty = exportPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
 
-        if exportPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if exportPathWasEmpty {
             directory = fallbackDirectory.path
             basename = fallbackBasename
         } else {
@@ -34136,10 +35663,59 @@ struct WorkspaceView: View {
             }
         }
 
-        let expectedPath = URL(fileURLWithPath: directory, isDirectory: true)
-            .appendingPathComponent("\(basename)\(suffix).mp4")
+        let directoryURL = URL(fileURLWithPath: directory, isDirectory: true)
+        let expectedBasename = exportPathWasEmpty
+            ? uniqueSelectedShortExportBasename(basename, in: directoryURL)
+            : basename
+        let expectedPath = directoryURL
+            .appendingPathComponent("\(expectedBasename)\(suffix).mp4")
             .path
-        return (directory, basename, expectedPath)
+        return (directory, expectedBasename, expectedPath)
+    }
+
+    private func selectedShortExportBasename(
+        requestedBasename: String?,
+        clip: ShortClipCandidate,
+        queueIndex: Int?
+    ) -> String {
+        let requested = requestedBasename?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = sanitizedExportBasename(
+            requested?.isEmpty == false ? requested! : normalizedActiveSessionName()
+        )
+        let titleSeed = clip.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "selected-short-\(String(clip.id.uuidString.prefix(8)))"
+            : clip.title
+        let titleSlug = sanitizedExportBasename(titleSeed)
+        let ordinal = queueIndex.map { String(format: "%02d", $0 + 1) }
+            ?? String(clip.id.uuidString.prefix(8))
+        let selectedSuffix = "\(ordinal)-\(titleSlug)"
+        let lowerBase = base.lowercased()
+        let lowerSuffix = selectedSuffix.lowercased()
+
+        if lowerBase == lowerSuffix || lowerBase.hasSuffix("-\(lowerSuffix)") {
+            return base
+        }
+
+        return "\(base)-\(selectedSuffix)"
+    }
+
+    private func uniqueSelectedShortExportBasename(_ basename: String, in outputDirectory: URL) -> String {
+        let fileManager = FileManager.default
+        let suffixes = [
+            "-9x16-short.mp4",
+            "-short-export-manifest.json"
+        ]
+        var candidate = basename
+        var version = 2
+
+        while suffixes.contains(where: { suffix in
+            fileManager.fileExists(atPath: outputDirectory.appendingPathComponent("\(candidate)\(suffix)").path)
+        }) {
+            candidate = "\(basename)-v\(String(format: "%03d", version))"
+            version += 1
+        }
+
+        return candidate
     }
 
     private func shortEpisodeSourceRangePayload(
@@ -34232,6 +35808,10 @@ struct WorkspaceView: View {
         case "closed", "close", "hide":
             isInspectorVisible = false
             lastMediaAction = "Closed left workbench"
+        case "os", "runway", "operator", "operator-board", "production", "conveyor", "command":
+            leftWorkbenchMode = .os
+            isInspectorVisible = true
+            lastMediaAction = "Opened OS runway workbench"
         case "inspector", "inspect", "framing":
             leftWorkbenchMode = .inspector
             isInspectorVisible = true
@@ -34384,7 +35964,7 @@ struct WorkspaceView: View {
                     "expectedExportPath": expectedExportTarget.path,
                     "expectedExportDirectory": expectedExportTarget.directory,
                     "expectedExportBasename": expectedExportTarget.basename,
-                    "exportCommand": "script/agentctl.sh shorts-select id \(clip.id.uuidString) >/dev/null && script/agentctl.sh shorts-export-selected \(shellQuoted(expectedExportTarget.directory)) \(shellQuoted(expectedExportTarget.basename))",
+                    "exportCommand": "script/agentctl.sh shorts-export-selected \(shellQuoted(expectedExportTarget.directory)) \(shellQuoted(expectedExportTarget.basename)) id \(shellQuoted(clip.id.uuidString))",
                     "contactSheetCommand": exportExists ? "script/agentctl.sh shorts-contact-sheet \(shellQuoted(exportPath))" : "",
                     "postExportContactSheetCommand": "script/agentctl.sh shorts-contact-sheet \(shellQuoted(expectedExportTarget.path))",
                     "reviewCommands": [
@@ -34763,7 +36343,7 @@ struct WorkspaceView: View {
             "expectedExportPath": expectedExportTarget.path,
             "expectedExportDirectory": expectedExportTarget.directory,
             "expectedExportBasename": expectedExportTarget.basename,
-            "exportCommand": "script/agentctl.sh shorts-export-selected \(shellQuoted(expectedExportTarget.directory)) \(shellQuoted(expectedExportTarget.basename))",
+            "exportCommand": "script/agentctl.sh shorts-export-selected \(shellQuoted(expectedExportTarget.directory)) \(shellQuoted(expectedExportTarget.basename)) id \(shellQuoted(clip.id.uuidString))",
             "contactSheetCommand": exportExists ? "script/agentctl.sh shorts-contact-sheet \(shellQuoted(exportPath))" : "",
             "postExportContactSheetCommand": "script/agentctl.sh shorts-contact-sheet \(shellQuoted(expectedExportTarget.path))",
             "transcriptContext": shortTranscriptContextPayload(for: clip, in: sequence),
@@ -35379,26 +36959,53 @@ struct WorkspaceView: View {
         let laneNames = activeLanes.map(\.name)
         let friendlyNames = orderedUnique(activeLanes.map { transcriptFriendlySpeakerName(for: $0) })
             .filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let normalizedFriendlyNames = friendlyNames.map { $0.lowercased() }
+        let hasCharlie = normalizedFriendlyNames.contains { $0.contains("charlie") }
+        let hasHomer = normalizedFriendlyNames.contains { $0.contains("homer") }
+        let hasBoth = normalizedFriendlyNames.contains { $0.contains("both") }
 
-        guard !friendlyNames.isEmpty else {
+        if hasBoth || (hasCharlie && hasHomer) {
             return (
-                displayName: "Unknown speaker",
-                source: activeLanes.isEmpty ? "generic_transcript" : "unresolved_program_source",
-                detail: activeLanes.isEmpty
-                    ? "The transcript did not include a speaker, and no active SHOW source could be inferred at this time."
-                    : "The transcript did not include a speaker, and the active SHOW source is not labeled as Charlie, Homer, Both, or Reference. Assign a lane role before using this as speaker truth.",
+                displayName: "Charlie + Homer",
+                source: "program_multi_source_inferred",
+                detail: String(
+                    format: "Transcript speaker was generic; inferred as both speakers from active SHOW source at %.2fs.",
+                    sampleTime
+                ),
                 laneNames: laneNames
             )
         }
 
-        let display = friendlyNames.joined(separator: " + ")
+        if hasCharlie {
+            return (
+                displayName: "Charlie",
+                source: "program_source_inferred",
+                detail: String(
+                    format: "Transcript speaker was generic; inferred as Charlie from active SHOW source at %.2fs.",
+                    sampleTime
+                ),
+                laneNames: laneNames
+            )
+        }
+
+        if hasHomer {
+            return (
+                displayName: "Homer",
+                source: "program_source_inferred",
+                detail: String(
+                    format: "Transcript speaker was generic; inferred as Homer from active SHOW source at %.2fs.",
+                    sampleTime
+                ),
+                laneNames: laneNames
+            )
+        }
+
         return (
-            displayName: display,
-            source: friendlyNames.count > 1 ? "program_multi_source_inferred" : "program_source_inferred",
-            detail: String(
-                format: "Transcript speaker was generic; inferred from active SHOW source at %.2fs.",
-                sampleTime
-            ),
+            displayName: "Homer",
+            source: activeLanes.isEmpty ? "default_homer_no_active_source" : "default_homer_non_charlie_source",
+            detail: activeLanes.isEmpty
+                ? "Transcript speaker was generic and no active SHOW source was available. High Ground Odyssey defaults non-Charlie dialogue to Homer; correct this line if needed."
+                : "Transcript speaker was generic and the active source was not clearly Charlie. High Ground Odyssey defaults non-Charlie dialogue to Homer; correct this line if needed.",
             laneNames: laneNames
         )
     }
@@ -36601,6 +38208,44 @@ struct WorkspaceView: View {
         lastMediaAction = "Cleared transcript spine (\(removed) segment(s) removed)"
         scheduleAutosave(reason: "cleared transcript spine")
         updateAgentState()
+    }
+
+    private func updateTranscriptSegmentSpeaker(segmentId: UUID?, speaker rawSpeaker: String?, actor: String? = nil) {
+        guard var sequence = projectStore.activeSequence else {
+            lastMediaAction = "Speaker update blocked: no active sequence"
+            updateAgentState()
+            return
+        }
+
+        let targetId = segmentId ?? selectedTranscriptSegmentId ?? currentTranscriptSegment(in: sequence)?.id
+        guard let targetId, let index = sequence.transcriptSegments.firstIndex(where: { $0.id == targetId }) else {
+            lastMediaAction = "Speaker update blocked: no selected transcript segment"
+            updateAgentState()
+            return
+        }
+
+        let speaker = normalizedTranscriptSpeakerLabel(rawSpeaker)
+        sequence.transcriptSegments[index].speaker = speaker
+        selectedTranscriptSegmentId = targetId
+        selectedTranscriptWordSegmentId = targetId
+        if selectedTranscriptWordIndex == nil {
+            selectedTranscriptWordIndex = 0
+        }
+        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Update Script Speaker")
+        let actorLabel = actor?.trimmingCharacters(in: .whitespacesAndNewlines)
+        lastMediaAction = "Updated transcript speaker to \(speaker)" + ((actorLabel?.isEmpty == false) ? " (\(actorLabel!))" : "")
+        scheduleAutosave(reason: "updated transcript speaker")
+        updateAgentState()
+    }
+
+    private func normalizedTranscriptSpeakerLabel(_ rawSpeaker: String?) -> String {
+        let value = rawSpeaker?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let normalized = value.lowercased()
+        if normalized.contains("charlie") || normalized == "me" { return "Charlie" }
+        if normalized.contains("homer") || normalized.contains("scott") { return "Homer" }
+        if normalized == "both" || normalized.contains("charlie + homer") || normalized.contains("homer + charlie") { return "Charlie + Homer" }
+        if transcriptSpeakerIsGeneric(value) { return "Speaker" }
+        return value.isEmpty ? "Speaker" : value
     }
 
     private func clearTranscriptJobsForActiveSequence() {
@@ -38078,9 +39723,7 @@ struct WorkspaceView: View {
             let sessionName = request.values["name"] ?? "autosave"
             lastMediaAction = "Queued native session load \(normalizedSessionName(sessionName))"
             updateAgentState()
-            DispatchQueue.main.async {
-                loadNativeSession(named: sessionName)
-            }
+            loadNativeSession(named: sessionName, presentFailureAlert: false)
         case "vault_lane":
             if let laneId = request.values["lane_id"] {
                 vaultLaneMedia(laneId: laneId)
@@ -38492,6 +40135,12 @@ struct WorkspaceView: View {
             )
         case "transcript_apply_to_short":
             applySelectedTranscriptToShort(field: request.values["field"])
+        case "transcript_set_speaker":
+            updateTranscriptSegmentSpeaker(
+                segmentId: request.values["segment_id"].flatMap(UUID.init(uuidString:)),
+                speaker: request.values["speaker"],
+                actor: request.values["actor"]
+            )
         case "shorts_queue_add_selected":
             addSelectedDecisionToShortQueue(title: request.values["title"])
         case "shorts_queue_append_selected_segment":
@@ -38614,7 +40263,7 @@ struct WorkspaceView: View {
         } else if agentServer.commandToExecute == "save_session", let name = agentServer.requestedSessionName {
             saveNativeSession(named: name)
         } else if agentServer.commandToExecute == "load_session", let name = agentServer.requestedSessionName {
-            loadNativeSession(named: name)
+            loadNativeSession(named: name, presentFailureAlert: false)
         } else if agentServer.commandToExecute == "vault_lane", let laneId = agentServer.requestedVaultLaneId {
             vaultLaneMedia(laneId: laneId)
         } else if agentServer.commandToExecute == "relink_lane",
@@ -38847,6 +40496,7 @@ struct WorkspaceView: View {
                 "publishUploadBundle": publishUploadBundlePayload(),
                 "publicationCockpit": publicationCockpitStatePayload(),
                 "productionCommandCenter": productionCommandCenterStatePayload(),
+                "quipslyOSOperatorBoard": quipslyOSOperatorBoardPayload(),
                 "publicationReadyHandoff": publicationReadyHandoffPayload(for: nil),
                 "missingPublicationReceipts": missingPublicationReceiptsPayload(for: nil),
                 "publicationMissionControl": publicationMissionControlPayload(for: nil),
@@ -39079,6 +40729,7 @@ struct WorkspaceView: View {
                 "publishUploadBundle": publishUploadBundlePayload(),
                 "publicationCockpit": publicationCockpitStatePayload(),
                 "productionCommandCenter": productionCommandCenterStatePayload(),
+                "quipslyOSOperatorBoard": quipslyOSOperatorBoardPayload(),
                 "publicationReadyHandoff": publicationReadyHandoffPayload(for: sequence),
                 "missingPublicationReceipts": missingPublicationReceiptsPayload(for: sequence),
                 "publicationMissionControl": publicationMissionControlPayload(for: sequence),
@@ -39582,13 +41233,15 @@ struct WorkspaceView: View {
         }
     }
 
-    private func loadNativeSession(named name: String) {
+    private func loadNativeSession(named name: String, presentFailureAlert: Bool = true) {
         let sessionName = normalizedSessionName(name)
         autosaveTask?.cancel()
         autosaveTask = nil
         resetExportStatusForSessionSwitch()
         autosaveStatus = "Loading"
         lastMediaAction = "Loading native session \(sessionName)"
+        errorMessage = nil
+        showErrorAlert = false
         updateAgentState()
 
         do {
@@ -39650,10 +41303,70 @@ struct WorkspaceView: View {
             updateAgentState()
             projectStore.publishChanges()
         } catch {
-            lastMediaAction = "Load session failed: \(error.localizedDescription)"
-            errorMessage = lastMediaAction
-            showErrorAlert = true
+            let failure = nativeSessionLoadFailureMessage(sessionName: sessionName, error: error)
+            lastMediaAction = failure
+            autosaveStatus = "Load failed"
+            if presentFailureAlert {
+                errorMessage = failure
+                showErrorAlert = true
+            } else {
+                errorMessage = nil
+                showErrorAlert = false
+                isShowingProductionDetails = true
+            }
             updateAgentState()
+        }
+    }
+
+    private func nativeSessionLoadFailureMessage(sessionName: String, error: Error) -> String {
+        let url = LocalMediaVault.shared.sessionURL(named: sessionName)
+        let fileHint: String
+        if FileManager.default.fileExists(atPath: url.path) {
+            let size = ((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize).map { "\($0) bytes" } ?? "unknown size"
+            fileHint = "Session file exists at \(url.path) (\(size))."
+        } else {
+            fileHint = "No session file exists at \(url.path)."
+        }
+
+        return "Load session failed for \(sessionName): \(nativeSessionLoadErrorDescription(error)) \(fileHint)"
+    }
+
+    private func nativeSessionLoadErrorDescription(_ error: Error) -> String {
+        func pathDescription(_ codingPath: [CodingKey]) -> String {
+            let path = codingPath.map { key -> String in
+                if let intValue = key.intValue {
+                    return "[\(intValue)]"
+                }
+                return key.stringValue
+            }
+            .joined(separator: ".")
+            return path.isEmpty ? "<root>" : path
+        }
+
+        let unwrappedError: Error
+        if let decodingError = error as? DecodingError {
+            unwrappedError = decodingError
+        } else {
+            let nsError = error as NSError
+            if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? Error {
+                unwrappedError = underlying
+            } else {
+                unwrappedError = error
+            }
+        }
+
+        switch unwrappedError {
+        case DecodingError.keyNotFound(let key, let context):
+            let base = pathDescription(context.codingPath)
+            return "Missing key \(key.stringValue) at \(base): \(context.debugDescription)"
+        case DecodingError.valueNotFound(_, let context):
+            return "Missing value at \(pathDescription(context.codingPath)): \(context.debugDescription)"
+        case DecodingError.typeMismatch(_, let context):
+            return "Type mismatch at \(pathDescription(context.codingPath)): \(context.debugDescription)"
+        case DecodingError.dataCorrupted(let context):
+            return "Corrupt value at \(pathDescription(context.codingPath)): \(context.debugDescription)"
+        default:
+            return unwrappedError.localizedDescription
         }
     }
 
@@ -44197,16 +45910,30 @@ struct WorkspaceView: View {
                 proofDuration: proofDuration
             )
         }
-        guard shortJobs.count == sequence.shortClipQueue.count else {
-            let invalidCount = sequence.shortClipQueue.count - shortJobs.count
-            let reason = "Release prep has \(invalidCount) queued short recipes with invalid duration. Fix or remove them before full prep."
-            lastMediaAction = "Release prep blocked: \(reason)"
-            if generatePublishHandoff {
-                blockFullReleaseStatus(reason: reason)
+        let skippedInvalidShorts: [[String: Any]] = sequence.shortClipQueue.enumerated().compactMap { index, clip in
+            let exportRanges = shortClipExportRanges(for: clip, in: sequence)
+            let proofDuration = exportRanges.reduce(0) { $0 + $1.duration }
+            guard !proofDuration.isFinite || proofDuration <= 0 else {
+                return nil
             }
-            blockExportStatus(kind: "release-prep", reason: reason)
-            updateAgentState()
-            return
+            return [
+                "index": index + 1,
+                "id": clip.id.uuidString,
+                "title": clip.title,
+                "startTime": clip.startTime,
+                "duration": clip.duration,
+                "reason": "Short recipe produced no positive export ranges."
+            ]
+        }
+        if !skippedInvalidShorts.isEmpty {
+            let skippedIds = Set(skippedInvalidShorts.compactMap { $0["id"] as? String })
+            for clip in sequence.shortClipQueue where skippedIds.contains(clip.id.uuidString) {
+                markShortClipExportResult(
+                    id: clip.id,
+                    status: "skipped-invalid",
+                    note: "Release prep skipped this short because it produced no positive export ranges. The episode/audio release can still proceed."
+                )
+            }
         }
         let plannedOutputs = [wideURL, verticalURL] + shortJobs.map { $0.url } + [audioURL]
 
@@ -44218,7 +45945,13 @@ struct WorkspaceView: View {
                 basename: cleanBasename,
                 phase: "started",
                 status: "running",
-                message: "Full release prep started."
+                message: skippedInvalidShorts.isEmpty
+                    ? "Full release prep started."
+                    : "Full release prep started; \(skippedInvalidShorts.count) invalid short recipe(s) will be skipped.",
+                extra: skippedInvalidShorts.isEmpty ? [:] : [
+                    "skippedInvalidShortCount": skippedInvalidShorts.count,
+                    "skippedInvalidShorts": skippedInvalidShorts
+                ]
             )
         }
         deliveryPacketStatus = "idle"
@@ -44264,6 +45997,15 @@ struct WorkspaceView: View {
         lastMediaAction = proofLimit.map {
             String(format: "Release prep started: %.1fs proof outputs", $0)
         } ?? "Release prep started: episode, queued shorts, audio, and delivery packet"
+        if !skippedInvalidShorts.isEmpty {
+            let skippedSummary = "skipped \(skippedInvalidShorts.count) invalid short recipe(s)"
+            lastMediaAction = [lastMediaAction, skippedSummary]
+                .compactMap { value in
+                    guard let value, !value.isEmpty else { return nil }
+                    return value
+                }
+                .joined(separator: "; ")
+        }
         updateAgentState()
 
         Task {
@@ -44567,7 +46309,13 @@ struct WorkspaceView: View {
                             basename: cleanBasename,
                             phase: "completed",
                             status: "completed",
-                            message: "Full release prep completed."
+                            message: skippedInvalidShorts.isEmpty
+                                ? "Full release prep completed."
+                                : "Full release prep completed with \(skippedInvalidShorts.count) invalid short recipe(s) skipped.",
+                            extra: skippedInvalidShorts.isEmpty ? [:] : [
+                                "skippedInvalidShortCount": skippedInvalidShorts.count,
+                                "skippedInvalidShorts": skippedInvalidShorts
+                            ]
                         )
                     }
                     updateAgentState()
@@ -44837,7 +46585,7 @@ struct WorkspaceView: View {
                 await MainActor.run {
                     recentSessions = sessions
                     if hasActiveSession && projectStore.activeSequence == nil {
-                        loadNativeSession(named: sessionName)
+                        loadNativeSession(named: sessionName, presentFailureAlert: false)
                     }
                 }
             } catch {

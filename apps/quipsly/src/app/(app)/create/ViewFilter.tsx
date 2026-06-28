@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { BookOpen, FilePlus2, Filter, Layers, LayoutTemplate, NotebookPen, Search, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { BookOpen, CopyPlus, FilePlus2, Filter, Layers, LayoutTemplate, NotebookPen, PenLine, Search, X } from "lucide-react";
 import { DocumentBoundary, ViewDefinition, WorkbenchProjectDocumentSummary } from "./types";
 import { DEFAULT_VIEW } from "./Workspace";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
@@ -12,7 +13,7 @@ import {
   WORKFLOW_SYSTEM_LABELS,
   WORKFLOW_SYSTEM_SEQUENCE,
 } from "@/lib/studio/project-registry";
-import { createDocumentAction } from "../nests/[slug]/actions";
+import { createDocumentAction, duplicateDocumentAsDraftAction, promoteNoteToWritingPageAction, renameDocumentAction } from "../nests/[slug]/actions";
 
 function SortableOutlineItem({ boundary, isActive, isScrolled, isNested, onClick }: { boundary: DocumentBoundary, isActive: boolean, isScrolled: boolean, isNested: boolean, onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: boundary.id });
@@ -73,6 +74,51 @@ function documentKindClasses(kind: string, isActive: boolean) {
   return "bg-stone-100 text-stone-700";
 }
 
+function formatNotebookUpdatedAt(value: string | Date) {
+  const updatedAt = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(updatedAt.getTime())) return "Updated recently";
+
+  const now = new Date();
+  const diffMs = now.getTime() - updatedAt.getTime();
+  const diffMinutes = Math.floor(diffMs / 60000);
+
+  if (diffMinutes < 1) return "Just now";
+  if (diffMinutes < 60) return `${diffMinutes}m ago`;
+
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return updatedAt.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: updatedAt.getFullYear() === now.getFullYear() ? undefined : "numeric"
+  });
+}
+
+type NotebookPageFilter = "all" | "writing" | "notes" | "sources";
+
+function notebookFloorStatus(kind: string, hasActiveDocument: boolean, hasActiveBoundary: boolean) {
+  const currentRole = hasActiveDocument ? kind : "No page open";
+  const actionHint = kind === "Study Source"
+    ? "Annotate the source; branch a draft before rewriting."
+    : kind === "Note"
+      ? "Capture the thought; promote it when it becomes writing."
+      : kind === "Draft"
+        ? "Draft freely; keep the original trail visible."
+        : kind === "Manuscript"
+          ? "Write the living manuscript with recovery available."
+          : "Write here, or use notes/drafts for experiments.";
+
+  return [
+    { label: "Current role", value: currentRole },
+    { label: "Safe next move", value: actionHint },
+    { label: "Current scope", value: hasActiveBoundary ? "Focused section" : "Whole page" },
+  ];
+}
+
 export default function ViewFilter({
   activeView,
   setActiveView,
@@ -98,9 +144,21 @@ export default function ViewFilter({
   activeDocumentId?: string;
   projectSlug?: string;
 }) {
+  const router = useRouter();
   const [isOpen, setIsOpen] = useState(false);
   const [isCreatingDocument, startCreateDocumentTransition] = useTransition();
+  const [isRenamingDocument, startRenameDocumentTransition] = useTransition();
+  const [isDuplicatingDocument, startDuplicateDocumentTransition] = useTransition();
+  const [isPromotingNote, startPromoteNoteTransition] = useTransition();
   const [notebookQuery, setNotebookQuery] = useState("");
+  const [notebookPanel, setNotebookPanel] = useState<"pages" | "structure" | "tools">("pages");
+  const [recentDocumentIds, setRecentDocumentIds] = useState<string[]>([]);
+  const [pageFilter, setPageFilter] = useState<NotebookPageFilter>("all");
+  const [pageTitleDraft, setPageTitleDraft] = useState("");
+  const [pageRenameError, setPageRenameError] = useState<string | null>(null);
+  const [pageDuplicateError, setPageDuplicateError] = useState<string | null>(null);
+  const [pagePromoteError, setPagePromoteError] = useState<string | null>(null);
+  const notebookSearchRef = useRef<HTMLInputElement | null>(null);
   const activeBoundary = documentBoundaries.find((boundary) => boundary.id === activeBoundaryId) ?? null;
   const chapterCount = documentBoundaries.filter((boundary) => boundary.kind === "chapter").length;
   const episodeCount = documentBoundaries.filter((boundary) => boundary.kind === "episode").length;
@@ -123,20 +181,45 @@ export default function ViewFilter({
     if (!normalizedNotebookQuery) return true;
     return String(value ?? "").toLowerCase().includes(normalizedNotebookQuery);
   };
+  const matchesPageFilter = (doc: WorkbenchProjectDocumentSummary) => {
+    if (pageFilter === "all") return true;
+
+    const kind = documentKind(doc);
+    if (pageFilter === "sources") return kind === "Study Source";
+    if (pageFilter === "notes") return kind === "Note";
+    if (pageFilter === "writing") return kind !== "Study Source" && kind !== "Note";
+    return true;
+  };
   const filteredDraftDocs = draftDocs.filter((doc) => (
-    matchesNotebookQuery(doc.title)
+    matchesPageFilter(doc) && (
+      matchesNotebookQuery(doc.title)
       || matchesNotebookQuery(doc.sourceLabel)
       || matchesNotebookQuery(documentKind(doc))
+    )
   ));
   const filteredLibraryDocs = libraryDocs.filter((doc) => (
-    matchesNotebookQuery(doc.title)
+    matchesPageFilter(doc) && (
+      matchesNotebookQuery(doc.title)
       || matchesNotebookQuery(doc.sourceLabel)
       || matchesNotebookQuery(documentKind(doc))
+    )
   ));
   const activeDocument = (projectDocuments || []).find((doc) => doc.id === activeDocumentId) ?? null;
   const activeDocumentKind = activeDocument ? documentKind(activeDocument) : "Document";
   const totalDocumentCount = projectDocuments?.length ?? 0;
   const visibleDocumentCount = filteredDraftDocs.length + filteredLibraryDocs.length;
+  const sourceDocumentCount = libraryDocs.length;
+  const noteDocumentCount = (projectDocuments || []).filter((doc) => documentKind(doc) === "Note").length;
+  const writingDocumentCount = Math.max(0, totalDocumentCount - sourceDocumentCount - noteDocumentCount);
+  const recentDocuments = recentDocumentIds
+    .map((documentId) => (projectDocuments || []).find((doc) => doc.id === documentId) ?? null)
+    .filter((doc): doc is WorkbenchProjectDocumentSummary => Boolean(doc))
+    .filter((doc) => doc.id !== activeDocumentId)
+    .slice(0, 4);
+  const activeDocumentVisible = activeDocument
+    ? filteredDraftDocs.some((doc) => doc.id === activeDocument.id)
+      || filteredLibraryDocs.some((doc) => doc.id === activeDocument.id)
+    : true;
 
   const [localBoundaries, setLocalBoundaries] = useState(documentBoundaries);
 
@@ -144,6 +227,173 @@ export default function ViewFilter({
   useEffect(() => {
     setLocalBoundaries(documentBoundaries);
   }, [documentBoundaries]);
+
+  useEffect(() => {
+    if (!projectSlug) return;
+
+    const storedPanel = window.localStorage.getItem(`quipsly.notebookPanel.${projectSlug}`);
+    if (storedPanel === "pages" || storedPanel === "structure" || storedPanel === "tools") {
+      setNotebookPanel(storedPanel);
+    }
+
+    const storedPageFilter = window.localStorage.getItem(`quipsly.pageShelf.${projectSlug}`);
+    if (storedPageFilter === "all" || storedPageFilter === "writing" || storedPageFilter === "notes" || storedPageFilter === "sources") {
+      setPageFilter(storedPageFilter);
+    }
+
+    const rawRecentDocuments = window.localStorage.getItem(`quipsly.recentDocuments.${projectSlug}`);
+    if (!rawRecentDocuments) return;
+
+    try {
+      const parsed = JSON.parse(rawRecentDocuments);
+      if (Array.isArray(parsed)) {
+        setRecentDocumentIds(parsed.filter((value): value is string => typeof value === "string").slice(0, 8));
+      }
+    } catch {
+      window.localStorage.removeItem(`quipsly.recentDocuments.${projectSlug}`);
+    }
+  }, [projectSlug]);
+
+  useEffect(() => {
+    if (!projectSlug) return;
+    window.localStorage.setItem(`quipsly.notebookPanel.${projectSlug}`, notebookPanel);
+  }, [notebookPanel, projectSlug]);
+
+  useEffect(() => {
+    if (!projectSlug) return;
+    window.localStorage.setItem(`quipsly.pageShelf.${projectSlug}`, pageFilter);
+  }, [pageFilter, projectSlug]);
+
+  useEffect(() => {
+    if (!projectSlug || !activeDocumentId) return;
+
+    setRecentDocumentIds((current) => {
+      const next = [activeDocumentId, ...current.filter((documentId) => documentId !== activeDocumentId)].slice(0, 8);
+      window.localStorage.setItem(`quipsly.recentDocuments.${projectSlug}`, JSON.stringify(next));
+      return next;
+    });
+  }, [activeDocumentId, projectSlug]);
+
+  useEffect(() => {
+    setPageTitleDraft(activeDocument?.title ?? "");
+  }, [activeDocument?.title]);
+
+  const submitPageRename = () => {
+    if (!projectSlug || !activeDocumentId) return;
+    const nextTitle = pageTitleDraft.trim().replace(/\s+/g, " ");
+    if (!nextTitle || nextTitle === activeDocument?.title) return;
+
+    setPageRenameError(null);
+    startRenameDocumentTransition(() => {
+      void renameDocumentAction(projectSlug, activeDocumentId, nextTitle)
+        .then(() => router.refresh())
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : "Rename failed. Try again.";
+          setPageRenameError(message);
+        });
+    });
+  };
+
+  const duplicatePageAsDraft = () => {
+    if (!projectSlug || !activeDocumentId) return;
+
+    setPageDuplicateError(null);
+    startDuplicateDocumentTransition(() => {
+      void duplicateDocumentAsDraftAction(projectSlug, activeDocumentId)
+        .then((result) => {
+          if (result?.href) {
+            router.push(result.href);
+            router.refresh();
+          }
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : "Duplicate failed. Try again.";
+          setPageDuplicateError(message);
+        });
+    });
+  };
+
+  const promoteNoteToWritingPage = () => {
+    if (!projectSlug || !activeDocumentId) return;
+
+    setPagePromoteError(null);
+    startPromoteNoteTransition(() => {
+      void promoteNoteToWritingPageAction(projectSlug, activeDocumentId)
+        .then((result) => {
+          if (result?.href) {
+            router.push(result.href);
+            router.refresh();
+          }
+        })
+        .catch((error) => {
+          const message = error instanceof Error ? error.message : "Promote note failed. Try again.";
+          setPagePromoteError(message);
+        });
+    });
+  };
+
+  useEffect(() => {
+    const isTypingTarget = (target: EventTarget | null) => {
+      return target instanceof HTMLInputElement
+        || target instanceof HTMLTextAreaElement
+        || (target instanceof HTMLElement && target.isContentEditable);
+    };
+
+    const handleNotebookShortcut = (event: KeyboardEvent) => {
+      if (isTypingTarget(event.target)) return;
+
+      const key = event.key.toLowerCase();
+
+      if ((event.metaKey || event.ctrlKey) && key === "k") {
+        event.preventDefault();
+        setNotebookPanel("pages");
+        window.setTimeout(() => notebookSearchRef.current?.focus(), 0);
+        return;
+      }
+
+      if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+        if (projectSlug && key === "p" && !isCreatingDocument) {
+          event.preventDefault();
+          setNotebookPanel("pages");
+          setPageFilter("writing");
+          startCreateDocumentTransition(() => createDocumentAction(projectSlug, "draft"));
+          return;
+        }
+
+        if (projectSlug && key === "q" && !isCreatingDocument) {
+          event.preventDefault();
+          setNotebookPanel("pages");
+          setPageFilter("notes");
+          startCreateDocumentTransition(() => createDocumentAction(projectSlug, "note"));
+          return;
+        }
+
+        if (projectSlug && key === "r" && !isCreatingDocument) {
+          event.preventDefault();
+          setNotebookPanel("pages");
+          setPageFilter("sources");
+          startCreateDocumentTransition(() => createDocumentAction(projectSlug, "study-source"));
+          return;
+        }
+
+        const nextShelf: Record<string, NotebookPageFilter> = {
+          a: "all",
+          w: "writing",
+          n: "notes",
+          s: "sources"
+        };
+        const shelf = nextShelf[key];
+        if (!shelf) return;
+
+        event.preventDefault();
+        setNotebookPanel("pages");
+        setPageFilter(shelf);
+      }
+    };
+
+    window.addEventListener("keydown", handleNotebookShortcut);
+    return () => window.removeEventListener("keydown", handleNotebookShortcut);
+  }, [isCreatingDocument, projectSlug, startCreateDocumentTransition]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -205,6 +455,65 @@ export default function ViewFilter({
     matchesNotebookQuery(boundary.label)
       || matchesNotebookQuery(boundary.kind)
   ));
+  const notebookPanelItems: Array<{
+    id: "pages" | "structure" | "tools";
+    label: string;
+    hint: string;
+  }> = [
+    {
+      id: "pages",
+      label: "Pages",
+      hint: `${visibleDocumentCount} visible`
+    },
+    {
+      id: "structure",
+      label: "Structure",
+      hint: `${chapterCount} chapters / ${episodeCount} episodes`
+    },
+    {
+      id: "tools",
+      label: "Tools",
+      hint: "lenses + lanes"
+    }
+  ];
+  const pageFilterItems: Array<{
+    id: NotebookPageFilter;
+    label: string;
+    count: number;
+    description: string;
+    shortcut: string;
+  }> = [
+    {
+      id: "all",
+      label: "All",
+      count: totalDocumentCount,
+      description: "Everything in this Nest",
+      shortcut: "Alt+A"
+    },
+    {
+      id: "writing",
+      label: "Writing",
+      count: writingDocumentCount,
+      description: "Manuscripts, drafts, and pages",
+      shortcut: "Alt+W"
+    },
+    {
+      id: "notes",
+      label: "Notes",
+      count: noteDocumentCount,
+      description: "Quick captures and scraps",
+      shortcut: "Alt+N"
+    },
+    {
+      id: "sources",
+      label: "Sources",
+      count: sourceDocumentCount,
+      description: "Fixed study/reference material",
+      shortcut: "Alt+S"
+    }
+  ];
+  const activeShelf = pageFilterItems.find((item) => item.id === pageFilter) ?? pageFilterItems[0];
+  const notebookFloorItems = notebookFloorStatus(activeDocumentKind, Boolean(activeDocument), Boolean(activeBoundary));
 
   return (
     <>
@@ -245,6 +554,28 @@ export default function ViewFilter({
           </p>
         </div>
 
+        <div className="mb-6 rounded-2xl border border-[#d8e6cb] bg-[#fbfff3] p-3 text-[#314426]">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-xs font-black uppercase tracking-[0.16em] text-[#4f6f35]">OneNote floor</h3>
+              <p className="mt-2 text-xs leading-5 text-[#526b43]">
+                A writer should be able to capture, find, rename, branch, and export without understanding Quipsly internals.
+              </p>
+            </div>
+            <span className="rounded-full border border-[#b9d49f] bg-white px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#4f6f35]">
+              Daily desk
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2">
+            {notebookFloorItems.map((item) => (
+              <div key={item.label} className="rounded-xl border border-[#d8e6cb] bg-white/80 px-3 py-2">
+                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-[#6b8554]">{item.label}</div>
+                <div className="mt-1 text-[11px] leading-4 text-[#314426]">{item.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
         <div className="mb-6 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
           <h3 className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-[#8c6b4a]">You are here</h3>
           <div className="space-y-2 text-xs leading-5 text-[#6b5b45]">
@@ -252,6 +583,14 @@ export default function ViewFilter({
               <span className="font-black text-[#3d3122]">Nest</span>
               <span className="mx-1 text-[#b69b73]">-&gt;</span>
               <span>{projectSlug || "Current workspace"}</span>
+            </div>
+            <div>
+              <span className="font-black text-[#3d3122]">Notebook section</span>
+              <span className="mx-1 text-[#b69b73]">-&gt;</span>
+              <span>{activeShelf.label}</span>
+              <span className="ml-2 rounded bg-[#fff1d8] px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-[#8c6b4a]">
+                {activeShelf.shortcut}
+              </span>
             </div>
             <div>
               <span className="font-black text-[#3d3122]">Document</span>
@@ -263,6 +602,93 @@ export default function ViewFilter({
                 </span>
               ) : null}
             </div>
+            {activeDocument ? (
+              <div>
+                <span className="font-black text-[#3d3122]">Touched</span>
+                <span className="mx-1 text-[#b69b73]">-&gt;</span>
+                <span>{formatNotebookUpdatedAt(activeDocument.updatedAt)}</span>
+              </div>
+            ) : null}
+            {activeDocument ? (
+              <div className="rounded-xl border border-[#eadfca] bg-white px-3 py-3">
+                <label className="block text-[9px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]" htmlFor="notebook-page-title">
+                  Page title
+                </label>
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    id="notebook-page-title"
+                    type="text"
+                    value={pageTitleDraft}
+                    onChange={(event) => setPageTitleDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        submitPageRename();
+                      }
+                    }}
+                    className="min-w-0 flex-1 rounded-lg border border-[#e1d1b4] bg-[#fffaf3] px-2 py-1.5 text-xs font-semibold text-[#3d3122] outline-none transition focus:border-[#8c6b4a] focus:bg-white"
+                    placeholder="Name this page"
+                    maxLength={160}
+                  />
+                  <button
+                    type="button"
+                    disabled={isRenamingDocument || !pageTitleDraft.trim() || pageTitleDraft.trim() === activeDocument.title}
+                    onClick={submitPageRename}
+                    className="rounded-lg border border-[#d4c1a0] bg-[#3d3122] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-[#59442d] disabled:cursor-not-allowed disabled:bg-[#d8c9ae] disabled:text-white/80"
+                  >
+                    {isRenamingDocument ? "Saving" : "Rename"}
+                  </button>
+                </div>
+                <p className="mt-2 text-[10px] leading-4 text-[#8c6b4a]">
+                  Renames the notebook page. It does not rewrite the body or fixed source text.
+                </p>
+                {pageRenameError ? (
+                  <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] leading-4 text-rose-800">
+                    {pageRenameError}
+                  </p>
+                ) : null}
+                <div className="mt-3 border-t border-[#eadfca] pt-3">
+                  {activeDocumentKind === "Note" ? (
+                    <>
+                      <button
+                        type="button"
+                        disabled={isPromotingNote}
+                        onClick={promoteNoteToWritingPage}
+                        className="mb-2 flex w-full items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.12em] text-emerald-900 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <PenLine size={14} />
+                        {isPromotingNote ? "Creating writing page..." : "Promote note to writing page"}
+                      </button>
+                      <p className="mb-2 text-[10px] leading-4 text-[#61806d]">
+                        Keeps this note intact and opens a new draft page seeded from it.
+                      </p>
+                      {pagePromoteError ? (
+                        <p className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] leading-4 text-rose-800">
+                          {pagePromoteError}
+                        </p>
+                      ) : null}
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={isDuplicatingDocument}
+                    onClick={duplicatePageAsDraft}
+                    className="flex w-full items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.12em] text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <CopyPlus size={14} />
+                    {isDuplicatingDocument ? "Branching draft..." : "Duplicate as draft"}
+                  </button>
+                  <p className="mt-2 text-[10px] leading-4 text-[#8c6b4a]">
+                    Makes a safe editable copy. The original page or fixed source stays untouched.
+                  </p>
+                  {pageDuplicateError ? (
+                    <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] leading-4 text-rose-800">
+                      {pageDuplicateError}
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
             <div>
               <span className="font-black text-[#3d3122]">Section</span>
               <span className="mx-1 text-[#b69b73]">-&gt;</span>
@@ -300,6 +726,7 @@ export default function ViewFilter({
           <div className="flex items-center gap-2 rounded-2xl border border-[#eadfca] bg-[#fffaf3] px-3 py-2 shadow-inner">
             <Search size={14} className="shrink-0 text-[#8c6b4a]" />
             <input
+              ref={notebookSearchRef}
               id="notebook-search"
               type="search"
               value={notebookQuery}
@@ -320,6 +747,133 @@ export default function ViewFilter({
           </div>
         </div>
 
+        <div className="mb-6 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-2">
+          <div className="grid grid-cols-3 gap-1">
+            {notebookPanelItems.map((item) => {
+              const isSelected = notebookPanel === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setNotebookPanel(item.id)}
+                  className={`rounded-xl px-2 py-2 text-left transition ${
+                    isSelected
+                      ? "bg-[#3d3122] text-white shadow-sm"
+                      : "text-[#6b5b45] hover:bg-white"
+                  }`}
+                >
+                  <span className="block text-[11px] font-black uppercase tracking-[0.14em]">
+                    {item.label}
+                  </span>
+                  <span className={`mt-1 block truncate text-[9px] font-bold ${isSelected ? "text-white/70" : "text-[#9a815f]"}`}>
+                    {item.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-2 px-1 text-[10px] leading-4 text-[#8c6b4a]">
+            Pages first keeps the desk calm. Structure and tools stay one click away instead of crowding the writing room.
+          </p>
+        </div>
+
+        {notebookPanel === "pages" ? (
+          <>
+        <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
+          <h3 className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+            <BookOpen size={12} />
+            Notebook Sections
+          </h3>
+          <p className="mb-3 text-[10px] leading-4 text-[#8c6b4a]">
+            OneNote floor: sections help you find pages fast. This changes the view only; it does not move, rewrite, or publish anything.
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {pageFilterItems.map((item) => {
+              const isSelected = pageFilter === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => setPageFilter(item.id)}
+                  title={`${item.description} - ${item.shortcut}`}
+                  className={`rounded-xl border px-3 py-2 text-left transition ${
+                    isSelected
+                      ? "border-[#3d3122] bg-[#3d3122] text-white shadow-sm"
+                      : "border-[#eadfca] bg-white text-[#5e4b33] hover:bg-amber-50"
+                  }`}
+                >
+                  <span className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-[0.14em]">{item.label}</span>
+                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${isSelected ? "bg-white/15 text-white" : "bg-[#fff1d8] text-[#8c6b4a]"}`}>
+                      {item.count}
+                    </span>
+                  </span>
+                  <span className={`mt-1 block text-[9px] leading-3 ${isSelected ? "text-white/70" : "text-[#9a815f]"}`}>
+                    {item.description}
+                  </span>
+                  <span className={`mt-2 inline-flex rounded px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ${isSelected ? "bg-white/15 text-white/80" : "bg-[#f8f1e3] text-[#9a815f]"}`}>
+                    {item.shortcut}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {!activeDocumentVisible && activeDocument ? (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-white px-3 py-3 text-[10px] leading-4 text-[#8c6b4a]">
+              <p>
+                Current page is open but hidden by this section/search. The editor is still safe; only the sidebar list changed.
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPageFilter("all")}
+                  className="rounded-lg border border-[#d4c1a0] bg-[#3d3122] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-[#59442d]"
+                >
+                  Show all sections
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNotebookQuery("")}
+                  className="rounded-lg border border-[#d4c1a0] bg-white px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-[#5e4b33] transition hover:bg-[#f8f1e3]"
+                >
+                  Clear search
+                </button>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        {recentDocuments.length > 0 ? (
+          <div className="mb-7 rounded-2xl border border-[#eadfca] bg-white p-3 shadow-sm">
+            <h3 className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+              <BookOpen size={12} />
+              Recent Pages
+            </h3>
+            <p className="mb-3 text-[10px] leading-4 text-[#8c6b4a]">
+              Fast context recovery for the spots you were just working in.
+            </p>
+            <div className="space-y-1">
+              {recentDocuments.map((doc) => (
+                <a
+                  key={doc.id}
+                  href={`/create?project=${encodeURIComponent(projectSlug || "")}&document=${encodeURIComponent(doc.id)}`}
+                  className="block rounded-lg border border-transparent px-3 py-2 text-sm font-medium text-[#5e4b33] transition hover:border-[#eadfca] hover:bg-amber-50"
+                >
+                  <span className="block truncate">{doc.title}</span>
+                  <span className="mt-1 flex items-center justify-between gap-2">
+                    <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), false)}`}>
+                      {documentKind(doc)}
+                    </span>
+                    <span className="truncate text-[9px] font-bold uppercase tracking-[0.12em] text-[#a58a69]">
+                      {formatNotebookUpdatedAt(doc.updatedAt)}
+                    </span>
+                  </span>
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {projectSlug ? (
           <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
             <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
@@ -327,18 +881,20 @@ export default function ViewFilter({
               Quick Capture
             </h3>
             <p className="mb-3 text-xs leading-5 text-[#6b5b45]">
-              OneNote floor: make it fast to create a page before the idea escapes into the vents.
+              Make the new page first, organize it later. The notebook should catch ideas faster than anxiety can argue.
             </p>
             <div className="grid gap-2">
               <button
                 type="button"
                 disabled={isCreatingDocument}
                 onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "draft"))}
+                title="Create a new writing page - Alt+P"
                 className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="flex items-center gap-2 text-xs font-black text-[#3d3122]">
                   <FilePlus2 size={14} />
                   {isCreatingDocument ? "Creating..." : "New writing page"}
+                  <span className="ml-auto rounded bg-amber-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-amber-800">Alt+P</span>
                 </span>
                 <span className="mt-1 block text-[10px] leading-4 text-[#8c6b4a]">
                   Draft, article pass, chapter fragment, or episode page.
@@ -348,11 +904,13 @@ export default function ViewFilter({
                 type="button"
                 disabled={isCreatingDocument}
                 onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "note"))}
+                title="Create a quick note - Alt+Q"
                 className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="flex items-center gap-2 text-xs font-black text-[#244536]">
                   <FilePlus2 size={14} />
                   {isCreatingDocument ? "Creating..." : "Quick note"}
+                  <span className="ml-auto rounded bg-emerald-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-emerald-800">Alt+Q</span>
                 </span>
                 <span className="mt-1 block text-[10px] leading-4 text-[#61806d]">
                   Idea capture, research hunch, meeting note, or connective tissue.
@@ -362,11 +920,13 @@ export default function ViewFilter({
                 type="button"
                 disabled={isCreatingDocument}
                 onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "study-source"))}
+                title="Create a fixed study source - Alt+R"
                 className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="flex items-center gap-2 text-xs font-black text-cyan-900">
                   <FilePlus2 size={14} />
                   {isCreatingDocument ? "Creating..." : "New study source"}
+                  <span className="ml-auto rounded bg-cyan-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-cyan-800">Alt+R</span>
                 </span>
                 <span className="mt-1 block text-[10px] leading-4 text-cyan-800">
                   Fixed reference text for annotation, tagging, citation, and research.
@@ -380,7 +940,7 @@ export default function ViewFilter({
           <div className="mb-8">
             <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
               <BookOpen size={12} />
-              Notebook / Documents
+              Pages in {activeShelf.label}
             </h3>
             <div className="mb-3 grid grid-cols-3 gap-2">
               <div className="rounded-xl border border-[#eadfca] bg-[#fffaf3] px-2 py-2">
@@ -398,7 +958,7 @@ export default function ViewFilter({
             </div>
             {notebookQuery && visibleDocumentCount < totalDocumentCount ? (
               <p className="mb-3 rounded-xl border border-[#eadfca] bg-white px-3 py-2 text-[10px] leading-4 text-[#8c6b4a]">
-                Showing {visibleDocumentCount} of {totalDocumentCount} documents for "{notebookQuery}". Search only changes what is visible here.
+                Showing {visibleDocumentCount} of {totalDocumentCount} documents for "{notebookQuery}" in the {pageFilter} shelf. Search and shelf filters only change what is visible here.
               </p>
             ) : null}
             <div className="space-y-4">
@@ -416,8 +976,13 @@ export default function ViewFilter({
                         className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${activeDocumentId === doc.id ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5e4b33] hover:bg-amber-50"}`}
                       >
                         <span className="block truncate">{doc.title}</span>
-                        <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
-                          {documentKind(doc)}
+                        <span className="mt-1 flex items-center justify-between gap-2">
+                          <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
+                            {documentKind(doc)}
+                          </span>
+                          <span className={`truncate text-[9px] font-bold uppercase tracking-[0.12em] ${activeDocumentId === doc.id ? "text-white/65" : "text-[#a58a69]"}`}>
+                            {formatNotebookUpdatedAt(doc.updatedAt)}
+                          </span>
                         </span>
                       </a>
                     ))}
@@ -444,8 +1009,13 @@ export default function ViewFilter({
                         className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${activeDocumentId === doc.id ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5e4b33] hover:bg-amber-50"}`}
                       >
                         <span className="block truncate">{doc.title}</span>
-                        <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
-                          {documentKind(doc)}
+                        <span className="mt-1 flex items-center justify-between gap-2">
+                          <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
+                            {documentKind(doc)}
+                          </span>
+                          <span className={`truncate text-[9px] font-bold uppercase tracking-[0.12em] ${activeDocumentId === doc.id ? "text-white/65" : "text-[#a58a69]"}`}>
+                            {formatNotebookUpdatedAt(doc.updatedAt)}
+                          </span>
                         </span>
                       </a>
                     ))}
@@ -460,7 +1030,11 @@ export default function ViewFilter({
             </div>
           </div>
         )}
+          </>
+        ) : null}
 
+        {notebookPanel === "tools" ? (
+          <>
         <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
             <Layers size={12} />
@@ -494,7 +1068,11 @@ export default function ViewFilter({
             ))}
           </div>
         </div>
+          </>
+        ) : null}
 
+        {notebookPanel === "structure" ? (
+          <>
         <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
             <BookOpen size={12} />
@@ -550,6 +1128,11 @@ export default function ViewFilter({
           ) : null}
         </div>
 
+          </>
+        ) : null}
+
+        {notebookPanel === "tools" ? (
+          <>
         <div className="mb-8">
           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
             <LayoutTemplate size={12} />
@@ -575,7 +1158,11 @@ export default function ViewFilter({
             ))}
           </div>
         </div>
+          </>
+        ) : null}
 
+        {notebookPanel === "structure" ? (
+          <>
         <div className="mb-8">
           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
             <Layers size={12} />
@@ -620,6 +1207,8 @@ export default function ViewFilter({
             </div>
           )}
         </div>
+          </>
+        ) : null}
       </aside>
     </>
   );
