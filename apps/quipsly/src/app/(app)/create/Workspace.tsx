@@ -250,6 +250,13 @@ export default function Workspace({
   const activeDocumentKind = documentKindFromSourceLabel(activeProjectDocument?.sourceLabel, documentTitle);
   const activeDocumentKindGuidance = documentKindGuidance(activeDocumentKind);
   const activeHgoSourceKey = hgoSourceKeyFromLabel(activeProjectDocument?.sourceLabel);
+  const notebookPageLinks = useMemo(
+    () => projectDocuments
+      .slice()
+      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
+      .slice(0, 10),
+    [projectDocuments]
+  );
 
   const handlePanicExport = async () => {
     setRecoveryExportState("exporting");
@@ -571,6 +578,45 @@ export default function Workspace({
                   <br />
                   <span className="font-medium text-[#8c6b4a] opacity-90 mt-1 inline-block">💡 <strong>Pro tip:</strong> Press Enter to split blocks. Backspace at the start of a block merges it up.</span>
                 </p>
+                {notebookPageLinks.length > 1 ? (
+                  <div className="mt-4 rounded-2xl border border-[#eadfca] bg-[#fffdf9] p-3">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#a36f2e]">
+                        Notebook pages
+                      </div>
+                      <Link
+                        href={`/notebooks/${encodeURIComponent(activeProjectSlug)}`}
+                        className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a] hover:text-[#3d3122]"
+                      >
+                        Table of contents
+                      </Link>
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto pb-1">
+                      {notebookPageLinks.map((page) => {
+                        const isActivePage = page.id === documentId;
+                        return (
+                          <Link
+                            key={page.id}
+                            href={`/create?project=${encodeURIComponent(activeProjectSlug)}&document=${encodeURIComponent(page.id)}`}
+                            className={`min-w-[180px] max-w-[240px] rounded-xl border px-3 py-2 text-left transition ${
+                              isActivePage
+                                ? "border-emerald-300 bg-emerald-50 text-emerald-950"
+                                : "border-[#eadfca] bg-white text-[#6b5b45] hover:border-[#d2b57e] hover:bg-[#fff8eb]"
+                            }`}
+                            title={page.title}
+                          >
+                            <span className="block truncate text-xs font-black">
+                              {page.title}
+                            </span>
+                            <span className="mt-1 block truncate text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">
+                              {page.sourceLabel || "writing-page"}
+                            </span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </div>
               <div className="rounded-xl border border-[#d9c7a5] bg-[#fff9ef] px-3 py-2 text-xs">
                 <div className="font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Workflow Lens</div>
