@@ -181,6 +181,15 @@ export default function Tagger({
   const [showUndoHistory, setShowUndoHistory] = useState(false);
   const [outlineFocusedBlockId, setOutlineFocusedBlockId] = useState<string | null>(null);
 
+  useEffect(() => {
+    const handleShowRecentChanges = () => {
+      setShowUndoHistory(true);
+    };
+
+    window.addEventListener("quipsly:show-recent-changes", handleShowRecentChanges);
+    return () => window.removeEventListener("quipsly:show-recent-changes", handleShowRecentChanges);
+  }, []);
+
   const normalizeTaggedSpansForSnapshot = (spans: TaggedSpan[] | undefined): PersistedTagSpan[] => {
     return spans
       ? spans.map((span) => ({
@@ -477,6 +486,27 @@ export default function Tagger({
   }, [documentBoundaries, documentId]);
 
   useEffect(() => {
+    const insertBlockAtActiveBoundaryEnd = (newBlock: Block) => {
+      const activeBoundary = activeBoundaryId ? documentBoundaries.find(b => b.id === activeBoundaryId) : null;
+      const insertIndex = activeBoundary ? activeBoundary.endIndex + 1 : blocksRef.current.length;
+
+      setBlocks(current => {
+        const next = [...current];
+        next.splice(insertIndex, 0, newBlock);
+        return next;
+      });
+
+      window.setTimeout(() => {
+        void handleTextBlur(newBlock.id, newBlock.text);
+        const el = textareaRefs.current[newBlock.id];
+        if (el) {
+          el.focus();
+          el.selectionStart = 0;
+          el.selectionEnd = newBlock.text.length;
+        }
+      }, 100);
+    };
+
     const handleApplyAssistantDraft = (event: Event) => {
       const detail = (event as CustomEvent).detail;
       if (!detail) return;
@@ -486,36 +516,35 @@ export default function Tagger({
         handleTextChange(payload.blockId, payload.rewriteText);
         void handleTextBlur(payload.blockId, payload.rewriteText);
       } else if (kind === "PROPOSE_DRAFT" && payload.draftText) {
-        const activeBoundary = activeBoundaryId ? documentBoundaries.find(b => b.id === activeBoundaryId) : null;
-        const insertIndex = activeBoundary ? activeBoundary.endIndex + 1 : blocksRef.current.length;
-        
-        const newBlock = {
+        insertBlockAtActiveBoundaryEnd({
           id: `pending-draft-${Date.now()}`,
           text: payload.draftText,
           tags: [],
           spans: []
-        };
-        
-        setBlocks(current => {
-          const next = [...current];
-          next.splice(insertIndex, 0, newBlock);
-          return next;
         });
-        
-        window.setTimeout(() => {
-          void handleTextBlur(newBlock.id, newBlock.text);
-          const el = textareaRefs.current[newBlock.id];
-          if (el) {
-            el.focus();
-            el.selectionStart = newBlock.text.length;
-            el.selectionEnd = newBlock.text.length;
-          }
-        }, 100);
       }
     };
 
+    const handleCreateStructureBlock = (event: Event) => {
+      const detail = (event as CustomEvent<{ kind?: "chapter" | "episode"; label?: string }>).detail;
+      const kind = detail?.kind === "episode" ? "episode" : "chapter";
+      const fallbackLabel = kind === "episode" ? "New Episode" : "New Chapter";
+      const label = String(detail?.label || fallbackLabel).trim() || fallbackLabel;
+
+      insertBlockAtActiveBoundaryEnd({
+        id: `pending-${kind}-${Date.now()}`,
+        text: label,
+        tags: [kind],
+        spans: []
+      });
+    };
+
     window.addEventListener("quipsly:apply-assistant-draft", handleApplyAssistantDraft);
-    return () => window.removeEventListener("quipsly:apply-assistant-draft", handleApplyAssistantDraft);
+    window.addEventListener("quipsly:create-structure-block", handleCreateStructureBlock);
+    return () => {
+      window.removeEventListener("quipsly:apply-assistant-draft", handleApplyAssistantDraft);
+      window.removeEventListener("quipsly:create-structure-block", handleCreateStructureBlock);
+    };
   }, [activeBoundaryId, documentBoundaries]);
 
   useEffect(() => {

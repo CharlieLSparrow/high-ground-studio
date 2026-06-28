@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { BookOpen, Filter, Layers, LayoutTemplate, X } from "lucide-react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { BookOpen, FilePlus2, Filter, Layers, LayoutTemplate, NotebookPen, Search, X } from "lucide-react";
 import { DocumentBoundary, ViewDefinition, WorkbenchProjectDocumentSummary } from "./types";
 import { DEFAULT_VIEW } from "./Workspace";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
@@ -12,6 +12,7 @@ import {
   WORKFLOW_SYSTEM_LABELS,
   WORKFLOW_SYSTEM_SEQUENCE,
 } from "@/lib/studio/project-registry";
+import { createDocumentAction } from "../nests/[slug]/actions";
 
 function SortableOutlineItem({ boundary, isActive, isScrolled, isNested, onClick }: { boundary: DocumentBoundary, isActive: boolean, isScrolled: boolean, isNested: boolean, onClick: () => void }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: boundary.id });
@@ -51,6 +52,27 @@ function SortableOutlineItem({ boundary, isActive, isScrolled, isNested, onClick
   );
 }
 
+function documentKind(doc: WorkbenchProjectDocumentSummary) {
+  const sourceLabel = String(doc.sourceLabel ?? "").toLowerCase();
+  const title = doc.title.toLowerCase();
+
+  if (sourceLabel.includes("document-kind:fixed-source")) return "Study Source";
+  if (sourceLabel.includes("document-kind:note")) return "Note";
+  if (sourceLabel.includes("document-kind:draft")) return "Draft";
+  if (sourceLabel.includes("document-kind:manuscript")) return "Manuscript";
+  if (title.includes("manuscript") || title.includes("book")) return "Manuscript";
+  return "Document";
+}
+
+function documentKindClasses(kind: string, isActive: boolean) {
+  if (isActive) return "bg-white/15 text-white";
+  if (kind === "Study Source") return "bg-cyan-100 text-cyan-800";
+  if (kind === "Note") return "bg-emerald-100 text-emerald-800";
+  if (kind === "Draft") return "bg-amber-100 text-amber-800";
+  if (kind === "Manuscript") return "bg-rose-100 text-rose-800";
+  return "bg-stone-100 text-stone-700";
+}
+
 export default function ViewFilter({
   activeView,
   setActiveView,
@@ -77,20 +99,49 @@ export default function ViewFilter({
   projectSlug?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [isCreatingDocument, startCreateDocumentTransition] = useTransition();
+  const [notebookQuery, setNotebookQuery] = useState("");
   const activeBoundary = documentBoundaries.find((boundary) => boundary.id === activeBoundaryId) ?? null;
   const chapterCount = documentBoundaries.filter((boundary) => boundary.kind === "chapter").length;
   const episodeCount = documentBoundaries.filter((boundary) => boundary.kind === "episode").length;
 
-  const libraryDocs = (projectDocuments || []).filter(d => 
-    d.sourceLabel === "nest-kind:study" || d.sourceLabel === "nest-kind:research" || d.title.toLowerCase().includes("study") || d.title.toLowerCase().includes("research") || d.title.toLowerCase().includes("library")
-  );
+  const libraryDocs = (projectDocuments || []).filter(d => {
+    const sourceLabel = String(d.sourceLabel ?? "").toLowerCase();
+    const title = d.title.toLowerCase();
+    return sourceLabel.includes("nest-kind:study")
+      || sourceLabel.includes("nest-kind:research")
+      || sourceLabel.includes("document-kind:fixed-source")
+      || sourceLabel.includes("document-kind:source")
+      || title.includes("study")
+      || title.includes("research")
+      || title.includes("source")
+      || title.includes("library");
+  });
   const draftDocs = (projectDocuments || []).filter(d => !libraryDocs.includes(d));
+  const normalizedNotebookQuery = notebookQuery.trim().toLowerCase();
+  const matchesNotebookQuery = (value: string | null | undefined) => {
+    if (!normalizedNotebookQuery) return true;
+    return String(value ?? "").toLowerCase().includes(normalizedNotebookQuery);
+  };
+  const filteredDraftDocs = draftDocs.filter((doc) => (
+    matchesNotebookQuery(doc.title)
+      || matchesNotebookQuery(doc.sourceLabel)
+      || matchesNotebookQuery(documentKind(doc))
+  ));
+  const filteredLibraryDocs = libraryDocs.filter((doc) => (
+    matchesNotebookQuery(doc.title)
+      || matchesNotebookQuery(doc.sourceLabel)
+      || matchesNotebookQuery(documentKind(doc))
+  ));
+  const activeDocument = (projectDocuments || []).find((doc) => doc.id === activeDocumentId) ?? null;
+  const activeDocumentKind = activeDocument ? documentKind(activeDocument) : "Document";
+  const totalDocumentCount = projectDocuments?.length ?? 0;
+  const visibleDocumentCount = filteredDraftDocs.length + filteredLibraryDocs.length;
 
   const [localBoundaries, setLocalBoundaries] = useState(documentBoundaries);
 
-  // Sync with upstream boundaries when they change (but preserve our local order if needed, 
-  // though for a mock we'll just resync to prove frontend functionality).
-  useMemo(() => {
+  // Sync with upstream boundaries when the manuscript structure changes.
+  useEffect(() => {
     setLocalBoundaries(documentBoundaries);
   }, [documentBoundaries]);
 
@@ -130,7 +181,7 @@ export default function ViewFilter({
 
     let lastChapterBoundaryId: string | null = null;
 
-    for (const boundary of documentBoundaries) {
+    for (const boundary of localBoundaries) {
       if (boundary.kind === "chapter") {
         lastChapterBoundaryId = boundary.id;
         rows.push({ boundary, isNested: false });
@@ -150,6 +201,10 @@ export default function ViewFilter({
 
     return rows;
   }, [localBoundaries]);
+  const filteredOutlineRows = hierarchicalOutline.filter(({ boundary }) => (
+    matchesNotebookQuery(boundary.label)
+      || matchesNotebookQuery(boundary.kind)
+  ));
 
   return (
     <>
@@ -167,56 +222,238 @@ export default function ViewFilter({
         <Filter size={20} />
       </button>
 
-      <aside className={`fixed inset-y-0 left-0 z-50 flex h-full w-72 flex-col overflow-y-auto border-r border-[#e8dcc4] bg-white p-6 transition-transform duration-300 md:relative md:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}>
+      <aside className={`fixed inset-y-0 left-0 z-50 flex h-full w-80 flex-col overflow-y-auto border-r border-[#e8dcc4] bg-white p-6 transition-transform duration-300 md:relative md:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="rounded-lg bg-[#3d3122] p-2 text-white shadow-sm">
               <Layers size={18} />
             </div>
-            <h2 className="text-lg font-black tracking-tight text-[#3d3122]">Views & Filters</h2>
+            <div>
+              <h2 className="text-lg font-black tracking-tight text-[#3d3122]">Nest Notebook</h2>
+              <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-[#8c6b4a]">Documents - Sections - Pages</p>
+            </div>
           </div>
           <button className="rounded-full p-1.5 text-[#8c6b4a] transition-colors hover:bg-[#ebdcc8] hover:text-[#3d3122] md:hidden" onClick={() => setIsOpen(false)}>
             <X size={20} />
           </button>
         </div>
 
+        <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 text-[#244536]">
+          <h3 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-900">Writing-first rule</h3>
+          <p className="mt-2 text-xs leading-5 text-emerald-900/80">
+            Organize like a notebook first. Quipsly tags, research, and publishing tools should help after the page is easy to find.
+          </p>
+        </div>
+
+        <div className="mb-6 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
+          <h3 className="mb-2 text-xs font-black uppercase tracking-[0.16em] text-[#8c6b4a]">You are here</h3>
+          <div className="space-y-2 text-xs leading-5 text-[#6b5b45]">
+            <div>
+              <span className="font-black text-[#3d3122]">Nest</span>
+              <span className="mx-1 text-[#b69b73]">-&gt;</span>
+              <span>{projectSlug || "Current workspace"}</span>
+            </div>
+            <div>
+              <span className="font-black text-[#3d3122]">Document</span>
+              <span className="mx-1 text-[#b69b73]">-&gt;</span>
+              <span className="break-words">{activeDocument?.title || "Current page"}</span>
+              {activeDocument ? (
+                <span className={`ml-2 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(activeDocumentKind, false)}`}>
+                  {activeDocumentKind}
+                </span>
+              ) : null}
+            </div>
+            <div>
+              <span className="font-black text-[#3d3122]">Section</span>
+              <span className="mx-1 text-[#b69b73]">-&gt;</span>
+              <span>{activeBoundary ? activeBoundary.label : "Full document"}</span>
+            </div>
+          </div>
+          {(activeBoundary || notebookQuery) ? (
+            <div className="mt-3 grid gap-2">
+              {activeBoundary ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveBoundaryId(null)}
+                  className="rounded-xl border border-[#d4c1a0] bg-white px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.14em] text-[#5e4b33] transition-colors hover:bg-[#f8f1e3]"
+                >
+                  Return to full document
+                </button>
+              ) : null}
+              {notebookQuery ? (
+                <button
+                  type="button"
+                  onClick={() => setNotebookQuery("")}
+                  className="rounded-xl border border-[#d4c1a0] bg-white px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.14em] text-[#5e4b33] transition-colors hover:bg-[#f8f1e3]"
+                >
+                  Clear notebook search
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mb-6">
+          <label className="mb-2 block text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]" htmlFor="notebook-search">
+            Find in notebook
+          </label>
+          <div className="flex items-center gap-2 rounded-2xl border border-[#eadfca] bg-[#fffaf3] px-3 py-2 shadow-inner">
+            <Search size={14} className="shrink-0 text-[#8c6b4a]" />
+            <input
+              id="notebook-search"
+              type="search"
+              value={notebookQuery}
+              onChange={(event) => setNotebookQuery(event.target.value)}
+              placeholder="Search pages, sources, chapters..."
+              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-[#3d3122] placeholder:text-[#a58a69] focus:outline-none"
+            />
+            {notebookQuery ? (
+              <button
+                type="button"
+                onClick={() => setNotebookQuery("")}
+                className="rounded-full p-1 text-[#8c6b4a] transition hover:bg-[#eadfca] hover:text-[#3d3122]"
+                aria-label="Clear notebook search"
+              >
+                <X size={14} />
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        {projectSlug ? (
+          <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
+            <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+              <NotebookPen size={12} />
+              Quick Capture
+            </h3>
+            <p className="mb-3 text-xs leading-5 text-[#6b5b45]">
+              OneNote floor: make it fast to create a page before the idea escapes into the vents.
+            </p>
+            <div className="grid gap-2">
+              <button
+                type="button"
+                disabled={isCreatingDocument}
+                onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "draft"))}
+                className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="flex items-center gap-2 text-xs font-black text-[#3d3122]">
+                  <FilePlus2 size={14} />
+                  {isCreatingDocument ? "Creating..." : "New writing page"}
+                </span>
+                <span className="mt-1 block text-[10px] leading-4 text-[#8c6b4a]">
+                  Draft, article pass, chapter fragment, or episode page.
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled={isCreatingDocument}
+                onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "note"))}
+                className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="flex items-center gap-2 text-xs font-black text-[#244536]">
+                  <FilePlus2 size={14} />
+                  {isCreatingDocument ? "Creating..." : "Quick note"}
+                </span>
+                <span className="mt-1 block text-[10px] leading-4 text-[#61806d]">
+                  Idea capture, research hunch, meeting note, or connective tissue.
+                </span>
+              </button>
+              <button
+                type="button"
+                disabled={isCreatingDocument}
+                onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "study-source"))}
+                className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <span className="flex items-center gap-2 text-xs font-black text-cyan-900">
+                  <FilePlus2 size={14} />
+                  {isCreatingDocument ? "Creating..." : "New study source"}
+                </span>
+                <span className="mt-1 block text-[10px] leading-4 text-cyan-800">
+                  Fixed reference text for annotation, tagging, citation, and research.
+                </span>
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         {(projectDocuments && projectDocuments.length > 0) && (
           <div className="mb-8">
             <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
               <BookOpen size={12} />
-              Nest Documents
+              Notebook / Documents
             </h3>
+            <div className="mb-3 grid grid-cols-3 gap-2">
+              <div className="rounded-xl border border-[#eadfca] bg-[#fffaf3] px-2 py-2">
+                <div className="text-base font-black text-[#3d3122]">{visibleDocumentCount}</div>
+                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Visible</div>
+              </div>
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-2 py-2">
+                <div className="text-base font-black text-amber-900">{draftDocs.length}</div>
+                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-amber-700">Pages</div>
+              </div>
+              <div className="rounded-xl border border-cyan-200 bg-cyan-50 px-2 py-2">
+                <div className="text-base font-black text-cyan-900">{libraryDocs.length}</div>
+                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-cyan-700">Sources</div>
+              </div>
+            </div>
+            {notebookQuery && visibleDocumentCount < totalDocumentCount ? (
+              <p className="mb-3 rounded-xl border border-[#eadfca] bg-white px-3 py-2 text-[10px] leading-4 text-[#8c6b4a]">
+                Showing {visibleDocumentCount} of {totalDocumentCount} documents for "{notebookQuery}". Search only changes what is visible here.
+              </p>
+            ) : null}
             <div className="space-y-4">
               {draftDocs.length > 0 && (
                 <div>
-                  <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#8c6b4a] opacity-70">Drafts</h4>
+                  <h4 className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[#8c6b4a] opacity-70">Writing pages, drafts, and notes</h4>
+                  <p className="mb-2 text-[10px] leading-4 text-[#8c6b4a]">
+                    The daily desk: manuscript pages, alternate passes, quick captures, and scraps before they belong in the polished spine.
+                  </p>
                   <div className="space-y-1">
-                    {draftDocs.map(doc => (
+                    {filteredDraftDocs.map(doc => (
                       <a
                         key={doc.id}
                         href={`/create?project=${encodeURIComponent(projectSlug || "")}&document=${encodeURIComponent(doc.id)}`}
                         className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${activeDocumentId === doc.id ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5e4b33] hover:bg-amber-50"}`}
                       >
-                        {doc.title}
+                        <span className="block truncate">{doc.title}</span>
+                        <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
+                          {documentKind(doc)}
+                        </span>
                       </a>
                     ))}
+                    {filteredDraftDocs.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-[#d9c7a5] bg-[#fffaf0] px-3 py-3 text-xs leading-5 text-[#8c6b4a]">
+                        No writing pages match this search. Clear search or make a quick note before the idea wanders off.
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               )}
               
               {libraryDocs.length > 0 && (
                 <div>
-                  <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-[#8c6b4a] opacity-70">Library</h4>
+                  <h4 className="mb-1 text-[10px] font-bold uppercase tracking-wider text-[#8c6b4a] opacity-70">Study library and fixed sources</h4>
+                  <p className="mb-2 text-[10px] leading-4 text-[#8c6b4a]">
+                    Fixed references live here. Annotate and tag over them; do not silently rewrite the source.
+                  </p>
                   <div className="space-y-1">
-                    {libraryDocs.map(doc => (
+                    {filteredLibraryDocs.map(doc => (
                       <a
                         key={doc.id}
                         href={`/create?project=${encodeURIComponent(projectSlug || "")}&document=${encodeURIComponent(doc.id)}`}
                         className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${activeDocumentId === doc.id ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5e4b33] hover:bg-amber-50"}`}
                       >
-                        {doc.title}
+                        <span className="block truncate">{doc.title}</span>
+                        <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
+                          {documentKind(doc)}
+                        </span>
                       </a>
                     ))}
+                    {filteredLibraryDocs.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-[#d9c7a5] bg-[#fffaf0] px-3 py-3 text-xs leading-5 text-[#8c6b4a]">
+                        No study sources match this search. Fixed sources stay available; the search is only hiding them.
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               )}
@@ -261,10 +498,10 @@ export default function ViewFilter({
         <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
             <BookOpen size={12} />
-            Structure Spine
+            Notebook Structure
           </h3>
           <p className="text-xs leading-5 text-[#6b5b45]">
-            Create chapters and episodes inside the manuscript: make a heading block, then click its
+            Create sections inside the page: make a heading block, then click its
             <span className="font-black text-[#3d3122]"> Chapter</span> or
             <span className="font-black text-[#3d3122]"> Episode</span> tag. The outline below is generated from the document itself.
           </p>
@@ -277,6 +514,30 @@ export default function ViewFilter({
               <div className="text-lg font-black text-rose-900">{episodeCount}</div>
               <div className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-700">Episodes</div>
             </div>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("quipsly:create-structure-block", {
+                  detail: { kind: "chapter", label: "New Chapter" }
+                }));
+              }}
+              className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.14em] text-cyan-900 transition hover:bg-cyan-50"
+            >
+              + Chapter
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent("quipsly:create-structure-block", {
+                  detail: { kind: "episode", label: "New Episode" }
+                }));
+              }}
+              className="rounded-xl border border-rose-200 bg-white px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.14em] text-rose-900 transition hover:bg-rose-50"
+            >
+              + Episode
+            </button>
           </div>
           {activeBoundary ? (
             <button
@@ -292,7 +553,7 @@ export default function ViewFilter({
         <div className="mb-8">
           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
             <LayoutTemplate size={12} />
-            Lenses
+            Focus Lenses
           </h3>
           <div className="space-y-1">
             <button
@@ -318,16 +579,16 @@ export default function ViewFilter({
         <div className="mb-8">
           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
             <Layers size={12} />
-            Document Outline
+            Page Outline
           </h3>
           <p className="mb-3 text-[10px] leading-tight text-[#8c6b4a]">
-            Click a heading to focus from that heading until the next heading.
+            Click a heading to focus from that heading until the next heading. Drag handles are planning-only until persistent reorder is promoted.
           </p>
           {documentBoundaries.length > 0 ? (
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
               <SortableContext items={localBoundaries.map(b => b.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-1">
-                  {hierarchicalOutline.map(({ boundary, isNested }) => {
+                  {filteredOutlineRows.map(({ boundary, isNested }) => {
                     const isActive = activeBoundaryId === boundary.id;
                     const isScrolled = scrolledBoundaryId === boundary.id;
 
@@ -345,6 +606,11 @@ export default function ViewFilter({
                       />
                     );
                   })}
+                  {filteredOutlineRows.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-[#d9c7a5] bg-[#fffaf0] px-3 py-3 text-xs leading-5 text-[#8c6b4a]">
+                      No chapter or episode headings match this search. Clear search to see the whole page outline.
+                    </div>
+                  ) : null}
                 </div>
               </SortableContext>
             </DndContext>
