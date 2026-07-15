@@ -7,6 +7,8 @@ Episode 4 proof: `20260715-episode4-continuous-audio-architecture-proof-v001`
 - Selected program-audio ranges are concatenated in PCM and encoded to AAC once.
 - The continuous program stream is muxed once after picture assembly.
 - Final proof streams start at `0.000s` and end together at `20.000s`.
+- Edit boundaries use cumulative 30 fps frame quantization, preventing per-cut rounding drift.
+- The multi-cut proof rendered exactly `600` expected frames for `20.000s` of picture.
 - No non-monotonic DTS, invalid timestamp, corruption, or mux errors were emitted.
 - Canonical Charlie, Homer, and clip-source stems remain the editable truth.
 - The stereo mix remains a derived delivery artifact.

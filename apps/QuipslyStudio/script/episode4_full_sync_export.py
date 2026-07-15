@@ -1219,20 +1219,24 @@ def render_chunk(chunk: dict[str, Any], chunk_path: Path) -> None:
     branch audio stream after picture assembly instead.
     """
     duration = float(chunk["duration"])
+    frame_count = int(chunk.get("outputFrameCount") or round(duration * 30))
+    if frame_count <= 0:
+        raise ValueError(f"chunk {chunk.get('index')} has no output frames")
+    render_duration = frame_count / 30.0
     source = next((item for item in VIDEO_SOURCES if item.id == chunk["sourceId"]), None)
     command = ["ffmpeg", "-hide_banner", "-y"]
     if source:
         render_path = Path(str(chunk.get("renderPath") or source.path))
         command.extend([
             "-ss", f"{float(chunk['sourceStart']):.3f}",
-            "-t", f"{duration:.3f}",
+            "-t", f"{render_duration:.6f}",
             "-i", str(render_path),
         ])
         vf = video_filter_for(source)
     else:
         command.extend([
             "-f", "lavfi",
-            "-t", f"{duration:.3f}",
+            "-t", f"{render_duration:.6f}",
             "-i", "color=c=#171a14:s=1920x1080:r=30",
         ])
         vf = "format=yuv420p"
@@ -1241,6 +1245,7 @@ def render_chunk(chunk: dict[str, Any], chunk_path: Path) -> None:
         "-map", "0:v:0",
         "-vf", vf,
         "-r", "30",
+        "-frames:v", str(frame_count),
         "-an",
         "-c:v", "h264_videotoolbox",
         "-b:v", "6500k",
@@ -1250,6 +1255,33 @@ def render_chunk(chunk: dict[str, Any], chunk_path: Path) -> None:
         str(chunk_path),
     ])
     run(command)
+
+
+def assign_cumulative_output_frames(
+    chunks: list[dict[str, Any]],
+    frame_rate: int = 30,
+) -> list[dict[str, Any]]:
+    """Quantize edit boundaries once on the global output clock."""
+    output: list[dict[str, Any]] = []
+    elapsed = 0.0
+    previous_end_frame = 0
+    for chunk in chunks:
+        elapsed += float(chunk["duration"])
+        end_frame = round(elapsed * frame_rate)
+        frame_count = end_frame - previous_end_frame
+        if frame_count <= 0:
+            raise ValueError(
+                f"chunk {chunk.get('index')} is shorter than one output frame after cumulative quantization"
+            )
+        quantized = dict(chunk)
+        quantized["outputStartFrame"] = previous_end_frame
+        quantized["outputEndFrame"] = end_frame
+        quantized["outputFrameCount"] = frame_count
+        quantized["outputDurationSeconds"] = round(frame_count / frame_rate, 6)
+        output.append(quantized)
+        previous_end_frame = end_frame
+    return output
+
 
 def concat_chunks(chunk_paths: list[Path], output_path: Path) -> None:
     """Assemble picture-only chunks without introducing audio edit seams."""
@@ -1339,6 +1371,7 @@ def render_branch(
             kept.append(clipped)
             remaining -= clipped["duration"]
         chunks = kept
+    chunks = assign_cumulative_output_frames(chunks)
 
     branch_dir = run_dir / branch.id
     branch_dir.mkdir()
@@ -1413,6 +1446,9 @@ def render_branch(
             "pictureChunksContainAudio": False,
             "branchAudioEncodedOnce": True,
             "programAudioMuxedOnceAfterPictureAssembly": True,
+            "pictureFrameRate": 30,
+            "pictureFrameQuantization": "cumulative-sequence-boundaries",
+            "pictureExpectedFrameCount": sum(int(chunk["outputFrameCount"]) for chunk in chunks),
             "proofRunSeconds": proof_seconds,
             "externalPublicationReceipt": None,
         },
