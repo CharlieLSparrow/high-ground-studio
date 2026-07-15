@@ -5,11 +5,17 @@ import SwiftUI
 struct AudioDetailEnvelopePoint: Sendable {
     let rmsDbfs: Double
     let peakDbfs: Double
+    let leftRmsDbfs: Double
+    let rightRmsDbfs: Double
+    let leftPeakDbfs: Double
+    let rightPeakDbfs: Double
+    let stereoCorrelation: Double?
 }
 
 struct AudioDetailEnvelope: Sendable {
     let points: [AudioDetailEnvelopePoint]
     let spectrum: AudioDetailSpectrum
+    let phaseScope: AudioDetailPhaseScope
     let diagnostics: AudioDetailDiagnostics
     let startSeconds: Double
     let durationSeconds: Double
@@ -23,6 +29,11 @@ struct AudioDetailDiagnostics: Sendable {
     let crestDb: Double
     let dcOffsetDbfs: Double
     let stereoCorrelation: Double?
+    let leftRmsDbfs: Double
+    let rightRmsDbfs: Double
+    let leftPeakDbfs: Double
+    let rightPeakDbfs: Double
+    let stereoBalanceDb: Double
     let clippedSampleCount: Int
 
     static let empty = AudioDetailDiagnostics(
@@ -33,8 +44,24 @@ struct AudioDetailDiagnostics: Sendable {
         crestDb: 0,
         dcOffsetDbfs: -96,
         stereoCorrelation: nil,
+        leftRmsDbfs: -96,
+        rightRmsDbfs: -96,
+        leftPeakDbfs: -96,
+        rightPeakDbfs: -96,
+        stereoBalanceDb: 0,
         clippedSampleCount: 0
     )
+}
+
+struct AudioDetailPhasePoint: Sendable {
+    let left: Float
+    let right: Float
+}
+
+struct AudioDetailPhaseScope: Sendable {
+    let points: [AudioDetailPhasePoint]
+
+    static let empty = AudioDetailPhaseScope(points: [])
 }
 
 struct AudioDetailSpectrum: Sendable {
@@ -110,7 +137,7 @@ actor AudioDetailAnalysisCache {
         let requestedFrames = AVAudioFramePosition(max(request.durationSeconds, 0.01) * sampleRate)
         let framesToRead = min(availableFrames, requestedFrames)
         guard framesToRead > 0 else {
-            return AudioDetailEnvelope(points: [], spectrum: .empty, diagnostics: .empty, startSeconds: request.startSeconds, durationSeconds: request.durationSeconds)
+            return AudioDetailEnvelope(points: [], spectrum: .empty, phaseScope: .empty, diagnostics: .empty, startSeconds: request.startSeconds, durationSeconds: request.durationSeconds)
         }
 
         file.framePosition = requestedStartFrame
@@ -122,7 +149,7 @@ actor AudioDetailAnalysisCache {
         let frameCount = Int(buffer.frameLength)
         let channelCount = Int(buffer.format.channelCount)
         guard frameCount > 0, channelCount > 0, let channels = buffer.floatChannelData else {
-            return AudioDetailEnvelope(points: [], spectrum: .empty, diagnostics: .empty, startSeconds: request.startSeconds, durationSeconds: request.durationSeconds)
+            return AudioDetailEnvelope(points: [], spectrum: .empty, phaseScope: .empty, diagnostics: .empty, startSeconds: request.startSeconds, durationSeconds: request.durationSeconds)
         }
 
         var monoSamples = [Float](repeating: 0, count: frameCount)
@@ -135,6 +162,8 @@ actor AudioDetailAnalysisCache {
         var leftSquares: Double = 0
         var rightSquares: Double = 0
         var crossSum: Double = 0
+        var leftPeak: Double = 0
+        var rightPeak: Double = 0
         for frameIndex in 0..<frameCount {
             var mixedSample: Float = 0
             for channelIndex in 0..<channelCount {
@@ -155,6 +184,8 @@ actor AudioDetailAnalysisCache {
             leftSquares += left * left
             rightSquares += right * right
             crossSum += left * right
+            leftPeak = max(leftPeak, abs(left))
+            rightPeak = max(rightPeak, abs(right))
         }
 
         let sampleCount = Double(frameCount)
@@ -167,6 +198,10 @@ actor AudioDetailAnalysisCache {
         let stereoCorrelation = channelCount > 1 && correlationDenominator > 1e-12
             ? min(max((sampleCount * crossSum - leftSum * rightSum) / correlationDenominator, -1), 1)
             : nil
+        let leftRms = sqrt(leftSquares / max(sampleCount, 1))
+        let rightRms = sqrt(rightSquares / max(sampleCount, 1))
+        let leftRmsDbfs = decibels(amplitude: leftRms)
+        let rightRmsDbfs = decibels(amplitude: rightRms)
         let diagnostics = AudioDetailDiagnostics(
             sampleRate: sampleRate,
             channelCount: channelCount,
@@ -175,6 +210,11 @@ actor AudioDetailAnalysisCache {
             crestDb: max(peakDbfs - rmsDbfs, 0),
             dcOffsetDbfs: decibels(amplitude: abs(sum / max(sampleCount, 1))),
             stereoCorrelation: stereoCorrelation,
+            leftRmsDbfs: leftRmsDbfs,
+            rightRmsDbfs: rightRmsDbfs,
+            leftPeakDbfs: decibels(amplitude: leftPeak),
+            rightPeakDbfs: decibels(amplitude: rightPeak),
+            stereoBalanceDb: rightRmsDbfs - leftRmsDbfs,
             clippedSampleCount: clippedSampleCount
         )
 
@@ -188,20 +228,63 @@ actor AudioDetailAnalysisCache {
             let endFrame = min(max(Int(Double(pointIndex + 1) * framesPerPoint), startFrame + 1), frameCount)
             var peak: Float = 0
             var sumSquares: Double = 0
+            var leftPeak: Float = 0
+            var rightPeak: Float = 0
+            var leftSum: Double = 0
+            var rightSum: Double = 0
+            var leftSquares: Double = 0
+            var rightSquares: Double = 0
+            var crossSum: Double = 0
             var sampleCount = 0
 
             for frameIndex in startFrame..<endFrame {
                 let mixedSample = monoSamples[frameIndex]
+                let left = channels[0][frameIndex]
+                let right = channels[min(1, channelCount - 1)][frameIndex]
                 peak = max(peak, abs(mixedSample))
                 sumSquares += Double(mixedSample * mixedSample)
+                leftPeak = max(leftPeak, abs(left))
+                rightPeak = max(rightPeak, abs(right))
+                leftSum += Double(left)
+                rightSum += Double(right)
+                leftSquares += Double(left * left)
+                rightSquares += Double(right * right)
+                crossSum += Double(left * right)
                 sampleCount += 1
             }
 
             let rms = sampleCount > 0 ? sqrt(sumSquares / Double(sampleCount)) : 0
+            let count = Double(max(sampleCount, 1))
+            let leftRms = sqrt(leftSquares / count)
+            let rightRms = sqrt(rightSquares / count)
+            let leftVariance = max(count * leftSquares - leftSum * leftSum, 0)
+            let rightVariance = max(count * rightSquares - rightSum * rightSum, 0)
+            let correlationDenominator = sqrt(leftVariance * rightVariance)
+            let pointCorrelation = channelCount > 1 && correlationDenominator > 1e-12
+                ? min(max((count * crossSum - leftSum * rightSum) / correlationDenominator, -1), 1)
+                : nil
             points.append(
                 AudioDetailEnvelopePoint(
                     rmsDbfs: decibels(amplitude: rms),
-                    peakDbfs: decibels(amplitude: Double(peak))
+                    peakDbfs: decibels(amplitude: Double(peak)),
+                    leftRmsDbfs: decibels(amplitude: leftRms),
+                    rightRmsDbfs: decibels(amplitude: rightRms),
+                    leftPeakDbfs: decibels(amplitude: Double(leftPeak)),
+                    rightPeakDbfs: decibels(amplitude: Double(rightPeak)),
+                    stereoCorrelation: pointCorrelation
+                )
+            )
+        }
+
+        let phasePointLimit = request.durationSeconds <= 2 ? 900 : 480
+        let phaseStride = max(frameCount / phasePointLimit, 1)
+        var phasePoints: [AudioDetailPhasePoint] = []
+        phasePoints.reserveCapacity(min(frameCount, phasePointLimit + 1))
+        for frameIndex in Swift.stride(from: 0, to: frameCount, by: phaseStride) {
+            phasePoints.append(
+                AudioDetailPhasePoint(
+                    left: min(max(channels[0][frameIndex], -1), 1),
+                    right: min(max(channels[min(1, channelCount - 1)][frameIndex], -1), 1)
                 )
             )
         }
@@ -215,6 +298,7 @@ actor AudioDetailAnalysisCache {
                 requestedColumns: min(max(request.pointCount / 6, 96), request.durationSeconds <= 2 ? 240 : 180),
                 bandCount: request.durationSeconds <= 2 ? 64 : 48
             ),
+            phaseScope: AudioDetailPhaseScope(points: phasePoints),
             diagnostics: diagnostics,
             startSeconds: request.startSeconds,
             durationSeconds: request.durationSeconds
@@ -349,16 +433,27 @@ struct ProAudioHighResolutionEnvelope: View {
                 drawSpectrum(envelope.spectrum, context: context, rect: spectrumRect)
                 drawWaveformGrid(context: context, rect: waveformRect)
                 drawFrequencyGrid(context: context, rect: spectrumRect)
-                let centerY = waveformRect.midY
                 let width = max(size.width / CGFloat(envelope.points.count), 1)
                 for (index, point) in envelope.points.enumerated() {
                     let x = CGFloat(index) * width
-                    let rmsHeight = max(1.5, normalized(point.rmsDbfs, floor: -72) * waveformRect.height * 0.80)
-                    let peakHeight = max(rmsHeight + 1, normalized(point.peakDbfs, floor: -60) * waveformRect.height * 0.94)
-                    let peakRect = CGRect(x: x, y: centerY - peakHeight / 2, width: max(width * 0.86, 1), height: peakHeight)
-                    let rmsRect = CGRect(x: x, y: centerY - rmsHeight / 2, width: max(width * 0.86, 1), height: rmsHeight)
-                    context.fill(Path(peakRect), with: .color(tint.opacity(0.24)))
-                    context.fill(Path(rmsRect), with: .color(tint.opacity(0.92)))
+                    drawChannelBar(
+                        x: x,
+                        width: width,
+                        rmsDbfs: point.leftRmsDbfs,
+                        peakDbfs: point.leftPeakDbfs,
+                        laneRect: CGRect(x: waveformRect.minX, y: waveformRect.minY, width: waveformRect.width, height: waveformRect.height / 2),
+                        context: context,
+                        channelTint: tint
+                    )
+                    drawChannelBar(
+                        x: x,
+                        width: width,
+                        rmsDbfs: point.rightRmsDbfs,
+                        peakDbfs: point.rightPeakDbfs,
+                        laneRect: CGRect(x: waveformRect.minX, y: waveformRect.midY, width: waveformRect.width, height: waveformRect.height / 2),
+                        context: context,
+                        channelTint: tint.opacity(0.74)
+                    )
                     if point.peakDbfs > -1 {
                         context.fill(
                             Path(CGRect(x: x, y: waveformRect.minY + 1, width: max(width * 0.86, 1), height: 5)),
@@ -371,6 +466,8 @@ struct ProAudioHighResolutionEnvelope: View {
                         )
                     }
                 }
+                drawCorrelationHistory(envelope.points, context: context, rect: waveformRect)
+                drawPhaseScope(envelope.phaseScope, diagnostics: envelope.diagnostics, context: context, rect: waveformRect)
                 drawDiagnostics(envelope.diagnostics, context: context, size: size)
             }
             .task(id: "\(requestKey)|\(Int(proxy.size.width.rounded()))") {
@@ -388,6 +485,70 @@ struct ProAudioHighResolutionEnvelope: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("High resolution waveform and spectrogram")
         .accessibilityValue(accessibilitySummary)
+    }
+
+    private func drawChannelBar(
+        x: CGFloat,
+        width: CGFloat,
+        rmsDbfs: Double,
+        peakDbfs: Double,
+        laneRect: CGRect,
+        context: GraphicsContext,
+        channelTint: Color
+    ) {
+        let rmsHeight = max(1.2, normalized(rmsDbfs, floor: -72) * laneRect.height * 0.74)
+        let peakHeight = max(rmsHeight + 0.8, normalized(peakDbfs, floor: -60) * laneRect.height * 0.88)
+        let peakRect = CGRect(x: x, y: laneRect.midY - peakHeight / 2, width: max(width * 0.86, 1), height: peakHeight)
+        let rmsRect = CGRect(x: x, y: laneRect.midY - rmsHeight / 2, width: max(width * 0.86, 1), height: rmsHeight)
+        context.fill(Path(peakRect), with: .color(channelTint.opacity(0.24)))
+        context.fill(Path(rmsRect), with: .color(channelTint.opacity(0.92)))
+    }
+
+    private func drawCorrelationHistory(_ points: [AudioDetailEnvelopePoint], context: GraphicsContext, rect: CGRect) {
+        guard points.count > 1, points.contains(where: { $0.stereoCorrelation != nil }) else { return }
+        var path = Path()
+        for (index, point) in points.enumerated() {
+            let correlation = min(max(point.stereoCorrelation ?? 1, -1), 1)
+            let x = rect.minX + CGFloat(index) / CGFloat(points.count - 1) * rect.width
+            let y = rect.midY - CGFloat(correlation) * 7
+            if index == 0 { path.move(to: CGPoint(x: x, y: y)) }
+            else { path.addLine(to: CGPoint(x: x, y: y)) }
+        }
+        context.stroke(path, with: .color(QuipslyStudioTheme.creekMist.opacity(0.72)), lineWidth: 1.1)
+        for (index, point) in points.enumerated() where (point.stereoCorrelation ?? 1) < 0 {
+            let x = rect.minX + CGFloat(index) / CGFloat(max(points.count - 1, 1)) * rect.width
+            context.fill(Path(CGRect(x: x, y: rect.midY - 1.5, width: 2, height: 3)), with: .color(QuipslyStudioTheme.clay))
+        }
+    }
+
+    private func drawPhaseScope(
+        _ phaseScope: AudioDetailPhaseScope,
+        diagnostics: AudioDetailDiagnostics,
+        context: GraphicsContext,
+        rect: CGRect
+    ) {
+        guard diagnostics.channelCount > 1, phaseScope.points.count > 2, rect.width >= 520 else { return }
+        let scopeSize = min(78, rect.height - 12)
+        let scopeRect = CGRect(x: rect.maxX - scopeSize - 8, y: rect.minY + 7, width: scopeSize, height: scopeSize)
+        context.fill(Path(roundedRect: scopeRect, cornerRadius: 9), with: .color(Color.black.opacity(0.70)))
+        context.stroke(Path(roundedRect: scopeRect, cornerRadius: 9), with: .color(Color.white.opacity(0.16)), lineWidth: 1)
+        context.stroke(Path(CGRect(x: scopeRect.midX, y: scopeRect.minY + 5, width: 0.5, height: scopeRect.height - 10)), with: .color(Color.white.opacity(0.12)), lineWidth: 0.5)
+        context.stroke(Path(CGRect(x: scopeRect.minX + 5, y: scopeRect.midY, width: scopeRect.width - 10, height: 0.5)), with: .color(Color.white.opacity(0.12)), lineWidth: 0.5)
+        var phasePath = Path()
+        for (index, point) in phaseScope.points.enumerated() {
+            let sum = CGFloat(point.left + point.right) * 0.5
+            let difference = CGFloat(point.left - point.right) * 0.5
+            let x = scopeRect.midX + difference * scopeRect.width * 0.42
+            let y = scopeRect.midY - sum * scopeRect.height * 0.42
+            if index == 0 { phasePath.move(to: CGPoint(x: x, y: y)) }
+            else { phasePath.addLine(to: CGPoint(x: x, y: y)) }
+        }
+        context.stroke(phasePath, with: .color(tint.opacity(0.54)), lineWidth: 0.75)
+        context.draw(
+            Text("PHASE").font(.system(size: 7, weight: .bold, design: .monospaced)).foregroundStyle(Color.white.opacity(0.52)),
+            at: CGPoint(x: scopeRect.minX + 5, y: scopeRect.minY + 4),
+            anchor: .topLeading
+        )
     }
 
     private func normalized(_ dbfs: Double, floor: Double) -> CGFloat {
@@ -424,20 +585,19 @@ struct ProAudioHighResolutionEnvelope: View {
 
     private func drawWaveformGrid(context: GraphicsContext, rect: CGRect) {
         context.fill(Path(CGRect(x: rect.minX, y: rect.midY, width: rect.width, height: 1)), with: .color(Color.white.opacity(0.18)))
+        context.draw(Text("L").font(.system(size: 8, weight: .black, design: .monospaced)).foregroundStyle(Color.white.opacity(0.52)), at: CGPoint(x: rect.minX + 4, y: rect.minY + 4), anchor: .topLeading)
+        context.draw(Text("R").font(.system(size: 8, weight: .black, design: .monospaced)).foregroundStyle(Color.white.opacity(0.52)), at: CGPoint(x: rect.minX + 4, y: rect.midY + 4), anchor: .topLeading)
         for db in [-6.0, -12.0, -24.0, -48.0] {
-            let amplitude = normalized(db, floor: -60) * rect.height * 0.47
-            for y in [rect.midY - amplitude / 2, rect.midY + amplitude / 2] {
+            let amplitude = normalized(db, floor: -60) * rect.height * 0.22
+            for center in [rect.minY + rect.height * 0.25, rect.minY + rect.height * 0.75] {
+                for y in [center - amplitude / 2, center + amplitude / 2] {
                 context.stroke(
                     Path(CGRect(x: rect.minX, y: y, width: rect.width, height: 0.5)),
                     with: .color(Color.white.opacity(db == -12 ? 0.18 : 0.09)),
                     lineWidth: 0.5
                 )
+                }
             }
-            context.draw(
-                Text("\(Int(db))").font(.system(size: 8, weight: .medium, design: .monospaced)).foregroundStyle(Color.white.opacity(0.54)),
-                at: CGPoint(x: rect.minX + 3, y: rect.midY - amplitude / 2 + 5),
-                anchor: .topLeading
-            )
         }
     }
 
@@ -464,11 +624,14 @@ struct ProAudioHighResolutionEnvelope: View {
         let correlation = diagnostics.stereoCorrelation.map { String(format: "r %.2f", $0) } ?? "mono"
         let clipped = diagnostics.clippedSampleCount > 0 ? "  CLIP \(diagnostics.clippedSampleCount)" : ""
         let summary = String(
-            format: "%.1fk  %dch  RMS %.1f  PK %.1f  crest %.1f  %@%@",
+            format: "%.1fk  %dch  L %.1f/%.1f  R %.1f/%.1f  BAL %+.1f  crest %.1f  %@%@",
             diagnostics.sampleRate / 1_000,
             diagnostics.channelCount,
-            diagnostics.rmsDbfs,
-            diagnostics.peakDbfs,
+            diagnostics.leftRmsDbfs,
+            diagnostics.leftPeakDbfs,
+            diagnostics.rightRmsDbfs,
+            diagnostics.rightPeakDbfs,
+            diagnostics.stereoBalanceDb,
             diagnostics.crestDb,
             correlation,
             clipped
@@ -477,8 +640,8 @@ struct ProAudioHighResolutionEnvelope: View {
             Text(summary)
                 .font(.system(size: 8.5, weight: .semibold, design: .monospaced))
                 .foregroundStyle(diagnostics.clippedSampleCount > 0 ? QuipslyStudioTheme.clay : Color.white.opacity(0.66)),
-            at: CGPoint(x: size.width - 5, y: 4),
-            anchor: .topTrailing
+            at: CGPoint(x: 18, y: 4),
+            anchor: .topLeading
         )
     }
 
@@ -486,10 +649,13 @@ struct ProAudioHighResolutionEnvelope: View {
         guard let diagnostics = envelope?.diagnostics else { return "Analysis loading" }
         let correlation = diagnostics.stereoCorrelation.map { String(format: "%.2f", $0) } ?? "mono"
         return String(
-            format: "Window %.3f seconds. RMS %.1f dBFS. Peak %.1f dBFS. Crest %.1f dB. Stereo correlation %@. Clipped samples %d.",
+            format: "Window %.3f seconds. Left RMS %.1f and peak %.1f dBFS. Right RMS %.1f and peak %.1f dBFS. Stereo balance %+.1f dB. Crest %.1f dB. Stereo correlation %@. Clipped samples %d.",
             visibleDurationSeconds,
-            diagnostics.rmsDbfs,
-            diagnostics.peakDbfs,
+            diagnostics.leftRmsDbfs,
+            diagnostics.leftPeakDbfs,
+            diagnostics.rightRmsDbfs,
+            diagnostics.rightPeakDbfs,
+            diagnostics.stereoBalanceDb,
             diagnostics.crestDb,
             correlation,
             diagnostics.clippedSampleCount
