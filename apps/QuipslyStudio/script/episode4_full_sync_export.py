@@ -1211,75 +1211,59 @@ def video_filter_for(source: SourceClip | None) -> str:
     return "scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,setsar=1,format=yuv420p"
 
 
-def render_chunk(chunk: dict[str, Any], chunk_path: Path, audio_mix: Path) -> None:
+def render_chunk(chunk: dict[str, Any], chunk_path: Path) -> None:
+    """Render one picture-only chunk.
+
+    Program audio intentionally stays out of camera chunks. Encoding AAC at each
+    edit point creates priming and timestamp seams; Quipsly muxes one continuous
+    branch audio stream after picture assembly instead.
+    """
     duration = float(chunk["duration"])
     source = next((item for item in VIDEO_SOURCES if item.id == chunk["sourceId"]), None)
     command = ["ffmpeg", "-hide_banner", "-y"]
     if source:
         render_path = Path(str(chunk.get("renderPath") or source.path))
-        command.extend(["-ss", f"{float(chunk['sourceStart']):.3f}", "-t", f"{duration:.3f}", "-i", str(render_path)])
-    else:
-        command.extend(["-f", "lavfi", "-t", f"{duration:.3f}", "-i", "color=c=#171a14:s=1920x1080:r=30"])
-    command.extend(["-ss", f"{float(chunk['sequenceStart']):.3f}", "-t", f"{duration:.3f}", "-i", str(audio_mix)])
-
-    if source:
+        command.extend([
+            "-ss", f"{float(chunk['sourceStart']):.3f}",
+            "-t", f"{duration:.3f}",
+            "-i", str(render_path),
+        ])
         vf = video_filter_for(source)
     else:
+        command.extend([
+            "-f", "lavfi",
+            "-t", f"{duration:.3f}",
+            "-i", "color=c=#171a14:s=1920x1080:r=30",
+        ])
         vf = "format=yuv420p"
 
-    command.extend(
-        [
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a:0",
-            "-vf",
-            vf,
-            "-r",
-            "30",
-            "-c:v",
-            "h264_videotoolbox",
-            "-b:v",
-            "6500k",
-            "-maxrate",
-            "9000k",
-            "-bufsize",
-            "14000k",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-movflags",
-            "+faststart",
-            "-shortest",
-            str(chunk_path),
-        ]
-    )
+    command.extend([
+        "-map", "0:v:0",
+        "-vf", vf,
+        "-r", "30",
+        "-an",
+        "-c:v", "h264_videotoolbox",
+        "-b:v", "6500k",
+        "-maxrate", "9000k",
+        "-bufsize", "14000k",
+        "-movflags", "+faststart",
+        str(chunk_path),
+    ])
     run(command)
 
-
 def concat_chunks(chunk_paths: list[Path], output_path: Path) -> None:
+    """Assemble picture-only chunks without introducing audio edit seams."""
     list_path = output_path.with_suffix(".concat.txt")
     list_path.write_text("".join(f"file {shlex.quote(str(path))}\n" for path in chunk_paths))
-    run(
-        [
-            "ffmpeg",
-            "-hide_banner",
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(list_path),
-            "-c",
-            "copy",
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
-    )
-
+    run([
+        "ffmpeg", "-hide_banner", "-y",
+        "-f", "concat", "-safe", "0", "-i", str(list_path),
+        "-map", "0:v:0",
+        "-c:v", "copy",
+        "-an",
+        "-movflags", "+faststart",
+        str(output_path),
+    ])
 
 def export_audio_only(
     branch: BranchPlan,
@@ -1287,50 +1271,49 @@ def export_audio_only(
     output_path: Path,
     ranges: list[RangeChoice] | None = None,
 ) -> None:
-    export_ranges = ranges or branch.ranges
-    chunks_dir = output_path.parent / f"{output_path.stem}-audio-parts"
-    chunks_dir.mkdir(exist_ok=True)
-    parts: list[Path] = []
-    for index, item in enumerate(export_ranges, start=1):
-        part = chunks_dir / f"{index:03d}.m4a"
-        run(
-            [
-                "ffmpeg",
-                "-hide_banner",
-                "-y",
-                "-ss",
-                f"{item.start:.3f}",
-                "-t",
-                f"{item.duration:.3f}",
-                "-i",
-                str(audio_mix),
-                "-c:a",
-                "aac",
-                "-b:a",
-                "192k",
-                str(part),
-            ]
-        )
-        parts.append(part)
-    list_path = output_path.with_suffix(".concat.txt")
-    list_path.write_text("".join(f"file {shlex.quote(str(path))}\n" for path in parts))
-    run(
-        [
-            "ffmpeg",
-            "-hide_banner",
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            str(list_path),
-            "-c",
-            "copy",
-            str(output_path),
-        ]
-    )
+    """Render all selected branch ranges through one continuous AAC encoder."""
+    selected_ranges = ranges or branch.ranges
+    if not selected_ranges:
+        raise ValueError(f"branch {branch.id} has no audio ranges")
 
+    filters: list[str] = []
+    labels: list[str] = []
+    for index, item in enumerate(selected_ranges):
+        label = f"branch_a{index}"
+        filters.append(
+            f"[0:a]atrim=start={item.start:.6f}:end={item.end:.6f},"
+            f"asetpts=PTS-STARTPTS[{label}]"
+        )
+        labels.append(f"[{label}]")
+    filters.append(f"{''.join(labels)}concat=n={len(labels)}:v=0:a=1[program_audio]")
+
+    run([
+        "ffmpeg", "-hide_banner", "-y",
+        "-i", str(audio_mix),
+        "-filter_complex", ";".join(filters),
+        "-map", "[program_audio]",
+        "-ar", "48000",
+        "-ac", "2",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        str(output_path),
+    ])
+
+
+def mux_continuous_audio(picture_path: Path, audio_path: Path, output_path: Path) -> None:
+    """Mux one continuous program-audio stream onto assembled picture."""
+    run([
+        "ffmpeg", "-hide_banner", "-y",
+        "-i", str(picture_path),
+        "-i", str(audio_path),
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-c:v", "copy",
+        "-c:a", "copy",
+        "-movflags", "+faststart",
+        "-shortest",
+        str(output_path),
+    ])
 
 def render_branch(
     branch: BranchPlan,
@@ -1364,14 +1347,17 @@ def render_branch(
     chunk_paths: list[Path] = []
     for chunk in chunks:
         chunk_path = chunk_dir / f"{int(chunk['index']):04d}-{chunk['sourceId']}.mp4"
-        render_chunk(chunk, chunk_path, audio_mix)
+        render_chunk(chunk, chunk_path)
         chunk_paths.append(chunk_path)
 
+    picture_path = branch_dir / f"episode-4-{branch.id}-picture-v001.mp4"
     video_path = branch_dir / f"episode-4-{branch.id}-16x9-v001.mp4"
     audio_path = branch_dir / f"episode-4-{branch.id}-podcast-audio-v001.m4a"
-    concat_chunks(chunk_paths, video_path)
+    concat_chunks(chunk_paths, picture_path)
     export_audio_only(branch, audio_mix, audio_path, ranges=effective_ranges)
+    mux_continuous_audio(picture_path, audio_path, video_path)
 
+    picture_probe = ffprobe_json(picture_path)
     video_probe = ffprobe_json(video_path)
     audio_probe = ffprobe_json(audio_path)
     manifest = {
@@ -1424,6 +1410,9 @@ def render_branch(
             "pictureDecisionMapSchema": (picture_map or {}).get("schema"),
             "pictureDecisionMapReactionCount": len((picture_map or {}).get("reactionOverrides") or []),
             "mechanicalCameraAlternationUsed": picture_map is None,
+            "pictureChunksContainAudio": False,
+            "branchAudioEncodedOnce": True,
+            "programAudioMuxedOnceAfterPictureAssembly": True,
             "proofRunSeconds": proof_seconds,
             "externalPublicationReceipt": None,
         },
@@ -1431,9 +1420,15 @@ def render_branch(
         "ranges": [asdict(item) | {"duration": round(item.duration, 3)} for item in effective_ranges],
         "chunks": chunks,
         "outputs": {
+            "pictureAssembly": {
+                "path": str(picture_path),
+                "probe": picture_probe,
+                "audioPresent": False,
+            },
             "video16x9": {
                 "path": str(video_path),
                 "probe": video_probe,
+                "audioMuxStrategy": "single-continuous-program-stream",
             },
             "podcastAudio": {
                 "path": str(audio_path),
@@ -1498,6 +1493,9 @@ Next safest action: watch the render once for sync and flow before public upload
 - Source-aware audio role ids: {manifest.get("truth", {}).get("sourceAwareAudioRoleIds")}
 - Branch audio rendered from source-aware stems: {manifest.get("truth", {}).get("branchAudioRenderedFromSourceAwareStems")}
 - Branch audio rendered from mastered spine only: {manifest.get("truth", {}).get("branchAudioRenderedFromMasteredSpineOnly")}
+- Picture chunks contain audio: {manifest.get("truth", {}).get("pictureChunksContainAudio")}
+- Branch audio encoded once: {manifest.get("truth", {}).get("branchAudioEncodedOnce")}
+- Program audio muxed once after picture assembly: {manifest.get("truth", {}).get("programAudioMuxedOnceAfterPictureAssembly")}
 - This package is local export readiness, not external publication.
 """
 
