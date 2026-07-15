@@ -5,6 +5,7 @@ import QuipslyVideoCore
 struct NativeTransportControls: View {
     @ObservedObject var playbackEngine: PlaybackEngine
     var onPlaybackModeRequest: ((PlaybackMode) -> Void)? = nil
+    var keyboardShortcutsEnabled = true
 
     var body: some View {
         VStack(spacing: 8) {
@@ -58,7 +59,7 @@ struct NativeTransportControls: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
-                .keyboardShortcut(.space, modifiers: [])
+                .conditionalKeyboardShortcut(.space, enabled: keyboardShortcutsEnabled)
                 .help("Shortcut Space: play the condensed edited program. Inactive gaps are skipped and no-SHOW regions are blank.")
                 .accessibilityIdentifier("quipsly.transport.playEdit")
 
@@ -88,7 +89,7 @@ struct NativeTransportControls: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .buttonStyle(.plain)
-                .keyboardShortcut("t", modifiers: [])
+                .conditionalKeyboardShortcut("t", enabled: keyboardShortcutsEnabled)
                 .help("Shortcut T: play the whole synced source timeline without skipping gaps. Use this to inspect what exists under the edit.")
                 .accessibilityIdentifier("quipsly.transport.playThrough")
 
@@ -264,5 +265,30 @@ struct NativeTransportControls: View {
         let secs = Int(seconds) % 60
         let ms = Int((seconds.truncatingRemainder(dividingBy: 1)) * 100)
         return String(format: "%02d:%02d.%02d", mins, secs, ms)
+    }
+}
+
+private struct ConditionalKeyboardShortcutModifier: ViewModifier {
+    let key: KeyEquivalent
+    let modifiers: EventModifiers
+    let enabled: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if enabled {
+            content.keyboardShortcut(key, modifiers: modifiers)
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func conditionalKeyboardShortcut(
+        _ key: KeyEquivalent,
+        modifiers: EventModifiers = [],
+        enabled: Bool
+    ) -> some View {
+        modifier(ConditionalKeyboardShortcutModifier(key: key, modifiers: modifiers, enabled: enabled))
     }
 }

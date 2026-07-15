@@ -7,6 +7,18 @@ import UniformTypeIdentifiers
 import AppKit
 #endif
 
+private func qStudioOptionalString(_ value: String?, fallback: String = "") -> String {
+    value ?? fallback
+}
+
+private func qStudioOptionalDouble(_ value: Double?, fallback: Double = 0) -> Double {
+    value ?? fallback
+}
+
+private func qStudioOptionalInt(_ value: Int?, fallback: Int = 0) -> Int {
+    value ?? fallback
+}
+
 enum QuipslyStudioTheme {
     static let night = Color(red: 0.028, green: 0.038, blue: 0.034)
     static let forest = Color(red: 0.050, green: 0.125, blue: 0.092)
@@ -437,8 +449,11 @@ private extension CGRect {
 
 private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
     case os
+    case account
     case nest
     case inspector
+    case cuts
+    case audio
     case shorts
     case transcript
     case publish
@@ -450,10 +465,16 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
         switch self {
         case .os:
             return "OS"
+        case .account:
+            return "Account"
         case .nest:
             return "Nest"
         case .inspector:
             return "Frame"
+        case .cuts:
+            return "Cuts"
+        case .audio:
+            return "Audio"
         case .shorts:
             return "Shorts"
         case .transcript:
@@ -469,10 +490,16 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
         switch self {
         case .os:
             return "OS"
+        case .account:
+            return "Account"
         case .nest:
             return "Nest"
         case .inspector:
             return "Tune"
+        case .cuts:
+            return "Cuts"
+        case .audio:
+            return "Audio"
         case .shorts:
             return "Shorts"
         case .transcript:
@@ -488,10 +515,16 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
         switch self {
         case .os:
             return "rectangle.3.group.fill"
+        case .account:
+            return "person.crop.circle.badge.checkmark"
         case .nest:
             return "leaf.fill"
         case .inspector:
             return "slider.horizontal.3"
+        case .cuts:
+            return "scissors"
+        case .audio:
+            return "waveform.path.ecg.rectangle.fill"
         case .shorts:
             return "rectangle.portrait.on.rectangle.portrait.angled"
         case .transcript:
@@ -507,10 +540,16 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
         switch self {
         case .os:
             return "Start from the whole Quipsly production runway."
+        case .account:
+            return "Verify Firebase identity, Home Nest, and native access."
         case .nest:
             return "Write, paste, tag, and keep episode context connected."
         case .inspector:
             return "Crop and keyframe selected sources without touching media files."
+        case .cuts:
+            return "Review rhythm, jump-cut risks, J/L cut ideas, and why each decision exists."
+        case .audio:
+            return "Listen, compare stems, and see the master without leaving the editor."
         case .shorts:
             return "Pull 9:16 moments from the same episode spine."
         case .transcript:
@@ -526,10 +565,16 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
         switch self {
         case .os:
             return "Runway"
+        case .account:
+            return "Session"
         case .nest:
             return "Context"
         case .inspector:
             return "Crop"
+        case .cuts:
+            return "Rhythm"
+        case .audio:
+            return "Stems"
         case .shorts:
             return "Recipes"
         case .transcript:
@@ -545,10 +590,16 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
         switch self {
         case .os:
             return QuipslyStudioTheme.honey
+        case .account:
+            return QuipslyStudioTheme.creekMist
         case .nest:
             return QuipslyStudioTheme.moss
         case .inspector:
             return QuipslyStudioTheme.creek
+        case .cuts:
+            return QuipslyStudioTheme.honey
+        case .audio:
+            return QuipslyStudioTheme.creekMist
         case .shorts:
             return QuipslyStudioTheme.moss
         case .transcript:
@@ -614,6 +665,22 @@ private struct QuipslyOSOperatorBoard {
     static let pointerPath = "/Volumes/My Passport/Quipsly Media Workspace/QuipslyOS/latest-quipsly-return-brief.json"
 
     static func current() -> QuipslyOSOperatorBoard {
+        // Agent/read-model status is published from the main UI path and must stay cheap.
+        // The Quipsly OS return brief often lives on an external drive; if that drive is
+        // sleeping, disconnected, or prompting for access, a synchronous Data(contentsOf:)
+        // here can starve the entire native command bridge. Keep the hot path honest and
+        // non-blocking; explicit operator-board refresh/import work can read the external
+        // artifact off the main status loop.
+        if pointerPath.hasPrefix("/Volumes/") {
+            return QuipslyOSOperatorBoard(
+                status: "external-return-brief-not-loaded-in-status-loop",
+                generatedAt: "",
+                boardPath: "",
+                returnBriefPath: "",
+                rows: []
+            )
+        }
+
         guard
             let data = try? Data(contentsOf: URL(fileURLWithPath: pointerPath)),
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -878,6 +945,8 @@ struct WorkspaceView: View {
     @State private var exportProofSeconds: Double? = nil
     @State private var exportSessionName: String = ""
     @State private var exportStateRefreshTask: Task<Void, Never>? = nil
+    @State private var playerRebuildGeneration: UInt64 = 0
+    @State private var playbackIntentGeneration: UInt64 = 0
     @State private var exportProgressPath: String = ""
     @State private var exportManifestPath: String = ""
     @State private var deliveryPacketStatus: String = "idle"
@@ -897,6 +966,7 @@ struct WorkspaceView: View {
     @State private var lastDrainedAgentCommandSerial: Int = 0
     @State private var agentCommandConsumerId = UUID()
     @StateObject private var agentCommandBridge = WorkspaceAgentCommandBridge.shared
+    @StateObject private var nativeAccountStore = QuipslyNativeAccountStore()
     @State private var lastSessionPath: String? = nil
     @State private var lastMediaAction: String? = nil
     @AppStorage("quipsly.nativeEditor.activeSessionName") private var activeSessionName: String = "autosave"
@@ -914,7 +984,8 @@ struct WorkspaceView: View {
     @State private var audioProxyValidationInFlight: Set<String> = []
     @State private var videoProxyValidationInFlight: Set<String> = []
     @State private var isInspectorVisible = false
-    @State private var leftWorkbenchMode: LeftWorkbenchMode = .inspector
+    @State private var leftWorkbenchMode: LeftWorkbenchMode = .audio
+    @State private var cutIntelligenceCadenceMode: CutIntelligenceMode = .warmConversation
     @State private var agentReceiptRefreshTick = 0
     @State private var selectedNestDocumentId: UUID? = nil
     @State private var selectedNestBlockId: UUID? = nil
@@ -1044,6 +1115,8 @@ struct WorkspaceView: View {
     @State private var publishConnectorWorkerResultJson: String = ""
     @State private var publishConnectorWorkerErrorMessage: String = ""
     @State private var publishConnectorWorkerUpdatedAt: Date? = nil
+    @State private var prefersLeanAgentStatus: Bool = false
+    @State private var leanAgentStatusReason: String = ""
     @StateObject private var externalMediaAccess = ExternalMediaAccess.shared
     #if os(macOS)
     @State private var keyMonitor: Any? = nil
@@ -1180,6 +1253,11 @@ struct WorkspaceView: View {
                             switch leftWorkbenchMode {
                             case .os:
                                 quipslyOSWorkbenchSidebar
+                            case .account:
+                                QuipslyNativeAccountWorkbenchView(accountStore: nativeAccountStore) { message in
+                                    lastMediaAction = message
+                                    updateAgentState()
+                                }
                             case .nest:
                                 nestWorkbenchSidebar
                             case .inspector:
@@ -1242,6 +1320,20 @@ struct WorkspaceView: View {
                                         )
                                     },
                                     rebuildPlayer: { rebuildPlayer() }
+                                )
+                            case .cuts:
+                                cutIntelligenceWorkbenchSidebar
+                            case .audio:
+                                SourceAwareAudioWorkbenchPanel(
+                                    activeSessionName: normalizedActiveSessionName(),
+                                    playbackEngine: playbackEngine,
+                                    onSeek: { time in
+                                        playbackEngine.seek(to: time)
+                                        lastMediaAction = String(format: "Jumped audio workbench to %.2fs", time)
+                                        updateAgentState()
+                                    },
+                                    onOpenPath: openQuipslyOSPath,
+                                    onCopyText: copyAgentWorkbenchText
                                 )
                             case .shorts:
                                 shortsWorkbenchSidebar
@@ -1579,7 +1671,8 @@ struct WorkspaceView: View {
                         VStack(spacing: 12) {
                             NativeTransportControls(
                                 playbackEngine: playbackEngine,
-                                onPlaybackModeRequest: handlePlaybackModeRequest
+                                onPlaybackModeRequest: handlePlaybackModeRequest,
+                                keyboardShortcutsEnabled: leftWorkbenchMode != .audio
                             )
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
@@ -1727,13 +1820,19 @@ struct WorkspaceView: View {
             requestMonitorFocus(reason: "Focused monitor wall for loaded sequence")
         }
         .onChange(of: playbackEngine.playhead) { newValue in
-            enforceSelectedShortPreviewStop(at: newValue)
-            guard abs(newValue - lastAgentPlayheadUpdate) >= 0.25 else { return }
-            lastAgentPlayheadUpdate = newValue
-            updateAgentState()
+            Task { @MainActor in
+                await Task.yield()
+                enforceSelectedShortPreviewStop(at: newValue)
+                guard abs(newValue - lastAgentPlayheadUpdate) >= 0.25 else { return }
+                lastAgentPlayheadUpdate = newValue
+                updateAgentState()
+            }
         }
         .onChange(of: playbackEngine.isPlaying) { _ in
-            updateAgentState()
+            Task { @MainActor in
+                await Task.yield()
+                updateAgentState()
+            }
         }
         .onChange(of: agentServer.trigger) { _ in
             handleAgentCommandDispatch(fallbackToLegacy: true)
@@ -1763,12 +1862,22 @@ struct WorkspaceView: View {
         #if os(macOS)
         .onAppear {
             agentServer.claimCommandConsumer(agentCommandConsumerId)
+            agentServer.registerCommandDispatchHandler {
+                handleAgentCommandDispatch(fallbackToLegacy: false)
+            }
             agentServer.registerCommandExecutor { request in
                 handleAgentCommand(request)
             }
+            publishMountedAgentState()
             installKeyboardMonitorIfNeeded()
             installProgramScrollMonitorIfNeeded()
             refreshProxyJobSnapshotIfNeeded(force: true)
+            Task {
+                try? await Task.sleep(nanoseconds: 300_000_000)
+                await MainActor.run {
+                    updateAgentState()
+                }
+            }
             restoreActiveSessionIfPossible()
             if projectStore.activeSequence != nil {
                 requestMonitorFocus(reason: "Focused monitor wall on launch")
@@ -1779,6 +1888,7 @@ struct WorkspaceView: View {
         .onDisappear {
             removeKeyboardMonitor()
             removeProgramScrollMonitor()
+            agentServer.clearCommandDispatchHandler()
         }
         #endif
     }
@@ -1903,7 +2013,7 @@ struct WorkspaceView: View {
         let releasePrepared = !fullReleaseOutputPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let shortsPrepared = !socialShortsPacketOutputPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let podcastPrepared = !podcastReadyPacketOutputPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let shortCount = sequence?.shortClipQueue.count ?? 0
+        let shortCount = qStudioOptionalInt(sequence?.shortClipQueue.count)
 
         return HStack(alignment: .center, spacing: 10) {
             HStack(spacing: 8) {
@@ -2117,7 +2227,7 @@ struct WorkspaceView: View {
 
             HStack(spacing: 6) {
                 workflowStepPill("edit", summary.showDecisionCount > 0, QuipslyStudioTheme.honey)
-                workflowStepPill("cuts", (sequence?.shortClipQueue.count ?? 0) > 0 || shortsPrepared, QuipslyStudioTheme.creek)
+                workflowStepPill("cuts", qStudioOptionalInt(sequence?.shortClipQueue.count) > 0 || shortsPrepared, QuipslyStudioTheme.creek)
                 workflowStepPill("audio", podcastPrepared, QuipslyStudioTheme.clay)
                 workflowStepPill("master", releasePrepared, QuipslyStudioTheme.moss)
                 workflowStepPill("proof", !records.isEmpty && receiptCount == records.count, QuipslyStudioTheme.sage)
@@ -2204,7 +2314,7 @@ struct WorkspaceView: View {
             )
         }
 
-        if (sequence?.shortClipQueue.count ?? 0) == 0 && !shortsPrepared {
+        if qStudioOptionalInt(sequence?.shortClipQueue.count) == 0 && !shortsPrepared {
             return EditorNextAction(
                 title: "Pull one vertical cut",
                 detail: "Create at least one 9:16 recipe so social output is part of the proof loop.",
@@ -2325,11 +2435,11 @@ struct WorkspaceView: View {
                 "destructive-source-change"
             ],
             "sequence": [
-                "id": sequence?.id.uuidString ?? "",
-                "title": sequence?.title ?? "No active sequence",
-                "duration": sequence?.duration ?? 0,
-                "laneCount": sequence?.lanes.count ?? 0,
-                "shortRecipeCount": sequence?.shortClipQueue.count ?? 0
+                "id": qStudioOptionalString(sequence?.id.uuidString),
+                "title": qStudioOptionalString(sequence?.title, fallback: "No active sequence"),
+                "duration": qStudioOptionalDouble(sequence?.duration),
+                "laneCount": qStudioOptionalInt(sequence?.lanes.count),
+                "shortRecipeCount": qStudioOptionalInt(sequence?.shortClipQueue.count)
             ],
             "edit": [
                 "showDecisionCount": summary.showDecisionCount,
@@ -3581,49 +3691,70 @@ struct WorkspaceView: View {
     }
 
     private var productionDetailsDrawer: some View {
-        DisclosureGroup(isExpanded: $isShowingProductionDetails) {
-            VStack(spacing: 8) {
-                editorProofPanel
-                exportStatusPanel
-                deliveryReadinessPanel
-                agentAccessPanel
-                mediaReadinessPanel
-                proxyJobPanel
-                proxyIssuePanel
-                selectedDecisionPanel
-                externalMediaAccessPanel
-                sessionStatusPanel
-
-                HStack {
-                    Button("Load Demo Edit") {
-                        loadDemoEdit()
-                    }
-                    .buttonStyle(.bordered)
-                    .help("Developer fallback only. Real production work should load saved sessions or imported source lanes.")
-                    Spacer()
+        Group {
+            if isShowingProductionDetails {
+                DisclosureGroup(isExpanded: $isShowingProductionDetails) {
+                    productionDetailsExpandedContent
+                        .padding(.top, 8)
+                } label: {
+                    productionDetailsDrawerLabel
                 }
-            }
-            .padding(.top, 8)
-        } label: {
-            HStack(spacing: 8) {
-                Label("Session, selection, and media readiness", systemImage: "checklist.checked")
-                    .font(.caption)
-                    .fontWeight(.semibold)
-                Spacer()
-                let summary = mediaReadinessSummary()
-                Text(summary.isProductionReady ? "Proxy-safe" : "Needs attention")
-                    .font(.caption2)
-                    .fontWeight(.bold)
-                    .foregroundStyle(summary.isProductionReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background((summary.isProductionReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay).opacity(0.12))
-                    .clipShape(Capsule())
+            } else {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isShowingProductionDetails = true
+                    }
+                } label: {
+                    productionDetailsDrawerLabel
+                }
+                .buttonStyle(.plain)
             }
         }
         .padding(10)
         .background(Color.secondary.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private var productionDetailsExpandedContent: some View {
+        VStack(spacing: 8) {
+            editorProofPanel
+            exportStatusPanel
+            deliveryReadinessPanel
+            agentAccessPanel
+            mediaReadinessPanel
+            proxyJobPanel
+            proxyIssuePanel
+            selectedDecisionPanel
+            externalMediaAccessPanel
+            sessionStatusPanel
+
+            HStack {
+                Button("Load Demo Edit") {
+                    loadDemoEdit()
+                }
+                .buttonStyle(.bordered)
+                .help("Developer fallback only. Real production work should load saved sessions or imported source lanes.")
+                Spacer()
+            }
+        }
+    }
+
+    private var productionDetailsDrawerLabel: some View {
+        HStack(spacing: 8) {
+            Label("Session, selection, and media readiness", systemImage: "checklist.checked")
+                .font(.caption)
+                .fontWeight(.semibold)
+            Spacer()
+            let summary = mediaReadinessSummary()
+            Text(summary.isProductionReady ? "Proxy-safe" : "Needs attention")
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(summary.isProductionReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
+                .background((summary.isProductionReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay).opacity(0.12))
+                .clipShape(Capsule())
+        }
     }
 
     private var exportStatusChip: some View {
@@ -5820,10 +5951,10 @@ struct WorkspaceView: View {
             "truth": "Delivery path reports artifact readiness, approval intent, posting state, and publication proof separately. Preparing artifacts does not claim publication.",
             "activeSequenceLoaded": sequence != nil,
             "sequence": [
-                "title": sequence?.title ?? "",
-                "durationSeconds": sequence?.duration ?? 0,
-                "laneCount": sequence?.lanes.count ?? 0,
-                "shortRecipeCount": sequence?.shortClipQueue.count ?? 0
+                "title": qStudioOptionalString(sequence?.title),
+                "durationSeconds": qStudioOptionalDouble(sequence?.duration),
+                "laneCount": qStudioOptionalInt(sequence?.lanes.count),
+                "shortRecipeCount": qStudioOptionalInt(sequence?.shortClipQueue.count)
             ],
             "outputs": publishDeliveryPathPayload(sequence: sequence, records: records),
             "safeAgentActions": [
@@ -6291,8 +6422,8 @@ struct WorkspaceView: View {
             "truth": "Destination matrix reports artifact, ledger, and proof status per platform. It does not perform provider uploads.",
             "sequence": [
                 "loaded": sequenceLoaded,
-                "title": sequence?.title ?? "",
-                "durationSeconds": sequence?.duration ?? 0
+                "title": qStudioOptionalString(sequence?.title),
+                "durationSeconds": qStudioOptionalDouble(sequence?.duration)
             ],
             "destinations": destinations
         ]
@@ -6325,9 +6456,9 @@ struct WorkspaceView: View {
             "approvalRule": "A human reviews artifacts, copy, destination choices, and platform-specific risks before any provider action.",
             "sequence": [
                 "loaded": sequenceLoaded,
-                "title": sequence?.title ?? "",
-                "durationSeconds": sequence?.duration ?? 0,
-                "shortRecipeCount": sequence?.shortClipQueue.count ?? 0
+                "title": qStudioOptionalString(sequence?.title),
+                "durationSeconds": qStudioOptionalDouble(sequence?.duration),
+                "shortRecipeCount": qStudioOptionalInt(sequence?.shortClipQueue.count)
             ],
             "approvalSummary": [
                 "destinationCount": destinations.count,
@@ -6386,10 +6517,10 @@ struct WorkspaceView: View {
             ],
             "sequence": [
                 "loaded": sequence != nil,
-                "title": sequence?.title ?? "",
-                "durationSeconds": sequence?.duration ?? 0,
-                "wholeSyncedLaneCount": sequence?.lanes.count ?? 0,
-                "shortRecipeCount": sequence?.shortClipQueue.count ?? 0
+                "title": qStudioOptionalString(sequence?.title),
+                "durationSeconds": qStudioOptionalDouble(sequence?.duration),
+                "wholeSyncedLaneCount": qStudioOptionalInt(sequence?.lanes.count),
+                "shortRecipeCount": qStudioOptionalInt(sequence?.shortClipQueue.count)
             ],
             "artifactFamilies": [
                 "episode16x9": [
@@ -6462,10 +6593,10 @@ struct WorkspaceView: View {
             ],
             "sequence": [
                 "loaded": sequence != nil,
-                "title": sequence?.title ?? "",
-                "durationSeconds": sequence?.duration ?? 0,
-                "wholeSyncedLaneCount": sequence?.lanes.count ?? 0,
-                "shortRecipeCount": sequence?.shortClipQueue.count ?? 0
+                "title": qStudioOptionalString(sequence?.title),
+                "durationSeconds": qStudioOptionalDouble(sequence?.duration),
+                "wholeSyncedLaneCount": qStudioOptionalInt(sequence?.lanes.count),
+                "shortRecipeCount": qStudioOptionalInt(sequence?.shortClipQueue.count)
             ],
             "selection": [
                 "selectedLaneId": selectedLaneId?.uuidString ?? "",
@@ -6628,10 +6759,10 @@ struct WorkspaceView: View {
             "truth": "Safe Ship actions can prepare, inspect, queue, copy, and list proof gaps. They do not claim publication without real receipts.",
             "sequence": [
                 "loaded": sequenceLoaded,
-                "title": sequence?.title ?? "",
-                "durationSeconds": sequence?.duration ?? 0,
-                "laneCount": sequence?.lanes.count ?? 0,
-                "shortRecipeCount": sequence?.shortClipQueue.count ?? 0
+                "title": qStudioOptionalString(sequence?.title),
+                "durationSeconds": qStudioOptionalDouble(sequence?.duration),
+                "laneCount": qStudioOptionalInt(sequence?.lanes.count),
+                "shortRecipeCount": qStudioOptionalInt(sequence?.shortClipQueue.count)
             ],
             "artifactFamilies": [
                 "wideEpisodeMasterPrepared": releasePrepared,
@@ -7314,7 +7445,9 @@ struct WorkspaceView: View {
             ),
             (
                 "Episode session",
-                sequenceLoaded ? "\(sequence?.title ?? "Loaded episode") · \(sequence?.lanes.count ?? 0) whole synced lanes · \(String(format: "%.1fs", sequence?.duration ?? 0))" : "Load Episode 1 or another real session before collaborator proof.",
+                sequenceLoaded
+                    ? "\(qStudioOptionalString(sequence?.title, fallback: "Loaded episode")) · \(qStudioOptionalInt(sequence?.lanes.count)) whole synced lanes · \(String(format: "%.1fs", qStudioOptionalDouble(sequence?.duration)))"
+                    : "Load Episode 1 or another real session before collaborator proof.",
                 sequenceLoaded ? "loaded" : "needed",
                 "timeline.selection",
                 sequenceLoaded ? QuipslyStudioTheme.creek : QuipslyStudioTheme.honey
@@ -8728,6 +8861,11 @@ struct WorkspaceView: View {
                 }
 
                 episodesShortsListenThroughBoardCard
+                shortReviewPriorityCard(queue: queue)
+                shortsReviewBriefBridgeCard()
+                shortsTranscriptConfidenceBridgeCard()
+                shortsRecipeRepairProofBridgeCard()
+                shortsRefinementQueueBridgeCard()
 
                 if let selectedShort = selectedShortClipValue() {
                     selectedShortEditorPanel(selectedShort)
@@ -8842,6 +8980,235 @@ struct WorkspaceView: View {
             .padding(12)
         }
         .accessibilityIdentifier("quipsly.workbench.shorts")
+    }
+
+    private func shortReviewPriorityCard(queue: [ShortClipCandidate]) -> some View {
+        let buckets = shortReviewPriorityBuckets(for: queue)
+        let topBucket = buckets.first
+
+        return VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Label("Review compass", systemImage: "sparkle.magnifyingglass")
+                    .font(.caption)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+
+                Spacer()
+
+                Text(queue.isEmpty ? "no recipes" : "\(queue.count) recipe\(queue.count == 1 ? "" : "s")")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.thinMaterial, in: Capsule())
+            }
+
+            Text("Quality passports sort shorts into human-friendly review buckets. Open the highest-value candidate, make it better, then keep the conveyor belt moving.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+
+            if let topBucket, let topClip = topBucket.nextClip {
+                Button {
+                    selectShortClipCandidate(topClip)
+                    lastMediaAction = "Opened \(topBucket.label): \(topClip.title). \(topBucket.nextAction)"
+                    updateAgentState()
+                } label: {
+                    HStack(alignment: .top, spacing: 9) {
+                        Image(systemName: "arrow.up.forward.circle.fill")
+                            .foregroundStyle(shortReviewPriorityTone(for: topBucket.id))
+                            .font(.title3)
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Next best review")
+                                .font(.caption2)
+                                .fontWeight(.heavy)
+                                .foregroundStyle(.secondary)
+                                .textCase(.uppercase)
+
+                            Text(topClip.title)
+                                .font(.caption)
+                                .fontWeight(.black)
+                                .foregroundStyle(.primary)
+                                .lineLimit(2)
+
+                            Text(topBucket.nextAction)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
+                        }
+
+                        Spacer(minLength: 4)
+
+                        shortQualityPill("Priority", "\(topBucket.priority)", shortReviewPriorityTone(for: topBucket.id))
+                    }
+                    .padding(10)
+                    .background(QuipslyStudioTheme.selectedRecipeGradient, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(shortReviewPriorityTone(for: topBucket.id).opacity(0.45), lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+                .help("Select the highest-priority short recipe without exporting or publishing anything.")
+            } else {
+                Text("No short recipes yet. Add one from a visible span, then this compass will show what needs a watch pass, repair recipe, caption/framing work, or export proof.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+
+            ForEach(buckets.prefix(5)) { bucket in
+                shortReviewPriorityBucketRow(bucket)
+            }
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.cardGradient, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(QuipslyStudioTheme.honey.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func shortsRefinementQueueBridgeCard() -> some View {
+        ShortsRefinementQueuePanel(
+            activeSessionName: normalizedActiveSessionName(),
+            onOpenPath: openQuipslyOSPath,
+            onCopyText: copyAgentWorkbenchText
+        )
+    }
+
+    private func shortsReviewBriefBridgeCard() -> some View {
+        ShortsReviewBriefPanel(
+            activeSessionName: normalizedActiveSessionName(),
+            onCopyText: copyAgentWorkbenchText
+        )
+    }
+
+    private func shortsTranscriptConfidenceBridgeCard() -> some View {
+        ShortsTranscriptConfidencePanel(
+            activeSessionName: normalizedActiveSessionName(),
+            onCopyText: copyAgentWorkbenchText
+        )
+    }
+
+    private func shortsRecipeRepairProofBridgeCard() -> some View {
+        ShortsRecipeRepairProofPanel(
+            activeSessionName: normalizedActiveSessionName(),
+            onSeek: { time in
+                playbackEngine.seek(to: time)
+                lastMediaAction = String(format: "Proof-watch short repair at %.2fs", time)
+                updateAgentState()
+            },
+            onOpenPath: openQuipslyOSPath,
+            onCopyText: copyAgentWorkbenchText
+        )
+    }
+
+    private func shortReviewPriorityBucketRow(_ bucket: ShortReviewPriorityBucket) -> some View {
+        let tone = shortReviewPriorityTone(for: bucket.id)
+
+        return Button {
+            if let clip = bucket.nextClip {
+                selectShortClipCandidate(clip)
+                lastMediaAction = "Opened \(bucket.label): \(clip.title). \(bucket.nextAction)"
+                updateAgentState()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(tone)
+                    .frame(width: 8, height: 8)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(bucket.label)
+                            .font(.caption)
+                            .fontWeight(.black)
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        Text("\(bucket.count)")
+                            .font(.caption2)
+                            .fontWeight(.heavy)
+                            .foregroundStyle(tone)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(tone.opacity(0.14), in: Capsule())
+                    }
+
+                    Text(bucket.explanation)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 6)
+
+                Image(systemName: bucket.nextClip == nil ? "checkmark.circle" : "chevron.right.circle")
+                    .font(.caption)
+                    .foregroundStyle(bucket.nextClip == nil ? QuipslyStudioTheme.moss : tone)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
+            .background(tone.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(bucket.nextClip == nil)
+        .help(bucket.nextClip == nil ? bucket.explanation : "Open the next \(bucket.label.lowercased()) short.")
+    }
+
+    private func shortReviewPriorityBuckets(for queue: [ShortClipCandidate]) -> [ShortReviewPriorityBucket] {
+        var grouped: [String: [(clip: ShortClipCandidate, brief: ShortCreatorQualityBrief)]] = [:]
+
+        for clip in queue {
+            let brief = shortCreatorQualityBrief(for: clip)
+            grouped[brief.reviewClass, default: []].append((clip, brief))
+        }
+
+        return grouped.map { reviewClass, values in
+            let sorted = values.sorted { lhs, rhs in
+                if lhs.brief.reviewPriority != rhs.brief.reviewPriority {
+                    return lhs.brief.reviewPriority > rhs.brief.reviewPriority
+                }
+                return lhs.clip.updatedAt > rhs.clip.updatedAt
+            }
+            let lead = sorted[0]
+            return ShortReviewPriorityBucket(
+                id: reviewClass,
+                label: lead.brief.reviewClassLabel,
+                explanation: lead.brief.reviewClassExplanation,
+                count: values.count,
+                priority: lead.brief.reviewPriority,
+                nextClip: lead.clip,
+                nextAction: lead.brief.nextReviewAction
+            )
+        }
+        .sorted { lhs, rhs in
+            if lhs.priority != rhs.priority {
+                return lhs.priority > rhs.priority
+            }
+            return lhs.count > rhs.count
+        }
+    }
+
+    private func shortReviewPriorityTone(for reviewClass: String) -> Color {
+        switch reviewClass {
+        case "ready_for_human_posting_review":
+            return QuipslyStudioTheme.moss
+        case "promising_review_candidate", "needs_export_proof":
+            return QuipslyStudioTheme.honey
+        case "cut_craft_review", "needs_refinement", "needs_watch_pass":
+            return QuipslyStudioTheme.creek
+        case "needs_caption_framing", "needs_platform_variants", "needs_hook":
+            return QuipslyStudioTheme.sage
+        case "repair_recipe_first", "too_long_for_first_test":
+            return QuipslyStudioTheme.clay
+        default:
+            return .secondary
+        }
     }
 
     private func shortPlatformStrip(queueCount: Int) -> some View {
@@ -9011,6 +9378,1562 @@ struct WorkspaceView: View {
         }
     }
 
+    @ViewBuilder
+    private var cutIntelligenceWorkbenchSidebar: some View {
+        if let sequence = projectStore.activeSequence {
+            let report = CutIntelligenceAnalyzer.analyze(
+                sequence: sequence,
+                playhead: playbackEngine.playhead,
+                cadenceMode: cutIntelligenceCadenceMode
+            )
+            let selectedIntent = selectedCutIntelligenceIntent(in: sequence)
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Label("Cut Intelligence", systemImage: "scissors")
+                            .font(.headline)
+                            .fontWeight(.black)
+                        Text("Assistant-editor notes for rhythm, covers, jump cuts, and why a decision should exist. Metadata only; whole sources stay intact.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    cutCadenceModePicker
+                    Episode4CutIntelligenceBoardView()
+                    cutIntelligenceSummaryCard(report)
+                    cutIntelligenceCraftCard(report.craftProfile)
+
+                    if let selectedIntent {
+                        selectedCutIntentCard(selectedIntent)
+                    } else {
+                        cutIntelligenceEmptyIntentCard
+                    }
+
+                    if !report.recipes.isEmpty {
+                        cutRecipeReviewQueueCard(report.recipes, sequence: sequence)
+                    }
+
+                    if !report.jumpCutRisks.isEmpty || !report.reactionOpportunities.isEmpty || !report.cadenceWarnings.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            cutSectionHeader("What feels risky", count: report.findings.count, tint: QuipslyStudioTheme.clay)
+                            ForEach(Array((report.jumpCutRisks + report.reactionOpportunities + report.cadenceWarnings).prefix(8))) { finding in
+                                cutFindingCard(finding, sequence: sequence)
+                            }
+                        }
+                    }
+
+                    VStack(alignment: .leading, spacing: 7) {
+                        cutSectionHeader("Next safe moves", count: report.nextActions.count, tint: QuipslyStudioTheme.moss)
+                        ForEach(Array(report.nextActions.enumerated()), id: \.offset) { index, action in
+                            HStack(alignment: .top, spacing: 7) {
+                                Text("\(index + 1)")
+                                    .font(.caption2)
+                                    .fontWeight(.black)
+                                    .foregroundStyle(QuipslyStudioTheme.night)
+                                    .frame(width: 17, height: 17)
+                                    .background(QuipslyStudioTheme.moss)
+                                    .clipShape(Circle())
+                                Text(action)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(10)
+                    .background(QuipslyStudioTheme.quietInsetGradient)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(QuipslyStudioTheme.moss.opacity(0.16), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 16)
+            }
+            .accessibilityIdentifier("quipsly.workbench.cutIntelligence")
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Cut Intelligence", systemImage: "scissors")
+                    .font(.headline)
+                    .fontWeight(.black)
+                Text("Load an episode session before Quipsly can explain cut rhythm.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(12)
+        }
+    }
+
+    private var cutCadenceModePicker: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Label("Cadence lens", systemImage: "metronome")
+                    .font(.caption)
+                    .fontWeight(.black)
+                Spacer()
+                Text("REPORT ONLY")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+            }
+
+            Picker("Cadence lens", selection: $cutIntelligenceCadenceMode) {
+                ForEach(CutIntelligenceMode.allCases, id: \.rawValue) { mode in
+                    Text(cutCadenceModeLabel(mode)).tag(mode)
+                }
+            }
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .onChange(of: cutIntelligenceCadenceMode) { _ in
+                lastMediaAction = "Changed Cut Intelligence cadence lens to \(cutCadenceModeLabel(cutIntelligenceCadenceMode))"
+                updateAgentState()
+            }
+
+            Text(cutCadenceModeHelp(cutIntelligenceCadenceMode))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.quietInsetGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(QuipslyStudioTheme.honey.opacity(0.16), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func cutIntelligenceSummaryCard(_ report: CutIntelligenceReport) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Text(report.status.replacingOccurrences(of: "-", with: " ").uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .tracking(0.8)
+                    .foregroundStyle(cutStatusColor(report.status))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.65)
+                Spacer(minLength: 6)
+                Text(report.cadenceMode.rawValue.replacingOccurrences(of: "-", with: " "))
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(QuipslyStudioTheme.honey.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            Text(report.summary.humanRhythmExplanation)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                cutMetricPill("cuts/min", String(format: "%.1f", report.summary.estimatedCutsPerMinute), QuipslyStudioTheme.creek)
+                cutMetricPill("jump risks", "\(report.summary.jumpCutRiskCount)", report.summary.jumpCutRiskCount == 0 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
+                cutMetricPill("reactions", "\(report.summary.reactionOpportunityCount)", QuipslyStudioTheme.honey)
+                cutMetricPill("cadence", report.summary.humanRhythmStatus, report.summary.cadenceWarningCount == 0 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
+            }
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.cardGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(QuipslyStudioTheme.honey.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func cutIntelligenceCraftCard(_ profile: CutIntelligenceCraftProfile) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(spacing: 8) {
+                Image(systemName: "ear.and.waveform")
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+                Text("Editorial craft stance")
+                    .font(.caption)
+                    .fontWeight(.black)
+                Spacer(minLength: 6)
+                Text(profile.transcriptCoverageStatus.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(profile.transcriptCoverageStatus == "strong" ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(QuipslyStudioTheme.creek.opacity(0.10))
+                    .clipShape(Capsule())
+            }
+
+            Text(profile.humanFlowStance)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                cutMetricPill("split edits", "\(profile.splitEditOpportunityCount)", QuipslyStudioTheme.creek)
+                cutMetricPill("cover needs", "\(profile.coverNeededCount)", profile.coverNeededCount == 0 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
+                cutMetricPill("pause review", "\(profile.pauseReviewCount)", profile.pauseReviewCount == 0 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                cutMetricPill("straight cuts", "\(profile.straightCutCount)", QuipslyStudioTheme.sage)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Branch advice")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                Text(profile.branchAdvice)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Shorts advice")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.moss)
+                Text(profile.shortsAdvice)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !profile.craftWarnings.isEmpty {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(profile.craftWarnings.prefix(3).enumerated()), id: \.offset) { _, warning in
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "leaf.fill")
+                                .font(.caption2)
+                                .foregroundStyle(QuipslyStudioTheme.clay)
+                            Text(warning)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+            }
+
+            if !profile.doNotCutSignals.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Protect these moments", systemImage: "pause.circle.fill")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(QuipslyStudioTheme.honey)
+                    ForEach(Array(profile.doNotCutSignals.prefix(3).enumerated()), id: \.offset) { _, signal in
+                        HStack(alignment: .top, spacing: 6) {
+                            Image(systemName: "hand.raised.fill")
+                                .font(.caption2)
+                                .foregroundStyle(QuipslyStudioTheme.honey)
+                            Text(signal)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .padding(8)
+                .background(QuipslyStudioTheme.honey.opacity(0.10))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            if !profile.pauseReviewSignals.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Pause review cues", systemImage: "ear.badge.waveform")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(QuipslyStudioTheme.moss)
+                    ForEach(Array(profile.pauseReviewSignals.prefix(4).enumerated()), id: \.offset) { _, signal in
+                        Text("• \(signal)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(8)
+                .background(QuipslyStudioTheme.moss.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+
+            if !profile.automationGuardrails.isEmpty {
+                VStack(alignment: .leading, spacing: 5) {
+                    Label("Agent editing boundaries", systemImage: "checklist.checked")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(QuipslyStudioTheme.creek)
+                    ForEach(Array(profile.automationGuardrails.prefix(3).enumerated()), id: \.offset) { _, guardrail in
+                        Text("• \(guardrail)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(8)
+                .background(QuipslyStudioTheme.creek.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            }
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.quietInsetGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(QuipslyStudioTheme.creek.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private enum CutRecipeReviewBucket: String, CaseIterable {
+        case coverOrHold
+        case splitByEar
+        case humanAir
+        case safePreview
+
+        var title: String {
+            switch self {
+            case .coverOrHold: return "Cover or hold first"
+            case .splitByEar: return "Preview split by ear"
+            case .humanAir: return "Listen for human air"
+            case .safePreview: return "Safe preview candidates"
+            }
+        }
+
+        var detail: String {
+            switch self {
+            case .coverOrHold:
+                return "Same-speaker jumps, high-risk cuts, or awkward visuals. Look for reaction, B-roll, or hold."
+            case .splitByEar:
+                return "J-cuts, L-cuts, and reaction covers that need rhythm listened through."
+            case .humanAir:
+                return "Pauses, breaths, laughs, and thinking time. Classify before tightening."
+            case .safePreview:
+                return "Lower-risk suggestions that still need a quick listen before Keep."
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .coverOrHold: return "bolt.trianglebadge.exclamationmark.fill"
+            case .splitByEar: return "ear.and.waveform"
+            case .humanAir: return "wind"
+            case .safePreview: return "checkmark.seal"
+            }
+        }
+
+        var tint: Color {
+            switch self {
+            case .coverOrHold: return QuipslyStudioTheme.clay
+            case .splitByEar: return QuipslyStudioTheme.creek
+            case .humanAir: return QuipslyStudioTheme.honey
+            case .safePreview: return QuipslyStudioTheme.moss
+            }
+        }
+    }
+
+    private func cutRecipeReviewBucket(for recipe: CutIntelligenceRecipe) -> CutRecipeReviewBucket {
+        switch recipe.reviewClass {
+        case "cover_or_hold_before_tightening":
+            return .coverOrHold
+        case "preview_split_edit_by_ear":
+            return .splitByEar
+        case "listen_for_human_air":
+            return .humanAir
+        default:
+            return .safePreview
+        }
+    }
+
+    private func cutRecipeTechniqueLabel(for recipe: CutIntelligenceRecipe) -> String {
+        recipe.recommendedTechnique.replacingOccurrences(of: "-", with: " ")
+    }
+
+    private func cutRecipeReviewQueueCard(_ recipes: [CutIntelligenceRecipe], sequence: MediaSequence) -> some View {
+        let buckets = CutRecipeReviewBucket.allCases
+        let counts = Dictionary(grouping: recipes, by: { cutRecipeReviewBucket(for: $0) })
+            .mapValues { $0.count }
+        let topRecipe = recipes
+            .sorted { left, right in
+                cutRecipeReviewPriority(left) > cutRecipeReviewPriority(right)
+            }
+            .first
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "list.bullet.clipboard.fill")
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Cut review queue")
+                        .font(.caption)
+                        .fontWeight(.black)
+                    Text("Ranked review lanes for human-feeling edits. Cue, listen, then attach intent; no source media changes.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                Text("\(recipes.count)")
+                    .font(.caption2.monospacedDigit())
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(QuipslyStudioTheme.honey.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            if let topRecipe {
+                cutRecipeQueueTopCard(topRecipe, sequence: sequence)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                ForEach(buckets, id: \.rawValue) { bucket in
+                    cutRecipeBucketPill(bucket, count: counts[bucket] ?? 0)
+                }
+            }
+
+            ForEach(buckets, id: \.rawValue) { bucket in
+                let bucketRecipes = recipes
+                    .filter { cutRecipeReviewBucket(for: $0) == bucket }
+                    .sorted { left, right in
+                        cutRecipeReviewPriority(left) > cutRecipeReviewPriority(right)
+                    }
+
+                if !bucketRecipes.isEmpty {
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 7) {
+                            Text(bucket.detail)
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            ForEach(Array(bucketRecipes.prefix(4))) { recipe in
+                                cutRecipeQueueRow(recipe, bucket: bucket, sequence: sequence)
+                            }
+
+                            if bucketRecipes.count > 4 {
+                                Text("+ \(bucketRecipes.count - 4) more in this review lane. Use the agent queue command for the full ranked list.")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(.top, 6)
+                    } label: {
+                        HStack(spacing: 7) {
+                            Image(systemName: bucket.icon)
+                                .foregroundStyle(bucket.tint)
+                            Text(bucket.title)
+                                .font(.caption)
+                                .fontWeight(.black)
+                            Spacer()
+                            Text("\(bucketRecipes.count)")
+                                .font(.caption2.monospacedDigit())
+                                .fontWeight(.black)
+                                .foregroundStyle(bucket.tint)
+                        }
+                    }
+                    .tint(bucket.tint)
+                    .padding(8)
+                    .background(bucket.tint.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+            }
+
+            Button {
+                copyAgentWorkbenchText("./script/agentctl.sh cut-recipe-queue any 12", note: "Copied Cut Intelligence queue command")
+            } label: {
+                Label("Copy agent queue command", systemImage: "terminal")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Copy the read-only queue command Codex can use to inspect ranked cut-review work.")
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.recipeCardGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(QuipslyStudioTheme.honey.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("quipsly.cutIntelligence.reviewQueue")
+        .accessibilityLabel("Cut Intelligence review queue. Recipes are grouped by editorial review need and remain metadata-only.")
+    }
+
+    private func cutRecipeReviewPriority(_ recipe: CutIntelligenceRecipe) -> Int {
+        recipe.reviewPriority
+    }
+
+    private func cutRecipeBucketPill(_ bucket: CutRecipeReviewBucket, count: Int) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: 5) {
+                Image(systemName: bucket.icon)
+                    .font(.caption2)
+                Text(bucket.title)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.70)
+            }
+            .foregroundStyle(bucket.tint)
+
+            Text("\(count) \(count == 1 ? "recipe" : "recipes")")
+                .font(.caption2.monospacedDigit())
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(7)
+        .background(bucket.tint.opacity(count == 0 ? 0.04 : 0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(bucket.tint.opacity(count == 0 ? 0.08 : 0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func cutRecipeQueueTopCard(_ recipe: CutIntelligenceRecipe, sequence: MediaSequence) -> some View {
+        let bucket = cutRecipeReviewBucket(for: recipe)
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 7) {
+                Label("Next best review", systemImage: "arrow.forward.circle.fill")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(bucket.tint)
+                Spacer()
+                Text(bucket.title.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(bucket.tint)
+                    .lineLimit(1)
+            }
+
+            cutRecipeQueueRow(recipe, bucket: bucket, sequence: sequence)
+        }
+        .padding(8)
+        .background(bucket.tint.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(bucket.tint.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func cutRecipeQueueRow(_ recipe: CutIntelligenceRecipe, bucket: CutRecipeReviewBucket, sequence: MediaSequence) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .top, spacing: 7) {
+                Image(systemName: bucket.icon)
+                    .font(.caption)
+                    .foregroundStyle(bucket.tint)
+                    .frame(width: 18)
+                    .padding(.top, 1)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(recipe.label)
+                        .font(.caption)
+                        .fontWeight(.black)
+                        .lineLimit(2)
+                    Text("\(cutTimeLabel(recipe.sequenceTime)) · \(cutRecipeTechniqueLabel(for: recipe)) · \(recipe.targetLaneName.isEmpty ? "nearest lane" : recipe.targetLaneName)")
+                        .font(.caption2)
+                        .foregroundStyle(bucket.tint)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 6)
+
+                Text("\(Int(recipe.intent.confidence * 100))%")
+                    .font(.caption2.monospacedDigit())
+                    .fontWeight(.black)
+                    .foregroundStyle(recipe.intent.confidence >= 0.75 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+            }
+
+            Text(recipe.intent.nextReviewAction.isEmpty ? recipe.explanation : recipe.intent.nextReviewAction)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                Button {
+                    cueCutIntelligenceTime(recipe.sequenceTime, sequence: sequence, label: recipe.label)
+                } label: {
+                    Label("Cue", systemImage: "scope")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Move the shared playhead to this recipe for review.")
+
+                Button {
+                    applyCutIntelligenceRecipeFromAgent(id: recipe.id, confirmed: true)
+                } label: {
+                    Label("Intent", systemImage: "tag.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(bucket.tint)
+                .help("Attach explainable metadata to the nearest SHOW/SKIP decision. This does not alter source media.")
+
+                Button {
+                    copyAgentWorkbenchText("./script/agentctl.sh cut-recipe-preview \(recipe.id)", note: "Copied Cut Intelligence preview command")
+                } label: {
+                    Image(systemName: "terminal")
+                        .frame(width: 24)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Copy the read-only recipe preview command for Codex.")
+            }
+        }
+        .padding(8)
+        .background(.black.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .accessibilityLabel("Cut recipe \(recipe.label), \(bucket.title), \(cutTimeLabel(recipe.sequenceTime))")
+    }
+
+    private var cutIntelligenceEmptyIntentCard: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 7) {
+                Image(systemName: "target")
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+                Text("Select a decision")
+                    .font(.caption)
+                    .fontWeight(.black)
+                Spacer()
+                Text("NO INTENT YET")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+            }
+            Text("Cue or select a SHOW/SKIP decision, then apply a recipe to attach explainable metadata: cut style, audio timing, cover strategy, rhythm note, and risk.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.quietInsetGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(QuipslyStudioTheme.creek.opacity(0.16), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func selectedCutIntentCard(_ intent: EditDecisionIntent) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 7) {
+                Image(systemName: "checkmark.seal.fill")
+                    .foregroundStyle(QuipslyStudioTheme.moss)
+                Text("Selected decision intent")
+                    .font(.caption)
+                    .fontWeight(.black)
+                Spacer()
+                Text(intent.status.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.moss)
+            }
+
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                cutMetricPill("style", intent.cutStyle, QuipslyStudioTheme.honey)
+                cutMetricPill("cover", intent.coverStrategy, QuipslyStudioTheme.creek)
+                cutMetricPill("audio lead", String(format: "%+.2fs", intent.audioLeadSeconds), QuipslyStudioTheme.lichen)
+                cutMetricPill("confidence", "\(Int(intent.confidence * 100))%", intent.confidence >= 0.75 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                cutMetricPill("risk", intent.risk, intent.risk == "high" ? QuipslyStudioTheme.clay : QuipslyStudioTheme.moss)
+            }
+
+            Text(intent.whyThisCutExists.isEmpty ? "This decision has metadata, but still needs a plain-English reason." : intent.whyThisCutExists)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !intent.tradeoffExplanation.isEmpty {
+                Text(intent.tradeoffExplanation)
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if !intent.humanRhythmNote.isEmpty {
+                Text(intent.humanRhythmNote)
+                    .font(.caption2)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            cutCraftReviewChecklist(for: intent)
+            splitEditRecommendationCard(for: intent)
+            decisionReviewEvidenceCard(for: intent)
+            selectedDecisionRevisionLedgerCard(for: intent)
+            selectedDecisionReviewControls(currentStatus: intent.status)
+
+            if !intent.revisionLedger.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Structured review trail: \(intent.revisionLedger.count) event\(intent.revisionLedger.count == 1 ? "" : "s")")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(QuipslyStudioTheme.creek)
+                    Text(selectedDecisionRevisionTrailDetail(for: intent))
+                        .font(.caption2)
+                        .foregroundStyle(QuipslyStudioTheme.sage)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            } else if let latestRevision = intent.revisionHistory.last, !latestRevision.isEmpty {
+                Text("Legacy revision: \(latestRevision)")
+                    .font(.caption2)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let latestNote = intent.humanAgentNotes.last, !latestNote.isEmpty {
+                Text("Note: \(latestNote)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.selectedRecipeGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(QuipslyStudioTheme.moss.opacity(0.20), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func cutCraftReviewChecklist(for intent: EditDecisionIntent) -> some View {
+        let hasSplitEditTiming = abs(intent.audioLeadSeconds) > 0.03 || abs(intent.audioTailSeconds) > 0.03
+        let hasCover = intent.coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "none"
+        let confidenceLabel = intent.confidence >= 0.75
+            ? "Strong candidate"
+            : (intent.confidence >= 0.50 ? "Needs listening pass" : "Low-confidence review")
+        let confidenceDetail = intent.confidence >= 0.75
+            ? "Still approve by ear; confidence is triage, not permission."
+            : "Do not let metadata pretend this is done. Listen for cadence, reaction, and awkward jumps."
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Cut craft checklist")
+                .font(.caption2)
+                .fontWeight(.black)
+                .foregroundStyle(QuipslyStudioTheme.sage)
+                .textCase(.uppercase)
+
+            cutCraftReviewRow(
+                icon: "waveform",
+                title: "Human rhythm",
+                detail: intent.humanRhythmNote.isEmpty
+                    ? "No cadence note yet. Listen for breath, laugh, hesitation, and whether the pause is doing useful work."
+                    : intent.humanRhythmNote,
+                tint: QuipslyStudioTheme.honey
+            )
+
+            cutCraftReviewRow(
+                icon: "ear.and.waveform",
+                title: "Preserve human air",
+                detail: "Before tightening, ask what this breath, laugh, pause, or awkward warmth is doing. If it carries meaning, shape it gently instead of deleting it.",
+                tint: QuipslyStudioTheme.clay
+            )
+
+            cutCraftReviewRow(
+                icon: "clock.arrow.circlepath",
+                title: "Review trail",
+                detail: selectedDecisionRevisionTrailDetail(for: intent),
+                tint: QuipslyStudioTheme.creek
+            )
+
+            cutCraftReviewRow(
+                icon: hasSplitEditTiming ? "arrow.left.and.right" : "arrow.triangle.branch",
+                title: hasSplitEditTiming ? "Split-edit timing" : "Straight timing",
+                detail: hasSplitEditTiming
+                    ? String(format: "Lead %+.2fs, tail %+.2fs. Review for J/L-cut smoothness without making the exchange feel fake.", intent.audioLeadSeconds, intent.audioTailSeconds)
+                    : "No J/L timing is marked. If the visual switch feels stiff, consider a small audio lead/tail instead of chopping harder.",
+                tint: QuipslyStudioTheme.lichen
+            )
+
+            cutCraftReviewRow(
+                icon: hasCover ? "rectangle.on.rectangle.angled" : "eye.slash",
+                title: hasCover ? "Cover strategy" : "No cover yet",
+                detail: hasCover
+                    ? "Cover: \(intent.coverStrategy). \(intent.reactionCoverLaneName.isEmpty ? "Check whether it clarifies the moment." : "Candidate lane: \(intent.reactionCoverLaneName).")"
+                    : "If this is a same-speaker jump, look for reaction, reframing, b-roll, or let the jump stand if it feels honest.",
+                tint: QuipslyStudioTheme.creek
+            )
+
+            cutCraftReviewRow(
+                icon: "scale.3d",
+                title: confidenceLabel,
+                detail: confidenceDetail,
+                tint: intent.confidence >= 0.75 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay
+            )
+        }
+        .padding(8)
+        .background(.black.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .accessibilityLabel("Cut craft checklist")
+    }
+
+    private func splitEditRecommendationCard(for intent: EditDecisionIntent) -> some View {
+        let recommendation = splitEditRecommendationSummary(for: intent)
+
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: recommendation.icon)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(recommendation.tint)
+                Text("Suggested technique")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+                    .textCase(.uppercase)
+                Spacer()
+                Text(recommendation.technique.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(recommendation.tint)
+                    .lineLimit(1)
+            }
+
+            cutCraftReviewRow(
+                icon: "clock.arrow.circlepath",
+                title: "Timing intent",
+                detail: recommendation.timingIntent,
+                tint: QuipslyStudioTheme.lichen
+            )
+
+            cutCraftReviewRow(
+                icon: "eye",
+                title: "Visual treatment",
+                detail: recommendation.visualTreatment,
+                tint: QuipslyStudioTheme.creek
+            )
+
+            cutCraftReviewRow(
+                icon: "waveform",
+                title: "Audio treatment",
+                detail: recommendation.audioTreatment,
+                tint: QuipslyStudioTheme.honey
+            )
+
+            cutCraftReviewRow(
+                icon: "questionmark.bubble",
+                title: "Listen for this",
+                detail: recommendation.reviewQuestion,
+                tint: QuipslyStudioTheme.moss
+            )
+
+            cutCraftReviewRow(
+                icon: "hand.raised",
+                title: "Do not automate",
+                detail: recommendation.doNotAutomate,
+                tint: QuipslyStudioTheme.clay
+            )
+        }
+        .padding(8)
+        .background(recommendation.tint.opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(recommendation.tint.opacity(0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .accessibilityLabel("Suggested split edit technique \(recommendation.technique)")
+    }
+
+    private func splitEditRecommendationSummary(for intent: EditDecisionIntent) -> (
+        technique: String,
+        icon: String,
+        tint: Color,
+        timingIntent: String,
+        visualTreatment: String,
+        audioTreatment: String,
+        reviewQuestion: String,
+        doNotAutomate: String
+    ) {
+        let normalizedCutStyle = intent.cutStyle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedCoverStrategy = intent.coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let hasCoverLane = !intent.reactionCoverLaneName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+
+        if normalizedCutStyle.contains("j-cut") || intent.audioLeadSeconds > 0.03 {
+            return (
+                technique: "J-cut",
+                icon: "arrowshape.turn.up.right",
+                tint: QuipslyStudioTheme.creek,
+                timingIntent: "Let the next speaker's audio lead the visual cut by a small amount.",
+                visualTreatment: "Keep the visual change at the decision boundary unless the reaction reads better slightly later.",
+                audioTreatment: String(format: "Try next-speaker audio lead around %.2fs; keep it subtle.", max(0.12, abs(intent.audioLeadSeconds))),
+                reviewQuestion: "Does the reply gain momentum, or does it feel like the next speaker is stepping on the previous thought?",
+                doNotAutomate: "Do not increase the lead just to remove silence; protect interruption timing and emotional beats."
+            )
+        }
+
+        if normalizedCutStyle.contains("l-cut") || intent.audioTailSeconds > 0.03 {
+            return (
+                technique: "L-cut",
+                icon: "arrowshape.turn.up.left",
+                tint: QuipslyStudioTheme.lichen,
+                timingIntent: "Let the previous speaker's audio tail continue under the next visual source.",
+                visualTreatment: hasCoverLane ? "Use \(intent.reactionCoverLaneName) only while it clarifies the moment." : "Try a reaction or alternate source while the prior thought lands.",
+                audioTreatment: String(format: "Try previous-speaker audio tail around %.2fs; review by ear.", max(0.18, abs(intent.audioTailSeconds))),
+                reviewQuestion: "Does the audio tail preserve warmth and thought, or does it hide a timing problem too neatly?",
+                doNotAutomate: "Do not smooth every boundary; some straight cuts and pauses should stay honest."
+            )
+        }
+
+        if normalizedCoverStrategy.contains("reaction") {
+            return (
+                technique: "Reaction cover",
+                icon: "person.2.wave.2",
+                tint: QuipslyStudioTheme.moss,
+                timingIntent: "Hold the conversation timing while covering a visual jump with a reaction or listening shot.",
+                visualTreatment: hasCoverLane ? "Try \(intent.reactionCoverLaneName) as the cover source." : "Find the best listening/reaction source at this sequence time.",
+                audioTreatment: "Keep source audio continuous unless a tiny J/L offset makes the exchange feel more natural.",
+                reviewQuestion: "Does the reaction add human context, or is it only hiding a cut?",
+                doNotAutomate: "Do not use a reaction cover if it distracts from the speaker or feels emotionally false."
+            )
+        }
+
+        if normalizedCoverStrategy.contains("b-roll") || normalizedCoverStrategy.contains("clip") || normalizedCutStyle.contains("b-roll") {
+            return (
+                technique: "B-roll cover",
+                icon: "film.stack",
+                tint: QuipslyStudioTheme.honey,
+                timingIntent: "Use a relevant clip or B-roll span as reversible visual cover while preserving the dialogue spine.",
+                visualTreatment: hasCoverLane ? "Try \(intent.reactionCoverLaneName) only if it supports the spoken point." : "Choose a source clip that clarifies the sentence being spoken.",
+                audioTreatment: "Keep the podcast dialogue as the spine unless the inserted clip's audio is explicitly part of the story.",
+                reviewQuestion: "Does this insert teach, clarify, or delight, or is it just busy wallpaper?",
+                doNotAutomate: "Do not insert clips simply because a cut is awkward; the clip must earn its place."
+            )
+        }
+
+        if normalizedCutStyle.contains("pause") || normalizedCutStyle.contains("over-tightened") || normalizedCutStyle.contains("cadence") {
+            return (
+                technique: "Preserve air",
+                icon: "wind",
+                tint: QuipslyStudioTheme.clay,
+                timingIntent: "Classify the pause before deleting it.",
+                visualTreatment: "Leave the visual source stable unless a reaction or reframe helps the pause read as intentional.",
+                audioTreatment: "Preserve breath, laugh, thinking, comic timing, or emotional reset when it carries meaning.",
+                reviewQuestion: "Is this dead air, or is it doing social, comic, or emotional work?",
+                doNotAutomate: "Do not treat silence as waste until transcript, listening, and reaction context agree."
+            )
+        }
+
+        return (
+            technique: "Straight cut",
+            icon: "scissors",
+            tint: QuipslyStudioTheme.sage,
+            timingIntent: "Start with a straight cut and only add split timing if the boundary feels stiff.",
+            visualTreatment: "Use the selected source decision as-is unless the monitor wall reveals a better reaction.",
+            audioTreatment: "Keep audio aligned unless a small lead/tail improves human flow.",
+            reviewQuestion: "Does the boundary disappear, or does it need a tiny timing or cover adjustment?",
+            doNotAutomate: "Do not decorate clean cuts; invisible is often better than clever."
+        )
+    }
+
+    private func selectedDecisionReviewControls(currentStatus: String) -> some View {
+        let normalizedCurrent = normalizedDecisionReviewStatus(currentStatus)
+        let reviewStates: [(status: String, label: String, icon: String, note: String, tint: Color)] = [
+            ("needs-listen", "Listen", "headphones", "Marked for a listening pass before this cut becomes training-quality evidence.", QuipslyStudioTheme.honey),
+            ("refine", "Refine", "slider.horizontal.3", "Marked for timing, cover, or cadence refinement.", QuipslyStudioTheme.creek),
+            ("keep", "Keep", "checkmark.seal", "Marked as keep-for-now after review; not publication approval.", QuipslyStudioTheme.moss),
+            ("hold", "Hold", "hand.raised", "Held because the edit choice needs human context or better source confidence.", QuipslyStudioTheme.clay)
+        ]
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "person.crop.circle.badge.checkmark")
+                    .foregroundStyle(QuipslyStudioTheme.lichen)
+                Text("Review state")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+                    .textCase(.uppercase)
+                Spacer()
+                Text(normalizedCurrent.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(reviewTint(forDecisionStatus: normalizedCurrent))
+            }
+
+            HStack(spacing: 6) {
+                ForEach(reviewStates.indices, id: \.self) { index in
+                    let option = reviewStates[index]
+                    Button {
+                        setSelectedDecisionIntentStatus(
+                            status: option.status,
+                            actor: "Human",
+                            actorType: "human",
+                            note: option.note
+                        )
+                    } label: {
+                        Label(option.label, systemImage: option.icon)
+                            .font(.caption2)
+                            .fontWeight(.black)
+                            .lineLimit(1)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(normalizedCurrent == option.status ? option.tint : option.tint.opacity(0.38))
+                    .help("\(option.label): \(option.note) Source media remains untouched.")
+                }
+            }
+        }
+        .padding(8)
+        .background(.black.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+    }
+
+    private func decisionReviewEvidenceCard(for intent: EditDecisionIntent) -> some View {
+        let evidence = decisionReviewEvidenceLines(for: intent)
+        let nextAction = decisionNextReviewAction(for: intent)
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "list.bullet.clipboard")
+                    .font(.caption2)
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+                Text("Review evidence")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+                    .textCase(.uppercase)
+                Spacer()
+                Text(evidence.isEmpty ? "NEEDS PROOF" : "\(evidence.count) ITEM\(evidence.count == 1 ? "" : "S")")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(evidence.isEmpty ? QuipslyStudioTheme.clay : QuipslyStudioTheme.moss)
+            }
+
+            if evidence.isEmpty {
+                cutCraftReviewRow(
+                    icon: "ear.badge.exclamationmark",
+                    title: "No concrete evidence yet",
+                    detail: "Listen to this boundary before treating it as approved, training-quality, or export-safe.",
+                    tint: QuipslyStudioTheme.clay
+                )
+            } else {
+                ForEach(Array(evidence.prefix(4).enumerated()), id: \.offset) { _, line in
+                    cutCraftReviewRow(
+                        icon: "checkmark.circle",
+                        title: "Evidence",
+                        detail: line,
+                        tint: QuipslyStudioTheme.moss
+                    )
+                }
+            }
+
+            cutCraftReviewRow(
+                icon: "arrow.right.circle",
+                title: "Next safe action",
+                detail: nextAction,
+                tint: QuipslyStudioTheme.honey
+            )
+        }
+        .padding(8)
+        .background(.black.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .accessibilityLabel("Decision review evidence")
+    }
+
+    private func selectedDecisionRevisionLedgerCard(for intent: EditDecisionIntent) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: "clock.badge.checkmark")
+                    .font(.caption2)
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+                Text("Review trail")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+                    .textCase(.uppercase)
+                Spacer()
+                Text("\(intent.revisionLedger.count) EVENT\(intent.revisionLedger.count == 1 ? "" : "S")")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(intent.revisionLedger.isEmpty ? QuipslyStudioTheme.clay : QuipslyStudioTheme.moss)
+            }
+
+            if intent.revisionLedger.isEmpty {
+                cutCraftReviewRow(
+                    icon: "tray",
+                    title: "No structured reviews yet",
+                    detail: "Mark Keep, Refine, Hold, or add a note so this decision explains who touched it and why.",
+                    tint: QuipslyStudioTheme.clay
+                )
+            } else {
+                ForEach(Array(intent.revisionLedger.suffix(3).reversed())) { revision in
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: 6) {
+                            Text(revision.action.replacingOccurrences(of: "-", with: " "))
+                                .font(.caption2)
+                                .fontWeight(.black)
+                                .foregroundStyle(QuipslyStudioTheme.moss)
+                                .lineLimit(1)
+                            Spacer()
+                            Text(revision.actorType.uppercased())
+                                .font(.caption2)
+                                .fontWeight(.black)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Text("\(revision.actor): \(revision.note.isEmpty ? "No note recorded." : revision.note)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if !revision.previousStatus.isEmpty || !revision.nextStatus.isEmpty {
+                            Text("Status \(revision.previousStatus.isEmpty ? "new" : revision.previousStatus) -> \(revision.nextStatus.isEmpty ? "noted" : revision.nextStatus)")
+                                .font(.caption2)
+                                .foregroundStyle(QuipslyStudioTheme.honey)
+                        }
+                    }
+                    .padding(6)
+                    .background(.black.opacity(0.08))
+                    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                }
+            }
+        }
+        .padding(8)
+        .background(.black.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .accessibilityLabel("Decision review trail")
+    }
+
+    private func decisionReviewEvidenceLines(for intent: EditDecisionIntent) -> [String] {
+        var lines = intent.reviewEvidence
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+
+        let why = intent.whyThisCutExists.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !why.isEmpty {
+            lines.append("Reason: \(why)")
+        }
+
+        let tradeoff = intent.tradeoffExplanation.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !tradeoff.isEmpty {
+            lines.append("Tradeoff: \(tradeoff)")
+        }
+
+        let hasSplitEditTiming = abs(intent.audioLeadSeconds) > 0.03 || abs(intent.audioTailSeconds) > 0.03
+        if hasSplitEditTiming {
+            lines.append(String(format: "Split timing: lead %+.2fs, tail %+.2fs.", intent.audioLeadSeconds, intent.audioTailSeconds))
+        }
+
+        let cover = intent.coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cover.isEmpty && cover.lowercased() != "none" {
+            lines.append(intent.reactionCoverLaneName.isEmpty
+                ? "Cover: \(cover)."
+                : "Cover: \(cover) using \(intent.reactionCoverLaneName).")
+        }
+
+        if intent.confidence < 0.50 {
+            lines.append("Low confidence: this needs listen-through before training or export use.")
+        } else if intent.confidence < 0.75 {
+            lines.append("Medium confidence: review rhythm and visual jumpiness before Keep.")
+        }
+
+        var seen = Set<String>()
+        return lines.filter { line in
+            let key = line.lowercased()
+            guard !seen.contains(key) else { return false }
+            seen.insert(key)
+            return true
+        }
+    }
+
+    private func decisionNextReviewAction(for intent: EditDecisionIntent) -> String {
+        let stored = intent.nextReviewAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !stored.isEmpty {
+            return stored
+        }
+
+        if intent.confidence < 0.50 || intent.risk.lowercased().contains("high") {
+            return "Listen through this boundary, then mark Hold or Refine before using it as training-quality evidence."
+        }
+
+        let hasSplitEditTiming = abs(intent.audioLeadSeconds) > 0.03 || abs(intent.audioTailSeconds) > 0.03
+        let hasCover = intent.coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "none"
+        if hasSplitEditTiming || hasCover {
+            return "Review whether the cover or J/L timing feels human, then mark Keep, Refine, or Hold."
+        }
+
+        return "Listen for cadence and visual jumpiness, then mark Keep, Refine, or Hold."
+    }
+
+    private func cutCraftReviewRow(icon: String, title: String, detail: String, tint: Color) -> some View {
+        HStack(alignment: .top, spacing: 7) {
+            Image(systemName: icon)
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(tint)
+                .frame(width: 16)
+                .padding(.top, 1)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(.primary)
+                Text(detail)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private func cutRecipeCard(_ recipe: CutIntelligenceRecipe, sequence: MediaSequence) -> some View {
+        let tint = cutStatusColor(recipe.intent.risk)
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(recipe.label)
+                        .font(.caption)
+                        .fontWeight(.black)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    Text("\(cutTimeLabel(recipe.sequenceTime)) · \(recipe.intent.cutStyle) · \(recipe.targetLaneName.isEmpty ? "nearest lane" : recipe.targetLaneName)")
+                        .font(.caption2)
+                        .foregroundStyle(tint)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: 6)
+                Text(recipe.status.replacingOccurrences(of: "-", with: " ").uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(tint)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(tint.opacity(0.12))
+                    .clipShape(Capsule())
+            }
+
+            Text(recipe.explanation)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            splitEditRecommendationCard(for: recipe.intent)
+
+            HStack(spacing: 6) {
+                cutMetricPill("cover", recipe.intent.coverStrategy, QuipslyStudioTheme.creek)
+                cutMetricPill("lead", String(format: "%+.2fs", recipe.intent.audioLeadSeconds), QuipslyStudioTheme.lichen)
+            }
+
+            HStack(spacing: 7) {
+                Button {
+                    cueCutIntelligenceTime(recipe.sequenceTime, sequence: sequence, label: recipe.label)
+                } label: {
+                    Label("Cue", systemImage: "scope")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .help("Move the shared playhead to this cut recipe.")
+
+                Button {
+                    applyCutIntelligenceRecipeFromAgent(id: recipe.id, confirmed: true)
+                } label: {
+                    Label("Apply intent", systemImage: "tag.fill")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .help("Attach explainable metadata to the nearest SHOW/SKIP decision. This does not alter media.")
+            }
+
+            Button {
+                copyAgentWorkbenchText("./script/agentctl.sh cut-recipe-apply \(recipe.id) true", note: "Copied Cut Intelligence recipe command")
+            } label: {
+                Label("Copy agent command", systemImage: "doc.on.doc")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(tint.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(tint.opacity(0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func cutFindingCard(_ finding: CutIntelligenceFinding, sequence: MediaSequence) -> some View {
+        let tint = cutStatusColor(finding.severity)
+        return Button {
+            cueCutIntelligenceTime(finding.sequenceTime, sequence: sequence, label: finding.label)
+        } label: {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: cutFindingIcon(finding.kind))
+                        .foregroundStyle(tint)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(finding.label)
+                            .font(.caption)
+                            .fontWeight(.black)
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                        Text("\(cutTimeLabel(finding.sequenceTime)) · \(finding.cutStyle) · \(finding.targetLaneName.isEmpty ? finding.sourceLaneName : finding.targetLaneName)")
+                            .font(.caption2)
+                            .foregroundStyle(tint)
+                            .lineLimit(2)
+                    }
+                    Spacer(minLength: 0)
+                }
+                Text(finding.reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(finding.suggestedAction)
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(tint.opacity(0.07))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(tint.opacity(0.18), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help("Cue this Cut Intelligence finding on the shared playhead.")
+    }
+
+    private func cutSectionHeader(_ title: String, count: Int, tint: Color) -> some View {
+        HStack {
+            Text(title)
+                .font(.caption2)
+                .fontWeight(.black)
+                .tracking(0.9)
+                .foregroundStyle(tint)
+            Spacer()
+            Text("\(count)")
+                .font(.caption2)
+                .fontWeight(.black)
+                .foregroundStyle(tint)
+                .padding(.horizontal, 7)
+                .padding(.vertical, 2)
+                .background(tint.opacity(0.12))
+                .clipShape(Capsule())
+        }
+    }
+
+    private func cutMetricPill(_ label: String, _ value: String, _ tint: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label.uppercased())
+                .font(.caption2)
+                .fontWeight(.black)
+                .foregroundStyle(tint.opacity(0.88))
+                .lineLimit(1)
+            Text(value.replacingOccurrences(of: "-", with: " "))
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.65)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 6)
+        .background(tint.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 9)
+                .stroke(tint.opacity(0.13), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+    }
+
+    private func selectedCutIntelligenceIntent(in sequence: MediaSequence) -> EditDecisionIntent? {
+        guard let selectedLaneId,
+              let selectedTagId,
+              let lane = sequence.lanes.first(where: { $0.id == selectedLaneId }),
+              let tag = lane.tags.first(where: { $0.id == selectedTagId }) else {
+            return nil
+        }
+        return tag.editIntent
+    }
+
+    private func cueCutIntelligenceTime(_ time: Double, sequence: MediaSequence, label: String) {
+        let target = max(0, min(time, sequence.duration))
+        playbackEngine.seek(to: target)
+        lastMediaAction = "Cued Cut Intelligence: \(label) at \(cutTimeLabel(target))"
+        updateAgentState()
+    }
+
+    private func cutTimeLabel(_ seconds: Double) -> String {
+        let safe = max(0, seconds.isFinite ? seconds : 0)
+        let minutes = Int(safe) / 60
+        let secs = Int(safe) % 60
+        let tenths = Int((safe - floor(safe)) * 10)
+        return String(format: "%d:%02d.%d", minutes, secs, tenths)
+    }
+
+    private func cutCadenceModeLabel(_ mode: CutIntelligenceMode) -> String {
+        switch mode {
+        case .warmConversation:
+            return "Warm Conversation"
+        case .tightYouTube:
+            return "Tight YouTube"
+        case .shortsEnergy:
+            return "Shorts Energy"
+        case .documentaryThoughtful:
+            return "Documentary Thoughtful"
+        case .chaoticFunButLegible:
+            return "Chaotic Fun"
+        }
+    }
+
+    private func cutCadenceModeHelp(_ mode: CutIntelligenceMode) -> String {
+        switch mode {
+        case .warmConversation:
+            return "Default podcast lens. Protects breath, warmth, and conversational timing."
+        case .tightYouTube:
+            return "Allows denser edits for audience retention, but still flags robotic pacing."
+        case .shortsEnergy:
+            return "Judges cuts like a vertical clip: hook fast, move quickly, keep the payoff legible."
+        case .documentaryThoughtful:
+            return "Protects pauses, reflection, and emotional reset more aggressively."
+        case .chaoticFunButLegible:
+            return "Permits playful speed and surprise while still warning when the thread gets lost."
+        }
+    }
+
+    private func cutStatusColor(_ value: String) -> Color {
+        let normalized = value.lowercased()
+        if normalized.contains("high") || normalized.contains("risk") || normalized.contains("warning") || normalized.contains("robotic") {
+            return QuipslyStudioTheme.clay
+        }
+        if normalized.contains("medium") || normalized.contains("review") || normalized.contains("needed") || normalized.contains("suggest") {
+            return QuipslyStudioTheme.honey
+        }
+        if normalized.contains("ready") || normalized.contains("low") || normalized.contains("applied") || normalized.contains("natural") {
+            return QuipslyStudioTheme.moss
+        }
+        return QuipslyStudioTheme.creek
+    }
+
+    private func cutFindingIcon(_ kind: String) -> String {
+        switch kind {
+        case "jump-cut-risk":
+            return "bolt.trianglebadge.exclamationmark.fill"
+        case "reaction-opportunity":
+            return "eye.fill"
+        case "cadence-warning":
+            return "waveform.path.ecg"
+        default:
+            return "scissors"
+        }
+    }
+
+    private func branchShelfCard(sessionName: String) -> some View {
+        let branchMetadata = projectStore.activeSequence?.branchMetadata
+        let branchDisplayName = branchMetadata?.branchName ?? sessionName
+        let branchRole = branchMetadata?.branchRole ?? "session"
+        let branchStatus = branchMetadata?.branchStatus ?? "active"
+        let parentBranchLabel = branchMetadata?.parentSequenceId.map { String($0.uuidString.prefix(8)) } ?? "root"
+
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Current branch")
+                .font(.caption2)
+                .fontWeight(.black)
+                .tracking(1.2)
+                .foregroundStyle(QuipslyStudioTheme.creekMist)
+            Text(branchDisplayName)
+                .font(.caption.monospaced())
+                .foregroundStyle(QuipslyStudioTheme.lichen)
+                .lineLimit(2)
+                .textSelection(.enabled)
+            HStack(spacing: 6) {
+                Text(branchRole.uppercased())
+                Text(branchStatus.uppercased())
+                Text("parent \(parentBranchLabel)")
+            }
+            .font(.caption2.monospaced())
+            .foregroundStyle(QuipslyStudioTheme.honey)
+            Text("Branches are metadata-only decision layers over one synced source spine. Use them for Episode 4 clip-weave experiments, alternate cuts, and shorts without duplicating media.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            branchShelfRows()
+
+            Button {
+                createEditBranchFromAgent(values: [
+                    "name": "\(projectStore.activeSequence?.title ?? "Episode") Experiment",
+                    "role": "experiment",
+                    "purpose": "Human-created branch from the current visible edit for safe comparison.",
+                    "actor": "Human"
+                ])
+            } label: {
+                Label("Branch current edit", systemImage: "point.topleft.down.curvedto.point.bottomright.up")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.small)
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.cardGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(QuipslyStudioTheme.moss.opacity(0.16), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func branchShelfRows() -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Branch shelf")
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(.secondary)
+            ForEach(projectStore.project.sequences) { branchSequence in
+                let isActive = projectStore.activeSequenceId == branchSequence.id
+                Button {
+                    switchEditBranchFromAgent(values: ["id": branchSequence.id.uuidString])
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: isActive ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(isActive ? QuipslyStudioTheme.moss : .secondary)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(branchSequence.branchMetadata.branchName)
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .lineLimit(1)
+                            Text("\(branchSequence.branchMetadata.branchRole) • \(branchSequence.lanes.count) lanes • \(branchSequence.shortClipQueue.count) shorts")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(.vertical, 5)
+                .padding(.horizontal, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(isActive ? QuipslyStudioTheme.moss.opacity(0.12) : Color.white.opacity(0.03))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .stroke(isActive ? QuipslyStudioTheme.moss.opacity(0.24) : QuipslyStudioTheme.moss.opacity(0.10), lineWidth: 1)
+                )
+            }
+        }
+        .padding(8)
+        .background(QuipslyStudioTheme.quietInsetGradient)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
     private var agentReceiptWorkbenchSidebar: some View {
         let receipts = AgentProofReceipt.recent(limit: 10)
         let folderPath = AgentProofReceipt.defaultFolderURL.path
@@ -9076,29 +10999,7 @@ struct WorkspaceView: View {
                 )
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Current branch")
-                        .font(.caption2)
-                        .fontWeight(.black)
-                        .tracking(1.2)
-                        .foregroundStyle(QuipslyStudioTheme.creekMist)
-                    Text(sessionName)
-                        .font(.caption.monospaced())
-                        .foregroundStyle(QuipslyStudioTheme.lichen)
-                        .lineLimit(2)
-                        .textSelection(.enabled)
-                    Text("Proof receipts should normally run against Codex's original-edit branch, not the rescue/import baseline.")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(10)
-                .background(QuipslyStudioTheme.cardGradient)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .stroke(QuipslyStudioTheme.moss.opacity(0.16), lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                branchShelfCard(sessionName: sessionName)
 
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(alignment: .top, spacing: 8) {
@@ -11577,10 +13478,121 @@ struct WorkspaceView: View {
         .help("Short recipes are metadata over the long sequence timeline. Use Add visible decision for multi-segment social edits.")
     }
 
+    private func selectedShortStoryContractPayload(
+        for clip: ShortClipCandidate,
+        brief: ShortCreatorQualityBrief,
+        cutEvidence: ShortCreatorCutIntelligenceEvidence = .empty
+    ) -> [String: Any] {
+        let text = [
+            clip.title,
+            clip.hookText,
+            clip.captionDraft,
+            clip.primaryOverlayText,
+            clip.notes,
+            clip.publishNotes
+        ].joined(separator: " ").lowercased()
+        let hasHookPromise = !clip.hookText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasMiddleTurn = [
+            "turn",
+            "but ",
+            "because",
+            "realize",
+            "shift",
+            "then ",
+            "instead",
+            "however",
+            "lesson"
+        ].contains { text.contains($0) }
+        let hasPayoff = [
+            "payoff",
+            "lesson",
+            "result",
+            "so ",
+            "therefore",
+            "why",
+            "takeaway",
+            "ending",
+            "loop"
+        ].contains { text.contains($0) }
+        let hasSoundOffPlan = !clip.captionDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !clip.primaryOverlayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let hasCutEvidence = !cutEvidence.summary.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && cutEvidence.summary != "no-renderable-range"
+        let hasCutRisk = cutEvidence.hasRisk
+            || cutEvidence.overlappedFindingCount > 0
+            || cutEvidence.cadenceWarningCount > 0
+            || cutEvidence.jumpCutRiskCount > 0
+        let humanFlowReady = hasCutEvidence && !hasCutRisk
+        let humanFlowExplanation = humanFlowReady
+            ? "Cut evidence has no cadence or jump-cut risks; still listen once before Keep."
+            : (hasCutEvidence ? cutEvidence.nextAction : "Proof-listen for cadence, jump cuts, clipped breaths, missing reaction cover, and sync drift.")
+        let checks: [(String, Bool, String)] = [
+            ("openingPromise", hasHookPromise, hasHookPromise ? "Hook/promise is named." : "Name the first-second promise: why should a stranger stop?"),
+            ("middleTurn", hasMiddleTurn, hasMiddleTurn ? "A middle turn is hinted in metadata." : "Name what changes, escalates, or becomes clearer."),
+            ("payoff", hasPayoff, hasPayoff ? "A viewer reward or takeaway is hinted." : "Name the payoff or ending reward."),
+            ("soundOffPlan", hasSoundOffPlan, hasSoundOffPlan ? "Caption or overlay metadata exists." : "Add a face-safe caption or overlay plan."),
+            ("proof", brief.exportProofReady, brief.exportProofReady ? "Export proof exists." : "Attach or render proof before review is trusted."),
+            ("humanEditFlow", humanFlowReady, humanFlowExplanation)
+        ]
+        let readyCount = checks.filter { $0.1 }.count
+        let nextAction = checks.first(where: { !$0.1 })?.2
+            ?? "Watch the proof once as a viewer: hook, turn, payoff, crop, captions, ending."
+        return [
+            "label": readyCount >= 4 ? "story-contract-ready" : (readyCount >= 2 ? "story-contract-needs-review" : "story-contract-weak"),
+            "readyCount": readyCount,
+            "totalCount": checks.count,
+            "nextAction": nextAction,
+            "checks": checks.map { check in
+                [
+                    "id": check.0,
+                    "ready": check.1,
+                    "explanation": check.2
+                ]
+            },
+            "agentInstruction": "Verify the short has hook -> turn -> payoff, works muted, has proof evidence, and still feels human before Keep/Refine/Reject. Do not publish from this payload."
+        ]
+    }
+
     private func selectedShortCreatorQualityCard(_ clip: ShortClipCandidate) -> some View {
         let brief = shortCreatorQualityBrief(for: clip)
         let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
         let proofColor = brief.exportProofReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey
+        let cutEvidence = projectStore.activeSequence.map { shortCutIntelligenceEvidence(for: clip, in: $0) } ?? .empty
+        let cutEvidenceColor = cutEvidence.hasRisk
+            ? QuipslyStudioTheme.clay
+            : (cutEvidence.hasOpportunity ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss)
+        let reviewColor: Color
+        switch brief.reviewClass {
+        case "ready_for_human_posting_review":
+            reviewColor = QuipslyStudioTheme.moss
+        case "cut_craft_review", "needs_refinement", "repair_recipe_first":
+            reviewColor = QuipslyStudioTheme.clay
+        case "needs_export_proof", "needs_hook", "needs_caption_framing", "needs_platform_variants", "too_long_for_first_test":
+            reviewColor = QuipslyStudioTheme.honey
+        default:
+            reviewColor = QuipslyStudioTheme.creek
+        }
+        let creative = brief.creativeReadiness
+        let creativeColor = creative.score >= 80
+            ? QuipslyStudioTheme.moss
+            : (creative.score >= 65 ? QuipslyStudioTheme.honey : (creative.score >= 45 ? QuipslyStudioTheme.creek : QuipslyStudioTheme.clay))
+        let storyContract = selectedShortStoryContractPayload(for: clip, brief: brief, cutEvidence: cutEvidence)
+        let storyReadyCount = storyContract["readyCount"] as? Int ?? 0
+        let storyTotalCount = storyContract["totalCount"] as? Int ?? 5
+        let storyChecks = storyContract["checks"] as? [[String: Any]] ?? []
+        let storyCheckReady: (String) -> Bool = { id in
+            storyChecks.first { ($0["id"] as? String) == id }?["ready"] as? Bool ?? false
+        }
+        let hasHookPromise = storyCheckReady("openingPromise")
+        let hasMiddleTurn = storyCheckReady("middleTurn")
+        let hasPayoff = storyCheckReady("payoff")
+        let hasSoundOffPlan = storyCheckReady("soundOffPlan")
+        let hasHumanFlow = storyCheckReady("humanEditFlow")
+        let storyColor = storyReadyCount >= max(storyTotalCount - 1, 1)
+            ? QuipslyStudioTheme.moss
+            : (storyReadyCount >= max(storyTotalCount / 2, 2) ? QuipslyStudioTheme.honey : QuipslyStudioTheme.clay)
+        let storyNextAction = storyContract["nextAction"] as? String
+            ?? "Watch the proof once as a viewer: hook, turn, payoff, crop, captions, ending."
 
         return VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 7) {
@@ -11604,10 +13616,12 @@ struct WorkspaceView: View {
             HStack(spacing: 6) {
                 shortQualityPill("Score", "\(brief.score)/100", brief.score >= 82 ? QuipslyStudioTheme.moss : (brief.score >= 62 ? QuipslyStudioTheme.honey : QuipslyStudioTheme.clay))
                 shortQualityPill("Attention", "\(brief.attentionScore)/100", brief.attentionScore >= 84 ? QuipslyStudioTheme.moss : (brief.attentionScore >= 68 ? QuipslyStudioTheme.honey : QuipslyStudioTheme.clay))
+                shortQualityPill("Review", brief.reviewClassLabel, reviewColor)
                 shortQualityPill("Publish", brief.publishReadiness.label, brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
                 shortQualityPill("Primary", brief.primaryPlatform, QuipslyStudioTheme.creek)
                 shortQualityPill("Band", brief.durationBand, QuipslyStudioTheme.honey)
                 shortQualityPill("Proof", brief.exportProofLabel, proofColor)
+                shortQualityPill("Cuts", cutEvidence.summary, cutEvidenceColor)
             }
 
             VStack(alignment: .leading, spacing: 3) {
@@ -11619,6 +13633,11 @@ struct WorkspaceView: View {
                 Text(packetSummary.reason)
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Review: \(brief.reviewClassLabel) - \(brief.reviewClassExplanation)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(reviewColor)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(packetSummary.safeActionLabel)
                     .font(.caption2)
@@ -11643,6 +13662,238 @@ struct WorkspaceView: View {
             .padding(8)
             .background(QuipslyStudioTheme.creek.opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: creative.score >= 65 ? "sparkle.magnifyingglass" : "exclamationmark.bubble")
+                        .font(.caption)
+                        .foregroundStyle(creativeColor)
+                    shortEditorLabel("Creative readiness")
+                    Spacer()
+                    Text("\(creative.score)/100")
+                        .font(.caption2.monospacedDigit())
+                        .fontWeight(.black)
+                        .foregroundStyle(creativeColor)
+                }
+
+                Text(creative.label)
+                    .font(.caption)
+                    .fontWeight(.black)
+                    .foregroundStyle(creativeColor)
+                Text(creative.summary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Next: \(creative.nextAction)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 6) {
+                    shortQualityPill("Hook", creative.hookStatus, creative.hookStatus == "specific" ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    shortQualityPill("Pacing", creative.pacingStatus, creative.pacingStatus == "strong-feed-window" ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    shortQualityPill("Captions", creative.captionStatus, creative.captionStatus == "caption-and-overlay" ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    shortQualityPill("Frame", creative.framingStatus, creative.framingStatus == "review-evidence" ? QuipslyStudioTheme.moss : QuipslyStudioTheme.creek)
+                    shortQualityPill("Proof", creative.proofStatus, creative.proofStatus == "export-proof-exists" ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                }
+            }
+            .padding(8)
+            .background(creativeColor.opacity(0.08))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(creativeColor.opacity(0.18), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .help("Creative readiness checks hook, pacing, captions, framing, proof, and platform variants as metadata. It is not publication approval.")
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: storyReadyCount >= 4 ? "point.3.connected.trianglepath.dotted" : "map")
+                        .font(.caption)
+                        .foregroundStyle(storyColor)
+                    shortEditorLabel("Short story contract")
+                    Spacer()
+                    Text("\(storyReadyCount)/\(storyTotalCount)")
+                        .font(.caption2.monospacedDigit())
+                        .fontWeight(.black)
+                        .foregroundStyle(storyColor)
+                }
+
+                Text("A short should make a clean promise, turn somewhere, and reward the viewer without burying the edit in NLE logic.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text("Next: \(storyNextAction)")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(storyColor)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 6) {
+                    shortQualityPill("Promise", hasHookPromise ? "named" : "missing", hasHookPromise ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
+                    shortQualityPill("Turn", hasMiddleTurn ? "hinted" : "name it", hasMiddleTurn ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    shortQualityPill("Payoff", hasPayoff ? "hinted" : "name it", hasPayoff ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    shortQualityPill("Muted", hasSoundOffPlan ? "planned" : "missing", hasSoundOffPlan ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay)
+                    shortQualityPill("Proof", brief.exportProofReady ? "exists" : "needed", brief.exportProofReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    shortQualityPill("Flow", hasHumanFlow ? "human" : "listen", hasHumanFlow ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                }
+            }
+            .padding(8)
+            .background(storyColor.opacity(0.08))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(storyColor.opacity(0.18), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .help("This is a reviewer prompt, not an automated publication decision. It helps humans and agents check hook, turn, payoff, caption safety, and proof evidence.")
+
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Image(systemName: cutEvidence.hasRisk ? "exclamationmark.triangle.fill" : (cutEvidence.hasOpportunity ? "wand.and.stars" : "leaf.circle.fill"))
+                        .font(.caption)
+                        .foregroundStyle(cutEvidenceColor)
+                    shortEditorLabel("Cut craft for this short")
+                    Spacer()
+                    Text(cutEvidence.summary.replacingOccurrences(of: "-", with: " ").uppercased())
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(cutEvidenceColor)
+                }
+
+                Text(cutEvidence.nextAction)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 6) {
+                    Button {
+                        selectNextShortCutIntelligenceCandidate(mode: "risk")
+                    } label: {
+                        Label("Next risk", systemImage: "exclamationmark.triangle")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .help("Jump to the next queued short whose Cut Intelligence evidence overlaps cadence or jump-cut risk. This only changes focus/playhead.")
+
+                    Button {
+                        selectNextShortCutIntelligenceCandidate(mode: "opportunity")
+                    } label: {
+                        Label("Next opportunity", systemImage: "wand.and.stars")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .help("Jump to the next queued short with reaction-cover, J-cut, or L-cut opportunity evidence. This only changes focus/playhead.")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                HStack(spacing: 6) {
+                    Button {
+                        markSelectedShortEditFlowScan(
+                            concern: "true",
+                            note: "Cut craft concern from selected-short card: \(cutEvidence.summary). \(cutEvidence.nextAction)"
+                        )
+                    } label: {
+                        Label("Log concern", systemImage: "note.text.badge.plus")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .help("Record that this selected short needs cut-flow review. This appends metadata evidence only; it does not change the edit or approve/reject the short.")
+
+                    Button {
+                        markSelectedShortEditFlowScan(
+                            concern: "false",
+                            note: "Cut craft metadata scan from selected-short card: \(cutEvidence.summary). Still needs listen-through before Keep."
+                        )
+                    } label: {
+                        Label("Log scan OK", systemImage: "checkmark.seal")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .help("Record that the metadata-level cut scan looked clear. This is not a listen-through and not publishing approval.")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+
+                HStack(spacing: 6) {
+                    shortQualityPill("Overlap", "\(cutEvidence.overlappedFindingCount)", cutEvidenceColor)
+                    shortQualityPill("Cadence", "\(cutEvidence.cadenceWarningCount)", cutEvidence.cadenceWarningCount > 0 ? QuipslyStudioTheme.clay : QuipslyStudioTheme.moss)
+                    shortQualityPill("Jump", "\(cutEvidence.jumpCutRiskCount)", cutEvidence.jumpCutRiskCount > 0 ? QuipslyStudioTheme.clay : QuipslyStudioTheme.moss)
+                    shortQualityPill("Reaction", "\(cutEvidence.reactionOpportunityCount)", cutEvidence.reactionOpportunityCount > 0 ? QuipslyStudioTheme.honey : QuipslyStudioTheme.sage)
+                }
+
+                if !cutEvidence.nearestFindingLabels.isEmpty {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(cutEvidence.nearestFindingLabels.prefix(3).enumerated()), id: \.offset) { _, label in
+                            Text(label)
+                                .font(.caption2)
+                                .foregroundStyle(QuipslyStudioTheme.moonMilk.opacity(0.82))
+                                .lineLimit(2)
+                        }
+                    }
+                    .padding(7)
+                    .background(.white.opacity(0.045))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
+            }
+            .padding(8)
+            .background(cutEvidenceColor.opacity(0.08))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(cutEvidenceColor.opacity(0.18), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .help("This is selected-short overlap with the current Cut Intelligence report. It is contextual review evidence, not publication approval.")
+
+            let reviewTrail = shortReviewTrailRows(for: clip)
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Image(systemName: reviewTrail.isEmpty ? "leaf" : "list.bullet.clipboard.fill")
+                        .font(.caption)
+                        .foregroundStyle(reviewTrail.isEmpty ? QuipslyStudioTheme.sage : QuipslyStudioTheme.creek)
+                    shortEditorLabel("Review trail")
+                    Spacer()
+                    Text(reviewTrail.isEmpty ? "EMPTY" : "\(reviewTrail.count) NOTES")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(reviewTrail.isEmpty ? QuipslyStudioTheme.sage : QuipslyStudioTheme.creek)
+                }
+
+                if reviewTrail.isEmpty {
+                    Text("No listen-through, cut-flow, visual, or copy review has been logged yet. Use Log concern, Log scan OK, listen-through, and visual proof actions as the edit gets more real.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    ForEach(Array(reviewTrail.prefix(5).enumerated()), id: \.offset) { _, row in
+                        HStack(alignment: .top, spacing: 7) {
+                            Circle()
+                                .fill(shortReviewTrailToneColor(row.tone))
+                                .frame(width: 7, height: 7)
+                                .padding(.top, 4)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(row.label)
+                                    .font(.caption2)
+                                    .fontWeight(.black)
+                                    .foregroundStyle(shortReviewTrailToneColor(row.tone))
+                                    .lineLimit(1)
+                                Text(row.detail)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .padding(7)
+                        .background(shortReviewTrailToneColor(row.tone).opacity(0.07))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+            }
+            .padding(8)
+            .background(QuipslyStudioTheme.creek.opacity(0.07))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(QuipslyStudioTheme.creek.opacity(0.16), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .help("A structured readout of review evidence already stored in publishNotes. This keeps one truth while making the audit trail easier for humans and agents to use.")
 
             VStack(alignment: .leading, spacing: 4) {
                 shortEditorLabel("Publish readiness")
@@ -11675,21 +13926,25 @@ struct WorkspaceView: View {
             .background((brief.publishReadiness.canQueue ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay).opacity(0.08))
             .clipShape(RoundedRectangle(cornerRadius: 10))
 
+            shortPlatformVariantReadinessCard(brief)
+
             VStack(alignment: .leading, spacing: 5) {
-                shortEditorLabel("Attention signals")
-                ForEach(Array(brief.attentionSignals.prefix(3).enumerated()), id: \.offset) { _, signal in
+                shortEditorLabel("Quality dimensions")
+                ForEach(Array(brief.dimensions.sorted { lhs, rhs in
+                    lhs.score == rhs.score ? lhs.name < rhs.name : lhs.score < rhs.score
+                }.prefix(4).enumerated()), id: \.offset) { _, dimension in
                     HStack(alignment: .top, spacing: 7) {
-                        Text("\(signal.score)")
+                        Text("\(dimension.score)")
                             .font(.caption2)
                             .fontWeight(.black)
-                            .foregroundStyle(signal.score >= 84 ? QuipslyStudioTheme.moss : (signal.score >= 68 ? QuipslyStudioTheme.honey : QuipslyStudioTheme.clay))
+                            .foregroundStyle(dimension.score >= 84 ? QuipslyStudioTheme.moss : (dimension.score >= 68 ? QuipslyStudioTheme.honey : QuipslyStudioTheme.clay))
                             .frame(width: 30, alignment: .leading)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("\(signal.name): \(signal.label)")
+                            Text("\(dimension.name): \(dimension.label)")
                                 .font(.caption2)
                                 .fontWeight(.bold)
                                 .lineLimit(1)
-                            Text(signal.nextAction)
+                            Text(dimension.nextAction)
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -11807,12 +14062,14 @@ struct WorkspaceView: View {
             Button {
                 draftSelectedShortPlatformPackFromQualityBrief(clip)
             } label: {
-                Label("Draft platform pack", systemImage: "square.grid.2x2")
+                Label("Draft native variants", systemImage: "square.grid.2x2")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .help("Create or complete destination presets for the top platform fits. Existing title, caption, and hashtags are preserved.")
+            .help(brief.missingPlatformVariantTargets.isEmpty
+                ? "Review or complete native platform variants. Existing title, caption, hashtags, and notes are preserved."
+                : "Draft missing native variants for \(brief.missingPlatformVariantTargets.joined(separator: ", ")). Existing title, caption, hashtags, and notes are preserved.")
 
             Button {
                 copySelectedShortPlatformPackJSON(clip)
@@ -11902,19 +14159,222 @@ struct WorkspaceView: View {
         .help("Transparent social-packaging guidance for this selected short. It never publishes or edits source media by itself.")
     }
 
+    private func shortReviewTrailRows(for clip: ShortClipCandidate) -> [(label: String, detail: String, tone: String, source: String)] {
+        let eventRows = clip.reviewEvents.map { event -> (label: String, detail: String, tone: String, source: String) in
+            let status = event.status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? "draft"
+                : event.status.trimmingCharacters(in: .whitespacesAndNewlines)
+            let question = event.primaryQuestion.trimmingCharacters(in: .whitespacesAndNewlines)
+            let note = event.note.trimmingCharacters(in: .whitespacesAndNewlines)
+            let detailParts = [
+                event.reviewRead.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "" : "read: \(event.reviewRead)",
+                question.isEmpty ? "" : question,
+                note.isEmpty ? "" : note
+            ].filter { !$0.isEmpty }
+            let tone: String
+            switch status.lowercased() {
+            case "keep":
+                tone = "moss"
+            case "refine":
+                tone = "honey"
+            case "reject":
+                tone = "clay"
+            default:
+                tone = "sage"
+            }
+            return (
+                label: "Review \(status.uppercased())",
+                detail: detailParts.isEmpty ? "Structured review event recorded." : detailParts.joined(separator: " | "),
+                tone: tone,
+                source: "structured-review-event"
+            )
+        }
+
+        let noteRows = clip.publishNotes
+            .components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .reversed()
+            .compactMap { line -> (label: String, detail: String, tone: String, source: String)? in
+                let lower = line.lowercased()
+
+                func detail(after prefix: String) -> String {
+                    let trimmed = String(line.dropFirst(prefix.count))
+                        .trimmingCharacters(in: CharacterSet(charactersIn: ": "))
+                    return trimmed.isEmpty ? line : trimmed
+                }
+
+                if lower.hasPrefix("edit-flow-scan-concern") {
+                    return ("Cut concern", detail(after: "edit-flow-scan-concern"), "clay", "cut-intelligence")
+                }
+                if lower.hasPrefix("edit-flow-scan-ok") {
+                    return ("Cut scan OK", detail(after: "edit-flow-scan-ok"), "moss", "cut-intelligence")
+                }
+                if lower.hasPrefix("edit-flow-scan-note") {
+                    return ("Cut note", detail(after: "edit-flow-scan-note"), "honey", "cut-intelligence")
+                }
+                if lower.hasPrefix("listen-through-note") {
+                    return ("Listen note", detail(after: "listen-through-note"), "creek", "listen-through")
+                }
+                if lower.hasPrefix("listen-through") {
+                    return ("Listen-through", detail(after: "listen-through"), "moss", "listen-through")
+                }
+                if lower.hasPrefix("visual review contact sheet") {
+                    return ("Visual proof", detail(after: "visual review contact sheet"), "creek", "visual-review")
+                }
+                if lower.hasPrefix("visual review source derivative") {
+                    return ("Visual source", detail(after: "visual review source derivative"), "creek", "visual-review")
+                }
+                if lower.hasPrefix("visual review note") {
+                    return ("Visual note", detail(after: "visual review note"), "honey", "visual-review")
+                }
+                if lower.hasPrefix("visual review") {
+                    return ("Visual review", detail(after: "visual review"), "creek", "visual-review")
+                }
+                if lower.hasPrefix("caption-copy-needs-rewrite") {
+                    return ("Copy needs rewrite", detail(after: "caption-copy-needs-rewrite"), "clay", "caption-copy")
+                }
+                if lower.hasPrefix("caption-copy-ok") {
+                    return ("Copy reviewed", detail(after: "caption-copy-ok"), "moss", "caption-copy")
+                }
+                if lower.hasPrefix("caption-copy-review-note") {
+                    return ("Copy note", detail(after: "caption-copy-review-note"), "honey", "caption-copy")
+                }
+                if lower.hasPrefix("face-safe-top-canopy-burn-in-ok") {
+                    return ("Overlay approved", detail(after: "face-safe-top-canopy-burn-in-ok"), "moss", "overlay-policy")
+                }
+                if lower.hasPrefix("face-safe-burn-in-review-needed") {
+                    return ("Overlay review needed", detail(after: "face-safe-burn-in-review-needed"), "honey", "overlay-policy")
+                }
+                if lower.hasPrefix("burn-in-hold") {
+                    return ("Overlay held", detail(after: "burn-in-hold"), "honey", "overlay-policy")
+                }
+                if lower.hasPrefix("burn-in-review-note") {
+                    return ("Overlay note", detail(after: "burn-in-review-note"), "honey", "overlay-policy")
+                }
+                if lower.contains("review") || lower.contains("cut") || lower.contains("proof") {
+                    return ("Review note", line, "sage", "publish-notes")
+                }
+                return nil
+            }
+
+        return Array((eventRows + noteRows).prefix(12))
+    }
+
+    private func shortReviewTrailPayload(for clip: ShortClipCandidate) -> [[String: Any]] {
+        shortReviewTrailRows(for: clip).enumerated().map { index, row in
+            [
+                "index": index,
+                "label": row.label,
+                "detail": row.detail,
+                "tone": row.tone,
+                "source": row.source
+            ] as [String: Any]
+        }
+    }
+
+    private func shortReviewTrailToneColor(_ tone: String) -> Color {
+        switch tone {
+        case "clay":
+            return QuipslyStudioTheme.clay
+        case "honey":
+            return QuipslyStudioTheme.honey
+        case "moss":
+            return QuipslyStudioTheme.moss
+        case "creek":
+            return QuipslyStudioTheme.creek
+        default:
+            return QuipslyStudioTheme.sage
+        }
+    }
+
     private func shortCreatorQualityBrief(for clip: ShortClipCandidate) -> ShortCreatorQualityBrief {
-        let exportRanges = projectStore.activeSequence.map { shortClipExportRanges(for: clip, in: $0) } ?? []
+        let activeSequence = projectStore.activeSequence
+        let exportRanges = activeSequence.map { shortClipExportRanges(for: clip, in: $0) } ?? []
         let exportDuration = exportRanges.isEmpty ? clip.duration : exportRanges.reduce(0) { $0 + $1.duration }
         let exportPath = lastExportedShortPath(for: clip) ?? ""
         let exportExists = !exportPath.isEmpty && FileManager.default.fileExists(atPath: exportPath)
         let presets = clip.destinationPresets.isEmpty
             ? clip.destinations.map { ShortDestinationPreset(platform: $0, title: clip.title) }
             : clip.destinationPresets
+        let cutEvidence = activeSequence.map { shortCutIntelligenceEvidence(for: clip, in: $0) } ?? .empty
         return ShortCreatorQuality.makeBrief(
             for: clip,
             exportDuration: exportDuration,
             exportExists: exportExists,
-            presets: presets
+            presets: presets,
+            cutEvidence: cutEvidence
+        )
+    }
+
+    private func shortCutIntelligenceEvidence(
+        for clip: ShortClipCandidate,
+        in sequence: MediaSequence
+    ) -> ShortCreatorCutIntelligenceEvidence {
+        let ranges = shortClipExportRanges(for: clip, in: sequence)
+        guard !ranges.isEmpty else {
+            return ShortCreatorCutIntelligenceEvidence(
+                overlappedFindingCount: 0,
+                highSeverityCount: 0,
+                cadenceWarningCount: 0,
+                jumpCutRiskCount: 0,
+                reactionOpportunityCount: 0,
+                nearestFindingLabels: [],
+                summary: "no-renderable-range",
+                nextAction: "Repair the short recipe before judging cut craft."
+            )
+        }
+
+        let report = CutIntelligenceAnalyzer.analyze(
+            sequence: sequence,
+            cadenceMode: cutIntelligenceCadenceMode
+        )
+        let tolerance = 0.25
+        let findings = report.findings.filter { finding in
+            ranges.contains { range in
+                let start = range.start - tolerance
+                let end = range.start + range.duration + tolerance
+                return finding.sequenceTime >= start && finding.sequenceTime <= end
+            }
+        }
+        let highSeverityCount = findings.filter { $0.severity.lowercased() == "high" }.count
+        let cadenceWarningCount = findings.filter { $0.kind == "cadence-warning" }.count
+        let jumpCutRiskCount = findings.filter { $0.kind == "jump-cut-risk" || $0.cutStyle == "jump-cut-risk" }.count
+        let reactionOpportunityCount = findings.filter {
+            $0.kind == "reaction-opportunity"
+                || $0.cutStyle == "reaction-cover"
+                || $0.cutStyle == "l-cut-opportunity"
+                || $0.cutStyle == "j-cut-opportunity"
+        }.count
+        let labels = findings
+            .sorted { $0.sequenceTime < $1.sequenceTime }
+            .prefix(4)
+            .map { finding in
+                "\(cutTimeLabel(finding.sequenceTime)): \(finding.label)"
+            }
+
+        let summary: String
+        let nextAction: String
+        if findings.isEmpty {
+            summary = "clear"
+            nextAction = "No current Cut Intelligence warnings overlap this short. Still do one listen-through before Keep."
+        } else if cadenceWarningCount + jumpCutRiskCount > 0 {
+            summary = "risk-overlap"
+            nextAction = "Open Cut Intelligence around \(labels.first ?? "the selected short") and review cadence, jump cut cover, or preserved air before Keep."
+        } else {
+            summary = "opportunity-overlap"
+            nextAction = "Consider the reaction/J-L opportunity if it makes the short feel more human; do not apply automatically."
+        }
+
+        return ShortCreatorCutIntelligenceEvidence(
+            overlappedFindingCount: findings.count,
+            highSeverityCount: highSeverityCount,
+            cadenceWarningCount: cadenceWarningCount,
+            jumpCutRiskCount: jumpCutRiskCount,
+            reactionOpportunityCount: reactionOpportunityCount,
+            nearestFindingLabels: Array(labels),
+            summary: summary,
+            nextAction: nextAction
         )
     }
 
@@ -11961,6 +14421,76 @@ struct WorkspaceView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(color.opacity(0.07))
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private func shortPlatformVariantReadinessCard(_ brief: ShortCreatorQualityBrief) -> some View {
+        let missing = brief.missingPlatformVariantTargets
+        let covered = brief.platformVariantTargets.filter { target in
+            !missing.contains(where: { $0.caseInsensitiveCompare(target) == .orderedSame })
+        }
+        let color = missing.isEmpty ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey
+
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: missing.isEmpty ? "checkmark.seal.fill" : "square.stack.3d.up.badge.a")
+                    .font(.caption)
+                    .foregroundStyle(color)
+                shortEditorLabel("Native variants")
+                Spacer()
+                Text(missing.isEmpty ? "COVERED" : "\(missing.count) MISSING")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(color)
+            }
+
+            Text(missing.isEmpty
+                ? "This short has native platform variants covered. Review tone, crop, captions, and receipt path before scheduling."
+                : "This short is not cross-platform ready yet. Draft the missing variants as metadata; do not treat one generic caption as native packaging.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if !covered.isEmpty {
+                shortPlatformVariantChipRow(title: "Covered", platforms: covered, color: QuipslyStudioTheme.moss)
+            }
+            if !missing.isEmpty {
+                shortPlatformVariantChipRow(title: "Missing", platforms: missing, color: QuipslyStudioTheme.clay)
+                Text("Safe action: Draft native variants")
+                    .font(.caption2)
+                    .fontWeight(.bold)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+            }
+        }
+        .padding(8)
+        .background(color.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(color.opacity(0.16), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .help("Native variants are metadata packages for each platform. This does not publish or claim receipts.")
+    }
+
+    private func shortPlatformVariantChipRow(title: String, platforms: [String], color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.caption2)
+                .fontWeight(.black)
+                .foregroundStyle(color)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 5)], alignment: .leading, spacing: 5) {
+                ForEach(platforms, id: \.self) { platform in
+                    Text(platform)
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .lineLimit(1)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(color.opacity(0.14))
+                        .clipShape(Capsule())
+                }
+            }
+        }
     }
 
     private func shortPlatformFitRow(_ fit: ShortCreatorPlatformFit) -> some View {
@@ -12088,6 +14618,7 @@ struct WorkspaceView: View {
         let platformAttentionFixes = ShortCreatorQuality.platformAttentionFixes(for: clip, brief: brief)
         let platformChecklistItems = ShortCreatorQuality.platformChecklistItems(for: clip, brief: brief)
         let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
+        let humanReviewGuidance = selectedShortHumanReviewGuidancePayload(for: clip, brief: brief)
         let outputPath = selectedShortPlatformPackOutputURL(for: clip).path
         let sequenceTitle = projectStore.activeSequence?.title ?? ""
         let saveCommand = ShortCreatorQualityCommand.savePlatformPackJSON.agentRoute
@@ -12113,6 +14644,19 @@ struct WorkspaceView: View {
             "shortStatus": clip.status,
             "reviewStatus": clip.reviewStatus,
             "exportStatus": resolvedShortExportStatus(for: clip),
+            "reviewEvents": clip.reviewEvents.map { event in
+                [
+                    "id": event.id.uuidString,
+                    "status": event.status,
+                    "note": event.note,
+                    "actor": event.actor,
+                    "actorType": event.actorType,
+                    "reviewRead": event.reviewRead,
+                    "primaryQuestion": event.primaryQuestion,
+                    "signals": event.signals,
+                    "createdAt": ISO8601DateFormatter().string(from: event.createdAt)
+                ] as [String: Any]
+            },
             "suggestedOutputPath": outputPath,
             "primaryPlatform": brief.primaryPlatform,
             "primaryPlatformScore": brief.primaryPlatformFit?.score ?? 0,
@@ -12123,11 +14667,15 @@ struct WorkspaceView: View {
                 "headline": packetSummary.headline,
                 "status": packetSummary.status,
                 "evidenceLevel": packetSummary.evidenceLevel,
+                "creativeReadinessScore": packetSummary.creativeReadinessScore,
+                "creativeReadinessLabel": packetSummary.creativeReadinessLabel,
+                "creativeReadinessNextAction": packetSummary.creativeReadinessNextAction,
                 "reason": packetSummary.reason,
                 "safeActionLabel": packetSummary.safeActionLabel,
                 "nextSafeAction": packetSummary.nextSafeAction,
                 "agentInstruction": packetSummary.agentInstruction
             ] as [String: Any],
+            "humanReviewGuidance": humanReviewGuidance,
             "attentionScore": brief.attentionScore,
             "attentionLabel": brief.attentionLabel,
             "attentionSignals": brief.attentionSignals.map { signal in
@@ -12180,6 +14728,11 @@ struct WorkspaceView: View {
                 ] as [String: Any]
             },
             "platformTargets": platformTargets,
+            "platformVariantTargets": brief.platformVariantTargets,
+            "missingPlatformVariantTargets": brief.missingPlatformVariantTargets,
+            "platformVariantInstruction": brief.missingPlatformVariantTargets.isEmpty
+                ? "Native variants are covered; review tone/crop/captions per platform before scheduling."
+                : "Draft missing native variants as metadata only before claiming cross-platform readiness: \(brief.missingPlatformVariantTargets.joined(separator: ", ")).",
             "platformTargetSummary": [
                 "readyCount": "\(platformSummary.readyCount)",
                 "totalCount": "\(platformSummary.totalCount)",
@@ -12540,15 +15093,63 @@ struct WorkspaceView: View {
         }
     }
 
+    private func sharpenSelectedShortHookFromQualityBrief(_ clip: ShortClipCandidate) {
+        let draft = ShortCreatorQuality.sharpenedHookDraft(for: clip)
+        updateSelectedShortClip { short in
+            let previous = short.hookText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard previous != draft else {
+                short.notes = appendLine(
+                    "Quality assistant checked hook sharpness; existing hook already matched the suggested stronger draft.",
+                    to: short.notes
+                )
+                return
+            }
+
+            if !previous.isEmpty {
+                short.notes = appendLine(
+                    "Previous hook preserved before sharpen: \(previous)",
+                    to: short.notes
+                )
+            }
+
+            short.hookText = draft
+            short.publishNotes = appendLine(
+                "Quality assistant sharpened hook metadata for review: \(draft)",
+                to: short.publishNotes
+            )
+        }
+    }
+
     private func draftSelectedShortPlatformCopyFromQualityBrief(_ clip: ShortClipCandidate) {
         let brief = shortCreatorQualityBrief(for: clip)
         let draftPreset = ShortCreatorQuality.destinationPresetDraft(for: clip, platform: brief.primaryPlatform)
+        let overlayDraft = ShortCreatorQuality.overlayDraft(for: clip)
         updateSelectedShortClip { short in
-            if short.captionDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            let existingCaption = short.captionDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+            if existingCaption.isEmpty {
+                short.captionDraft = draftPreset.caption
+            } else if ShortCreatorQuality.isGenericCaptionDraft(existingCaption) {
+                short.publishNotes = appendLine(
+                    "Previous generic caption preserved before quality rewrite: \(existingCaption)",
+                    to: short.publishNotes
+                )
                 short.captionDraft = draftPreset.caption
             } else {
                 short.publishNotes = appendLine(
                     "Alternate \(brief.primaryPlatform) copy draft: \(draftPreset.caption)",
+                    to: short.publishNotes
+                )
+            }
+
+            if short.primaryOverlayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                short.primaryOverlayText = overlayDraft
+                short.publishNotes = appendLine(
+                    "Quality assistant drafted face-safe overlay metadata for review: \(overlayDraft)",
+                    to: short.publishNotes
+                )
+            } else {
+                short.publishNotes = appendLine(
+                    "Alternate overlay draft preserved for review: \(overlayDraft)",
                     to: short.publishNotes
                 )
             }
@@ -12576,7 +15177,7 @@ struct WorkspaceView: View {
                 }
             }
             short.publishNotes = appendLine(
-                "Quality assistant drafted platform pack: \(draftedPlatforms.joined(separator: " | ")). Review before publishing.",
+                "Quality assistant drafted native platform variants: \(draftedPlatforms.joined(separator: " | ")). Review before publishing.",
                 to: short.publishNotes
             )
         }
@@ -12591,7 +15192,9 @@ struct WorkspaceView: View {
             "Instagram",
             "Facebook",
             "LinkedIn",
-            "Patreon teaser"
+            "Patreon teaser",
+            "HighGroundOdyssey.com",
+            "Podcast episode companion"
         ]
         var drafts = ShortCreatorQuality.platformPresetDrafts(for: clip, brief: brief, minimumScore: 0, limit: 8)
         var seen = Set(drafts.map { $0.platform.lowercased() })
@@ -12613,7 +15216,7 @@ struct WorkspaceView: View {
 
     private func draftAllShortPlatformPacksFromQualityBriefs() {
         guard var sequence = projectStore.activeSequence else {
-            lastMediaAction = "Batch platform pack blocked: no active sequence"
+            lastMediaAction = "Batch native variants blocked: no active sequence"
             updateAgentState()
             return
         }
@@ -12636,7 +15239,7 @@ struct WorkspaceView: View {
                 draftedPlatforms.append(draftPreset.platform)
             }
             short.publishNotes = appendLine(
-                "Quality assistant batch-drafted platform pack metadata: \(draftedPlatforms.joined(separator: ", ")). Review before publishing.",
+                "Quality assistant batch-drafted native variant metadata: \(draftedPlatforms.joined(separator: ", ")). Review before publishing.",
                 to: short.publishNotes
             )
             short.updatedAt = Date()
@@ -12645,8 +15248,8 @@ struct WorkspaceView: View {
             summaries.append("\(short.title): \(draftedPlatforms.joined(separator: "/"))")
         }
 
-        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Draft Short Platform Packs")
-        var actionMessage = "Drafted platform packs for \(touchedShorts) short recipe(s), \(draftedPresets) destination preset update(s)"
+        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Draft Short Native Variants")
+        var actionMessage = "Drafted native variants for \(touchedShorts) short recipe(s), \(draftedPresets) destination preset update(s)"
         if !summaries.isEmpty {
             actionMessage += ": \(summaries.prefix(3).joined(separator: " | "))"
             if summaries.count > 3 {
@@ -12654,7 +15257,7 @@ struct WorkspaceView: View {
             }
         }
         lastMediaAction = actionMessage
-        scheduleAutosave(reason: "drafted short platform packs")
+        scheduleAutosave(reason: "drafted short native variants")
         updateAgentState()
     }
 
@@ -12751,6 +15354,8 @@ struct WorkspaceView: View {
         switch command {
         case .fillHook:
             fillSelectedShortHookFromQualityBrief(clip)
+        case .sharpenHook:
+            sharpenSelectedShortHookFromQualityBrief(clip)
         case .draftCopy:
             draftSelectedShortPlatformCopyFromQualityBrief(clip)
         case .draftPlatformPack:
@@ -13330,6 +15935,16 @@ struct WorkspaceView: View {
         }
     }
 
+    private struct ShortReviewPriorityBucket: Identifiable {
+        let id: String
+        let label: String
+        let explanation: String
+        let count: Int
+        let priority: Int
+        let nextClip: ShortClipCandidate?
+        let nextAction: String
+    }
+
     private struct ShortVerticalFramingTarget: Identifiable {
         let id: UUID
         let segmentId: UUID
@@ -13346,6 +15961,152 @@ struct WorkspaceView: View {
         let readinessLabel: String
         let readinessDetail: String
         let isReady: Bool
+    }
+
+    private struct SelectedShortProductionBrief {
+        let label: String
+        let why: String
+        let command: String
+        let color: Color
+        let icon: String
+        let tone: String
+        let storyLabel: String
+        let storyReadyCount: Int
+        let storyTotalCount: Int
+        let cutsLabel: String
+        let cutsHaveRisk: Bool
+        let cutsHaveOpportunity: Bool
+        let proofReady: Bool
+        let proofLabel: String
+        let platformReadyCount: Int
+        let platformTotalCount: Int
+        let platformNextAction: String
+
+        var payload: [String: Any] {
+            [
+                "model": "quipsly-selected-short-production-brief",
+                "version": "2026-06-30.selected-short-production-brief.v1",
+                "recommendedAction": [
+                    "label": label,
+                    "why": why,
+                    "command": command,
+                    "tone": tone
+                ],
+                "storyContract": [
+                    "label": storyLabel,
+                    "readyCount": storyReadyCount,
+                    "totalCount": storyTotalCount
+                ],
+                "cutEvidenceSummary": [
+                    "label": cutsLabel,
+                    "hasRisk": cutsHaveRisk,
+                    "hasOpportunity": cutsHaveOpportunity
+                ],
+                "proofReady": proofReady,
+                "proofLabel": proofLabel,
+                "platformTargetSummary": [
+                    "readyCount": platformReadyCount,
+                    "totalCount": platformTotalCount,
+                    "readyFraction": "\(platformReadyCount)/\(platformTotalCount)",
+                    "nextAction": platformNextAction
+                ],
+                "truth": "Selected-short production guidance only. It explains story, cut-flow, proof, and platform readiness without publishing or mutating source media."
+            ]
+        }
+    }
+
+    private func selectedShortProductionBrief(for clip: ShortClipCandidate) -> SelectedShortProductionBrief {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let cutEvidence = projectStore.activeSequence.map { shortCutIntelligenceEvidence(for: clip, in: $0) } ?? .empty
+        let storyContract = selectedShortStoryContractPayload(for: clip, brief: brief, cutEvidence: cutEvidence)
+        let storyLabel = (storyContract["label"] as? String) ?? "story-contract-unknown"
+        let storyReadyCount = storyContract["readyCount"] as? Int ?? 0
+        let storyTotalCount = max(1, storyContract["totalCount"] as? Int ?? 6)
+        let storyNextAction = (storyContract["nextAction"] as? String) ?? "Listen once as a viewer before Keep."
+        let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
+        let platformDraftSummary = shortPlatformDraftSummary(for: clip, brief: brief)
+        let reviewStatus = clip.reviewStatus.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
+        let label: String
+        let why: String
+        let command: String
+        let color: Color
+        let icon: String
+        let tone: String
+
+        if storyLabel == "story-contract-weak" || storyLabel == "story-contract-needs-review" {
+            label = "Repair story contract"
+            why = storyNextAction
+            command = "script/agentctl.sh shorts-record-review needs-refine --note \"repair hook-turn-payoff story contract\""
+            color = QuipslyStudioTheme.honey
+            icon = "map.fill"
+            tone = "honey"
+        } else if cutEvidence.hasRisk {
+            label = "Proof-listen cut flow"
+            why = cutEvidence.nextAction
+            command = "script/agentctl.sh shorts-record-review needs-refine --note \"proof-listen cut flow before Keep\""
+            color = QuipslyStudioTheme.clay
+            icon = "waveform.badge.exclamationmark"
+            tone = "clay"
+        } else if !brief.exportProofReady {
+            let expectedTarget = shortReviewExpectedExportTarget(for: clip, exportPath: lastExportedShortPath(for: clip) ?? "")
+            label = "Render or attach proof"
+            why = "No exported 9:16 proof is attached to this selected short yet."
+            command = "script/agentctl.sh shorts-export-selected \(shellQuoted(expectedTarget.directory)) \(shellQuoted(expectedTarget.basename))"
+            color = QuipslyStudioTheme.honey
+            icon = "square.and.arrow.up.on.square"
+            tone = "honey"
+        } else if platformDraftSummary.readyCount < platformDraftSummary.totalCount {
+            label = "Finish platform packet"
+            why = "Platform draft readiness is \(platformDraftSummary.readyCount)/\(platformDraftSummary.totalCount); next target is \(platformDraftSummary.nextAction)."
+            command = "script/agentctl.sh shorts-quality-action draft-platform-pack"
+            color = QuipslyStudioTheme.creek
+            icon = "paperplane.fill"
+            tone = "creek"
+        } else if reviewStatus == "refine" {
+            label = "Resolve refinement"
+            why = "This short already has platform draft metadata, but it is marked Refine. Resolve the latest edit/caption/framing note, then proof-watch before Keep."
+            command = "script/agentctl.sh selected-short-human-review-guidance --markdown"
+            color = QuipslyStudioTheme.honey
+            icon = "slider.horizontal.3"
+            tone = "honey"
+        } else if reviewStatus != "keep" {
+            label = "Human review, then Keep"
+            why = "Story, cut-flow, proof, and platform drafts are present. Watch the export at normal speed before Keep, Refine, or Reject."
+            command = "script/agentctl.sh shorts-review-selected keep \"proof watched; ready for Tower handoff review\""
+            color = QuipslyStudioTheme.sage
+            icon = "eye.fill"
+            tone = "sage"
+        } else {
+            label = "Tower handoff review"
+            why = platformSummary.readyCount == platformSummary.totalCount
+                ? "Story, cut-flow, proof, review, and platform packet look ready enough for Tower/manual upload queue review."
+                : "Platform drafts are complete and Keep is set, but handoff still reports \(platformSummary.readyCount)/\(platformSummary.totalCount). Inspect the target rows before Tower queue."
+            command = "script/agentctl.sh shorts-record-review keep --note \"proof watched; ready for Tower handoff review\""
+            color = QuipslyStudioTheme.moss
+            icon = "checkmark.seal.fill"
+            tone = "moss"
+        }
+
+        return SelectedShortProductionBrief(
+            label: label,
+            why: why,
+            command: command,
+            color: color,
+            icon: icon,
+            tone: tone,
+            storyLabel: storyLabel,
+            storyReadyCount: storyReadyCount,
+            storyTotalCount: storyTotalCount,
+            cutsLabel: cutEvidence.hasRisk ? "risk" : (cutEvidence.hasOpportunity ? "opportunity" : cutEvidence.summary),
+            cutsHaveRisk: cutEvidence.hasRisk,
+            cutsHaveOpportunity: cutEvidence.hasOpportunity,
+            proofReady: brief.exportProofReady,
+            proofLabel: brief.exportProofLabel,
+            platformReadyCount: platformSummary.readyCount,
+            platformTotalCount: platformSummary.totalCount,
+            platformNextAction: platformSummary.nextAction
+        )
     }
 
     private func selectedShortEditorPanel(_ clip: ShortClipCandidate) -> some View {
@@ -13367,7 +16128,13 @@ struct WorkspaceView: View {
 
             selectedShortRecipeTruthCard(clip)
 
+            selectedShortProductionBriefCard(clip)
+
             selectedShortCreatorQualityCard(clip)
+
+            selectedShortRecommendedReviewModeCard(clip)
+
+            selectedShortHumanReviewGuidanceCard(clip)
 
             selectedShortPublicationPassportCard(clip)
 
@@ -13553,6 +16320,497 @@ struct WorkspaceView: View {
                 .stroke(QuipslyStudioTheme.honey.opacity(0.22), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func selectedShortProductionBriefCard(_ clip: ShortClipCandidate) -> some View {
+        let brief = selectedShortProductionBrief(for: clip)
+        let storyColor = brief.storyReadyCount >= brief.storyTotalCount - 1 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey
+        let cutsColor = brief.cutsHaveRisk ? QuipslyStudioTheme.clay : (brief.cutsHaveOpportunity ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss)
+        let platformColor = brief.platformReadyCount >= brief.platformTotalCount ? QuipslyStudioTheme.moss : QuipslyStudioTheme.creek
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: brief.icon)
+                    .font(.caption)
+                    .foregroundStyle(brief.color)
+                    .frame(width: 22, height: 22)
+                    .background(brief.color.opacity(0.15))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Selected short production brief")
+                        .font(.caption)
+                        .fontWeight(.black)
+                    Text("One calm answer: what is the next safe thing to do with this short?")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(brief.label.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(brief.color)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(brief.color.opacity(0.13))
+                    .clipShape(Capsule())
+            }
+
+            Text(brief.why)
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(brief.color)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                shortQualityPill("Story", "\(brief.storyReadyCount)/\(brief.storyTotalCount)", storyColor)
+                shortQualityPill("Cuts", brief.cutsLabel, cutsColor)
+                shortQualityPill("Proof", brief.proofReady ? "attached" : "needed", brief.proofReady ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                shortQualityPill("Platforms", "\(brief.platformReadyCount)/\(brief.platformTotalCount)", platformColor)
+            }
+
+            Text("Safe command: \(brief.command)")
+                .font(.caption2.monospaced())
+                .foregroundStyle(.secondary)
+                .lineLimit(3)
+                .textSelection(.enabled)
+
+            HStack(spacing: 6) {
+                Button {
+                    copyAgentWorkbenchText("./script/agentctl.sh selected-short-production-brief --markdown", note: "Copied selected-short production brief command")
+                } label: {
+                    Label("Copy brief", systemImage: "doc.on.doc")
+                        .frame(maxWidth: .infinity)
+                }
+                .help("Copy the read-only selected-short production brief command. It does not mutate media or review state.")
+
+                Button {
+                    copyAgentWorkbenchText(brief.command, note: "Copied selected-short next safe action")
+                } label: {
+                    Label("Copy next", systemImage: "arrow.right.doc.on.clipboard")
+                        .frame(maxWidth: .infinity)
+                }
+                .help("Copy the next safe command for this selected short. Review before applying.")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+        }
+        .padding(9)
+        .background(
+            LinearGradient(
+                colors: [
+                    brief.color.opacity(0.12),
+                    QuipslyStudioTheme.moss.opacity(0.08),
+                    QuipslyStudioTheme.panelLift.opacity(0.18)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(brief.color.opacity(0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .accessibilityIdentifier("quipsly.shorts.productionBrief")
+        .help("This is selected-short production guidance only. It explains story, cut-flow, proof, and platform readiness without publishing or mutating source media.")
+    }
+
+    private func selectedShortRecommendedReviewModeCard(_ clip: ShortClipCandidate) -> some View {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let segmentCount = projectStore.activeSequence
+            .map { max(1, shortClipExportRanges(for: clip, in: $0).count) }
+            ?? 1
+        let recommendation = selectedShortRecommendedReviewMode(
+            reviewClass: brief.reviewClass,
+            nextReviewAction: brief.nextReviewAction,
+            segmentCount: segmentCount
+        )
+
+        return VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: recommendation.icon)
+                    .font(.caption)
+                    .foregroundStyle(recommendation.color)
+                    .frame(width: 20, height: 20)
+                    .background(recommendation.color.opacity(0.14))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Start here")
+                        .font(.caption2)
+                        .fontWeight(.heavy)
+                        .tracking(0.7)
+                        .foregroundStyle(.secondary)
+                        .textCase(.uppercase)
+                    Text(recommendation.label)
+                        .font(.caption)
+                        .fontWeight(.black)
+                        .foregroundStyle(recommendation.color)
+                    Text(recommendation.reason)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(recommendation.mode.uppercased())
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(recommendation.color)
+                        .lineLimit(1)
+                    Text(segmentCount == 1 ? "1 segment" : "\(segmentCount) segments")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Text("First action: \(recommendation.firstAction)")
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(QuipslyStudioTheme.honey)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(9)
+        .background(recommendation.color.opacity(0.09), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(recommendation.color.opacity(0.24), lineWidth: 1)
+        )
+        .help("Recommended first review pass for this selected short recipe. It guides review only; it does not approve, export, publish, or mutate source media.")
+    }
+
+    private func selectedShortRecommendedReviewMode(
+        reviewClass: String,
+        nextReviewAction: String,
+        segmentCount: Int
+    ) -> (mode: String, label: String, reason: String, firstAction: String, color: Color, icon: String) {
+        if segmentCount > 1 {
+            return (
+                mode: "join-rhythm",
+                label: "Proof the joins first",
+                reason: "This short is assembled from multiple episode moments, so the biggest risk is cadence bumps, face pops, caption resets, or an unearned jump.",
+                firstAction: "Preview every internal join with one or two seconds of handles before judging the hook copy.",
+                color: QuipslyStudioTheme.creek,
+                icon: "point.topleft.down.curvedto.point.bottomright.up"
+            )
+        }
+
+        switch reviewClass {
+        case "needs_hook":
+            return (
+                mode: "hook",
+                label: "Write the hook first",
+                reason: "The recipe has a continuous moment, but it still needs a reason for someone to stop scrolling.",
+                firstAction: "Draft one concrete promise, question, mistake, or tension in the first-second hook field.",
+                color: QuipslyStudioTheme.honey,
+                icon: "quote.opening"
+            )
+        case "too_long_for_first_test":
+            return (
+                mode: "pacing",
+                label: "Check length and payoff",
+                reason: "This short is long enough that it needs a deliberate payoff, not just an interesting excerpt.",
+                firstAction: "Listen for repeated setup, dead air, or an ending that arrives after the viewer already got the point.",
+                color: QuipslyStudioTheme.clay,
+                icon: "timer"
+            )
+        case "needs_caption_framing":
+            return (
+                mode: "caption-framing",
+                label: "Check text and safe zones",
+                reason: "The social version needs caption or overlay context, and the text must not land on faces.",
+                firstAction: "Add one face-safe overlay or caption draft, then inspect the 9:16 crop.",
+                color: QuipslyStudioTheme.sage,
+                icon: "text.viewfinder"
+            )
+        case "cut_craft_review", "repair_recipe_first", "needs_watch_pass":
+            return (
+                mode: "cut-craft",
+                label: "Watch the cut like a human",
+                reason: "The quality model sees timing or cut-craft risk; this is where robotic editing sneaks in.",
+                firstAction: nextReviewAction.isEmpty ? "Play the short once at normal speed and mark the specific awkward moment." : nextReviewAction,
+                color: QuipslyStudioTheme.creek,
+                icon: "ear.and.waveform"
+            )
+        case "needs_export_proof":
+            return (
+                mode: "export-proof",
+                label: "Render proof before posting",
+                reason: "The recipe may be ready in metadata, but a platform handoff needs a real watched export.",
+                firstAction: "Export a versioned 9:16 proof, then watch the actual file before publication handoff.",
+                color: QuipslyStudioTheme.honey,
+                icon: "square.and.arrow.up"
+            )
+        case "ready_for_human_posting_review":
+            return (
+                mode: "publication-sanity",
+                label: "Final human sanity pass",
+                reason: "Core review metadata looks ready. The remaining question is whether the rendered short feels worth posting today.",
+                firstAction: "Watch the export, confirm caption/platform fit, then choose Keep, Refine, or Reject.",
+                color: QuipslyStudioTheme.moss,
+                icon: "checkmark.seal.fill"
+            )
+        default:
+            return (
+                mode: "review",
+                label: "Do one calm review pass",
+                reason: "This short has enough metadata to inspect, but no sharper first-pass category won.",
+                firstAction: nextReviewAction.isEmpty ? "Preview the short and decide whether the next move is hook, cut, framing, or export proof." : nextReviewAction,
+                color: QuipslyStudioTheme.creek,
+                icon: "sparkle.magnifyingglass"
+            )
+        }
+    }
+
+    private func selectedShortHumanReviewGuidancePayload(
+        for clip: ShortClipCandidate,
+        brief providedBrief: ShortCreatorQualityBrief? = nil
+    ) -> [String: Any] {
+        let brief = providedBrief ?? shortCreatorQualityBrief(for: clip)
+        let cutEvidence = projectStore.activeSequence.map { shortCutIntelligenceEvidence(for: clip, in: $0) } ?? .empty
+        let segmentCount = projectStore.activeSequence
+            .map { max(1, shortClipExportRanges(for: clip, in: $0).count) }
+            ?? 1
+        let recommendation = selectedShortRecommendedReviewMode(
+            reviewClass: brief.reviewClass,
+            nextReviewAction: brief.nextReviewAction,
+            segmentCount: segmentCount
+        )
+        let hookMissing = clip.hookText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let captionMissing = clip.captionDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && clip.primaryOverlayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let exportMissing = !brief.exportProofReady
+        let platformMissing = clip.destinationPresets.isEmpty
+        let shortDuration = selectedShortSequenceRange(clip)?.duration ?? 0
+        let longShort = shortDuration > 65
+
+        let primaryQuestion: String
+        if hookMissing {
+            primaryQuestion = "Does the first second make a promise a stranger can feel immediately?"
+        } else if segmentCount > 1 {
+            primaryQuestion = "Do the joins feel like one thought, or like a highlight pile stitched together?"
+        } else if cutEvidence.hasRisk {
+            primaryQuestion = "Does the cut preserve human cadence, or did we shave off the breath that made it real?"
+        } else if captionMissing {
+            primaryQuestion = "Would this still make sense muted, with text off the faces?"
+        } else if platformMissing {
+            primaryQuestion = "What native job does this short do on each platform?"
+        } else if longShort {
+            primaryQuestion = "Is the longer runtime earning attention, or should this split into a tighter clip?"
+        } else if exportMissing {
+            primaryQuestion = "Does the rendered proof confirm what the metadata only hopes is true?"
+        } else {
+            primaryQuestion = "Would a real viewer keep watching, understand the point, and feel the people rather than the edit?"
+        }
+
+        return [
+            "status": "selected_short_human_review_guidance",
+            "model": "quipslystudio-selected-short-human-review-guidance",
+            "reviewRead": recommendation.mode,
+            "reviewLabel": recommendation.label,
+            "primaryQuestion": primaryQuestion,
+            "proofInstruction": "Watch the short at normal speed before Keep. Scrub for repairs, but judge the viewer experience in playback.",
+            "doNotPostIf": [
+                "The hook is vague or arrives after the scroll-away moment.",
+                "A jump or join makes the speaker feel chopped up.",
+                "Text, crop, or platform UI fights the face or emotional cue."
+            ],
+            "refineIf": [
+                "A small boundary nudge preserves breath while removing pure reset noise.",
+                "A reaction, cover, or B-roll moment clarifies the emotional beat.",
+                "The caption can become a stronger promise instead of a summary."
+            ],
+            "keepIf": [
+                "The first three seconds create curiosity or useful tension.",
+                "The edit sounds like people talking, not a silence-removal machine.",
+                "The crop, text, payoff, and platform packet all support the same idea."
+            ],
+            "signals": [
+                "hookMissing": hookMissing,
+                "captionOrOverlayMissing": captionMissing,
+                "multiSegment": segmentCount > 1,
+                "segmentCount": segmentCount,
+                "cutRiskEvidencePresent": cutEvidence.hasRisk,
+                "platformVariantsMissing": platformMissing,
+                "exportProofMissing": exportMissing,
+                "longerThan65Seconds": longShort,
+                "duration": shortDuration
+            ],
+            "safeCommand": "./script/agentctl.sh selected-short-human-review-guidance --markdown",
+            "truth": "Human review guidance only. It does not approve, export, publish, or mutate source media."
+        ]
+    }
+
+    private func selectedShortHumanReviewGuidanceCard(_ clip: ShortClipCandidate) -> some View {
+        let brief = shortCreatorQualityBrief(for: clip)
+        let cutEvidence = projectStore.activeSequence.map { shortCutIntelligenceEvidence(for: clip, in: $0) } ?? .empty
+        let segmentCount = projectStore.activeSequence
+            .map { max(1, shortClipExportRanges(for: clip, in: $0).count) }
+            ?? 1
+        let recommendation = selectedShortRecommendedReviewMode(
+            reviewClass: brief.reviewClass,
+            nextReviewAction: brief.nextReviewAction,
+            segmentCount: segmentCount
+        )
+        let hookMissing = clip.hookText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let captionMissing = clip.captionDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && clip.primaryOverlayText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let exportMissing = !brief.exportProofReady
+        let platformMissing = clip.destinationPresets.isEmpty
+        let shortDuration = selectedShortSequenceRange(clip)?.duration ?? 0
+        let longShort = shortDuration > 65
+
+        let primaryQuestion: String
+        if hookMissing {
+            primaryQuestion = "Does the first second make a promise a stranger can feel immediately?"
+        } else if segmentCount > 1 {
+            primaryQuestion = "Do the joins feel like one thought, or like a highlight pile stitched together?"
+        } else if cutEvidence.hasRisk {
+            primaryQuestion = "Does the cut preserve human cadence, or did we shave off the breath that made it real?"
+        } else if captionMissing {
+            primaryQuestion = "Would this still make sense muted, with text off the faces?"
+        } else if platformMissing {
+            primaryQuestion = "What native job does this short do on each platform?"
+        } else if longShort {
+            primaryQuestion = "Is the longer runtime earning attention, or should this split into a tighter clip?"
+        } else if exportMissing {
+            primaryQuestion = "Does the rendered proof confirm what the metadata only hopes is true?"
+        } else {
+            primaryQuestion = "Would a real viewer keep watching, understand the point, and feel the people rather than the edit?"
+        }
+
+        let doNotPost = [
+            "The hook is vague or arrives after the scroll-away moment.",
+            "A jump or join makes the speaker feel chopped up.",
+            "Text, crop, or platform UI fights the face or emotional cue."
+        ]
+        let refine = [
+            "A small boundary nudge preserves breath while removing pure reset noise.",
+            "A reaction, cover, or B-roll moment clarifies the emotional beat.",
+            "The caption can become a stronger promise instead of a summary."
+        ]
+        let keep = [
+            "The first three seconds create curiosity or useful tension.",
+            "The edit sounds like people talking, not a silence-removal machine.",
+            "The crop, text, payoff, and platform packet all support the same idea."
+        ]
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "person.text.rectangle.fill")
+                    .font(.caption)
+                    .foregroundStyle(QuipslyStudioTheme.moss)
+                    .frame(width: 22, height: 22)
+                    .background(QuipslyStudioTheme.moss.opacity(0.16))
+                    .clipShape(Circle())
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Human review compass")
+                        .font(.caption)
+                        .fontWeight(.black)
+                    Text("Use this before Keep, Refine, or Reject. It is viewer-attention and cadence guidance, not publication approval.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(recommendation.mode.uppercased())
+                    .font(.system(size: 8, weight: .black, design: .rounded))
+                    .foregroundStyle(recommendation.color)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(recommendation.color.opacity(0.13))
+                    .clipShape(Capsule())
+            }
+
+            Text(primaryQuestion)
+                .font(.caption)
+                .fontWeight(.black)
+                .foregroundStyle(QuipslyStudioTheme.moonMilk)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Proof move: watch at normal speed before Keep. Scrub for repairs, but judge the viewer experience in playback.")
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(QuipslyStudioTheme.honey)
+                .fixedSize(horizontal: false, vertical: true)
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 118), spacing: 6)], spacing: 6) {
+                shortQualityPill("Hook", hookMissing ? "missing" : "present", hookMissing ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss)
+                shortQualityPill("Recipe", segmentCount == 1 ? "single" : "\(segmentCount) joins", segmentCount == 1 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.creek)
+                shortQualityPill("Cut risk", cutEvidence.hasRisk ? "review" : "quiet", cutEvidence.hasRisk ? QuipslyStudioTheme.clay : QuipslyStudioTheme.moss)
+                shortQualityPill("Proof", exportMissing ? "needed" : "attached", exportMissing ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                shortHumanReviewMiniList("Do not post if", doNotPost, color: QuipslyStudioTheme.clay)
+                shortHumanReviewMiniList("Refine if", refine, color: QuipslyStudioTheme.honey)
+                shortHumanReviewMiniList("Keep if", keep, color: QuipslyStudioTheme.moss)
+            }
+
+            Button {
+                copyAgentWorkbenchText("./script/agentctl.sh selected-short-human-review-guidance --markdown", note: "Copied selected-short human review guidance command")
+            } label: {
+                Label("Copy review guidance", systemImage: "doc.on.doc")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Copy the read-only selected-short human review guidance command. It does not approve, export, publish, or mutate media.")
+        }
+        .padding(9)
+        .background(
+            LinearGradient(
+                colors: [
+                    QuipslyStudioTheme.moss.opacity(0.12),
+                    QuipslyStudioTheme.creek.opacity(0.08),
+                    QuipslyStudioTheme.panelLift.opacity(0.18)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                .stroke(QuipslyStudioTheme.moss.opacity(0.23), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        .accessibilityIdentifier("quipsly.shorts.humanReviewGuidance")
+        .help("Selected-short human review guidance. This card explains what to watch for before Keep, Refine, or Reject.")
+    }
+
+    private func shortHumanReviewMiniList(_ title: String, _ items: [String], color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.system(size: 8, weight: .black, design: .rounded))
+                .tracking(0.7)
+                .foregroundStyle(color)
+            ForEach(items.prefix(3), id: \.self) { item in
+                HStack(alignment: .top, spacing: 5) {
+                    Circle()
+                        .fill(color)
+                        .frame(width: 4, height: 4)
+                        .padding(.top, 5)
+                    Text(item)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .padding(7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 
     private func selectedShortVerticalFramingCard(_ clip: ShortClipCandidate) -> some View {
@@ -14065,6 +17323,82 @@ struct WorkspaceView: View {
         return (readyCount, max(1, targets.count), nextAction, color)
     }
 
+    private func shortPlatformDraftSummary(
+        for clip: ShortClipCandidate,
+        brief: ShortCreatorQualityBrief
+    ) -> (readyCount: Int, totalCount: Int, nextAction: String) {
+        let targets = shortPlatformDraftTargets(for: clip, brief: brief)
+        let readyCount = targets.filter { $0.isDraftReady }.count
+        let next = targets.first { !$0.isDraftReady }
+        return (
+            readyCount,
+            max(1, targets.count),
+            next.map { "\($0.platform): \($0.nextAction)" } ?? "drafts ready; proof-watch before publication"
+        )
+    }
+
+    private func shortPlatformDraftTargets(
+        for clip: ShortClipCandidate,
+        brief: ShortCreatorQualityBrief
+    ) -> [(platform: String, isDraftReady: Bool, nextAction: String)] {
+        let corePlatforms = [
+            "YouTube Shorts",
+            "Instagram",
+            "Facebook",
+            "LinkedIn",
+            "Patreon teaser",
+            "HighGroundOdyssey.com",
+            "Podcast episode companion"
+        ]
+        var platforms: [String] = []
+        var seen = Set<String>()
+
+        func key(_ value: String) -> String {
+            let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized.contains("youtube") || normalized.contains("short") { return "youtube-shorts" }
+            if normalized.contains("instagram") { return "instagram" }
+            if normalized.contains("facebook") { return "facebook" }
+            if normalized.contains("linkedin") { return "linkedin" }
+            if normalized.contains("patreon") { return "patreon" }
+            if normalized.contains("highground") || normalized.contains("high ground") || normalized.contains("website") { return "hgo-site" }
+            if normalized.contains("podcast") { return "podcast-companion" }
+            return normalized
+        }
+
+        func addPlatform(_ rawPlatform: String) {
+            let platform = rawPlatform.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !platform.isEmpty else { return }
+            guard seen.insert(key(platform)).inserted else { return }
+            platforms.append(platform)
+        }
+
+        corePlatforms.forEach(addPlatform)
+        clip.destinations.forEach(addPlatform)
+        clip.destinationPresets.map(\.platform).forEach(addPlatform)
+        brief.platformVariantTargets.forEach(addPlatform)
+        brief.platformFits.map(\.platform).forEach(addPlatform)
+
+        return platforms.map { platform in
+            let preset = bestDestinationPreset(for: platform, in: clip)
+            let titleReady = !(preset?.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            let captionReady = !(preset?.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            let tagRequired = ["youtube", "instagram", "facebook", "linkedin"].contains { key(platform).contains($0) }
+            let hashtagsReady = !(preset?.hashtags.isEmpty ?? true)
+            let ready = titleReady && captionReady && (!tagRequired || hashtagsReady)
+            let nextAction: String
+            if !titleReady {
+                nextAction = "draft title"
+            } else if !captionReady {
+                nextAction = "draft caption"
+            } else if tagRequired && !hashtagsReady {
+                nextAction = "draft hashtags"
+            } else {
+                nextAction = "draft ready; review tone and receipt truth"
+            }
+            return (platform, ready, nextAction)
+        }
+    }
+
     private func shortPlatformTargetPayloads(
         for clip: ShortClipCandidate,
         brief: ShortCreatorQualityBrief
@@ -14078,6 +17412,21 @@ struct WorkspaceView: View {
                 "detail": target.detail,
                 "nextAction": target.nextAction,
                 "isReady": target.status == "ready"
+            ] as [String: Any]
+        }
+    }
+
+    private func shortPlatformVariantPayloads(for clip: ShortClipCandidate) -> [[String: Any]] {
+        clip.destinationPresets.map { preset in
+            [
+                "id": preset.id.uuidString,
+                "platform": preset.platform,
+                "title": preset.title,
+                "caption": preset.caption,
+                "hashtags": preset.hashtags,
+                "status": preset.status,
+                "source": "ShortClipCandidate.destinationPresets",
+                "receiptTruth": "not-published"
             ] as [String: Any]
         }
     }
@@ -14626,7 +17975,14 @@ struct WorkspaceView: View {
     }
 
     private var selectedShortReviewStatusBinding: Binding<String> {
-        selectedShortStringBinding(\.reviewStatus)
+        Binding(
+            get: {
+                selectedShortClipValue()?.reviewStatus ?? ""
+            },
+            set: { newValue in
+                applySelectedShortReviewDecision(status: newValue, notes: nil)
+            }
+        )
     }
 
     private var selectedShortExportStatusBinding: Binding<String> {
@@ -19180,6 +22536,8 @@ struct WorkspaceView: View {
                 }
             }
 
+            programMomentTruthPanel()
+
             if needsReview || latestReviewCount != nil {
                 HStack(spacing: 8) {
                     Label(
@@ -20899,9 +24257,9 @@ struct WorkspaceView: View {
     private func decisionLabel(_ type: TagType?) -> String {
         switch type {
         case .active:
-            return "SHOW"
+            return "VISIBLE"
         case .cut:
-            return "SKIP"
+            return "QUIET"
         default:
             return "SOURCE"
         }
@@ -20930,20 +24288,77 @@ struct WorkspaceView: View {
         }
     }
 
-    private func selectedTagContext(in sequence: MediaSequence) -> (type: String, startTime: Double, duration: Double, laneName: String) {
+    private func selectedTagContext(in sequence: MediaSequence) -> (type: String, startTime: Double, duration: Double, laneName: String, editIntent: [String: Any]) {
         guard let selectedLaneId,
               let selectedTagId,
               let lane = sequence.lanes.first(where: { $0.id == selectedLaneId }),
               let tag = lane.tags.first(where: { $0.id == selectedTagId }) else {
-            return ("", 0, 0, "")
+            return ("", 0, 0, "", [:])
         }
 
         return (
             tag.type.rawValue,
             tag.startTime,
             tag.duration,
-            lane.name
+            lane.name,
+            tag.editIntent?.agentPayload ?? [:]
         )
+    }
+
+    private func programMomentTruthPanel() -> some View {
+        let moment = currentProgramMoment()
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Label(moment.label, systemImage: moment.icon)
+                    .font(.caption)
+                    .fontWeight(.black)
+                    .foregroundStyle(moment.color)
+
+                Spacer()
+
+                Text(moment.mode)
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .tracking(0.8)
+                    .foregroundStyle(.secondary)
+            }
+
+            Text(moment.explanation)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 6) {
+                programMomentChip("show", moment.showCount, QuipslyStudioTheme.honey)
+                programMomentChip("skip", moment.skipCount, QuipslyStudioTheme.clay)
+                programMomentChip("quiet", moment.quietCount, QuipslyStudioTheme.creek)
+                programMomentChip("blocked", moment.blockedCount, QuipslyStudioTheme.sage)
+                Spacer(minLength: 0)
+            }
+        }
+        .padding(10)
+        .background(moment.color.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(moment.color.opacity(0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityIdentifier("quipsly.editor.programMomentTruth")
+    }
+
+    private func programMomentChip(_ label: String, _ count: Int, _ color: Color) -> some View {
+        HStack(spacing: 4) {
+            Text("\(count)")
+                .fontWeight(.black)
+                .monospacedDigit()
+            Text(label)
+        }
+        .font(.caption2)
+        .foregroundStyle(color)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(color.opacity(0.12))
+        .clipShape(Capsule())
     }
 
     private func currentProgramState() -> (title: String, detail: String, color: Color, systemImage: String) {
@@ -21023,6 +24438,266 @@ struct WorkspaceView: View {
         )
     }
 
+    private func currentProgramMoment() -> (
+        label: String,
+        explanation: String,
+        mode: String,
+        color: Color,
+        icon: String,
+        showCount: Int,
+        skipCount: Int,
+        quietCount: Int,
+        blockedCount: Int
+    ) {
+        guard let sequence = projectStore.activeSequence, !sequence.lanes.isEmpty else {
+            return (
+                label: "No episode loaded",
+                explanation: "Load a session to see exactly what Play Edit and Play Through will do at the playhead.",
+                mode: "NO SESSION",
+                color: QuipslyStudioTheme.sage,
+                icon: "rectangle.stack.badge.plus",
+                showCount: 0,
+                skipCount: 0,
+                quietCount: 0,
+                blockedCount: 0
+            )
+        }
+
+        let programLanes = primaryProgramLanes(in: sequence)
+        let playableLanes = playableProgramLanes(in: sequence)
+        let showLanes = playableLanes.filter { decisionAtPlayhead(for: $0)?.type == .active }
+        let skipLanes = playableLanes.filter { decisionAtPlayhead(for: $0)?.type == .cut }
+        let blockedShowLanes = programLanes.filter { lane in
+            decisionAtPlayhead(for: lane)?.type == .active && !sourceReadiness(for: lane).isReady
+        }
+        let quietLanes = playableLanes.filter { lane in
+            decisionAtPlayhead(for: lane) == nil && laneIsPresentAtPlayhead(lane)
+        }
+
+        if !showLanes.isEmpty {
+            let names = conciseLaneNames(showLanes)
+            return (
+                label: "Program is showing",
+                explanation: "Play Edit shows \(names) right now. Play Through stays on the same clock but can reveal quiet synced source context around this decision.",
+                mode: "SHOW",
+                color: QuipslyStudioTheme.honey,
+                icon: "eye.fill",
+                showCount: showLanes.count,
+                skipCount: skipLanes.count,
+                quietCount: quietLanes.count,
+                blockedCount: blockedShowLanes.count
+            )
+        }
+
+        if !blockedShowLanes.isEmpty {
+            return (
+                label: "SHOW needs source recovery",
+                explanation: "There is a SHOW decision here, but its media is not playable. The decision is preserved; relink or attach a proxy before trusting export.",
+                mode: "RECOVER",
+                color: QuipslyStudioTheme.clay,
+                icon: "externaldrive.badge.exclamationmark",
+                showCount: 0,
+                skipCount: skipLanes.count,
+                quietCount: quietLanes.count,
+                blockedCount: blockedShowLanes.count
+            )
+        }
+
+        if !skipLanes.isEmpty {
+            return (
+                label: "Quiet gap",
+                explanation: "Play Edit jumps this span. Play Through keeps the clock moving so you can inspect what the intact source lanes contain here.",
+                mode: "SKIP",
+                color: QuipslyStudioTheme.clay,
+                icon: "forward.end.fill",
+                showCount: 0,
+                skipCount: skipLanes.count,
+                quietCount: quietLanes.count,
+                blockedCount: blockedShowLanes.count
+            )
+        }
+
+        if !quietLanes.isEmpty {
+            return (
+                label: "Sources are present but quiet",
+                explanation: "Playable source media exists at this time, but no SHOW/SKIP decision is active. Add a SHOW decision to publish this moment or leave it as review context.",
+                mode: "SOURCE",
+                color: QuipslyStudioTheme.creek,
+                icon: "rectangle.on.rectangle",
+                showCount: 0,
+                skipCount: 0,
+                quietCount: quietLanes.count,
+                blockedCount: 0
+            )
+        }
+
+        return (
+            label: "No playable source at this clock",
+            explanation: "The sequence clock is still real, but the current program lanes do not have playable media at this point.",
+            mode: "EMPTY",
+            color: QuipslyStudioTheme.sage,
+            icon: "clock.badge.exclamationmark",
+            showCount: 0,
+            skipCount: 0,
+            quietCount: 0,
+            blockedCount: max(programLanes.count - playableLanes.count, 0)
+        )
+    }
+
+    private func conciseLaneNames(_ lanes: [VideoLane]) -> String {
+        let names = lanes.map(\.name)
+        if names.count <= 2 {
+            return names.joined(separator: " + ")
+        }
+        return "\(names.prefix(2).joined(separator: " + ")) + \(names.count - 2) more"
+    }
+
+    private func currentProgramMomentAgentPayload() -> [String: Any] {
+        let moment = currentProgramMoment()
+        let status = moment.mode.lowercased().replacingOccurrences(of: " ", with: "-")
+        return [
+            "status": status,
+            "label": moment.label,
+            "plainEnglish": moment.explanation,
+            "playEditBehavior": playEditBehavior(forProgramMomentMode: moment.mode),
+            "playThroughBehavior": playThroughBehavior(forProgramMomentMode: moment.mode),
+            "showingSourceCount": moment.showCount,
+            "skippedSourceCount": moment.skipCount,
+            "availableQuietSourceCount": moment.quietCount,
+            "blockedPresentSourceCount": moment.blockedCount,
+            "truth": "Program state is derived from whole source lanes plus SHOW/SKIP metadata at the shared playhead; it is not a chopped media timeline."
+        ]
+    }
+
+    private func sourceWallAtPlayheadPayload(for sequence: MediaSequence?, laneInventory: [[String: Any]]) -> [String: Any] {
+        let videoSources = laneInventory.filter { lane in
+            let kind = (lane["mediaKind"] as? String ?? "").lowercased()
+            let role = (lane["role"] as? String ?? "").lowercased()
+            return kind != "audio" && !role.contains("audio")
+        }
+        let showing = videoSources.filter { lanePlayheadDecisionLabel($0) == "SHOW" }
+        let skipped = videoSources.filter { lanePlayheadDecisionLabel($0) == "SKIP" }
+        let quiet = videoSources.filter { lanePlayheadDecisionLabel($0) == "AVAILABLE" }
+        let present = videoSources.filter { lanePlayheadDecisionLabel($0) != "OUT_OF_RANGE" }
+        let readyPresent = present.filter { laneIsReadyForSourceWall($0) }
+        let blocked = videoSources.filter { lane in
+            let decision = lanePlayheadDecisionLabel(lane)
+            let ready = laneIsReadyForSourceWall(lane)
+            return !ready && (decision == "SHOW" || decision == "SKIP" || decision == "OUT_OF_RANGE")
+        }
+
+        return [
+            "laneCount": laneInventory.count,
+            "videoSourceCount": videoSources.count,
+            "presentVideoSourceCount": present.count,
+            "readyPresentVideoSourceCount": readyPresent.count,
+            "showingSourceCount": showing.count,
+            "skippedSourceCount": skipped.count,
+            "availableQuietSourceCount": quiet.count,
+            "blockedPresentSourceCount": blocked.count,
+            "readyPresentSources": readyPresent.prefix(6).map { lane in
+                sourceWallLaneSummaryPayload(lane)
+            },
+            "allSourceSummaries": videoSources.prefix(8).map { lane in
+                sourceWallLaneSummaryPayload(lane)
+            },
+            "truth": sequence == nil
+                ? "No active sequence is loaded."
+                : "Source Wall cards are whole synced source lanes at the shared playhead, not chopped clips."
+        ]
+    }
+
+    private func sourceWallLaneSummaryPayload(_ lane: [String: Any]) -> [String: Any] {
+        [
+            "laneId": lane["laneId"] ?? lane["id"] ?? "",
+            "name": sourceWallLaneDisplayName(lane),
+            "role": lane["role"] ?? "",
+            "readiness": lane["readiness"] ?? lane["sourceReadiness"] ?? "",
+            "playheadDecision": lane["playheadDecision"] ?? [:]
+        ]
+    }
+
+    private func laneIsPresentAtPlayhead(_ lane: VideoLane) -> Bool {
+        guard let source = lane.sourceVideo else {
+            return lane.duration > 0 && playbackEngine.playhead >= 0 && playbackEngine.playhead <= lane.duration
+        }
+        let sourceStart = source.offset
+        let duration = source.duration > 0 ? source.duration : lane.duration
+        guard duration > 0 else { return false }
+        return playbackEngine.playhead >= sourceStart && playbackEngine.playhead <= sourceStart + duration
+    }
+
+    private func lanePlayheadDecisionLabel(_ lane: [String: Any]) -> String {
+        guard let decision = lane["playheadDecision"] as? [String: Any] else { return "" }
+        return (decision["label"] as? String ?? decision["truth"] as? String ?? "").uppercased()
+    }
+
+    private func sourceWallLaneDisplayName(_ lane: [String: Any]) -> String {
+        let candidates = [
+            lane["name"] as? String,
+            lane["laneName"] as? String,
+            lane["sourceLabel"] as? String,
+            lane["mediaFileName"] as? String,
+            (lane["originalPath"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent },
+            (lane["sourcePath"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent },
+            (lane["playbackPath"] as? String).map { URL(fileURLWithPath: $0).lastPathComponent }
+        ]
+
+        return candidates
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+            ?? "Unnamed source"
+    }
+
+    private func laneIsReadyForSourceWall(_ lane: [String: Any]) -> Bool {
+        if let ready = lane["ready"] as? Bool { return ready }
+        if let ready = lane["sourceReady"] as? Bool { return ready }
+        let readiness = [
+            lane["readiness"] as? String ?? "",
+            lane["sourceReadiness"] as? String ?? ""
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        if readiness.contains("missing") || readiness.contains("blocked") || readiness.contains("needs") {
+            return false
+        }
+        return readiness.contains("ready")
+            || readiness.contains("local")
+            || readiness.contains("proxy")
+            || readiness.contains("available")
+    }
+
+    private func playEditBehavior(forProgramMomentMode mode: String) -> String {
+        switch mode {
+        case "SHOW":
+            return "Play Edit uses SHOW metadata here; confirm the source choice, crop, and cadence earn the moment."
+        case "SKIP":
+            return "Play Edit skips this span. Keep it only if the removed air is truly reset noise, dead air, or repeated setup."
+        case "SOURCE":
+            return "If this moment should be visible, choose a source and write SHOW metadata. Otherwise preserve it as quiet review space."
+        case "RECOVER":
+            return "Do not invent a cut from missing media. Recover proxies or move to a ready moment."
+        default:
+            return "Load or recover a ready source before trusting edit state."
+        }
+    }
+
+    private func playThroughBehavior(forProgramMomentMode mode: String) -> String {
+        switch mode {
+        case "SHOW":
+            return "Play Through keeps the same spine time so source monitors can reveal alternate camera/context choices."
+        case "SKIP":
+            return "Play Through exposes the quiet gap so a human or Codex can listen for breath, laugh, reaction, or thinking time."
+        case "SOURCE":
+            return "Play Through can inspect the whole synced source lanes without making an edit decision."
+        case "RECOVER":
+            return "Play Through may show nothing useful until source media is relinked or the playhead enters a ready range."
+        default:
+            return "Load a session before reviewing source continuity."
+        }
+    }
+
     private func primaryProgramLanes(in sequence: MediaSequence) -> [VideoLane] {
         let visualLanes = sequence.lanes.filter { !isSupportOnlyLane($0) }
         let productionEligibleLanes = visualLanes.filter { !laneIsParkedRecoveryForProgram($0) }
@@ -21075,7 +24750,7 @@ struct WorkspaceView: View {
                         Text("Selected decision")
                             .font(.caption)
                             .foregroundStyle(.secondary)
-                        Text("\(selected.tag.type.rawValue.uppercased()) on \(selected.lane.name)")
+                        Text("\(selected.tag.type == .active ? "Visible span" : "Quiet gap") on \(selected.lane.name)")
                             .font(.subheadline)
                             .bold()
                         Text("Metadata overlay on a whole source lane. These controls never slice the media file.")
@@ -21117,6 +24792,7 @@ struct WorkspaceView: View {
                 }
 
                 selectedDecisionStats(selected)
+                selectedDecisionCutIntelligenceSummary(selected)
                 selectedDecisionAgentParity(selected)
 
                 VStack(alignment: .leading, spacing: 6) {
@@ -21285,7 +24961,7 @@ struct WorkspaceView: View {
 
     private func selectedDecisionQuickStrip(_ selected: (lane: VideoLane, tag: VideoTag)) -> some View {
         HStack(spacing: 10) {
-            Label(selected.tag.type == .active ? "SHOW" : "SKIP", systemImage: selected.tag.type == .active ? "eye.fill" : "scissors")
+            Label(selected.tag.type == .active ? "Visible" : "Quiet", systemImage: selected.tag.type == .active ? "eye.fill" : "scissors")
                 .font(.caption)
                 .fontWeight(.bold)
                 .foregroundStyle(selected.tag.type == .active ? Color.yellow : Color.red)
@@ -21372,6 +25048,846 @@ struct WorkspaceView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
     }
 
+    private func selectedDecisionCutIntelligenceSummary(_ selected: (lane: VideoLane, tag: VideoTag)) -> some View {
+        let intent = selected.tag.editIntent ?? baselineDecisionIntent(for: selected.tag, lane: selected.lane, confidence: nil)
+        let splitSummary = splitEditRecommendationSummary(for: intent)
+        let verdict = selectedDecisionVerdict(for: selected, intent: intent, splitSummary: splitSummary)
+        let cadenceGuard = selectedDecisionCadenceGuard(for: selected, intent: intent)
+        let humanFlow = selectedDecisionHumanFlowRecommendation(
+            for: selected,
+            intent: intent,
+            splitSummary: splitSummary,
+            cadenceGuard: cadenceGuard
+        )
+        let techniqueGuidance = selectedTechniqueGuidance(for: humanFlow.technique)
+        let hasStoredIntent = selected.tag.editIntent != nil
+        let preservationWarning = selected.tag.type == .cut
+            ? "Play Edit hides this span. Preserve or gently shape it if it contains breath, laughter, thinking time, awkward warmth, emotional reset, or useful reaction."
+            : "Before tightening this visible span, protect meaning-bearing air and avoid hiding a seam with cover that feels false."
+        let reviewMode: (mode: String, label: String, reason: String, firstAction: String, icon: String, tint: Color)
+        if selected.tag.type == .cut {
+            reviewMode = (
+                mode: "preserve-air",
+                label: "Prove this should disappear",
+                reason: "This is a SKIP decision. Removed time must be reviewed as human cadence, not treated as automatically wasted time.",
+                firstAction: cadenceGuard.preserveAir
+                    ? "Play Through this span and mark Hold or Refine if it contains breath, laughter, thought, awkward warmth, or reaction."
+                    : "Play Through once and keep the skip only if the span is truly dead air, reset noise, or repeated setup.",
+                icon: "wind",
+                tint: cadenceGuard.preserveAir ? QuipslyStudioTheme.clay : QuipslyStudioTheme.honey
+            )
+        } else if cadenceGuard.preserveAir {
+            reviewMode = (
+                mode: "cadence-hold",
+                label: "Protect the human beat",
+                reason: "The decision touches rhythm or a meaning-bearing pause. This is where over-cleaned podcast editing starts sounding fake.",
+                firstAction: "Listen at normal speed before tightening, then preserve any pause, laugh, reaction, or breath that helps the thought land.",
+                icon: "metronome",
+                tint: QuipslyStudioTheme.honey
+            )
+        } else if intent.confidence < 0.50 || intent.risk.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().contains("high") {
+            reviewMode = (
+                mode: "high-care",
+                label: "Listen before trusting it",
+                reason: "This decision has low confidence or elevated risk, so the metadata is a review prompt, not a recommendation to approve.",
+                firstAction: "Cue the boundary, compare source monitors, and add a note before marking Keep.",
+                icon: "ear.badge.exclamationmark",
+                tint: QuipslyStudioTheme.clay
+            )
+        } else if abs(intent.audioLeadSeconds) > 0.03 || abs(intent.audioTailSeconds) > 0.03 {
+            reviewMode = (
+                mode: "split-timing",
+                label: "Check the J/L timing by ear",
+                reason: "The decision uses audio lead or tail timing. Good split edits feel invisible; bad ones feel like people stepping on each other.",
+                firstAction: "Play two seconds before and after the boundary and confirm the audio move adds flow instead of confusion.",
+                icon: "waveform.path",
+                tint: QuipslyStudioTheme.creek
+            )
+        } else if !intent.coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && intent.coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "none" {
+            reviewMode = (
+                mode: "cover-check",
+                label: "Confirm the cover earns its keep",
+                reason: "A cover strategy is attached. It should clarify the moment, not hide a cut just because hiding cuts feels clever.",
+                firstAction: "Compare Program Output with the source monitors and confirm the cover improves attention, reaction, or context.",
+                icon: "rectangle.on.rectangle.angled",
+                tint: QuipslyStudioTheme.moss
+            )
+        } else if !hasStoredIntent {
+            reviewMode = (
+                mode: "intent-metadata",
+                label: "Explain the decision",
+                reason: "This span has a baseline explanation but no stored intent yet. Training-quality edits need a visible why.",
+                firstAction: "Add or apply intent metadata before treating this decision as reusable evidence.",
+                icon: "square.and.pencil",
+                tint: QuipslyStudioTheme.honey
+            )
+        } else {
+            reviewMode = (
+                mode: "normal-listen",
+                label: "Do one normal-speed listen",
+                reason: "The decision looks reviewable. The remaining risk is whether it feels natural in the conversation.",
+                firstAction: "Play the boundary once at normal speed and listen for jumpiness, clipped breath, or missing reaction context.",
+                icon: "ear",
+                tint: QuipslyStudioTheme.sage
+            )
+        }
+
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Image(systemName: verdict.icon)
+                    .font(.caption)
+                    .fontWeight(.black)
+                    .foregroundStyle(verdict.tint)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Cut Intelligence")
+                        .font(.caption)
+                        .fontWeight(.black)
+                    Text(verdict.title)
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(verdict.tint)
+                }
+
+                Spacer()
+
+                Text(hasStoredIntent ? "INTENT SAVED" : "NEEDS INTENT")
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(hasStoredIntent ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background((hasStoredIntent ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey).opacity(0.14), in: Capsule())
+            }
+
+            Text(verdict.detail)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: reviewMode.icon)
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(reviewMode.tint)
+                    Text("Start here")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(QuipslyStudioTheme.sage)
+                        .textCase(.uppercase)
+                    Spacer()
+                    Text(reviewMode.mode.uppercased())
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(reviewMode.tint)
+                        .lineLimit(1)
+                }
+
+                Text(reviewMode.label)
+                    .font(.caption)
+                    .fontWeight(.black)
+                    .foregroundStyle(reviewMode.tint)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(reviewMode.reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                cutCraftReviewRow(
+                    icon: "arrow.right.circle",
+                    title: "First action",
+                    detail: reviewMode.firstAction,
+                    tint: reviewMode.tint
+                )
+            }
+            .padding(8)
+            .background(reviewMode.tint.opacity(0.10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(reviewMode.tint.opacity(0.22), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+            cutCraftReviewRow(
+                icon: "hand.raised.fill",
+                title: "Preserve if",
+                detail: preservationWarning,
+                tint: QuipslyStudioTheme.clay
+            )
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 6) {
+                    Image(systemName: humanFlow.icon)
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(humanFlow.tint)
+                    Text("Human-flow recommendation")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(QuipslyStudioTheme.sage)
+                        .textCase(.uppercase)
+                    Spacer()
+                    Text(humanFlow.technique.uppercased())
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(humanFlow.tint)
+                        .lineLimit(1)
+                }
+
+                Text(humanFlow.reason)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                cutCraftReviewRow(
+                    icon: "arrow.right.circle",
+                    title: "Safest action",
+                    detail: humanFlow.safeAction,
+                    tint: humanFlow.tint
+                )
+
+                cutCraftReviewRow(
+                    icon: "waveform.path.ecg",
+                    title: "Audio move",
+                    detail: humanFlow.audioMove,
+                    tint: QuipslyStudioTheme.creek
+                )
+
+                cutCraftReviewRow(
+                    icon: "rectangle.on.rectangle",
+                    title: "Visual move",
+                    detail: humanFlow.visualMove,
+                    tint: QuipslyStudioTheme.moss
+                )
+
+                cutCraftReviewRow(
+                    icon: "questionmark.bubble",
+                    title: "Review question",
+                    detail: humanFlow.reviewQuestion,
+                    tint: QuipslyStudioTheme.honey
+                )
+
+                if let techniqueGuidance {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "leaf")
+                                .font(.caption2)
+                                .fontWeight(.black)
+                                .foregroundStyle(QuipslyStudioTheme.lichen)
+                            Text("Technique guide")
+                                .font(.caption2)
+                                .fontWeight(.black)
+                                .foregroundStyle(QuipslyStudioTheme.sage)
+                                .textCase(.uppercase)
+                            Spacer()
+                            Text(techniqueGuidance.title.uppercased())
+                                .font(.caption2)
+                                .fontWeight(.black)
+                                .foregroundStyle(QuipslyStudioTheme.lichen)
+                                .lineLimit(1)
+                        }
+
+                        cutCraftReviewRow(
+                            icon: "checkmark.seal",
+                            title: "Best use",
+                            detail: techniqueGuidance.bestUse,
+                            tint: QuipslyStudioTheme.moss
+                        )
+
+                        cutCraftReviewRow(
+                            icon: "exclamationmark.triangle",
+                            title: "Avoid when",
+                            detail: techniqueGuidance.avoidWhen,
+                            tint: QuipslyStudioTheme.clay
+                        )
+
+                        cutCraftReviewRow(
+                            icon: "list.bullet.clipboard",
+                            title: "Before approving",
+                            detail: "Cue at normal speed. \(techniqueGuidance.reviewQuestion) Confirm it protects meaning, warmth, timing, or clarity rather than only making the episode shorter.",
+                            tint: QuipslyStudioTheme.honey
+                        )
+
+                        cutCraftReviewRow(
+                            icon: "sparkles.tv",
+                            title: "Codex rule",
+                            detail: techniqueGuidance.agentRule,
+                            tint: QuipslyStudioTheme.creek
+                        )
+                    }
+                    .padding(8)
+                    .background(QuipslyStudioTheme.lichen.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(QuipslyStudioTheme.lichen.opacity(0.18), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+
+                cutCraftReviewRow(
+                    icon: "hand.raised",
+                    title: "Do not optimize away",
+                    detail: humanFlow.doNotOptimizeAway,
+                    tint: QuipslyStudioTheme.clay
+                )
+            }
+            .padding(8)
+            .background(humanFlow.tint.opacity(0.10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 11, style: .continuous)
+                    .stroke(humanFlow.tint.opacity(0.22), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+            VStack(alignment: .leading, spacing: 6) {
+                cutCraftReviewRow(
+                    icon: splitSummary.icon,
+                    title: splitSummary.technique,
+                    detail: splitSummary.reviewQuestion,
+                    tint: splitSummary.tint
+                )
+                cutCraftReviewRow(
+                    icon: "waveform.path.ecg",
+                    title: "Human rhythm",
+                    detail: intent.humanRhythmNote.isEmpty
+                        ? "Listen for breath, laughter, hesitation, and thought before tightening this boundary."
+                        : intent.humanRhythmNote,
+                    tint: QuipslyStudioTheme.honey
+                )
+                cutCraftReviewRow(
+                    icon: cadenceGuard.icon,
+                    title: cadenceGuard.title,
+                    detail: cadenceGuard.detail,
+                    tint: cadenceGuard.tint
+                )
+                cutCraftReviewRow(
+                    icon: "arrow.right.circle",
+                    title: "Next safe move",
+                    detail: decisionNextReviewAction(for: intent),
+                    tint: QuipslyStudioTheme.creek
+                )
+            }
+        }
+        .padding(10)
+        .background(QuipslyStudioTheme.quietInsetGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(verdict.tint.opacity(0.22), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .help("Explains the selected decision as editable metadata over whole source lanes. It does not change timing or media.")
+    }
+
+    private func selectedDecisionVerdict(
+        for selected: (lane: VideoLane, tag: VideoTag),
+        intent: EditDecisionIntent,
+        splitSummary: (
+            technique: String,
+            icon: String,
+            tint: Color,
+            timingIntent: String,
+            visualTreatment: String,
+            audioTreatment: String,
+            reviewQuestion: String,
+            doNotAutomate: String
+        )
+    ) -> (title: String, detail: String, icon: String, tint: Color) {
+        let isQuietGap = selected.tag.type == .cut
+        let risk = intent.risk.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let confidence = intent.confidence
+
+        if isQuietGap {
+            return (
+                title: "Quiet gap: prove this should disappear",
+                detail: "Play Edit will jump over this span. Before keeping it, confirm it is dead air rather than breath, comic timing, thinking time, or a useful reaction beat.",
+                icon: "forward.end.fill",
+                tint: QuipslyStudioTheme.clay
+            )
+        }
+
+        if confidence < 0.50 || risk.contains("high") {
+            return (
+                title: "High-care cut: listen before trusting it",
+                detail: "This visible span has low confidence or elevated risk. Use the source grove and \(splitSummary.technique.lowercased()) guidance before letting it teach future auto-edits.",
+                icon: "ear.badge.exclamationmark",
+                tint: QuipslyStudioTheme.clay
+            )
+        }
+
+        if splitSummary.technique != "Straight cut" {
+            return (
+                title: "\(splitSummary.technique): check whether it feels human",
+                detail: "\(splitSummary.timingIntent) \(splitSummary.doNotAutomate)",
+                icon: splitSummary.icon,
+                tint: splitSummary.tint
+            )
+        }
+
+        if confidence >= 0.75 {
+            return (
+                title: "Likely clean visible span",
+                detail: "This looks like a reasonable straight visible decision. Still review cadence and source choice before treating it as final or training-quality.",
+                icon: "checkmark.seal.fill",
+                tint: QuipslyStudioTheme.moss
+            )
+        }
+
+        return (
+            title: "Visible span: needs a rhythm pass",
+            detail: "The source choice is visible in Program Output, but the boundary still needs a normal-speed listen for jumpiness, cadence, and reaction timing.",
+            icon: "slider.horizontal.below.rectangle",
+            tint: QuipslyStudioTheme.honey
+        )
+    }
+
+    private func selectedDecisionCadenceGuard(
+        for selected: (lane: VideoLane, tag: VideoTag),
+        intent: EditDecisionIntent
+    ) -> (title: String, detail: String, icon: String, tint: Color, preserveAir: Bool, riskLevel: String) {
+        let text = [
+            intent.cutStyle,
+            intent.coverStrategy,
+            intent.cadenceMode,
+            intent.humanRhythmNote,
+            intent.whyThisCutExists,
+            intent.tradeoffExplanation,
+            intent.reviewEvidence.joined(separator: " ")
+        ]
+        .joined(separator: " ")
+        .lowercased()
+
+        let humanBeatWords = [
+            "breath", "laugh", "hesitat", "thinking", "thought", "comic", "joke",
+            "warm", "emotional", "reaction", "pause", "awkward", "beat", "reset"
+        ]
+        let mentionsHumanBeat = humanBeatWords.contains { text.contains($0) }
+        let isQuietGap = selected.tag.type == .cut
+        let hasSplitTiming = abs(intent.audioLeadSeconds) > 0.03 || abs(intent.audioTailSeconds) > 0.03
+        let explicitCadenceRisk = text.contains("over-tightened")
+            || text.contains("cadence")
+            || text.contains("too clean")
+            || text.contains("robotic")
+
+        if isQuietGap && mentionsHumanBeat {
+            return (
+                title: "Preserve-air warning",
+                detail: "This is marked SKIP, but the metadata mentions a human beat. Listen before keeping the gap removed; breath, laughter, thought, and awkward warmth may be doing real work.",
+                icon: "wind",
+                tint: QuipslyStudioTheme.clay,
+                preserveAir: true,
+                riskLevel: "preserve_air_before_skip"
+            )
+        }
+
+        if isQuietGap {
+            return (
+                title: "Quiet-gap proof",
+                detail: "Play Edit jumps this span. Confirm it is filler, reset noise, or dead air before using it as training-quality evidence.",
+                icon: "forward.end.fill",
+                tint: QuipslyStudioTheme.honey,
+                preserveAir: false,
+                riskLevel: "prove_gap_is_safe"
+            )
+        }
+
+        if explicitCadenceRisk || mentionsHumanBeat {
+            return (
+                title: "Cadence-sensitive",
+                detail: "This visible decision touches rhythm or a human beat. Prefer a normal-speed listen over automatic tightening; a slightly imperfect pause may feel more honest than a perfect machine cut.",
+                icon: "metronome",
+                tint: QuipslyStudioTheme.honey,
+                preserveAir: true,
+                riskLevel: "cadence_sensitive"
+            )
+        }
+
+        if hasSplitTiming {
+            return (
+                title: "Split timing by ear",
+                detail: "This cut has J/L-style audio timing. Review it by ear so the lead or tail adds flow instead of making speakers feel like they are stepping on each other.",
+                icon: "waveform.path",
+                tint: QuipslyStudioTheme.creek,
+                preserveAir: false,
+                riskLevel: "split_timing_review"
+            )
+        }
+
+        return (
+            title: "Normal cadence check",
+            detail: "Before calling this final, listen once at normal speed for jumpiness, clipped breaths, missing reaction context, or a cut that feels too clever.",
+            icon: "ear",
+            tint: QuipslyStudioTheme.sage,
+            preserveAir: false,
+            riskLevel: "normal_listen_pass"
+        )
+    }
+
+    private func selectedDecisionRevisionTrailDetail(for intent: EditDecisionIntent) -> String {
+        if let latest = intent.revisionLedger.last {
+            let actor = latest.actor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unknown reviewer" : latest.actor
+            let action = latest.action.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "noted" : latest.action
+            let note = latest.note.trimmingCharacters(in: .whitespacesAndNewlines)
+            let statusChange: String
+            if !latest.previousStatus.isEmpty || !latest.nextStatus.isEmpty {
+                statusChange = " Status \(latest.previousStatus.isEmpty ? "new" : latest.previousStatus) -> \(latest.nextStatus.isEmpty ? "noted" : latest.nextStatus)."
+            } else {
+                statusChange = ""
+            }
+            let confidenceChange: String
+            if let before = latest.confidenceBefore, let after = latest.confidenceAfter {
+                confidenceChange = String(format: " Confidence %.0f%% -> %.0f%%.", before * 100, after * 100)
+            } else if let after = latest.confidenceAfter {
+                confidenceChange = String(format: " Confidence %.0f%%.", after * 100)
+            } else {
+                confidenceChange = ""
+            }
+            let evidence = latest.evidence.first.map { " Evidence: \($0)" } ?? ""
+            let noteText = note.isEmpty ? "" : " \(note)"
+            return "\(actor) \(action).\(noteText)\(statusChange)\(confidenceChange)\(evidence)"
+        }
+
+        if let legacy = intent.revisionHistory.last?.trimmingCharacters(in: .whitespacesAndNewlines), !legacy.isEmpty {
+            return "Legacy trail: \(legacy)"
+        }
+
+        return "No review trail yet. New suggestions should record actor, action, evidence, status, and confidence before they become training-quality edit data."
+    }
+
+    private func selectedDecisionHumanFlowRecommendation(
+        for selected: (lane: VideoLane, tag: VideoTag),
+        intent: EditDecisionIntent,
+        splitSummary: (
+            technique: String,
+            icon: String,
+            tint: Color,
+            timingIntent: String,
+            visualTreatment: String,
+            audioTreatment: String,
+            reviewQuestion: String,
+            doNotAutomate: String
+        ),
+        cadenceGuard: (title: String, detail: String, icon: String, tint: Color, preserveAir: Bool, riskLevel: String)
+    ) -> (
+        technique: String,
+        icon: String,
+        tint: Color,
+        reason: String,
+        safeAction: String,
+        audioMove: String,
+        visualMove: String,
+        reviewQuestion: String,
+        doNotOptimizeAway: String,
+        trainingValue: String,
+        agentInstruction: String
+    ) {
+        let isQuietGap = selected.tag.type == .cut
+        let cutStyle = intent.cutStyle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let cover = intent.coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let risk = intent.risk.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let lowConfidence = intent.confidence < 0.50 || risk.contains("high")
+
+        if isQuietGap {
+            return (
+                technique: "preserve-air-audit",
+                icon: "wind",
+                tint: cadenceGuard.preserveAir ? QuipslyStudioTheme.clay : QuipslyStudioTheme.honey,
+                reason: "This decision removes time from Play Edit. It may be correct, but removed time must be proven as filler before it teaches the editor to erase human cadence.",
+                safeAction: cadenceGuard.preserveAir
+                    ? "Play Through this exact span, listen for breath, laugh, reaction, or setup, then mark Hold or Refine before using it."
+                    : "Play Through once, then mark Keep only if the span is truly dead air, reset noise, or repeated setup.",
+                audioMove: "Do not tighten more until the removed audio is classified.",
+                visualMove: "Keep source monitors visible while checking whether a reaction beat was removed.",
+                reviewQuestion: "Is this absence making the conversation better, or just shorter?",
+                doNotOptimizeAway: "Breath, hesitation, comic timing, awkward warmth, emotional reset, or useful listener reaction.",
+                trainingValue: "Teaches that SKIP is a reversible editorial judgment, not proof that silence is waste.",
+                agentInstruction: "Do not expand this skip automatically. First classify the removed span by ear and add a review note."
+            )
+        }
+
+        if cadenceGuard.preserveAir {
+            return (
+                technique: "cadence-sensitive-hold",
+                icon: "metronome",
+                tint: QuipslyStudioTheme.honey,
+                reason: "The metadata mentions rhythm or human beats. This is where overly clean podcast editing can start sounding fake.",
+                safeAction: "Listen at normal speed and preserve any pause or reaction that helps the thought land.",
+                audioMove: "Prefer a tiny J/L adjustment over chopping the air flat.",
+                visualMove: "Use a reaction, reframe, or stable hold only if it makes the beat easier to feel.",
+                reviewQuestion: cadenceGuard.detail,
+                doNotOptimizeAway: "The moment where a person is thinking, reacting, laughing, or letting meaning settle.",
+                trainingValue: "Teaches the editor to protect meaning-bearing pauses instead of rewarding maximum compression.",
+                agentInstruction: "Review by ear before changing timing. If refined, write why the preserved or shortened air feels more human."
+            )
+        }
+
+        if cover.contains("reaction") {
+            return (
+                technique: "reaction-cover",
+                icon: "person.2.wave.2",
+                tint: QuipslyStudioTheme.moss,
+                reason: "A reaction cover can hide a visual jump while adding context, but only if the reaction is emotionally true.",
+                safeAction: "Preview the cover in the Source Grove and confirm the reaction adds meaning rather than merely hiding a seam.",
+                audioMove: "Keep dialogue continuous unless a subtle lead or tail improves the response.",
+                visualMove: splitSummary.visualTreatment,
+                reviewQuestion: splitSummary.reviewQuestion,
+                doNotOptimizeAway: "A speaker's actual emotional response or listening texture.",
+                trainingValue: "Teaches that covers should clarify human exchange, not decorate every boundary.",
+                agentInstruction: "Prefer the reaction only if it supports the spoken point. Otherwise keep or refine the straight cut."
+            )
+        }
+
+        if cover.contains("b-roll") || cover.contains("clip") || cutStyle.contains("b-roll") || cutStyle.contains("clip") {
+            return (
+                technique: "context-cover",
+                icon: "film.stack",
+                tint: QuipslyStudioTheme.creek,
+                reason: "This boundary may benefit from a source clip or B-roll insert, especially when the spoken idea references something visual.",
+                safeAction: "Check whether the insert teaches, clarifies, or delights. If not, leave the conversation visible.",
+                audioMove: "Keep the podcast audio as the spine unless the clip audio is explicitly part of the story.",
+                visualMove: "Use the clip only for the portion where it actively supports the sentence.",
+                reviewQuestion: "Would a viewer understand more because this visual appears here?",
+                doNotOptimizeAway: "The speaker's face when the emotional or explanatory force is in the delivery.",
+                trainingValue: "Teaches B-roll as evidence/context, not wallpaper.",
+                agentInstruction: "Use clip insertion only when tied to the transcript idea or reaction note. Keep the edit metadata reversible."
+            )
+        }
+
+        if splitSummary.technique == "J-cut" || splitSummary.technique == "L-cut" {
+            return (
+                technique: splitSummary.technique.lowercased(),
+                icon: splitSummary.icon,
+                tint: splitSummary.tint,
+                reason: "Split audio timing can make a conversation feel more fluid without faking it, but it must be approved by ear.",
+                safeAction: "Preview before and after the boundary; keep the lead/tail only if the speaker handoff feels more natural.",
+                audioMove: splitSummary.audioTreatment,
+                visualMove: splitSummary.visualTreatment,
+                reviewQuestion: splitSummary.reviewQuestion,
+                doNotOptimizeAway: splitSummary.doNotAutomate,
+                trainingValue: "Teaches subtle audio-led flow while preserving the whole source timeline.",
+                agentInstruction: "Adjust split timing in small increments only after listening; do not use J/L cuts as generic silence removal."
+            )
+        }
+
+        if lowConfidence {
+            return (
+                technique: "hold-for-ear-pass",
+                icon: "ear.badge.exclamationmark",
+                tint: QuipslyStudioTheme.clay,
+                reason: "This visible decision lacks enough confidence to become training-quality evidence.",
+                safeAction: "Listen through the previous and next boundary, then mark Keep, Refine, or Hold with a note.",
+                audioMove: "Avoid extra tightening until confidence improves.",
+                visualMove: "Check the Source Grove for a reaction, cleaner source, or better framing.",
+                reviewQuestion: "What exactly makes this boundary feel right or wrong?",
+                doNotOptimizeAway: "Uncertainty. Preserve the doubt as metadata instead of turning it into a fake green check.",
+                trainingValue: "Teaches the system that honest uncertainty is safer than confident-looking bad edits.",
+                agentInstruction: "Add a review note before modifying this decision. Do not treat it as approved."
+            )
+        }
+
+        return (
+            technique: "straight-cut-review",
+            icon: "scissors",
+            tint: QuipslyStudioTheme.sage,
+            reason: "A straight cut is often the best edit when it disappears. The job is to confirm it disappears instead of decorating it.",
+            safeAction: "Listen once at normal speed for jumpiness, clipped breath, or missing reaction context.",
+            audioMove: "Keep audio aligned unless a small lead/tail obviously improves flow.",
+            visualMove: "Keep the selected source unless the monitor wall reveals a better reaction.",
+            reviewQuestion: "Does this boundary vanish, or does the viewer feel the machinery?",
+            doNotOptimizeAway: "A clean, honest cut that already works.",
+            trainingValue: "Teaches restraint: not every boundary needs a clever treatment.",
+            agentInstruction: "Do a normal-speed ear pass. If it works, mark Keep; if not, refine timing or source choice."
+        )
+    }
+
+    private func selectedTechniqueGuidance(for technique: String) -> CutTechniqueGuidance? {
+        let normalized = technique
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+
+        let mappedId: String?
+        switch normalized {
+        case "reaction-cover":
+            mappedId = "reaction-cover"
+        case "j-cut":
+            mappedId = "j-cut"
+        case "l-cut":
+            mappedId = "l-cut"
+        case "context-cover", "b-roll-cover", "b-roll-or-clip-cover":
+            mappedId = "context-cover"
+        case "preserve-air-audit", "quiet-gap-proof", "quiet-gap", "cadence-sensitive-hold":
+            mappedId = "quiet-gap"
+        default:
+            mappedId = nil
+        }
+
+        guard let mappedId else { return nil }
+        return CutTechniqueGuidance.defaultPlaybook().first { $0.id == mappedId }
+    }
+
+    private func selectedDecisionAgentPayload() -> [String: Any] {
+        guard let selected = selectedDecision() else {
+            return [
+                "status": "no_selected_decision",
+                "selected": false,
+                "truth": "No selected SHOW/SKIP decision. Select a decision before trimming, switching, annotating, or treating this as training evidence.",
+                "nextAction": "Use GET /select_decision?mode=at_playhead&scope=video or script/agentctl.sh select-decision at_playhead video."
+            ]
+        }
+
+        let sequenceStart = max(0, (selected.lane.sourceVideo?.offset ?? 0) + selected.tag.startTime)
+        let sequenceEnd = sequenceStart + selected.tag.duration
+        let intent = selected.tag.editIntent
+        let timeSummary = "\(String(format: "%.2f", sequenceStart))s -> \(String(format: "%.2f", sequenceEnd))s"
+
+        return [
+            "status": "selected_decision",
+            "selected": true,
+            "laneId": selected.lane.id.uuidString,
+            "laneName": selected.lane.name,
+            "tagId": selected.tag.id.uuidString,
+            "tagType": selected.tag.type.rawValue,
+            "sourceStart": selected.tag.startTime,
+            "sourceEnd": selected.tag.startTime + selected.tag.duration,
+            "duration": selected.tag.duration,
+            "sequenceStart": sequenceStart,
+            "sequenceEnd": sequenceEnd,
+            "timeSummary": timeSummary,
+            "hasStoredIntent": intent != nil,
+            "intentStatus": intent?.status ?? "",
+            "risk": intent?.risk ?? "",
+            "confidence": intent?.confidence ?? 0,
+            "whyThisCutExists": intent?.whyThisCutExists ?? "",
+            "tradeoffExplanation": intent?.tradeoffExplanation ?? "",
+            "reviewEvidence": intent?.reviewEvidence ?? [],
+            "reviewLedgerCount": intent?.revisionLedger.count ?? 0,
+            "plainEnglish": selected.tag.type == .active
+                ? "This SHOW metadata tells Play Edit to use \(selected.lane.name) from \(timeSummary). The source media remains whole."
+                : "This SKIP metadata tells Play Edit to jump \(timeSummary). Play Through can still reveal it.",
+            "safeCommands": [
+                "evidence": "GET /selected_decision_intent_evidence",
+                "guidance": "GET /selected_decision_human_cut_guidance",
+                "note": "GET /selected_decision_intent_note?note=<why>&actor=Codex&actor_type=agent&category=cut-choice",
+                "status": "GET /selected_decision_intent_status?status=needs-listen|refine|keep|hold&actor=Codex&actor_type=agent&note=<optional>",
+                "trim": "GET /trim_selected?start_delta=<seconds>&duration_delta=<seconds>",
+                "nudge": "GET /nudge_selected?delta=<seconds>",
+                "switch": "GET /switch_selected_decision?action=charlie|homer|both|skip|charlieClip|homerClip"
+            ],
+            "truth": "Selected decision identity and boundaries are state truth over intact synced sources. This payload does not mutate media, timing, exports, or publication receipts."
+        ]
+    }
+
+    private func selectedDecisionCutIntelligencePayload() -> [String: Any] {
+        guard let selected = selectedDecision() else {
+            return [
+                "status": "no_selected_decision",
+                "model": "quipslystudio-selected-decision-cut-intelligence",
+                "truth": "No selected SHOW/SKIP decision. This readout is metadata-only and never mutates source media.",
+                "nextAction": "Select a timeline decision or call /select_decision?mode=at_playhead&scope=video."
+            ]
+        }
+
+        let intent = selected.tag.editIntent ?? baselineDecisionIntent(for: selected.tag, lane: selected.lane, confidence: nil)
+        let splitSummary = splitEditRecommendationSummary(for: intent)
+        let verdict = selectedDecisionVerdict(for: selected, intent: intent, splitSummary: splitSummary)
+        let cadenceGuard = selectedDecisionCadenceGuard(for: selected, intent: intent)
+        let humanFlow = selectedDecisionHumanFlowRecommendation(
+            for: selected,
+            intent: intent,
+            splitSummary: splitSummary,
+            cadenceGuard: cadenceGuard
+        )
+        let techniqueGuidance = selectedTechniqueGuidance(for: humanFlow.technique)
+        let preservationWarning = selected.tag.type == .cut
+            ? "Play Edit hides this span. Preserve or gently shape it if it contains breath, laughter, thinking time, awkward warmth, emotional reset, or useful reaction."
+            : "Before tightening this visible span, protect meaning-bearing air and avoid hiding a seam with cover that feels false."
+        let sequenceStart = max(0, (selected.lane.sourceVideo?.offset ?? 0) + selected.tag.startTime)
+        let sequenceEnd = sequenceStart + selected.tag.duration
+        let evidence = decisionReviewEvidenceLines(for: intent)
+
+        return [
+            "status": "selected_decision_cut_intelligence",
+            "model": "quipslystudio-selected-decision-cut-intelligence",
+            "selectedLaneName": selected.lane.name,
+            "selectedLaneId": selected.lane.id.uuidString,
+            "selectedTagId": selected.tag.id.uuidString,
+            "selectedTagType": selected.tag.type.rawValue,
+            "selectedTagStart": selected.tag.startTime,
+            "selectedTagDuration": selected.tag.duration,
+            "selectedSequenceStart": sequenceStart,
+            "selectedSequenceEnd": sequenceEnd,
+            "hasStoredIntent": selected.tag.editIntent != nil,
+            "verdict": [
+                "title": verdict.title,
+                "detail": verdict.detail,
+                "icon": verdict.icon
+            ],
+            "intentStatus": intent.status,
+            "risk": intent.risk,
+            "confidence": intent.confidence,
+            "cutStyle": intent.cutStyle,
+            "coverStrategy": intent.coverStrategy,
+            "cadenceMode": intent.cadenceMode,
+            "whyThisCutExists": intent.whyThisCutExists,
+            "tradeoffExplanation": intent.tradeoffExplanation,
+            "humanRhythmNote": intent.humanRhythmNote,
+            "reviewEvidence": evidence,
+            "nextReviewAction": decisionNextReviewAction(for: intent),
+            "cadenceGuard": [
+                "title": cadenceGuard.title,
+                "detail": cadenceGuard.detail,
+                "icon": cadenceGuard.icon,
+                "preserveAir": cadenceGuard.preserveAir,
+                "riskLevel": cadenceGuard.riskLevel
+            ],
+            "humanFlowRecommendation": [
+                "technique": humanFlow.technique,
+                "reason": humanFlow.reason,
+                "safeAction": humanFlow.safeAction,
+                "audioMove": humanFlow.audioMove,
+                "visualMove": humanFlow.visualMove,
+                "reviewQuestion": humanFlow.reviewQuestion,
+                "doNotOptimizeAway": humanFlow.doNotOptimizeAway,
+                "trainingValue": humanFlow.trainingValue,
+                "agentInstruction": humanFlow.agentInstruction
+            ],
+            "techniqueGuidance": techniqueGuidance?.agentPayload ?? [:],
+            "preserveAirProtocol": intent.agentPayload["preserveAirProtocol"] ?? [:],
+            "reviewProvenance": intent.agentPayload["reviewProvenance"] ?? [:],
+            "revisionLedger": intent.revisionLedger.map(\.agentPayload),
+            "revisionHistory": Array(intent.revisionHistory.suffix(8)),
+            "humanAgentNotes": Array(intent.humanAgentNotes.suffix(8)),
+            "preservationWarning": preservationWarning,
+            "agentTechniqueRule": techniqueGuidance?.agentRule ?? humanFlow.agentInstruction,
+            "humanReviewChecklist": [
+                "Cue the selected boundary and listen at normal speed.",
+                humanFlow.reviewQuestion,
+                "Confirm it protects meaning, warmth, timing, or clarity rather than only making the episode shorter.",
+                preservationWarning
+            ],
+            "splitEditRecommendation": [
+                "technique": splitSummary.technique,
+                "timingIntent": splitSummary.timingIntent,
+                "visualTreatment": splitSummary.visualTreatment,
+                "audioTreatment": splitSummary.audioTreatment,
+                "reviewQuestion": splitSummary.reviewQuestion,
+                "doNotAutomate": splitSummary.doNotAutomate
+            ],
+            "safeCommands": [
+                "selectAtPlayhead": "GET /select_decision?mode=at_playhead&scope=video",
+                "addNote": "GET /selected_decision_intent_note?note=<what-to-check>&actor=Codex&actor_type=agent&category=cut-choice",
+                "markListen": "GET /selected_decision_intent_status?status=needs-listen&actor=Codex&actor_type=agent&note=needs%20an%20ear%20pass",
+                "markRefine": "GET /selected_decision_intent_status?status=refine&actor=Codex&actor_type=agent&note=needs%20timing%20or%20cover%20refinement",
+                "cutReviewBrief": "script/agentctl.sh cut-review-brief any",
+                "cutReviewBriefSave": "script/agentctl.sh cut-review-brief-save"
+            ],
+            "truth": "Cut Intelligence explains the selected SHOW/SKIP metadata decision. It does not approve, publish, export, trim, or mutate source media."
+        ]
+    }
+
     private func selectedDecisionAgentParity(_ selected: (lane: VideoLane, tag: VideoTag)) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 8) {
@@ -21392,8 +25908,11 @@ struct WorkspaceView: View {
 
             HStack(spacing: 6) {
                 agentCommandPill("select", "/select_decision")
+                agentCommandPill("why", "/selected_decision_cut_intelligence")
                 agentCommandPill("nudge", "/nudge_selected")
                 agentCommandPill("trim", "/trim_selected")
+                agentCommandPill("note", "/selected_decision_intent_note")
+                agentCommandPill("status", "/selected_decision_intent_status")
                 agentCommandPill("delete", "/delete_selected_tag")
             }
         }
@@ -22129,6 +26648,40 @@ struct WorkspaceView: View {
         let laneReports = sequence.lanes.map { lane -> [String: Any] in
             let readiness = sourceReadiness(for: lane)
             let source = lane.sourceVideo
+            let sourceOffset = source?.offset ?? 0
+            let laneDuration = source?.duration ?? lane.duration
+            let sourceTimeAtPlayhead = playbackEngine.playhead - sourceOffset
+            let presentAtPlayhead = sourceTimeAtPlayhead >= 0 && (laneDuration <= 0 || sourceTimeAtPlayhead <= laneDuration)
+            let playheadTag = lane.tags.first { tag in
+                sourceTimeAtPlayhead >= tag.startTime && sourceTimeAtPlayhead <= tag.startTime + tag.duration
+            }
+            let playheadDecisionLabel: String
+            let playheadDecisionEffect: String
+            let playheadTagSourceStart: Any
+            let playheadTagSequenceStart: Any
+            let playheadTagDuration: Any
+            if let playheadTag {
+                playheadTagSourceStart = playheadTag.startTime
+                playheadTagSequenceStart = sourceOffset + playheadTag.startTime
+                playheadTagDuration = playheadTag.duration
+            } else {
+                playheadTagSourceStart = NSNull()
+                playheadTagSequenceStart = NSNull()
+                playheadTagDuration = NSNull()
+            }
+            if !presentAtPlayhead {
+                playheadDecisionLabel = "OUT_OF_RANGE"
+                playheadDecisionEffect = "This whole source lane is not present at the shared playhead."
+            } else if playheadTag?.type == .active {
+                playheadDecisionLabel = "SHOW"
+                playheadDecisionEffect = "Play Edit may show this source now; Play Through can still reveal the whole synced source."
+            } else if playheadTag?.type == .cut {
+                playheadDecisionLabel = "SKIP"
+                playheadDecisionEffect = "Play Edit jumps this metadata span; Play Through still exposes it for review."
+            } else {
+                playheadDecisionLabel = "AVAILABLE"
+                playheadDecisionEffect = "The source is present for review, but Program Output stays blank unless another SHOW decision wins."
+            }
             let sourcePath = source?.mediaURL.path ?? lane.metadata?.sourcePath ?? ""
             let proxyPath = source?.proxyURL?.path ?? readiness.playbackPath
             let protectedSource = !sourcePath.isEmpty && ExternalMediaAccess.isProtectedUserMediaPath(sourcePath)
@@ -22146,7 +26699,19 @@ struct WorkspaceView: View {
                 "mediaKind": lane.metadata?.mediaKind ?? "",
                 "role": lane.metadata?.role ?? "",
                 "durationSeconds": source?.duration ?? lane.duration,
-                "offsetSeconds": source?.offset ?? 0,
+                "offsetSeconds": sourceOffset,
+                "sourceTimeAtPlayhead": sourceTimeAtPlayhead,
+                "presentAtPlayhead": presentAtPlayhead,
+                "playheadDecision": [
+                    "tagId": playheadTag?.id.uuidString ?? "",
+                    "type": playheadTag?.type.rawValue ?? "",
+                    "label": playheadDecisionLabel,
+                    "sourceStartSeconds": playheadTagSourceStart,
+                    "sequenceStartSeconds": playheadTagSequenceStart,
+                    "durationSeconds": playheadTagDuration,
+                    "effect": playheadDecisionEffect,
+                    "truth": "This is metadata over a whole synced source lane. It is not a chopped media segment."
+                ],
                 "sourcePath": sourcePath,
                 "expectedProxyPath": proxyPath,
                 "readiness": readiness.label,
@@ -23098,7 +27663,7 @@ struct WorkspaceView: View {
         payload["model"] = "quipsly-publish-release-checklist"
         payload["version"] = "2026-06-16.publish-release-checklist.v1"
         payload["sessionName"] = normalizedActiveSessionName()
-        payload["sequenceTitle"] = sequence?.title ?? ""
+        payload["sequenceTitle"] = qStudioOptionalString(sequence?.title)
         payload["sourcePolicy"] = "checklist reports artifact/copy/receipt truth; it never mutates source media or platform state"
         payload["directPublishingReady"] = false
         payload["nextActions"] = publishReleaseChecklistNextActions(records: records, limit: 8)
@@ -23229,7 +27794,7 @@ struct WorkspaceView: View {
             "version": "2026-06-19.publication-receipt-cockpit.v1",
             "status": status,
             "sessionName": normalizedActiveSessionName(),
-            "sequenceTitle": sequence?.title ?? "",
+            "sequenceTitle": qStudioOptionalString(sequence?.title),
             "publicationPhase": completion["publicationPhase"] ?? "",
             "publicationComplete": completion["publicationComplete"] ?? false,
             "summary": summary,
@@ -24332,7 +28897,7 @@ struct WorkspaceView: View {
             "version": "2026-06-17.publication-mission-control.v1",
             "status": status,
             "sessionName": normalizedActiveSessionName(),
-            "sequenceTitle": sequence?.title ?? "",
+            "sequenceTitle": qStudioOptionalString(sequence?.title),
             "summary": [
                 "readyLaneCount": readyLaneCount,
                 "laneCount": laneCount,
@@ -24508,7 +29073,7 @@ struct WorkspaceView: View {
             "status": status,
             "sessionName": normalizedActiveSessionName(),
             "projectTitle": projectStore.project.title,
-            "sequenceTitle": sequence?.title ?? "",
+            "sequenceTitle": qStudioOptionalString(sequence?.title),
             "sourcePolicy": "Nest, Studio, and Tower are lenses over the same episode truth. Seeded context is review-labeled, source lanes stay whole, and publication is only true after receipts.",
             "creativePartnerPolicy": "Codex and Quipslys may create real publishable drafts and packets. The safeguard is visible authorship, provenance, review state, and receipts; not a ban on agent-authored work.",
             "nest": [
@@ -24530,7 +29095,7 @@ struct WorkspaceView: View {
                 "audioBlockedCount": summary.audioBlockedCount,
                 "showDecisionCount": summary.showDecisionCount,
                 "skipDecisionCount": summary.skipDecisionCount,
-                "shortRecipeCount": sequence?.shortClipQueue.count ?? 0,
+                "shortRecipeCount": qStudioOptionalInt(sequence?.shortClipQueue.count),
                 "deliveryReadinessStatus": delivery["status"] ?? "",
                 "deliveryCounts": delivery["counts"] ?? [:]
             ] as [String: Any],
@@ -24972,12 +29537,19 @@ struct WorkspaceView: View {
             "nextReviewCommand": "script/agentctl.sh shorts-review-next",
             "nextReviewEndpoint": "GET /shorts_review_next?status=<optional-status>",
             "nextReviewCandidate": shortReviewNextCandidatePayload(for: sequence),
+            "nextCutRiskCommand": "script/agentctl.sh shorts-review-next-cut-risk risk",
+            "nextCutOpportunityCommand": "script/agentctl.sh shorts-review-next-cut-risk opportunity",
+            "nextCutRiskEndpoint": "GET /shorts_review_next_cut_risk?mode=risk",
+            "nextCutOpportunityEndpoint": "GET /shorts_review_next_cut_risk?mode=opportunity",
+            "nextCutRiskCandidate": shortCutIntelligenceNextCandidatePayload(for: sequence, mode: "risk"),
+            "nextCutOpportunityCandidate": shortCutIntelligenceNextCandidatePayload(for: sequence, mode: "opportunity"),
             "reviewNavigator": shortReviewNavigatorPayload(for: sequence),
             "reviewedQueueCommand": "script/agentctl.sh reviewed-social-queue --session \(normalizedActiveSessionName()) --output /absolute/output/folder --basename reviewed-social --include-status keep",
             "nativeReviewedQueueCommand": "script/agentctl.sh reviewed-social-queue-generate /absolute/output/folder optional-basename",
             "reviewScopeGuidance": queue.isEmpty
                 ? "No derivative shorts are queued yet."
                 : "Short review can proceed from transcript context and current exports even when the full two-camera episode edit is not ready. Keep/refine/reject decisions stay metadata-only until export or queue generation.",
+            "cutReviewGuidance": "Cut-risk and cut-opportunity navigation reuses the selected-short quality passport and Cut Intelligence evidence. It changes focus only; it never approves, publishes, or changes source media.",
             "truth": "Only keep-status shorts should flow into reviewed social queues. Draft, refine, and reject remain useful editorial metadata but are not publish approvals."
         ]
     }
@@ -25079,6 +29651,7 @@ struct WorkspaceView: View {
         struct ShortNavigatorCandidate {
             let priority: Int
             let clip: ShortClipCandidate
+            let brief: ShortCreatorQualityBrief
             let evidence: [String: Any]
             let readiness: [String: Any]
             let status: String
@@ -25126,6 +29699,7 @@ struct WorkspaceView: View {
         func candidate(for clip: ShortClipCandidate) -> ShortNavigatorCandidate {
             let evidence = shortReviewEvidencePayload(for: clip, in: sequence)
             let readiness = readinessPayload(from: evidence)
+            let brief = shortCreatorQualityBrief(for: clip)
             let missing = requiredIncompleteStepIds(from: readiness)
             let exportExists = evidenceBool(evidence, "exportExists")
             let review = reviewStatus(for: clip)
@@ -25198,6 +29772,7 @@ struct WorkspaceView: View {
             return ShortNavigatorCandidate(
                 priority: selected ? max(1, priority - 5) : priority,
                 clip: clip,
+                brief: brief,
                 evidence: evidence,
                 readiness: readiness,
                 status: status,
@@ -25210,6 +29785,9 @@ struct WorkspaceView: View {
 
         let candidates = queue.map(candidate(for:))
         let sortedCandidates = candidates.sorted {
+            if $0.brief.reviewPriority != $1.brief.reviewPriority {
+                return $0.brief.reviewPriority > $1.brief.reviewPriority
+            }
             if $0.priority != $1.priority {
                 return $0.priority < $1.priority
             }
@@ -25253,6 +29831,11 @@ struct WorkspaceView: View {
                 "selected": item.selected,
                 "reviewStatus": reviewStatus(for: item.clip),
                 "exportStatus": item.clip.exportStatus,
+                "reviewClass": item.brief.reviewClass,
+                "reviewClassLabel": item.brief.reviewClassLabel,
+                "reviewClassExplanation": item.brief.reviewClassExplanation,
+                "reviewPriority": item.brief.reviewPriority,
+                "nextReviewAction": item.brief.nextReviewAction,
                 "status": item.status,
                 "reason": item.reason,
                 "nextAction": item.nextAction,
@@ -25338,7 +29921,7 @@ struct WorkspaceView: View {
                 "readyForSocialQueue": count { $0.status == "ready_for_social_queue" },
                 "rejectedLearningData": count { $0.status == "rejected_learning_data" }
             ],
-            "nextAction": next?.nextAction ?? "No review action available.",
+            "nextAction": next?.brief.nextReviewAction ?? next?.nextAction ?? "No review action available.",
             "nextReason": next?.reason ?? "No queued short candidates are available.",
             "nextCommand": next?.nextCommand ?? "",
             "nextMechanicalAction": nextMechanical?.nextAction ?? "",
@@ -29509,7 +34092,19 @@ struct WorkspaceView: View {
     }
 
     private func podcastReadyPacketManifestIsOperatorReady(_ path: String) -> Bool {
-        guard !path.isEmpty,
+        guard !path.isEmpty else {
+            return false
+        }
+
+        // This check is called from SwiftUI render/status paths. External drives
+        // can block on file open while waking, reconnecting, or prompting for
+        // access. Keep UI/auth/agent control responsive and let explicit
+        // validators inspect external publication packets off the hot path.
+        if path.hasPrefix("/Volumes/") {
+            return false
+        }
+
+        guard
               FileManager.default.fileExists(atPath: path),
               let data = FileManager.default.contents(atPath: path),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -32411,8 +37006,83 @@ struct WorkspaceView: View {
         leftWorkbenchMode = .shorts
         isInspectorVisible = true
         selectShortClipCandidate(next)
-        lastMediaAction = "Reviewing next short candidate: \(next.title)"
+        let brief = shortCreatorQualityBrief(for: next)
+        lastMediaAction = "Reviewing next short candidate: \(next.title) - \(brief.reviewClassLabel): \(brief.nextReviewAction)"
         updateAgentState()
+    }
+
+    private func selectNextShortCutIntelligenceCandidate(mode rawMode: String?) {
+        guard let sequence = projectStore.activeSequence else {
+            lastMediaAction = "Cut-risk short review blocked: no active sequence"
+            updateAgentState()
+            return
+        }
+
+        guard let next = nextShortCutIntelligenceCandidate(in: sequence, mode: rawMode) else {
+            lastMediaAction = "Cut-risk short review found no matching short for mode \(normalizedShortCutIntelligenceMode(rawMode))"
+            updateAgentState()
+            return
+        }
+
+        let evidence = shortCutIntelligenceEvidence(for: next, in: sequence)
+        leftWorkbenchMode = .shorts
+        isInspectorVisible = true
+        selectShortClipCandidate(next)
+        lastMediaAction = "Reviewing next \(shortCutIntelligenceModeLabel(rawMode)) short: \(next.title) (\(evidence.summary))"
+        updateAgentState()
+    }
+
+    private func nextShortCutIntelligenceCandidate(in sequence: MediaSequence, mode rawMode: String?) -> ShortClipCandidate? {
+        let queue = sequence.shortClipQueue
+        guard !queue.isEmpty else { return nil }
+
+        let mode = normalizedShortCutIntelligenceMode(rawMode)
+        let selectedIndex = selectedShortClipId.flatMap { selectedId in
+            queue.firstIndex { $0.id == selectedId }
+        } ?? -1
+        let startIndex = selectedIndex >= 0 ? (selectedIndex + 1) % queue.count : 0
+        let rotated = queue.indices.map { offset in
+            queue[(startIndex + offset) % queue.count]
+        }
+
+        return rotated.first { clip in
+            let evidence = shortCutIntelligenceEvidence(for: clip, in: sequence)
+            switch mode {
+            case "opportunity":
+                return evidence.hasOpportunity
+            case "any":
+                return evidence.hasRisk || evidence.hasOpportunity || evidence.overlappedFindingCount > 0
+            default:
+                return evidence.hasRisk
+            }
+        }
+    }
+
+    private func normalizedShortCutIntelligenceMode(_ rawMode: String?) -> String {
+        let normalized = (rawMode ?? "risk")
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+        switch normalized {
+        case "opportunity", "opportunities", "reaction", "reaction-opportunity":
+            return "opportunity"
+        case "any", "all", "overlap", "overlaps":
+            return "any"
+        default:
+            return "risk"
+        }
+    }
+
+    private func shortCutIntelligenceModeLabel(_ rawMode: String?) -> String {
+        switch normalizedShortCutIntelligenceMode(rawMode) {
+        case "opportunity":
+            return "cut-opportunity"
+        case "any":
+            return "cut-overlap"
+        default:
+            return "cut-risk"
+        }
     }
 
     private func nextShortReviewCandidate(in sequence: MediaSequence, preferredStatus rawStatus: String? = nil) -> ShortClipCandidate? {
@@ -32437,6 +37107,11 @@ struct WorkspaceView: View {
         let unresolved = rotated.enumerated()
             .filter { _, clip in isShortStillReviewable(clip) }
             .min { left, right in
+                let leftBrief = shortCreatorQualityBrief(for: left.element)
+                let rightBrief = shortCreatorQualityBrief(for: right.element)
+                if leftBrief.reviewPriority != rightBrief.reviewPriority {
+                    return leftBrief.reviewPriority > rightBrief.reviewPriority
+                }
                 let leftRank = shortReviewRank(for: left.element.reviewStatus)
                 let rightRank = shortReviewRank(for: right.element.reviewStatus)
                 if leftRank != rightRank { return leftRank < rightRank }
@@ -32462,6 +37137,7 @@ struct WorkspaceView: View {
         let recipeDuration = exportRanges.reduce(0) { $0 + $1.duration }
         let sequenceStart = segments.map(\.start).min() ?? sequenceStartTime(for: candidate, in: sequence)
         let sequenceEnd = segments.map(\.end).max() ?? (sequenceStart + recipeDuration)
+        let brief = shortCreatorQualityBrief(for: candidate)
 
         return [
             "available": true,
@@ -32469,6 +37145,11 @@ struct WorkspaceView: View {
             "title": candidate.title,
             "reviewStatus": candidate.reviewStatus,
             "exportStatus": candidate.exportStatus,
+            "reviewClass": brief.reviewClass,
+            "reviewClassLabel": brief.reviewClassLabel,
+            "reviewClassExplanation": brief.reviewClassExplanation,
+            "reviewPriority": brief.reviewPriority,
+            "nextReviewAction": brief.nextReviewAction,
             "sequenceStartTime": sequenceStart,
             "sequenceEndTime": sequenceEnd,
             "recipeDuration": recipeDuration,
@@ -32478,6 +37159,57 @@ struct WorkspaceView: View {
             "selectCommand": "script/agentctl.sh shorts-review-next",
             "selectEndpoint": "GET /shorts_review_next",
             "truth": "Selecting the next short only changes editor focus/playhead. It does not approve, publish, or mutate source media."
+        ]
+    }
+
+    private func shortCutIntelligenceNextCandidatePayload(for sequence: MediaSequence?, mode rawMode: String) -> [String: Any] {
+        let mode = normalizedShortCutIntelligenceMode(rawMode)
+        let command = "script/agentctl.sh shorts-review-next-cut-risk \(mode)"
+        let endpoint = "GET /shorts_review_next_cut_risk?mode=\(mode)"
+
+        guard let sequence else {
+            return [
+                "available": false,
+                "mode": mode,
+                "reason": "no_active_sequence",
+                "command": command,
+                "endpoint": endpoint
+            ]
+        }
+
+        guard let candidate = nextShortCutIntelligenceCandidate(in: sequence, mode: mode) else {
+            return [
+                "available": false,
+                "mode": mode,
+                "reason": "no_matching_short",
+                "command": command,
+                "endpoint": endpoint,
+                "truth": "No queued short currently overlaps the requested Cut Intelligence evidence mode."
+            ]
+        }
+
+        let segments = shortClipSegments(for: candidate, in: sequence)
+        let exportRanges = shortClipExportRanges(for: candidate, in: sequence)
+        let recipeDuration = exportRanges.reduce(0) { $0 + $1.duration }
+        let sequenceStart = segments.map(\.start).min() ?? sequenceStartTime(for: candidate, in: sequence)
+        let sequenceEnd = segments.map(\.end).max() ?? (sequenceStart + recipeDuration)
+        let evidence = shortCutIntelligenceEvidence(for: candidate, in: sequence)
+
+        return [
+            "available": true,
+            "mode": mode,
+            "id": candidate.id.uuidString,
+            "title": candidate.title,
+            "reviewStatus": candidate.reviewStatus,
+            "exportStatus": candidate.exportStatus,
+            "sequenceStartTime": sequenceStart,
+            "sequenceEndTime": sequenceEnd,
+            "recipeDuration": recipeDuration,
+            "segmentCount": segments.count,
+            "cutIntelligenceEvidence": evidence.payload,
+            "selectCommand": command,
+            "selectEndpoint": endpoint,
+            "truth": "Selecting this candidate changes editor focus/playhead only. Cut evidence explains where to inspect; it is not an approval or automatic edit."
         ]
     }
 
@@ -34093,13 +38825,43 @@ struct WorkspaceView: View {
             defaultNote = "Review decision reset to draft."
         }
 
-        let note = (rawNotes ?? defaultNote).trimmingCharacters(in: .whitespacesAndNewlines)
         updateSelectedShortClip { clip in
+            let guidance = selectedShortHumanReviewGuidancePayload(for: clip)
+            let reviewRead = (guidance["reviewRead"] as? String ?? "review").trimmingCharacters(in: .whitespacesAndNewlines)
+            let primaryQuestion = (guidance["primaryQuestion"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let signals = guidance["signals"] as? [String: Any] ?? [:]
+            let stringSignals = signals.reduce(into: [String: String]()) { partial, entry in
+                partial[entry.key] = "\(entry.value)"
+            }
+            let signalLine = [
+                "hookMissing=\(signals["hookMissing"] ?? false)",
+                "multiSegment=\(signals["multiSegment"] ?? false)",
+                "cutRisk=\(signals["cutRiskEvidencePresent"] ?? false)",
+                "exportProofMissing=\(signals["exportProofMissing"] ?? false)"
+            ].joined(separator: "; ")
+            let guidanceNote = primaryQuestion.isEmpty
+                ? "Human review compass: \(reviewRead) | \(signalLine)"
+                : "Human review compass: \(reviewRead) | \(primaryQuestion) | \(signalLine)"
+            let note = (rawNotes ?? defaultNote).trimmingCharacters(in: .whitespacesAndNewlines)
+            let notesToAppend = [note, guidanceNote].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
             clip.reviewStatus = status
-            if !note.isEmpty && !clip.notes.contains(note) {
+            clip.reviewEvents.insert(ShortReviewEventRecord(
+                status: status,
+                note: note,
+                actor: "Codex",
+                actorType: "agent-or-ui",
+                reviewRead: reviewRead,
+                primaryQuestion: primaryQuestion,
+                signals: stringSignals
+            ), at: 0)
+            if clip.reviewEvents.count > 25 {
+                clip.reviewEvents = Array(clip.reviewEvents.prefix(25))
+            }
+            for entry in notesToAppend where !clip.notes.contains(entry) {
                 clip.notes = clip.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    ? note
-                    : "\(clip.notes)\n\(note)"
+                    ? entry
+                    : "\(clip.notes)\n\(entry)"
             }
         }
         lastMediaAction = "Marked short \(status.uppercased()) for review workflow"
@@ -34674,6 +39436,29 @@ struct WorkspaceView: View {
             }
         }
         lastMediaAction = "Marked selected short listen-through reviewed"
+        updateAgentState()
+    }
+
+    private func markSelectedShortEditFlowScan(concern: String?, note: String?) {
+        let normalizedConcern = (concern ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let hasConcern = ["1", "true", "yes", "concern", "needs-refine", "refine"].contains(normalizedConcern)
+        let optionalNote = (note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+
+        updateSelectedShortClip { clip in
+            let prefix = hasConcern ? "edit-flow-scan-concern" : "edit-flow-scan-ok"
+            let base = hasConcern
+                ? "Technical edit-flow scan found a possible cadence/cut concern."
+                : "Technical edit-flow scan recorded no obvious metadata-level flow concern."
+            clip.publishNotes = appendLine("\(prefix): \(base)", to: clip.publishNotes)
+            if !optionalNote.isEmpty {
+                clip.publishNotes = appendLine("edit-flow-scan-note: \(optionalNote)", to: clip.publishNotes)
+            }
+        }
+        lastMediaAction = hasConcern
+            ? "Recorded technical edit-flow concern for selected short"
+            : "Recorded technical edit-flow scan for selected short"
         updateAgentState()
     }
 
@@ -35812,10 +40597,18 @@ struct WorkspaceView: View {
             leftWorkbenchMode = .os
             isInspectorVisible = true
             lastMediaAction = "Opened OS runway workbench"
+        case "account", "auth", "login", "session", "native-auth", "firebase":
+            leftWorkbenchMode = .account
+            isInspectorVisible = true
+            lastMediaAction = "Opened Account workbench"
         case "inspector", "inspect", "framing":
             leftWorkbenchMode = .inspector
             isInspectorVisible = true
             lastMediaAction = "Opened Frame workbench"
+        case "cuts", "cut", "cut-intelligence", "rhythm", "cadence", "assistant-editor":
+            leftWorkbenchMode = .cuts
+            isInspectorVisible = true
+            lastMediaAction = "Opened Cut Intelligence workbench"
         case "shorts", "short", "short-clips", "clips":
             leftWorkbenchMode = .shorts
             isInspectorVisible = true
@@ -35824,6 +40617,10 @@ struct WorkspaceView: View {
             leftWorkbenchMode = .transcript
             isInspectorVisible = true
             lastMediaAction = "Opened Script workbench"
+        case "audio", "audio-room", "sound", "stems", "stem", "mix", "mixer":
+            leftWorkbenchMode = .audio
+            isInspectorVisible = true
+            lastMediaAction = "Opened Audio workbench"
         case "publish", "publishing", "publication", "release", "cockpit", "mission":
             leftWorkbenchMode = .publish
             isInspectorVisible = true
@@ -35844,6 +40641,111 @@ struct WorkspaceView: View {
         updateAgentState()
     }
 
+    private func applyCutCadenceMode(_ rawMode: String?) {
+        let normalized = (rawMode ?? "")
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+
+        let mode: CutIntelligenceMode?
+        switch normalized {
+        case "warm", "conversation", "warm-conversation", "podcast":
+            mode = .warmConversation
+        case "tight", "youtube", "tight-youtube":
+            mode = .tightYouTube
+        case "short", "shorts", "shorts-energy", "reels", "tiktok":
+            mode = .shortsEnergy
+        case "documentary", "thoughtful", "documentary-thoughtful":
+            mode = .documentaryThoughtful
+        case "chaotic", "fun", "chaotic-fun", "chaotic-fun-but-legible":
+            mode = .chaoticFunButLegible
+        default:
+            mode = CutIntelligenceMode(rawValue: normalized)
+        }
+
+        guard let mode else {
+            lastMediaAction = "Cut cadence mode blocked: unknown mode \(rawMode ?? "")"
+            updateAgentState()
+            return
+        }
+
+        cutIntelligenceCadenceMode = mode
+        leftWorkbenchMode = .cuts
+        isInspectorVisible = true
+        lastMediaAction = "Changed Cut Intelligence cadence lens to \(cutCadenceModeLabel(mode))"
+        updateAgentState()
+    }
+
+    private func handleNativeAccountAgentCommand(values: [String: String]) {
+        let action = (values["action"] ?? "status")
+            .lowercased()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let baseURL = values["base_url"] ?? values["baseURL"] ?? values["url"]
+        let email = values["email"] ?? values["user"]
+        let password = values["password"]
+
+        if let baseURL, !baseURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            nativeAccountStore.baseURL = baseURL
+        }
+        if let email, !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            nativeAccountStore.email = email
+        }
+
+        leftWorkbenchMode = .account
+        isInspectorVisible = true
+
+        switch action {
+        case "status", "state", "show":
+            lastMediaAction = "Native account status surfaced. Re-read nativeAccount for redacted proof."
+            updateAgentState()
+        case "set", "configure", "config_set":
+            nativeAccountStore.password = ""
+            lastMediaAction = "Native account configuration updated with redacted agent input."
+            updateAgentState()
+        case "clear", "logout", "sign_out", "reset":
+            nativeAccountStore.password = ""
+            _ = nativeAccountStore.clearLocalSession()
+            if values["clear_email"] == "1" {
+                nativeAccountStore.email = ""
+            }
+            lastMediaAction = "Native account local session cleared. Firebase and Quipsly accounts were not deleted."
+            updateAgentState()
+        case "config", "fetch_config", "check_config":
+            lastMediaAction = "Native account Firebase config check queued."
+            updateAgentState()
+            Task { @MainActor in
+                _ = await nativeAccountStore.fetchConfigOnly()
+                self.lastMediaAction = "Native account Firebase config check completed. Re-read nativeAccount for redacted proof."
+                self.updateAgentState()
+            }
+        case "check", "check_saved", "saved", "verify_saved":
+            lastMediaAction = "Native account saved-session check queued."
+            updateAgentState()
+            Task { @MainActor in
+                _ = await nativeAccountStore.checkSavedSession()
+                self.lastMediaAction = "Native account saved-session check completed. Re-read nativeAccount for redacted proof."
+                self.updateAgentState()
+            }
+        case "sign_in", "signin", "login", "verify":
+            if let password {
+                nativeAccountStore.password = password
+            }
+            lastMediaAction = "Native account sign-in queued with redacted credential input."
+            updateAgentState()
+            Task { @MainActor in
+                _ = await nativeAccountStore.signInAndVerify()
+                self.nativeAccountStore.password = ""
+                self.lastMediaAction = "Native account sign-in completed. Re-read nativeAccount for redacted proof."
+                self.updateAgentState()
+            }
+        default:
+            nativeAccountStore.password = ""
+            lastMediaAction = "Native account command blocked: unknown redacted action \(action)."
+            updateAgentState()
+        }
+    }
+
     private func defaultShortClipTitle(for lane: VideoLane, tag: VideoTag) -> String {
         String(format: "Short from %@ @ %.1fs", lane.name, tag.startTime)
     }
@@ -35854,23 +40756,40 @@ struct WorkspaceView: View {
                 "model": "short-clip-queue",
                 "version": "2026-06-17.short-clip-queue.recipe-v2",
                 "count": 0,
+                "selectedId": selectedShortClipId?.uuidString ?? "",
+                "selectedTitle": "",
                 "canBatchExport": false,
                 "batchExportEndpoint": "GET /shorts_export_all?directory=<absolute-output-folder>&basename=<name>",
                 "recommendedBatchCommand": "script/agentctl.sh shorts-export-all /absolute/output/folder optional-basename",
+                "cutReviewCommands": [
+                    "nextRisk": "script/agentctl.sh shorts-review-next-cut-risk risk",
+                    "nextOpportunity": "script/agentctl.sh shorts-review-next-cut-risk opportunity",
+                    "nextAnyOverlap": "script/agentctl.sh shorts-review-next-cut-risk any"
+                ] as [String: Any],
                 "clips": [],
                 "truth": "Cuts are output recipes over sequence time, not chopped media files."
             ]
         }
 
+        let reviewClassCounts = Dictionary(
+            grouping: sequence.shortClipQueue.map { shortCreatorQualityBrief(for: $0).reviewClass },
+            by: { $0 }
+        ).mapValues { $0.count }
+
         return [
             "model": "short-clip-queue",
             "version": "2026-06-17.short-clip-queue.recipe-v2",
             "count": sequence.shortClipQueue.count,
+            "selectedId": selectedShortClipId?.uuidString ?? "",
+            "selectedTitle": sequence.shortClipQueue.first(where: { $0.id == selectedShortClipId })?.title ?? "",
+            "selectionTruth": "The queue exposes selectedId and per-clip selected flags so humans, agents, and Tower/review surfaces read the same current short without relying on the last command receipt.",
             "canBatchExport": !sequence.shortClipQueue.isEmpty && !exportEngine.isExporting && exportStatus != "running",
             "batchExportEndpoint": "GET /shorts_export_all?directory=<absolute-output-folder>&basename=<name>",
             "recommendedBatchCommand": "script/agentctl.sh shorts-export-all /absolute/output/folder optional-basename",
             "truth": "Cuts are output recipes over sequence time, not chopped media files.",
             "timeBase": "sequence-seconds",
+            "reviewClassCounts": reviewClassCounts,
+            "reviewModelTruth": "Each short exposes a reviewClass and reviewPriority from the same visible quality passport used by Studio UI. Agents should sort by reviewPriority, then inspect creatorQuality before changing metadata.",
             "clips": sequence.shortClipQueue.map { clip in
                 let sequenceStart = sequenceStartTime(for: clip, in: sequence)
                 let segments = shortClipSegments(for: clip, in: sequence)
@@ -35881,8 +40800,11 @@ struct WorkspaceView: View {
                 let exportExists = !exportPath.isEmpty && FileManager.default.fileExists(atPath: exportPath)
                 let expectedExportTarget = shortReviewExpectedExportTarget(for: clip, exportPath: exportPath)
                 let brief = shortCreatorQualityBrief(for: clip)
+                let cutEvidence = shortCutIntelligenceEvidence(for: clip, in: sequence)
                 let platformTargets = shortPlatformTargetPayloads(for: clip, brief: brief)
                 let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
+                let isSelected = clip.id == selectedShortClipId
+                let reviewTrail = shortReviewTrailPayload(for: clip)
                 let towerHandoff = shortTowerHandoffStatus(
                     clip: clip,
                     exportExists: exportExists,
@@ -35891,6 +40813,8 @@ struct WorkspaceView: View {
                 return [
                     "id": clip.id.uuidString,
                     "title": clip.title,
+                    "selected": isSelected,
+                    "selectionStateSource": isSelected ? "workspace-selected-short" : "workspace-short-queue",
                     "recipeModel": "ordered-sequence-segments",
                     "segmentCount": segments.count,
                     "recipeDuration": recipeDuration,
@@ -35949,10 +40873,24 @@ struct WorkspaceView: View {
                     "status": clip.status,
                     "reviewStatus": clip.reviewStatus,
                     "exportStatus": resolvedShortExportStatus(for: clip),
+                    "reviewClass": brief.reviewClass,
+                    "reviewClassLabel": brief.reviewClassLabel,
+                    "reviewClassExplanation": brief.reviewClassExplanation,
+                    "reviewPriority": brief.reviewPriority,
+                    "nextReviewAction": brief.nextReviewAction,
                     "lastExportedPath": exportPath,
                     "lastExportExists": exportExists,
+                    "cutIntelligenceEvidence": cutEvidence.payload,
+                    "reviewTrailCount": reviewTrail.count,
+                    "latestReviewTrail": reviewTrail.first ?? [:],
+                    "cutReviewCommands": [
+                        "nextRisk": "script/agentctl.sh shorts-review-next-cut-risk risk",
+                        "nextOpportunity": "script/agentctl.sh shorts-review-next-cut-risk opportunity",
+                        "selectThisShort": "script/agentctl.sh shorts-select id \(clip.id.uuidString)"
+                    ] as [String: Any],
                     "creatorQuality": shortCreatorQualityPayload(for: clip),
                     "publicationPassport": shortPublicationPassportPayload(for: clip, in: sequence),
+                    "productionBrief": selectedShortProductionBrief(for: clip).payload,
                     "platformTargets": platformTargets,
                     "platformTargetSummary": [
                         "readyCount": "\(platformSummary.readyCount)",
@@ -36004,22 +40942,74 @@ struct WorkspaceView: View {
 
     private func shortCreatorQualityPayload(for clip: ShortClipCandidate) -> [String: Any] {
         let brief = shortCreatorQualityBrief(for: clip)
+        let cutEvidence = projectStore.activeSequence.map { shortCutIntelligenceEvidence(for: clip, in: $0) } ?? .empty
         let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
+        let reviewTrail = shortReviewTrailPayload(for: clip)
+        let platformTargets = shortPlatformTargetPayloads(for: clip, brief: brief)
+        let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
+        let platformDraftSummary = shortPlatformDraftSummary(for: clip, brief: brief)
+        let platformVariants = shortPlatformVariantPayloads(for: clip)
         return [
+            "model": "quipsly-short-quality-passport",
+            "version": "2026-06-30.quality-passport.v1",
+            "truth": "One visible quality passport powers Studio UI, agent proof, and future batch boards. Scores are explainable production heuristics, not a promise of performance or publication approval.",
+            "cutIntelligenceEvidence": cutEvidence.payload,
+            "reviewTrail": reviewTrail,
+            "reviewTrailSummary": [
+                "count": reviewTrail.count,
+                "latest": reviewTrail.first ?? [:],
+                "truth": "Review trail is parsed from selected-short publishNotes so the app keeps one source of review evidence while exposing it as structured UI and agent context."
+            ] as [String: Any],
+            "cutCraftReviewCommands": [
+                "nextRisk": "GET /shorts_review_next_cut_risk?mode=risk",
+                "nextOpportunity": "GET /shorts_review_next_cut_risk?mode=opportunity",
+                "logConcern": "GET /shorts_edit_flow_scan?concern=true&note=<cut-craft-observation>",
+                "logMetadataScanOk": "GET /shorts_edit_flow_scan?concern=false&note=<metadata-scan-note>"
+            ] as [String: Any],
             "summary": brief.summary,
             "qualityPacketSummary": [
                 "headline": packetSummary.headline,
                 "status": packetSummary.status,
                 "evidenceLevel": packetSummary.evidenceLevel,
+                "creativeReadinessScore": packetSummary.creativeReadinessScore,
+                "creativeReadinessLabel": packetSummary.creativeReadinessLabel,
+                "creativeReadinessNextAction": packetSummary.creativeReadinessNextAction,
+                "reviewClass": packetSummary.reviewClass,
+                "reviewClassLabel": packetSummary.reviewClassLabel,
+                "reviewClassExplanation": packetSummary.reviewClassExplanation,
+                "reviewPriority": packetSummary.reviewPriority,
                 "reason": packetSummary.reason,
                 "safeActionLabel": packetSummary.safeActionLabel,
                 "nextSafeAction": packetSummary.nextSafeAction,
                 "agentInstruction": packetSummary.agentInstruction
             ] as [String: Any],
+            "reviewClass": brief.reviewClass,
+            "reviewClassLabel": brief.reviewClassLabel,
+            "reviewClassExplanation": brief.reviewClassExplanation,
+            "reviewPriority": brief.reviewPriority,
+            "nextReviewAction": brief.nextReviewAction,
+            "creativeReadiness": brief.creativeReadiness.payload,
+                "shortStoryContract": selectedShortStoryContractPayload(for: clip, brief: brief, cutEvidence: cutEvidence),
             "firstDestination": brief.firstDestination,
             "primaryPlatform": brief.primaryPlatform,
             "primaryPlatformScore": brief.primaryPlatformFit?.score ?? 0,
             "primaryPlatformNextAction": brief.primaryPlatformFit?.nextAction ?? "",
+            "platformVariantTargets": brief.platformVariantTargets,
+            "missingPlatformVariantTargets": brief.missingPlatformVariantTargets,
+            "platformVariants": platformVariants,
+            "platformTargets": platformTargets,
+            "platformTargetSummary": [
+                "readyCount": "\(platformSummary.readyCount)",
+                "totalCount": "\(platformSummary.totalCount)",
+                "readyFraction": "\(platformSummary.readyCount)/\(platformSummary.totalCount)",
+                "nextAction": platformSummary.nextAction
+            ] as [String: Any],
+            "platformDraftSummary": [
+                "readyCount": "\(platformDraftSummary.readyCount)",
+                "totalCount": "\(platformDraftSummary.totalCount)",
+                "readyFraction": "\(platformDraftSummary.readyCount)/\(platformDraftSummary.totalCount)",
+                "nextAction": platformDraftSummary.nextAction
+            ] as [String: Any],
             "primaryPlatformTitleDraft": ShortCreatorQuality.platformTitleDraft(for: clip, firstDestination: brief.primaryPlatform),
             "primaryPlatformCaptionDraft": ShortCreatorQuality.platformCaptionDraft(for: clip, firstDestination: brief.primaryPlatform),
             "primaryPlatformHashtags": ShortCreatorQuality.platformHashtags(for: clip, firstDestination: brief.primaryPlatform),
@@ -36062,6 +41052,29 @@ struct WorkspaceView: View {
             "exportProofLabel": brief.exportProofLabel,
             "exportProofReady": brief.exportProofReady,
             "score": brief.score,
+            "qualityDimensions": brief.dimensions.map { dimension in
+                [
+                    "id": dimension.id,
+                    "name": dimension.name,
+                    "score": dimension.score,
+                    "weight": dimension.weight,
+                    "label": dimension.label,
+                    "rationale": dimension.rationale,
+                    "nextAction": dimension.nextAction,
+                    "evidence": dimension.evidence
+                ] as [String: Any]
+            },
+            "weakestQualityDimensions": brief.dimensions.sorted { lhs, rhs in
+                lhs.score == rhs.score ? lhs.name < rhs.name : lhs.score < rhs.score
+            }.prefix(3).map { dimension in
+                [
+                    "id": dimension.id,
+                    "name": dimension.name,
+                    "score": dimension.score,
+                    "label": dimension.label,
+                    "nextAction": dimension.nextAction
+                ] as [String: Any]
+            },
             "readinessLabel": brief.readinessLabel,
             "attentionScore": brief.attentionScore,
             "attentionLabel": brief.attentionLabel,
@@ -36123,6 +41136,7 @@ struct WorkspaceView: View {
         let expectedExportTarget = shortReviewExpectedExportTarget(for: clip, exportPath: exportPath)
         let brief = shortCreatorQualityBrief(for: clip)
         let packetSummary = ShortCreatorQuality.qualityPacketSummary(for: clip, brief: brief)
+        let cutEvidence = shortCutIntelligenceEvidence(for: clip, in: sequence)
         let platformTargets = shortPlatformTargetPayloads(for: clip, brief: brief)
         let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
 
@@ -36140,6 +41154,13 @@ struct WorkspaceView: View {
             "qualityScore": brief.score,
             "attentionScore": brief.attentionScore,
             "readinessLabel": brief.readinessLabel,
+            "reviewClass": brief.reviewClass,
+            "reviewClassLabel": brief.reviewClassLabel,
+            "reviewClassExplanation": brief.reviewClassExplanation,
+            "reviewPriority": brief.reviewPriority,
+            "nextReviewAction": brief.nextReviewAction,
+            "creativeReadiness": brief.creativeReadiness.payload,
+                "shortStoryContract": selectedShortStoryContractPayload(for: clip, brief: brief, cutEvidence: cutEvidence),
             "publishReadinessLabel": brief.publishReadiness.label,
             "publishReadinessSummary": brief.publishReadiness.summary,
             "canQueueForTower": brief.publishReadiness.canQueue,
@@ -36273,6 +41294,13 @@ struct WorkspaceView: View {
         let exportPath = lastExportedShortPath(for: clip) ?? ""
         let exportExists = !exportPath.isEmpty && FileManager.default.fileExists(atPath: exportPath)
         let expectedExportTarget = shortReviewExpectedExportTarget(for: clip, exportPath: exportPath)
+        let cutEvidence = shortCutIntelligenceEvidence(for: clip, in: sequence)
+        let reviewTrail = shortReviewTrailPayload(for: clip)
+        let brief = shortCreatorQualityBrief(for: clip)
+        let platformTargets = shortPlatformTargetPayloads(for: clip, brief: brief)
+        let platformSummary = shortPlatformTargetSummary(for: clip, brief: brief)
+        let platformDraftSummary = shortPlatformDraftSummary(for: clip, brief: brief)
+        let platformVariants = shortPlatformVariantPayloads(for: clip)
 
         return [
             "id": clip.id.uuidString,
@@ -36332,13 +41360,34 @@ struct WorkspaceView: View {
             },
             "format": clip.format.rawValue,
             "destinations": clip.destinations,
+            "platformVariants": platformVariants,
+            "platformTargets": platformTargets,
+            "platformTargetSummary": [
+                "readyCount": "\(platformSummary.readyCount)",
+                "totalCount": "\(platformSummary.totalCount)",
+                "readyFraction": "\(platformSummary.readyCount)/\(platformSummary.totalCount)",
+                "nextAction": platformSummary.nextAction
+            ] as [String: Any],
+            "platformDraftSummary": [
+                "readyCount": "\(platformDraftSummary.readyCount)",
+                "totalCount": "\(platformDraftSummary.totalCount)",
+                "readyFraction": "\(platformDraftSummary.readyCount)/\(platformDraftSummary.totalCount)",
+                "nextAction": platformDraftSummary.nextAction
+            ] as [String: Any],
             "status": clip.status,
             "reviewStatus": clip.reviewStatus,
             "exportStatus": resolvedShortExportStatus(for: clip),
             "lastExportedPath": exportPath,
             "lastExportExists": exportExists,
+            "cutIntelligenceEvidence": cutEvidence.payload,
+            "reviewTrail": reviewTrail,
+            "reviewTrailSummary": [
+                "count": reviewTrail.count,
+                "latest": reviewTrail.first ?? [:]
+            ] as [String: Any],
             "creatorQuality": shortCreatorQualityPayload(for: clip),
             "publicationPassport": shortPublicationPassportPayload(for: clip, in: sequence),
+                    "productionBrief": selectedShortProductionBrief(for: clip).payload,
             "verticalFraming": shortVerticalFramingPayload(for: clip, in: sequence),
             "expectedExportPath": expectedExportTarget.path,
             "expectedExportDirectory": expectedExportTarget.directory,
@@ -36453,6 +41502,7 @@ struct WorkspaceView: View {
             "postExportContactSheetCommand": "script/agentctl.sh shorts-contact-sheet \(shellQuoted(expectedExportTarget.path))",
             "textBurnPolicy": burnPolicy,
             "publicationReadiness": publicationReadiness,
+            "creatorQuality": shortCreatorQualityPayload(for: clip),
             "verticalFraming": shortVerticalFramingPayload(for: clip, in: sequence),
             "destinations": clip.destinations,
             "segments": segments.enumerated().map { index, item in
@@ -36477,7 +41527,7 @@ struct WorkspaceView: View {
             },
             "nextSafeActions": [
                 "GET /shorts_preview_selected?play=true|false",
-                "GET /shorts_quality_action?action=fill-hook|draft-copy|draft-platform-pack|draft-all-platform-packs|copy-polish-prompt|needs-refine",
+                "GET /shorts_quality_action?action=fill-hook|sharpen-hook|draft-copy|draft-platform-pack|draft-all-platform-packs|copy-polish-prompt|needs-refine",
                 "GET /shorts_range_selected?boundary=start|end&time=<sequence-seconds>|delta=<seconds>",
                 "GET /shorts_queue_append_selected_segment",
                 "GET /shorts_overlay_burn_in?decision=request_review|approve_top_canopy|hold&note=<optional-review-note>",
@@ -37635,7 +42685,13 @@ struct WorkspaceView: View {
             sequenceDuration: endTime - startTime,
             actionName: "Resolve Program Ambiguity",
             autosaveReason: "resolved program ambiguity",
-            mediaActionLabel: "Resolved overlap as \(choiceLabel)"
+            mediaActionLabel: "Resolved overlap as \(choiceLabel)",
+            editIntent: programAmbiguityDecisionIntent(
+                choiceLabel: choiceLabel,
+                duration: endTime - startTime,
+                preserveClipLanes: preserveClipLanes,
+                choice: normalizedChoice
+            )
         )
         if advanceAfterResolve {
             refreshProgramDecisionAmbiguityReport(sampleLimit: 500)
@@ -37659,6 +42715,54 @@ struct WorkspaceView: View {
             )
             updateAgentState()
         }
+    }
+
+    private func programAmbiguityDecisionIntent(
+        choiceLabel: String,
+        duration: Double,
+        preserveClipLanes: Bool,
+        choice: String
+    ) -> EditDecisionIntent {
+        let isQuiet = ["skip", "quiet", "cut", "gap"].contains(choice)
+        return EditDecisionIntent(
+            cutStyle: isQuiet ? "quiet-gap" : "ambiguity-resolution",
+            audioLeadSeconds: 0,
+            audioTailSeconds: 0,
+            coverStrategy: preserveClipLanes ? "speaker-plus-source-clip" : (isQuiet ? "skip-over" : "single-speaker-source"),
+            cadenceMode: cutIntelligenceCadenceMode.rawValue,
+            humanRhythmNote: isQuiet
+                ? "The overlap was resolved as quiet; listen for missing context before final export."
+                : "This picks the program source for an overlap. Review reaction timing and whether a cutaway would feel more natural.",
+            whyThisCutExists: "Resolved overlapping SHOW decisions as \(choiceLabel) for \(String(format: "%.2fs", duration)).",
+            tradeoffExplanation: isQuiet
+                ? "Quiet gaps simplify Play Edit, but they can remove reaction texture or setup if chosen too broadly."
+                : "Resolving overlap removes ambiguity from Program Output, but choosing only one visible source may lose useful reactions or context.",
+            confidence: isQuiet ? 0.58 : 0.70,
+            revisionHistory: ["Resolved program ambiguity from review map using choice '\(choice)'."],
+            revisionLedger: [EditDecisionRevision(
+                action: "program-ambiguity-resolved",
+                note: "Resolved program ambiguity using choice '\(choice)'.",
+                evidence: [
+                    "Choice label: \(choiceLabel).",
+                    String(format: "Decision duration: %.2fs.", duration),
+                    preserveClipLanes ? "Clip lanes preserved." : "Clip lanes not preserved."
+                ],
+                previousStatus: "",
+                nextStatus: "applied-metadata",
+                confidenceAfter: isQuiet ? 0.58 : 0.70
+            )],
+            humanAgentNotes: ["Overlap resolution changed SHOW/SKIP metadata only; source lanes remain whole."],
+            reviewEvidence: [
+                "Ambiguity resolver saw overlapping SHOW decisions and chose \(choiceLabel).",
+                String(format: "Decision window duration: %.2fs.", duration),
+                preserveClipLanes ? "Clip/source lanes were preserved alongside the speaker choice." : "Program output was simplified to one primary visible source."
+            ],
+            nextReviewAction: isQuiet
+                ? "Play Through this quiet window once to confirm it did not remove useful setup or reaction texture."
+                : "Watch the previous and next boundaries to confirm the source choice feels intentional.",
+            risk: isQuiet ? "medium" : "low",
+            status: "applied-metadata"
+        )
     }
 
     private func runProgramAmbiguityBatchOperator(
@@ -39208,7 +44312,7 @@ struct WorkspaceView: View {
 
     private func applySourceWallDecision(laneId: UUID, type: TagType, sequenceDuration requestedDuration: Double) {
         guard let sequence = projectStore.activeSequence,
-              sequence.lanes.contains(where: { $0.id == laneId }) else {
+              let targetLane = sequence.lanes.first(where: { $0.id == laneId }) else {
             lastMediaAction = "Source-wall decision failed: lane not found"
             updateAgentState()
             return
@@ -39232,7 +44336,12 @@ struct WorkspaceView: View {
             sequenceDuration: requestedDuration,
             actionName: type == .active ? "Show Source Window" : "Cut Source Window",
             autosaveReason: type == .active ? "source-wall show decision" : "source-wall cut decision",
-            mediaActionLabel: type == .active ? "Added SHOW source-wall decision" : "Added CUT source-wall decision"
+            mediaActionLabel: type == .active ? "Added SHOW source-wall decision" : "Added CUT source-wall decision",
+            editIntent: sourceWallDecisionIntent(
+                laneName: targetLane.name,
+                type: type,
+                duration: requestedDuration
+            )
         )
     }
 
@@ -39242,7 +44351,8 @@ struct WorkspaceView: View {
         sequenceDuration requestedDuration: Double,
         actionName: String,
         autosaveReason: String,
-        mediaActionLabel: String
+        mediaActionLabel: String,
+        editIntent: EditDecisionIntent? = nil
     ) {
         guard var sequence = projectStore.activeSequence else { return }
         let sequenceStart = min(max(0, requestedSequenceStart), max(0, sequence.duration))
@@ -39304,7 +44414,8 @@ struct WorkspaceView: View {
                 return
             }
 
-            let newTag = VideoTag(type: decisionType, startTime: localStart, duration: localDuration)
+            var newTag = VideoTag(type: decisionType, startTime: localStart, duration: localDuration)
+            newTag.editIntent = editIntent
             replacementTags.append(newTag)
             sequence.lanes[laneIndex].tags = replacementTags.sorted { $0.startTime < $1.startTime }
 
@@ -39340,6 +44451,333 @@ struct WorkspaceView: View {
         )
         scheduleAutosave(reason: autosaveReason)
         updateAgentState()
+    }
+
+    private func applyCutIntelligenceRecipeFromAgent(id: String?, confirmed: Bool) {
+        guard var sequence = projectStore.activeSequence else {
+            lastMediaAction = "Cut recipe apply blocked: no active sequence"
+            updateAgentState()
+            return
+        }
+
+        let report = CutIntelligenceAnalyzer.analyze(
+            sequence: sequence,
+            playhead: playbackEngine.playhead,
+            cadenceMode: cutIntelligenceCadenceMode
+        )
+        guard let recipeId = id?.trimmingCharacters(in: .whitespacesAndNewlines), !recipeId.isEmpty,
+              let recipe = report.recipes.first(where: { $0.id == recipeId }) else {
+            lastMediaAction = "Cut recipe apply blocked: recipe not found in current Cut Intelligence Report"
+            updateAgentState()
+            return
+        }
+
+        playbackEngine.seek(to: max(0, min(recipe.sequenceTime, sequence.duration)))
+
+        guard confirmed else {
+            lastMediaAction = "Cut recipe ready: rerun with confirm=true to attach metadata intent"
+            updateAgentState()
+            return
+        }
+
+        let targetLaneIndex: Int?
+        if let targetLaneId = recipe.targetLaneId,
+           let index = sequence.lanes.firstIndex(where: { $0.id == targetLaneId }) {
+            targetLaneIndex = index
+        } else if let selectedLaneId,
+                  let index = sequence.lanes.firstIndex(where: { $0.id == selectedLaneId }) {
+            targetLaneIndex = index
+        } else {
+            targetLaneIndex = sequence.lanes.indices.first { !isSupportOnlyLane(sequence.lanes[$0]) }
+        }
+
+        guard let laneIndex = targetLaneIndex else {
+            lastMediaAction = "Cut recipe apply blocked: no target source lane"
+            updateAgentState()
+            return
+        }
+
+        func distanceFromRecipeTime(_ tag: VideoTag, lane: VideoLane) -> Double {
+            let offset = lane.sourceVideo?.offset ?? 0
+            let start = offset + tag.startTime
+            let end = start + tag.duration
+            if recipe.sequenceTime >= start && recipe.sequenceTime <= end {
+                return 0
+            }
+            return min(abs(recipe.sequenceTime - start), abs(recipe.sequenceTime - end))
+        }
+
+        let lane = sequence.lanes[laneIndex]
+        let editableTagCandidates = lane.tags.enumerated()
+            .filter { $0.element.type == .active || $0.element.type == .cut }
+            .map { (index: $0.offset, tag: $0.element, distance: distanceFromRecipeTime($0.element, lane: lane)) }
+            .sorted { $0.distance < $1.distance }
+
+        guard let selected = editableTagCandidates.first, selected.distance <= 5 else {
+            lastMediaAction = "Cut recipe apply blocked: no nearby SHOW/SKIP decision to annotate"
+            updateAgentState()
+            return
+        }
+
+        var intent = recipe.intent
+        let previousStatus = intent.status
+        let previousConfidence = intent.confidence
+        intent.status = "applied-metadata"
+        intent.updatedAt = Date()
+        intent.whyThisCutExists = intent.whyThisCutExists.isEmpty ? recipe.explanation : intent.whyThisCutExists
+        intent.revisionHistory.append("Applied recipe \(recipe.id) to \(lane.name) near \(cutTimeLabel(recipe.sequenceTime)).")
+        intent.revisionLedger.append(EditDecisionRevision(
+            actor: "Codex",
+            actorType: "agent",
+            action: "cut-recipe-applied",
+            note: "Applied recipe \(recipe.id) to \(lane.name) near \(cutTimeLabel(recipe.sequenceTime)) as metadata intent.",
+            evidence: [
+                "Recipe label: \(recipe.label).",
+                "Target lane: \(lane.name).",
+                "Source finding: \(recipe.sourceFindingId).",
+                "Source media and timing stayed unchanged."
+            ],
+            previousStatus: previousStatus,
+            nextStatus: "applied-metadata",
+            confidenceBefore: previousConfidence,
+            confidenceAfter: intent.confidence
+        ))
+        intent.humanAgentNotes.append("Codex applied metadata only; source media and timing stayed unchanged.")
+
+        sequence.lanes[laneIndex].tags[selected.index].editIntent = intent
+        selectedLaneId = sequence.lanes[laneIndex].id
+        selectedTagId = sequence.lanes[laneIndex].tags[selected.index].id
+
+        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Apply Cut Intelligence Metadata")
+        playbackEngine.updateValidRanges(for: sequence)
+        rebuildPlayer()
+        lastMediaAction = "Applied cut recipe metadata: \(recipe.label)"
+        scheduleAutosave(reason: "applied cut intelligence recipe metadata")
+        updateAgentState()
+    }
+
+    private func appendSelectedDecisionIntentNote(
+        note: String?,
+        actor: String?,
+        actorType: String?,
+        category: String?,
+        confidence: Double?
+    ) {
+        let trimmedNote = (note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedNote.isEmpty else {
+            lastMediaAction = "Decision note blocked: empty note"
+            updateAgentState()
+            return
+        }
+
+        guard let laneId = selectedLaneId,
+              let tagId = selectedTagId,
+              var sequence = projectStore.activeSequence,
+              let laneIndex = sequence.lanes.firstIndex(where: { $0.id == laneId }),
+              let tagIndex = sequence.lanes[laneIndex].tags.firstIndex(where: { $0.id == tagId }) else {
+            lastMediaAction = "Decision note blocked: no selected SHOW/SKIP decision"
+            updateAgentState()
+            return
+        }
+
+        let lane = sequence.lanes[laneIndex]
+        let tag = sequence.lanes[laneIndex].tags[tagIndex]
+        let resolvedActor = (actor ?? "Codex").trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedActorType = (actorType ?? "agent").trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedCategory = (category ?? "edit-intent-review").trimmingCharacters(in: .whitespacesAndNewlines)
+        let sequenceTime = max(0, (lane.sourceVideo?.offset ?? 0) + tag.startTime)
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let noteLine = "\(timestamp) \(resolvedActor) (\(resolvedActorType)) [\(resolvedCategory)]: \(trimmedNote)"
+        let revisionLine = "Intent note appended at \(cutTimeLabel(sequenceTime)) by \(resolvedActor)."
+
+        var intent = tag.editIntent ?? baselineDecisionIntent(for: tag, lane: lane, confidence: confidence)
+        let previousStatus = intent.status
+        let previousConfidence = intent.confidence
+
+        if let confidence {
+            intent.confidence = min(1, max(0, confidence.isFinite ? confidence : intent.confidence))
+        }
+        intent.humanAgentNotes.append(noteLine)
+        intent.revisionHistory.append(revisionLine)
+        intent.reviewEvidence.append("Review note: \(trimmedNote)")
+        intent.reviewEvidence = Array(intent.reviewEvidence.suffix(12))
+        intent.nextReviewAction = "Resolve this note by listening at normal speed, then mark Keep, Refine, or Hold."
+        intent.status = intent.status == "suggested" ? "reviewed-metadata" : intent.status
+        intent.revisionLedger.append(EditDecisionRevision(
+            actor: resolvedActor,
+            actorType: resolvedActorType,
+            action: "selected-decision-note",
+            note: trimmedNote,
+            evidence: [
+                "Category: \(resolvedCategory).",
+                "Sequence time: \(cutTimeLabel(sequenceTime))."
+            ],
+            previousStatus: previousStatus,
+            nextStatus: intent.status,
+            confidenceBefore: previousConfidence,
+            confidenceAfter: intent.confidence
+        ))
+        intent.updatedAt = Date()
+
+        sequence.lanes[laneIndex].tags[tagIndex].editIntent = intent
+        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Append Decision Intent Note")
+        playbackEngine.updateValidRanges(for: sequence)
+        selectedLaneId = lane.id
+        selectedTagId = tag.id
+        lastMediaAction = "Added selected decision intent note"
+        scheduleAutosave(reason: "selected decision intent note")
+        updateAgentState()
+    }
+
+    private func setSelectedDecisionIntentStatus(
+        status: String?,
+        actor: String?,
+        actorType: String?,
+        note: String?
+    ) {
+        let resolvedStatus = normalizedDecisionReviewStatus(status ?? "needs-listen")
+        guard let laneId = selectedLaneId,
+              let tagId = selectedTagId,
+              var sequence = projectStore.activeSequence,
+              let laneIndex = sequence.lanes.firstIndex(where: { $0.id == laneId }),
+              let tagIndex = sequence.lanes[laneIndex].tags.firstIndex(where: { $0.id == tagId }) else {
+            lastMediaAction = "Decision review state blocked: no selected SHOW/SKIP decision"
+            updateAgentState()
+            return
+        }
+
+        let lane = sequence.lanes[laneIndex]
+        let tag = sequence.lanes[laneIndex].tags[tagIndex]
+        let resolvedActor = (actor ?? "Codex").trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedActorType = (actorType ?? "agent").trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedNote = (note ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let sequenceTime = max(0, (lane.sourceVideo?.offset ?? 0) + tag.startTime)
+        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let reviewNote = trimmedNote.isEmpty ? decisionReviewDefaultNote(for: resolvedStatus) : trimmedNote
+
+        var intent = tag.editIntent ?? baselineDecisionIntent(for: tag, lane: lane, confidence: nil)
+        let previousStatus = intent.status
+        let previousConfidence = intent.confidence
+        intent.status = resolvedStatus
+        intent.updatedAt = Date()
+        intent.revisionHistory.append("Review state set to \(resolvedStatus) at \(cutTimeLabel(sequenceTime)) by \(resolvedActor).")
+        intent.humanAgentNotes.append(
+            "\(timestamp) \(resolvedActor) (\(resolvedActorType)) [review-state:\(resolvedStatus)]: \(reviewNote)"
+        )
+        intent.reviewEvidence.append("Review state \(resolvedStatus): \(reviewNote)")
+        intent.reviewEvidence = Array(intent.reviewEvidence.suffix(12))
+        intent.revisionLedger.append(EditDecisionRevision(
+            actor: resolvedActor,
+            actorType: resolvedActorType,
+            action: "selected-decision-status",
+            note: reviewNote,
+            evidence: [
+                "Status changed through selected decision review controls.",
+                "Sequence time: \(cutTimeLabel(sequenceTime))."
+            ],
+            previousStatus: previousStatus,
+            nextStatus: resolvedStatus,
+            confidenceBefore: previousConfidence,
+            confidenceAfter: intent.confidence
+        ))
+        switch resolvedStatus {
+        case "keep":
+            intent.nextReviewAction = "Use as keep-for-now evidence, but still re-check if adjacent timing, crop, or audio changes."
+        case "refine":
+            intent.nextReviewAction = "Refine timing, cover, cadence, or source choice, then listen again."
+        case "hold":
+            intent.nextReviewAction = "Leave this decision visible but do not train, export, or publish from it until the uncertainty is resolved."
+        default:
+            intent.nextReviewAction = "Listen through this boundary, then mark Keep, Refine, or Hold."
+        }
+
+        sequence.lanes[laneIndex].tags[tagIndex].editIntent = intent
+        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Set Decision Review State")
+        playbackEngine.updateValidRanges(for: sequence)
+        selectedLaneId = lane.id
+        selectedTagId = tag.id
+        lastMediaAction = "Set selected decision review state: \(resolvedStatus)"
+        scheduleAutosave(reason: "selected decision review state")
+        updateAgentState()
+    }
+
+    private func baselineDecisionIntent(for tag: VideoTag, lane: VideoLane, confidence: Double?) -> EditDecisionIntent {
+        EditDecisionIntent(
+            cutStyle: tag.type == .cut ? "quiet-gap" : "manual-review",
+            audioLeadSeconds: 0,
+            audioTailSeconds: 0,
+            coverStrategy: tag.type == .cut ? "skip-over" : "selected-source",
+            reactionCoverLaneName: lane.name,
+            cadenceMode: cutIntelligenceCadenceMode.rawValue,
+            humanRhythmNote: "This decision gained review metadata before formal Cut Intelligence metadata was applied.",
+            whyThisCutExists: "Selected \(tag.type == .cut ? "SKIP" : "SHOW") decision on \(lane.name) now has inspectable review context.",
+            tradeoffExplanation: "Review metadata explains the human/agent judgment without changing timing, source media, exports, or publication state.",
+            confidence: confidence ?? 0.5,
+            revisionHistory: ["Review intent created for selected decision metadata."],
+            revisionLedger: [EditDecisionRevision(
+                action: "selected-decision-review-intent-created",
+                note: "Review intent created for selected \(tag.type == .cut ? "SKIP" : "SHOW") decision on \(lane.name).",
+                evidence: [
+                    "Selection context: \(tag.type == .cut ? "SKIP" : "SHOW") on \(lane.name).",
+                    "Timing context: decision starts near \(cutTimeLabel(max(0, (lane.sourceVideo?.offset ?? 0) + tag.startTime)))."
+                ],
+                previousStatus: "",
+                nextStatus: "review-note",
+                confidenceAfter: confidence ?? 0.5
+            )],
+            humanAgentNotes: [],
+            reviewEvidence: [
+                "Selection context: \(tag.type == .cut ? "SKIP" : "SHOW") on \(lane.name).",
+                "Timing context: decision starts near \(cutTimeLabel(max(0, (lane.sourceVideo?.offset ?? 0) + tag.startTime)))."
+            ],
+            nextReviewAction: "Listen through this boundary and decide whether the metadata should be Keep, Refine, or Hold.",
+            risk: "unknown",
+            status: "review-note"
+        )
+    }
+
+    private func normalizedDecisionReviewStatus(_ status: String) -> String {
+        let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        switch normalized {
+        case "listen", "needs-listen", "needs_listen", "needs-listening-pass", "needs-listening", "review":
+            return "needs-listen"
+        case "refine", "needs-refine", "needs_refine", "fix", "revise":
+            return "refine"
+        case "keep", "kept", "ok", "okay", "approved", "approve", "good":
+            return "keep"
+        case "hold", "held", "blocked", "uncertain":
+            return "hold"
+        default:
+            return normalized.isEmpty ? "needs-listen" : normalized
+        }
+    }
+
+    private func decisionReviewDefaultNote(for status: String) -> String {
+        switch normalizedDecisionReviewStatus(status) {
+        case "needs-listen":
+            return "Needs a listening pass for cadence, reaction timing, and whether the pause is useful."
+        case "refine":
+            return "Needs timing, cover, or cadence refinement."
+        case "keep":
+            return "Keep for now after review; this is not publication approval."
+        case "hold":
+            return "Hold for human context, source uncertainty, or a better edit alternative."
+        default:
+            return "Review state changed."
+        }
+    }
+
+    private func reviewTint(forDecisionStatus status: String) -> Color {
+        switch normalizedDecisionReviewStatus(status) {
+        case "keep":
+            return QuipslyStudioTheme.moss
+        case "refine":
+            return QuipslyStudioTheme.creek
+        case "hold":
+            return QuipslyStudioTheme.clay
+        default:
+            return QuipslyStudioTheme.honey
+        }
     }
 
     private func seekToSelectedDecision(_ selected: (lane: VideoLane, tag: VideoTag)) {
@@ -39982,6 +45420,24 @@ struct WorkspaceView: View {
             trimSelectedTag(startDelta: startDelta, durationDelta: durationDelta)
         case "delete_selected_tag":
             deleteSelectedTag()
+        case "cut_recipe_apply":
+            let confirmed = ["1", "true", "yes", "confirm", "confirmed"].contains((request.values["confirm"] ?? "").lowercased())
+            applyCutIntelligenceRecipeFromAgent(id: request.values["id"], confirmed: confirmed)
+        case "selected_decision_intent_note":
+            appendSelectedDecisionIntentNote(
+                note: request.values["note"],
+                actor: request.values["actor"],
+                actorType: request.values["actor_type"],
+                category: request.values["category"],
+                confidence: Double(request.values["confidence"] ?? "")
+            )
+        case "selected_decision_intent_status":
+            setSelectedDecisionIntentStatus(
+                status: request.values["status"],
+                actor: request.values["actor"],
+                actorType: request.values["actor_type"],
+                note: request.values["note"]
+            )
         case "decision":
             if let decision = request.values["action"] {
                 applyAgentDecision(
@@ -40012,6 +45468,10 @@ struct WorkspaceView: View {
             requestTimelineFocus(reason: "Focused Episode Trail Map from local control")
         case "left_workbench":
             applyLeftWorkbenchMode(request.values["mode"])
+        case "cut_cadence_mode":
+            applyCutCadenceMode(request.values["mode"])
+        case "native_account":
+            handleNativeAccountAgentCommand(values: request.values)
         case "timeline_zoom":
             applyTimelineZoom(
                 mode: request.values["mode"],
@@ -40063,6 +45523,10 @@ struct WorkspaceView: View {
             )
         case "edit_pass":
             setEditPassContext(values: request.values)
+        case "create_branch":
+            createEditBranchFromAgent(values: request.values)
+        case "switch_branch":
+            switchEditBranchFromAgent(values: request.values)
         case "program_ambiguity_report":
             refreshProgramDecisionAmbiguityReport(sampleLimit: Int(request.values["sample_limit"] ?? ""))
         case "program_ambiguity_review":
@@ -40163,6 +45627,8 @@ struct WorkspaceView: View {
             )
         case "shorts_review_next":
             selectNextShortReviewCandidate(status: request.values["status"])
+        case "shorts_review_next_cut_risk":
+            selectNextShortCutIntelligenceCandidate(mode: request.values["mode"])
         case "shorts_queue_update_selected":
             updateSelectedShortClipField(
                 field: request.values["field"],
@@ -40181,6 +45647,11 @@ struct WorkspaceView: View {
             )
         case "shorts_listen_through":
             markSelectedShortListenThrough(note: request.values["note"])
+        case "shorts_edit_flow_scan":
+            markSelectedShortEditFlowScan(
+                concern: request.values["concern"],
+                note: request.values["note"]
+            )
         case "shorts_visual_review":
             markSelectedShortVisualReview(
                 sheetPath: request.values["sheet"],
@@ -40466,7 +45937,200 @@ struct WorkspaceView: View {
         ]
     }
 
+    private func branchTruthPayload(for sequence: MediaSequence?) -> [String: Any] {
+        guard let sequence else {
+            return [
+                "branchId": "",
+                "branchName": "",
+                "branchRole": "none",
+                "branchStatus": "no-active-sequence",
+                "branchPurpose": "",
+                "parentSequenceId": "",
+                "sourceBaselineSequenceId": "",
+                "createdBy": "",
+                "createdAt": "",
+                "updatedAt": "",
+                "truth": "Branch truth is unavailable until a sequence is loaded."
+            ]
+        }
+
+        return [
+            "branchId": sequence.branchMetadata.branchId.uuidString,
+            "branchName": sequence.branchMetadata.branchName,
+            "branchRole": sequence.branchMetadata.branchRole,
+            "branchStatus": sequence.branchMetadata.branchStatus,
+            "branchPurpose": sequence.branchMetadata.branchPurpose,
+            "parentSequenceId": sequence.branchMetadata.parentSequenceId?.uuidString ?? "",
+            "sourceBaselineSequenceId": sequence.branchMetadata.sourceBaselineSequenceId?.uuidString ?? "",
+            "createdBy": sequence.branchMetadata.createdBy,
+            "createdAt": ISO8601DateFormatter().string(from: sequence.branchMetadata.createdAt),
+            "updatedAt": ISO8601DateFormatter().string(from: sequence.branchMetadata.updatedAt),
+            "truth": "Branch is a metadata-only decision layer over intact synced source lanes; it is not a copied media timeline or a publication receipt."
+        ]
+    }
+
+    private func branchListPayload() -> [[String: Any]] {
+        projectStore.project.sequences.map { branchSequence in
+            [
+                "sequenceId": branchSequence.id.uuidString,
+                "title": branchSequence.title,
+                "branchId": branchSequence.branchMetadata.branchId.uuidString,
+                "branchName": branchSequence.branchMetadata.branchName,
+                "branchRole": branchSequence.branchMetadata.branchRole,
+                "branchStatus": branchSequence.branchMetadata.branchStatus,
+                "parentSequenceId": branchSequence.branchMetadata.parentSequenceId?.uuidString ?? "",
+                "sourceBaselineSequenceId": branchSequence.branchMetadata.sourceBaselineSequenceId?.uuidString ?? "",
+                "laneCount": branchSequence.lanes.count,
+                "shortRecipeCount": branchSequence.shortClipQueue.count,
+                "active": branchSequence.id == projectStore.activeSequenceId
+            ]
+        }
+    }
+
+    private func agentLaneInventoryPayload(for sequence: MediaSequence?) -> [[String: Any]] {
+        guard let sequence else { return [] }
+        return mediaRecoveryReportPayload(for: sequence, summary: mediaReadinessSummary())["lanes"] as? [[String: Any]] ?? []
+    }
+
+    private func publishMountedAgentState() {
+        let sequence = projectStore.activeSequence
+        let laneInventory = agentLaneInventoryPayload(for: sequence)
+        let cutIntelligencePayload = sequence
+            .map {
+                CutIntelligenceAnalyzer.analyze(
+                    sequence: $0,
+                    playhead: playbackEngine.playhead,
+                    cadenceMode: cutIntelligenceCadenceMode
+                ).agentPayload
+            }
+            ?? [
+                "model": "quipsly-cut-intelligence-report",
+                "status": "no-active-sequence",
+                "truth": "Cut Intelligence is read-only and requires an active sequence with whole source lanes."
+            ]
+        agentServer.writeStatus([
+            "projectTitle": projectStore.project.title,
+            "sequenceTitle": qStudioOptionalString(sequence?.title),
+            "sequenceDuration": qStudioOptionalDouble(sequence?.duration),
+            "mediaBinCount": projectStore.project.mediaBin.count,
+            "laneCount": qStudioOptionalInt(sequence?.lanes.count),
+            "lanes": laneInventory,
+            "sourceLaneInventory": laneInventory,
+            "programAtPlayhead": currentProgramMomentAgentPayload(),
+            "sourceWall": sourceWallAtPlayheadPayload(for: sequence, laneInventory: laneInventory),
+            "selectedDecision": selectedDecisionAgentPayload(),
+            "branchTruth": branchTruthPayload(for: sequence),
+            "branchList": branchListPayload(),
+            "editorMounted": true,
+            "editorMountStage": "workspace_view_on_appear",
+            "monitorWallModel": "program_output_plus_whole_source_lanes",
+            "monitorWallLayout": "program_star_with_horizontal_source_wall",
+            "sourceMonitorLayout": "horizontal_whole_lane_cards",
+            "agentAccessibilityModel": "semantic_commands_with_state_echo",
+            "agentInterfaceModel": "observe_state_choose_semantic_action_execute_reobserve",
+            "agentCommandSerial": agentServer.commandSerial,
+            "agentLastProcessedCommandSerial": lastDrainedAgentCommandSerial,
+            "leftWorkbenchMode": leftWorkbenchMode.rawValue,
+            "leftWorkbenchOpen": effectiveLeftWorkbenchOpenForAgent,
+            "cutIntelligenceCadenceMode": cutIntelligenceCadenceMode.rawValue,
+            "nativeAccount": nativeAccountStore.agentStatusPayload,
+            "activeSessionName": normalizedActiveSessionName(),
+            "playhead": playbackEngine.playhead,
+            "isPlaying": playbackEngine.isPlaying,
+            "playbackMode": playbackEngine.playbackMode.rawValue,
+            "playbackFormat": playbackEngine.playbackFormat.rawValue,
+            "cutIntelligence": cutIntelligencePayload,
+            "cutIntelligenceReport": cutIntelligencePayload,
+            "lastMediaAction": "Quipsly Studio editor mounted; full state hydration is warming up."
+        ])
+    }
+
+    private func publishLeanAgentState(stage: String) {
+        let sequence = projectStore.activeSequence
+        let laneInventory = agentLaneInventoryPayload(for: sequence)
+        let cutIntelligencePayload = sequence
+            .map {
+                CutIntelligenceAnalyzer.analyze(
+                    sequence: $0,
+                    playhead: playbackEngine.playhead,
+                    cadenceMode: cutIntelligenceCadenceMode
+                ).agentPayload
+            }
+            ?? [
+                "model": "quipsly-cut-intelligence-report",
+                "status": "no-active-sequence",
+                "truth": "Cut Intelligence is read-only and requires an active sequence with whole source lanes."
+            ]
+        let selectedLaneValue = sequence.flatMap { activeSequence in
+            selectedLaneId.flatMap { id in
+                activeSequence.lanes.first(where: { $0.id == id })
+            }
+        }
+        let selectedLeanTagContext = sequence
+            .map { selectedTagContext(in: $0) }
+            ?? (type: "", startTime: 0, duration: 0, laneName: "", editIntent: [:])
+        agentServer.writeStatus([
+            "projectTitle": projectStore.project.title,
+            "sequenceTitle": qStudioOptionalString(sequence?.title),
+            "sequenceDuration": qStudioOptionalDouble(sequence?.duration),
+            "mediaBinCount": projectStore.project.mediaBin.count,
+            "laneCount": qStudioOptionalInt(sequence?.lanes.count),
+            "shortClipQueueCount": qStudioOptionalInt(sequence?.shortClipQueue.count),
+            "lanes": laneInventory,
+            "sourceLaneInventory": laneInventory,
+            "programAtPlayhead": currentProgramMomentAgentPayload(),
+            "sourceWall": sourceWallAtPlayheadPayload(for: sequence, laneInventory: laneInventory),
+            "branchTruth": branchTruthPayload(for: sequence),
+            "branchList": branchListPayload(),
+            "editorMounted": true,
+            "editorMountStage": stage,
+            "agentStatusMode": "lean-control-plane",
+            "agentStatusModeReason": leanAgentStatusReason.isEmpty ? stage : leanAgentStatusReason,
+            "agentStatusTruth": "Lean status keeps native auth/session commands responsive. Use explicit validators for heavy export/publication/file evidence.",
+            "monitorWallModel": "program_output_plus_whole_source_lanes",
+            "monitorWallLayout": "program_star_with_horizontal_source_wall",
+            "sourceMonitorLayout": "horizontal_whole_lane_cards",
+            "agentAccessibilityModel": "semantic_commands_with_state_echo",
+            "agentInterfaceModel": "observe_state_choose_semantic_action_execute_reobserve",
+            "agentCommandSerial": agentServer.commandSerial,
+            "agentLastProcessedCommandSerial": lastDrainedAgentCommandSerial,
+            "leftWorkbenchMode": leftWorkbenchMode.rawValue,
+            "leftWorkbenchOpen": effectiveLeftWorkbenchOpenForAgent,
+            "cutIntelligenceCadenceMode": cutIntelligenceCadenceMode.rawValue,
+            "nativeAccount": nativeAccountStore.agentStatusPayload,
+            "activeSessionName": normalizedActiveSessionName(),
+            "playhead": playbackEngine.playhead,
+            "isPlaying": playbackEngine.isPlaying,
+            "playbackMode": playbackEngine.playbackMode.rawValue,
+            "playbackFormat": playbackEngine.playbackFormat.rawValue,
+            "selectedLaneId": selectedLaneId?.uuidString ?? "",
+            "selectedLaneName": selectedLaneValue?.name ?? "",
+            "selectedTagId": selectedTagId?.uuidString ?? "",
+            "selectedTagType": selectedLeanTagContext.type,
+            "selectedTagStart": selectedLeanTagContext.startTime,
+            "selectedTagDuration": selectedLeanTagContext.duration,
+            "selectedTagLaneName": selectedLeanTagContext.laneName,
+            "selectedTagHasEditIntent": !selectedLeanTagContext.editIntent.isEmpty,
+            "selectedTagEditIntent": selectedLeanTagContext.editIntent,
+            "selectedDecision": selectedDecisionAgentPayload(),
+            "selectedDecisionCutIntelligence": selectedDecisionCutIntelligencePayload(),
+            "shortClipQueue": shortClipQueuePayload(for: sequence),
+            "shortReviewCounts": shortReviewCountsPayload(for: sequence),
+            "selectedShortClipId": selectedShortClipId?.uuidString ?? "",
+            "selectedShortClip": sequence.map { selectedShortClipPayload(for: $0) } ?? [:],
+            "selectedShortProof": selectedShortProofPayload(for: sequence),
+            "cutIntelligence": cutIntelligencePayload,
+            "cutIntelligenceReport": cutIntelligencePayload,
+            "lastMediaAction": (lastMediaAction ?? "")
+        ])
+    }
+
     private func updateAgentState() {
+        if prefersLeanAgentStatus {
+            publishLeanAgentState(stage: "lean_agent_status")
+            return
+        }
+
         guard let sequence = projectStore.activeSequence else {
             agentServer.writeStatus([
                 "projectTitle": projectStore.project.title,
@@ -40475,6 +46139,10 @@ struct WorkspaceView: View {
                 "mediaBinCount": projectStore.project.mediaBin.count,
                 "laneCount": 0,
                 "lanes": [],
+                "sourceLaneInventory": [],
+                "programAtPlayhead": currentProgramMomentAgentPayload(),
+                "sourceWall": sourceWallAtPlayheadPayload(for: nil, laneInventory: []),
+                "selectedDecision": selectedDecisionAgentPayload(),
                 "monitorWallModel": "program_output_plus_whole_source_lanes",
                 "monitorWallLayout": "program_star_with_horizontal_source_wall",
                 "sourceMonitorLayout": "horizontal_whole_lane_cards",
@@ -40560,6 +46228,8 @@ struct WorkspaceView: View {
                 "shortPreviewStopAt": shortPreviewStopAt ?? NSNull(),
                 "leftWorkbenchMode": leftWorkbenchMode.rawValue,
                 "leftWorkbenchOpen": effectiveLeftWorkbenchOpenForAgent,
+                "cutIntelligenceCadenceMode": cutIntelligenceCadenceMode.rawValue,
+                "nativeAccount": nativeAccountStore.agentStatusPayload,
                 "timelinePixelsPerSecond": timelinePixelsPerSecond,
                 "timelineFitToWindow": isTimelineFitToWindow,
                 "timelineFocusBehavior": "focus_timeline_scrolls_to_decision_timeline",
@@ -40698,13 +46368,52 @@ struct WorkspaceView: View {
         let programBlankState = programBlankSlateState()
         let selectedTranscriptSegment = selectedTranscriptSegmentValue(in: sequence)
         let currentTranscriptSegment = currentTranscriptSegment(in: sequence)
+        let laneInventory = agentLaneInventoryPayload(for: sequence)
+        let cutIntelligenceReport = CutIntelligenceAnalyzer.analyze(
+            sequence: sequence,
+            playhead: playbackEngine.playhead,
+            cadenceMode: cutIntelligenceCadenceMode
+        )
+        let branchListPayload: [[String: Any]] = projectStore.project.sequences.map { branchSequence in
+            [
+                "sequenceId": branchSequence.id.uuidString,
+                "title": branchSequence.title,
+                "branchId": branchSequence.branchMetadata.branchId.uuidString,
+                "branchName": branchSequence.branchMetadata.branchName,
+                "branchRole": branchSequence.branchMetadata.branchRole,
+                "branchStatus": branchSequence.branchMetadata.branchStatus,
+                "parentSequenceId": branchSequence.branchMetadata.parentSequenceId?.uuidString ?? "",
+                "sourceBaselineSequenceId": branchSequence.branchMetadata.sourceBaselineSequenceId?.uuidString ?? "",
+                "laneCount": branchSequence.lanes.count,
+                "shortRecipeCount": branchSequence.shortClipQueue.count,
+                "active": branchSequence.id == projectStore.activeSequenceId
+            ]
+        }
 
         agentServer.writeStatus([
             "projectTitle": projectStore.project.title,
             "sequenceTitle": sequence.title,
+            "branchTruth": [
+                "branchId": sequence.branchMetadata.branchId.uuidString,
+                "branchName": sequence.branchMetadata.branchName,
+                "branchRole": sequence.branchMetadata.branchRole,
+                "branchStatus": sequence.branchMetadata.branchStatus,
+                "branchPurpose": sequence.branchMetadata.branchPurpose,
+                "parentSequenceId": sequence.branchMetadata.parentSequenceId?.uuidString ?? "",
+                "sourceBaselineSequenceId": sequence.branchMetadata.sourceBaselineSequenceId?.uuidString ?? "",
+                "createdBy": sequence.branchMetadata.createdBy,
+                "createdAt": ISO8601DateFormatter().string(from: sequence.branchMetadata.createdAt),
+                "updatedAt": ISO8601DateFormatter().string(from: sequence.branchMetadata.updatedAt),
+                "truth": "Branch is a metadata-only decision layer over intact synced source lanes; it is not a copied media timeline or a publication receipt."
+            ],
+            "branchList": branchListPayload,
             "sequenceDuration": sequence.duration,
             "mediaBinCount": projectStore.project.mediaBin.count,
             "laneCount": sequence.lanes.count,
+            "wholeSyncedLanes": laneInventory,
+            "sourceLaneInventory": laneInventory,
+            "programAtPlayhead": currentProgramMomentAgentPayload(),
+            "sourceWall": sourceWallAtPlayheadPayload(for: sequence, laneInventory: laneInventory),
             "monitorWallModel": "program_output_plus_whole_source_lanes",
             "monitorWallLayout": "program_star_with_horizontal_source_wall",
             "sourceMonitorLayout": "horizontal_whole_lane_cards",
@@ -40806,6 +46515,8 @@ struct WorkspaceView: View {
             "shortPreviewStopAt": shortPreviewStopAt ?? NSNull(),
             "leftWorkbenchMode": leftWorkbenchMode.rawValue,
             "leftWorkbenchOpen": effectiveLeftWorkbenchOpenForAgent,
+            "cutIntelligenceCadenceMode": cutIntelligenceCadenceMode.rawValue,
+            "nativeAccount": nativeAccountStore.agentStatusPayload,
             "timelinePixelsPerSecond": timelinePixelsPerSecond,
             "timelineFitToWindow": isTimelineFitToWindow,
             "timelineFocusBehavior": "focus_timeline_scrolls_to_decision_timeline",
@@ -40832,6 +46543,10 @@ struct WorkspaceView: View {
             "selectedTagStart": selectedTagContext.startTime,
             "selectedTagDuration": selectedTagContext.duration,
             "selectedTagLaneName": selectedTagContext.laneName,
+            "selectedTagHasEditIntent": !selectedTagContext.editIntent.isEmpty,
+            "selectedTagEditIntent": selectedTagContext.editIntent,
+            "selectedDecision": selectedDecisionAgentPayload(),
+            "selectedDecisionCutIntelligence": selectedDecisionCutIntelligencePayload(),
             "visualDecisionBoundaryModel": "grouped_visual_edit_boundaries",
             "visualDecisionCount": visualReviewState.count,
             "selectedVisualDecisionIndex": visualReviewState.selectedIndex,
@@ -40861,6 +46576,8 @@ struct WorkspaceView: View {
             "programDecisionAmbiguityReport": latestProgramDecisionAmbiguityReport,
             "selectedProgramDecisionAmbiguityExample": selectedProgramDecisionAmbiguityExamplePayload(),
             "programAmbiguityOperator": programAmbiguityOperatorPayload(for: sequence),
+            "cutIntelligence": cutIntelligenceReport.agentPayload,
+            "cutIntelligenceReport": cutIntelligenceReport.agentPayload,
             "videoProxyReadyCount": readinessSummary.videoProxyReadyCount,
             "videoBlockedCount": readinessSummary.videoBlockedCount,
             "audioReadyCount": readinessSummary.audioReadyCount,
@@ -40884,7 +46601,7 @@ struct WorkspaceView: View {
         let truth = workingSetTruthPayload(for: sequence, summary: summary)
         let status = truth["status"] as? String ?? "unknown"
         let currentSession = sequence == nil ? "" : normalizedActiveSessionName()
-        let title = sequence?.title ?? ""
+        let title = qStudioOptionalString(sequence?.title)
         let charlieReady = truth["charlieReadyCount"] as? Int ?? 0
         let homerReady = truth["homerReadyCount"] as? Int ?? 0
         let mysteryCount = truth["mysteryLaneCount"] as? Int ?? 0
@@ -41235,6 +46952,8 @@ struct WorkspaceView: View {
 
     private func loadNativeSession(named name: String, presentFailureAlert: Bool = true) {
         let sessionName = normalizedSessionName(name)
+        prefersLeanAgentStatus = true
+        leanAgentStatusReason = "native_session_restore"
         autosaveTask?.cancel()
         autosaveTask = nil
         resetExportStatusForSessionSwitch()
@@ -41264,7 +46983,7 @@ struct WorkspaceView: View {
             lastMediaAction = "Applying native session \(sessionName): \(decodedSequence?.lanes.count ?? 0) lanes, \(decodedSequence?.shortClipQueue.count ?? 0) shorts"
             updateAgentState()
 
-            projectStore.applyNativeSession(loadedSession, publish: false)
+            projectStore.applyNativeSession(loadedSession, publish: true)
 
             lastMediaAction = "Applied native session \(sessionName)"
             updateAgentState()
@@ -41284,8 +47003,9 @@ struct WorkspaceView: View {
             refreshRecentSessions()
 
             let sequence = projectStore.activeSequence
-            let laneCount = sequence?.lanes.count ?? 0
-            let shortCount = sequence?.shortClipQueue.count ?? 0
+            let laneCount = qStudioOptionalInt(sequence?.lanes.count)
+            let shortCount = qStudioOptionalInt(sequence?.shortClipQueue.count)
+            leanAgentStatusReason = "native_session_loaded_control_plane_ready"
             lastMediaAction = "Loaded native session metadata \(sessionName): \(laneCount) lanes, \(shortCount) shorts"
             updateAgentState()
 
@@ -41299,11 +47019,13 @@ struct WorkspaceView: View {
                 isShowingProductionDetails = true
             }
             rebuildPlayer()
+            leanAgentStatusReason = "native_session_loaded_control_plane_ready"
             lastMediaAction = "Loaded native session \(sessionName): \(laneCount) lanes, \(shortCount) shorts"
             updateAgentState()
             projectStore.publishChanges()
         } catch {
             let failure = nativeSessionLoadFailureMessage(sessionName: sessionName, error: error)
+            leanAgentStatusReason = "native_session_load_failed_control_plane_ready"
             lastMediaAction = failure
             autosaveStatus = "Load failed"
             if presentFailureAlert {
@@ -42387,6 +48109,93 @@ struct WorkspaceView: View {
         updateAgentState()
     }
 
+    private func createEditBranchFromAgent(values: [String: String]) {
+        guard let sequence = projectStore.activeSequence else {
+            lastMediaAction = "Create branch blocked: no active sequence"
+            updateAgentState()
+            return
+        }
+
+        let requestedName = values["name"] ?? values["title"] ?? ""
+        let fallbackName = "\(sequence.title) Branch"
+        let branchName = requestedName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? fallbackName : requestedName
+        let role = values["role"] ?? "experiment"
+        let purpose = values["purpose"] ?? "Safe metadata-only experiment over intact synced source lanes."
+        let actor = values["actor"] ?? "Codex"
+
+        guard let branchSequenceId = projectStore.duplicateActiveSequenceAsBranch(
+            name: branchName,
+            role: role,
+            purpose: purpose,
+            createdBy: actor,
+            undoManager: nil,
+            actionName: "Create Edit Branch"
+        ) else {
+            lastMediaAction = "Create branch blocked: could not duplicate active sequence"
+            updateAgentState()
+            return
+        }
+
+        selectedTagId = nil
+        if let active = projectStore.activeSequence {
+            if let selectedLaneId {
+                if !active.lanes.contains(where: { $0.id == selectedLaneId }) {
+                    self.selectedLaneId = active.lanes.first?.id
+                }
+            } else {
+                selectedLaneId = active.lanes.first?.id
+            }
+        }
+        rebuildPlayer()
+        lastMediaAction = "Created branch \(branchName) (\(branchSequenceId.uuidString.prefix(8)))"
+        scheduleAutosave(reason: "created edit branch")
+        updateAgentState()
+    }
+
+    private func switchEditBranchFromAgent(values: [String: String]) {
+        let requestedId = values["id"].flatMap(UUID.init(uuidString:))
+        let requestedName = (values["name"] ?? values["title"] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let requestedRole = (values["role"] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+
+        let targetSequence = projectStore.project.sequences.first { sequence in
+            if let requestedId, sequence.id == requestedId {
+                return true
+            }
+            if !requestedName.isEmpty {
+                return sequence.title.lowercased() == requestedName
+                    || sequence.branchMetadata.branchName.lowercased() == requestedName
+            }
+            if !requestedRole.isEmpty {
+                return sequence.branchMetadata.branchRole.lowercased() == requestedRole
+            }
+            return false
+        }
+
+        guard let targetSequence else {
+            lastMediaAction = "Switch branch blocked: no matching branch"
+            updateAgentState()
+            return
+        }
+
+        guard projectStore.selectSequence(id: targetSequence.id) else {
+            lastMediaAction = "Switch branch blocked: branch no longer exists"
+            updateAgentState()
+            return
+        }
+
+        selectedTagId = nil
+        selectedLaneId = targetSequence.lanes.first?.id
+        rebuildPlayer()
+        playbackEngine.seek(to: min(playbackEngine.playhead, targetSequence.duration))
+        lastMediaAction = "Switched branch to \(targetSequence.branchMetadata.branchName)"
+        scheduleAutosave(reason: "switched edit branch")
+        updateAgentState()
+    }
+
     private func recordEditCorrectionNote(values: [String: String]) {
         guard var sequence = projectStore.activeSequence else {
             lastMediaAction = "Correction note blocked: no active sequence"
@@ -42578,27 +48387,41 @@ struct WorkspaceView: View {
         let requestedMode = playbackMode(from: mode)
         let requestedAction = (action ?? "toggle").lowercased()
         let modeIsChanging = playbackEngine.playbackMode != requestedMode
+        playbackIntentGeneration &+= 1
+        let intentGeneration = playbackIntentGeneration
+
+        let shouldPlay: Bool
+        switch requestedAction {
+        case "play":
+            shouldPlay = true
+        case "pause", "set":
+            shouldPlay = false
+        default:
+            shouldPlay = !playbackEngine.isPlaying
+        }
 
         if modeIsChanging {
+            playbackEngine.pause()
             playbackEngine.playbackMode = requestedMode
             if let sequence = projectStore.activeSequence {
                 playbackEngine.updateValidRanges(for: sequence)
             }
 
-            let shouldResume = requestedAction != "pause" && requestedAction != "set"
-            rebuildPlayer(resumeAfterRebuild: shouldResume)
+            lastMediaAction = "Switching to \(requestedMode == .playThrough ? "Play Through" : "Play Edit") and \(shouldPlay ? "playing" : "pausing")"
+            rebuildPlayer(
+                resumeAfterRebuild: shouldPlay,
+                playbackIntentGeneration: intentGeneration
+            )
             updateAgentState()
             return
         }
 
-        switch requestedAction {
-        case "play":
+        if shouldPlay {
             playbackEngine.play()
-        case "pause", "set":
+        } else {
             playbackEngine.pause()
-        default:
-            playbackEngine.togglePlayback()
         }
+        lastMediaAction = "\(requestedMode == .playThrough ? "Play Through" : "Play Edit") \(shouldPlay ? "playing" : "paused")"
         updateAgentState()
     }
 
@@ -42970,7 +48793,17 @@ struct WorkspaceView: View {
         func activate(laneIndex: Int) {
             guard laneIndex < sequence.lanes.count else { return }
             let offset = sequence.lanes[laneIndex].sourceVideo?.offset ?? 0
-            let newTag = VideoTag(type: .active, startTime: splitTime - offset, duration: remainingDuration)
+            let newTag = VideoTag(
+                type: .active,
+                startTime: splitTime - offset,
+                duration: remainingDuration,
+                editIntent: liveDecisionIntent(
+                    type: type,
+                    laneName: sequence.lanes[laneIndex].name,
+                    tagType: .active,
+                    duration: remainingDuration
+                )
+            )
             sequence.lanes[laneIndex].tags.append(newTag)
             rememberSelectedDecision(laneIndex: laneIndex, tagId: newTag.id)
         }
@@ -42978,7 +48811,17 @@ struct WorkspaceView: View {
         func skip(laneIndex: Int) {
             guard laneIndex < sequence.lanes.count else { return }
             let offset = sequence.lanes[laneIndex].sourceVideo?.offset ?? 0
-            let newTag = VideoTag(type: .cut, startTime: splitTime - offset, duration: remainingDuration)
+            let newTag = VideoTag(
+                type: .cut,
+                startTime: splitTime - offset,
+                duration: remainingDuration,
+                editIntent: liveDecisionIntent(
+                    type: type,
+                    laneName: sequence.lanes[laneIndex].name,
+                    tagType: .cut,
+                    duration: remainingDuration
+                )
+            )
             sequence.lanes[laneIndex].tags.append(newTag)
             rememberSelectedDecision(laneIndex: laneIndex, tagId: newTag.id)
         }
@@ -43042,7 +48885,11 @@ struct WorkspaceView: View {
             sequenceDuration: sequenceDuration,
             actionName: "Switch Selected Decision",
             autosaveReason: "switched selected decision",
-            mediaActionLabel: labelForDecisionType(type)
+            mediaActionLabel: labelForDecisionType(type),
+            editIntent: switchDecisionIntent(
+                type: type,
+                duration: sequenceDuration
+            )
         )
         return true
     }
@@ -43088,6 +48935,135 @@ struct WorkspaceView: View {
         case .homerClip:
             return "Switched selected span to Homer + Clip"
         }
+    }
+
+    private func liveDecisionIntent(type: EditDecisionType, laneName: String, tagType: TagType, duration: Double) -> EditDecisionIntent {
+        let isSkip = tagType == .cut || type == .skip
+        let label = labelForDecisionType(type)
+        return EditDecisionIntent(
+            cutStyle: isSkip ? "quiet-gap" : "live-switch",
+            audioLeadSeconds: 0,
+            audioTailSeconds: 0,
+            coverStrategy: isSkip ? "skip-over" : "source-selection",
+            reactionCoverLaneName: laneName,
+            cadenceMode: cutIntelligenceCadenceMode.rawValue,
+            humanRhythmNote: isSkip
+                ? "Play Edit should skip this span, but source monitors keep the moment available for review."
+                : "Live switch decisions are a first-pass attention map; review by ear and eye before publication.",
+            whyThisCutExists: "\(label) created at the shared playhead as reversible SHOW/SKIP metadata.",
+            tradeoffExplanation: isSkip
+                ? "Skipping can tighten pacing, but may remove human air or useful setup. Re-open if the cut feels abrupt."
+                : "A live switch captures attention quickly, but it may need boundary refinement once dialogue rhythm is reviewed.",
+            confidence: 0.52,
+            revisionHistory: ["Created by live-switch shortcut as metadata over whole source lanes."],
+            revisionLedger: [EditDecisionRevision(
+                action: "live-switch-created",
+                note: "\(label) created at the shared playhead.",
+                evidence: [
+                    "\(label) was captured live at the shared playhead.",
+                    String(format: "Initial live-switch duration: %.2fs.", duration)
+                ],
+                previousStatus: "",
+                nextStatus: "draft-metadata",
+                confidenceAfter: 0.52
+            )],
+            humanAgentNotes: ["Initial live edit decision; not final approval."],
+            reviewEvidence: [
+                "\(label) was captured live at the shared playhead.",
+                "Live-switch choices are attention maps first; boundaries usually need a rhythm pass."
+            ],
+            nextReviewAction: isSkip
+                ? "Play Through the skipped span and confirm the gap does not remove useful human air."
+                : "Check the incoming and outgoing boundaries, then trim or add J/L timing if the switch feels stiff.",
+            risk: "medium",
+            status: "draft-metadata"
+        )
+    }
+
+    private func switchDecisionIntent(type: EditDecisionType, duration: Double) -> EditDecisionIntent {
+        let isSkip = type == .skip
+        return EditDecisionIntent(
+            cutStyle: isSkip ? "quiet-gap" : "manual-source-switch",
+            audioLeadSeconds: 0,
+            audioTailSeconds: 0,
+            coverStrategy: labelForDecisionType(type)
+                .replacingOccurrences(of: "Switched selected span to ", with: "")
+                .lowercased()
+                .replacingOccurrences(of: " ", with: "-"),
+            cadenceMode: cutIntelligenceCadenceMode.rawValue,
+            humanRhythmNote: isSkip
+                ? "Use Play Through if you need to check what was skipped."
+                : "Review the previous and next boundaries so the switch feels intentional, not merely visible.",
+            whyThisCutExists: "\(labelForDecisionType(type)) for \(String(format: "%.2fs", duration)) using reversible decision metadata.",
+            tradeoffExplanation: isSkip
+                ? "A quiet gap removes the span from Play Edit, but whole sources remain visible for recovery."
+                : "Switching source improves visual attention, but may need J/L-cut audio intent if the dialogue handoff feels stiff.",
+            confidence: 0.68,
+            revisionHistory: ["Selected decision switched through the human/agent quick strip."],
+            revisionLedger: [EditDecisionRevision(
+                action: "selected-decision-switched",
+                note: "\(labelForDecisionType(type)) through the human/agent quick strip.",
+                evidence: [
+                    "\(labelForDecisionType(type)) was applied to the selected metadata span.",
+                    String(format: "Selected span duration: %.2fs.", duration)
+                ],
+                previousStatus: "",
+                nextStatus: "applied-metadata",
+                confidenceAfter: 0.68
+            )],
+            humanAgentNotes: ["Manual switch changed Program Output metadata only."],
+            reviewEvidence: [
+                "\(labelForDecisionType(type)) was applied to the selected metadata span.",
+                String(format: "Selected span duration: %.2fs.", duration)
+            ],
+            nextReviewAction: isSkip
+                ? "Play Through the skipped material once, then verify Play Edit does not feel abrupt."
+                : "Review the boundary as a cut, not just a visibility switch; refine timing if cadence catches.",
+            risk: isSkip ? "medium" : "low",
+            status: "applied-metadata"
+        )
+    }
+
+    private func sourceWallDecisionIntent(laneName: String, type: TagType, duration: Double) -> EditDecisionIntent {
+        let isShow = type == .active
+        return EditDecisionIntent(
+            cutStyle: isShow ? "source-wall-show" : "source-wall-skip",
+            audioLeadSeconds: 0,
+            audioTailSeconds: 0,
+            coverStrategy: isShow ? "selected-source-window" : "quiet-source-window",
+            reactionCoverLaneName: laneName,
+            cadenceMode: cutIntelligenceCadenceMode.rawValue,
+            humanRhythmNote: isShow
+                ? "Source-wall SHOW is a quick visible candidate; trim after listening for cadence."
+                : "Source-wall SKIP is reversible; keep source monitors available for recovery.",
+            whyThisCutExists: "\(laneName) was marked \(isShow ? "SHOW" : "SKIP") for \(String(format: "%.2fs", duration)) from the source wall.",
+            tradeoffExplanation: isShow
+                ? "Fast source-window marking helps build the edit spine, but the boundary still needs rhythm review."
+                : "Skipping reduces visual clutter in Play Edit, but may hide useful reactions if applied too broadly.",
+            confidence: 0.56,
+            revisionHistory: ["Created from Source Grove/source-wall button."],
+            revisionLedger: [EditDecisionRevision(
+                action: isShow ? "source-wall-show-created" : "source-wall-skip-created",
+                note: "\(laneName) was marked \(isShow ? "SHOW" : "SKIP") from the source wall.",
+                evidence: [
+                    "\(laneName) was chosen directly from the always-visible source wall.",
+                    String(format: "Source-wall decision duration: %.2fs.", duration)
+                ],
+                previousStatus: "",
+                nextStatus: "draft-metadata",
+                confidenceAfter: 0.56
+            )],
+            humanAgentNotes: ["Whole source lane preserved; only SHOW/SKIP metadata changed."],
+            reviewEvidence: [
+                "\(laneName) was chosen directly from the always-visible source wall.",
+                String(format: "Source-wall decision duration: %.2fs.", duration)
+            ],
+            nextReviewAction: isShow
+                ? "Watch this source against neighboring sources, then refine the in/out points by ear."
+                : "Confirm this skip is intentional by checking Play Through before final export.",
+            risk: isShow ? "low" : "medium",
+            status: "draft-metadata"
+        )
     }
 
     private func visualDecisionMap(
@@ -43382,6 +49358,22 @@ struct WorkspaceView: View {
                 risk: "read-only",
                 explanation: "Shows the next evidence-building action for social shorts without scoring quality or approving publication.",
                 enabled: sequenceLoaded
+            ),
+            agentActionPayload(
+                id: "review-next-cut-risk-short",
+                label: "Review next cut-risk short",
+                endpoint: "GET /shorts_review_next_cut_risk?mode=risk",
+                risk: "focus-only",
+                explanation: "Selects the next queued short whose existing Cut Intelligence evidence overlaps cadence or jump-cut risk. It changes focus/playhead only; it does not approve, publish, move decisions, or mutate source media.",
+                enabled: sequenceLoaded && !(projectStore.activeSequence?.shortClipQueue.isEmpty ?? true)
+            ),
+            agentActionPayload(
+                id: "review-next-cut-opportunity-short",
+                label: "Review next cut-opportunity short",
+                endpoint: "GET /shorts_review_next_cut_risk?mode=opportunity",
+                risk: "focus-only",
+                explanation: "Selects the next queued short with reaction-cover, J-cut, or L-cut opportunity evidence so the edit can feel more human. It changes focus/playhead only.",
+                enabled: sequenceLoaded && !(projectStore.activeSequence?.shortClipQueue.isEmpty ?? true)
             ),
             agentActionPayload(
                 id: "save-sequence-platform-pack-index",
@@ -44464,12 +50456,32 @@ struct WorkspaceView: View {
             capability(
                 "visual-decision-editing",
                 "Review grouped visual edit boundaries, then nudge/trim/delete the selected SHOW/SKIP lane metadata",
-                observe: ["selectedTagId", "selectedTagType", "selectedTagStart", "selectedTagDuration", "selectedTagLaneName", "visualDecisionBoundaryModel", "visualDecisionCount", "selectedVisualDecisionIndex", "selectedVisualDecisionSequenceTime", "selectedSourceReviewStopCount", "showDecisionCount", "skipDecisionCount", "programDecisionAmbiguity", "programDecisionAmbiguityReport", "selectedProgramDecisionAmbiguityExample", "programAmbiguityOperator"],
-                act: ["GET /program_ambiguity_report?sample_limit=<optional-count>", "GET /program_ambiguity_review?mode=first|previous|next|last|nearest", "GET /program_ambiguity_resolve?choice=first|second|third|first_clip|second_clip|skip|<lane-id-or-name>&advance=next", "GET /program_ambiguity_batch?mode=preview|apply&max_count=<small-count>&min_confidence=<0-to-1>", "GET /program_ambiguity_manual_review?choice=<choice>&note=<why>&actor=<name>&actor_type=human|agent&apply=0|1", "GET /select_decision?mode=previous_video", "GET /select_decision?mode=previous_video&lane_id=<selected-source>", "GET /select_decision?mode=at_playhead&scope=video", "GET /select_decision?mode=next_video&lane_id=<selected-source>", "GET /select_decision?mode=next_video", "GET /nudge_selected?delta=-1", "GET /nudge_selected?delta=-0.1", "GET /nudge_selected?delta=0.1", "GET /nudge_selected?delta=1", "GET /trim_selected?start_delta=-0.1&duration_delta=0.1", "GET /trim_selected?start_delta=0.1&duration_delta=-0.1", "GET /trim_selected?start_delta=0&duration_delta=-0.1", "GET /trim_selected?start_delta=0&duration_delta=0.1", "GET /delete_selected_tag"],
+                observe: ["selectedTagId", "selectedTagType", "selectedTagStart", "selectedTagDuration", "selectedTagLaneName", "selectedTagEditIntent", "selectedTagHasEditIntent", "visualDecisionBoundaryModel", "visualDecisionCount", "selectedVisualDecisionIndex", "selectedVisualDecisionSequenceTime", "selectedSourceReviewStopCount", "showDecisionCount", "skipDecisionCount", "programDecisionAmbiguity", "programDecisionAmbiguityReport", "selectedProgramDecisionAmbiguityExample", "programAmbiguityOperator"],
+                act: ["GET /program_ambiguity_report?sample_limit=<optional-count>", "GET /program_ambiguity_review?mode=first|previous|next|last|nearest", "GET /program_ambiguity_resolve?choice=first|second|third|first_clip|second_clip|skip|<lane-id-or-name>&advance=next", "GET /program_ambiguity_batch?mode=preview|apply&max_count=<small-count>&min_confidence=<0-to-1>", "GET /program_ambiguity_manual_review?choice=<choice>&note=<why>&actor=<name>&actor_type=human|agent&apply=0|1", "GET /select_decision?mode=previous_video", "GET /select_decision?mode=previous_video&lane_id=<selected-source>", "GET /select_decision?mode=at_playhead&scope=video", "GET /select_decision?mode=next_video&lane_id=<selected-source>", "GET /select_decision?mode=next_video", "GET /selected_decision_intent_evidence", "CLI script/agentctl.sh decision-intent-evidence", "GET /selected_decision_intent_note?note=<why>&actor=<name>&actor_type=human|agent&category=cut-choice|cadence|reaction|jump-cut", "GET /selected_decision_intent_status?status=needs-listen|refine|keep|hold&actor=<name>&actor_type=human|agent&note=<optional-review-note>", "GET /nudge_selected?delta=-1", "GET /nudge_selected?delta=-0.1", "GET /nudge_selected?delta=0.1", "GET /nudge_selected?delta=1", "GET /trim_selected?start_delta=-0.1&duration_delta=0.1", "GET /trim_selected?start_delta=0.1&duration_delta=-0.1", "GET /trim_selected?start_delta=0&duration_delta=-0.1", "GET /trim_selected?start_delta=0&duration_delta=0.1", "GET /delete_selected_tag"],
                 prove: ["GET /state", "GET /editor_snapshot"],
                 ready: sequenceLoaded,
                 status: sequenceLoaded ? "ready" : "needs_sequence",
-                trainingValue: "Teaches the distinction between grouped review stops for fast navigation and lane-level metadata tags for precise non-destructive edits."
+                trainingValue: "Teaches the distinction between grouped review stops for fast navigation and lane-level metadata tags for precise non-destructive edits; selected decision evidence explains why a cut exists and what to check next."
+            ),
+            capability(
+                "cut-craft-guidance",
+                "Ask what the edit should protect before tightening, covering, or deleting timing",
+                observe: ["cutIntelligenceReport.craftProfile.humanFlowStance", "cutIntelligenceReport.craftProfile.doNotCutSignals", "cutIntelligenceReport.craftProfile.pauseReviewSignals", "cutIntelligenceReport.craftProfile.automationGuardrails", "cutIntelligenceReport.craftProfile.craftWarnings"],
+                act: ["GET /cut_craft_guidance", "CLI script/agentctl.sh cut-craft-guidance", "GET /cut_cadence_mode?mode=warm-conversation|tight-youtube|shorts-energy|documentary-thoughtful|chaotic-fun-but-legible"],
+                prove: ["GET /cut_craft_guidance", "GET /state"],
+                ready: sequenceLoaded,
+                status: sequenceLoaded ? "ready" : "needs_sequence",
+                trainingValue: "Teaches agents that human-feeling editing includes restraint: protect breath, reaction, comic timing, emotional weight, and awkwardness worth keeping before applying cleanup."
+            ),
+            capability(
+                "selected-short-quality-review",
+                "Inspect the selected short recipe's hook, pacing, platform, caption/framing, and Cut Intelligence risks before review",
+                observe: ["selectedShortClip.id", "selectedShortClip.creatorQuality", "selectedShortClip.publicationPassport", "selectedShortClip.cutIntelligenceEvidence", "selectedShortQuality.reviewChecklist", "shortClipQueue"],
+                act: ["GET /selected_short_quality", "CLI script/agentctl.sh selected-short-quality", "CLI script/agentctl.sh shorts-review-next", "CLI script/agentctl.sh shorts-review-next-cut-risk any", "CLI script/agentctl.sh shorts-review-selected keep|refine|reject \"notes\""],
+                prove: ["GET /selected_short_quality", "GET /state"],
+                ready: sequenceLoaded,
+                status: sequenceLoaded ? "ready" : "needs_sequence",
+                trainingValue: "Keeps shorts as reviewable recipes over sequence time while making the review checklist visible: hook, pacing, caption/framing, platform variants, cut-risk evidence, and export proof before Keep/Refine/Reject."
             ),
             capability(
                 "source-window-live-switching",
@@ -45388,7 +51400,20 @@ struct WorkspaceView: View {
     }
 
     private func fileSize(atPath path: String) -> Int64 {
-        guard !path.isEmpty,
+        guard !path.isEmpty else {
+            return 0
+        }
+
+        // This helper is used by agent/status payloads that can run on the main
+        // actor. External volumes can block in attributesOfItem/getxattr while
+        // drives wake, prompt, or disconnect. Returning unknown/0 here is safer
+        // than starving auth/session commands; export validators can still do
+        // deliberate off-hot-path file inspection when they need artifact proof.
+        if path.hasPrefix("/Volumes/") {
+            return 0
+        }
+
+        guard
               let attributes = try? FileManager.default.attributesOfItem(atPath: path),
               let size = attributes[.size] as? NSNumber else {
             return 0
@@ -46585,7 +52610,8 @@ struct WorkspaceView: View {
                 await MainActor.run {
                     recentSessions = sessions
                     if hasActiveSession && projectStore.activeSequence == nil {
-                        loadNativeSession(named: sessionName, presentFailureAlert: false)
+                        lastMediaAction = "Remembered native session \(sessionName). Launch stays metadata-only; load it explicitly when you are ready."
+                        updateAgentState()
                     }
                 }
             } catch {
@@ -46680,20 +52706,44 @@ struct WorkspaceView: View {
         }
     }
 
-    private func rebuildPlayer(resumeAfterRebuild: Bool? = nil) {
+    private func rebuildPlayer(
+        resumeAfterRebuild: Bool? = nil,
+        playbackIntentGeneration intendedPlaybackGeneration: UInt64? = nil
+    ) {
         guard let sequence = projectStore.activeSequence else { return }
+        playerRebuildGeneration &+= 1
+        let rebuildGeneration = playerRebuildGeneration
+        let requestedMode = playbackEngine.playbackMode
+        let requestedFormat = playbackEngine.playbackFormat
 
         Task { @MainActor in
             do {
-                playbackEngine.updateSourcePlayers(for: sequence)
+                let allowedProxyMediaRootPath = externalMediaAccess.hasActiveAccess
+                    ? externalMediaAccess.rootPath
+                    : nil
+                playbackEngine.updateSourcePlayers(
+                    for: sequence,
+                    allowedProxyRootPath: allowedProxyMediaRootPath
+                )
                 let playerItem = try await AVCompositionBuilder().buildPlayerItem(
                     for: sequence,
-                    mode: playbackEngine.playbackMode,
-                    format: playbackEngine.playbackFormat,
+                    mode: requestedMode,
+                    format: requestedFormat,
                     allowExternalOriginalMedia: false,
-                    allowedOriginalMediaRootPath: nil
+                    allowedOriginalMediaRootPath: nil,
+                    allowedProxyMediaRootPath: allowedProxyMediaRootPath
                 )
-                let shouldResume = resumeAfterRebuild ?? playbackEngine.isPlaying
+                guard rebuildGeneration == playerRebuildGeneration,
+                      requestedMode == playbackEngine.playbackMode,
+                      requestedFormat == playbackEngine.playbackFormat else {
+                    return
+                }
+
+                let playbackIntentIsCurrent = intendedPlaybackGeneration == nil ||
+                    intendedPlaybackGeneration == playbackIntentGeneration
+                let shouldResume = playbackIntentIsCurrent
+                    ? (resumeAfterRebuild ?? playbackEngine.isPlaying)
+                    : playbackEngine.isPlaying
                 let oldTime = playbackEngine.playhead
 
                 playbackEngine.player = AVPlayer(playerItem: playerItem)
