@@ -1232,7 +1232,7 @@ def render_chunk(chunk: dict[str, Any], chunk_path: Path) -> None:
             "-t", f"{render_duration:.6f}",
             "-i", str(render_path),
         ])
-        vf = video_filter_for(source)
+        vf = f"{video_filter_for(source)},tpad=stop_mode=clone:stop_duration=0.100"
     else:
         command.extend([
             "-f", "lavfi",
@@ -1393,6 +1393,17 @@ def render_branch(
     picture_probe = ffprobe_json(picture_path)
     video_probe = ffprobe_json(video_path)
     audio_probe = ffprobe_json(audio_path)
+    picture_stream = next(
+        (stream for stream in picture_probe.get("streams", []) if stream.get("codec_type") == "video"),
+        {},
+    )
+    expected_picture_frames = sum(int(chunk["outputFrameCount"]) for chunk in chunks)
+    actual_picture_frames = int(picture_stream.get("nb_frames") or 0)
+    if actual_picture_frames != expected_picture_frames:
+        raise RuntimeError(
+            "picture assembly frame mismatch: "
+            f"expected {expected_picture_frames}, rendered {actual_picture_frames}"
+        )
     manifest = {
         "schema": "quipsly.episode4.full-sync-export.v1",
         "branch": {
@@ -1448,7 +1459,8 @@ def render_branch(
             "programAudioMuxedOnceAfterPictureAssembly": True,
             "pictureFrameRate": 30,
             "pictureFrameQuantization": "cumulative-sequence-boundaries",
-            "pictureExpectedFrameCount": sum(int(chunk["outputFrameCount"]) for chunk in chunks),
+            "pictureExpectedFrameCount": expected_picture_frames,
+            "pictureActualFrameCount": actual_picture_frames,
             "proofRunSeconds": proof_seconds,
             "externalPublicationReceipt": None,
         },
