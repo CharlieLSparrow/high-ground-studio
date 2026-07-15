@@ -918,6 +918,46 @@ def available_sources_at(sequence_time: float) -> list[SourceClip]:
     return [source for source in VIDEO_SOURCES if source.contains(sequence_time)]
 
 
+def load_picture_decision_map(path: Path | None) -> dict[str, Any] | None:
+    if path is None:
+        return None
+    payload = read_json(path)
+    decisions = payload.get("decisions")
+    if not isinstance(decisions, list) or not decisions:
+        raise RuntimeError(f"picture decision map has no decisions: {path}")
+    if payload.get("originalMediaMutated") is not False or payload.get("sessionMutated") is not False:
+        raise RuntimeError("picture decision map does not prove non-destructive generation")
+    ordered = sorted(decisions, key=lambda item: float(item.get("startSeconds") or 0))
+    for previous, current in zip(ordered, ordered[1:]):
+        gap = float(current.get("startSeconds") or 0) - float(previous.get("endSeconds") or 0)
+        if abs(gap) > 0.002:
+            raise RuntimeError(
+                f"picture decision map continuity failure after {previous.get('decisionId')}: {gap:+.6f}s"
+            )
+    payload["decisions"] = ordered
+    payload["path"] = str(path)
+    return payload
+
+
+def source_for_picture_decision(decision: dict[str, Any]) -> SourceClip | None:
+    if decision.get("family") == "gap":
+        return None
+    family_id = decision.get("sourceFamilyId")
+    segment_index = decision.get("sourceSegmentIndex")
+    matches = [
+        source
+        for source in VIDEO_SOURCES
+        if source.source_family_id == family_id
+        and (segment_index is None or source.source_segment_index == int(segment_index))
+    ]
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"picture decision {decision.get('decisionId')} resolves to {len(matches)} sources "
+            f"for {family_id} segment {segment_index}"
+        )
+    return matches[0]
+
+
 def choose_source(sequence_time: float, chunk_index: int) -> SourceClip | None:
     available = available_sources_at(sequence_time)
     if not available:
@@ -949,7 +989,14 @@ def next_source_boundary(sequence_time: float, range_end: float) -> float:
     return min(candidates)
 
 
-def chunk_branch_ranges(branch: BranchPlan, max_chunk_duration: float = 28.0) -> list[dict[str, Any]]:
+def chunk_branch_ranges(
+    branch: BranchPlan,
+    max_chunk_duration: float = 28.0,
+    picture_map: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    if picture_map is not None:
+        return chunk_branch_ranges_from_picture_map(branch, picture_map, max_chunk_duration)
+
     chunks: list[dict[str, Any]] = []
     counter = 0
     for range_index, item in enumerate(branch.ranges, start=1):
@@ -978,6 +1025,57 @@ def chunk_branch_ranges(branch: BranchPlan, max_chunk_duration: float = 28.0) ->
             )
             counter += 1
             cursor = boundary
+    return chunks
+
+
+def chunk_branch_ranges_from_picture_map(
+    branch: BranchPlan,
+    picture_map: dict[str, Any],
+    max_chunk_duration: float,
+) -> list[dict[str, Any]]:
+    chunks: list[dict[str, Any]] = []
+    counter = 0
+    decisions = picture_map["decisions"]
+    for range_index, item in enumerate(branch.ranges, start=1):
+        for decision in decisions:
+            start = max(item.start, float(decision["startSeconds"]))
+            end = min(item.end, float(decision["endSeconds"]))
+            if end - start < 0.01:
+                continue
+            source = source_for_picture_decision(decision)
+            cursor = start
+            while cursor < end - 0.01:
+                boundary = min(end, cursor + max_chunk_duration)
+                duration = boundary - cursor
+                if duration < 0.01:
+                    break
+                proxy_path = Path(str(decision.get("proxyPath") or "")) if source else None
+                if source and (not proxy_path or not proxy_path.exists()):
+                    raise RuntimeError(
+                        f"picture decision {decision.get('decisionId')} lacks a readable proxy: {proxy_path}"
+                    )
+                chunks.append(
+                    {
+                        "index": counter,
+                        "rangeIndex": range_index,
+                        "sequenceStart": round(cursor, 3),
+                        "sequenceEnd": round(boundary, 3),
+                        "duration": round(duration, 3),
+                        "rangeReason": item.reason,
+                        "sourceId": source.id if source else "blank-gap",
+                        "sourceLabel": source.label if source else "Blank gap",
+                        "sourceRole": source.role if source else "gap",
+                        "sourcePath": str(source.path) if source else "",
+                        "renderPath": str(proxy_path) if proxy_path else "",
+                        "sourceStart": round(source.source_time(cursor), 3) if source else 0.0,
+                        "pictureDecisionId": decision.get("decisionId"),
+                        "pictureDecisionReason": decision.get("reason"),
+                        "pictureDecisionConfidence": decision.get("confidence"),
+                        "pictureDecisionParentId": decision.get("parentDecisionId"),
+                    }
+                )
+                counter += 1
+                cursor = boundary
     return chunks
 
 
@@ -1118,7 +1216,8 @@ def render_chunk(chunk: dict[str, Any], chunk_path: Path, audio_mix: Path) -> No
     source = next((item for item in VIDEO_SOURCES if item.id == chunk["sourceId"]), None)
     command = ["ffmpeg", "-hide_banner", "-y"]
     if source:
-        command.extend(["-ss", f"{float(chunk['sourceStart']):.3f}", "-t", f"{duration:.3f}", "-i", str(source.path)])
+        render_path = Path(str(chunk.get("renderPath") or source.path))
+        command.extend(["-ss", f"{float(chunk['sourceStart']):.3f}", "-t", f"{duration:.3f}", "-i", str(render_path)])
     else:
         command.extend(["-f", "lavfi", "-t", f"{duration:.3f}", "-i", "color=c=#171a14:s=1920x1080:r=30"])
     command.extend(["-ss", f"{float(chunk['sequenceStart']):.3f}", "-t", f"{duration:.3f}", "-i", str(audio_mix)])
@@ -1239,10 +1338,11 @@ def render_branch(
     audio_mix: Path,
     *,
     audio_baseline: dict[str, Any] | None = None,
+    picture_map: dict[str, Any] | None = None,
     proof_seconds: float | None = None,
 ) -> dict[str, Any]:
     effective_ranges = limit_ranges_for_proof(branch.ranges, proof_seconds)
-    chunks = chunk_branch_ranges(branch)
+    chunks = chunk_branch_ranges(branch, picture_map=picture_map)
     if proof_seconds is not None:
         kept: list[dict[str, Any]] = []
         remaining = proof_seconds
@@ -1320,6 +1420,10 @@ def render_branch(
             "branchAudioMixPath": str(audio_mix),
             "branchAudioPlan": branch_audio_plan(audio_baseline),
             "chunkSummary": summarize_chunks(chunks),
+            "pictureDecisionMapPath": (picture_map or {}).get("path"),
+            "pictureDecisionMapSchema": (picture_map or {}).get("schema"),
+            "pictureDecisionMapReactionCount": len((picture_map or {}).get("reactionOverrides") or []),
+            "mechanicalCameraAlternationUsed": picture_map is None,
             "proofRunSeconds": proof_seconds,
             "externalPublicationReceipt": None,
         },
@@ -1446,6 +1550,12 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--force-audio-mix", action="store_true")
     parser.add_argument(
+        "--picture-decision-map",
+        type=Path,
+        default=None,
+        help="Optional reviewed whole-source camera decision map. When supplied, it replaces mechanical camera alternation.",
+    )
+    parser.add_argument(
         "--editorial-stem-manifest",
         type=Path,
         default=DEFAULT_EDITORIAL_STEM_MANIFEST,
@@ -1463,6 +1573,7 @@ def main() -> int:
         help="Allow a conformed baseline with pending human listen proof only for proof renders. Do not use for publishing.",
     )
     args = parser.parse_args()
+    picture_map = load_picture_decision_map(args.picture_decision_map)
 
     selected = [branch for branch in BRANCHES if not args.branch or branch.id in set(args.branch)]
     audio_baseline = (
@@ -1500,6 +1611,13 @@ def main() -> int:
             "renderBlockers": dry_run_blockers,
             "branches": [branch_plan_payload(branch) for branch in selected],
             "videoSources": [asdict(item) | {"exists": item.path.exists()} for item in VIDEO_SOURCES],
+            "pictureDecisionMap": {
+                "path": (picture_map or {}).get("path"),
+                "schema": (picture_map or {}).get("schema"),
+                "decisionCount": len((picture_map or {}).get("decisions") or []),
+                "reactionCount": len((picture_map or {}).get("reactionOverrides") or []),
+                "mechanicalCameraAlternationUsed": picture_map is None,
+            },
             "audioEditorialStems": (
                 (audio_baseline.get("sourceAwareAudioContract") or {}).get("selectedRefinedStems") or []
             ),
@@ -1552,6 +1670,7 @@ def main() -> int:
                 run_dir,
                 audio_mix,
                 audio_baseline=audio_baseline,
+                picture_map=picture_map,
                 proof_seconds=args.proof_seconds,
             )
         )
