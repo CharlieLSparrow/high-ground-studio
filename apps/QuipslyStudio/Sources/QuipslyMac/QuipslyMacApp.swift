@@ -56,11 +56,6 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
         keyboardEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
             guard AudioRoomCommandRouter.shared.isAudioRoomActive else { return event }
             guard !event.isARepeat else { return event }
-            if let textView = NSApp.keyWindow?.firstResponder as? NSTextView,
-               textView.isEditable,
-               textView.window === NSApp.keyWindow {
-                return event
-            }
 
             let modifiers = event.modifierFlags.intersection([.command, .control, .option, .shift])
             let character = event.charactersIgnoringModifiers?.lowercased()

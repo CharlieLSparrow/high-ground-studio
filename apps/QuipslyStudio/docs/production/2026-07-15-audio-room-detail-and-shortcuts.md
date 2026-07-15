@@ -15,8 +15,10 @@ Episode 4 now has a native source-aware Audio Room that keeps Charlie, Homer, an
 - `0` changed the visible range to the full episode.
 - Repeated `+` input changed the visible range to the two-second floor.
 - `Shift-O` jumped to a measured Charlie/Homer overlap at about `0:01:32`.
+- `T` created a ten-second selection and enabled the range audition controls.
 - Charlie and Homer displayed independent sample-level PCM envelopes at that overlap while sharing one playhead.
 - Deep-detail playback measured about `18.6%` CPU. The prior coarse Audio Room playback result was about `6.2%`; both are far below the earlier roughly `100%` invalidation failure.
+- FFT-enabled deep-detail playback measured about `20.7%` CPU.
 
 ## Visual truth now available
 
@@ -27,6 +29,7 @@ Episode 4 now has a native source-aware Audio Room that keeps Charlie, Homer, an
 - Hot markers above -3 dBFS.
 - Clip-risk markers above -1 dBFS.
 - A cached per-pixel PCM envelope for visible windows of 30 seconds or less.
+- A cached 32-band log-frequency FFT tile from about 55 Hz to the source high-frequency ceiling.
 - Separate, aligned Charlie and Homer views rather than a single opaque master waveform.
 
 ## Architecture
@@ -39,8 +42,7 @@ Episode 4 now has a native source-aware Audio Room that keeps Charlie, Homer, an
 
 ## Known next work
 
-- Add cached FFT frequency tiles using AVFAudio PCM reads and Accelerate/vDSP. Do not label amplitude summaries as a spectrogram.
 - Add loudness history, gain-reduction history, noise-floor bands, and true-peak event lanes when those measurements exist.
 - Expose zoom, selection, and analysis commands through the agent server so tests do not depend on synthesized OS keys.
 - Continue checking deep-detail CPU while the playhead crosses cache-window boundaries.
-- Prove the `T` and `Shift-T` selection shortcuts in the real app after the command bridge checkpoint.
+- Prove the `Shift-T` selection shortcut in the real app after the command bridge checkpoint.

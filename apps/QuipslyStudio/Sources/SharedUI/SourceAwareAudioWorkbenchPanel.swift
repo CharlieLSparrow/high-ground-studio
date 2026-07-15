@@ -1218,7 +1218,7 @@ private struct SourceAwareAudioListeningRoom: View {
                 .foregroundStyle(QuipslyStudioTheme.sage.opacity(0.86))
                 .accessibilityLabel("Audio Room keyboard shortcuts")
 
-            if !playingLabel.isEmpty {
+            if isPlaying, !playingLabel.isEmpty {
                 Text("Listening to \(playingLabel)")
                     .font(.caption)
                     .fontWeight(.semibold)
