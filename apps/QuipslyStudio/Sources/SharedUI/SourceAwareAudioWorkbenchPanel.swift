@@ -931,7 +931,7 @@ private struct SourceAwareAudioListeningRoom: View {
     }
 
     private var visibleDuration: Double {
-        min(max(visibleDurationSeconds, 2), duration)
+        min(max(visibleDurationSeconds, 0.05), duration)
     }
 
     private var listenRange: (start: Double, end: Double)? {
@@ -1187,6 +1187,9 @@ private struct SourceAwareAudioListeningRoom: View {
                     Divider()
                     Button("Zoom in") { zoomDetail(multiplier: 0.5) }
                     Button("Zoom out") { zoomDetail(multiplier: 2.0) }
+                    Button("Show 100 milliseconds") { setDetailWindow(seconds: 0.1) }
+                    Button("Show 1 second") { setDetailWindow(seconds: 1) }
+                    Button("Show 5 seconds") { setDetailWindow(seconds: 5) }
                     Button("Show 30 seconds") { setDetailWindow(seconds: 30) }
                     Button("Show 2 minutes") { setDetailWindow(seconds: 120) }
                     Button("Fit whole episode") { fitWholeEpisode() }
@@ -1895,14 +1898,14 @@ private struct SourceAwareAudioListeningRoom: View {
 
     private func zoomDetail(multiplier: Double) {
         let oldDuration = visibleDuration
-        let newDuration = min(max(oldDuration * multiplier, 2), duration)
+        let newDuration = min(max(oldDuration * multiplier, 0.05), duration)
         let center = min(max(sequenceTime, 0), duration)
         visibleDurationSeconds = newDuration
         visibleStartSeconds = min(max(center - newDuration / 2, 0), max(duration - newDuration, 0))
     }
 
     private func setDetailWindow(seconds: Double) {
-        let newDuration = min(max(seconds, 2), duration)
+        let newDuration = min(max(seconds, 0.05), duration)
         visibleDurationSeconds = newDuration
         visibleStartSeconds = min(max(sequenceTime - newDuration / 2, 0), max(duration - newDuration, 0))
     }
