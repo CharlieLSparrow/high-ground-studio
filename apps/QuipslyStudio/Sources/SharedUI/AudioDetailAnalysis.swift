@@ -430,6 +430,7 @@ struct ProAudioHighResolutionEnvelope: View {
                 let spectrumRect = CGRect(x: 0, y: waveformRect.maxY, width: size.width, height: size.height - waveformRect.maxY)
                 context.fill(Path(waveformRect), with: .color(Color.black.opacity(0.12)))
                 context.fill(Path(spectrumRect), with: .color(Color.black.opacity(0.30)))
+                drawTimeGrid(context: context, size: size)
                 drawSpectrum(envelope.spectrum, context: context, rect: spectrumRect)
                 drawWaveformGrid(context: context, rect: waveformRect)
                 drawFrequencyGrid(context: context, rect: spectrumRect)
@@ -468,7 +469,7 @@ struct ProAudioHighResolutionEnvelope: View {
                 }
                 drawCorrelationHistory(envelope.points, context: context, rect: waveformRect)
                 drawPhaseScope(envelope.phaseScope, diagnostics: envelope.diagnostics, context: context, rect: waveformRect)
-                drawDiagnostics(envelope.diagnostics, context: context, size: size)
+                drawDiagnostics(envelope.diagnostics, pointCount: envelope.points.count, context: context, size: size)
             }
             .task(id: "\(requestKey)|\(Int(proxy.size.width.rounded()))") {
                 let analysis = try? await AudioDetailAnalysisCache.shared.envelope(
@@ -596,15 +597,43 @@ struct ProAudioHighResolutionEnvelope: View {
                     with: .color(Color.white.opacity(db == -12 ? 0.18 : 0.09)),
                     lineWidth: 0.5
                 )
+                context.draw(
+                    Text(String(format: "%.0f", db))
+                        .font(.system(size: 7, weight: .medium, design: .monospaced))
+                        .foregroundStyle(Color.white.opacity(0.42)),
+                    at: CGPoint(x: rect.minX + 15, y: y),
+                    anchor: .leading
+                )
                 }
             }
+        }
+    }
+
+    private func drawTimeGrid(context: GraphicsContext, size: CGSize) {
+        let divisions = size.width >= 900 ? 12 : 8
+        for index in 0...divisions {
+            let fraction = Double(index) / Double(divisions)
+            let x = CGFloat(fraction) * size.width
+            context.stroke(
+                Path(CGRect(x: x, y: 0, width: index == 0 || index == divisions ? 1 : 0.5, height: size.height)),
+                with: .color(Color.white.opacity(index == 0 || index == divisions ? 0.16 : 0.075)),
+                lineWidth: index == 0 || index == divisions ? 1 : 0.5
+            )
+            let absoluteTime = visibleStartSeconds + visibleDurationSeconds * fraction
+            context.draw(
+                Text(formatTimelineTime(absoluteTime))
+                    .font(.system(size: 7.5, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(Color.white.opacity(0.52)),
+                at: CGPoint(x: min(max(x, 3), size.width - 3), y: size.height - 3),
+                anchor: index == 0 ? .bottomLeading : (index == divisions ? .bottomTrailing : .bottom)
+            )
         }
     }
 
     private func drawFrequencyGrid(context: GraphicsContext, rect: CGRect) {
         let low = 55.0
         let high = 18_000.0
-        for (frequency, label) in [(100.0, "100"), (1_000.0, "1k"), (10_000.0, "10k")] {
+        for (frequency, label) in [(80.0, "80"), (250.0, "250"), (1_000.0, "1k"), (4_000.0, "4k"), (12_000.0, "12k")] {
             let fraction = log(frequency / low) / log(high / low)
             let y = rect.maxY - CGFloat(fraction) * rect.height
             context.stroke(
@@ -620,11 +649,16 @@ struct ProAudioHighResolutionEnvelope: View {
         }
     }
 
-    private func drawDiagnostics(_ diagnostics: AudioDetailDiagnostics, context: GraphicsContext, size: CGSize) {
+    private func drawDiagnostics(_ diagnostics: AudioDetailDiagnostics, pointCount: Int, context: GraphicsContext, size: CGSize) {
         let correlation = diagnostics.stereoCorrelation.map { String(format: "r %.2f", $0) } ?? "mono"
         let clipped = diagnostics.clippedSampleCount > 0 ? "  CLIP \(diagnostics.clippedSampleCount)" : ""
+        let millisecondsPerPoint = visibleDurationSeconds / Double(max(pointCount, 1)) * 1_000
+        let resolution = millisecondsPerPoint < 1
+            ? String(format: "%.0f us/px", millisecondsPerPoint * 1_000)
+            : String(format: "%.2f ms/px", millisecondsPerPoint)
         let summary = String(
-            format: "%.1fk  %dch  L %.1f/%.1f  R %.1f/%.1f  BAL %+.1f  crest %.1f  %@%@",
+            format: "%@  %.1fk  %dch  L %.1f/%.1f  R %.1f/%.1f  BAL %+.1f  crest %.1f  %@%@",
+            resolution,
             diagnostics.sampleRate / 1_000,
             diagnostics.channelCount,
             diagnostics.leftRmsDbfs,
@@ -643,6 +677,23 @@ struct ProAudioHighResolutionEnvelope: View {
             at: CGPoint(x: 18, y: 4),
             anchor: .topLeading
         )
+    }
+
+    private func formatTimelineTime(_ seconds: Double) -> String {
+        let safeSeconds = max(seconds, 0)
+        if visibleDurationSeconds <= 2 {
+            let minutes = Int(safeSeconds) / 60
+            let remainder = safeSeconds.truncatingRemainder(dividingBy: 60)
+            return String(format: "%02d:%06.3f", minutes, remainder)
+        }
+        let total = Int(safeSeconds.rounded(.down))
+        let hours = total / 3_600
+        let minutes = (total % 3_600) / 60
+        let wholeSeconds = total % 60
+        if hours > 0 {
+            return String(format: "%d:%02d:%02d", hours, minutes, wholeSeconds)
+        }
+        return String(format: "%02d:%02d", minutes, wholeSeconds)
     }
 
     private var accessibilitySummary: String {

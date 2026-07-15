@@ -954,6 +954,31 @@ private struct SourceAwareAudioListeningRoom: View {
         return formatDuration(visibleDuration)
     }
 
+    private var detailTierLabel: String {
+        switch visibleDuration {
+        case ...0.25: return "SAMPLE"
+        case ...2: return "MICRO"
+        case ...10: return "TRANSIENT"
+        case ...30: return "PHRASE"
+        case ...180: return "CONTEXT"
+        default: return "EPISODE"
+        }
+    }
+
+    private var detailDivisionLabel: String {
+        let secondsPerDivision = visibleDuration / 12
+        if secondsPerDivision < 0.001 {
+            return String(format: "%.0f us/div", secondsPerDivision * 1_000_000)
+        }
+        if secondsPerDivision < 1 {
+            return String(format: "%.1f ms/div", secondsPerDivision * 1_000)
+        }
+        if secondsPerDivision < 60 {
+            return String(format: "%.2f s/div", secondsPerDivision)
+        }
+        return "\(formatDuration(secondsPerDivision))/div"
+    }
+
     private var priorityReviewWindows: [SourceAwareAudioReviewWindowSnapshot] {
         rankedReviewWindows.isEmpty ? snapshot.reviewWindows : rankedReviewWindows
     }
@@ -1159,10 +1184,33 @@ private struct SourceAwareAudioListeningRoom: View {
                         .overlay(Capsule().stroke(QuipslyStudioTheme.creekMist.opacity(0.26), lineWidth: 1))
                         .accessibilityLabel("Visible audio window \(detailWindowLabel)")
 
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(detailTierLabel)
+                            .font(.system(size: 8, weight: .black, design: .monospaced))
+                            .tracking(0.8)
+                            .foregroundStyle(QuipslyStudioTheme.honey)
+                        Text(detailDivisionLabel)
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .foregroundStyle(QuipslyStudioTheme.sage)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(detailTierLabel) audio detail, \(detailDivisionLabel)")
+
                     Spacer(minLength: 8)
                 }
 
                 HStack(spacing: 10) {
+                    Button("30s") { setDetailWindow(seconds: 30) }
+                        .help("Show a 30 second phrase window with high-resolution waveform and spectrogram")
+                    Button("5s") { setDetailWindow(seconds: 5) }
+                        .help("Show a 5 second transient window")
+                    Button("1s") { setDetailWindow(seconds: 1) }
+                        .help("Show one second for precise edits")
+                    Button("100ms") { setDetailWindow(seconds: 0.1) }
+                        .help("Show 100 milliseconds for sample-adjacent inspection")
+
+                    Divider().frame(height: 22)
+
                     Button { jumpReviewMark(direction: -1) } label: {
                         audioRoomShortcutLabel("Previous Mark", systemImage: "backward.end.fill", key: "[")
                     }
@@ -2620,7 +2668,7 @@ private struct ProAudioDialogueScopeCard: View {
                         )
                 }
             }
-            .frame(height: 150)
+            .frame(height: detailHeight)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -2641,6 +2689,15 @@ private struct ProAudioDialogueScopeCard: View {
         )
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture(perform: onSelect)
+    }
+
+    private var detailHeight: CGFloat {
+        switch visibleDurationSeconds {
+        case ...2: return 280
+        case ...10: return 240
+        case ...30: return 210
+        default: return 160
+        }
     }
 
     private var shortName: String {
