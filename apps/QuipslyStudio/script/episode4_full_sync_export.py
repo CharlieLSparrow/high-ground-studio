@@ -349,6 +349,276 @@ BRANCHES: list[BranchPlan] = [
         ),
     ),
     BranchPlan(
+        id="producer-main-v002",
+        title="Episode 4 producer main cut v002",
+        target="45-60 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(672.90, 1386.50, "Open cleanly on the welcome; keep the complete type-two-fun and anticipation arc."),
+            RangeChoice(1958.50, 2538.80, "Keep the full flow, motivation, coaching, accountability, and critical-distinction arc."),
+            RangeChoice(2575.40, 3021.80, "Keep the Office/Pam clip setup, watched-source loop, and sincere-specific-praise payoff."),
+            RangeChoice(3296.70, 3643.80, "Keep kindness as leadership design through the complete purpose-versus-busywork thesis."),
+            RangeChoice(3999.90, 4613.50, "Keep Start With Why, commander's intent, leadership dichotomy, and the complete meetings example."),
+            RangeChoice(4943.70, 5279.20, "Keep the full early-formation story and its practical time-respect lesson."),
+            RangeChoice(5939.20, 6236.00, "Keep the bike story, sibling reaction, and the complete meaning-and-resilience payoff."),
+            RangeChoice(6237.90, 6466.20, "Keep the cabin story and Costa Rica buffet example through its natural conclusion."),
+            RangeChoice(6711.30, 6727.00, "Keep the complete High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Replaces round-number planning cuts with complete human thoughts. Removes setup failures, camera troubleshooting, "
+            "and repeated scaffolding while restoring strong connective payoffs the prior branch omitted."
+        ),
+        warning=(
+            "Producer-owned v002. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that still requires decode, A/V, loudness, transcript-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
+        id="producer-main-v003",
+        title="Episode 4 producer main cut v003",
+        target="45-60 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(672.90, 1386.50, "Open cleanly on the welcome; keep the complete type-two-fun and anticipation arc."),
+            RangeChoice(1958.50, 2021.10, "Keep the complete flow and motivation setup through the Army-reserve connection."),
+            RangeChoice(2053.78, 2538.80, "Resume on the first-grade story after removing production chatter; keep coaching, accountability, and the critical distinction."),
+            RangeChoice(2575.40, 3021.80, "Keep the Office/Pam clip setup, watched-source loop, and sincere-specific-praise payoff."),
+            RangeChoice(3296.70, 3635.50, "Keep kindness as leadership design through the completed purpose-versus-busywork thesis."),
+            RangeChoice(3999.90, 4612.90, "Keep Start With Why, commander's intent, leadership dichotomy, and the complete meetings example; leave the discarded next-question setup out."),
+            RangeChoice(4944.40, 5279.20, "Start on the complete formation example and keep its practical time-respect lesson."),
+            RangeChoice(5939.20, 6236.00, "Keep the bike story, sibling reaction, and the complete meaning-and-resilience payoff."),
+            RangeChoice(6238.54, 6466.20, "Start directly on the cabin story and keep the Costa Rica buffet example through its natural conclusion."),
+            RangeChoice(6711.30, 6727.00, "Keep the complete High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Producer refinement of v002: removes in-episode recording logistics, finishes every retained thought, "
+            "drops a discarded question setup, and starts late-story sections on complete ideas."
+        ),
+        warning=(
+            "Producer-owned v003. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that still requires decode, A/V, loudness, transcript-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
+        id="producer-main-v004",
+        title="Episode 4 producer main cut v004",
+        target="45-60 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(672.90, 1386.50, "Open cleanly on the welcome; keep the complete type-two-fun, flow, Army-reserve, and anticipation arc."),
+            RangeChoice(2053.78, 2538.80, "Resume on the first-grade story after removing the duplicate flow retake and production chatter; keep coaching, accountability, and the critical distinction."),
+            RangeChoice(2575.40, 3021.80, "Keep the Office/Pam clip setup, watched-source loop, and sincere-specific-praise payoff."),
+            RangeChoice(3296.70, 3635.50, "Keep kindness as leadership design through the completed purpose-versus-busywork thesis."),
+            RangeChoice(3999.90, 4612.90, "Keep Start With Why, commander's intent, leadership dichotomy, and the complete meetings example; leave the discarded next-question setup out."),
+            RangeChoice(4944.40, 5279.20, "Start on the complete formation example and keep its practical time-respect lesson."),
+            RangeChoice(5939.20, 6236.00, "Keep the bike story, sibling reaction, and the complete meaning-and-resilience payoff."),
+            RangeChoice(6238.54, 6466.20, "Start directly on the cabin story and keep the Costa Rica buffet example through its natural conclusion."),
+            RangeChoice(6711.30, 6727.00, "Keep the complete High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Producer refinement of v003: removes the repeated flow/Army-reserve retake as well as its adjacent "
+            "recording logistics, preserving the earlier complete performance and moving directly into the next story."
+        ),
+        warning=(
+            "Producer-owned v004. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that still requires decode, A/V, loudness, transcript-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
+        id="producer-main-v005",
+        title="Episode 4 producer main cut v005",
+        target="45-60 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(672.90, 1386.50, "Open cleanly on the welcome; keep the complete type-two-fun, flow, Army-reserve, and anticipation arc."),
+            RangeChoice(2053.78, 2538.80, "Resume on the first-grade story after removing the duplicate flow retake and production chatter; keep coaching, accountability, and the critical distinction."),
+            RangeChoice(2575.40, 3021.80, "Keep the Office/Pam clip setup, watched-source loop, and sincere-specific-praise payoff."),
+            RangeChoice(3296.70, 3635.50, "Keep kindness as leadership design through the completed purpose-versus-busywork thesis."),
+            RangeChoice(3999.90, 4612.90, "Keep Start With Why, commander's intent, leadership dichotomy, and the complete meetings example; leave the discarded next-question setup out."),
+            RangeChoice(4944.40, 5279.20, "Start on the complete formation example and keep its practical time-respect lesson."),
+            RangeChoice(5939.20, 6236.00, "Keep the bike story, sibling reaction, and the complete meaning-and-resilience payoff."),
+            RangeChoice(6238.54, 6466.20, "Start directly on the cabin story and keep the Costa Rica buffet example through its natural conclusion."),
+            RangeChoice(6708.14, 6727.00, "Keep Charlie's complete wrap-up sentence and the complete High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Producer refinement of v004: restores the complete opening sentence of the signoff while retaining the "
+            "duplicate-retake and production-chatter removals."
+        ),
+        warning=(
+            "Producer-owned v005. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that still requires decode, A/V, loudness, transcript-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
+        id="producer-main-v006",
+        title="Episode 4 producer main cut v006",
+        target="45-60 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(672.90, 1386.50, "Open cleanly on the welcome; keep the complete type-two-fun, flow, Army-reserve, and anticipation arc."),
+            RangeChoice(2053.78, 2538.80, "Resume on the first-grade story after removing the duplicate flow retake and production chatter; keep coaching, accountability, and the critical distinction."),
+            RangeChoice(2575.40, 3021.80, "Keep the Office/Pam clip setup, watched-source loop, and sincere-specific-praise payoff."),
+            RangeChoice(3296.70, 3635.50, "Keep kindness as leadership design through the completed purpose-versus-busywork thesis."),
+            RangeChoice(3999.90, 4606.50, "Keep Start With Why, commander's intent, leadership dichotomy, and the meetings example through its expectation-management payoff; remove the handoff chatter."),
+            RangeChoice(4944.40, 5206.10, "Keep the complete formation example and its practical time-respect lesson; end before the orphaned Office Space clip setup."),
+            RangeChoice(5939.20, 6236.00, "Keep the bike story, sibling reaction, and the complete meaning-and-resilience payoff."),
+            RangeChoice(6238.54, 6466.20, "Start directly on the cabin story and keep the Costa Rica buffet example through its natural conclusion."),
+            RangeChoice(6708.14, 6727.00, "Keep Charlie's complete wrap-up sentence and the complete High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Producer refinement of v005: removes handoff chatter after the meetings payoff and removes an Office Space "
+            "setup whose source clip and discussion are not retained. The complete signoff remains intact."
+        ),
+        warning=(
+            "Producer-owned v006. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that still requires decode, A/V, loudness, word-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
+        id="producer-main-v007",
+        title="Episode 4 producer main cut v007",
+        target="45-60 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(672.90, 1386.50, "Open cleanly on the welcome; keep the complete type-two-fun, flow, Army-reserve, and anticipation arc."),
+            RangeChoice(2053.78, 2538.80, "Resume on the first-grade story after removing the duplicate flow retake and production chatter; keep coaching, accountability, and the critical distinction."),
+            RangeChoice(2575.40, 3021.80, "Keep the Office/Pam clip setup, watched-source loop, and sincere-specific-praise payoff."),
+            RangeChoice(3296.70, 3635.50, "Keep kindness as leadership design through the completed purpose-versus-busywork thesis."),
+            RangeChoice(3999.90, 4606.50, "Keep Start With Why, commander's intent, leadership dichotomy, and the meetings example through its expectation-management payoff; remove the handoff chatter."),
+            RangeChoice(4944.40, 5206.00, "Keep the complete formation example through 'that hurts it'; cut exactly before the orphaned Office Space clip setup begins."),
+            RangeChoice(5939.20, 6236.00, "Keep the bike story, sibling reaction, and the complete meaning-and-resilience payoff."),
+            RangeChoice(6238.54, 6466.20, "Start directly on the cabin story and keep the Costa Rica buffet example through its natural conclusion."),
+            RangeChoice(6708.14, 6727.00, "Keep Charlie's complete wrap-up sentence and the complete High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Producer refinement of v006: moves the formation-example out-point to the exact spoken-word boundary, "
+            "preserving 'that hurts it' without clipping the first phoneme of the omitted Office Space setup."
+        ),
+        warning=(
+            "Producer-owned v007. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that still requires decode, A/V, loudness, word-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
+        id="producer-main-v008",
+        title="Episode 4 producer main cut v008",
+        target="45-60 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(681.70, 1386.50, "Open directly on the episode welcome; keep the complete type-two-fun, flow, Army-reserve, and anticipation arc."),
+            RangeChoice(2061.94, 2538.80, "Start on the clean first-grade story handoff; keep coaching, accountability, and the critical distinction."),
+            RangeChoice(2583.76, 3021.80, "Start on the substantive Office/Pam setup; keep the watched-source loop and sincere-specific-praise payoff."),
+            RangeChoice(3301.72, 3635.50, "Start on the leadership thesis; keep kindness as leadership design through the purpose-versus-busywork payoff."),
+            RangeChoice(3999.90, 4606.50, "Keep Start With Why, commander's intent, leadership dichotomy, and the meetings example through its expectation-management payoff."),
+            RangeChoice(4951.48, 5206.00, "Start on the formation example; keep its practical time-respect lesson through 'that hurts it'."),
+            RangeChoice(5947.10, 6236.00, "Start on the farm-bike story; keep the sibling reaction and complete meaning-and-resilience payoff."),
+            RangeChoice(6247.40, 6466.20, "Start on the clean cabin-story restart; keep the Costa Rica buffet example through its natural conclusion."),
+            RangeChoice(6708.14, 6727.00, "Keep Charlie's complete wrap-up sentence and the complete High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Producer refinement of v007 based on final-program ASR: removes setup chatter and false starts at seven "
+            "chapter entrances while preserving every previously validated ending, story payoff, watched clip, and signoff."
+        ),
+        warning=(
+            "Producer-owned v008. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that still requires final-program transcript, decode, A/V, loudness, word-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
+        id="producer-main-v009",
+        title="Episode 4 producer main cut v009",
+        target="45-60 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(681.70, 834.02, "Open directly on the episode welcome and preserve the complete introduction through the chapter-zero joke."),
+            RangeChoice(851.06, 1386.50, "Remove the computer-recognition interruption and resume on the first clean manuscript sentence; keep the full type-two-fun, flow, Army-reserve, and anticipation arc."),
+            RangeChoice(2061.94, 2538.80, "Start on the clean first-grade story handoff; keep coaching, accountability, and the critical distinction."),
+            RangeChoice(2585.98, 3021.80, "Start on the actual Michael Scott thesis rather than the repeated clip setup; keep the watched-source loop and sincere-specific-praise payoff."),
+            RangeChoice(3302.60, 3635.50, "Start on the complete leadership thesis; keep kindness as leadership design through the purpose-versus-busywork payoff."),
+            RangeChoice(4010.18, 4606.50, "Start cleanly on Start With Why; keep commander's intent, leadership dichotomy, and the meetings example through its expectation-management payoff."),
+            RangeChoice(4951.48, 5206.00, "Start on the formation example; keep its practical time-respect lesson through 'that hurts it'."),
+            RangeChoice(5943.90, 6236.00, "Restore the complete farm-bike opening sentence; keep the sibling reaction and complete meaning-and-resilience payoff."),
+            RangeChoice(6245.30, 6466.20, "Start on the complete cabin-story sentence; keep the Costa Rica buffet example through its natural conclusion."),
+            RangeChoice(6698.00, 6724.02, "Restore the full thematic wrap-up and end immediately after the complete High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Producer refinement of v008 using final-program ASR plus source-clock boundary inspection. Removes the "
+            "opening technical interruption and repeated clip setup, repairs four severed chapter entrances, restores "
+            "the complete farm-bike and closing theses, and removes trailing non-program audio while preserving the "
+            "episode's warmth, watched-source loop, stories, reactions, and substantive leadership argument."
+        ),
+        warning=(
+            "Producer-owned v009. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that requires final-program transcript, decode, A/V, loudness, word-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
+        id="producer-main-v010",
+        title="Episode 4 producer main cut v010",
+        target="45-60 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(681.70, 834.02, "Open directly on the episode welcome and preserve the complete introduction through the chapter-zero joke."),
+            RangeChoice(851.06, 1386.50, "Remove the computer-recognition interruption and resume on the first clean manuscript sentence; keep the full type-two-fun, flow, Army-reserve, and anticipation arc."),
+            RangeChoice(2061.94, 2554.74, "Start on the clean first-grade story handoff and end after the complete kindness-versus-accountability distinction."),
+            RangeChoice(2585.98, 3036.80, "Start on the actual Michael Scott thesis and finish the complete oil-field kindness reaction; keep the watched-source loop and sincere-specific-praise payoff."),
+            RangeChoice(3302.60, 3635.50, "Start on the complete leadership thesis; keep kindness as leadership design through the purpose-versus-busywork payoff."),
+            RangeChoice(4010.18, 4604.98, "Start cleanly on Start With Why; keep commander's intent, leadership dichotomy, and the meetings example through its completed working-session payoff."),
+            RangeChoice(4951.60, 5206.00, "Begin on the complete formation-example sentence; keep its practical time-respect lesson through 'that hurts it'."),
+            RangeChoice(5943.90, 6236.00, "Restore the complete farm-bike opening sentence; keep the sibling reaction and complete meaning-and-resilience payoff."),
+            RangeChoice(6247.04, 6464.94, "Begin on the complete cabin-story sentence without the restart; keep the Costa Rica buffet example through its completed family exchange."),
+            RangeChoice(6698.00, 6724.02, "Restore the full thematic wrap-up and end immediately after the complete High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Producer refinement of v009 using final-program ASR and source-word timestamps at every suspect seam. "
+            "Completes the accountability and oil-field thoughts, removes mid-sentence exits, cleans the formation and "
+            "cabin entrances, preserves the full thematic closing, and retains natural conversational texture rather "
+            "than sanding every human hesitation out of the episode."
+        ),
+        warning=(
+            "Producer-owned v010. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that requires final-program transcript, decode, A/V, loudness, word-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
+        id="producer-main-v011",
+        title="Episode 4 producer main cut v011",
+        target="45-50 minute produced main episode",
+        intended_platform_use="Primary YouTube, Spotify video, Apple/Spotify podcast audio master.",
+        ranges=[
+            RangeChoice(681.70, 713.16, "Open on the real welcome, excitement, and concise host identification."),
+            RangeChoice(766.70, 807.06, "Resume on reaching chapter one and preserve the clean handoff into the first story."),
+            RangeChoice(831.12, 834.02, "Complete the first-memory sentence before the existing clean manuscript continuation."),
+            RangeChoice(851.06, 1021.68, "Keep the preschool story, work-and-fun thesis, and field-office clarification without the device tangent."),
+            RangeChoice(1090.54, 1254.98, "Keep the Kathy and Dave memory, flow research, and the emotional setup for type-two fun."),
+            RangeChoice(1314.84, 1386.50, "Land directly on the hard-training payoff and preserve the anticipation lesson."),
+            RangeChoice(2061.94, 2226.76, "Keep the first-grade kindness story through the structural psychological-safety payoff."),
+            RangeChoice(2258.34, 2554.74, "Resume on radical candor and preserve the gossip, ADHD, accountability, and growth discussion."),
+            RangeChoice(2585.98, 2650.76, "Set up Michael Scott as a sincere but flawed leadership example."),
+            RangeChoice(2670.30, 2779.30, "Keep the clean watched-source entrance and full art-show emotional payoff."),
+            RangeChoice(2793.58, 3036.80, "Keep the action-over-words analysis, specific praise, and oil-field kindness story without candy-button debris."),
+            RangeChoice(3302.60, 3458.86, "Keep kindness as an influence skill and the complete second-grade incentives setup."),
+            RangeChoice(3541.78, 3598.90, "Resume on the incentives-system diagnosis and carry it into the busy-work chapter."),
+            RangeChoice(3611.72, 3635.50, "Keep the clean autonomy and purpose handoff without the stalled manuscript prompt."),
+            RangeChoice(4010.18, 4524.44, "Keep Start With Why, commander's intent, briefing-versus-working-group distinctions, and action-versus-information guidance."),
+            RangeChoice(4951.60, 5139.02, "Keep the complete formation story and its practical lesson about compounding early-arrival demands."),
+            RangeChoice(5943.90, 6236.00, "Keep the complete farm-bike story, sibling reactions, and meaning-through-story payoff."),
+            RangeChoice(6247.04, 6379.48, "Keep the complete cabin story and the character insight it reveals without opening a late tangent."),
+            RangeChoice(6698.00, 6724.02, "Land the thematic summary and end immediately after the High Ground signoff."),
+        ],
+        editorial_tradeoff=(
+            "Producer-owned narrative pass over v010. It removes repeated show setup, technical and scheduling tangents, "
+            "generic restatement, pre-clip hesitation, watched-source debris, and a late anecdote that delays the thesis. "
+            "It preserves the sibling warmth, Office payoff, incentives and command-intent argument, formation story, "
+            "Predator bike memory, cabin story, reactions, and final High Ground close. Picture decisions remain metadata "
+            "over whole synchronized sources and will be proof-watched at every new seam before promotion."
+        ),
+        warning=(
+            "Producer-owned v011. Source media remains whole and untouched; this branch is a versioned metadata recipe "
+            "that requires final-program transcript, decode, A/V, loudness, word-boundary, and visual continuity validation."
+        ),
+    ),
+    BranchPlan(
         id="extended-60-80",
         title="Episode 4 extended deep cut v001",
         target="60-80 minute extended/deep cut",
@@ -1265,21 +1535,32 @@ def assign_cumulative_output_frames(
     output: list[dict[str, Any]] = []
     elapsed = 0.0
     previous_end_frame = 0
+    pending_subframe_chunks: list[dict[str, Any]] = []
     for chunk in chunks:
         elapsed += float(chunk["duration"])
         end_frame = round(elapsed * frame_rate)
         frame_count = end_frame - previous_end_frame
         if frame_count <= 0:
-            raise ValueError(
-                f"chunk {chunk.get('index')} is shorter than one output frame after cumulative quantization"
+            pending_subframe_chunks.append(
+                {
+                    "index": chunk.get("index"),
+                    "sourceId": chunk.get("sourceId"),
+                    "durationSeconds": float(chunk["duration"]),
+                }
             )
+            continue
         quantized = dict(chunk)
         quantized["outputStartFrame"] = previous_end_frame
         quantized["outputEndFrame"] = end_frame
         quantized["outputFrameCount"] = frame_count
         quantized["outputDurationSeconds"] = round(frame_count / frame_rate, 6)
+        if pending_subframe_chunks:
+            quantized["absorbedSubframeChunks"] = pending_subframe_chunks
+            pending_subframe_chunks = []
         output.append(quantized)
         previous_end_frame = end_frame
+    if pending_subframe_chunks and output:
+        output[-1]["trailingSubframeChunksWithoutOutputFrame"] = pending_subframe_chunks
     return output
 
 
