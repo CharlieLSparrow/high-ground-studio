@@ -9,6 +9,7 @@ const ignoreBuildTypeErrors = process.env.QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS === 
 const config = {
   output: "standalone",
   outputFileTracingRoot: repoRoot,
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
   reactStrictMode: true,
   transpilePackages: [
     "@high-ground/content-studio-domain",
