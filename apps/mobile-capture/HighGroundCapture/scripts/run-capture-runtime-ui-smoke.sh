@@ -38,6 +38,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  reminder)
+    TEST_CASE="testOneTimeTaskReminderCancelsAndReactivatesThroughNest"
+    if [[ -z "$TEST_TASK_ID" ]]; then
+      echo "Reminder mode requires one exact non-recurring open task ID." >&2
+      exit 2
+    fi
+    ;;
   recurrence-authoring)
     TEST_CASE="testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence"
     if [[ -z "$TEST_RECURRENCE_AUTHORING_TITLE" ]]; then
@@ -74,7 +81,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, or tag-authoring)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, or tag-authoring)" >&2
     exit 2
     ;;
 esac

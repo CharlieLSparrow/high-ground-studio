@@ -42,7 +42,7 @@ export async function setTaskReminderInTransaction(input: {
   reminderId: string;
   revisionId: string;
   now: Date;
-  surface: "nest-work";
+  surface: "nest-work" | "ios-capture-today";
   timezone: string;
   requestedLocalDateTime: string | null;
 }): Promise<SetTaskReminderResult> {
@@ -89,6 +89,8 @@ export async function setTaskReminderInTransaction(input: {
     const sameRequest = priorRevision.actorUserId === actorUserId
       && priorRevision.reminder.actionItemId === taskId
       && source.clientRequestId === clientRequestId
+      && source.timezone === timezone
+      && source.requestedLocalDateTime === requestedLocalDateTime
       && (remindAt
         ? priorRevision.status === "ACTIVE" && sameInstant(requestedRemindAt, remindAt)
         : priorRevision.status === "CANCELED" && source.requestedRemindAt === null);

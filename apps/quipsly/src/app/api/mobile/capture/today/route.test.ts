@@ -102,6 +102,182 @@ describe("mobile Capture Today contract", () => {
     expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", sourceTitle: "Production philosophy", createdByMe: true, tagLabels: ["Episode seed"] }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false } });
   });
 
+  it("creates a DST-safe canonical reminder from the iPhone wall clock without claiming delivery", async () => {
+    signedIn();
+    const tx = {
+      taskReminderRevision: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "revision-1" }),
+      },
+      actionItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "task-1",
+          status: "OPEN",
+          updatedAt: expected,
+          recurrenceOccurrence: null,
+          reminder: null,
+        }),
+      },
+      taskReminder: {
+        create: jest.fn().mockImplementation(async ({ data }) => ({
+          ...data,
+          updatedAt: persisted,
+        })),
+      },
+    };
+    const transaction = jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "task-reminder",
+        id: "task-1",
+        remindAtLocal: "2026-07-24T09:15",
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+        expectedReminderUpdatedAt: null,
+        clientRequestId: "c77bdc93-06f0-4585-86f0-5383c61dbd2a",
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      action: "task-reminder",
+      status: "ACTIVE",
+      idempotentReplay: false,
+      reminder: {
+        id: "mobile-task-reminder-decision-c77bdc93-06f0-4585-86f0-5383c61dbd2a",
+        actionItemId: "task-1",
+        remindAt: "2026-07-24T15:15:00.000Z",
+        status: "ACTIVE",
+        deviceNotificationsReconciled: false,
+        delivered: false,
+      },
+      boundaries: {
+        canonicalReminderIntents: true,
+        deviceNotificationsReconciled: false,
+        reminderDeliveryClaimed: false,
+      },
+    });
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(tx.taskReminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        actionItemId: "task-1",
+        ownerUserId: "user-1",
+        remindAt: new Date("2026-07-24T15:15:00.000Z"),
+        sourceJson: expect.objectContaining({
+          surface: "ios-capture-today",
+          timezone: "America/Denver",
+          requestedLocalDateTime: "2026-07-24T09:15",
+          deviceNotificationScheduled: false,
+          deliveryClaimed: false,
+        }),
+      }),
+    });
+  });
+
+  it("cancels the same owner-scoped reminder while preserving its canonical time", async () => {
+    signedIn();
+    const currentReminder = {
+      id: "reminder-1",
+      actionItemId: "task-1",
+      ownerUserId: "user-1",
+      remindAt: new Date("2026-07-24T15:15:00.000Z"),
+      status: "ACTIVE",
+      sourceJson: { schema: "quipsly-task-reminder-intent-v1" },
+      updatedAt: expected,
+    };
+    const tx = {
+      taskReminderRevision: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "revision-1" }),
+      },
+      actionItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "task-1",
+          status: "OPEN",
+          updatedAt: expected,
+          recurrenceOccurrence: null,
+          reminder: currentReminder,
+        }),
+      },
+      taskReminder: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          ...currentReminder,
+          status: "CANCELED",
+          updatedAt: persisted,
+        }),
+      },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "task-reminder",
+        id: "task-1",
+        remindAtLocal: null,
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+        expectedReminderUpdatedAt: expected.toISOString(),
+        clientRequestId: "b9cb972c-753b-443f-852f-c72bd6cfe8f3",
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(payload).toMatchObject({
+      ok: true,
+      status: "CANCELED",
+      reminder: {
+        id: "reminder-1",
+        remindAt: "2026-07-24T15:15:00.000Z",
+        status: "CANCELED",
+        deviceNotificationsReconciled: false,
+        delivered: false,
+      },
+    });
+    expect(tx.taskReminderRevision.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        operation: "CANCELED",
+        previousRemindAt: currentReminder.remindAt,
+        remindAt: null,
+        previousStatus: "ACTIVE",
+        status: "CANCELED",
+      }),
+    });
+  });
+
+  it("rejects an invalid iPhone reminder timezone before opening a transaction", async () => {
+    signedIn();
+    const transaction = jest.fn();
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "task-reminder",
+        id: "task-1",
+        remindAtLocal: "2026-07-24T09:15",
+        timezone: "Mountain-ish",
+        expectedUpdatedAt: expected.toISOString(),
+        expectedReminderUpdatedAt: null,
+        clientRequestId: "9635bb82-184e-4842-b33f-6fbf2d09e733",
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("completes a recurring task through the shared canonical transaction and returns its successor", async () => {
     signedIn();
     const series = {

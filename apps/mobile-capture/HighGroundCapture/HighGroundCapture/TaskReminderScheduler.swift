@@ -5,6 +5,7 @@ import UserNotifications
 
 enum TaskReminderProjectionResult: Equatable {
     case scheduled
+    case canceled
     case retainedPermissionNeeded
     case retainedPermissionDenied
     case expired
@@ -304,6 +305,69 @@ final class TaskReminderScheduler: ObservableObject {
         case let .success(intent):
             return await project(intent, requestPermissionIfNeeded: requestPermissionIfNeeded)
         }
+    }
+
+    func stage(
+        decision: PendingTaskReminderDecision,
+        requestPermissionIfNeeded: Bool
+    ) async -> TaskReminderProjectionResult {
+        guard ledgerIsWritable else {
+            return .failed(message: "The protected reminder ledger is unavailable. The decision remains in the phone outbox.")
+        }
+        guard let owner = Self.normalizedOwnerID(decision.ownerAccountID),
+              owner == activeOwnerAccountID else {
+            return .failed(message: "The reminder decision belongs to a different or unverified Quipsly account.")
+        }
+
+        let reminderID = decision.projectedReminderID
+        var updated = storedIntents
+        if let index = updated.firstIndex(where: { $0.id == reminderID }) {
+            guard updated[index].ownerAccountID == owner,
+                  updated[index].actionItemID == decision.taskID else {
+                return .failed(message: "That reminder identity protects different task timing. The phone decision is held for review.")
+            }
+            updated[index].canonicalAcknowledged = false
+            updated[index].lastErrorMessage = nil
+            if let remindAt = decision.remindAt {
+                updated[index].remindAt = remindAt
+                updated[index].canonicalStatus = "ACTIVE"
+                updated[index].state = .awaitingPermission
+            } else {
+                updated[index].canonicalStatus = "CANCELED"
+                updated[index].state = .canonicalCanceled
+            }
+        } else {
+            guard let remindAt = decision.remindAt else {
+                return .failed(message: "Refresh Today before canceling a reminder that is not protected on this iPhone.")
+            }
+            updated.append(ProtectedTaskReminderIntent(
+                id: reminderID,
+                ownerAccountID: owner,
+                actionItemID: decision.taskID,
+                remindAt: remindAt,
+                createdAt: decision.capturedAt,
+                state: .awaitingPermission,
+                lastErrorMessage: nil,
+                canonicalStatus: "ACTIVE",
+                canonicalAcknowledged: false
+            ))
+        }
+
+        do {
+            try commit(updated)
+        } catch {
+            return .failed(message: "The reminder decision could not be projected safely: \(error.localizedDescription)")
+        }
+
+        guard decision.remindAt != nil,
+              let intent = storedIntents.first(where: { $0.id == reminderID }) else {
+            notificationCenter.removePending(identifiers: updated
+                .filter { $0.id == reminderID }
+                .map(Self.notificationRequestID))
+            statusMessage = "Reminder alert removed from this iPhone. Nest cancellation is still pending."
+            return .canceled
+        }
+        return await project(intent, requestPermissionIfNeeded: requestPermissionIfNeeded)
     }
 
     func confirmCanonical(

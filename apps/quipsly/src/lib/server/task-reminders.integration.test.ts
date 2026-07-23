@@ -109,6 +109,22 @@ runLocalDatabaseSmoke("canonical task reminders local database smoke", () => {
       idempotentReplay: true,
       reminder: { id: created.reminder.id },
     });
+    const changedWallClockReplay = await prisma.$transaction((tx) => setTaskReminderInTransaction({
+      tx,
+      taskId,
+      actorUserId: ownerUserId,
+      remindAt: new Date("2026-07-24T15:00:00.000Z"),
+      expectedTaskUpdatedAt: taskUpdatedAt,
+      expectedReminderUpdatedAt: null,
+      clientRequestId: createRequestId,
+      reminderId: `unused-${randomUUID()}`,
+      revisionId: `task-reminder-revision-${createRequestId}`,
+      now: new Date("2026-07-23T13:00:02.000Z"),
+      surface: "ios-capture-today",
+      timezone: "America/Chicago",
+      requestedLocalDateTime: "2026-07-24T10:00",
+    }));
+    expect(changedWallClockReplay).toEqual({ kind: "identity-conflict" });
 
     const moveRequestId = randomUUID();
     const moved = await prisma.$transaction((tx) => setTaskReminderInTransaction({

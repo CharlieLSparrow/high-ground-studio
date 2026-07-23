@@ -9,12 +9,13 @@ import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets"
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { setSourceAnnotationStatus } from "@/lib/server/source-annotations";
+import { setTaskReminderInTransaction } from "@/lib/server/task-reminders";
 import {
   editTaskRecurrenceOccurrenceInTransaction,
   replaceTaskRecurrenceFromOccurrenceInTransaction,
   updateTaskRecurrenceStatusInTransaction,
 } from "@/lib/server/task-recurrence";
-import { validateTaskRecurrenceRule, type TaskRecurrenceRule } from "@/lib/task-recurrence";
+import { isIanaTimeZone, parseRecurrenceStart, validateTaskRecurrenceRule, type TaskRecurrenceRule } from "@/lib/task-recurrence";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 
 export const dynamic = "force-dynamic";
@@ -349,6 +350,100 @@ export async function POST(request: Request) {
   const now = new Date();
   const receiptId = randomUUID();
   try {
+    if (action === "task-reminder") {
+      const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+      const timezone = text(input.timezone, 100);
+      const requestedLocalDateTime = text(input.remindAtLocal, 32);
+      const hasReminderDecision = Object.prototype.hasOwnProperty.call(input, "remindAtLocal");
+      const parsedReminder = requestedLocalDateTime
+        ? parseRecurrenceStart(requestedLocalDateTime, timezone)
+        : null;
+      const expectedReminderText = text(input.expectedReminderUpdatedAt, 80);
+      const expectedReminderUpdatedAt = expectedReminderText
+        ? revision(expectedReminderText)
+        : null;
+      if (!UUID_PATTERN.test(clientRequestId)
+          || !hasReminderDecision
+          || !isIanaTimeZone(timezone)
+          || (requestedLocalDateTime && !parsedReminder)
+          || (expectedReminderText && !expectedReminderUpdatedAt)) {
+        return NextResponse.json({
+          ok: false,
+          error: "Review the reminder time, timezone, and stable phone request.",
+        }, { status: 400 });
+      }
+      if (parsedReminder
+          && (parsedReminder.dueAt.getTime() <= now.getTime()
+            || parsedReminder.dueAt.getTime() - now.getTime() > 10 * 365 * 86_400_000)) {
+        return NextResponse.json({
+          ok: false,
+          error: "Choose a future reminder within ten years.",
+        }, { status: 400 });
+      }
+
+      const result = await prisma.$transaction(
+        (tx: any) => setTaskReminderInTransaction({
+          tx,
+          taskId: id,
+          actorUserId: userId,
+          remindAt: parsedReminder?.dueAt ?? null,
+          expectedTaskUpdatedAt: expected,
+          expectedReminderUpdatedAt,
+          clientRequestId,
+          reminderId: `mobile-task-reminder-decision-${clientRequestId}`,
+          revisionId: `task-reminder-revision-${clientRequestId}`,
+          now,
+          surface: "ios-capture-today",
+          timezone,
+          requestedLocalDateTime: parsedReminder?.requestedLocalDateTime ?? null,
+        }),
+        { isolationLevel: "Serializable" },
+      );
+      if (result.kind === "not-found") {
+        return NextResponse.json({
+          ok: false,
+          error: "Only the assigned task owner can change this reminder.",
+        }, { status: 404 });
+      }
+      if (result.kind === "recurring") {
+        return NextResponse.json({
+          ok: false,
+          error: "Repeating work keeps its schedule separate. Change a one-time task reminder instead.",
+        }, { status: 400 });
+      }
+      if (result.kind === "closed") {
+        return NextResponse.json({
+          ok: false,
+          error: "Reopen this task before changing its reminder.",
+        }, { status: 400 });
+      }
+      if (result.kind === "conflict" || result.kind === "identity-conflict") {
+        return NextResponse.json({
+          ok: false,
+          code: "CONFLICT",
+          error: "This reminder changed elsewhere. Refresh Today before saving again.",
+        }, { status: 409 });
+      }
+      return NextResponse.json({
+        ok: true,
+        action,
+        id,
+        status: result.reminder.status,
+        updatedAt: result.reminder.updatedAt.toISOString(),
+        receiptId: result.kind === "unchanged" ? null : result.revisionId,
+        idempotentReplay: result.kind === "saved" && result.idempotentReplay,
+        reminder: {
+          id: result.reminder.id,
+          actionItemId: result.reminder.actionItemId,
+          remindAt: result.reminder.remindAt.toISOString(),
+          status: result.reminder.status,
+          updatedAt: result.reminder.updatedAt.toISOString(),
+          deviceNotificationsReconciled: false,
+          delivered: false,
+        },
+        boundaries: responseBoundaries(),
+      });
+    }
     if (action === "task-status") {
       const nextStatus = text(input.nextStatus, 20).toUpperCase();
       const decisionReason = text(input.decisionReason, 50).toUpperCase();

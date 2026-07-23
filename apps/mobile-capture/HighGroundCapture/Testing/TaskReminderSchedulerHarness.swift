@@ -1,5 +1,17 @@
 import Foundation
 
+#if TASK_REMINDER_HARNESS
+enum AuthManager {
+    static var ownerAccountID: String?
+    static func currentStoredOwnerID() -> String? { ownerAccountID }
+}
+
+extension Notification.Name {
+    static let quipslyCaptureAccountIdentityDidChange =
+        Notification.Name("quipslyCaptureAccountIdentityDidChange")
+}
+#endif
+
 @MainActor
 private final class MockReminderNotificationCenter: TaskReminderNotificationCenter {
     struct Added: Equatable {
@@ -227,6 +239,84 @@ private struct TaskReminderSchedulerHarness {
         await webScheduler.reconcileCanonical(intents: [], projectionComplete: true)
         require(webCenter.pending.isEmpty, "An acknowledged reminder missing from a complete canonical list should be removed.")
         require(webScheduler.activeReminderCount == 0, "A complete canonical deletion boundary should not leave a stale active alert.")
+
+        AuthManager.ownerAccountID = draft.ownerAccountID
+        let decisionDirectory = directory.appendingPathComponent("decision-outbox", isDirectory: true)
+        let decisionOutbox = TaskReminderDecisionOutbox(
+            fileManager: fileManager,
+            directoryURL: decisionDirectory,
+            initialOwnerAccountID: draft.ownerAccountID,
+            observeAccountChanges: false
+        )
+        let decision = try decisionOutbox.enqueue(
+            taskID: exactAcknowledgement.actionItemID,
+            currentReminderID: exactAcknowledgement.id,
+            remindAt: movedAt,
+            timezone: "America/Denver",
+            requestedLocalDateTime: "2027-01-15T03:00",
+            expectedTaskUpdatedAt: "2027-01-15T00:00:00.000Z",
+            expectedReminderUpdatedAt: "2027-01-15T00:00:00.000Z",
+            capturedAt: capturedAt
+        )
+        require(decisionOutbox.pendingCount == 1, "An offline reminder decision must persist before projection.")
+        do {
+            _ = try decisionOutbox.enqueue(
+                taskID: exactAcknowledgement.actionItemID,
+                currentReminderID: exactAcknowledgement.id,
+                remindAt: movedAt.addingTimeInterval(60),
+                timezone: "America/Denver",
+                requestedLocalDateTime: "2027-01-15T03:01",
+                expectedTaskUpdatedAt: "2027-01-15T00:00:00.000Z",
+                expectedReminderUpdatedAt: "2027-01-15T00:00:00.000Z",
+                capturedAt: capturedAt
+            )
+            fatalError("A task must not accept two unresolved phone reminder decisions.")
+        } catch TaskReminderDecisionStoreError.decisionAlreadyPending {
+            // Expected: one stable replay identity per task.
+        }
+
+        let decisionCenter = MockReminderNotificationCenter(permission: .authorized)
+        let decisionScheduler = TaskReminderScheduler(
+            fileManager: fileManager,
+            directoryURL: directory.appendingPathComponent("decision-projection", isDirectory: true),
+            notificationCenter: decisionCenter,
+            now: { capturedAt }
+        )
+        decisionScheduler.activateOwner(draft.ownerAccountID)
+        let stagedMove = await decisionScheduler.stage(
+            decision: decision,
+            requestPermissionIfNeeded: true
+        )
+        require(stagedMove == .scheduled, "An explicit offline move should update the private iPhone alert.")
+        require(decisionCenter.added.last?.fireAt == movedAt, "The pending local alert must use the requested time.")
+
+        decisionOutbox.markAcknowledged(decision.id)
+        let cancellation = try decisionOutbox.enqueue(
+            taskID: exactAcknowledgement.actionItemID,
+            currentReminderID: exactAcknowledgement.id,
+            remindAt: nil,
+            timezone: "America/Denver",
+            requestedLocalDateTime: nil,
+            expectedTaskUpdatedAt: "2027-01-15T00:00:00.000Z",
+            expectedReminderUpdatedAt: "2027-01-15T00:00:00.000Z",
+            capturedAt: capturedAt
+        )
+        let stagedCancel = await decisionScheduler.stage(
+            decision: cancellation,
+            requestPermissionIfNeeded: false
+        )
+        require(stagedCancel == .canceled, "Offline cancellation should be represented explicitly.")
+        require(decisionCenter.pending.isEmpty, "Offline cancellation must remove the private pending alert immediately.")
+
+        let relaunchedOutbox = TaskReminderDecisionOutbox(
+            fileManager: fileManager,
+            directoryURL: decisionDirectory,
+            initialOwnerAccountID: draft.ownerAccountID,
+            observeAccountChanges: false
+        )
+        require(relaunchedOutbox.pendingCount == 1, "Relaunch must recover the unresolved cancellation.")
+        relaunchedOutbox.activateOwner("private-owner-b")
+        require(relaunchedOutbox.entries.isEmpty, "A different account must not see reminder decisions.")
 
         print("TaskReminderSchedulerHarness: PASS")
     }

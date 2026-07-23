@@ -229,6 +229,8 @@ private struct TodayFollowThroughCard: View {
     @State private var recurrenceToEnd: MobileCaptureTodayRecurrence?
     @State private var recurrenceToEdit: MobileCaptureTodayTask?
     @State private var missedOccurrenceToSkip: MobileCaptureTodayTask?
+    @State private var reminderToEdit: MobileCaptureTodayTask?
+    @State private var reminderToCancel: MobileCaptureTodayTask?
     @State private var showsAllCommittedTasks = false
 
     private var nextFocus: MobileCaptureTodayFocusBlock? {
@@ -237,6 +239,10 @@ private struct TodayFollowThroughCard: View {
 
     private var decisionsDisabled: Bool {
         previewOnly || client.isUsingProtectedCache || client.isMutating || !AuthManager.shared.networkActionsAllowed
+    }
+
+    private var reminderDecisionsDisabled: Bool {
+        previewOnly || client.isMutating
     }
 
     private var visibleCommittedTasks: [MobileCaptureTodayTask] {
@@ -335,6 +341,65 @@ private struct TodayFollowThroughCard: View {
                                         .foregroundStyle(.pink)
                                         .accessibilityIdentifier("CaptureTodayTaskReminder_\(task.id)")
                                         .accessibilityHint("Canonical reminder intent from Nest. Local alert scheduling still depends on this iPhone’s notification permission.")
+                                    }
+                                    if task.recurrence == nil, task.status == "OPEN" {
+                                        if let pending = client.pendingReminderDecision(for: task.id) {
+                                            Label(
+                                                pending.remindAt.map { "Pending Nest: \($0.formatted(date: .abbreviated, time: .shortened))" }
+                                                    ?? "Pending Nest: cancel reminder",
+                                                systemImage: pending.disposition == .held
+                                                    ? "exclamationmark.triangle.fill"
+                                                    : "arrow.triangle.2.circlepath"
+                                            )
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(pending.disposition == .held ? Color.orange : Color.blue)
+                                            .accessibilityIdentifier("CaptureTodayTaskReminderPending_\(task.id)")
+                                            if pending.disposition == .held {
+                                                Button("Discard phone change") {
+                                                    Task {
+                                                        await client.discardHeldReminderDecision(for: task.id)
+                                                    }
+                                                }
+                                                .font(.caption.weight(.bold))
+                                                .buttonStyle(.bordered)
+                                                .accessibilityHint("Removes the conflicted phone decision and restores the current canonical reminder from Nest.")
+                                                .accessibilityIdentifier("CaptureTodayTaskReminderDiscard_\(task.id)")
+                                            }
+                                        }
+                                        HStack {
+                                            Button {
+                                                reminderToEdit = task
+                                            } label: {
+                                                Label(
+                                                    task.reminder?.status == "ACTIVE" ? "Change reminder" : "Add reminder",
+                                                    systemImage: "bell"
+                                                )
+                                                .frame(minHeight: 44)
+                                            }
+                                            .buttonStyle(.bordered)
+                                            .disabled(
+                                                reminderDecisionsDisabled
+                                                    || client.pendingReminderDecision(for: task.id) != nil
+                                            )
+                                            .accessibilityIdentifier("CaptureTodayTaskReminderEdit_\(task.id)")
+                                            .accessibilityHint("Protects the decision on this iPhone first, then reconciles the canonical reminder with Nest.")
+
+                                            if task.reminder?.status == "ACTIVE" {
+                                                Button(role: .destructive) {
+                                                    reminderToCancel = task
+                                                } label: {
+                                                    Label("Cancel", systemImage: "bell.slash")
+                                                        .frame(minHeight: 44)
+                                                }
+                                                .buttonStyle(.bordered)
+                                                .disabled(
+                                                    reminderDecisionsDisabled
+                                                        || client.pendingReminderDecision(for: task.id) != nil
+                                                )
+                                                .accessibilityIdentifier("CaptureTodayTaskReminderCancel_\(task.id)")
+                                            }
+                                        }
+                                        .font(.caption.weight(.bold))
                                     }
                                     if let recurrence = task.recurrence {
                                         VStack(alignment: .leading, spacing: 4) {
@@ -624,7 +689,7 @@ private struct TodayFollowThroughCard: View {
                     .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
             }
 
-            Text("Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion never completes its task or goal. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
+            Text("One-time task reminder changes are protected on this iPhone before Nest sync; iOS controls notification delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion never completes its task or goal. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureTodayFollowThroughBoundary")
@@ -638,6 +703,24 @@ private struct TodayFollowThroughCard: View {
                 previewOnly: previewOnly,
                 focusSegmentID: destination.source.segmentId
             )
+        }
+        .confirmationDialog(
+            "Cancel this task reminder?",
+            isPresented: Binding(
+                get: { reminderToCancel != nil },
+                set: { if !$0 { reminderToCancel = nil } }
+            ),
+            titleVisibility: .visible
+        ) {
+            if let task = reminderToCancel {
+                Button("Cancel reminder", role: .destructive) {
+                    reminderToCancel = nil
+                    Task { _ = await client.setTaskReminder(task, remindAt: nil) }
+                }
+            }
+            Button("Keep reminder", role: .cancel) { reminderToCancel = nil }
+        } message: {
+            Text("The pending alert is removed from this iPhone first. Nest cancellation is queued safely if you are offline; no delivery is claimed.")
         }
         .confirmationDialog(
             "End this repeat permanently?",
@@ -683,6 +766,9 @@ private struct TodayFollowThroughCard: View {
         }
         .sheet(item: $recurrenceToEdit) { task in
             CaptureRecurrenceEditSheet(client: client, task: task)
+        }
+        .sheet(item: $reminderToEdit) { task in
+            TodayTaskReminderSheet(client: client, task: task)
         }
     }
 
@@ -731,6 +817,77 @@ private struct TodayFollowThroughCard: View {
             return "Time needs review · \(focus.timezone)"
         }
         return "\(start.formatted(date: .abbreviated, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened)) · \(focus.timezone)"
+    }
+}
+
+private struct TodayTaskReminderSheet: View {
+    @ObservedObject var client: CaptureTodayClient
+    let task: MobileCaptureTodayTask
+    @Environment(\.dismiss) private var dismiss
+    @State private var remindAt: Date
+
+    init(client: CaptureTodayClient, task: MobileCaptureTodayTask) {
+        self.client = client
+        self.task = task
+        let existing = task.reminder.flatMap { reminder -> Date? in
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return fractional.date(from: reminder.remindAt)
+                ?? ISO8601DateFormatter().date(from: reminder.remindAt)
+        }
+        let defaultTime = Calendar.current.date(
+            bySettingHour: 9,
+            minute: 0,
+            second: 0,
+            of: Date().addingTimeInterval(86_400)
+        ) ?? Date().addingTimeInterval(86_400)
+        _remindAt = State(initialValue: max(existing ?? defaultTime, Date().addingTimeInterval(60)))
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Task") {
+                    Text(task.title)
+                        .font(.headline)
+                }
+                Section("Remind me") {
+                    DatePicker(
+                        "Date and time",
+                        selection: $remindAt,
+                        in: Date().addingTimeInterval(60)...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    Text(TimeZone.current.identifier)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Section {
+                    Text("Saving protects this decision on the iPhone before syncing the canonical reminder to Nest. Quipsly asks for notification permission only after this explicit choice. iOS controls delivery.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .navigationTitle(task.reminder?.status == "ACTIVE" ? "Change reminder" : "Add reminder")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            if await client.setTaskReminder(task, remindAt: remindAt) {
+                                dismiss()
+                            }
+                        }
+                    }
+                    .disabled(client.isMutating || remindAt <= Date())
+                    .accessibilityIdentifier("CaptureTodayTaskReminderSave")
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

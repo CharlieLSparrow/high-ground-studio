@@ -434,6 +434,53 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     }
 
+    func testOneTimeTaskReminderCancelsAndReactivatesThroughNest() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let taskID = credentials.taskID, !taskID.isEmpty else {
+            throw XCTSkip("The reminder journey requires one exact non-recurring open task ID.")
+        }
+        let app = try launchSignedInCaptureApp()
+
+        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
+        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
+            showMore.tap()
+        }
+
+        let cancel = app.buttons["CaptureTodayTaskReminderCancel_\(taskID)"].firstMatch
+        if waitForRuntimeElement(cancel, in: app, timeout: 8, swipeAttempts: 12) {
+            cancel.tap()
+            let confirmCancel = app.buttons["Cancel reminder"].firstMatch
+            XCTAssertTrue(confirmCancel.waitForExistence(timeout: 5))
+            confirmCancel.tap()
+        }
+
+        let edit = app.buttons["CaptureTodayTaskReminderEdit_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12),
+            "Canonical cancellation should reload the same task with an Add reminder control."
+        )
+        edit.tap()
+
+        let save = app.buttons["CaptureTodayTaskReminderSave"].firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 8))
+        save.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        if springboard.alerts.firstMatch.waitForExistence(timeout: 5) {
+            let allow = springboard.alerts.firstMatch.buttons["Allow"].firstMatch
+            if allow.exists { allow.tap() }
+        }
+
+        let reminder = app.descendants(matching: .any)["CaptureTodayTaskReminder_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(reminder, in: app, timeout: 30, swipeAttempts: 12),
+            "The reactivated canonical reminder should read back into Today after the protected phone decision syncs."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTodayTaskReminderPending_\(taskID)"].firstMatch.exists,
+            "A successful Nest readback should clear the phone decision outbox."
+        )
+    }
+
     func testCanonicalRecurrenceRoundTripsThroughSignedInToday() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let taskID = credentials.taskID, !taskID.isEmpty,

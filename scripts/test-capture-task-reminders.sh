@@ -14,7 +14,9 @@ trap cleanup EXIT
 
 export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 xcrun swiftc \
+  -D TASK_REMINDER_HARNESS \
   -parse-as-library \
+  "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/TaskReminderDecisionOutbox.swift" \
   "$repo_root/apps/mobile-capture/HighGroundCapture/HighGroundCapture/TaskReminderScheduler.swift" \
   "$repo_root/apps/mobile-capture/HighGroundCapture/Testing/TaskReminderSchedulerHarness.swift" \
   -o "$temporary_directory/task-reminder-harness"

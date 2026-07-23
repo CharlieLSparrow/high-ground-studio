@@ -911,6 +911,7 @@ struct MobileCaptureTodayMutationResponse: Codable {
     let receiptId: String?
     let nextOccurrenceTaskId: String?
     let materializedCount: Int?
+    let reminder: MobileCaptureTodayReminderIntent?
 }
 
 struct MobileCaptureSessionCreateResponse: Codable {
@@ -2401,9 +2402,13 @@ final class CaptureTodayClient: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isMutating = false
     @Published private(set) var isUsingProtectedCache = false
+    @Published private(set) var pendingReminderDecisionCount = 0
+    @Published private(set) var heldReminderDecisionCount = 0
     @Published var errorMessage: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+    private let reminderDecisionOutbox = TaskReminderDecisionOutbox.shared
+    private var isFlushingReminderDecisions = false
 
     private struct ProtectedCache: Codable {
         let schemaVersion: Int
@@ -2418,6 +2423,10 @@ final class CaptureTodayClient: ObservableObject {
     var transcriptReviews: [MobileCaptureTodayTranscriptReview] { brief?.transcriptReviews ?? [] }
     var sourceAnnotations: [MobileCaptureTodaySourceAnnotation] { brief?.sourceAnnotations ?? [] }
     var weeklyPlan: MobileCaptureTodayWeeklyPlan? { brief?.weeklyPlan }
+
+    func pendingReminderDecision(for taskID: String) -> PendingTaskReminderDecision? {
+        reminderDecisionOutbox.decision(forTaskID: taskID)
+    }
 
     func loadPreview() {
         let now = Date()
@@ -2503,12 +2512,88 @@ final class CaptureTodayClient: ObservableObject {
                 intents: (payload.taskReminderIntents ?? []).compactMap(\.canonicalProjection),
                 projectionComplete: payload.boundaries?.taskReminderIntentProjectionComplete == true
             )
+            for decision in reminderDecisionOutbox.entries where decision.disposition == .pending {
+                _ = await TaskReminderScheduler.shared.stage(
+                    decision: decision,
+                    requestPermissionIfNeeded: false
+                )
+            }
+            let synchronized = await flushReminderDecisions()
+            if synchronized {
+                Task { [weak self] in
+                    await self?.load()
+                }
+            }
         } catch {
             if brief == nil { _ = restoreProtectedCache() }
             errorMessage = isUsingProtectedCache
                 ? "Nest is unavailable. Showing a protected Today snapshot; work decisions are disabled."
                 : error.localizedDescription
         }
+    }
+
+    func setTaskReminder(_ task: MobileCaptureTodayTask, remindAt: Date?) async -> Bool {
+        guard task.recurrence == nil else {
+            errorMessage = "Repeating work keeps its schedule separate from one-time reminders."
+            return false
+        }
+        let timezone = TimeZone.current.identifier
+        let localValue = remindAt.map { Self.localReminderString($0, timezone: timezone) }
+        do {
+            let decision = try reminderDecisionOutbox.enqueue(
+                taskID: task.id,
+                currentReminderID: task.reminder?.id,
+                remindAt: remindAt,
+                timezone: timezone,
+                requestedLocalDateTime: localValue,
+                expectedTaskUpdatedAt: task.updatedAt,
+                expectedReminderUpdatedAt: task.reminder?.updatedAt
+            )
+            publishReminderDecisionCounts()
+            let projection = await TaskReminderScheduler.shared.stage(
+                decision: decision,
+                requestPermissionIfNeeded: remindAt != nil
+            )
+            if case let .failed(message) = projection {
+                reminderDecisionOutbox.markHeld(decision.id, code: "DEVICE_PROJECTION_FAILED", message: message)
+                publishReminderDecisionCounts()
+                errorMessage = message
+                return false
+            }
+            guard AuthManager.shared.networkActionsAllowed else {
+                errorMessage = remindAt == nil
+                    ? "Reminder removed on this iPhone and queued for Nest. Reconnect to finish canonical cancellation."
+                    : "Reminder protected on this iPhone and queued for Nest. iOS controls alert delivery."
+                return true
+            }
+            isMutating = true
+            defer { isMutating = false }
+            let synchronized = await syncReminderDecision(decision)
+            if synchronized {
+                errorMessage = nil
+                await load()
+            }
+            return synchronized
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func retryHeldReminderDecisions() async {
+        reminderDecisionOutbox.releaseHeldEntriesForRetry()
+        publishReminderDecisionCounts()
+        _ = await flushReminderDecisions()
+        await load()
+    }
+
+    func discardHeldReminderDecision(for taskID: String) async {
+        guard let decision = reminderDecisionOutbox.decision(forTaskID: taskID),
+              decision.disposition == .held else { return }
+        reminderDecisionOutbox.markAcknowledged(decision.id)
+        publishReminderDecisionCounts()
+        errorMessage = nil
+        await load()
     }
 
     func setTaskStatus(_ task: MobileCaptureTodayTask, status: String, decisionReason: String? = nil) async -> Bool {
@@ -2618,6 +2703,98 @@ final class CaptureTodayClient: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    @discardableResult
+    private func flushReminderDecisions() async -> Bool {
+        guard !isFlushingReminderDecisions,
+              AuthManager.shared.networkActionsAllowed else {
+            publishReminderDecisionCounts()
+            return false
+        }
+        isFlushingReminderDecisions = true
+        defer {
+            isFlushingReminderDecisions = false
+            publishReminderDecisionCounts()
+        }
+        var synchronizedAny = false
+        for decision in reminderDecisionOutbox.entries where decision.disposition == .pending {
+            if await syncReminderDecision(decision) {
+                synchronizedAny = true
+            }
+        }
+        return synchronizedAny
+    }
+
+    private func syncReminderDecision(_ decision: PendingTaskReminderDecision) async -> Bool {
+        guard let url = URL(string: "\(baseURL)/api/mobile/capture/today") else { return false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            var body: [String: Any] = [
+                "action": "task-reminder",
+                "id": decision.taskID,
+                "timezone": decision.timezone,
+                "expectedUpdatedAt": decision.expectedTaskUpdatedAt,
+                "clientRequestId": decision.clientRequestID,
+            ]
+            body["remindAtLocal"] = decision.requestedLocalDateTime ?? NSNull()
+            body["expectedReminderUpdatedAt"] = decision.expectedReminderUpdatedAt ?? NSNull()
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                let message = payload.error ?? "Nest could not reconcile this reminder change."
+                if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
+                    reminderDecisionOutbox.markRetryable(decision.id, message: message)
+                } else {
+                    reminderDecisionOutbox.markHeld(decision.id, code: payload.code, message: message)
+                }
+                errorMessage = message
+                publishReminderDecisionCounts()
+                return false
+            }
+            guard let canonical = payload.reminder?.canonicalProjection,
+                  canonical.id == decision.projectedReminderID,
+                  canonical.actionItemID == decision.taskID,
+                  (decision.remindAt == nil
+                    ? canonical.status == "CANCELED"
+                    : canonical.status == "ACTIVE"
+                        && abs(canonical.remindAt.timeIntervalSince(decision.remindAt!)) < 0.5) else {
+                let message = "Nest returned a different reminder identity or time. The protected phone decision is held for review."
+                reminderDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
+                errorMessage = message
+                publishReminderDecisionCounts()
+                return false
+            }
+            await TaskReminderScheduler.shared.reconcileCanonical(
+                intents: [canonical],
+                projectionComplete: false
+            )
+            reminderDecisionOutbox.markAcknowledged(decision.id)
+            publishReminderDecisionCounts()
+            return true
+        } catch {
+            reminderDecisionOutbox.markRetryable(decision.id, message: error.localizedDescription)
+            errorMessage = "Reminder change remains protected for retry: \(error.localizedDescription)"
+            publishReminderDecisionCounts()
+            return false
+        }
+    }
+
+    private func publishReminderDecisionCounts() {
+        pendingReminderDecisionCount = reminderDecisionOutbox.pendingCount
+        heldReminderDecisionCount = reminderDecisionOutbox.heldCount
+    }
+
+    nonisolated private static func localReminderString(_ date: Date, timezone: String) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(identifier: timezone)
+        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
+        return formatter.string(from: date)
     }
 
     static func clearProtectedCache() {
