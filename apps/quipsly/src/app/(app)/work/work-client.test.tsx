@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { applyTagMerge, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, previewTagMerge, replaceWorkTags, saveWeeklyCommitment, updateWorkTaskStatus } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, previewTagMerge, previewTagMergeRollback, replaceWorkTags, saveWeeklyCommitment, updateWorkTaskStatus } from "./actions";
 import { WorkClient } from "./work-client";
 import type { WorkSnapshot } from "./work-model";
 
@@ -10,6 +10,7 @@ const refresh = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 jest.mock("./actions", () => ({
   applyTagMerge: jest.fn(),
+  applyTagMergeRollback: jest.fn(),
   changeWorkTagTaxonomy: jest.fn(),
   createAndAssignWorkTag: jest.fn(),
   createWorkGoal: jest.fn(),
@@ -17,6 +18,7 @@ jest.mock("./actions", () => ({
   editTaskRecurrence: jest.fn(),
   linkWorkGoalTask: jest.fn(),
   previewTagMerge: jest.fn(),
+  previewTagMergeRollback: jest.fn(),
   recordWorkGoalProgress: jest.fn(),
   replaceWorkTags: jest.fn(),
   saveWeeklyCommitment: jest.fn(),
@@ -208,6 +210,62 @@ describe("Work Queue interactions", () => {
       expectedTargetUpdatedAt: "2026-07-18T18:01:00.000Z",
     });
     expect(await within(sourceRow!).findByRole("status")).toHaveTextContent("8 exact uses were preserved");
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("fails closed until an exact merge rollback receipt is previewed and confirmed", async () => {
+    const user = userEvent.setup();
+    const project = { id: "project-1", name: "High Ground Odyssey", slug: "high-ground", role: "EDITOR", canWrite: true, tags: [
+      { id: "tag-rough", label: "Rough cut", slug: "rough-cut", category: "production_breakdown", projectId: "project-1", isActive: false, archivedAt: "2026-07-18T18:02:00.000Z", updatedAt: "2026-07-18T18:02:00.000Z", aliases: [], mergedInto: { id: "tag-edit", label: "Episode edit", slug: "episode-edit" } },
+      { id: "tag-edit", label: "Episode edit", slug: "episode-edit", category: "production_breakdown", projectId: "project-1", isActive: true, archivedAt: null, updatedAt: "2026-07-18T18:02:00.000Z", aliases: [], mergedInto: null },
+    ] };
+    jest.mocked(previewTagMergeRollback).mockResolvedValue({
+      ok: true,
+      preview: {
+        receiptId: "merge-receipt",
+        projectId: "project-1",
+        source: { id: "tag-rough", label: "Rough cut", slug: "rough-cut", updatedAt: "2026-07-18T18:02:00.000Z" },
+        target: { id: "tag-edit", label: "Episode edit", slug: "episode-edit", updatedAt: "2026-07-18T18:02:00.000Z" },
+        counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
+        targetRelationshipsPreserved: { tasks: 1, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
+        targetRelationshipsRemoved: { tasks: 1, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, mediaClips: 1 },
+        blockingConflicts: [],
+        previewHash: "b".repeat(64),
+        canRollback: true,
+        boundaries: { exactReceiptRequired: true, laterEditsFailClosed: true, immutableSourceTextMutated: false, externalSideEffects: false },
+      },
+    });
+    jest.mocked(applyTagMergeRollback).mockResolvedValue({
+      ok: true,
+      projectId: "project-1",
+      sourceTag: { id: "tag-rough", label: "Rough cut", slug: "rough-cut", isActive: true, mergedIntoTagId: null, mergedAt: null, updatedAt: "2026-07-18T18:03:00.000Z" },
+      targetTag: { id: "tag-edit", label: "Episode edit", slug: "episode-edit", updatedAt: "2026-07-18T18:03:00.000Z" },
+      mergeReceiptId: "merge-receipt",
+      rollbackReceiptId: "rollback-receipt",
+      previewHash: "b".repeat(64),
+      counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
+    });
+    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} />);
+    await user.click(screen.getByText("Manage vocabulary · 1 active across 1 Nest"));
+    const sourceRow = screen.getByText("#Rough cut").closest("li");
+    expect(sourceRow).not.toBeNull();
+    await user.click(within(sourceRow!).getByText("Inspect merge receipt & rollback"));
+    expect(within(sourceRow!).queryByRole("button", { name: "Restore #Rough cut" })).not.toBeInTheDocument();
+    await user.click(within(sourceRow!).getByRole("button", { name: "Preview exact rollback" }));
+    expect(await within(sourceRow!).findByText(/Restore #Rough cut from merge receipt merge-receipt/)).toBeInTheDocument();
+    const restoreButton = within(sourceRow!).getByRole("button", { name: "Restore #Rough cut" });
+    expect(restoreButton).toBeDisabled();
+    await user.click(within(sourceRow!).getByRole("checkbox"));
+    expect(restoreButton).toBeEnabled();
+    await user.click(restoreButton);
+    expect(previewTagMergeRollback).toHaveBeenCalledWith({ sourceTagId: "tag-rough" });
+    expect(applyTagMergeRollback).toHaveBeenCalledWith({
+      sourceTagId: "tag-rough",
+      expectedPreviewHash: "b".repeat(64),
+      expectedSourceUpdatedAt: "2026-07-18T18:02:00.000Z",
+      expectedTargetUpdatedAt: "2026-07-18T18:02:00.000Z",
+    });
+    expect(await within(sourceRow!).findByRole("status")).toHaveTextContent("8 exact uses were restored");
     expect(refresh).toHaveBeenCalled();
   });
 

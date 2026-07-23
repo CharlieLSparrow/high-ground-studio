@@ -8,6 +8,7 @@ import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-t
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { applyWorkTagMerge, previewWorkTagMerge, type WorkTagMergePreview } from "@/lib/server/work-tag-merge";
+import { applyWorkTagMergeRollback, previewWorkTagMergeRollback, type WorkTagMergeRollbackPreview } from "@/lib/server/work-tag-merge-rollback";
 import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags, type WorkTagEntityKind, type WorkTagTaxonomyOperation } from "@/lib/server/work-tags";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import {
@@ -91,6 +92,28 @@ export type ApplyWorkTagMergeActionResult =
       deduplicated: WorkTagMergePreview["deduplicated"];
     }
   | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "MERGED" | "BLOCKED" | "UNAVAILABLE"; error: string; preview?: SerializedWorkTagMergePreview };
+
+export type SerializedWorkTagMergeRollbackPreview = Omit<WorkTagMergeRollbackPreview, "source" | "target"> & {
+  source: Omit<WorkTagMergeRollbackPreview["source"], "updatedAt"> & { updatedAt: string };
+  target: Omit<WorkTagMergeRollbackPreview["target"], "updatedAt"> & { updatedAt: string };
+};
+
+export type PreviewWorkTagMergeRollbackActionResult =
+  | { ok: true; preview: SerializedWorkTagMergeRollbackPreview }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "UNSUPPORTED" | "UNAVAILABLE"; error: string };
+
+export type ApplyWorkTagMergeRollbackActionResult =
+  | {
+      ok: true;
+      projectId: string;
+      sourceTag: { id: string; label: string; slug: string; isActive: boolean; mergedIntoTagId: null; mergedAt: null; updatedAt: string };
+      targetTag: { id: string; label: string; slug: string; updatedAt: string };
+      mergeReceiptId: string;
+      rollbackReceiptId: string;
+      previewHash: string;
+      counts: WorkTagMergeRollbackPreview["counts"];
+    }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "UNSUPPORTED" | "CONFLICT" | "BLOCKED" | "UNAVAILABLE"; error: string; preview?: SerializedWorkTagMergeRollbackPreview };
 
 export type UpdateTaskRecurrenceStatusResult =
   | { ok: true; seriesId: string; status: "ACTIVE" | "PAUSED" | "ENDED"; updatedAt: string; receiptId: string; materializedCount: number }
@@ -929,6 +952,14 @@ function serializedMergePreview(preview: WorkTagMergePreview): SerializedWorkTag
   };
 }
 
+function serializedMergeRollbackPreview(preview: WorkTagMergeRollbackPreview): SerializedWorkTagMergeRollbackPreview {
+  return {
+    ...preview,
+    source: { ...preview.source, updatedAt: preview.source.updatedAt.toISOString() },
+    target: { ...preview.target, updatedAt: preview.target.updatedAt.toISOString() },
+  };
+}
+
 export async function previewTagMerge(input: {
   sourceTagId: string;
   targetTagId: string;
@@ -992,6 +1023,64 @@ export async function applyTagMerge(input: {
   } catch (error) {
     console.error("[work] failed to apply tag merge", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not apply this merge. The transaction rolled back and nothing external changed." };
+  }
+}
+
+export async function previewTagMergeRollback(input: {
+  sourceTagId: string;
+}): Promise<PreviewWorkTagMergeRollbackActionResult> {
+  const session = await getQuipslySession();
+  const actorEmail = cleanText(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+  if (!session?.user?.id || !actorEmail) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before inspecting a private merge receipt." };
+  try {
+    const result = await previewWorkTagMergeRollback({
+      prisma: getPrismaClient(),
+      actorEmail,
+      sourceTagId: input?.sourceTagId,
+    });
+    return result.ok ? { ok: true, preview: serializedMergeRollbackPreview(result.preview) } : result;
+  } catch (error) {
+    console.error("[work] failed to preview tag merge rollback", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not verify this rollback receipt. Nothing changed." };
+  }
+}
+
+export async function applyTagMergeRollback(input: {
+  sourceTagId: string;
+  expectedPreviewHash: string;
+  expectedSourceUpdatedAt: string;
+  expectedTargetUpdatedAt: string;
+}): Promise<ApplyWorkTagMergeRollbackActionResult> {
+  const session = await getQuipslySession();
+  const actorEmail = cleanText(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+  if (!session?.user?.id || !actorEmail) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before rolling back private vocabulary." };
+  const expectedSourceUpdatedAt = expectedRevision(input?.expectedSourceUpdatedAt);
+  const expectedTargetUpdatedAt = expectedRevision(input?.expectedTargetUpdatedAt);
+  if (!expectedSourceUpdatedAt || !expectedTargetUpdatedAt) return { ok: false, code: "INVALID_INPUT", error: "Preview this rollback again before applying it." };
+  try {
+    const result = await applyWorkTagMergeRollback({
+      prisma: getPrismaClient(),
+      actorUserId: session.user.id,
+      actorEmail,
+      sourceTagId: input.sourceTagId,
+      expectedPreviewHash: input.expectedPreviewHash,
+      expectedSourceUpdatedAt,
+      expectedTargetUpdatedAt,
+    });
+    if (!result.ok) return { ...result, preview: result.preview ? serializedMergeRollbackPreview(result.preview) : undefined };
+    revalidatePath("/work");
+    revalidatePath("/today");
+    revalidatePath("/find");
+    revalidatePath("/research");
+    revalidatePath("/create");
+    return {
+      ...result,
+      sourceTag: { ...result.sourceTag, updatedAt: result.sourceTag.updatedAt.toISOString() },
+      targetTag: { ...result.targetTag, updatedAt: result.targetTag.updatedAt.toISOString() },
+    };
+  } catch (error) {
+    console.error("[work] failed to apply tag merge rollback", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not apply this rollback. The transaction rolled back and nothing external changed." };
   }
 }
 

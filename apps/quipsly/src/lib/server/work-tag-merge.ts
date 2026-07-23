@@ -209,6 +209,16 @@ async function buildMergePreview(prisma: any, input: {
     taggedSpans: sourceSpanRows,
     knowledgeNodes: sourceNodeRows,
     mediaClipIds: sourceMediaIds,
+    exactTargetAssociations: {
+      taskLinks: targetRows(taskLinks),
+      goalLinks: targetRows(goalLinks),
+      sessionLinks: targetRows(sessionLinks),
+      coachingNoteLinks: targetRows(coachingNoteLinks),
+      annotationLinks: targetRows(annotationLinks),
+      taggedSpans: targetRows(taggedSpans),
+      knowledgeNodes: targetRows(knowledgeNodes),
+      mediaClipIds: targetMediaIds,
+    },
   };
   const hashPayload = {
     source: { id: source.id, updatedAt: source.updatedAt.toISOString() },
@@ -326,7 +336,7 @@ export async function applyWorkTagMerge(input: {
     const target = fresh.impact.target;
     const sourceUpdate = await tx.studioTag.updateMany({
       where: { id: source.id, projectId: source.projectId, isActive: true, mergedIntoTagId: null, updatedAt: input.expectedSourceUpdatedAt },
-      data: { isActive: false, archivedAt: now, mergedIntoTagId: target.id, mergedAt: now },
+      data: { isActive: false, archivedAt: now, mergedIntoTagId: target.id, mergedAt: now, updatedAt: now },
     });
     const targetUpdate = await tx.studioTag.updateMany({
       where: { id: target.id, projectId: source.projectId, isActive: true, mergedIntoTagId: null, updatedAt: input.expectedTargetUpdatedAt },
@@ -393,12 +403,18 @@ export async function applyWorkTagMerge(input: {
       tx.studioTagRevision.aggregate({ where: { tagId: target.id }, _max: { revision: true } }),
     ]);
     const receiptSnapshot = {
-      kind: "quipsly-tag-merge-v1",
+      kind: "quipsly-tag-merge-v2",
       receiptId,
       projectId: source.projectId,
       sourceTag: { id: source.id, label: source.label, slug: source.slug, updatedAt: source.updatedAt.toISOString() },
       targetTag: { id: target.id, label: target.label, slug: target.slug, updatedAt: target.updatedAt.toISOString() },
       exactMovedAssociations: fresh.impact,
+      exactPreMergeTargetAssociations: fresh.impact.exactTargetAssociations,
+      expectedPostMerge: {
+        sourceUpdatedAt: now.toISOString(),
+        targetUpdatedAt: now.toISOString(),
+        sourceMergedAt: now.toISOString(),
+      },
       counts: fresh.preview.counts,
       deduplicated: fresh.preview.deduplicated,
       boundaries: fresh.preview.boundaries,

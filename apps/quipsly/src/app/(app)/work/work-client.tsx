@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Archive, BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, ListChecks, Pencil, Play, Repeat2, RotateCcw, Tags, Target, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { applyTagMerge, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, previewTagMerge, recordWorkGoalProgress, replaceWorkTags, saveWeeklyCommitment, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, saveWeeklyCommitment, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
 import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTask, WorkTaskStatus } from "./work-model";
 
 export type TaskFilter = "ATTENTION" | "OPEN" | "DONE" | "ALL";
@@ -196,6 +196,69 @@ function TagMergeControl({ source, project, onRefresh }: { source: WorkTag; proj
   </details>;
 }
 
+function TagMergeRollbackControl({ source, project, onRefresh }: { source: WorkTag; project: WorkProjectOption; onRefresh: () => void }) {
+  const [preview, setPreview] = useState<SerializedWorkTagMergeRollbackPreview | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [previewing, startPreview] = useTransition();
+  const [rollingBack, startRollback] = useTransition();
+  if (!source.mergedInto) return null;
+
+  function previewRollback() {
+    setPreview(null);
+    setConfirmed(false);
+    setMessage(null);
+    startPreview(async () => {
+      const result = await previewTagMergeRollback({ sourceTagId: source.id });
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
+      setPreview(result.preview);
+      setMessage(result.preview.canRollback
+        ? "Receipt verified. Review exactly what will be restored and preserved."
+        : "Rollback is blocked because the recorded merge state changed afterward.");
+    });
+  }
+
+  function rollback() {
+    if (!preview || !confirmed) return;
+    setMessage(null);
+    startRollback(async () => {
+      const result = await applyTagMergeRollback({
+        sourceTagId: preview.source.id,
+        expectedPreviewHash: preview.previewHash,
+        expectedSourceUpdatedAt: preview.source.updatedAt,
+        expectedTargetUpdatedAt: preview.target.updatedAt,
+      });
+      if (!result.ok) {
+        setMessage(result.error);
+        if (result.code === "CONFLICT") setPreview(null);
+        return;
+      }
+      setMessage(`#${result.sourceTag.label} is independent again. ${result.counts.totalUses} exact use${result.counts.totalUses === 1 ? " was" : "s were"} restored from receipt ${result.rollbackReceiptId}.`);
+      onRefresh();
+    });
+  }
+
+  const preservedCount = preview ? Object.values(preview.targetRelationshipsPreserved).reduce((sum, count) => sum + count, 0) : 0;
+  const removedCount = preview ? Object.values(preview.targetRelationshipsRemoved).reduce((sum, count) => sum + count, 0) : 0;
+  return <details className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+    <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-amber-950">Inspect merge receipt & rollback</summary>
+    <p className="mt-2 text-[11px] font-semibold leading-5 text-amber-950">Rollback is local to {project.name}. Quipsly restores only the source relationships recorded at merge time, preserves target relationships that already existed, and fails closed after later edits.</p>
+    <button type="button" disabled={previewing || rollingBack} onClick={previewRollback} className="mt-3 min-h-11 rounded-full border border-amber-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-amber-950 disabled:opacity-50">{previewing ? "Checking receipt…" : "Preview exact rollback"}</button>
+    {preview && <div className={`mt-3 rounded-xl border p-3 ${preview.canRollback ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}>
+      <p className="text-xs font-black text-amber-950">Restore #{preview.source.label} from merge receipt {preview.receiptId}</p>
+      <p className="mt-2 text-[11px] font-semibold leading-5 text-amber-950">{preview.counts.totalUses} uses return to the source: {preview.counts.tasks} tasks, {preview.counts.goals} goals, {preview.counts.sessions} Sessions, {preview.counts.coachingNotes} coaching notes, {preview.counts.annotations} annotations, {preview.counts.taggedSpans} anchored spans, {preview.counts.knowledgeNodes} knowledge nodes, and {preview.counts.mediaClips} media clips.</p>
+      <p className="mt-2 text-[11px] font-bold text-amber-950">{preservedCount} target relationship{preservedCount === 1 ? "" : "s"} already existed and will remain. {removedCount} relationship{removedCount === 1 ? "" : "s"} created by the merge will be removed from #{preview.target.label}.</p>
+      {!preview.canRollback && <ul className="mt-2 list-disc pl-5 text-[11px] font-bold text-rose-900">{preview.blockingConflicts.map((conflict) => <li key={conflict}>{conflict}</li>)}</ul>}
+      {preview.canRollback && <label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-emerald-200 bg-white p-3 text-xs font-bold leading-5 text-emerald-950"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1" />I reviewed this receipt. Restore #{preview.source.label}; preserve the {preservedCount} pre-existing target relationship{preservedCount === 1 ? "" : "s"}.</label>}
+      {preview.canRollback && <button type="button" disabled={!confirmed || rollingBack} onClick={rollback} className="mt-3 min-h-11 rounded-full bg-amber-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">{rollingBack ? "Rolling back…" : `Restore #${preview.source.label}`}</button>}
+    </div>}
+    {message && <p role="status" className="mt-3 text-xs font-bold leading-5 text-amber-950">{message}</p>}
+  </details>;
+}
+
 function TagVocabulary({ projects, onRefresh }: { projects: WorkProjectOption[]; onRefresh: () => void }) {
   const writableProjects = projects.filter((project) => project.canWrite);
   const [pending, startTransition] = useTransition();
@@ -233,7 +296,7 @@ function TagVocabulary({ projects, onRefresh }: { projects: WorkProjectOption[];
         <div className="flex items-center justify-between gap-3"><div><h3 className="font-serif text-xl font-black">{project.name}</h3><p className="text-[10px] font-black uppercase tracking-wide text-sky-800">{project.tags.filter((tag) => tag.isActive !== false).length} active · {project.tags.filter((tag) => tag.isActive === false).length} archived</p></div><Link href={`/nests/${encodeURIComponent(project.slug)}`} className="text-[10px] font-black uppercase tracking-wide text-sky-800 hover:underline">Open Nest</Link></div>
         {project.tags.length ? <ul className="mt-4 space-y-3">{project.tags.map((tag) => <li key={tag.id} className={`rounded-xl border p-3 ${tag.isActive === false ? "border-slate-200 bg-slate-50" : "border-sky-100 bg-sky-50/40"}`}>
           <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-black">#{tag.label}</p><p className="mt-1 text-[11px] font-semibold text-sky-900">{tag.aliases?.length ? `Also matches ${tag.aliases.map((alias) => `#${alias.label}`).join(", ")}` : "No former names"}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tag.isActive === false ? "bg-slate-200 text-slate-700" : "bg-emerald-100 text-emerald-800"}`}>{tag.isActive === false ? "Archived" : "Active"}</span></div>
-          {tag.mergedInto ? <p className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs font-bold text-fuchsia-950">Merged into #{tag.mergedInto.label}. Older captures using this name resolve to the canonical tag.</p> : tag.isActive === false ? <button type="button" disabled={pending} onClick={() => change(tag, "RESTORE")} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-800 disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Restore</button> : <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          {tag.mergedInto ? <><p className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs font-bold text-fuchsia-950">Merged into #{tag.mergedInto.label}. Older captures using this name resolve to the canonical tag.</p><TagMergeRollbackControl source={tag} project={project} onRefresh={onRefresh} /></> : tag.isActive === false ? <button type="button" disabled={pending} onClick={() => change(tag, "RESTORE")} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-800 disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Restore</button> : <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <form action={(formData) => change(tag, "RENAME", String(formData.get("label") || ""))} className="flex min-w-0 flex-1 gap-2"><label htmlFor={`rename-tag-${tag.id}`} className="sr-only">Rename {tag.label}</label><input id={`rename-tag-${tag.id}`} name="label" required maxLength={80} defaultValue={tag.label} className="min-h-11 min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold" /><button type="submit" disabled={pending} className="min-h-11 rounded-full bg-sky-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Rename</button></form>
             <button type="button" disabled={pending} onClick={() => change(tag, "ARCHIVE")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50"><Archive size={14} aria-hidden="true" />Archive</button>
           </div>}

@@ -6,6 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 
 import { createAndAssignWorkEntityTag } from "./work-tags";
 import { applyWorkTagMerge, previewWorkTagMerge } from "./work-tag-merge";
+import { applyWorkTagMergeRollback, previewWorkTagMergeRollback } from "./work-tag-merge-rollback";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
@@ -238,12 +239,15 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
     expect(aliases.map((alias) => alias.label)).toEqual([`Assembly ${nonce}`, `Rough cut ${nonce}`]);
     expect(receipt).toMatchObject({ sourceTagId, targetTagId, impactHash: result.ok ? result.impactHash : "unreachable" });
     expect(receipt.snapshotJson).toMatchObject({
-      kind: "quipsly-tag-merge-v1",
+      kind: "quipsly-tag-merge-v2",
       exactMovedAssociations: {
         taskLinks: expect.arrayContaining([expect.objectContaining({ actionItemId: taskId, tagId: sourceTagId, sourceJson: { fixture: "source-only" } })]),
         taggedSpans: [expect.objectContaining({ id: spanId, tagId: sourceTagId })],
         knowledgeNodes: [expect.objectContaining({ id: nodeId, tagId: sourceTagId })],
         mediaClipIds: [mediaClipId],
+      },
+      exactPreMergeTargetAssociations: {
+        taskLinks: [expect.objectContaining({ actionItemId: duplicateTaskId, tagId: targetTagId, sourceJson: { fixture: "target-existing" } })],
       },
       boundaries: { externalSideEffects: false, immutableSourceTextMutated: false },
     });
@@ -260,6 +264,88 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
     });
     expect(aliasReuse).toMatchObject({ ok: true, created: false, tag: { id: targetTagId, label: `Episode edit ${nonce}` } });
     await expect(prisma.studioTag.count({ where: { projectId, OR: [{ slug: `rough-cut-${nonce}` }, { slug: `episode-edit-${nonce}` }] } })).resolves.toBe(2);
+
+    const rollbackPreview = await previewWorkTagMergeRollback({ prisma, actorEmail, sourceTagId });
+    expect(rollbackPreview).toMatchObject({
+      ok: true,
+      preview: {
+        receiptId: result.ok ? result.receiptId : "unreachable",
+        canRollback: true,
+        counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 1, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, totalUses: 9 },
+        targetRelationshipsPreserved: { tasks: 1 },
+        targetRelationshipsRemoved: { tasks: 1, goals: 1, sessions: 1, coachingNotes: 1, annotations: 1, mediaClips: 1 },
+        boundaries: { exactReceiptRequired: true, laterEditsFailClosed: true, immutableSourceTextMutated: false, externalSideEffects: false },
+      },
+    });
+    if (!rollbackPreview.ok) throw new Error("rollback preview setup failed");
+
+    await prisma.actionItemTagLink.update({
+      where: { actionItemId_tagId: { actionItemId: taskId, tagId: targetTagId } },
+      data: { sourceJson: { fixture: "changed-after-merge" } },
+    });
+    await expect(previewWorkTagMergeRollback({ prisma, actorEmail, sourceTagId })).resolves.toMatchObject({
+      ok: true,
+      preview: { canRollback: false, blockingConflicts: expect.arrayContaining([expect.stringContaining("changed afterward")]) },
+    });
+    await prisma.actionItemTagLink.update({
+      where: { actionItemId_tagId: { actionItemId: taskId, tagId: targetTagId } },
+      data: { sourceJson: { fixture: "source-only" } },
+    });
+    const freshRollbackPreview = await previewWorkTagMergeRollback({ prisma, actorEmail, sourceTagId });
+    if (!freshRollbackPreview.ok) throw new Error("fresh rollback preview setup failed");
+    expect(freshRollbackPreview.preview.canRollback).toBe(true);
+    const rollbackResult = await applyWorkTagMergeRollback({
+      prisma,
+      actorUserId,
+      actorEmail,
+      sourceTagId,
+      expectedPreviewHash: freshRollbackPreview.preview.previewHash,
+      expectedSourceUpdatedAt: freshRollbackPreview.preview.source.updatedAt,
+      expectedTargetUpdatedAt: freshRollbackPreview.preview.target.updatedAt,
+    });
+    expect(rollbackResult).toMatchObject({
+      ok: true,
+      sourceTag: { id: sourceTagId, isActive: true, mergedIntoTagId: null, mergedAt: null },
+      targetTag: { id: targetTagId },
+      mergeReceiptId: result.ok ? result.receiptId : "unreachable",
+      rollbackReceiptId: expect.any(String),
+    });
+
+    const [rolledBackTaskLinks, rolledBackGoalLinks, rolledBackRoomLinks, rolledBackNoteLinks, rolledBackAnnotationLinks,
+      rolledBackSpan, rolledBackNode, rolledBackClip, sourceAliases, targetAliases, rollbackRevision] = await Promise.all([
+      prisma.actionItemTagLink.findMany({ where: { actionItemId: { in: [taskId, duplicateTaskId] } }, orderBy: [{ actionItemId: "asc" }, { tagId: "asc" }] }),
+      prisma.goalTagLink.findMany({ where: { goalId } }),
+      prisma.callRoomTagLink.findMany({ where: { roomId } }),
+      prisma.coachingNoteTagLink.findMany({ where: { noteId } }),
+      prisma.studioSourceAnnotationTag.findMany({ where: { annotationId } }),
+      prisma.studioTaggedSpan.findUniqueOrThrow({ where: { id: spanId } }),
+      prisma.studioKnowledgeNode.findUniqueOrThrow({ where: { id: nodeId } }),
+      prisma.mediaClip.findUniqueOrThrow({ where: { id: mediaClipId }, include: { tags: true } }),
+      prisma.studioTagAlias.findMany({ where: { tagId: sourceTagId }, orderBy: { label: "asc" } }),
+      prisma.studioTagAlias.findMany({ where: { tagId: targetTagId }, orderBy: { label: "asc" } }),
+      prisma.studioTagRevision.findFirstOrThrow({ where: { tagId: sourceTagId, operation: "merge-rollback" }, orderBy: { revision: "desc" } }),
+    ]);
+    expect(rolledBackTaskLinks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ actionItemId: taskId, tagId: sourceTagId, sourceJson: { fixture: "source-only" } }),
+      expect.objectContaining({ actionItemId: duplicateTaskId, tagId: sourceTagId, sourceJson: { fixture: "source-duplicate" } }),
+      expect.objectContaining({ actionItemId: duplicateTaskId, tagId: targetTagId, sourceJson: { fixture: "target-existing" } }),
+    ]));
+    expect(rolledBackTaskLinks).toHaveLength(3);
+    expect(rolledBackGoalLinks).toEqual([expect.objectContaining({ tagId: sourceTagId })]);
+    expect(rolledBackRoomLinks).toEqual([expect.objectContaining({ tagId: sourceTagId })]);
+    expect(rolledBackNoteLinks).toEqual([expect.objectContaining({ tagId: sourceTagId })]);
+    expect(rolledBackAnnotationLinks).toEqual([expect.objectContaining({ tagId: sourceTagId })]);
+    expect(rolledBackSpan.tagId).toBe(sourceTagId);
+    expect(rolledBackNode).toMatchObject({ tagId: sourceTagId, tagLabel: `Rough cut ${nonce}`, tagCategory: "meaning", nodeType: "source_note" });
+    expect(rolledBackClip.tags.map((tag) => tag.id)).toEqual([sourceTagId]);
+    expect(sourceAliases.map((alias) => alias.label)).toEqual([`Assembly ${nonce}`]);
+    expect(targetAliases).toHaveLength(0);
+    expect(rollbackRevision.snapshotJson).toMatchObject({
+      kind: "quipsly-tag-merge-rollback-v1",
+      rollbackReceiptId: rollbackResult.ok ? rollbackResult.rollbackReceiptId : "unreachable",
+      mergeReceiptId: result.ok ? result.receiptId : "unreachable",
+      boundaries: { externalSideEffects: false, immutableSourceTextMutated: false },
+    });
   });
 
   it("blocks same-range anchored writing collisions instead of deleting interpretation", async () => {
@@ -299,5 +385,22 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
     expect(result).toMatchObject({ ok: false, code: "BLOCKED", preview: { blockingConflicts: { anchoredSpanCollisions: 1 } } });
     await expect(prisma.studioTaggedSpan.count({ where: { blockId: block.id } })).resolves.toBe(2);
     await expect(prisma.studioTag.findUniqueOrThrow({ where: { id: sourceTag.id } })).resolves.toMatchObject({ isActive: true, mergedIntoTagId: null });
+
+    await prisma.studioTagMergeReceipt.create({
+      data: {
+        id: randomUUID(),
+        projectId,
+        sourceTagId: sourceTag.id,
+        targetTagId: targetTag.id,
+        actorUserId,
+        impactHash: "f".repeat(64),
+        snapshotJson: { kind: "quipsly-tag-merge-v1", boundaries: { exactRollbackSnapshot: false } },
+      },
+    });
+    await expect(previewWorkTagMergeRollback({ prisma, actorEmail, sourceTagId: sourceTag.id })).resolves.toMatchObject({
+      ok: false,
+      code: "UNSUPPORTED",
+      error: expect.stringContaining("older merge receipt"),
+    });
   });
 });
