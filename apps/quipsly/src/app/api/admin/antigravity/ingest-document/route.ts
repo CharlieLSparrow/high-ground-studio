@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { getPrismaClient } from '@/lib/prisma';
 import { createStudioProject, normalizeNestKind } from '@/lib/studio/project-registry';
 
-const prisma = getPrismaClient();
+export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
@@ -25,6 +25,8 @@ export async function POST(req: Request) {
     if (!userEmail || !projectName || !blocks || !Array.isArray(blocks)) {
       return NextResponse.json({ error: "Missing required fields (userEmail, projectName, blocks)" }, { status: 400 });
     }
+
+    const prisma = getPrismaClient();
 
     // 3. Resolve User
     const email = userEmail.toLowerCase().trim();

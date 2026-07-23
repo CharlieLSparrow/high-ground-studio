@@ -42,8 +42,8 @@ export function getMobileCaptureLocalVaultConfig() {
   if (!configuredRoot || !configuredOrigin || !localDatabaseConfigured()) {
     throw new Error("Local Capture vault requires an explicit root, loopback HTTP origin, and loopback PostgreSQL database.");
   }
-  const root = path.resolve(configuredRoot);
-  const temporaryRoot = path.resolve(os.tmpdir());
+  const root = path.resolve(/* turbopackIgnore: true */ configuredRoot);
+  const temporaryRoot = path.resolve(/* turbopackIgnore: true */ os.tmpdir());
   const relativeToTemporaryRoot = path.relative(temporaryRoot, root);
   if (!relativeToTemporaryRoot || relativeToTemporaryRoot.startsWith("..") || path.isAbsolute(relativeToTemporaryRoot)) {
     throw new Error("Local Capture vault root must be a dedicated directory below the operating-system temporary directory.");
@@ -64,8 +64,8 @@ export function getMobileCaptureLocalVaultConfig() {
 }
 
 function confinedPath(root: string, ...segments: string[]) {
-  const resolvedRoot = path.resolve(root);
-  const candidate = path.resolve(resolvedRoot, ...segments);
+  const resolvedRoot = path.resolve(/* turbopackIgnore: true */ root);
+  const candidate = path.resolve(/* turbopackIgnore: true */ resolvedRoot, ...segments);
   const relative = path.relative(resolvedRoot, candidate);
   if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
     throw new Error("Local Capture vault path escaped its configured root.");
@@ -86,7 +86,9 @@ export function localMobileCaptureObjectPath(objectName: string) {
 
 async function readEnvelope<T>(filePath: string): Promise<LocalManifestEnvelope<T> | null> {
   try {
-    const parsed = JSON.parse(await readFile(filePath, "utf8")) as LocalManifestEnvelope<T>;
+    const parsed = JSON.parse(
+      await readFile(/* turbopackIgnore: true */ filePath, "utf8"),
+    ) as LocalManifestEnvelope<T>;
     return typeof parsed.generation === "string" && parsed.manifest ? parsed : null;
   } catch (error: any) {
     if (error?.code === "ENOENT") return null;
@@ -95,16 +97,16 @@ async function readEnvelope<T>(filePath: string): Promise<LocalManifestEnvelope<
 }
 
 async function withLock<T>(lockPath: string, operation: () => Promise<T>) {
-  await mkdir(path.dirname(lockPath), { recursive: true });
+  await mkdir(/* turbopackIgnore: true */ path.dirname(lockPath), { recursive: true });
   for (let attempt = 0; attempt < 100; attempt += 1) {
     let lock;
     try {
-      lock = await open(lockPath, "wx", 0o600);
+      lock = await open(/* turbopackIgnore: true */ lockPath, "wx", 0o600);
       try {
         return await operation();
       } finally {
         await lock.close();
-        await unlink(lockPath).catch(() => undefined);
+        await unlink(/* turbopackIgnore: true */ lockPath).catch(() => undefined);
       }
     } catch (error: any) {
       if (error?.code !== "EEXIST") throw error;
@@ -136,10 +138,17 @@ export async function saveLocalMobileCaptureManifest<T>(
     }
     const generation = String(Number(existing?.generation ?? 0) + 1);
     const envelope = { generation, manifest };
-    await mkdir(path.dirname(target), { recursive: true });
+    await mkdir(/* turbopackIgnore: true */ path.dirname(target), { recursive: true });
     const temporary = `${target}.${randomUUID()}.tmp`;
-    await writeFile(temporary, JSON.stringify(envelope), { mode: 0o600 });
-    await rename(temporary, target);
+    await writeFile(
+      /* turbopackIgnore: true */ temporary,
+      JSON.stringify(envelope),
+      { mode: 0o600 },
+    );
+    await rename(
+      /* turbopackIgnore: true */ temporary,
+      /* turbopackIgnore: true */ target,
+    );
     return envelope;
   });
 }
@@ -176,15 +185,15 @@ export async function writeLocalMobileCaptureObject(args: {
     const existing = await loadLocalMobileCaptureObject(args.objectName);
     if (existing) return existing;
 
-    await mkdir(path.dirname(objectPath), { recursive: true });
+    await mkdir(/* turbopackIgnore: true */ path.dirname(objectPath), { recursive: true });
     let handle;
     try {
-      handle = await open(objectPath, "wx", 0o600);
+      handle = await open(/* turbopackIgnore: true */ objectPath, "wx", 0o600);
       await handle.writeFile(args.bytes);
       await handle.sync();
     } catch (error: any) {
       if (error?.code !== "EEXIST") throw error;
-      const existingBytes = await readFile(objectPath);
+      const existingBytes = await readFile(/* turbopackIgnore: true */ objectPath);
       const expectedSha256 = args.customMetadata.quipslyExpectedSha256;
       const existingSha256 = createHash("sha256").update(existingBytes).digest("hex");
       if (
@@ -206,7 +215,11 @@ export async function writeLocalMobileCaptureObject(args: {
       createdAt: new Date().toISOString(),
     };
     try {
-      await writeFile(metadataPath(objectPath), JSON.stringify(metadata), { mode: 0o600, flag: "wx" });
+      await writeFile(
+        /* turbopackIgnore: true */ metadataPath(objectPath),
+        JSON.stringify(metadata),
+        { mode: 0o600, flag: "wx" },
+      );
     } catch (error: any) {
       if (error?.code !== "EEXIST") throw error;
     }
@@ -219,8 +232,11 @@ export async function loadLocalMobileCaptureObject(objectName: string) {
   if (!objectPath) return null;
   try {
     const [metadata, objectStat] = await Promise.all([
-      readFile(metadataPath(objectPath), "utf8").then((value) => JSON.parse(value) as LocalObjectMetadata),
-      stat(objectPath),
+      readFile(
+        /* turbopackIgnore: true */ metadataPath(objectPath),
+        "utf8",
+      ).then((value) => JSON.parse(value) as LocalObjectMetadata),
+      stat(/* turbopackIgnore: true */ objectPath),
     ]);
     if (!objectStat.isFile() || objectStat.size !== metadata.sizeBytes) {
       throw new Error("Local Capture object does not match its immutable metadata receipt.");
@@ -237,7 +253,9 @@ export async function hashLocalMobileCaptureObject(objectName: string) {
   if (!object) throw new Error("Local Capture object is missing.");
   const hash = createHash("sha256");
   let streamedBytes = 0;
-  for await (const chunk of createReadStream(object.objectPath)) {
+  for await (const chunk of createReadStream(
+    /* turbopackIgnore: true */ object.objectPath,
+  )) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     streamedBytes += bytes.byteLength;
     hash.update(bytes);
@@ -248,5 +266,5 @@ export async function hashLocalMobileCaptureObject(objectName: string) {
 export async function readLocalMobileCaptureObject(objectName: string) {
   const object = await loadLocalMobileCaptureObject(objectName);
   if (!object) throw new Error("Local Capture object is missing.");
-  return readFile(object.objectPath);
+  return readFile(/* turbopackIgnore: true */ object.objectPath);
 }

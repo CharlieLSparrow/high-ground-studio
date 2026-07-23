@@ -63,12 +63,12 @@ function repoRootCandidate() {
   const candidates = [
     process.env.QUIPSLY_REPO_ROOT,
     process.cwd(),
-    path.resolve(process.cwd(), ".."),
-    path.resolve(process.cwd(), "../.."),
-    path.resolve(process.cwd(), "../../.."),
+    path.resolve(/* turbopackIgnore: true */ process.cwd(), ".."),
+    path.resolve(/* turbopackIgnore: true */ process.cwd(), "../.."),
+    path.resolve(/* turbopackIgnore: true */ process.cwd(), "../../.."),
   ].filter(Boolean) as string[];
 
-  return candidates.find((candidate) => existsSync(path.join(candidate, "apps/web/content/_inbox"))) ?? process.cwd();
+  return candidates.find((candidate) => existsSync(/* turbopackIgnore: true */ path.join(candidate, "apps/web/content/_inbox"))) ?? process.cwd();
 }
 
 function resolveHgoSource(sourceKey: HgoSourceKey) {
@@ -78,8 +78,8 @@ function resolveHgoSource(sourceKey: HgoSourceKey) {
   }
 
   const repoRoot = repoRootCandidate();
-  const sourceRoot = path.resolve(repoRoot, HGO_PODCAST_YEAR_ONE_BASE);
-  const sourcePath = path.resolve(sourceRoot, source.relativePath);
+  const sourceRoot = path.resolve(/* turbopackIgnore: true */ repoRoot, HGO_PODCAST_YEAR_ONE_BASE);
+  const sourcePath = path.resolve(/* turbopackIgnore: true */ sourceRoot, source.relativePath);
 
   if (!sourcePath.startsWith(sourceRoot)) {
     throw new Error("Refusing to import a source outside the approved HGO source root.");
@@ -448,11 +448,11 @@ export async function importHgoEpisodeSourceAction(projectSlug: string, sourceKe
     redirect(`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(existing.id)}`);
   }
 
-  if (!existsSync(source.sourcePath)) {
+  if (!existsSync(/* turbopackIgnore: true */ source.sourcePath)) {
     throw new Error(`HGO source file is missing: ${source.sourcePath}`);
   }
 
-  const rawText = await readFile(source.sourcePath, "utf-8");
+  const rawText = await readFile(/* turbopackIgnore: true */ source.sourcePath, "utf-8");
   const stableDocumentId = randomUUID();
   const provenanceBlock = [
     `${source.label}`,
