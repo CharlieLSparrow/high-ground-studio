@@ -150,6 +150,25 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(firstDue.exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryRecurrenceFrequency"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryRecurrenceInterval"].exists)
+
+        let timezone = app.buttons["CaptureQuickEntryRecurrenceTimezone"].firstMatch
+        reveal(timezone)
+        XCTAssertTrue(timezone.isHittable)
+        timezone.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureRecurrenceTimezonePicker"].waitForExistence(timeout: 5))
+        let timezoneSearch = app.searchFields.firstMatch
+        XCTAssertTrue(timezoneSearch.waitForExistence(timeout: 5))
+        timezoneSearch.tap()
+        timezoneSearch.typeText("Pacific/Honolulu")
+        let honolulu = app.buttons["CaptureRecurrenceTimezone_Pacific/Honolulu"].firstMatch
+        XCTAssertTrue(honolulu.waitForExistence(timeout: 5))
+        honolulu.tap()
+        XCTAssertEqual(timezone.value as? String, "Pacific/Honolulu")
+
+        let timezoneBoundary = app.descendants(matching: .any)["CaptureQuickEntryRecurrenceTimezoneBoundary"].firstMatch
+        reveal(timezoneBoundary)
+        XCTAssertTrue(timezoneBoundary.label.contains("Pacific/Honolulu"))
+        XCTAssertTrue(timezoneBoundary.label.contains("even if this iPhone travels"))
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "three-occurrence planning horizon")
         ).firstMatch.exists)

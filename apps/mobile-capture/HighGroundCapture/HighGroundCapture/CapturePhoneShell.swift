@@ -1344,6 +1344,8 @@ struct CaptureQuickEntrySheet: View {
     @State private var recurrenceFrequency = "WEEKLY"
     @State private var recurrenceInterval = 1
     @State private var recurrenceFirstDueAt = Date().addingTimeInterval(86_400)
+    @State private var recurrenceTimezoneID = TimeZone.autoupdatingCurrent.identifier
+    @State private var showsRecurrenceTimezonePicker = false
 
     private var availableTags: [MobileCaptureTag] {
         session?.availableTags ?? []
@@ -1391,8 +1393,9 @@ struct CaptureQuickEntrySheet: View {
 
     private var recurrence: MobileQuickEntryRecurrence? {
         guard kind == .task, recurrenceMode != "NONE" else { return nil }
-        let timezone = TimeZone.autoupdatingCurrent
-        let calendar = Calendar.autoupdatingCurrent
+        let timezone = recurrenceTimeZone
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timezone
         let components = calendar.dateComponents(in: timezone, from: recurrenceFirstDueAt)
         guard let year = components.year,
               let month = components.month,
@@ -1407,6 +1410,27 @@ struct CaptureQuickEntrySheet: View {
             localTimeMinutes: hour * 60 + minute,
             anchorLocalDate: String(format: "%04d-%02d-%02d", year, month, day)
         )
+    }
+
+    private var recurrenceTimeZone: TimeZone {
+        TimeZone(identifier: recurrenceTimezoneID) ?? .autoupdatingCurrent
+    }
+
+    private func selectRecurrenceTimeZone(_ identifier: String) {
+        guard let newTimeZone = TimeZone(identifier: identifier) else { return }
+        let oldTimeZone = recurrenceTimeZone
+        var oldCalendar = Calendar(identifier: .gregorian)
+        oldCalendar.timeZone = oldTimeZone
+        let wallClockComponents = oldCalendar.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: recurrenceFirstDueAt
+        )
+        var newCalendar = Calendar(identifier: .gregorian)
+        newCalendar.timeZone = newTimeZone
+        if let sameWallClockInNewZone = newCalendar.date(from: wallClockComponents) {
+            recurrenceFirstDueAt = sameWallClockInNewZone
+        }
+        recurrenceTimezoneID = newTimeZone.identifier
     }
 
     private var recurrenceUnitName: String {
@@ -1533,6 +1557,7 @@ struct CaptureQuickEntrySheet: View {
                                 selection: $recurrenceFirstDueAt,
                                 displayedComponents: [.date, .hourAndMinute]
                             )
+                            .environment(\.timeZone, recurrenceTimeZone)
                             .accessibilityIdentifier("CaptureQuickEntryRecurrenceFirstDue")
                             Picker("Unit", selection: $recurrenceFrequency) {
                                 Text("Day").tag("DAILY")
@@ -1542,7 +1567,30 @@ struct CaptureQuickEntrySheet: View {
                             .accessibilityIdentifier("CaptureQuickEntryRecurrenceFrequency")
                             Stepper("Every \(recurrenceInterval) \(recurrenceUnitName)\(recurrenceInterval == 1 ? "" : "s")", value: $recurrenceInterval, in: 1...365)
                                 .accessibilityIdentifier("CaptureQuickEntryRecurrenceInterval")
-                            LabeledContent("Timezone", value: TimeZone.autoupdatingCurrent.identifier)
+                            Button {
+                                showsRecurrenceTimezonePicker = true
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Text("Timezone")
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    Text(recurrenceTimezoneID)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .multilineTextAlignment(.trailing)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
+                                }
+                            }
+                            .accessibilityLabel("Task timezone")
+                            .accessibilityValue(recurrenceTimezoneID)
+                            .accessibilityHint("Choose the timezone that owns this task's wall-clock schedule.")
+                            .accessibilityIdentifier("CaptureQuickEntryRecurrenceTimezone")
+                            Text("The wall-clock due time stays in \(recurrenceTimezoneID), even if this iPhone travels.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .accessibilityIdentifier("CaptureQuickEntryRecurrenceTimezoneBoundary")
                         }
                     } header: {
                         Text("Repeat")
@@ -1586,10 +1634,99 @@ struct CaptureQuickEntrySheet: View {
                 }
             }
         }
+        .sheet(isPresented: $showsRecurrenceTimezonePicker) {
+            CaptureTimeZonePickerSheet(
+                selectedIdentifier: recurrenceTimezoneID,
+                onSelect: selectRecurrenceTimeZone
+            )
+        }
         .accessibilityIdentifier("CaptureQuickEntrySheet_\(kind.rawValue)")
     }
 
     var body: some View { bodyView }
+}
+
+private struct CaptureTimeZonePickerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+
+    let selectedIdentifier: String
+    let onSelect: (String) -> Void
+
+    private var currentIdentifier: String {
+        TimeZone.autoupdatingCurrent.identifier
+    }
+
+    private var matchingIdentifiers: [String] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return TimeZone.knownTimeZoneIdentifiers
+            .filter { identifier in
+                identifier != currentIdentifier
+                    && (query.isEmpty || identifier.localizedCaseInsensitiveContains(query))
+            }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("This iPhone") {
+                    timeZoneButton(currentIdentifier)
+                }
+
+                Section(searchText.isEmpty ? "All timezones" : "Matches") {
+                    ForEach(matchingIdentifiers, id: \.self) { identifier in
+                        timeZoneButton(identifier)
+                    }
+                }
+            }
+            .navigationTitle("Task timezone")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchText, prompt: "City or IANA timezone")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .accessibilityIdentifier("CaptureRecurrenceTimezonePicker")
+    }
+
+    private func timeZoneButton(_ identifier: String) -> some View {
+        Button {
+            onSelect(identifier)
+            dismiss()
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(identifier.replacingOccurrences(of: "_", with: " "))
+                        .foregroundStyle(.primary)
+                    Text(offsetLabel(for: identifier))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                if identifier == selectedIdentifier {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.tint)
+                }
+            }
+        }
+        .accessibilityLabel(identifier)
+        .accessibilityValue(identifier == selectedIdentifier ? "Selected" : offsetLabel(for: identifier))
+        .accessibilityIdentifier("CaptureRecurrenceTimezone_\(identifier)")
+    }
+
+    private func offsetLabel(for identifier: String) -> String {
+        guard let timeZone = TimeZone(identifier: identifier) else { return "Unknown offset" }
+        let seconds = timeZone.secondsFromGMT(for: Date())
+        let sign = seconds < 0 ? "−" : "+"
+        let magnitude = abs(seconds)
+        let hours = magnitude / 3_600
+        let minutes = (magnitude % 3_600) / 60
+        let abbreviation = timeZone.abbreviation(for: Date()).map { " · \($0)" } ?? ""
+        return String(format: "GMT%@%02d:%02d%@", sign, hours, minutes, abbreviation)
+    }
 }
 
 private struct CaptureLibraryView: View {
