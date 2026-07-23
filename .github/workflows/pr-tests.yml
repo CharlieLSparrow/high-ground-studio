@@ -16,6 +16,11 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Enforce binary asset budgets
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/audit-binary-assets.mjs --base "${BASE_SHA}" --head HEAD
+
       - name: Detect Quipsly release-slice changes
         id: changes
         shell: bash
@@ -58,6 +63,7 @@ jobs:
         if: steps.changes.outputs.quipsly == 'true'
         run: |
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/deploy-cloud-run.yml"); YAML.load_file(".github/workflows/pr-tests.yml"); puts "YAML OK"'
+          node --test scripts/ci/audit-binary-assets.test.mjs
           node --test scripts/ci/plan-changed-surfaces.test.mjs
           bash -n scripts/release/quipsly-build-context.sh
           bash -n scripts/release/quipsly-build-context.test.sh

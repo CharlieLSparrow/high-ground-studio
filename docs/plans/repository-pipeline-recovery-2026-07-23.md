@@ -134,6 +134,13 @@ One green stage cannot substitute for another.
   physical-device tests, and TestFlight-installed tests.
 - Require the Cloud auth preflight to call Firebase Admin, not merely mint an
   ADC token.
+- Remove `70` zero-reference generated-art files (`120.3 MiB`) and retain their
+  pushed recovery anchor at `f04cc42`.
+- Convert the `10` live generated-art PNGs from `20.1 MiB` to `1.3 MiB` of
+  dimension-identical WebP shipping derivatives.
+- Enforce a repository-wide pull-request budget: no new or growing binary asset
+  may exceed `1 MiB`, and total positive binary checkout growth may not exceed
+  `5 MiB`. Renames and reductions of oversized legacy assets remain allowed.
 
 ### Next corrections
 
