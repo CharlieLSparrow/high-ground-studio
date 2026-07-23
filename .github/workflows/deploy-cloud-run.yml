@@ -13,8 +13,8 @@ on:
           - web
           - studio
           - auto
-      apply_legacy_schema_bridge:
-        description: Allow the legacy Prisma db push bridge, including --accept-data-loss
+      apply_schema_changes:
+        description: Apply committed migrations and targeted additive schema syncs
         required: true
         default: false
         type: boolean
@@ -195,35 +195,33 @@ jobs:
           release_context="$(bash scripts/release/quipsly-build-context.sh "${GITHUB_SHA}")"
           echo "QUIPSLY_RELEASE_CONTEXT=${release_context}" >>"${GITHUB_ENV}"
 
-      - name: Build Prisma Migration Image
-        if: needs.plan.outputs.schema == 'true'
-        env:
-          IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/prisma-migrate:${{ github.sha }}
-          LATEST_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/prisma-migrate:latest
+      - name: Refuse unapproved schema changes
+        if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes != true
         run: |
-          docker buildx build \
-            --file ops/prisma-migrate.Dockerfile \
-            --tag "$IMAGE_URI" \
-            --tag "$LATEST_URI" \
-            --push \
-            .
-
-      - name: Refuse an unapproved legacy schema bridge
-        if: needs.plan.outputs.schema == 'true' && inputs.apply_legacy_schema_bridge != true
-        run: |
-          echo "This release requires the legacy schema bridge." >&2
-          echo "Re-run manually with apply_legacy_schema_bridge enabled only after reviewing the production schema diff." >&2
+          echo "This release includes schema-owned changes." >&2
+          echo "Re-run manually with apply_schema_changes enabled after reviewing committed migrations and targeted syncs." >&2
           exit 1
 
-      - name: Run explicitly approved legacy schema bridge
-        if: needs.plan.outputs.schema == 'true' && inputs.apply_legacy_schema_bridge == true
+      - name: Apply committed Prisma migrations
+        if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes == true
         env:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
+          MODE: migrate
           IMAGE_TAG: ${{ github.sha }}
+          SOURCE_REF: ${{ github.sha }}
+        run: bash scripts/release/quipsly-schema-job.sh
+
+      - name: Apply targeted additive schema syncs
+        if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes == true
+        env:
+          PROJECT_ID: ${{ env.GCP_PROJECT }}
+          REGION: ${{ env.GCP_REGION }}
+          MODE: targeted
+          IMAGE_TAG: ${{ github.sha }}
+          SOURCE_REF: ${{ github.sha }}
           SKIP_BUILD: "1"
-          ALLOW_PRISMA_ACCEPT_DATA_LOSS: "1"
-        run: bash scripts/release/quipsly-schema-sync.sh
+        run: bash scripts/release/quipsly-schema-job.sh
 
       - name: Build Studio Image
         env:

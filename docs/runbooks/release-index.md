@@ -21,10 +21,12 @@ Required stages:
 6. rollback path retained.
 
 The Cloud Run workflow is manual-only while the repository recovery branch is
-being integrated. Its legacy schema bridge is fail-closed and requires an
-explicit workflow approval because it still uses Prisma
-`db push --accept-data-loss`. Prefer committed migrations or a targeted
-additive schema job; never enable that bridge merely to make a deploy proceed.
+being integrated. Schema-owned releases require explicit approval, then build
+a 30 MiB-capped schema image from the selected committed SHA, apply committed
+Prisma migrations, and run the targeted additive syncs. The older
+`quipsly-schema-sync.sh` bridge still uses Prisma
+`db push --accept-data-loss`; it is fail-closed, is not part of the workflow,
+and must not be enabled merely to make a deploy proceed.
 
 ## Capture
 
