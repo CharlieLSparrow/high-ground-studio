@@ -263,6 +263,7 @@ final class CaptureExperienceModel: ObservableObject {
         title: String?,
         body: String,
         tagIDs: [String] = [],
+        newTagLabels: [String] = [],
         recurrence: MobileQuickEntryRecurrence? = nil
     ) -> Bool {
         let session = selectedSession
@@ -282,10 +283,13 @@ final class CaptureExperienceModel: ObservableObject {
                 title: title,
                 body: body,
                 tagIDs: tagIDs,
+                newTagLabels: newTagLabels,
                 recurrence: recurrence
             )
             quickEntrySyncMessage = kind == .source
                 ? "Source saved on this iPhone. Nest sync will place the same private ID in Inbox."
+                : !newTagLabels.isEmpty
+                    ? "\(kind.title) and \(newTagLabels.count) new tag name\(newTagLabels.count == 1 ? "" : "s") saved on this iPhone. Nest will create or reuse the same private vocabulary on sync."
                 : "\(kind.title) saved on this iPhone. Nest sync uses the same retry-safe ID."
             Task { [weak self] in
                 await self?.syncQuickEntry(entry)

@@ -19,6 +19,8 @@ TEST_RECURRENCE_AUTHORING_TITLE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_AUTHORING_
 TEST_RECURRENCE_EDIT_SOURCE_TITLE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_SOURCE_TITLE:-}"
 TEST_RECURRENCE_EDIT_FUTURE_TITLE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_FUTURE_TITLE:-}"
 TEST_RECURRENCE_EDIT_TIMEZONE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_TIMEZONE:-}"
+TEST_TAGGED_TASK_TITLE="${QUIPSLY_CAPTURE_UI_TEST_TAGGED_TASK_TITLE:-}"
+TEST_TAG_LABEL="${QUIPSLY_CAPTURE_UI_TEST_TAG_LABEL:-}"
 TIMEOUT_SECONDS="${QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:-900}"
 TEST_MODE="${QUIPSLY_CAPTURE_UI_TEST_MODE:-surface}"
 
@@ -64,8 +66,15 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  tag-authoring)
+    TEST_CASE="testIPhoneCreatesReusableNestTagWithCanonicalTask"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TAGGED_TASK_TITLE" || -z "$TEST_TAG_LABEL" ]]; then
+      echo "Tag-authoring mode requires an exact Session ID, unique Task title, and unique tag label." >&2
+      exit 2
+    fi
+    ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, or recurrence-missed)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, or tag-authoring)" >&2
     exit 2
     ;;
 esac
@@ -117,11 +126,11 @@ cleanup_smoke_credentials() {
 trap cleanup_smoke_credentials EXIT
 
 umask 077
-python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" <<'PY'
+python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" <<'PY'
 import json
 import sys
 
-path, base_url, email, password, session_id, session_title, task_id, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone = sys.argv[1:14]
+path, base_url, email, password, session_id, session_title, task_id, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label = sys.argv[1:16]
 with open(path, "w", encoding="utf-8") as handle:
     json.dump(
         {
@@ -137,6 +146,8 @@ with open(path, "w", encoding="utf-8") as handle:
             "recurrenceEditSourceTitle": recurrence_edit_source_title or None,
             "recurrenceEditFutureTitle": recurrence_edit_future_title or None,
             "recurrenceEditTimezone": recurrence_edit_timezone or None,
+            "taggedTaskTitle": tagged_task_title or None,
+            "tagLabel": tag_label or None,
         },
         handle,
     )

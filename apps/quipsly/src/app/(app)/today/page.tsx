@@ -6,7 +6,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 
 import { StudioAccessShell } from "../studio-access-shell";
-import { buildTodayView } from "./today-model";
+import { buildTodayView, type TodayTag } from "./today-model";
 
 export const dynamic = "force-dynamic";
 
@@ -96,6 +96,10 @@ export async function loadToday(userId: string, actorEmail: string) {
         sourceJson: true,
         room: { select: { id: true, title: true } },
         project: { select: { id: true, name: true, slug: true } },
+        tagLinks: {
+          orderBy: { tag: { label: "asc" } },
+          select: { tag: { select: { id: true, slug: true, label: true } } },
+        },
       },
     }),
     prisma.goal.findMany({
@@ -108,6 +112,10 @@ export async function loadToday(userId: string, actorEmail: string) {
         targetAt: true,
         updatedAt: true,
         project: { select: { id: true, name: true, slug: true } },
+        tagLinks: {
+          orderBy: { tag: { label: "asc" } },
+          select: { tag: { select: { id: true, slug: true, label: true } } },
+        },
       },
     }),
     prisma.workPlanBlock.findMany({
@@ -123,8 +131,30 @@ export async function loadToday(userId: string, actorEmail: string) {
         endsAt: true,
         timezone: true,
         status: true,
-        actionItem: { select: { id: true, title: true, status: true } },
-        goal: { select: { id: true, title: true, status: true } },
+        actionItem: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            projectId: true,
+            tagLinks: {
+              orderBy: { tag: { label: "asc" } },
+              select: { tag: { select: { id: true, slug: true, label: true } } },
+            },
+          },
+        },
+        goal: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            projectId: true,
+            tagLinks: {
+              orderBy: { tag: { label: "asc" } },
+              select: { tag: { select: { id: true, slug: true, label: true } } },
+            },
+          },
+        },
       },
     }),
   ]);
@@ -138,17 +168,50 @@ export async function loadToday(userId: string, actorEmail: string) {
     tasks: tasks.map((item: any) => ({
       ...item,
       project: item.project && visibleProjectIds.has(item.project.id) ? item.project : null,
+      tags: item.project && visibleProjectIds.has(item.project.id)
+        ? item.tagLinks.map((link: any) => link.tag)
+        : [],
     })),
     goals: goals.map((item: any) => ({
       ...item,
       project: item.project && visibleProjectIds.has(item.project.id) ? item.project : null,
+      tags: item.project && visibleProjectIds.has(item.project.id)
+        ? item.tagLinks.map((link: any) => link.tag)
+        : [],
     })),
-    planBlocks,
+    planBlocks: planBlocks.map((block: any) => ({
+      ...block,
+      actionItem: block.actionItem ? {
+        ...block.actionItem,
+        tags: visibleProjectIds.has(block.actionItem.projectId)
+          ? block.actionItem.tagLinks.map((link: any) => link.tag)
+          : [],
+      } : null,
+      goal: block.goal ? {
+        ...block.goal,
+        tags: visibleProjectIds.has(block.goal.projectId)
+          ? block.goal.tagLinks.map((link: any) => link.tag)
+          : [],
+      } : null,
+    })),
   });
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
   return <div className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-5 text-sm font-semibold leading-6 text-[#765f40]">{children}</div>;
+}
+
+function TagPills({ tags }: { tags: TodayTag[] }) {
+  if (!tags.length) return null;
+  return (
+    <ul aria-label="Tags" className="mt-2 flex flex-wrap gap-1.5">
+      {tags.map((tag) => (
+        <li key={tag.id} className="rounded-full border border-[#d8c7a7] bg-white px-2.5 py-1 text-[10px] font-black text-[#6f542f]">
+          {tag.label}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export default async function TodayPage() {
@@ -179,18 +242,18 @@ export default async function TodayPage() {
         <div className="grid gap-7 xl:grid-cols-2">
           <section aria-labelledby="today-plan" className="rounded-3xl border border-emerald-200 bg-white p-5 shadow-sm md:p-6">
             <div className="flex items-start gap-3"><CalendarClock className="mt-1 text-emerald-700" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-800">Chosen focus</p><h2 id="today-plan" className="mt-1 font-serif text-3xl font-black">Your plan</h2></div></div>
-            {today.planBlocks.length ? <ol className="mt-4 space-y-3">{today.planBlocks.map((block) => <li key={block.id} className="rounded-2xl border border-emerald-100 bg-emerald-50/45 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-emerald-800">{formatTime(block.startsAt, block.timezone)}–{formatTime(block.endsAt, block.timezone)} · {block.targetType}</p><Link href={`/work?${block.targetType === "task" ? "task" : "goal"}=${encodeURIComponent(block.targetId)}`} className="mt-1 block text-base font-black hover:underline">{block.title}</Link></div>{block.status === "COMPLETED" && <CheckCircle2 className="text-emerald-700" aria-label="Completed" />}</div></li>)}</ol> : <Empty>Nothing has been deliberately placed on Today yet. Use Calendar to choose a small, honest plan.</Empty>}
+            {today.planBlocks.length ? <ol className="mt-4 space-y-3">{today.planBlocks.map((block) => <li key={block.id} className="rounded-2xl border border-emerald-100 bg-emerald-50/45 p-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-wide text-emerald-800">{formatTime(block.startsAt, block.timezone)}–{formatTime(block.endsAt, block.timezone)} · {block.targetType}</p><Link href={`/work?${block.targetType === "task" ? "task" : "goal"}=${encodeURIComponent(block.targetId)}`} className="mt-1 block text-base font-black hover:underline">{block.title}</Link><TagPills tags={block.tags} /></div>{block.status === "COMPLETED" && <CheckCircle2 className="text-emerald-700" aria-label="Completed" />}</div></li>)}</ol> : <Empty>Nothing has been deliberately placed on Today yet. Use Calendar to choose a small, honest plan.</Empty>}
           </section>
 
           <section aria-labelledby="today-attention" className="rounded-3xl border border-amber-200 bg-white p-5 shadow-sm md:p-6">
             <div className="flex items-start gap-3"><ListChecks className="mt-1 text-amber-700" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-amber-800">Needs a decision</p><h2 id="today-attention" className="mt-1 font-serif text-3xl font-black">Committed work</h2></div></div>
-            {today.tasks.length ? <ul className="mt-4 space-y-3">{today.tasks.map((task) => <li key={task.id} className="rounded-2xl border border-amber-100 bg-amber-50/45 p-4"><p className="text-[10px] font-black uppercase tracking-wide text-amber-800">{task.reason}</p><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="mt-1 block text-base font-black hover:underline">{task.title}</Link>{task.project && <p className="mt-1 text-xs font-bold text-[#806a4d]">Nest: {task.project.name}</p>}{task.sessionTitle && <p className="mt-1 text-xs font-bold text-[#806a4d]">Session: {task.sessionTitle}</p>}</li>)}</ul> : <Empty>No committed work currently meets the bounded attention rules. Ordinary open tasks remain in Work.</Empty>}
+            {today.tasks.length ? <ul className="mt-4 space-y-3">{today.tasks.map((task) => <li key={task.id} className="rounded-2xl border border-amber-100 bg-amber-50/45 p-4"><p className="text-[10px] font-black uppercase tracking-wide text-amber-800">{task.reason}</p><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="mt-1 block text-base font-black hover:underline">{task.title}</Link><TagPills tags={task.tags} />{task.project && <p className="mt-1 text-xs font-bold text-[#806a4d]">Nest: {task.project.name}</p>}{task.sessionTitle && <p className="mt-1 text-xs font-bold text-[#806a4d]">Session: {task.sessionTitle}</p>}</li>)}</ul> : <Empty>No committed work currently meets the bounded attention rules. Ordinary open tasks remain in Work.</Empty>}
           </section>
         </div>
 
         <section aria-labelledby="today-goals" className="rounded-3xl border border-violet-200 bg-white p-5 shadow-sm md:p-6">
           <div className="flex items-start gap-3"><Target className="mt-1 text-violet-700" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-violet-800">Direction, not decoration</p><h2 id="today-goals" className="mt-1 font-serif text-3xl font-black">Active goals</h2></div></div>
-          {today.goals.length ? <div className="mt-4 grid gap-3 md:grid-cols-2">{today.goals.map((goal) => <article key={goal.id} className="rounded-2xl border border-violet-100 bg-violet-50/45 p-4"><Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="text-lg font-black hover:underline">{goal.title}</Link><p className="mt-2 text-xs font-bold text-violet-800">{goal.targetAt ? `Target ${formatDateTime(goal.targetAt)}` : "No target date inferred"}</p>{goal.project && <p className="mt-1 text-xs font-bold text-[#806a4d]">Nest: {goal.project.name}</p>}</article>)}</div> : <Empty>No actor-owned active goals are available.</Empty>}
+          {today.goals.length ? <div className="mt-4 grid gap-3 md:grid-cols-2">{today.goals.map((goal) => <article key={goal.id} className="rounded-2xl border border-violet-100 bg-violet-50/45 p-4"><Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="text-lg font-black hover:underline">{goal.title}</Link><TagPills tags={goal.tags ?? []} /><p className="mt-2 text-xs font-bold text-violet-800">{goal.targetAt ? `Target ${formatDateTime(goal.targetAt)}` : "No target date inferred"}</p>{goal.project && <p className="mt-1 text-xs font-bold text-[#806a4d]">Nest: {goal.project.name}</p>}</article>)}</div> : <Empty>No actor-owned active goals are available.</Empty>}
         </section>
 
         <footer className="rounded-2xl border border-[#e4d3b3] bg-[#fffaf0] p-5 text-xs font-semibold leading-5 text-[#765f40]">Today is read-only planning context. It excludes unreviewed transcript proposals and never schedules, messages, assigns, completes, delivers, or publishes anything by being opened.</footer>

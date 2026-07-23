@@ -14,6 +14,7 @@ import {
 } from "@/lib/server/mobile-capture-quick-entry";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { materializeTaskOccurrence, type PersistedTaskRecurrenceSeries } from "@/lib/server/task-recurrence";
+import { workTagSlug } from "@/lib/server/work-tags";
 import { initialOccurrencePlan } from "@/lib/task-recurrence";
 
 export const runtime = "nodejs";
@@ -104,6 +105,83 @@ function tagLinkSource(input: MobileCaptureQuickEntryInput) {
     surface: "ios-capture",
     clientRequestId: input.clientRequestId,
     explicitHumanCapture: true,
+  };
+}
+
+function canonicalTagLabel(label: string) {
+  return label.normalize("NFKC").toLocaleLowerCase("en-US");
+}
+
+async function resolveQuickEntryTags(
+  tx: any,
+  input: MobileCaptureQuickEntryInput,
+  room: { projectId: string | null },
+  actorEmail: string,
+) {
+  if ((input.tagIds.length > 0 || input.newTagLabels.length > 0) && !room.projectId) {
+    return { kind: "invalid-tags" as const };
+  }
+
+  const selected = input.tagIds.length > 0
+    ? await tx.studioTag.findMany({
+        where: { id: { in: input.tagIds }, projectId: room.projectId, isActive: true },
+        select: { id: true, slug: true, label: true },
+      })
+    : [];
+  if (selected.length !== input.tagIds.length) return { kind: "invalid-tags" as const };
+
+  if (input.newTagLabels.length > 0) {
+    const activeGrant = await tx.studioProjectAccessGrant.findFirst({
+      where: {
+        projectId: room.projectId,
+        email: actorEmail,
+        status: "ACTIVE",
+        role: { in: ["OWNER", "EDITOR"] },
+      },
+      select: { id: true },
+    });
+    if (!activeGrant) return { kind: "tag-creation-forbidden" as const };
+  }
+
+  const tagsById = new Map(selected.map((tag: any) => [tag.id, tag]));
+  let createdTagCount = 0;
+  for (const label of input.newTagLabels) {
+    const slug = workTagSlug(label);
+    let tag = await tx.studioTag.findUnique({
+      where: { projectId_slug: { projectId: room.projectId, slug } },
+      select: { id: true, slug: true, label: true, isActive: true },
+    });
+    if (tag) {
+      if (!tag.isActive) return { kind: "archived-tag" as const, label };
+      if (canonicalTagLabel(tag.label) !== canonicalTagLabel(label)) {
+        return { kind: "tag-slug-conflict" as const, label, existingLabel: tag.label };
+      }
+    } else {
+      tag = await tx.studioTag.create({
+        data: {
+          projectId: room.projectId,
+          slug,
+          label,
+          category: "meaning",
+          nodeType: "source_note",
+          isPrivate: true,
+          isActive: true,
+        },
+        select: { id: true, slug: true, label: true, isActive: true },
+      });
+      createdTagCount += 1;
+    }
+    tagsById.set(tag.id, tag);
+  }
+
+  const tags = [...tagsById.values()]
+    .map(({ id, slug, label }: any) => ({ id, slug, label }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+  return {
+    kind: "resolved" as const,
+    tags,
+    createdTagCount,
+    reusedTagCount: input.newTagLabels.length - createdTagCount,
   };
 }
 
@@ -340,15 +418,16 @@ export async function POST(request: Request) {
       select: { id: true, title: true, projectId: true },
     });
     if (input.kind !== "SOURCE" && !room) return { kind: "missing-room" as const };
-    if (input.tagIds.length > 0 && !room?.projectId) return { kind: "invalid-tags" as const };
-    const tags = input.tagIds.length > 0
-      ? await tx.studioTag.findMany({
-          where: { id: { in: input.tagIds }, projectId: room.projectId, isActive: true },
-          orderBy: { label: "asc" },
-          select: { id: true, slug: true, label: true },
-        })
-      : [];
-    if (tags.length !== input.tagIds.length) return { kind: "invalid-tags" as const };
+    const tagResolution = input.kind === "SOURCE"
+      ? { kind: "resolved" as const, tags: [], createdTagCount: 0, reusedTagCount: 0 }
+      : await resolveQuickEntryTags(
+          tx,
+          input,
+          room,
+          (session.user.primaryEmail || session.user.email || "").trim().toLowerCase(),
+        );
+    if (tagResolution.kind !== "resolved") return tagResolution;
+    const { tags } = tagResolution;
 
     const existing = await existingEntry(tx, input, session.user.id);
     if (existing) {
@@ -357,7 +436,17 @@ export async function POST(request: Request) {
       }
       const receipt = await ensureSourceCaptureReceipt(tx, input, session.user, existing);
       if (!receipt.ok) return { kind: "identity-conflict" as const };
-      return { kind: "saved" as const, room, tags, ...existing, ...receipt, idempotentReplay: true, sourceIdentityReused: input.kind === "SOURCE" };
+      return {
+        kind: "saved" as const,
+        room,
+        tags,
+        createdTagCount: tagResolution.createdTagCount,
+        reusedTagCount: tagResolution.reusedTagCount,
+        ...existing,
+        ...receipt,
+        idempotentReplay: true,
+        sourceIdentityReused: input.kind === "SOURCE",
+      };
     }
 
     const saved = await createEntry(tx, input, session.user.id, room || { id: null, projectId: null }, tags);
@@ -366,7 +455,16 @@ export async function POST(request: Request) {
     }
     const receipt = await ensureSourceCaptureReceipt(tx, input, session.user, saved);
     if (!receipt.ok) return { kind: "identity-conflict" as const };
-    return { kind: "saved" as const, room, tags, ...saved, ...receipt, idempotentReplay: false };
+    return {
+      kind: "saved" as const,
+      room,
+      tags,
+      createdTagCount: tagResolution.createdTagCount,
+      reusedTagCount: tagResolution.reusedTagCount,
+      ...saved,
+      ...receipt,
+      idempotentReplay: false,
+    };
   }, { isolationLevel: "Serializable" });
   let result;
   try {
@@ -399,12 +497,35 @@ export async function POST(request: Request) {
       { status: 409 },
     );
   }
+  if (result.kind === "tag-creation-forbidden") {
+    return NextResponse.json(
+      { ok: false, code: "QUICK_ENTRY_TAG_CREATE_FORBIDDEN", error: "Editor access to this Session's Nest is required to create a reusable tag. The phone copy remains available for review.", localOutboxRetained: true },
+      { status: 403 },
+    );
+  }
+  if (result.kind === "archived-tag") {
+    return NextResponse.json(
+      { ok: false, code: "QUICK_ENTRY_TAG_ARCHIVED", error: `“${result.label}” is archived in this Nest. The phone copy remains available for review.`, localOutboxRetained: true },
+      { status: 409 },
+    );
+  }
+  if (result.kind === "tag-slug-conflict") {
+    return NextResponse.json(
+      { ok: false, code: "QUICK_ENTRY_TAG_SLUG_CONFLICT", error: `“${result.label}” conflicts with the existing “${result.existingLabel}” tag. Rename it on the phone before retrying.`, localOutboxRetained: true },
+      { status: 409 },
+    );
+  }
 
   return NextResponse.json({
     ok: true,
     schema: "quipsly-mobile-quick-entry-v1",
     idempotentReplay: result.idempotentReplay,
     entry: publicEntry(input.kind, result.row, result.room, result.model, result.tags, result.recurrenceSeries),
+    tagVocabulary: input.kind === "SOURCE" ? null : {
+      requestedNewLabels: input.newTagLabels,
+      createdCount: result.createdTagCount,
+      reusedCount: result.reusedTagCount,
+    },
     sourceCapture: input.kind === "SOURCE" ? {
       receiptId: result.receipt?.id || null,
       captureCount: result.captureCount,

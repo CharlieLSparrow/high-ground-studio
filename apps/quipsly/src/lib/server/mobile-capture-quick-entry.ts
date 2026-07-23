@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { normalizeWorkTagLabel } from "@/lib/server/work-tags";
 import { validateTaskRecurrenceRule, type TaskRecurrenceRule } from "@/lib/task-recurrence";
 
 export const MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA = "quipsly-mobile-quick-entry-v1" as const;
@@ -14,6 +15,7 @@ export type MobileCaptureQuickEntryInput = {
   body: string;
   sourceUrl: string | null;
   tagIds: string[];
+  newTagLabels: string[];
   capturedAt: Date;
   recurrence: TaskRecurrenceRule | null;
 };
@@ -55,6 +57,9 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   const sourceUrl = rawSourceUrl ? mobileCaptureQuickEntryUrl(rawSourceUrl) : null;
   const rawTagIds = Array.isArray(body.tagIds) ? body.tagIds : [];
   const tagIds = [...new Set(rawTagIds.map((value) => normalizedText(value, 200)).filter(Boolean))].sort();
+  const rawNewTagLabels = Array.isArray(body.newTagLabels) ? body.newTagLabels : [];
+  const newTagLabels = rawNewTagLabels.map(normalizeWorkTagLabel).filter(Boolean);
+  const canonicalNewTagLabels = newTagLabels.map((label) => label.normalize("NFKC").toLocaleLowerCase("en-US"));
   const capturedAt = parsedCapturedAt(body.capturedAt);
   const rawRecurrence = record(body.recurrence);
   const hasRecurrence = Object.keys(rawRecurrence).length > 0;
@@ -96,10 +101,15 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   if (rawSourceUrl && (!sourceUrl || kind !== "SOURCE")) {
     return { ok: false, code: "QUICK_ENTRY_SOURCE_URL_INVALID", error: "Source provenance must be an HTTP(S) webpage URL attached to a source capture." };
   }
-  if (rawTagIds.length > 8 || tagIds.length !== rawTagIds.length) {
-    return { ok: false, code: "QUICK_ENTRY_TAGS_INVALID", error: "Choose at most eight distinct canonical Nest tags." };
+  if (
+    rawTagIds.length + rawNewTagLabels.length > 8
+    || tagIds.length !== rawTagIds.length
+    || newTagLabels.length !== rawNewTagLabels.length
+    || new Set(canonicalNewTagLabels).size !== canonicalNewTagLabels.length
+  ) {
+    return { ok: false, code: "QUICK_ENTRY_TAGS_INVALID", error: "Choose or name at most eight distinct canonical Nest tags." };
   }
-  if (kind === "SOURCE" && tagIds.length > 0) {
+  if (kind === "SOURCE" && (tagIds.length > 0 || newTagLabels.length > 0)) {
     return { ok: false, code: "QUICK_ENTRY_SOURCE_TAGS_REQUIRE_FILING", error: "Choose tags after filing this private source into a Research Nest." };
   }
   const bodyUrl = kind === "SOURCE" ? mobileCaptureQuickEntryUrl(entryBody) : null;
@@ -130,6 +140,7 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
       body: entryBody,
       sourceUrl,
       tagIds,
+      newTagLabels,
       capturedAt,
       recurrence,
     },
@@ -154,6 +165,7 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
     projectId,
     sourceUrl: input.sourceUrl,
     tagIds: input.tagIds,
+    newTagLabels: input.newTagLabels,
     capturedAt: input.capturedAt.toISOString(),
     actorUserId,
     humanCommitted: true,
@@ -166,16 +178,24 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
   };
 }
 
-export function isMobileCaptureQuickEntrySource(value: unknown, expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "kind" | "tagIds">, actorUserId: string) {
+export function isMobileCaptureQuickEntrySource(
+  value: unknown,
+  expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "kind" | "tagIds" | "newTagLabels">,
+  actorUserId: string,
+) {
   const source = record(value);
   const sourceTagIds = Array.isArray(source.tagIds)
     ? source.tagIds.map((value) => normalizedText(value, 200)).filter(Boolean).sort()
+    : [];
+  const sourceNewTagLabels = Array.isArray(source.newTagLabels)
+    ? source.newTagLabels.map(normalizeWorkTagLabel).filter(Boolean)
     : [];
   return source.schema === MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA
     && source.clientRequestId === expected.clientRequestId
     && source.callRoomId === expected.callRoomId
     && source.actorUserId === actorUserId
     && JSON.stringify(sourceTagIds) === JSON.stringify(expected.tagIds)
+    && JSON.stringify(sourceNewTagLabels) === JSON.stringify(expected.newTagLabels)
     && source.origin === "explicit-human-capture";
 }
 

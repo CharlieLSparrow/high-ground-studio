@@ -53,6 +53,7 @@ struct PendingMobileQuickEntry: Codable, Identifiable, Equatable {
     let body: String
     let sourceURL: String?
     let tagIDs: [String]?
+    let newTagLabels: [String]?
     let recurrence: MobileQuickEntryRecurrence?
     let capturedAt: Date
     var disposition: Disposition
@@ -74,6 +75,7 @@ struct PendingMobileQuickEntry: Codable, Identifiable, Equatable {
 enum MobileQuickEntryStoreError: LocalizedError {
     case accountIdentityUnavailable
     case emptyContent
+    case invalidTags
     case ledgerUnavailable
 
     var errorDescription: String? {
@@ -82,6 +84,8 @@ enum MobileQuickEntryStoreError: LocalizedError {
             "Verify the current Quipsly account before saving this quick capture."
         case .emptyContent:
             "Write the note, task, goal, or source before saving it."
+        case .invalidTags:
+            "Choose or name at most eight distinct Nest tags before saving."
         case .ledgerUnavailable:
             "The protected quick-capture outbox is unavailable. Nothing was claimed as saved."
         }
@@ -159,6 +163,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
         body: String,
         sourceURL: String? = nil,
         tagIDs: [String] = [],
+        newTagLabels: [String] = [],
         recurrence: MobileQuickEntryRecurrence? = nil,
         capturedAt: Date = Date()
     ) throws -> PendingMobileQuickEntry {
@@ -182,6 +187,16 @@ final class MobileQuickEntryOutbox: ObservableObject {
         guard recurrence == nil || kind == .task else {
             throw MobileQuickEntryStoreError.emptyContent
         }
+        let cleanTagIDs = Array(Set(
+            tagIDs
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+        )).sorted()
+        let cleanNewTagLabels = Self.normalizedTagLabels(newTagLabels)
+        guard kind != .source || cleanTagIDs.isEmpty && cleanNewTagLabels.isEmpty,
+              cleanTagIDs.count + cleanNewTagLabels.count <= 8 else {
+            throw MobileQuickEntryStoreError.invalidTags
+        }
 
         let entry = PendingMobileQuickEntry(
             id: UUID(),
@@ -193,7 +208,8 @@ final class MobileQuickEntryOutbox: ObservableObject {
             title: cleanTitle?.isEmpty == false ? cleanTitle : nil,
             body: cleanBody,
             sourceURL: sourceURL.flatMap(Self.normalizedHTTPURL),
-            tagIDs: Array(Set(tagIDs.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty })).sorted(),
+            tagIDs: cleanTagIDs,
+            newTagLabels: cleanNewTagLabels,
             recurrence: recurrence,
             capturedAt: capturedAt,
             disposition: .pending,
@@ -289,6 +305,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
                         body: body,
                         sourceURL: sourceURL,
                         tagIDs: nil,
+                        newTagLabels: nil,
                         recurrence: nil,
                         capturedAt: envelope.capturedAt,
                         disposition: .pending,
@@ -395,5 +412,23 @@ final class MobileQuickEntryOutbox: ObservableObject {
               let url = URL(string: trimmed),
               ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return nil }
         return url.absoluteString
+    }
+
+    nonisolated private static func normalizedTagLabels(_ values: [String]) -> [String] {
+        var seen = Set<String>()
+        var normalized: [String] = []
+        for rawValue in values {
+            let label = rawValue
+                .precomposedStringWithCompatibilityMapping
+                .replacingOccurrences(of: #"[\u{0000}-\u{001F}\u{007F}]"#, with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: #"^#+\s*"#, with: "", options: .regularExpression)
+                .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            guard !label.isEmpty, label.count <= 80 else { continue }
+            let key = label.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_US_POSIX"))
+            guard seen.insert(key).inserted else { continue }
+            normalized.append(label)
+        }
+        return normalized
     }
 }

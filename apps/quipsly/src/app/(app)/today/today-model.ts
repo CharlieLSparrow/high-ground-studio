@@ -9,6 +9,12 @@ export type TodaySession = {
   project?: { name: string; slug: string } | null;
 };
 
+export type TodayTag = {
+  id: string;
+  slug: string;
+  label: string;
+};
+
 export type TodayTask = {
   id: string;
   title: string;
@@ -18,6 +24,7 @@ export type TodayTask = {
   sourceJson?: unknown;
   room?: { id: string; title?: string | null } | null;
   project?: { name: string; slug: string } | null;
+  tags?: TodayTag[];
 };
 
 export type TodayGoal = {
@@ -26,6 +33,7 @@ export type TodayGoal = {
   targetAt?: Date | string | null;
   updatedAt: Date | string;
   project?: { name: string; slug: string } | null;
+  tags?: TodayTag[];
 };
 
 export type TodayPlanBlock = {
@@ -34,8 +42,8 @@ export type TodayPlanBlock = {
   endsAt: Date | string;
   timezone: string;
   status: string;
-  actionItem?: { id: string; title: string; status: string } | null;
-  goal?: { id: string; title: string; status: string } | null;
+  actionItem?: { id: string; title: string; status: string; tags?: TodayTag[] } | null;
+  goal?: { id: string; title: string; status: string; tags?: TodayTag[] } | null;
 };
 
 function time(value: Date | string | null | undefined) {
@@ -115,6 +123,7 @@ export function buildTodayView(input: {
       endsAt: iso(block.endsAt)!,
       timezone: block.timezone,
       status: block.status,
+      tags: (block.actionItem ?? block.goal)!.tags ?? [],
     }));
 
   const plannedTaskIds = new Set(planBlocks.filter((block) => block.targetType === "task").map((block) => block.targetId));
@@ -140,6 +149,7 @@ export function buildTodayView(input: {
         roomId: task.room?.id ?? null,
         sessionTitle: task.room?.title ?? null,
         project: task.project ?? null,
+        tags: task.tags ?? [],
         reason,
         rank,
         createdAt: Number.isFinite(createdAt) ? createdAt : 0,

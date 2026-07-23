@@ -21,6 +21,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let recurrenceEditSourceTitle: String?
         let recurrenceEditFutureTitle: String?
         let recurrenceEditTimezone: String?
+        let taggedTaskTitle: String?
+        let tagLabel: String?
         let goalID: String?
         let planBlockID: String?
     }
@@ -44,6 +46,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 recurrenceEditSourceTitle: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_SOURCE_TITLE"],
                 recurrenceEditFutureTitle: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_FUTURE_TITLE"],
                 recurrenceEditTimezone: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_TIMEZONE"],
+                taggedTaskTitle: environment["QUIPSLY_CAPTURE_UI_TEST_TAGGED_TASK_TITLE"],
+                tagLabel: environment["QUIPSLY_CAPTURE_UI_TEST_TAG_LABEL"],
                 goalID: environment["QUIPSLY_CAPTURE_UI_TEST_GOAL_ID"],
                 planBlockID: environment["QUIPSLY_CAPTURE_UI_TEST_PLAN_BLOCK_ID"]
             )
@@ -80,6 +84,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             recurrenceEditSourceTitle: payload["recurrenceEditSourceTitle"] as? String,
             recurrenceEditFutureTitle: payload["recurrenceEditFutureTitle"] as? String,
             recurrenceEditTimezone: payload["recurrenceEditTimezone"] as? String,
+            taggedTaskTitle: payload["taggedTaskTitle"] as? String,
+            tagLabel: payload["tagLabel"] as? String,
             goalID: payload["goalID"] as? String,
             planBlockID: payload["planBlockID"] as? String
         )
@@ -279,6 +285,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         body: String,
         expectedMessage: String,
         sessionID: String,
+        newTagLabel: String? = nil,
         in app: XCUIApplication
     ) {
         let entryButton = app.buttons["CaptureQuickEntry_\(kind)_\(sessionID)"].firstMatch
@@ -301,6 +308,21 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         bodyField.tap()
         bodyField.typeText(body)
 
+        if let newTagLabel {
+            let tagField = app.textFields["CaptureQuickEntryNewTagField"].firstMatch
+            for _ in 0..<10 where !tagField.isHittable {
+                app.swipeUp()
+            }
+            XCTAssertTrue(tagField.isHittable, "The signed-in quick capture sheet should expose reusable Nest tag authoring.")
+            tagField.tap()
+            tagField.typeText(newTagLabel)
+            let addTag = app.buttons["CaptureQuickEntryNewTagAdd"].firstMatch
+            XCTAssertTrue(addTag.isEnabled)
+            addTag.tap()
+            XCTAssertTrue(app.buttons["Remove new tag \(newTagLabel)"].waitForExistence(timeout: 4))
+            XCTAssertTrue(app.staticTexts["New on sync"].exists)
+        }
+
         let save = app.buttons["CaptureQuickEntrySave"].firstMatch
         XCTAssertTrue(save.isEnabled)
         save.tap()
@@ -310,6 +332,28 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "Nest should acknowledge the canonical \(kind.lowercased()) before this operated journey continues."
         )
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists, "A successful sync must not leave a retryable phone record behind.")
+    }
+
+    func testIPhoneCreatesReusableNestTagWithCanonicalTask() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let taskTitle = credentials.taggedTaskTitle, !taskTitle.isEmpty,
+              let tagLabel = credentials.tagLabel, !tagLabel.isEmpty else {
+            throw XCTSkip("Tag authoring requires an exact Session ID, unique Task title, and unique tag label.")
+        }
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: app)
+        selectRequestedSession(in: app, credentials: credentials)
+
+        saveQuickEntry(
+            kind: "TASK",
+            title: taskTitle,
+            body: "Created from the signed native Capture app to prove one reusable tag identity reaches the canonical Nest.",
+            expectedMessage: "The task is saved and assigned to you. Set its timing from Today, Work, or Calendar when useful.",
+            sessionID: sessionID,
+            newTagLabel: tagLabel,
+            in: app
+        )
     }
 
     func testCoachingQuickEntriesSyncToCanonicalNest() throws {

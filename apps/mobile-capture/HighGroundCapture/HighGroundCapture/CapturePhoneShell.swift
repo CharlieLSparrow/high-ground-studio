@@ -1338,10 +1338,56 @@ struct CaptureQuickEntrySheet: View {
     @State private var title = ""
     @State private var entryBody = ""
     @State private var selectedTagIDs: Set<String> = []
+    @State private var newTagDraft = ""
+    @State private var newTagLabels: [String] = []
     @State private var recurrenceMode = "NONE"
     @State private var recurrenceFrequency = "WEEKLY"
     @State private var recurrenceInterval = 1
     @State private var recurrenceFirstDueAt = Date().addingTimeInterval(86_400)
+
+    private var availableTags: [MobileCaptureTag] {
+        session?.availableTags ?? []
+    }
+
+    private var normalizedNewTagDraft: String {
+        newTagDraft
+            .precomposedStringWithCompatibilityMapping
+            .replacingOccurrences(of: #"[\u{0000}-\u{001F}\u{007F}]"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: #"^#+\s*"#, with: "", options: .regularExpression)
+            .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+    }
+
+    private var selectedTagCount: Int {
+        selectedTagIDs.count + newTagLabels.count
+    }
+
+    private func canonicalTagLabel(_ label: String) -> String {
+        label.folding(
+            options: [.caseInsensitive, .diacriticInsensitive],
+            locale: Locale(identifier: "en_US_POSIX")
+        )
+    }
+
+    private func addNewTagIntent() {
+        let label = normalizedNewTagDraft
+        guard !label.isEmpty, label.count <= 80, selectedTagCount < 8 else { return }
+        if let existing = availableTags.first(where: {
+            canonicalTagLabel($0.label) == canonicalTagLabel(label)
+        }) {
+            selectedTagIDs.insert(existing.id)
+            newTagDraft = ""
+            return
+        }
+        guard !newTagLabels.contains(where: {
+            canonicalTagLabel($0) == canonicalTagLabel(label)
+        }) else {
+            newTagDraft = ""
+            return
+        }
+        newTagLabels.append(label)
+        newTagDraft = ""
+    }
 
     private var recurrence: MobileQuickEntryRecurrence? {
         guard kind == .task, recurrenceMode != "NONE" else { return nil }
@@ -1409,13 +1455,13 @@ struct CaptureQuickEntrySheet: View {
                     .accessibilityIdentifier("CaptureQuickEntryBody")
                 }
 
-                if kind != .source, let tags = session?.availableTags, !tags.isEmpty {
+                if kind != .source, session?.projectId?.nonempty != nil {
                     Section {
-                        ForEach(tags) { tag in
+                        ForEach(availableTags) { tag in
                             Button {
                                 if selectedTagIDs.contains(tag.id) {
                                     selectedTagIDs.remove(tag.id)
-                                } else if selectedTagIDs.count < 8 {
+                                } else if selectedTagCount < 8 {
                                     selectedTagIDs.insert(tag.id)
                                 }
                             } label: {
@@ -1432,10 +1478,43 @@ struct CaptureQuickEntrySheet: View {
                             .accessibilityIdentifier("CaptureQuickEntryTag_\(tag.id)")
                             .accessibilityValue(selectedTagIDs.contains(tag.id) ? "Selected" : "Not selected")
                         }
+
+                        ForEach(newTagLabels, id: \.self) { label in
+                            Button {
+                                newTagLabels.removeAll { $0 == label }
+                            } label: {
+                                HStack {
+                                    Label(label, systemImage: "tag.fill")
+                                    Spacer()
+                                    Text("New on sync")
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove new tag \(label)")
+                        }
+
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            TextField("New reusable tag", text: $newTagDraft)
+                                .textInputAutocapitalization(.words)
+                                .submitLabel(.done)
+                                .onSubmit(addNewTagIntent)
+                                .accessibilityIdentifier("CaptureQuickEntryNewTagField")
+                            Button("Add", action: addNewTagIntent)
+                                .disabled(
+                                    normalizedNewTagDraft.isEmpty
+                                    || normalizedNewTagDraft.count > 80
+                                    || selectedTagCount >= 8
+                                )
+                                .accessibilityIdentifier("CaptureQuickEntryNewTagAdd")
+                        }
                     } header: {
                         Text("Nest tags")
                     } footer: {
-                        Text("Choose up to eight existing tags. The same canonical tag will appear on this record in Today, Work, Search, and its Session.")
+                        Text("Choose or name up to eight tags. New names are protected in the phone outbox, then Nest creates or reuses the private canonical tag during sync. Work, Search, and this Session use that same canonical tag; Today keeps it when the work is planned or needs attention there.")
                     }
                 }
 
@@ -1491,7 +1570,14 @@ struct CaptureQuickEntrySheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        if model.saveQuickEntry(kind: kind, title: title, body: entryBody, tagIDs: Array(selectedTagIDs).sorted(), recurrence: recurrence) {
+                        if model.saveQuickEntry(
+                            kind: kind,
+                            title: title,
+                            body: entryBody,
+                            tagIDs: Array(selectedTagIDs).sorted(),
+                            newTagLabels: newTagLabels,
+                            recurrence: recurrence
+                        ) {
                             dismiss()
                         }
                     }

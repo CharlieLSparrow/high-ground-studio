@@ -14,7 +14,7 @@ describe("Nest Today model", () => {
       tasks: [
         { id: "planned", title: "Proof listen", createdAt: now },
         { id: "candidate", title: "Maybe publish", createdAt: now, sourceJson: { source: "transcript-packet-builder", candidate: true } },
-        { id: "due", title: "Send outline", dueAt: "2026-07-19T17:00:00.000Z", createdAt: now },
+        { id: "due", title: "Send outline", dueAt: "2026-07-19T17:00:00.000Z", createdAt: now, tags: [{ id: "tag-1", slug: "episode-5", label: "Episode 5" }] },
         { id: "ordinary", title: "Someday", createdAt: now },
       ],
       goals: [{ id: "goal", title: "Ship Episode 5", updatedAt: now }],
@@ -24,6 +24,7 @@ describe("Nest Today model", () => {
     expect(result.planBlocks.map((block) => block.targetId)).toEqual(["planned"]);
     expect(result.tasks.map((task) => task.id)).toEqual(["due"]);
     expect(result.tasks[0]?.reason).toBe("Due within 24 hours");
+    expect(result.tasks[0]?.tags).toEqual([{ id: "tag-1", slug: "episode-5", label: "Episode 5" }]);
     expect(result.goals.map((goal) => goal.id)).toEqual(["goal"]);
     expect(result.boundaries).toMatchObject({ deliberatePlanLimit: 4, externalSideEffects: false });
   });

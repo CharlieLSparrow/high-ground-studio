@@ -35,12 +35,20 @@ function harness(existing: any = null) {
   const capturedAt = new Date("2026-07-19T09:00:00.000Z");
   const room = { id: "room-1", title: "Episode 4", projectId: "project-1" };
   const createdTasks = new Map<string, any>();
+  const tagsBySlug = new Map<string, any>();
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ lockAcquired: false }]),
     callRoom: { findFirst: jest.fn().mockResolvedValue(room) },
     studioTag: {
       findMany: jest.fn(async ({ where }: any) => (where.id.in as string[]).map((id) => ({ id, slug: `slug-${id}`, label: `Tag ${id}` }))),
+      findUnique: jest.fn(async ({ where }: any) => tagsBySlug.get(where.projectId_slug.slug) || null),
+      create: jest.fn(async ({ data }: any) => {
+        const tag = { id: `tag-${data.slug}`, ...data };
+        tagsBySlug.set(data.slug, tag);
+        return tag;
+      }),
     },
+    studioProjectAccessGrant: { findFirst: jest.fn().mockResolvedValue({ id: "grant-1" }) },
     coachingNoteTagLink: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
     actionItemTagLink: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
     goalTagLink: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -219,6 +227,76 @@ describe("mobile Capture quick-entry route", () => {
     expect(response.status).toBe(409);
     expect(await response.json()).toMatchObject({ code: "QUICK_ENTRY_TAGS_UNAVAILABLE", localOutboxRetained: true });
     expect(tx.actionItem.upsert).not.toHaveBeenCalled();
+  });
+
+  it("creates a new private Nest tag atomically with the captured task and returns the canonical identity", async () => {
+    signedIn();
+    const tx = harness();
+    const response = await POST(request("TASK", { newTagLabels: ["Product development"] }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(tx.studioProjectAccessGrant.findFirst).toHaveBeenCalledWith({
+      where: {
+        projectId: "project-1",
+        email: "person@example.com",
+        status: "ACTIVE",
+        role: { in: ["OWNER", "EDITOR"] },
+      },
+      select: { id: true },
+    });
+    expect(tx.studioTag.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        projectId: "project-1",
+        slug: "product-development",
+        label: "Product development",
+        isPrivate: true,
+        isActive: true,
+      }),
+      select: { id: true, slug: true, label: true, isActive: true },
+    });
+    expect(tx.actionItemTagLink.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        actionItemId: `mobile-task-${requestId}`,
+        tagId: "tag-product-development",
+        createdByUserId: "user-1",
+      })],
+      skipDuplicates: true,
+    });
+    expect(payload).toMatchObject({
+      entry: { tags: [{ id: "tag-product-development", slug: "product-development", label: "Product development" }] },
+      tagVocabulary: { requestedNewLabels: ["Product development"], createdCount: 1, reusedCount: 0 },
+    });
+  });
+
+  it("holds a new tag intent when the actor cannot edit the Session Nest", async () => {
+    signedIn();
+    const tx = harness();
+    tx.studioProjectAccessGrant.findFirst.mockResolvedValue(null);
+    const response = await POST(request("NOTE", { newTagLabels: ["Client follow-up"] }));
+
+    expect(response.status).toBe(403);
+    expect(await response.json()).toMatchObject({
+      code: "QUICK_ENTRY_TAG_CREATE_FORBIDDEN",
+      localOutboxRetained: true,
+    });
+    expect(tx.studioTag.create).not.toHaveBeenCalled();
+    expect(tx.coachingNote.upsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects duplicate or over-capacity offline tag intents before reading the Session", async () => {
+    signedIn();
+    const duplicate = await POST(request("TASK", { newTagLabels: ["Product", " product "] }));
+    expect(duplicate.status).toBe(400);
+    expect(await duplicate.json()).toMatchObject({ code: "QUICK_ENTRY_TAGS_INVALID", localOutboxRetained: true });
+
+    const overCapacity = await POST(request("TASK", {
+      tagIds: ["one", "two", "three", "four"],
+      newTagLabels: ["Five", "Six", "Seven", "Eight", "Nine"],
+    }));
+    expect(overCapacity.status).toBe(400);
+    expect(await overCapacity.json()).toMatchObject({ code: "QUICK_ENTRY_TAGS_INVALID", localOutboxRetained: true });
+    expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
   it("commits URL and quoted-text source captures to the actor's personal Inbox without requiring a Session", async () => {

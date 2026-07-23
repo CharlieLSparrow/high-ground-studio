@@ -109,6 +109,20 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "same canonical tag")
         ).firstMatch.exists)
+
+        let newTagField = app.textFields["CaptureQuickEntryNewTagField"]
+        reveal(newTagField)
+        XCTAssertTrue(newTagField.isHittable)
+        newTagField.tap()
+        newTagField.typeText("Product development")
+        let addTag = app.buttons["CaptureQuickEntryNewTagAdd"]
+        XCTAssertTrue(addTag.isEnabled)
+        addTag.tap()
+        XCTAssertTrue(app.buttons["Remove new tag Product development"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["New on sync"].exists)
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "protected in the phone outbox")
+        ).firstMatch.exists)
     }
 
     func testTaskQuickCaptureAuthorsAnExplicitRecurrenceWithoutImplyingAReminder() {
