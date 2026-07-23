@@ -1,22 +1,17 @@
-name: Build and Deploy
+name: Legacy GHCR image publish (manual only)
 
 on:
-  push:
-    branches:
-      - main
-      - master
-    paths:
-      - apps/web/**
-      - apps/quipsly/**
-      - packages/**
-      - prisma/**
-      - package.json
-      - pnpm-lock.yaml
-      - pnpm-workspace.yaml
-      - .dockerignore
-      - apps/web/Dockerfile
-      - apps/quipsly/Dockerfile
-      - .github/workflows/deploy.yml
+  workflow_dispatch:
+    inputs:
+      target:
+        description: Legacy GHCR image to publish
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - web
+          - quipsly
 
 env:
   REGISTRY: ghcr.io
@@ -43,12 +38,14 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Extract metadata for Web
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'web'
         id: meta-web
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_WEB }}
 
       - name: Build and push Web Docker image
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'web'
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -57,13 +54,15 @@ jobs:
           tags: ${{ steps.meta-web.outputs.tags }}
           labels: ${{ steps.meta-web.outputs.labels }}
 
-      - name: Extract metadata for Studio
+      - name: Extract metadata for Quipsly
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'quipsly'
         id: meta-studio
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_STUDIO }}
 
-      - name: Build and push Studio Docker image
+      - name: Build and push Quipsly Docker image
+        if: github.event.inputs.target == 'all' || github.event.inputs.target == 'quipsly'
         uses: docker/build-push-action@v5
         with:
           context: .

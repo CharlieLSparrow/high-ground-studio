@@ -13,29 +13,56 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Quipsly release-slice changes
+        id: changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+
+          changed="$(git diff --name-only "${BASE_SHA}...HEAD")"
+          quipsly_re='^(apps/quipsly/|packages/(content-studio-domain|quipsly-document-kernel|quipsly-domain|studio-domain)/|prisma/|scripts/quipsly-|scripts/release/quipsly-|scripts/(scan-beta-blockers|sync-prisma-pnpm-clients)\.mjs$|apps/web/content/publish/hgo-episodes/episode-[123]-.*\.json$|docs/coordination/BETA-MANIFEST\.md$|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|prisma\.config\.ts$|cloudbuild\.(studio(\.deploy)?|quipsly-(web|hotfix))\.yaml$|apps/quipsly/Dockerfile$|firebase\.json$|\.dockerignore$|\.gcloudignore$|\.npmrc$|\.github/workflows/(pr-tests|deploy-cloud-run)\.yml$)'
+
+          if grep -Eq "${quipsly_re}" <<<"${changed}"; then
+            echo "quipsly=true" >>"${GITHUB_OUTPUT}"
+            echo "Quipsly release inputs changed."
+          else
+            echo "quipsly=false" >>"${GITHUB_OUTPUT}"
+            echo "No Quipsly release inputs changed; skipping its install, typecheck, and build."
+          fi
 
       - name: Setup pnpm
+        if: steps.changes.outputs.quipsly == 'true'
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
+        if: steps.changes.outputs.quipsly == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: steps.changes.outputs.quipsly == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck Quipsly
+        if: steps.changes.outputs.quipsly == 'true'
         run: pnpm --filter quipsly exec tsc --noEmit --incremental false
 
       - name: Build Quipsly
+        if: steps.changes.outputs.quipsly == 'true'
         env:
           NEXT_PUBLIC_STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
           STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
         run: pnpm --filter quipsly build
 
       - name: Validate release scripts and workflows
+        if: steps.changes.outputs.quipsly == 'true'
         run: |
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/deploy-cloud-run.yml"); YAML.load_file(".github/workflows/pr-tests.yml"); puts "YAML OK"'
           bash -n scripts/release/quipsly-build-context.sh
@@ -47,4 +74,9 @@ jobs:
           bash -n scripts/release/quipsly-promote-preview.sh
 
       - name: Validate committed Quipsly release context
+        if: steps.changes.outputs.quipsly == 'true'
         run: bash scripts/release/quipsly-build-context.test.sh
+
+      - name: Report intentionally skipped Quipsly validation
+        if: steps.changes.outputs.quipsly != 'true'
+        run: echo "PASS This pull request does not change the Quipsly web release slice."
