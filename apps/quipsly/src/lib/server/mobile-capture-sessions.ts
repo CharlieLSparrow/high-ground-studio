@@ -699,6 +699,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       title: label(room.title) || booking?.offering?.title || "Quipsly capture session",
       purpose: room.purpose,
       status: room.status,
+      updatedAt: room.updatedAt?.toISOString?.() ?? null,
       provider: room.provider,
       providerRoomId: provider.providerRoomId,
       providerCanJoin: provider.providerCanJoin,
@@ -707,6 +708,9 @@ export function mapMobileCaptureSessionsForUser(input: {
       projectId: sessionProject.projectId,
       projectSlug: sessionProject.projectSlug,
       projectName: sessionProject.projectName,
+      availableTags: Array.isArray(room.project?.tags)
+        ? room.project.tags.map((tag: any) => ({ id: tag.id, slug: tag.slug, label: tag.label }))
+        : [],
       projectBindingSource: sessionProject.bindingSource,
       projectLegacySlugDrift: sessionProject.legacySlugDrift,
       episodeSlug: booking?.offering?.slug || room.id,

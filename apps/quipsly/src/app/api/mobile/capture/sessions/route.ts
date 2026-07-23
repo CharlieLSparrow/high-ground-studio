@@ -16,7 +16,18 @@ import {
 } from "@/lib/server/studio-project-access";
 
 const MOBILE_CAPTURE_ROOM_INCLUDE = {
-  project: { select: { id: true, slug: true, name: true } },
+  project: {
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      tags: {
+        where: { isActive: true },
+        orderBy: { label: "asc" },
+        select: { id: true, slug: true, label: true },
+      },
+    },
+  },
   booking: {
     include: {
       offering: true,

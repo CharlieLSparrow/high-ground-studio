@@ -438,6 +438,7 @@ model User {
   callParticipants              CallParticipant[]                    @relation("CallParticipantUser")
   recordingConsents             RecordingConsent[]                   @relation("RecordingConsentUser")
   coachingNotesAuthored         CoachingNote[]                       @relation("CoachingNoteAuthor")
+  coachingNoteTagsCreated       CoachingNoteTagLink[]                @relation("CoachingNoteTagCreatedBy")
   actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
   goalsOwned                    Goal[]                               @relation("GoalOwner")
   goalTaskLinksCreated          GoalTaskLink[]                       @relation("GoalTaskLinkCreatedBy")
@@ -1495,6 +1496,7 @@ model CoachingNote {
   booking     CoachingBooking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
   authorUser  User?            @relation("CoachingNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
   actionItems ActionItem[]
+  tagLinks    CoachingNoteTagLink[]
 
   @@index([roomId, createdAt])
   @@index([bookingId, createdAt])
@@ -2900,6 +2902,7 @@ model StudioTag {
   knowledgeNodes    StudioKnowledgeNode[]
   mediaClips        MediaClip[]
   sourceAnnotations StudioSourceAnnotationTag[]
+  coachingNotes     CoachingNoteTagLink[]
   actionItems       ActionItemTagLink[]
   goals             GoalTagLink[]
   callRooms         CallRoomTagLink[]
@@ -2925,6 +2928,22 @@ model ActionItemTagLink {
   createdBy  User?      @relation("ActionItemTagCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   @@id([actionItemId, tagId])
+  @@index([tagId, createdAt])
+  @@index([createdByUserId, createdAt])
+}
+
+model CoachingNoteTagLink {
+  noteId          String
+  tagId           String
+  createdByUserId String?
+  sourceJson      Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  note      CoachingNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag       StudioTag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdBy User?        @relation("CoachingNoteTagCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@id([noteId, tagId])
   @@index([tagId, createdAt])
   @@index([createdByUserId, createdAt])
 }
