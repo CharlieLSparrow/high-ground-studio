@@ -7,7 +7,7 @@ import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { searchWorkspace } from "@/lib/server/workspace-search";
 import { ensureStudioWorkspace } from "@/lib/studio/project-registry";
-import { loadLibrary } from "@/app/(app)/library/page";
+import { loadLibrary } from "@/app/(app)/library/library-page";
 
 import { POST } from "./route";
 

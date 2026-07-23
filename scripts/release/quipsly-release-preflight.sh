@@ -6,6 +6,9 @@ PROJECT_ID="${PROJECT_ID:-high-ground-odyssey}"
 SERVICE_NAME="${SERVICE_NAME:-studio}"
 HOST_HEADER="${HOST_HEADER:-nest.quipsly.com}"
 CONTEXT_WARN_MIB="${CONTEXT_WARN_MIB:-150}"
+CONTEXT_MAX_MIB="${CONTEXT_MAX_MIB:-300}"
+ALLOW_DIRTY_RELEASE="${ALLOW_DIRTY_RELEASE:-0}"
+RELEASE_CONTEXT_DIR="${RELEASE_CONTEXT_DIR:-}"
 
 failures=0
 
@@ -53,8 +56,13 @@ print_step "Local git state"
 
 if git diff --quiet && git diff --cached --quiet; then
   pass "Working tree has no uncommitted changes."
+elif [[ -n "${RELEASE_CONTEXT_DIR}" ]]; then
+  warn "Working tree is dirty, but release input was materialized from committed source ${SOURCE_REF:-HEAD}."
+elif [[ "${ALLOW_DIRTY_RELEASE}" == "1" ]]; then
+  warn "Working tree has uncommitted changes, explicitly allowed by ALLOW_DIRTY_RELEASE=1:"
+  git status --short >&2 || true
 else
-  warn "Working tree has uncommitted changes. Review before release:"
+  fail "Working tree has uncommitted changes. Release from a clean, reviewable source snapshot."
   git status --short >&2 || true
 fi
 
@@ -71,7 +79,12 @@ fi
 
 print_step "Release scripts"
 
-if node --test scripts/quipsly-owner-override-retirement.test.mjs; then
+release_source_root="${RELEASE_CONTEXT_DIR:-.}"
+
+if (
+  cd "${release_source_root}"
+  node --test scripts/quipsly-owner-override-retirement.test.mjs
+); then
   pass "Retired owner override is absent from Nest runtime authorization."
 else
   fail "Retired owner override is still reachable from Nest runtime source."
@@ -85,8 +98,9 @@ for script in \
   scripts/release/quipsly-rollback.sh \
   scripts/release/quipsly-traffic.sh
 do
-  if [[ -f "${script}" ]]; then
-    bash -n "${script}"
+  release_script="${release_source_root}/${script}"
+  if [[ -f "${release_script}" ]]; then
+    bash -n "${release_script}"
     pass "${script} parses."
   else
     fail "Missing release script: ${script}"
@@ -98,22 +112,25 @@ print_step "Cloud Build context"
 context_list="$(mktemp)"
 trap 'rm -f "${context_list}"' EXIT
 
-if gcloud meta list-files-for-upload . >"${context_list}" 2>/dev/null; then
+context_root="${RELEASE_CONTEXT_DIR:-.}"
+if (cd "${context_root}" && gcloud meta list-files-for-upload .) >"${context_list}" 2>/dev/null; then
   context_summary="$(
-    python3 - "${context_list}" <<'PY'
+    python3 - "${context_list}" "${context_root}" <<'PY'
 import os
 import sys
 
 count = 0
 total = 0
 largest = []
+root = os.path.abspath(sys.argv[2])
 
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
     for raw in handle:
         path = raw.strip()
-        if not path or not os.path.isfile(path):
+        full_path = os.path.join(root, path)
+        if not path or not os.path.isfile(full_path):
             continue
-        size = os.path.getsize(path)
+        size = os.path.getsize(full_path)
         count += 1
         total += size
         largest.append((size, path))
@@ -141,6 +158,18 @@ PY
   else
     warn "Upload context is larger than ${CONTEXT_WARN_MIB} MiB. Largest included files:"
     printf "%s\n" "${context_summary}" | sed -n '2,9p' >&2
+  fi
+
+  if python3 - "${context_bytes}" "${CONTEXT_MAX_MIB}" <<'PY'
+import sys
+total = int(sys.argv[1])
+maximum_mib = float(sys.argv[2])
+sys.exit(0 if total <= maximum_mib * 1024 * 1024 else 1)
+PY
+  then
+    pass "Upload context is within the ${CONTEXT_MAX_MIB} MiB hard limit."
+  else
+    fail "Upload context exceeds the ${CONTEXT_MAX_MIB} MiB hard limit. Refine .gcloudignore before release."
   fi
 else
   warn "Could not measure Cloud Build upload context with gcloud meta list-files-for-upload."

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { loadLibrary } from "@/app/(app)/library/page";
+import { loadLibrary } from "@/app/(app)/library/library-page";
 
 import { PATCH } from "./route";
 

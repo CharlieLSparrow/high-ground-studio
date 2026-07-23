@@ -293,10 +293,9 @@ async function bootstrapLiveWorkNests() {
 export default async function ProjectsHub({
   searchParams,
 }: {
-  searchParams?: Promise<{ fallback?: string; missing?: string; liveNests?: string; adminAccessDenied?: string; betaAccessDenied?: string }>
-    | { fallback?: string; missing?: string; liveNests?: string; adminAccessDenied?: string; betaAccessDenied?: string };
-} = {}) {
-  const params = await searchParams;
+  searchParams?: Promise<{ fallback?: string; missing?: string; liveNests?: string; adminAccessDenied?: string; betaAccessDenied?: string }>;
+}) {
+  const params = searchParams ? await searchParams : {};
   const isFallback = params?.fallback === "true";
   const missingProjectSlug = typeof params?.missing === "string" ? params.missing : "";
   const liveNestsBootstrapped = typeof params?.liveNests === "string" ? params.liveNests : "";

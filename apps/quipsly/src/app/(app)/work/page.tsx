@@ -25,7 +25,7 @@ function safeDatabaseMessage(error: unknown) {
     : "Quipsly could not verify your private work records.";
 }
 
-export function WorkUnavailableState({ message }: { message: string }) {
+function WorkUnavailableState({ message }: { message: string }) {
   return <main className="mx-auto grid min-h-[70vh] max-w-3xl place-items-center px-4 py-10 text-[#3d3122]"><section role="status" aria-label="Work queue unavailable" className="w-full rounded-3xl border border-amber-200 bg-amber-50 p-7 shadow-sm"><CircleAlert className="h-8 w-8 text-amber-700" aria-hidden="true" /><p className="mt-5 text-[10px] font-black uppercase tracking-[0.2em] text-amber-800">Persistence unavailable</p><h1 className="mt-2 font-serif text-3xl font-black">Work Queue could not be verified</h1><p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#765f40]">{message} No sample tasks, goals, or commitments are standing in for saved work, and nothing was changed.</p><Link href="/work" className="mt-6 inline-flex items-center gap-2 rounded-full border border-amber-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-amber-900"><RotateCcw size={15} aria-hidden="true" />Try again</Link></section></main>;
 }
 
@@ -196,7 +196,7 @@ function focusId(value: string | string[] | undefined) {
   return typeof value === "string" && value.length <= 200 ? value.trim() : "";
 }
 
-export default async function WorkPage({ searchParams }: WorkPageProps = {}) {
+export default async function WorkPage({ searchParams }: WorkPageProps) {
   const requestedFocus = await (searchParams ?? Promise.resolve<{ task?: string | string[]; goal?: string | string[]; view?: string | string[] }>({}));
   const attentionRequested = requestedFocus.view === "attention";
   const session = await getQuipslySession();

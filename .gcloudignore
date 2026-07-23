@@ -16,6 +16,7 @@
 # Dependencies and generated build products
 node_modules/
 **/node_modules/
+.venv*/
 .pnpm-store/
 pnpm-store/
 .turbo/

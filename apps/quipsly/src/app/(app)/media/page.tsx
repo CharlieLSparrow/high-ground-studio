@@ -72,7 +72,8 @@ function describeMediaDatabaseError(error: unknown) {
   return "The media database request failed.";
 }
 
-export default async function MediaLibraryPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function MediaLibraryPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const resolvedSearchParams = await searchParams;
   const prisma = getPrismaClient();
   const actorEmail = await getCurrentHomeNestActorEmail();
 
@@ -111,15 +112,15 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
   const projectById = new Map(projects.map((project) => [project.id, project]));
   const accessibleProjectIds = projects.map((project) => project.id);
 
-  const requestedProjectId = normalizeSearchParam(searchParams.projectId) || homeNest.id;
+  const requestedProjectId = normalizeSearchParam(resolvedSearchParams.projectId) || homeNest.id;
   const selectedProjectId =
     requestedProjectId === 'all' || projectById.has(requestedProjectId)
       ? requestedProjectId
       : homeNest.id;
-  const selectedBinId = normalizeSearchParam(searchParams.binId) || 'all';
-  const selectedTagSlug = normalizeSearchParam(searchParams.tag);
-  const mediaQuery = normalizeSearchParam(searchParams.q) || '';
-  const source = normalizeSearchParam(searchParams.source);
+  const selectedBinId = normalizeSearchParam(resolvedSearchParams.binId) || 'all';
+  const selectedTagSlug = normalizeSearchParam(resolvedSearchParams.tag);
+  const mediaQuery = normalizeSearchParam(resolvedSearchParams.q) || '';
+  const source = normalizeSearchParam(resolvedSearchParams.source);
   const isMobileSource = source === 'iphone';
   const selectedProject = selectedProjectId !== 'all' ? projectById.get(selectedProjectId) : null;
   const selectedProjectIsHome = selectedProject?.sourceLabel === sourceLabelForNestKind('home');

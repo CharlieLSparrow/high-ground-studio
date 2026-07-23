@@ -16,7 +16,7 @@ describe("Work Queue page truth states", () => {
 
   it("requires a signed-in account before reading private records", async () => {
     jest.mocked(getQuipslySession).mockResolvedValue(null as any);
-    render(await WorkPage());
+    render(await WorkPage({}));
     expect(screen.getByText("signed-out:/work")).toBeInTheDocument();
     expect(getPrismaClient).not.toHaveBeenCalled();
   });
@@ -33,7 +33,7 @@ describe("Work Queue page truth states", () => {
     jest.mocked(getPrismaClient).mockReturnValue({
       coachingBooking: { findMany: jest.fn().mockRejectedValue(Object.assign(new Error("ECONNREFUSED"), { code: "ECONNREFUSED" })) },
     } as any);
-    render(await WorkPage());
+    render(await WorkPage({}));
     expect(screen.getByRole("status", { name: "Work queue unavailable" })).toHaveTextContent("database connection is unavailable");
     expect(screen.queryByText("Persisted work queue")).not.toBeInTheDocument();
   });

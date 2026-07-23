@@ -4,7 +4,7 @@ jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
-import { buildPacketGoalCandidates } from "./route";
+import { buildPacketGoalCandidates } from "./route-implementation";
 
 const packetBuildId = "packet-build-1";
 const summary = {

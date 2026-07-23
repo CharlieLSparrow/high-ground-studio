@@ -326,7 +326,7 @@ async function loadResearchLibrary(): Promise<ResearchLibrarySnapshot> {
   }
 }
 
-export default async function ResearchPage({ searchParams }: { searchParams?: Promise<{ query?: string | string[]; source?: string | string[] }> } = {}) {
+export default async function ResearchPage({ searchParams }: { searchParams?: Promise<{ query?: string | string[]; source?: string | string[] }> }) {
   const snapshot = await loadResearchLibrary();
   const params = await (searchParams ?? Promise.resolve<{ query?: string | string[]; source?: string | string[] }>({}));
   const initialQuery = typeof params.query === "string" ? params.query.trim().slice(0, 200) : "";

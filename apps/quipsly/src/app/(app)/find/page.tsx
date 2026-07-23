@@ -42,7 +42,7 @@ function AssignedTags({ links }: { links: Array<{ tag: { id: string; label: stri
   </span>;
 }
 
-export default async function FindPage({ searchParams }: FindPageProps = {}) {
+export default async function FindPage({ searchParams }: FindPageProps) {
   const session = await auth();
   if (!session?.user?.id) return <StudioAccessShell mode="signed-out" redirectTo="/find" />;
   const params = await (searchParams ?? Promise.resolve<{ q?: string | string[] }>({}));

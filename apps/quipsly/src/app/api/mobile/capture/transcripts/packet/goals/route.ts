@@ -17,8 +17,8 @@ import { TranscriptCorrectionError } from "@/lib/server/transcript-corrections";
 import {
   createTranscriptDerivedGoalInTransaction,
   transcriptDerivedGoalBoundaries,
-} from "../../goals/route";
-import { buildPacketGoalCandidates } from "../route";
+} from "../../goals/route-implementation";
+import { buildPacketGoalCandidates } from "../route-implementation";
 
 const REVIEW_RECEIPT_KIND = "quipsly-goal-candidate-review-receipt-v1";
 const MAX_GOAL_TITLE_LENGTH = 240;

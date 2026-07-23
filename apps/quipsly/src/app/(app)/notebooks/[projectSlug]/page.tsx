@@ -189,7 +189,7 @@ function PageCard({
 export default async function NotebookNestPage({
   params,
 }: {
-  params: Promise<{ projectSlug: string }> | { projectSlug: string };
+  params: Promise<{ projectSlug: string }>;
 }) {
   const resolvedParams = await params;
   const projectSlug = decodeURIComponent(resolvedParams.projectSlug);

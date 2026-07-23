@@ -7,7 +7,7 @@ import { homeNestSlugForEmail } from "@/lib/server/home-nest";
 
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySession: jest.fn() }));
 
-import { loadLibrary } from "./page";
+import { loadLibrary } from "./library-page";
 
 const runLocalDatabaseSmoke = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
 if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {

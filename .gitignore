@@ -1,6 +1,8 @@
 # dependencies
 node_modules/
 .pnpm-store/
+.venv*/
+.venv-audio/
 .pnp.*
 .yarn/
 
