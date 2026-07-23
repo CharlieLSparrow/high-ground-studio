@@ -65,3 +65,35 @@ bash scripts/dev/quipsly-local-doctor.sh
 
 before a development session, and commit only the paths belonging to the
 verified product slice.
+
+## Remote safety and live-lane continuation
+
+The local development branch and tracked-WIP preservation branch now both have
+remote safety anchors:
+
+- `codex/quipsly-local-dogfood-20260721` tracks
+  `origin/codex/quipsly-local-dogfood-20260721`.
+- `codex/preserved-tracked-wip-20260723` tracks
+  `origin/codex/preserved-tracked-wip-20260723`.
+
+Before publishing those refs, the committed trees were checked for private-key,
+service-account, GitHub-token, cloud-access-key, and private API-key patterns.
+No private credential material was found. The checked-in Firebase web
+configuration is a public client configuration, not a Firebase Admin
+credential.
+
+The local lane was then rechecked from the visible signed-in product:
+
+- the route and auth-boundary smoke passed;
+- Projects rendered the QA Home Nest and real-work Nest;
+- Today rendered the local dogfood goal and its canonical tag;
+- Work rendered the local dogfood task, goal, shared tag, Nest identity, and
+  `Contributes` relationship;
+- global Search returned the task, goal, note, and tag;
+- a full browser reload returned the same four records.
+
+At this checkpoint the Mac had only about 5.2 GiB of free local disk. Do not
+create another full worktree or reinstall the monorepo until media/cache cleanup
+has restored comfortable headroom. Continue using explicit-path commits on the
+active branch in the meantime. Production Google Cloud billing remains
+independent of this local lane and does not block local Nest development.
