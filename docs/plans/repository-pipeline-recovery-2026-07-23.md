@@ -116,6 +116,14 @@ One green stage cannot substitute for another.
 - Keep the exact-commit Capture archive, IPA verifier, and receipt.
 - Make PR Quipsly install/typecheck/build conditional on changes to its declared
   release slice.
+- Use `scripts/ci/plan-changed-surfaces.mjs` as the tested source of truth for
+  PR validation and automatic Cloud Run deploy planning. Shared packages follow
+  actual workspace dependencies; root dependency changes no longer invent a
+  database migration.
+- Materialize `scripts/release/quipsly-build-context.sh` from the exact GitHub
+  source SHA before building the Nest production image. The Docker build now
+  consumes that source-labeled context instead of the checkout root and embeds
+  the GitHub SHA as `QUIPSLY_BUILD_ID`.
 - Make the old GHCR image workflow manual-only; Cloud Run
   `deploy-cloud-run.yml` remains the automatic production path.
 - Keep deterministic Capture UI tests separate from reviewer credentials,
@@ -125,8 +133,6 @@ One green stage cannot substitute for another.
 
 ### Next corrections
 
-- Add a changed-surface planner shared by PR and deploy workflows instead of
-  maintaining divergent regular expressions.
 - Add a macOS Capture CI lane pinned to the supported Xcode/iOS image; do not
   pretend Linux source checks are native release proof.
 - Replace root-lockfile fan-out with dependency-aware affected-package
