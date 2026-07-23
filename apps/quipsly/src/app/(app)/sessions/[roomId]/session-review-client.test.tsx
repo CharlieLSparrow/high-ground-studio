@@ -251,6 +251,7 @@ describe("Session review goal candidates", () => {
     expect(await screen.findByRole("heading", { name: "3 Session notes, tasks, or goals" })).toBeInTheDocument();
     expect(screen.getAllByText("Let the opening breathe.")[0]).toBeInTheDocument();
     expect(screen.getByText("#Opening")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Find all accessible work tagged Opening" })).toHaveAttribute("href", "/find?q=Opening");
     expect(screen.getByText("Quick note").closest("article")).toHaveAttribute("id", "quick-entry-mobile-note-1");
     expect(screen.getByRole("link", { name: "Open same task in Work" })).toHaveAttribute("href", "/work?task=mobile-task-1");
     expect(screen.getByRole("link", { name: "Open same goal in Work" })).toHaveAttribute("href", "/work?goal=mobile-goal-1");

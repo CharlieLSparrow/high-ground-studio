@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
+import { TagSearchChips } from "@/components/tag-search-chips";
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets";
@@ -63,11 +64,7 @@ function scheduleTags(tagLinks: Array<{ tag: ScheduleTag }> | undefined): Schedu
 }
 
 function CalendarTags({ tags }: { tags: ScheduleTag[] }) {
-  if (!tags.length) return null;
-  const labels = tags.map((tag) => `${tag.label}${tag.isActive ? "" : " (archived)"}`);
-  return <div className="mt-3 flex flex-wrap gap-1.5" aria-label={`Tags: ${labels.join(", ")}`}>
-    {tags.map((tag) => <span key={tag.id} className={`rounded-full border px-2 py-0.5 text-[0.68rem] font-black ${tag.isActive ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950" : "border-stone-300 bg-stone-100 text-stone-700"}`}>#{tag.label}{tag.isActive ? "" : " · archived"}</span>)}
-  </div>;
+  return <TagSearchChips tags={tags} />;
 }
 
 async function loadSchedule(): Promise<ScheduleSnapshot> {

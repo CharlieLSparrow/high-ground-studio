@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarPlus2, Check, CircleSlash2, Clock3, RotateCcw, SkipForward, Target } from "lucide-react";
 
+import { TagSearchChips } from "@/components/tag-search-chips";
 import { createWorkPlanBlock, rescheduleWorkPlanBlock, updateWorkPlanBlockStatus } from "./actions";
 import {
   groupPlanBlocksByLocalDay,
@@ -40,11 +41,7 @@ function formatPlanDay(value: string) {
 }
 
 function ScheduleTagChips({ tags }: { tags: ScheduleTag[] }) {
-  if (!tags.length) return null;
-  const labels = tags.map((tag) => `${tag.label}${tag.isActive ? "" : " (archived)"}`);
-  return <div className="mt-3 flex flex-wrap gap-1.5" aria-label={`Tags: ${labels.join(", ")}`}>
-    {tags.map((tag) => <span key={tag.id} className={`rounded-full border px-2 py-0.5 text-[0.68rem] font-black ${tag.isActive ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950" : "border-stone-300 bg-stone-100 text-stone-700"}`}>#{tag.label}{tag.isActive ? "" : " · archived"}</span>)}
-  </div>;
+  return <TagSearchChips tags={tags} />;
 }
 
 function PlanBlockCard({ block, onRefresh }: { block: SchedulePlanBlock; onRefresh: () => void }) {

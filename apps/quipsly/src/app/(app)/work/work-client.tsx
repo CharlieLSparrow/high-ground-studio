@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Archive, BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, ListChecks, Pencil, Play, Repeat2, RotateCcw, Tags, Target, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { TagSearchChips } from "@/components/tag-search-chips";
 import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
 import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTagCandidate, WorkTask, WorkTaskStatus } from "./work-model";
 
@@ -57,8 +58,7 @@ function currentWeekStartsOn() {
 }
 
 function TagChips({ tags }: { tags: WorkTag[] }) {
-  if (!tags.length) return null;
-  return <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Tags">{tags.map((tag) => <span key={tag.id} className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-black text-sky-900">#{tag.label}</span>)}</div>;
+  return <TagSearchChips tags={tags} />;
 }
 
 function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, onRefresh }: {

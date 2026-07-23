@@ -56,6 +56,7 @@ describe("SchedulePlanner", () => {
     expect(link).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
     expect(screen.getByText("Homer: Keep one clear next move.")).toBeInTheDocument();
     expect(screen.getByLabelText("Tags: Coaching follow-up")).toHaveTextContent("#Coaching follow-up");
+    expect(screen.getByRole("link", { name: "Find all accessible work tagged Coaching follow-up" })).toHaveAttribute("href", "/find?q=Coaching%20follow-up");
   });
 
   it("keeps a planned transcript-derived goal linked to the same exact source", () => {

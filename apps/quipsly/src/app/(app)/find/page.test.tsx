@@ -45,7 +45,7 @@ describe("Search All page", () => {
     expect(screen.getByRole("link", { name: "Episode outline High Ground · draft" })).toHaveAttribute("href", "/create?project=high-ground&document=document-1");
     expect(screen.getByRole("link", { name: "Episode transcript High Ground · transcript · Charlie" })).toHaveAttribute("href", "/research?query=Episode%20transcript");
     expect(screen.getByRole("link", { name: "Episode exact words Episode transcript · High Ground · private" })).toHaveAttribute("href", "/research?query=Episode%20exact%20words");
-    expect(screen.getByRole("link", { name: "Episode seed High Ground · source · private taxonomy Material for a future episode" })).toHaveAttribute("href", "/research?query=Episode%20seed");
+    expect(screen.getByRole("link", { name: "Episode seed High Ground · source · private taxonomy Material for a future episode" })).toHaveAttribute("href", "/find?q=Episode%20seed");
     expect(screen.getByRole("status")).toHaveTextContent("8 accessible results across 1 Nest");
   });
 });
