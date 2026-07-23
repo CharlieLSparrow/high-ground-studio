@@ -368,7 +368,13 @@ final class CaptureExperienceModel: ObservableObject {
         }
         if acknowledged > 0 {
             await todayClient.load()
-            quickEntrySyncMessage = "Synced \(acknowledged) quick capture\(acknowledged == 1 ? "" : "s") to canonical Nest records."
+            // A single retry already carries the most useful server-authored
+            // acknowledgement (for example, the exact Home Nest note
+            // destination). Preserve that message so reconnect does not turn a
+            // specific success into a vague batch receipt.
+            if acknowledged > 1 {
+                quickEntrySyncMessage = "Synced \(acknowledged) quick captures to canonical Nest records."
+            }
         }
     }
 
