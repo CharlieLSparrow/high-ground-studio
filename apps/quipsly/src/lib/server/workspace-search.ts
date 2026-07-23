@@ -77,11 +77,19 @@ export async function searchWorkspace(
           { label: { contains: query, mode: "insensitive" } },
           { slug: { contains: query, mode: "insensitive" } },
           { description: { contains: query, mode: "insensitive" } },
+          { aliases: { some: { OR: [
+            { label: { contains: query, mode: "insensitive" } },
+            { slug: { contains: query, mode: "insensitive" } },
+          ] } } },
         ],
       },
       orderBy: [{ label: "asc" }, { updatedAt: "desc" }],
       take: RESULT_LIMIT,
-      select: { id: true, slug: true, label: true, description: true, category: true, isPrivate: true, project: { select: { name: true, slug: true } } },
+      select: {
+        id: true, slug: true, label: true, description: true, category: true, isPrivate: true,
+        aliases: { orderBy: { createdAt: "asc" }, select: { label: true, slug: true } },
+        project: { select: { name: true, slug: true } },
+      },
     }) : Promise.resolve([]),
   ]);
   const tasks = taskRows.filter((task) => !isUnreviewedTranscriptActionItemSource(task.sourceJson)).slice(0, RESULT_LIMIT);

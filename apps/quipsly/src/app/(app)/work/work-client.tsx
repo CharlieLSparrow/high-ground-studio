@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, ListChecks, Pencil, Play, Repeat2, RotateCcw, Tags, Target, UsersRound } from "lucide-react";
+import { Archive, BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, ListChecks, Pencil, Play, Repeat2, RotateCcw, Tags, Target, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, recordWorkGoalProgress, replaceWorkTags, saveWeeklyCommitment, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
+import { changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, recordWorkGoalProgress, replaceWorkTags, saveWeeklyCommitment, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
 import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTask, WorkTaskStatus } from "./work-model";
 
 export type TaskFilter = "ATTENTION" | "OPEN" | "DONE" | "ALL";
@@ -75,11 +75,12 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
   const [message, setMessage] = useState<string | null>(null);
   if (!project || !canManage || !project.canWrite) return <TagChips tags={tags} />;
   const selectedIds = new Set(tags.map((tag) => tag.id));
+  const activeTags = project.tags.filter((tag) => tag.isActive !== false);
   return <div className="mt-3">
     <TagChips tags={tags} />
     <details className="mt-2 rounded-xl border border-sky-100 bg-sky-50/40 p-3">
       <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-sky-900"><Tags className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Edit {project.name} tags</summary>
-      {project.tags.length ? <form key={`${updatedAt}-${tags.map((tag) => tag.id).join("-")}`} action={(formData) => {
+      {activeTags.length ? <form key={`${updatedAt}-${tags.map((tag) => tag.id).join("-")}`} action={(formData) => {
         setMessage(null);
         startTransition(async () => {
           const result = await replaceWorkTags({ entityKind, entityId, tagIds: formData.getAll("tagId").map(String), expectedUpdatedAt: updatedAt });
@@ -88,7 +89,7 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
           onRefresh();
         });
       }} className="mt-3 space-y-3">
-        <fieldset className="flex flex-wrap gap-2"><legend className="sr-only">Choose tags</legend>{project.tags.map((tag) => <label key={tag.id} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-bold text-sky-950"><input type="checkbox" name="tagId" value={tag.id} defaultChecked={selectedIds.has(tag.id)} />{tag.label}</label>)}</fieldset>
+        <fieldset className="flex flex-wrap gap-2"><legend className="sr-only">Choose tags</legend>{activeTags.map((tag) => <label key={tag.id} className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-bold text-sky-950"><input type="checkbox" name="tagId" value={tag.id} defaultChecked={selectedIds.has(tag.id)} />{tag.label}</label>)}</fieldset>
         <button type="submit" disabled={pending} className="rounded-full bg-sky-800 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">{pending ? "Saving…" : "Save tags"}</button>
       </form> : <p className="mt-2 text-xs font-semibold text-sky-900">This Nest has no active tags yet. Create the first reusable tag below.</p>}
       <form action={(formData) => {
@@ -117,6 +118,55 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
       {message && <p role="status" className="mt-2 text-xs font-bold text-sky-950">{message}</p>}
     </details>
   </div>;
+}
+
+function TagVocabulary({ projects, onRefresh }: { projects: WorkProjectOption[]; onRefresh: () => void }) {
+  const writableProjects = projects.filter((project) => project.canWrite);
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  if (!writableProjects.length) return null;
+
+  function change(tag: WorkTag, operation: "RENAME" | "ARCHIVE" | "RESTORE", label?: string) {
+    if (!tag.updatedAt) {
+      setMessage("Refresh Work before changing this tag.");
+      return;
+    }
+    setMessage(null);
+    startTransition(async () => {
+      const result = await changeWorkTagTaxonomy({ tagId: tag.id, operation, label, expectedUpdatedAt: tag.updatedAt! });
+      if (!result.ok) {
+        setMessage(result.error);
+        if (result.code === "CONFLICT") onRefresh();
+        return;
+      }
+      setMessage(operation === "RENAME"
+        ? `Renamed to #${result.tag.label}. The former name remains a reusable alias.`
+        : operation === "ARCHIVE"
+          ? `#${result.tag.label} is archived. Existing records keep it; new assignments hide it.`
+          : `#${result.tag.label} is active again.`);
+      onRefresh();
+    });
+  }
+
+  return <section aria-labelledby="tag-vocabulary-heading" className="rounded-3xl border border-sky-200 bg-[linear-gradient(145deg,#f7fcff,#eef8ff)] p-5 shadow-sm md:p-6">
+    <div className="flex items-start gap-3"><span className="rounded-xl bg-sky-100 p-2 text-sky-900"><Tags aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-sky-800">Shared organizing language</p><h2 id="tag-vocabulary-heading" className="font-serif text-2xl font-black">Nest vocabulary</h2><p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-sky-950">Rename without breaking older iPhone captures: Quipsly keeps the former name as an alias. Archive hides a tag from new choices while preserving every existing link.</p></div></div>
+    <details className="mt-5 rounded-2xl border border-sky-200 bg-white/80 p-4">
+      <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-sky-900">Manage vocabulary · {writableProjects.reduce((count, project) => count + project.tags.filter((tag) => tag.isActive !== false).length, 0)} active across {writableProjects.length} Nest{writableProjects.length === 1 ? "" : "s"}</summary>
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
+      {writableProjects.map((project) => <article key={project.id} className="rounded-2xl border border-sky-100 bg-white p-4">
+        <div className="flex items-center justify-between gap-3"><div><h3 className="font-serif text-xl font-black">{project.name}</h3><p className="text-[10px] font-black uppercase tracking-wide text-sky-800">{project.tags.filter((tag) => tag.isActive !== false).length} active · {project.tags.filter((tag) => tag.isActive === false).length} archived</p></div><Link href={`/nests/${encodeURIComponent(project.slug)}`} className="text-[10px] font-black uppercase tracking-wide text-sky-800 hover:underline">Open Nest</Link></div>
+        {project.tags.length ? <ul className="mt-4 space-y-3">{project.tags.map((tag) => <li key={tag.id} className={`rounded-xl border p-3 ${tag.isActive === false ? "border-slate-200 bg-slate-50" : "border-sky-100 bg-sky-50/40"}`}>
+          <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-black">#{tag.label}</p><p className="mt-1 text-[11px] font-semibold text-sky-900">{tag.aliases?.length ? `Also matches ${tag.aliases.map((alias) => `#${alias.label}`).join(", ")}` : "No former names"}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tag.isActive === false ? "bg-slate-200 text-slate-700" : "bg-emerald-100 text-emerald-800"}`}>{tag.isActive === false ? "Archived" : "Active"}</span></div>
+          {tag.isActive === false ? <button type="button" disabled={pending} onClick={() => change(tag, "RESTORE")} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-800 disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Restore</button> : <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <form action={(formData) => change(tag, "RENAME", String(formData.get("label") || ""))} className="flex min-w-0 flex-1 gap-2"><label htmlFor={`rename-tag-${tag.id}`} className="sr-only">Rename {tag.label}</label><input id={`rename-tag-${tag.id}`} name="label" required maxLength={80} defaultValue={tag.label} className="min-h-11 min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold" /><button type="submit" disabled={pending} className="min-h-11 rounded-full bg-sky-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Rename</button></form>
+            <button type="button" disabled={pending} onClick={() => change(tag, "ARCHIVE")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50"><Archive size={14} aria-hidden="true" />Archive</button>
+          </div>}
+        </li>)}</ul> : <p className="mt-4 rounded-xl border border-dashed border-sky-200 p-4 text-sm font-semibold text-sky-900">Create the first reusable tag from a task, goal, or iPhone quick entry.</p>}
+      </article>)}
+      </div>
+      {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-bold text-sky-950">{message}</p>}
+    </details>
+  </section>;
 }
 
 function TaskRecurrenceEditor({ task, onRefresh }: { task: WorkTask; onRefresh: () => void }) {
@@ -572,6 +622,8 @@ export function WorkClient({ initialSnapshot, projectOptions = [], focusTaskId =
           {overview.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-4 shadow-sm"><Icon className="h-5 w-5 text-[#9a6b2f]" aria-hidden="true" /><p className="mt-3 text-3xl font-black">{value}</p><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{label}</p></div>)}
         </div>
       </section>
+
+      <TagVocabulary projects={projectOptions} onRefresh={() => router.refresh()} />
 
       <section aria-labelledby="new-task-heading" className="rounded-3xl border border-[#dfcba6] bg-white p-5 shadow-sm md:p-6">
         <div className="flex items-start gap-3"><span className="rounded-xl bg-amber-50 p-2 text-amber-800"><ListChecks aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Quick capture</p><h2 id="new-task-heading" className="font-serif text-2xl font-black">Add a personal task</h2><p className="mt-1 text-sm font-semibold text-[#765f40]">This explicitly assigns the new task to your signed-in account.</p></div></div>

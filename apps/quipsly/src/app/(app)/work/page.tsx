@@ -133,9 +133,12 @@ async function loadProjectOptions(actorEmail: string): Promise<WorkProjectOption
   const projects = await listProjectsVisibleToEmail(actorEmail, prisma);
   if (!projects.length) return [];
   const tags = await prisma.studioTag.findMany({
-    where: { projectId: { in: projects.map((project) => project.id) }, isActive: true },
-    orderBy: [{ category: "asc" }, { label: "asc" }],
-    select: { id: true, label: true, slug: true, category: true, projectId: true },
+    where: { projectId: { in: projects.map((project) => project.id) } },
+    orderBy: [{ isActive: "desc" }, { category: "asc" }, { label: "asc" }],
+    select: {
+      id: true, label: true, slug: true, category: true, projectId: true, isActive: true, archivedAt: true, updatedAt: true,
+      aliases: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, slug: true } },
+    },
   });
   return projects.map((project) => ({
     id: project.id,
@@ -143,7 +146,12 @@ async function loadProjectOptions(actorEmail: string): Promise<WorkProjectOption
     slug: project.slug,
     role: project.role,
     canWrite: project.role === "OWNER" || project.role === "EDITOR",
-    tags: tags.map((tag) => ({ ...tag, category: String(tag.category) })).filter((tag) => tag.projectId === project.id),
+    tags: tags.map((tag) => ({
+      ...tag,
+      category: String(tag.category),
+      archivedAt: tag.archivedAt?.toISOString() ?? null,
+      updatedAt: tag.updatedAt.toISOString(),
+    })).filter((tag) => tag.projectId === project.id),
   }));
 }
 

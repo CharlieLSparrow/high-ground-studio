@@ -23,6 +23,20 @@ export type CreateAndAssignWorkTagResult =
     }
   | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ARCHIVED"; error: string };
 
+export type WorkTagTaxonomyOperation = "RENAME" | "ARCHIVE" | "RESTORE";
+
+export type MutateWorkTagTaxonomyResult =
+  | {
+      ok: true;
+      operation: WorkTagTaxonomyOperation;
+      projectId: string;
+      tag: { id: string; label: string; slug: string; isActive: boolean; archivedAt: Date | null; updatedAt: Date };
+      aliases: Array<{ id: string; label: string; slug: string }>;
+      revision: number;
+      receiptId: string;
+    }
+  | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ALREADY_ACTIVE" | "ALREADY_ARCHIVED"; error: string };
+
 function cleanId(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 200) : "";
 }
@@ -65,6 +79,13 @@ export function workTagSlug(label: string) {
 
 function canonicalTagLabel(label: string) {
   return label.normalize("NFKC").toLocaleLowerCase("en-US");
+}
+
+async function writableProjectIds(prisma: PrismaClient, actorEmail: string) {
+  const visibleProjects = await listProjectsVisibleToEmail(actorEmail, prisma);
+  return new Set(visibleProjects
+    .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
+    .map((project) => project.id));
 }
 
 function entityWhere(entityKind: WorkTagEntityKind, entityId: string, actorUserId: string) {
@@ -118,9 +139,8 @@ export async function createAndAssignWorkEntityTag(input: {
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before creating a reusable tag." };
   if (entity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before creating a tag." };
 
-  const visibleProjects = await listProjectsVisibleToEmail(actorEmail, input.prisma);
-  const writableProjectIds = new Set(visibleProjects.filter((project) => project.role === "OWNER" || project.role === "EDITOR").map((project) => project.id));
-  if (!writableProjectIds.has(entity.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to create tags." };
+  const writableProjects = await writableProjectIds(input.prisma, actorEmail);
+  if (!writableProjects.has(entity.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to create tags." };
 
   const receiptId = randomUUID();
   const now = new Date();
@@ -139,9 +159,25 @@ export async function createAndAssignWorkEntityTag(input: {
 
     let tag = await tx.studioTag.findUnique({ where: { projectId_slug: { projectId: entity.projectId, slug } } });
     let created = false;
+    if (!tag) {
+      const alias = await tx.studioTagAlias.findUnique({
+        where: { projectId_slug: { projectId: entity.projectId, slug } },
+        include: { tag: true },
+      });
+      if (alias) {
+        if (canonicalTagLabel(alias.label) !== canonicalTagLabel(label)) {
+          return { kind: "slug-conflict" as const, existingLabel: alias.label };
+        }
+        tag = alias.tag;
+      }
+    }
     if (tag) {
       if (!tag.isActive) return { kind: "archived" as const };
-      if (canonicalTagLabel(tag.label) !== canonicalTagLabel(label)) {
+      const resolvesByAlias = await tx.studioTagAlias.findFirst({
+        where: { projectId: entity.projectId, tagId: tag.id, slug, label: { equals: label, mode: "insensitive" } },
+        select: { id: true },
+      });
+      if (canonicalTagLabel(tag.label) !== canonicalTagLabel(label) && !resolvesByAlias) {
         return { kind: "slug-conflict" as const, existingLabel: tag.label };
       }
     } else {
@@ -220,8 +256,7 @@ export async function replaceWorkEntityTags(input: {
     return { ok: false, code: "INVALID_INPUT", error: "The tag decision is incomplete or invalid." };
   }
 
-  const visibleProjects = await listProjectsVisibleToEmail(actorEmail, input.prisma);
-  const writableProjectIds = new Set(visibleProjects.filter((project) => project.role === "OWNER" || project.role === "EDITOR").map((project) => project.id));
+  const writableProjects = await writableProjectIds(input.prisma, actorEmail);
   const prisma = input.prisma as any;
   const entity = input.entityKind === "task"
     ? await prisma.actionItem.findFirst({ where: { id: entityId, assignedUserId: actorUserId }, select: { id: true, projectId: true, sourceJson: true, updatedAt: true } })
@@ -231,7 +266,7 @@ export async function replaceWorkEntityTags(input: {
 
   if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only the ${input.entityKind} owner can change these tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before adding its tags." };
-  if (!writableProjectIds.has(entity.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to change tags." };
+  if (!writableProjects.has(entity.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to change tags." };
   if (entity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before changing tags." };
 
   if (tagIds.length) {
@@ -293,4 +328,124 @@ export async function replaceWorkEntityTags(input: {
   if (saved.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Editor access and active same-Nest tags are required." };
   if (saved.kind === "conflict" || !saved.entity) return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before changing tags." };
   return { ok: true, entityKind: input.entityKind, entityId, projectId: entity.projectId, tagIds, updatedAt: saved.entity.updatedAt, receiptId };
+}
+
+/**
+ * Rename, archive, or restore one Nest's reusable vocabulary. Renames retain
+ * the former label as an alias, so older iPhone outbox entries and saved human
+ * language converge on the same canonical tag.
+ */
+export async function mutateWorkTagTaxonomy(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  actorEmail: string;
+  tagId: string;
+  operation: WorkTagTaxonomyOperation;
+  label?: string;
+  expectedUpdatedAt: Date;
+}): Promise<MutateWorkTagTaxonomyResult> {
+  const actorUserId = cleanId(input.actorUserId);
+  const actorEmail = typeof input.actorEmail === "string" ? input.actorEmail.trim().toLowerCase() : "";
+  const tagId = cleanId(input.tagId);
+  const operation = input.operation;
+  const label = operation === "RENAME" ? normalizeWorkTagLabel(input.label) : "";
+  if (!actorUserId || !actorEmail || !tagId || !["RENAME", "ARCHIVE", "RESTORE"].includes(operation)
+    || (operation === "RENAME" && !label) || !Number.isFinite(input.expectedUpdatedAt?.getTime())) {
+    return { ok: false, code: "INVALID_INPUT", error: "The vocabulary change is incomplete or invalid." };
+  }
+
+  const prisma = input.prisma as any;
+  const current = await prisma.studioTag.findUnique({
+    where: { id: tagId },
+    select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, updatedAt: true },
+  });
+  if (!current) return { ok: false, code: "NOT_FOUND", error: "That tag no longer exists." };
+  const writableProjects = await writableProjectIds(input.prisma, actorEmail);
+  if (!writableProjects.has(current.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to manage its vocabulary." };
+  if (current.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return { ok: false, code: "CONFLICT", error: "This tag changed elsewhere. Refresh before changing it." };
+  if (operation === "ARCHIVE" && !current.isActive) return { ok: false, code: "ALREADY_ARCHIVED", error: "This tag is already archived." };
+  if (operation === "RESTORE" && current.isActive) return { ok: false, code: "ALREADY_ACTIVE", error: "This tag is already active." };
+
+  const nextSlug = operation === "RENAME" ? workTagSlug(label) : current.slug;
+  const receiptId = randomUUID();
+  const now = new Date();
+  const result = await prisma.$transaction(async (tx: any) => {
+    const activeGrant = await tx.studioProjectAccessGrant.findFirst({
+      where: { projectId: current.projectId, email: actorEmail, status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } },
+      select: { id: true },
+    });
+    if (!activeGrant) return { kind: "forbidden" as const };
+    const fresh = await tx.studioTag.findFirst({
+      where: { id: tagId, projectId: current.projectId, updatedAt: input.expectedUpdatedAt },
+      select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, updatedAt: true },
+    });
+    if (!fresh) return { kind: "conflict" as const };
+
+    if (operation === "RENAME") {
+      if (!fresh.isActive) return { kind: "already-archived" as const };
+      const canonicalConflict = await tx.studioTag.findFirst({
+        where: { projectId: current.projectId, slug: nextSlug, id: { not: tagId } },
+        select: { label: true },
+      });
+      const aliasConflict = await tx.studioTagAlias.findFirst({
+        where: { projectId: current.projectId, slug: nextSlug, tagId: { not: tagId } },
+        select: { label: true },
+      });
+      if (canonicalConflict || aliasConflict) {
+        return { kind: "slug-conflict" as const, existingLabel: (canonicalConflict || aliasConflict).label };
+      }
+    }
+
+    const latest = await tx.studioTagRevision.aggregate({ where: { tagId }, _max: { revision: true } });
+    const revision = (latest._max.revision ?? 0) + 1;
+    const nextActive = operation === "ARCHIVE" ? false : operation === "RESTORE" ? true : fresh.isActive;
+    const nextArchivedAt = operation === "ARCHIVE" ? now : operation === "RESTORE" ? null : fresh.archivedAt;
+    const nextLabel = operation === "RENAME" ? label : fresh.label;
+    const before = { label: fresh.label, slug: fresh.slug, isActive: fresh.isActive, archivedAt: fresh.archivedAt?.toISOString() ?? null };
+    const after = { label: nextLabel, slug: nextSlug, isActive: nextActive, archivedAt: nextArchivedAt?.toISOString() ?? null };
+
+    const update = await tx.studioTag.updateMany({
+      where: { id: tagId, projectId: current.projectId, updatedAt: input.expectedUpdatedAt },
+      data: { label: nextLabel, slug: nextSlug, isActive: nextActive, archivedAt: nextArchivedAt },
+    });
+    if (update.count !== 1) return { kind: "conflict" as const };
+
+    if (operation === "RENAME" && canonicalTagLabel(fresh.label) !== canonicalTagLabel(label)) {
+      await tx.studioTagAlias.upsert({
+        where: { projectId_slug: { projectId: current.projectId, slug: fresh.slug } },
+        create: {
+          projectId: current.projectId,
+          tagId,
+          slug: fresh.slug,
+          label: fresh.label,
+          createdByUserId: actorUserId,
+          provenanceJson: { source: "quipsly-tag-rename-v1", receiptId, revision },
+        },
+        update: {},
+      });
+    }
+    await tx.studioTagRevision.create({
+      data: {
+        tagId,
+        revision,
+        operation: operation.toLowerCase(),
+        actorUserId,
+        snapshotJson: { kind: "quipsly-tag-taxonomy-v1", receiptId, projectId: current.projectId, before, after, externalSideEffects: false },
+      },
+    });
+    const saved = await tx.studioTag.findUnique({
+      where: { id: tagId },
+      select: {
+        id: true, label: true, slug: true, isActive: true, archivedAt: true, updatedAt: true,
+        aliases: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, slug: true } },
+      },
+    });
+    return { kind: "saved" as const, saved, revision };
+  });
+
+  if (result.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to manage its vocabulary." };
+  if (result.kind === "conflict") return { ok: false, code: "CONFLICT", error: "This tag changed elsewhere. Refresh before changing it." };
+  if (result.kind === "slug-conflict") return { ok: false, code: "SLUG_CONFLICT", error: `That name conflicts with “${result.existingLabel}”. Choose a more distinct name.` };
+  if (result.kind === "already-archived") return { ok: false, code: "ALREADY_ARCHIVED", error: "Restore this archived tag before renaming it." };
+  return { ok: true, operation, projectId: current.projectId, tag: result.saved, aliases: result.saved.aliases, revision: result.revision, receiptId };
 }

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
 
-import { createAndAssignWorkEntityTag, replaceWorkEntityTags } from "./work-tags";
+import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags } from "./work-tags";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
@@ -179,5 +179,94 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     });
     expect(otherActor).toMatchObject({ ok: false, code: "NOT_FOUND" });
     await expect(prisma.actionItemTagLink.findMany({ where: { actionItemId: taskId, tagId: archived.id } })).resolves.toEqual([]);
+  });
+
+  it("retains old names as aliases across rename, archive, restore, and Capture-style reuse", async () => {
+    const originalLabel = `Editorial focus ${nonce}`;
+    const renamedLabel = `Episode craft ${nonce}`;
+    const tag = await prisma.studioTag.create({
+      data: { projectId, slug: `editorial-focus-${nonce}`, label: originalLabel },
+    });
+
+    const renamed = await mutateWorkTagTaxonomy({
+      prisma,
+      actorUserId,
+      actorEmail,
+      tagId: tag.id,
+      operation: "RENAME",
+      label: renamedLabel,
+      expectedUpdatedAt: tag.updatedAt,
+    });
+    expect(renamed).toMatchObject({
+      ok: true,
+      operation: "RENAME",
+      tag: { id: tag.id, label: renamedLabel, isActive: true },
+      aliases: [{ label: originalLabel, slug: `editorial-focus-${nonce}` }],
+      revision: 1,
+    });
+
+    const task = await prisma.actionItem.findUniqueOrThrow({ where: { id: taskId } });
+    const reusedFromOldName = await createAndAssignWorkEntityTag({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "task",
+      entityId: taskId,
+      label: originalLabel,
+      expectedUpdatedAt: task.updatedAt,
+    });
+    expect(reusedFromOldName).toMatchObject({ ok: true, created: false, tag: { id: tag.id, label: renamedLabel } });
+
+    if (!renamed.ok) throw new Error("rename setup failed");
+    const archived = await mutateWorkTagTaxonomy({
+      prisma,
+      actorUserId,
+      actorEmail,
+      tagId: tag.id,
+      operation: "ARCHIVE",
+      expectedUpdatedAt: renamed.tag.updatedAt,
+    });
+    expect(archived).toMatchObject({ ok: true, operation: "ARCHIVE", tag: { isActive: false }, revision: 2 });
+
+    const goal = await prisma.goal.findUniqueOrThrow({ where: { id: goalId } });
+    const archivedAliasAttempt = await createAndAssignWorkEntityTag({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "goal",
+      entityId: goalId,
+      label: originalLabel,
+      expectedUpdatedAt: goal.updatedAt,
+    });
+    expect(archivedAliasAttempt).toMatchObject({ ok: false, code: "ARCHIVED" });
+
+    if (!archived.ok) throw new Error("archive setup failed");
+    const restored = await mutateWorkTagTaxonomy({
+      prisma,
+      actorUserId,
+      actorEmail,
+      tagId: tag.id,
+      operation: "RESTORE",
+      expectedUpdatedAt: archived.tag.updatedAt,
+    });
+    expect(restored).toMatchObject({ ok: true, operation: "RESTORE", tag: { isActive: true }, revision: 3 });
+
+    const room = await prisma.callRoom.findUniqueOrThrow({ where: { id: roomId } });
+    const reusedAfterRestore = await createAndAssignWorkEntityTag({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "session",
+      entityId: roomId,
+      label: originalLabel,
+      expectedUpdatedAt: room.updatedAt,
+    });
+    expect(reusedAfterRestore).toMatchObject({ ok: true, created: false, tag: { id: tag.id, label: renamedLabel } });
+    await expect(prisma.studioTagRevision.findMany({ where: { tagId: tag.id }, orderBy: { revision: "asc" }, select: { revision: true, operation: true } }))
+      .resolves.toEqual([
+        { revision: 1, operation: "rename" },
+        { revision: 2, operation: "archive" },
+        { revision: 3, operation: "restore" },
+      ]);
   });
 });

@@ -2,13 +2,14 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, replaceWorkTags, saveWeeklyCommitment, updateWorkTaskStatus } from "./actions";
+import { changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, replaceWorkTags, saveWeeklyCommitment, updateWorkTaskStatus } from "./actions";
 import { WorkClient } from "./work-client";
 import type { WorkSnapshot } from "./work-model";
 
 const refresh = jest.fn();
 jest.mock("next/navigation", () => ({ useRouter: () => ({ refresh }) }));
 jest.mock("./actions", () => ({
+  changeWorkTagTaxonomy: jest.fn(),
   createAndAssignWorkTag: jest.fn(),
   createWorkGoal: jest.fn(),
   createWorkTask: jest.fn(),
@@ -112,12 +113,42 @@ describe("Work Queue interactions", () => {
     };
     jest.mocked(replaceWorkTags).mockResolvedValue({ ok: true, entityKind: "task", entityId: "task-1", projectId: "project-1", tagIds: ["tag-proof", "tag-episode"], updatedAt: "2026-07-18T18:00:01.000Z", receiptId: "tag-receipt" });
     render(<WorkClient initialSnapshot={taggedSnapshot} projectOptions={[project]} />);
-    expect(screen.getByText("#Proof listen")).toBeInTheDocument();
+    expect(screen.getAllByText("#Proof listen")).toHaveLength(2);
     await user.click(screen.getByText("Edit High Ground Odyssey tags"));
     await user.click(screen.getByRole("checkbox", { name: "Episode 4" }));
     await user.click(screen.getByRole("button", { name: "Save tags" }));
     expect(replaceWorkTags).toHaveBeenCalledWith({ entityKind: "task", entityId: "task-1", tagIds: ["tag-proof", "tag-episode"], expectedUpdatedAt: snapshot.tasks[0].updatedAt });
     expect(await screen.findByRole("status")).toHaveTextContent("No external action was taken");
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("renames canonical vocabulary while explaining preserved aliases", async () => {
+    const user = userEvent.setup();
+    const project = { id: "project-1", name: "High Ground Odyssey", slug: "high-ground", role: "EDITOR", canWrite: true, tags: [
+      { id: "tag-proof", label: "Proof listen", slug: "proof-listen", category: "workflow", projectId: "project-1", isActive: true, archivedAt: null, updatedAt: "2026-07-18T18:00:00.000Z", aliases: [] },
+    ] };
+    jest.mocked(changeWorkTagTaxonomy).mockResolvedValue({
+      ok: true,
+      operation: "RENAME",
+      projectId: "project-1",
+      tag: { id: "tag-proof", label: "Final listen", slug: "final-listen", isActive: true, archivedAt: null, updatedAt: "2026-07-18T18:00:01.000Z" },
+      aliases: [{ id: "alias-proof", label: "Proof listen", slug: "proof-listen" }],
+      revision: 1,
+      receiptId: "taxonomy-receipt",
+    });
+    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} />);
+    await user.click(screen.getByText("Manage vocabulary · 1 active across 1 Nest"));
+    const renameInput = screen.getByRole("textbox", { name: "Rename Proof listen" });
+    await user.clear(renameInput);
+    await user.type(renameInput, "Final listen");
+    await user.click(screen.getByRole("button", { name: "Rename" }));
+    expect(changeWorkTagTaxonomy).toHaveBeenCalledWith({
+      tagId: "tag-proof",
+      operation: "RENAME",
+      label: "Final listen",
+      expectedUpdatedAt: "2026-07-18T18:00:00.000Z",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("former name remains a reusable alias");
     expect(refresh).toHaveBeenCalled();
   });
 

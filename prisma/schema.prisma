@@ -2056,6 +2056,7 @@ model StudioProject {
   workspace             StudioWorkspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   documents             StudioDocument[]
   tags                  StudioTag[]
+  tagAliases            StudioTagAlias[]
   viewDefinitions       StudioViewDefinition[]
   knowledgeNodes        StudioKnowledgeNode[]
   manuscript            StudioManuscript?            @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
@@ -2894,6 +2895,7 @@ model StudioTag {
   nodeType    StudioKnowledgeNodeType @default(source_note)
   isPrivate   Boolean                 @default(true)
   isActive    Boolean                 @default(true)
+  archivedAt  DateTime?
   createdAt   DateTime                @default(now())
   updatedAt   DateTime                @updatedAt
 
@@ -2906,10 +2908,49 @@ model StudioTag {
   actionItems       ActionItemTagLink[]
   goals             GoalTagLink[]
   callRooms         CallRoomTagLink[]
+  aliases           StudioTagAlias[]
+  revisions         StudioTagRevision[]
 
   @@unique([projectId, slug])
   @@index([projectId, category])
   @@index([projectId, isActive])
+}
+
+// Human vocabulary can change without breaking older Capture input, saved
+// searches, or provenance. Aliases always resolve to one canonical tag inside
+// the same Nest; mutation services reject cross-table slug ambiguity.
+model StudioTagAlias {
+  id              String   @id @default(cuid())
+  projectId       String
+  tagId           String
+  slug            String
+  label           String
+  provenanceJson  Json     @default("{}")
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  project StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tag     StudioTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, slug])
+  @@index([tagId, createdAt])
+}
+
+// Append-only rename/archive/restore evidence. The current StudioTag remains
+// the fast read model while revisions preserve the human decision boundary.
+model StudioTagRevision {
+  id           String   @id @default(cuid())
+  tagId        String
+  revision     Int
+  operation    String
+  actorUserId  String?
+  snapshotJson Json
+  createdAt    DateTime @default(now())
+
+  tag StudioTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([tagId, revision])
+  @@index([actorUserId, createdAt])
 }
 
 // Work and Session tags are explicit per-entity joins. The linked StudioTag

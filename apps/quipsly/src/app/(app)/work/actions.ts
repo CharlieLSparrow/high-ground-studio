@@ -7,7 +7,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
-import { createAndAssignWorkEntityTag, replaceWorkEntityTags, type WorkTagEntityKind } from "@/lib/server/work-tags";
+import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags, type WorkTagEntityKind, type WorkTagTaxonomyOperation } from "@/lib/server/work-tags";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import {
   editTaskRecurrenceOccurrenceInTransaction,
@@ -56,6 +56,18 @@ export type CreateAndAssignWorkTagActionResult =
       receiptId: string;
     }
   | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ARCHIVED" | "UNAVAILABLE"; error: string };
+
+export type MutateWorkTagTaxonomyActionResult =
+  | {
+      ok: true;
+      operation: WorkTagTaxonomyOperation;
+      projectId: string;
+      tag: { id: string; label: string; slug: string; isActive: boolean; archivedAt: string | null; updatedAt: string };
+      aliases: Array<{ id: string; label: string; slug: string }>;
+      revision: number;
+      receiptId: string;
+    }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ALREADY_ACTIVE" | "ALREADY_ARCHIVED" | "UNAVAILABLE"; error: string };
 
 export type UpdateTaskRecurrenceStatusResult =
   | { ok: true; seriesId: string; status: "ACTIVE" | "PAUSED" | "ENDED"; updatedAt: string; receiptId: string; materializedCount: number }
@@ -841,6 +853,48 @@ export async function createAndAssignWorkTag(input: {
   } catch (error) {
     console.error("[work] failed to create and assign private tag", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not create this tag. No existing vocabulary or record was changed." };
+  }
+}
+
+export async function changeWorkTagTaxonomy(input: {
+  tagId: string;
+  operation: WorkTagTaxonomyOperation;
+  label?: string;
+  expectedUpdatedAt: string;
+}): Promise<MutateWorkTagTaxonomyActionResult> {
+  const session = await getQuipslySession();
+  const actorEmail = cleanText(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+  if (!session?.user?.id || !actorEmail) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before managing private vocabulary." };
+  const expectedUpdatedAt = expectedRevision(input?.expectedUpdatedAt);
+  if (!expectedUpdatedAt || !["RENAME", "ARCHIVE", "RESTORE"].includes(input?.operation)) {
+    return { ok: false, code: "INVALID_INPUT", error: "The vocabulary change is incomplete or invalid." };
+  }
+  try {
+    const result = await mutateWorkTagTaxonomy({
+      prisma: getPrismaClient(),
+      actorUserId: session.user.id,
+      actorEmail,
+      tagId: input.tagId,
+      operation: input.operation,
+      label: input.label,
+      expectedUpdatedAt,
+    });
+    if (!result.ok) return result;
+    revalidatePath("/work");
+    revalidatePath("/today");
+    revalidatePath("/find");
+    revalidatePath("/research");
+    return {
+      ...result,
+      tag: {
+        ...result.tag,
+        archivedAt: result.tag.archivedAt?.toISOString() ?? null,
+        updatedAt: result.tag.updatedAt.toISOString(),
+      },
+    };
+  } catch (error) {
+    console.error("[work] failed to change Nest vocabulary", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not change this vocabulary. Existing tags and records stayed preserved." };
   }
 }
 

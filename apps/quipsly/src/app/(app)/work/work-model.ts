@@ -7,7 +7,17 @@ export type WorkTaskStatus = "OPEN" | "DONE" | "CANCELED";
 export type WorkGoalStatus = "ACTIVE" | "PAUSED" | "ACHIEVED" | "ARCHIVED";
 
 export type WorkProject = { id: string; name: string; slug: string };
-export type WorkTag = { id: string; label: string; slug: string; category: string; projectId: string };
+export type WorkTag = {
+  id: string;
+  label: string;
+  slug: string;
+  category: string;
+  projectId: string;
+  isActive?: boolean;
+  archivedAt?: string | null;
+  updatedAt?: string;
+  aliases?: Array<{ id: string; label: string; slug: string }>;
+};
 export type WorkProjectOption = WorkProject & { role: string; canWrite: boolean; tags: WorkTag[] };
 
 export type RawWorkTask = {
