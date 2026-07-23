@@ -36,8 +36,26 @@ steps:
       - --build-arg=NODE_OPTIONS=${_NODE_OPTIONS}
       - --dockerfile=apps/quipsly/Dockerfile
 
-images:
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+  - id: verify-quipsly-web-image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
+    entrypoint: bash
+    args:
+      - -euo
+      - pipefail
+      - -c
+      - |
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        for attempt in 1 2 3 4 5 6; do
+          digest="$$(gcloud artifacts docker images describe "$${image}" \
+            --format='value(image_summary.digest)' 2>/dev/null || true)"
+          if [[ "$${digest}" =~ ^sha256:[0-9a-f]{64}$$ ]]; then
+            printf '%s\n' "$${digest}" | tee /workspace/quipsly-image-digest.txt
+            exit 0
+          fi
+          sleep "$$((attempt * 2))"
+        done
+        echo "Could not read back pushed image $${image}." >&2
+        exit 1
 
 options:
   machineType: E2_HIGHCPU_32
