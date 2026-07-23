@@ -73,6 +73,41 @@ verify_capture_app() {
   pass "Packaged app declares audio background mode"
 }
 
+verify_distribution_bundle() {
+  local bundle_path="$1"
+  local label="$2"
+  local entitlements_path="$ipa_extract/$label-entitlements.plist"
+  local profile_path="$ipa_extract/$label-profile.plist"
+  local signature_details
+  local profile_name
+
+  signature_details="$(codesign -dv --verbose=4 "$bundle_path" 2>&1)"
+  [[ "$signature_details" == *"Authority=Apple Distribution:"* ]] ||
+    fail "$label is not signed by Apple Distribution"
+  [[ "$signature_details" == *"TeamIdentifier=585GUXMY5M"* ]] ||
+    fail "$label is not signed for the expected Apple team"
+  pass "$label uses Apple Distribution signing for team 585GUXMY5M"
+
+  codesign -d --entitlements :- "$bundle_path" >"$entitlements_path" 2>/dev/null
+  [[ "$(plutil -extract get-task-allow raw -o - "$entitlements_path")" == "false" ]] ||
+    fail "$label distribution entitlements allow debugging"
+  [[ "$(plutil -extract beta-reports-active raw -o - "$entitlements_path")" == "true" ]] ||
+    fail "$label distribution entitlements do not enable TestFlight beta reports"
+  pass "$label has distribution-safe TestFlight entitlements"
+
+  require_path "$bundle_path/embedded.mobileprovision"
+  security cms -D -i "$bundle_path/embedded.mobileprovision" >"$profile_path"
+  profile_name="$(plutil -extract Name raw -o - "$profile_path")"
+  [[ "$profile_name" == *"Store Provisioning Profile"* ]] ||
+    fail "$label does not contain an App Store provisioning profile"
+  [[ "$(plutil -extract Entitlements.get-task-allow raw -o - "$profile_path")" == "false" ]] ||
+    fail "$label provisioning profile allows debugging"
+  if plutil -extract ProvisionedDevices xml1 -o - "$profile_path" >/dev/null 2>&1; then
+    fail "$label provisioning profile is device-scoped instead of App Store scoped"
+  fi
+  pass "$label contains an App Store provisioning profile"
+}
+
 require_path "$archive_path"
 verify_capture_app "$app_path"
 verify_bundle "$extension_path" "com.highgroundodyssey.HighGroundCapture.ShareCapture"
@@ -94,6 +129,8 @@ if [[ -n "$ipa_path" ]]; then
   [[ -n "$ipa_app" ]] || fail "IPA does not contain an application bundle"
   verify_capture_app "$ipa_app"
   verify_bundle "$ipa_app/PlugIns/ShareCaptureExtension.appex" "com.highgroundodyssey.HighGroundCapture.ShareCapture"
+  verify_distribution_bundle "$ipa_app" "app"
+  verify_distribution_bundle "$ipa_app/PlugIns/ShareCaptureExtension.appex" "extension"
   pass "Exported IPA passed packaged metadata and signature inspection"
 fi
 
