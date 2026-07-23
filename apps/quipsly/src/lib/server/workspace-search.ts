@@ -49,7 +49,7 @@ export async function searchWorkspace(
   input: { actorUserId: string; query: string; visibleProjects: Array<{ id: string; slug: string; name: string }> },
 ) {
   const query = normalizeWorkspaceSearchQuery(input.query);
-  if (query.length < 2) return { query, tasks: [], goals: [], sessions: [], sources: [], documents: [], annotations: [], tags: [], projectCount: 0, boundaries: { actorScoped: true, minimumQueryLength: 2, perKindLimit: RESULT_LIMIT, unreviewedTranscriptCandidatesExcluded: true, externalSideEffects: false } };
+  if (query.length < 2) return { query, tasks: [], goals: [], sessions: [], notes: [], sources: [], documents: [], annotations: [], tags: [], projectCount: 0, boundaries: { actorScoped: true, minimumQueryLength: 2, perKindLimit: RESULT_LIMIT, unreviewedTranscriptCandidatesExcluded: true, externalSideEffects: false } };
   const projects = input.visibleProjects;
   const projectIds = projects.map((project) => project.id);
   const visibleTagMatch: Prisma.StudioTagWhereInput = {
@@ -72,13 +72,18 @@ export async function searchWorkspace(
     { nestSlug: { contains: query, mode: "insensitive" } },
     ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.CallRoomWhereInput] : []),
   ];
+  const noteContentMatches: Prisma.CoachingNoteWhereInput[] = [
+    { title: { contains: query, mode: "insensitive" } },
+    { body: { contains: query, mode: "insensitive" } },
+    ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.CoachingNoteWhereInput] : []),
+  ];
   const visibleAssignedTags = {
     where: { tag: { projectId: { in: projectIds } } },
     orderBy: { createdAt: "asc" as const },
     take: 12,
     select: { tag: { select: { id: true, slug: true, label: true, isActive: true } } },
   };
-  const [taskRows, goals, sessions, sources, documents, annotations, tags] = await Promise.all([
+  const [taskRows, goals, sessions, noteRows, sources, documents, annotations, tags] = await Promise.all([
     prisma.actionItem.findMany({
       where: { AND: [{ OR: taskAccessWhere(input.actorUserId) }, { OR: taskContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT + 10,
@@ -105,6 +110,21 @@ export async function searchWorkspace(
       select: {
         id: true, title: true, purpose: true, status: true, projectSlug: true, scheduledStart: true,
         project: { select: { id: true, name: true, slug: true } },
+        tagLinks: visibleAssignedTags,
+      },
+    }),
+    prisma.coachingNote.findMany({
+      where: {
+        AND: [
+          { room: { OR: roomAccessWhere(input.actorUserId) } },
+          { kind: { notIn: ["SUMMARY", "HIGHLIGHT"] } },
+          { OR: noteContentMatches },
+        ],
+      },
+      orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
+      select: {
+        id: true, title: true, body: true, kind: true, updatedAt: true,
+        room: { select: { id: true, title: true } },
         tagLinks: visibleAssignedTags,
       },
     }),
@@ -139,5 +159,6 @@ export async function searchWorkspace(
     }) : Promise.resolve([]),
   ]);
   const tasks = taskRows.filter((task) => !isUnreviewedTranscriptActionItemSource(task.sourceJson)).slice(0, RESULT_LIMIT);
-  return { query, tasks, goals, sessions, sources, documents, annotations, tags, projectCount: projects.length, boundaries: { actorScoped: true, minimumQueryLength: 2, perKindLimit: RESULT_LIMIT, unreviewedTranscriptCandidatesExcluded: true, externalSideEffects: false } };
+  const notes = noteRows.filter((note): note is typeof note & { room: NonNullable<typeof note.room> } => Boolean(note.room));
+  return { query, tasks, goals, sessions, notes, sources, documents, annotations, tags, projectCount: projects.length, boundaries: { actorScoped: true, minimumQueryLength: 2, perKindLimit: RESULT_LIMIT, unreviewedTranscriptCandidatesExcluded: true, externalSideEffects: false } };
 }
