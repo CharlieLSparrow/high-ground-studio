@@ -1,163 +1,338 @@
-"use client";
+import { Prisma } from "@prisma/client";
+import { getPrismaClient } from "@/lib/prisma";
+import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { getQuipslySession } from "@/lib/server/quipsly-session";
+import { researchWritingUseVisibilitySql } from "@/lib/server/research-writing-privacy";
+import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
 
-import { useState } from "react";
-import { Search, BrainCircuit, BookOpen, ChevronRight, Hash, Database, Sparkles } from "lucide-react";
-import {
-  getSourceIngestStatusDescription,
-  getSourceIngestStatusLabel,
-  getSourceReviewStatusLabel,
-  type SourceAwareResearchPacket,
-  type SourceIngestStatus,
-} from "@high-ground/quipsly-domain/source-aware";
+import { ResearchLibraryClient } from "./research-library-client";
+import type {
+  ResearchEvidenceRecord,
+  ResearchLibrarySnapshot,
+  ResearchPacketRecord,
+  ResearchSourceRecord,
+} from "./research-library-model";
 
-type ResearchPacketCard = {
-  id: number;
-  title: string;
-  concept: string;
-  source: string;
-  ingestStatus: SourceIngestStatus;
-  reviewStatus: SourceAwareResearchPacket["humanReviewStatus"];
-};
+export const dynamic = "force-dynamic";
 
-export default function ResearchPage() {
-  const [searchQuery, setSearchQuery] = useState("");
-
-  const savedNodes: ResearchPacketCard[] = [
-    { id: 1, title: "Wednesday Rule source packet", concept: "Leadership", source: "High Ground Odyssey manuscript", ingestStatus: "indexed", reviewStatus: "approved" },
-    { id: 2, title: "Systems anxiety examples", concept: "Product Philosophy", source: "Quipsly essay draft", ingestStatus: "needs-review", reviewStatus: "needs-review" },
-    { id: 3, title: "One living document pattern", concept: "Writing Workflow", source: "Quipsly starter document", ingestStatus: "chunked", reviewStatus: "draft" },
-  ];
-
-  const activeAssistants = [
-    { id: 1, name: "Source Finder", status: "Reviewing", target: "Current Nest sources", progress: 65 },
-    { id: 2, name: "Citation Clerk", status: "Ready", target: "Awaiting selected block", progress: 0 },
-  ];
-
-  return (
-    <div className="w-full h-full flex flex-col bg-transparent overflow-y-auto">
-      <header className="p-8 pb-4">
-        <p className="text-sm font-bold text-[#8c6b4a] uppercase tracking-widest mb-1">Research & Knowledge</p>
-        <h1 className="text-4xl font-black text-[#3d3122]">Research Library</h1>
-        <p className="text-[#8c6b4a] mt-2">
-          Ask Quipslys to find examples, compare sources, prepare packets, and bring receipts. They organize the evidence; you do the writing.
-        </p>
-      </header>
-
-      <div className="p-8 pt-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Left Column (Knowledge Nodes) */}
-        <div className="col-span-1 lg:col-span-2 flex flex-col gap-6">
-
-          {/* Global Search Bar */}
-          <div className="w-full relative">
-             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-               <Search className="text-[#8c6b4a]" size={20} />
-             </div>
-             <input
-               type="text"
-                 className="w-full bg-white border-2 border-[#e8dcc4] rounded-2xl pl-12 pr-4 py-4 text-lg font-medium text-[#3d3122] focus:outline-none focus:border-amber-500 shadow-sm transition-all placeholder:text-[#d4c1a0]"
-               placeholder="Search source text, quote overlays, transcripts, notes, and concepts..."
-               value={searchQuery}
-               onChange={(e) => setSearchQuery(e.target.value)}
-             />
-             <div className="absolute inset-y-0 right-2 flex items-center">
-               <button className="bg-[#8c6b4a] text-white px-4 py-1.5 rounded-xl font-bold text-sm hover:bg-[#5e4b33] transition-colors shadow-sm">
-                 Source Search
-               </button>
-             </div>
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-3">
-            {[
-              ["Source stays intact", "Imported books, pages, transcripts, and course material should remain traceable as source evidence."],
-              ["Overlays stay editable", "Highlights, tags, quotes, questions, and notes can evolve without corrupting the source."],
-              ["Packets need approval", "Research packets can prepare examples and citations, but public use stays review-first."],
-            ].map(([title, body]) => (
-              <div key={title} className="rounded-2xl border border-[#e8dcc4] bg-white p-4 shadow-sm">
-                <p className="font-serif text-lg font-black text-[#3d3122]">{title}</p>
-                <p className="mt-2 text-xs leading-5 text-[#8c6b4a]">{body}</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="bg-white border border-[#e8dcc4] rounded-2xl p-6 shadow-sm">
-             <div className="flex justify-between items-center mb-6">
-               <h3 className="text-lg font-bold text-[#3d3122] flex items-center gap-2">
-                 <Database className="text-[#8c6b4a]" size={20} />
-                 Source-Aware Packets
-               </h3>
-               <button className="text-xs font-bold text-amber-600 hover:text-amber-700">View All</button>
-             </div>
-
-             <div className="flex flex-col gap-3">
-               {savedNodes.map(node => (
-                 <div key={node.id} className="p-4 bg-[#fdfaf6] border border-[#e8dcc4] rounded-xl hover:border-[#d4c1a0] transition-colors group cursor-pointer flex justify-between items-center">
-                   <div className="flex flex-col gap-1.5">
-                     <span className="font-bold text-[#3d3122]">{node.title}</span>
-                     <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider bg-white text-[#8c6b4a] border border-[#e8dcc4] px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <Hash size={10} /> {node.concept}
-                        </span>
-                        <span
-                          className="text-[10px] font-bold uppercase tracking-wider bg-white text-[#8c6b4a] border border-[#e8dcc4] px-2 py-0.5 rounded-full"
-                          title={getSourceIngestStatusDescription(node.ingestStatus)}
-                        >
-                          {getSourceIngestStatusLabel(node.ingestStatus)}
-                        </span>
-                        <span className="text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">
-                          {getSourceReviewStatusLabel(node.reviewStatus)}
-                        </span>
-                     </div>
-                   </div>
-                   <div className="flex items-center gap-4">
-                     <span className="text-xs text-[#8c6b4a] flex items-center gap-1"><BookOpen size={12} /> {node.source}</span>
-                     <ChevronRight size={16} className="text-[#d4c1a0] group-hover:text-amber-500 transition-colors" />
-                   </div>
-                 </div>
-               ))}
-             </div>
-          </div>
-
-        </div>
-
-        {/* Right Column (Agents) */}
-        <div className="col-span-1 flex flex-col gap-6">
-          <div className="bg-[#f8f3e6] border border-[#e8dcc4] rounded-2xl p-6 shadow-sm flex-1">
-             <div className="flex justify-between items-center mb-6">
-               <h3 className="text-lg font-bold text-[#3d3122] flex items-center gap-2">
-                 <BrainCircuit className="text-[#8c6b4a]" size={20} />
-                 Quipsly Assistants
-               </h3>
-             </div>
-
-             <div className="flex flex-col gap-4">
-               {activeAssistants.map(assistant => (
-                 <div key={assistant.id} className="p-4 bg-white border border-[#e8dcc4] rounded-xl shadow-sm">
-                   <div className="flex justify-between items-start mb-2">
-                     <div className="flex flex-col">
-                       <span className="font-bold text-sm text-[#3d3122]">{assistant.name}</span>
-                       <span className="text-[10px] text-[#8c6b4a] font-mono mt-0.5">Target: {assistant.target}</span>
-                     </div>
-                     <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${assistant.status === 'Reviewing' ? 'bg-emerald-100 text-emerald-700 border border-emerald-200' : 'bg-[#fdfaf6] text-[#8c6b4a] border border-[#e8dcc4]'}`}>
-                       {assistant.status}
-                     </span>
-                   </div>
-                   {assistant.status === 'Reviewing' && (
-                     <div className="w-full h-1.5 bg-[#f8f3e6] rounded-full mt-3 overflow-hidden">
-                        <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${assistant.progress}%` }}></div>
-                     </div>
-                   )}
-                 </div>
-               ))}
-
-               <button className="w-full py-3 mt-2 bg-amber-600 hover:bg-amber-700 text-white font-bold rounded-xl shadow-sm transition-colors text-sm flex justify-center items-center gap-2">
-                 <Sparkles size={16} /> Prepare Research Packet
-               </button>
-             </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
+function hasLineage(value: unknown) {
+  return Boolean(
+    value
+      && typeof value === "object"
+      && !Array.isArray(value)
+      && Object.keys(value as Record<string, unknown>).length > 0,
   );
+}
+
+function safeDatabaseMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const code = typeof error === "object" && error && "code" in error
+    ? String((error as { code?: unknown }).code ?? "")
+    : "";
+
+  if (code === "ECONNREFUSED" || message.includes("ECONNREFUSED")) {
+    return "The workspace database connection is unavailable.";
+  }
+
+  return "Quipsly could not read the research workspace.";
+}
+
+async function loadResearchLibrary(): Promise<ResearchLibrarySnapshot> {
+  const session = await getQuipslySession();
+  const signedInEmail = normalizeAccessEmail(
+    session?.user?.primaryEmail || session?.user?.email,
+  );
+  const actorEmail = signedInEmail;
+
+  if (!actorEmail) {
+    return {
+      state: "signed-out",
+      message: "Sign in to read private sources and saved research packets.",
+    };
+  }
+
+  const prisma = getPrismaClient();
+
+  try {
+    const projects = await listProjectsVisibleToEmail(actorEmail, prisma);
+    const projectIds = projects.map((project) => project.id);
+    const projectWriteAccess = new Map(projects.map((project) => [
+      project.id,
+      Boolean(signedInEmail) && (project.role === "OWNER" || project.role === "EDITOR"),
+    ]));
+
+    if (projectIds.length === 0) {
+      return {
+        state: "ready",
+        authState: "signed-in",
+        accessibleNestCount: 0,
+        projects: [],
+        sources: [],
+        packets: [],
+        evidence: [],
+      };
+    }
+
+    const [sourceRows, packetRows, evidenceRows] = await Promise.all([
+      prisma.studioSourceUnit.findMany({
+        where: {
+          projectId: { in: projectIds },
+          immutableText: { not: null },
+        },
+        select: {
+          id: true,
+          projectId: true,
+          title: true,
+          kind: true,
+          author: true,
+          sourceUrl: true,
+          sourcePath: true,
+          immutableText: true,
+          updatedAt: true,
+          personalSourceFiling: {
+            select: {
+              captureType: true,
+              snippetId: true,
+              bookmarkId: true,
+              createdByUserId: true,
+              createdAt: true,
+            },
+          },
+          project: {
+            select: {
+              name: true,
+              slug: true,
+              tags: {
+                where: { isActive: true },
+                orderBy: { label: "asc" },
+                select: { id: true, label: true, slug: true },
+              },
+            },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 30,
+      }),
+      prisma.studioOutputPacket.findMany({
+        where: {
+          projectId: { in: projectIds },
+          kind: { contains: "research", mode: "insensitive" },
+        },
+        select: {
+          id: true,
+          title: true,
+          kind: true,
+          status: true,
+          lineageJson: true,
+          approvedAt: true,
+          updatedAt: true,
+          project: {
+            select: { name: true, slug: true },
+          },
+          document: {
+            select: { title: true },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 50,
+      }),
+      prisma.studioKnowledgeNode.findMany({
+        where: { projectId: { in: projectIds } },
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          sourceText: true,
+          sourceLabel: true,
+          sourcePath: true,
+          tagLabel: true,
+          nodeType: true,
+          reviewStatus: true,
+          projectionStatus: true,
+          updatedAt: true,
+          project: {
+            select: { name: true, slug: true },
+          },
+          document: {
+            select: { title: true },
+          },
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 100,
+      }),
+    ]);
+
+    const annotationRows = sourceRows.length > 0
+      ? await prisma.$queryRaw<Array<{
+          id: string;
+          sourceUnitId: string;
+          kind: string;
+          status: string;
+          visibility: string;
+          body: string;
+          exactText: string | null;
+          startOffset: number | null;
+          endOffset: number | null;
+          createdByUserId: string | null;
+          updatedAt: Date;
+          tagLabels: string[];
+        }>>(Prisma.sql`
+          SELECT annotation."id", annotation."sourceUnitId", annotation."kind", annotation."status",
+                 annotation."visibility", annotation."body", annotation."exactText", annotation."startOffset",
+                 annotation."endOffset", annotation."createdByUserId", annotation."updatedAt",
+                 COALESCE(array_agg(tag."label" ORDER BY tag."label") FILTER (WHERE tag."id" IS NOT NULL), ARRAY[]::text[]) AS "tagLabels"
+          FROM "StudioSourceAnnotation" annotation
+          LEFT JOIN "StudioSourceAnnotationTag" annotation_tag ON annotation_tag."annotationId" = annotation."id"
+          LEFT JOIN "StudioTag" tag ON tag."id" = annotation_tag."tagId"
+          WHERE annotation."sourceUnitId" IN (${Prisma.join(sourceRows.map((source) => source.id))})
+            AND annotation."status" IN ('active', 'resolved')
+            AND (annotation."visibility" = 'project' ${session?.user?.id ? Prisma.sql`OR annotation."createdByUserId" = ${session.user.id}` : Prisma.empty})
+          GROUP BY annotation."id"
+          ORDER BY annotation."updatedAt" DESC
+        `)
+      : [];
+    const writingUseRows = annotationRows.length > 0
+      ? await prisma.$queryRaw<Array<{
+          id: string;
+          annotationId: string;
+          documentId: string;
+          documentTitle: string;
+          projectSlug: string;
+        }>>(Prisma.sql`
+          SELECT annotation_use."id", annotation_use."annotationId", document."id" AS "documentId",
+                 document."title" AS "documentTitle", project."slug" AS "projectSlug"
+          FROM "StudioSourceAnnotationUse" annotation_use
+          JOIN "StudioDocument" document ON document."id" = annotation_use."documentId"
+          JOIN "StudioProject" project ON project."id" = annotation_use."projectId"
+          WHERE annotation_use."annotationId" IN (${Prisma.join(annotationRows.map((annotation) => annotation.id))})
+            AND annotation_use."archivedAt" IS NULL
+            AND ${researchWritingUseVisibilitySql(session?.user?.id)}
+          ORDER BY annotation_use."createdAt" DESC
+        `)
+      : [];
+    const writingUsesByAnnotation = new Map<string, typeof writingUseRows>();
+    for (const writingUse of writingUseRows) {
+      const rows = writingUsesByAnnotation.get(writingUse.annotationId) ?? [];
+      rows.push(writingUse);
+      writingUsesByAnnotation.set(writingUse.annotationId, rows);
+    }
+    const annotationsBySource = new Map<string, typeof annotationRows>();
+    for (const annotation of annotationRows) {
+      const rows = annotationsBySource.get(annotation.sourceUnitId) ?? [];
+      rows.push(annotation);
+      annotationsBySource.set(annotation.sourceUnitId, rows);
+    }
+
+    const sources: ResearchSourceRecord[] = sourceRows.flatMap((source) => {
+      if (!source.immutableText) return [];
+      const previewLimit = 18_000;
+      return [{
+        id: source.id,
+        title: source.title,
+        kind: source.kind,
+        author: source.author,
+        sourceUrl: source.sourceUrl,
+        sourcePath: source.sourcePath,
+        immutableText: source.immutableText.slice(0, previewLimit),
+        contentTruncated: source.immutableText.length > previewLimit,
+        projectName: source.project.name,
+        projectSlug: source.project.slug,
+        canWrite: projectWriteAccess.get(source.projectId) ?? false,
+        tagCatalog: source.project.tags,
+        annotations: (annotationsBySource.get(source.id) ?? []).flatMap((annotation) => {
+          if (annotation.startOffset == null || annotation.endOffset == null || !annotation.exactText) return [];
+          return [{
+            id: annotation.id,
+            kind: annotation.kind,
+            status: annotation.status,
+            visibility: annotation.visibility,
+            body: annotation.body,
+            exactText: annotation.exactText,
+            startOffset: annotation.startOffset,
+            endOffset: annotation.endOffset,
+            tagLabels: annotation.tagLabels,
+            createdByMe: annotation.createdByUserId === session?.user?.id,
+            updatedAt: annotation.updatedAt.toISOString(),
+            writingUses: (writingUsesByAnnotation.get(annotation.id) ?? []).map((writingUse) => ({
+              id: writingUse.id,
+              documentId: writingUse.documentId,
+              documentTitle: writingUse.documentTitle,
+              projectSlug: writingUse.projectSlug,
+            })),
+          }];
+        }),
+        personalCaptureOrigin: source.personalSourceFiling && (source.personalSourceFiling.captureType === "SNIPPET" || source.personalSourceFiling.captureType === "BOOKMARK")
+          ? {
+              captureType: source.personalSourceFiling.captureType,
+              captureId: source.personalSourceFiling.captureType === "SNIPPET" ? source.personalSourceFiling.snippetId : source.personalSourceFiling.bookmarkId,
+              filedAt: source.personalSourceFiling.createdAt.toISOString(),
+              ownedByMe: source.personalSourceFiling.createdByUserId === session?.user?.id,
+            }
+          : null,
+        updatedAt: source.updatedAt.toISOString(),
+      }];
+    });
+
+    const packets: ResearchPacketRecord[] = packetRows.map((packet) => ({
+      id: packet.id,
+      title: packet.title,
+      kind: packet.kind,
+      status: packet.status,
+      projectName: packet.project.name,
+      projectSlug: packet.project.slug,
+      documentTitle: packet.document?.title ?? null,
+      hasLineage: hasLineage(packet.lineageJson),
+      approvedAt: packet.approvedAt?.toISOString() ?? null,
+      updatedAt: packet.updatedAt.toISOString(),
+    }));
+
+    const evidence: ResearchEvidenceRecord[] = evidenceRows.map((node) => ({
+      id: node.id,
+      title: node.title,
+      excerpt: node.body.trim() || node.sourceText.trim(),
+      sourceLabel: node.sourceLabel,
+      sourcePath: node.sourcePath,
+      tagLabel: node.tagLabel,
+      nodeType: node.nodeType,
+      reviewStatus: node.reviewStatus,
+      projectionStatus: node.projectionStatus,
+      projectName: node.project.name,
+      projectSlug: node.project.slug,
+      documentTitle: node.document.title,
+      updatedAt: node.updatedAt.toISOString(),
+    }));
+
+    return {
+      state: "ready",
+      authState: "signed-in",
+      accessibleNestCount: projects.length,
+      projects: projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        slug: project.slug,
+        canWrite: Boolean(signedInEmail) && (project.role === "OWNER" || project.role === "EDITOR"),
+      })),
+      sources,
+      packets,
+      evidence,
+    };
+  } catch (error) {
+    console.error("[research] Failed to load research library", error);
+    return {
+      state: "unavailable",
+      authState: "signed-in",
+      message: safeDatabaseMessage(error),
+    };
+  }
+}
+
+export default async function ResearchPage({ searchParams }: { searchParams?: Promise<{ query?: string | string[]; source?: string | string[] }> } = {}) {
+  const snapshot = await loadResearchLibrary();
+  const params = await (searchParams ?? Promise.resolve<{ query?: string | string[]; source?: string | string[] }>({}));
+  const initialQuery = typeof params.query === "string" ? params.query.trim().slice(0, 200) : "";
+  const requestedSourceId = typeof params.source === "string" ? params.source.trim().slice(0, 200) : "";
+  const initialSourceId = snapshot.state === "ready" && snapshot.sources.some((source) => source.id === requestedSourceId)
+    ? requestedSourceId
+    : null;
+  return <ResearchLibraryClient snapshot={snapshot} initialQuery={initialQuery} initialSourceId={initialSourceId} />;
 }
