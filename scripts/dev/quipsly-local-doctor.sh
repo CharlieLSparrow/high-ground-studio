@@ -1,6 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+usage() {
+  cat <<'EOF'
+Usage: scripts/dev/quipsly-local-doctor.sh
+
+Inspect the local Quipsly development lane:
+  - Nest health and signed-out shell
+  - Firebase Auth emulator
+  - PostgreSQL container
+  - retired authorization bypasses
+  - current Git worktree scope
+
+Environment overrides:
+  TARGET_URL                         Nest base URL
+  QUIPSLY_LOCAL_FIREBASE_AUTH_URL    Firebase Auth emulator URL
+  QUIPSLY_LOCAL_DATABASE_CONTAINER   PostgreSQL container name
+
+Options:
+  -h, --help                         Show this help without probing services
+EOF
+}
+
+if [[ $# -gt 0 ]]; then
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      printf "Unknown option: %s\n\n" "$1" >&2
+      usage >&2
+      exit 64
+      ;;
+  esac
+fi
+
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
 if [[ -z "${repo_root}" ]]; then
   echo "Run this command from inside the High Ground Studio repository." >&2
