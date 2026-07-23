@@ -26,6 +26,13 @@ struct CanonicalTaskReminderAcknowledgement: Equatable {
     let deviceNotificationScheduled: Bool
 }
 
+struct CanonicalTaskReminderIntent: Equatable {
+    let id: String
+    let actionItemID: String
+    let remindAt: Date
+    let status: String
+}
+
 enum TaskReminderNotificationPermission: Equatable {
     case notDetermined
     case denied
@@ -115,15 +122,18 @@ private struct ProtectedTaskReminderIntent: Codable, Equatable, Identifiable {
         case permissionDenied
         case expired
         case schedulingFailed
+        case canonicalCanceled
     }
 
     let id: String
     let ownerAccountID: String
     let actionItemID: String
-    let remindAt: Date
+    var remindAt: Date
     let createdAt: Date
     var state: ProjectionState
     var lastErrorMessage: String?
+    var canonicalStatus: String?
+    var canonicalAcknowledged: Bool?
 }
 
 private enum TaskReminderStoreResult {
@@ -210,6 +220,80 @@ final class TaskReminderScheduler: ObservableObject {
         await reconcileActiveOwner(requestPermissionIfNeeded: false)
     }
 
+    func reconcileCanonical(
+        intents: [CanonicalTaskReminderIntent],
+        projectionComplete: Bool
+    ) async {
+        guard ledgerIsWritable, let owner = activeOwnerAccountID else { return }
+        var updated = storedIntents
+        var providedIDs = Set<String>()
+        var identifiersToRemove: [String] = []
+
+        for intent in intents {
+            guard !intent.id.isEmpty,
+                  intent.id.count <= 256,
+                  !intent.actionItemID.isEmpty,
+                  intent.actionItemID.count <= 256,
+                  intent.status == "ACTIVE" || intent.status == "CANCELED" else {
+                continue
+            }
+            providedIDs.insert(intent.id)
+            if let index = updated.firstIndex(where: { $0.id == intent.id }) {
+                guard updated[index].ownerAccountID == owner,
+                      updated[index].actionItemID == intent.actionItemID else {
+                    statusMessage = "A canonical reminder identity conflicted with protected device state. No local alert was changed."
+                    continue
+                }
+                let timingChanged = abs(updated[index].remindAt.timeIntervalSince(intent.remindAt)) >= 0.5
+                updated[index].remindAt = intent.remindAt
+                updated[index].canonicalStatus = intent.status
+                updated[index].canonicalAcknowledged = true
+                updated[index].lastErrorMessage = nil
+                if intent.status == "CANCELED" {
+                    updated[index].state = .canonicalCanceled
+                    identifiersToRemove.append(Self.notificationRequestID(updated[index]))
+                } else if timingChanged || updated[index].state == .canonicalCanceled || updated[index].state == .expired {
+                    updated[index].state = .awaitingPermission
+                }
+            } else {
+                let protected = ProtectedTaskReminderIntent(
+                    id: intent.id,
+                    ownerAccountID: owner,
+                    actionItemID: intent.actionItemID,
+                    remindAt: intent.remindAt,
+                    createdAt: now(),
+                    state: intent.status == "ACTIVE" ? .awaitingPermission : .canonicalCanceled,
+                    lastErrorMessage: nil,
+                    canonicalStatus: intent.status,
+                    canonicalAcknowledged: true
+                )
+                updated.append(protected)
+                if intent.status == "CANCELED" {
+                    identifiersToRemove.append(Self.notificationRequestID(protected))
+                }
+            }
+        }
+
+        if projectionComplete {
+            for index in updated.indices where updated[index].ownerAccountID == owner {
+                guard updated[index].canonicalAcknowledged == true,
+                      !providedIDs.contains(updated[index].id) else { continue }
+                updated[index].canonicalStatus = "CANCELED"
+                updated[index].state = .canonicalCanceled
+                updated[index].lastErrorMessage = nil
+                identifiersToRemove.append(Self.notificationRequestID(updated[index]))
+            }
+        }
+
+        do {
+            try commit(updated)
+            notificationCenter.removePending(identifiers: Array(Set(identifiersToRemove)))
+            await reconcileActiveOwner(requestPermissionIfNeeded: false)
+        } catch {
+            statusMessage = "Canonical reminders were read, but the protected iPhone projection could not be updated. Existing alerts were not claimed as reconciled."
+        }
+    }
+
     func register(
         draft: TaskReminderDraft,
         requestPermissionIfNeeded: Bool
@@ -234,7 +318,19 @@ final class TaskReminderScheduler: ObservableObject {
               abs(reminder.remindAt.timeIntervalSince(draft.remindAt)) < 0.5 else {
             return false
         }
-        return true
+        guard let index = storedIntents.firstIndex(where: { $0.id == reminder.id }) else {
+            return false
+        }
+        var updated = storedIntents
+        updated[index].canonicalStatus = "ACTIVE"
+        updated[index].canonicalAcknowledged = true
+        do {
+            try commit(updated)
+            return true
+        } catch {
+            statusMessage = "Nest acknowledged the reminder, but the protected iPhone ledger could not record that acknowledgement. The outbox remains for safe retry."
+            return false
+        }
     }
 
     private func storeIntent(
@@ -266,7 +362,9 @@ final class TaskReminderScheduler: ObservableObject {
             remindAt: draft.remindAt,
             createdAt: draft.capturedAt,
             state: .awaitingPermission,
-            lastErrorMessage: nil
+            lastErrorMessage: nil,
+            canonicalStatus: "ACTIVE",
+            canonicalAcknowledged: false
         )
         var updated = storedIntents
         updated.append(intent)
@@ -369,7 +467,11 @@ final class TaskReminderScheduler: ObservableObject {
     private var visibleIntents: [ProtectedTaskReminderIntent] {
         guard let activeOwnerAccountID else { return [] }
         return storedIntents
-            .filter { $0.ownerAccountID == activeOwnerAccountID }
+            .filter {
+                $0.ownerAccountID == activeOwnerAccountID
+                    && $0.canonicalStatus != "CANCELED"
+                    && $0.state != .canonicalCanceled
+            }
             .sorted { $0.remindAt < $1.remindAt }
     }
 

@@ -4,7 +4,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
-import { createWorkGoal, createWorkTask, linkWorkGoalTask, recordWorkGoalProgress, saveWeeklyCommitment, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
+import { createWorkGoal, createWorkTask, linkWorkGoalTask, recordWorkGoalProgress, saveWeeklyCommitment, setWorkTaskReminder, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
@@ -49,6 +49,173 @@ describe("Work Queue task decisions", () => {
         }),
       }),
     }));
+  });
+
+  it("creates canonical reminder intent with an append-only revision and no delivery claim", async () => {
+    signedIn();
+    const reminderUpdatedAt = new Date("2026-07-18T18:00:02.000Z");
+    const tx = {
+      taskReminderRevision: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "revision" }),
+      },
+      actionItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "task-1",
+          status: "OPEN",
+          updatedAt: expected,
+          recurrenceOccurrence: null,
+          reminder: null,
+        }),
+      },
+      taskReminder: {
+        create: jest.fn().mockImplementation(async ({ data }) => ({
+          ...data,
+          updatedAt: reminderUpdatedAt,
+        })),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    };
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+    const result = await setWorkTaskReminder({
+      taskId: "task-1",
+      remindAtLocal: "2026-07-24T08:30",
+      timezone: "America/Denver",
+      expectedTaskUpdatedAt: expected.toISOString(),
+      expectedReminderUpdatedAt: null,
+      clientRequestId: "4dc5a283-4f32-4f40-b6ff-d15bb938f782",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      taskId: "task-1",
+      remindAt: "2026-07-24T14:30:00.000Z",
+      status: "ACTIVE",
+      operation: "CREATED",
+      idempotentReplay: false,
+      deviceNotificationsReconciled: false,
+      delivered: false,
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(tx.taskReminder.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      actionItemId: "task-1",
+      ownerUserId: "user-1",
+      remindAt: new Date("2026-07-24T14:30:00.000Z"),
+      sourceJson: expect.objectContaining({
+        explicitHumanIntent: true,
+        deviceNotificationScheduled: false,
+        deliveryClaimed: false,
+      }),
+    }) });
+    expect(tx.taskReminderRevision.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      actorUserId: "user-1",
+      operation: "CREATED",
+      status: "ACTIVE",
+      sourceJson: expect.objectContaining({
+        surface: "nest-work",
+        deviceNotificationsReconciled: false,
+        deliveryClaimed: false,
+      }),
+    }) });
+    expect(revalidatePath).toHaveBeenCalledWith("/today");
+    expect(revalidatePath).toHaveBeenCalledWith("/schedule");
+  });
+
+  it("cancels an owned reminder while preserving its task, time, and revision history", async () => {
+    signedIn();
+    const reminderUpdatedAt = new Date("2026-07-18T18:00:02.000Z");
+    const canceledAt = new Date("2026-07-18T18:00:03.000Z");
+    const currentReminder = {
+      id: "reminder-1",
+      actionItemId: "task-1",
+      ownerUserId: "user-1",
+      remindAt: new Date("2026-07-24T14:30:00.000Z"),
+      status: "ACTIVE",
+      sourceJson: { schema: "quipsly-task-reminder-intent-v1" },
+      updatedAt: reminderUpdatedAt,
+    };
+    const tx = {
+      taskReminderRevision: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "revision" }),
+      },
+      actionItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "task-1",
+          status: "OPEN",
+          updatedAt: expected,
+          recurrenceOccurrence: null,
+          reminder: currentReminder,
+        }),
+      },
+      taskReminder: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          ...currentReminder,
+          status: "CANCELED",
+          updatedAt: canceledAt,
+        }),
+      },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+    const result = await setWorkTaskReminder({
+      taskId: "task-1",
+      remindAtLocal: null,
+      timezone: "America/Denver",
+      expectedTaskUpdatedAt: expected.toISOString(),
+      expectedReminderUpdatedAt: reminderUpdatedAt.toISOString(),
+      clientRequestId: "0507e39a-4760-4894-8d58-ec61d1309189",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      reminderId: "reminder-1",
+      remindAt: null,
+      status: "CANCELED",
+      operation: "CANCELED",
+      delivered: false,
+    });
+    expect(tx.taskReminder.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ status: "CANCELED" }),
+    }));
+    expect(tx.taskReminderRevision.create).toHaveBeenCalledWith({ data: expect.objectContaining({
+      operation: "CANCELED",
+      previousRemindAt: currentReminder.remindAt,
+      remindAt: null,
+      previousStatus: "ACTIVE",
+      status: "CANCELED",
+    }) });
+    expect(tx.actionItem.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not attach a one-time reminder to recurring work", async () => {
+    signedIn();
+    const tx = {
+      taskReminderRevision: { findUnique: jest.fn().mockResolvedValue(null) },
+      actionItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "task-1",
+          status: "OPEN",
+          updatedAt: expected,
+          recurrenceOccurrence: { id: "occurrence-1" },
+          reminder: null,
+        }),
+      },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+    const result = await setWorkTaskReminder({
+      taskId: "task-1",
+      remindAtLocal: "2026-07-24T08:30",
+      timezone: "America/Denver",
+      expectedTaskUpdatedAt: expected.toISOString(),
+      expectedReminderUpdatedAt: null,
+      clientRequestId: "7dd3da60-988a-4515-8ebf-785c4dc12828",
+    });
+    expect(result).toMatchObject({ ok: false, code: "INVALID_INPUT" });
   });
 
   it("creates an atomic fixed series with three idempotent canonical occurrences", async () => {

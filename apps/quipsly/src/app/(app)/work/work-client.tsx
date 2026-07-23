@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Archive, BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, ListChecks, Pencil, Play, Repeat2, RotateCcw, Tags, Target, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
 import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTagCandidate, WorkTask, WorkTaskStatus } from "./work-model";
 
 export type TaskFilter = "ATTENTION" | "OPEN" | "DONE" | "ALL";
@@ -434,6 +434,64 @@ function TaskRecurrenceEditor({ task, onRefresh }: { task: WorkTask; onRefresh: 
   </details>;
 }
 
+function TaskReminderEditor({ task, onRefresh }: { task: WorkTask; onRefresh: () => void }) {
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  const requestId = useRef<string>(crypto.randomUUID());
+  if (!task.canManageReminder || task.status !== "OPEN" || task.recurrence) return null;
+
+  const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const defaultValue = localDateTimeInput(
+    task.reminderAt ?? new Date(Date.now() + 3_600_000).toISOString(),
+    localTimezone,
+  );
+
+  function save(remindAt: string | null) {
+    setMessage(null);
+    startTransition(async () => {
+      if (remindAt && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(remindAt)) {
+        setMessage("Choose a valid future reminder.");
+        return;
+      }
+      const result = await setWorkTaskReminder({
+        taskId: task.id,
+        remindAtLocal: remindAt,
+        timezone: localTimezone,
+        expectedTaskUpdatedAt: task.updatedAt,
+        expectedReminderUpdatedAt: task.reminderUpdatedAt ?? null,
+        clientRequestId: requestId.current,
+      });
+      if (!result.ok) {
+        setMessage(result.error);
+        if (result.code === "CONFLICT") onRefresh();
+        return;
+      }
+      requestId.current = crypto.randomUUID();
+      setMessage(result.status === "CANCELED"
+        ? "Reminder canceled in Nest. Signed-in iPhones remove their local alert on the next verified refresh."
+        : "Reminder saved in Nest. Signed-in iPhones reconcile the local alert on the next verified refresh; delivery is never promised.");
+      onRefresh();
+    });
+  }
+
+  return <details className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50/60 p-3">
+    <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-fuchsia-950"><BellRing className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />{task.reminderAt ? "Change reminder" : "Add reminder"}</summary>
+    <form action={(formData) => save(String(formData.get("remindAt") || ""))} className="mt-3 space-y-3">
+      <label className="block text-xs font-bold text-fuchsia-950">Remind me
+        <input type="datetime-local" name="remindAt" required defaultValue={defaultValue} className="mt-1 min-h-11 w-full rounded-xl border border-fuchsia-200 bg-white px-3 text-sm" />
+      </label>
+      <p className="text-[11px] font-semibold leading-relaxed text-fuchsia-900">This saves canonical intent in Nest. Each signed-in iPhone schedules its own private alert when iOS permission allows it. No provider calendar event, message, or guaranteed delivery is created.</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="submit" disabled={pending} className="min-h-11 rounded-full bg-fuchsia-900 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{pending ? "Saving…" : task.reminderAt ? "Move reminder" : "Save reminder"}</button>
+        {task.reminderAt && <button type="button" disabled={pending} onClick={() => {
+          if (window.confirm("Cancel this reminder? The task and due date stay unchanged. Signed-in iPhones remove their local alert after the next verified refresh.")) save(null);
+        }} className="min-h-11 rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-rose-800 disabled:opacity-50">Cancel reminder</button>}
+      </div>
+      {message && <p role="status" className="rounded-xl border border-fuchsia-200 bg-white px-3 py-2 text-xs font-bold leading-5 text-fuchsia-950">{message}</p>}
+    </form>
+  </details>;
+}
+
 function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, onConflict }: { task: WorkTask; focused: boolean; managesRecurrence: boolean; projectOptions: WorkProjectOption[]; onSaved: (taskId: string, nextStatus: WorkTaskStatus, updatedAt: string, notice: string) => void; onConflict: () => void }) {
   const [pending, startTransition] = useTransition();
   const [recurrencePending, startRecurrenceTransition] = useTransition();
@@ -500,6 +558,7 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
             {task.recurrence.status !== "ENDED" && managesRecurrence && <TaskRecurrenceEditor task={task} onRefresh={onConflict} />}
             {task.recurrence.status !== "ENDED" && !managesRecurrence && <p className="mt-2 text-[11px] font-semibold text-violet-800">Manage this series from its next open occurrence.</p>}
           </div>}
+          <TaskReminderEditor task={task} onRefresh={onConflict} />
           {task.detail && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{task.detail}</p>}
           <TagEditor entityKind="task" entityId={task.id} project={projectOptions.find((project) => project.id === task.project?.id) ?? null} tags={task.tags} updatedAt={task.updatedAt} canManage={task.canManageTags} onRefresh={onConflict} />
           {task.sourceAnchor && task.roomId && (

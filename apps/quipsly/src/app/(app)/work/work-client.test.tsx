@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, updateWorkTaskStatus } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, updateWorkTaskStatus } from "./actions";
 import { WorkClient } from "./work-client";
 import type { WorkSnapshot } from "./work-model";
 
@@ -23,6 +23,7 @@ jest.mock("./actions", () => ({
   replaceWorkTags: jest.fn(),
   reviewImportedWorkTag: jest.fn(),
   saveWeeklyCommitment: jest.fn(),
+  setWorkTaskReminder: jest.fn(),
   unlinkWorkGoalTask: jest.fn(),
   updateWorkGoalStatus: jest.fn(),
   updateTaskRecurrenceStatus: jest.fn(),
@@ -31,10 +32,10 @@ jest.mock("./actions", () => ({
 
 const snapshot: WorkSnapshot = {
   tasks: [{
-    id: "task-1", title: "Finish episode notes", detail: "Use transcript evidence", status: "OPEN", dueAt: null, reminderAt: "2026-07-19T12:00:00.000Z", completedAt: null,
+    id: "task-1", title: "Finish episode notes", detail: "Use transcript evidence", status: "OPEN", dueAt: null, reminderAt: "2026-07-19T12:00:00.000Z", reminderId: "reminder-1", reminderStatus: "ACTIVE", reminderUpdatedAt: "2026-07-18T18:00:00.000Z", completedAt: null,
     createdAt: "2026-07-18T18:00:00.000Z", updatedAt: "2026-07-18T18:00:00.000Z", isOverdue: false, assigneeLabel: null,
     provenance: "Reviewed transcript timestamp", attentionReason: "Reviewed transcript follow-through", roomId: "room-1", sessionTitle: "Episode review", sessionStatus: "ENDED", workspaceSlug: null, bookingStart: null,
-    project: null, tags: [], canManageTags: true,
+    project: null, tags: [], canManageTags: true, canManageReminder: true,
     sourceAnchor: { schema: "quipsly-transcript-derived-task-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", acceptedCorrectionId: "correction-1", recordingAssetId: "asset-1", playbackSourceId: "source-1" },
   }],
   goals: [], commitments: [],
@@ -51,6 +52,38 @@ describe("Work Queue interactions", () => {
     expect(link).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
     expect(screen.getByText(/Charlie: Welcome, everybody/i)).toBeInTheDocument();
     expect(screen.getByText(/^Reminder .+2026/)).toBeInTheDocument();
+  });
+
+  it("moves canonical reminder intent without claiming device delivery", async () => {
+    const user = userEvent.setup();
+    jest.mocked(setWorkTaskReminder).mockResolvedValue({
+      ok: true,
+      taskId: "task-1",
+      reminderId: "reminder-1",
+      remindAt: "2026-07-19T12:00:00.000Z",
+      status: "ACTIVE",
+      updatedAt: "2026-07-18T18:00:01.000Z",
+      operation: "RESCHEDULED",
+      revisionId: "revision-1",
+      idempotentReplay: false,
+      deviceNotificationsReconciled: false,
+      delivered: false,
+    });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByText("Change reminder"));
+    await user.clear(screen.getByLabelText("Remind me"));
+    await user.type(screen.getByLabelText("Remind me"), "2026-07-24T10:30");
+    await user.click(screen.getByRole("button", { name: "Move reminder" }));
+    expect(setWorkTaskReminder).toHaveBeenCalledWith(expect.objectContaining({
+      taskId: "task-1",
+      expectedTaskUpdatedAt: "2026-07-18T18:00:00.000Z",
+      expectedReminderUpdatedAt: "2026-07-18T18:00:00.000Z",
+      clientRequestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      remindAtLocal: "2026-07-24T10:30",
+      timezone: expect.any(String),
+    }));
+    expect(await screen.findByRole("status")).toHaveTextContent("delivery is never promised");
+    expect(refresh).toHaveBeenCalled();
   });
 
   it("returns a reviewed transcript goal to its exact segment", () => {

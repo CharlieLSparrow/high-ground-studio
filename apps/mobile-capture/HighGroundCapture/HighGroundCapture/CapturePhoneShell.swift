@@ -325,6 +325,17 @@ private struct TodayFollowThroughCard: View {
                                             .padding(.vertical, 4)
                                             .background(Color.blue.opacity(0.08), in: Capsule())
                                     }
+                                    if let reminder = task.reminder,
+                                       reminder.status == "ACTIVE" {
+                                        Label(
+                                            "Reminder \(reminderTime(reminder))",
+                                            systemImage: "bell.badge"
+                                        )
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.pink)
+                                        .accessibilityIdentifier("CaptureTodayTaskReminder_\(task.id)")
+                                        .accessibilityHint("Canonical reminder intent from Nest. Local alert scheduling still depends on this iPhone’s notification permission.")
+                                    }
                                     if let recurrence = task.recurrence {
                                         VStack(alignment: .leading, spacing: 4) {
                                             Label(recurrenceSummary(recurrence), systemImage: "repeat")
@@ -686,6 +697,16 @@ private struct TodayFollowThroughCard: View {
         let minute = max(0, min(59, recurrence.localTimeMinutes % 60))
         let cadence = recurrence.cadence == "COMPLETION" ? "after completion" : "fixed schedule"
         return "\(frequency) at \(String(format: "%02d:%02d", hour, minute)) · \(cadence) · \(recurrence.timezone)"
+    }
+
+    private func reminderTime(_ reminder: MobileCaptureTodayReminderIntent) -> String {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = fractional.date(from: reminder.remindAt)
+                ?? ISO8601DateFormatter().date(from: reminder.remindAt) else {
+            return "needs review"
+        }
+        return date.formatted(date: .abbreviated, time: .shortened)
     }
 
     private func matchingRecording(for review: MobileCaptureTodayTranscriptReview) -> LocalRecording? {

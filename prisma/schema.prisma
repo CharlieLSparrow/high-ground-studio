@@ -309,6 +309,13 @@ enum TaskReminderStatus {
   CANCELED
 }
 
+enum TaskReminderOperation {
+  CREATED
+  RESCHEDULED
+  CANCELED
+  REACTIVATED
+}
+
 enum StoryDraftStatus {
   ROUGH
   NEEDS_HOMER_REVIEW
@@ -452,6 +459,7 @@ model User {
   coachingNoteTagsCreated       CoachingNoteTagLink[]                @relation("CoachingNoteTagCreatedBy")
   actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
   taskReminders                 TaskReminder[]                       @relation("TaskReminderOwner")
+  taskReminderRevisionsAuthored TaskReminderRevision[]               @relation("TaskReminderRevisionActor")
   goalsOwned                    Goal[]                               @relation("GoalOwner")
   goalTaskLinksCreated          GoalTaskLink[]                       @relation("GoalTaskLinkCreatedBy")
   goalProgressAuthored          GoalProgressReceipt[]                @relation("GoalProgressActor")
@@ -1562,11 +1570,33 @@ model TaskReminder {
   createdAt    DateTime           @default(now())
   updatedAt    DateTime           @updatedAt
 
-  actionItem ActionItem @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
-  owner      User       @relation("TaskReminderOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  actionItem ActionItem             @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+  owner      User                   @relation("TaskReminderOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  revisions  TaskReminderRevision[]
 
   @@index([ownerUserId, status, remindAt])
   @@index([status, remindAt])
+}
+
+// Current reminder state stays compact while every explicit create, move,
+// cancel, and reactivate decision remains independently inspectable.
+model TaskReminderRevision {
+  id               String                @id
+  reminderId       String
+  actorUserId      String
+  operation        TaskReminderOperation
+  previousRemindAt DateTime?
+  remindAt         DateTime?
+  previousStatus   TaskReminderStatus?
+  status           TaskReminderStatus
+  sourceJson       Json                  @default("{}")
+  createdAt        DateTime              @default(now())
+
+  reminder TaskReminder @relation(fields: [reminderId], references: [id], onDelete: Cascade)
+  actor    User         @relation("TaskReminderRevisionActor", fields: [actorUserId], references: [id], onDelete: Cascade)
+
+  @@index([reminderId, createdAt])
+  @@index([actorUserId, createdAt])
 }
 
 // A series stores the human wall-clock promise. Each occurrence stores the

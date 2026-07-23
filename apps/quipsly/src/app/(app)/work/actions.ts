@@ -12,6 +12,7 @@ import { applyWorkTagMergeRollback, previewWorkTagMergeRollback, type WorkTagMer
 import { mutateWorkTagCandidate, type WorkTagCandidateOperation } from "@/lib/server/work-tag-candidates";
 import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags, type WorkTagEntityKind, type WorkTagTaxonomyOperation } from "@/lib/server/work-tags";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
+import { setTaskReminderInTransaction } from "@/lib/server/task-reminders";
 import {
   editTaskRecurrenceOccurrenceInTransaction,
   materializeTaskOccurrence,
@@ -19,7 +20,7 @@ import {
   updateTaskRecurrenceStatusInTransaction,
   type PersistedTaskRecurrenceSeries,
 } from "@/lib/server/task-recurrence";
-import { initialOccurrencePlan, parseRecurrenceStart, type TaskRecurrenceCadence, type TaskRecurrenceFrequency } from "@/lib/task-recurrence";
+import { initialOccurrencePlan, isIanaTimeZone, parseRecurrenceStart, type TaskRecurrenceCadence, type TaskRecurrenceFrequency } from "@/lib/task-recurrence";
 
 import { safeRecord, type WorkGoalStatus, type WorkTaskStatus } from "./work-model";
 
@@ -153,6 +154,22 @@ export type EditTaskRecurrenceResult =
       supersededTaskCount?: number;
       materializedCount?: number;
       reused: boolean;
+    }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE"; error: string };
+
+export type SetWorkTaskReminderResult =
+  | {
+      ok: true;
+      taskId: string;
+      reminderId: string;
+      remindAt: string | null;
+      status: "ACTIVE" | "CANCELED";
+      updatedAt: string;
+      operation: "CREATED" | "RESCHEDULED" | "CANCELED" | "REACTIVATED" | "UNCHANGED";
+      revisionId: string | null;
+      idempotentReplay: boolean;
+      deviceNotificationsReconciled: false;
+      delivered: false;
     }
   | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE"; error: string };
 
@@ -689,6 +706,117 @@ export async function createWorkTask(input: {
   } catch (error) {
     console.error("[work] failed to create private task", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not create this task. Nothing was sent or scheduled elsewhere." };
+  }
+}
+
+export async function setWorkTaskReminder(input: {
+  taskId: string;
+  remindAtLocal: string | null;
+  timezone: string;
+  expectedTaskUpdatedAt: string;
+  expectedReminderUpdatedAt?: string | null;
+  clientRequestId: string;
+}): Promise<SetWorkTaskReminderResult> {
+  const session = await getQuipslySession();
+  if (!session?.user?.id) {
+    return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before changing a private reminder." };
+  }
+
+  const taskId = cleanId(input?.taskId);
+  const expectedTaskUpdatedAt = expectedRevision(input?.expectedTaskUpdatedAt);
+  const expectedReminderText = cleanId(input?.expectedReminderUpdatedAt, 80);
+  const expectedReminderUpdatedAt = expectedReminderText
+    ? expectedRevision(expectedReminderText)
+    : null;
+  const clientRequestId = cleanId(input?.clientRequestId, 80).toLowerCase();
+  const timezone = cleanId(input?.timezone, 100);
+  const hasReminderDecision = Boolean(input)
+    && Object.prototype.hasOwnProperty.call(input, "remindAtLocal");
+  const remindAtLocal = cleanId(input?.remindAtLocal, 32);
+  const parsedReminder = remindAtLocal
+    ? parseRecurrenceStart(remindAtLocal, timezone)
+    : null;
+  const remindAt = parsedReminder?.dueAt ?? null;
+  const now = new Date();
+
+  if (!taskId
+      || !expectedTaskUpdatedAt
+      || (expectedReminderText && !expectedReminderUpdatedAt)
+      || !UUID_PATTERN.test(clientRequestId)
+      || !hasReminderDecision
+      || !isIanaTimeZone(timezone)
+      || (remindAtLocal && !parsedReminder)) {
+    return { ok: false, code: "INVALID_INPUT", error: "The reminder decision is incomplete or invalid." };
+  }
+  if (remindAt
+      && (remindAt.getTime() <= now.getTime()
+        || remindAt.getTime() - now.getTime() > 10 * 365 * 86_400_000)) {
+    return { ok: false, code: "INVALID_INPUT", error: "Choose a future reminder within ten years." };
+  }
+
+  const reminderId = `task-reminder-${randomUUID()}`;
+  const revisionId = `task-reminder-revision-${clientRequestId}`;
+  try {
+    const prisma = getPrismaClient() as any;
+    const result = await prisma.$transaction(
+      (tx: any) => setTaskReminderInTransaction({
+        tx,
+        taskId,
+        actorUserId: session.user.id,
+        remindAt,
+        expectedTaskUpdatedAt,
+        expectedReminderUpdatedAt,
+        clientRequestId,
+        reminderId,
+        revisionId,
+        now,
+        surface: "nest-work",
+        timezone,
+        requestedLocalDateTime: parsedReminder?.requestedLocalDateTime ?? null,
+      }),
+      { isolationLevel: "Serializable" },
+    );
+
+    if (result.kind === "not-found") {
+      return { ok: false, code: "NOT_FOUND", error: "Only the assigned task owner can change this reminder." };
+    }
+    if (result.kind === "recurring") {
+      return { ok: false, code: "INVALID_INPUT", error: "Repeating work keeps its schedule separate. Add reminders to individual one-time tasks." };
+    }
+    if (result.kind === "closed") {
+      return { ok: false, code: "INVALID_INPUT", error: "Reopen this task before changing its reminder." };
+    }
+    if (result.kind === "conflict" || result.kind === "identity-conflict") {
+      return { ok: false, code: "CONFLICT", error: "This reminder changed elsewhere. Refresh before saving again." };
+    }
+
+    revalidatePath("/work");
+    revalidatePath("/today");
+    revalidatePath("/schedule");
+    return {
+      ok: true,
+      taskId,
+      reminderId: result.reminder.id,
+      remindAt: result.reminder.status === "ACTIVE"
+        ? result.reminder.remindAt.toISOString()
+        : null,
+      status: result.reminder.status,
+      updatedAt: result.reminder.updatedAt.toISOString(),
+      operation: result.kind === "unchanged" ? "UNCHANGED" : result.operation,
+      revisionId: result.kind === "unchanged" ? null : result.revisionId,
+      idempotentReplay: result.kind === "saved" && result.idempotentReplay,
+      deviceNotificationsReconciled: false,
+      delivered: false,
+    };
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+    if (code === "P2002" || code === "P2034") {
+      return { ok: false, code: "CONFLICT", error: "This reminder changed elsewhere. Refresh before saving again." };
+    }
+    console.error("[work] failed to save task reminder", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not save this reminder. No device alert or external calendar event was changed." };
   }
 }
 

@@ -753,6 +753,27 @@ struct MobileCaptureTodayRecurrence: Codable, Hashable {
     let ownerCanManage: Bool
 }
 
+struct MobileCaptureTodayReminderIntent: Codable, Identifiable, Hashable {
+    let id: String
+    let actionItemId: String
+    let remindAt: String
+    let status: String
+    let updatedAt: String
+
+    var canonicalProjection: CanonicalTaskReminderIntent? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        guard let date = fractional.date(from: remindAt)
+                ?? ISO8601DateFormatter().date(from: remindAt) else { return nil }
+        return CanonicalTaskReminderIntent(
+            id: id,
+            actionItemID: actionItemId,
+            remindAt: date,
+            status: status
+        )
+    }
+}
+
 struct MobileCaptureTodayTask: Codable, Identifiable, Hashable {
     let id: String
     let title: String
@@ -768,6 +789,7 @@ struct MobileCaptureTodayTask: Codable, Identifiable, Hashable {
     let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
     let todayReason: String?
     let recurrence: MobileCaptureTodayRecurrence?
+    let reminder: MobileCaptureTodayReminderIntent?
 }
 
 struct MobileCaptureTodayGoal: Codable, Identifiable, Hashable {
@@ -857,6 +879,10 @@ struct MobileCaptureTodayBoundaries: Codable, Hashable {
     let goalCheckInMutatesStatus: Bool?
     let recurrenceAppOwned: Bool?
     let recurrenceNotificationsScheduled: Bool?
+    let canonicalReminderIntents: Bool?
+    let taskReminderIntentProjectionComplete: Bool?
+    let deviceNotificationsReconciled: Bool?
+    let reminderDeliveryClaimed: Bool?
 }
 
 struct MobileCaptureTodayResponse: Codable, Hashable {
@@ -870,6 +896,7 @@ struct MobileCaptureTodayResponse: Codable, Hashable {
     let transcriptReviews: [MobileCaptureTodayTranscriptReview]?
     let sourceAnnotations: [MobileCaptureTodaySourceAnnotation]?
     let weeklyPlan: MobileCaptureTodayWeeklyPlan?
+    let taskReminderIntents: [MobileCaptureTodayReminderIntent]?
     let boundaries: MobileCaptureTodayBoundaries?
 }
 
@@ -2441,14 +2468,16 @@ final class CaptureTodayClient: ObservableObject {
                     status: "ACTIVE",
                     updatedAt: ISO8601DateFormatter().string(from: now),
                     ownerCanManage: true
-                )
+                ),
+                reminder: nil
             )],
             goals: [MobileCaptureTodayGoal(id: "preview-goal", title: "Leave the client with one clear next move", description: nil, status: "ACTIVE", targetAt: nil, progressPercent: 50, progressNote: "Session notes are captured.", updatedAt: ISO8601DateFormatter().string(from: now), roomId: "room-preview-coaching-ready", sessionTitle: "Homer coaching session", project: MobileCaptureTodayProject(id: "preview-high-ground", name: "High Ground Odyssey", slug: "preview-high-ground"), tagLabels: ["Coaching", "Follow-through"], sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(schema: "quipsly-transcript-derived-goal-v1", roomId: "room-preview-coaching-ready", transcriptJobId: "preview-job", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: String(repeating: "a", count: 64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Leave the client with one clear next move.", effectiveSpeakerLabelSnapshot: "Homer", acceptedCorrectionId: nil, recordingAssetId: "preview-recording-asset", playbackSourceId: "preview-playback-source"))],
             focusBlocks: [MobileCaptureTodayFocusBlock(id: "preview-block", targetType: "task", targetId: "preview-task", title: "Proof-listen the coaching recap", targetStatus: "OPEN", startsAt: start, endsAt: end, timezone: TimeZone.current.identifier, status: "PLANNED", completedAt: nil, updatedAt: ISO8601DateFormatter().string(from: now))],
             transcriptReviews: [MobileCaptureTodayTranscriptReview(id: "preview-transcript-proposal", roomId: "room-preview-coaching-ready", sessionTitle: "Homer coaching session", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerText: "Welcome, everybody.", providerSpeakerLabel: "Speaker", proposedText: nil, proposedSpeakerLabel: "Charlie", reason: "The isolated host track suggests this speaker label.", recordingAssetId: "preview-recording-asset", playbackAvailable: true, updatedAt: ISO8601DateFormatter().string(from: now))],
             sourceAnnotations: [MobileCaptureTodaySourceAnnotation(id: "preview-annotation", kind: "question", body: "Does this distinction give us the episode's opening tension?", exactText: "Keep the source intact and let decisions live around it.", status: "active", visibility: "private", createdByMe: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", tagLabels: ["Episode seed"], updatedAt: ISO8601DateFormatter().string(from: now))],
             weeklyPlan: MobileCaptureTodayWeeklyPlan(id: "preview-week", weekStartsAt: ISO8601DateFormatter().string(from: now), commitments: ["Proof-listen one real session", "Send one source-linked follow-up"], supportNeeded: "A second listener for the final recap", progressNotes: nil, clientReviewedAt: nil, updatedAt: ISO8601DateFormatter().string(from: now)),
-            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false)
+            taskReminderIntents: [],
+            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false)
         )
         isUsingProtectedCache = false
         errorMessage = nil
@@ -2470,6 +2499,10 @@ final class CaptureTodayClient: ObservableObject {
             brief = payload
             isUsingProtectedCache = false
             persist(payload)
+            await TaskReminderScheduler.shared.reconcileCanonical(
+                intents: (payload.taskReminderIntents ?? []).compactMap(\.canonicalProjection),
+                projectionComplete: payload.boundaries?.taskReminderIntentProjectionComplete == true
+            )
         } catch {
             if brief == nil { _ = restoreProtectedCache() }
             errorMessage = isUsingProtectedCache

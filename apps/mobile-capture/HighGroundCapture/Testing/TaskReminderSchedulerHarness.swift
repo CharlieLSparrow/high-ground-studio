@@ -177,6 +177,57 @@ private struct TaskReminderSchedulerHarness {
         require(relaunched.activeReminderCount == 1, "Relaunch should recover the protected reminder intent.")
         require(relaunchCenter.added.count == 1, "Relaunch should restore a missing authorized notification request.")
 
+        let movedAt = remindAt.addingTimeInterval(7_200)
+        await relaunched.reconcileCanonical(
+            intents: [CanonicalTaskReminderIntent(
+                id: exactAcknowledgement.id,
+                actionItemID: exactAcknowledgement.actionItemID,
+                remindAt: movedAt,
+                status: "ACTIVE"
+            )],
+            projectionComplete: true
+        )
+        require(relaunchCenter.added.last?.fireAt == movedAt, "A canonical Nest reschedule should replace the local fire time.")
+        require(relaunched.activeReminderCount == 1, "A reschedule should preserve one canonical reminder intent.")
+
+        await relaunched.reconcileCanonical(
+            intents: [CanonicalTaskReminderIntent(
+                id: exactAcknowledgement.id,
+                actionItemID: exactAcknowledgement.actionItemID,
+                remindAt: movedAt,
+                status: "CANCELED"
+            )],
+            projectionComplete: true
+        )
+        require(relaunchCenter.pending.isEmpty, "A canonical Nest cancellation should remove the local alert.")
+        require(relaunched.activeReminderCount == 0, "A canceled canonical reminder should leave the active projection.")
+
+        await deniedScheduler.reconcileCanonical(intents: [], projectionComplete: true)
+        require(deniedScheduler.activeReminderCount == 1, "A complete server list must not discard an unacknowledged offline outbox reminder.")
+
+        let webDirectory = directory.appendingPathComponent("web-created", isDirectory: true)
+        let webCenter = MockReminderNotificationCenter(permission: .authorized)
+        let webScheduler = TaskReminderScheduler(
+            fileManager: fileManager,
+            directoryURL: webDirectory,
+            notificationCenter: webCenter,
+            now: { capturedAt }
+        )
+        webScheduler.activateOwner(draft.ownerAccountID)
+        await webScheduler.reconcileCanonical(
+            intents: [CanonicalTaskReminderIntent(
+                id: "task-reminder-created-in-nest",
+                actionItemID: "task-created-in-nest",
+                remindAt: movedAt,
+                status: "ACTIVE"
+            )],
+            projectionComplete: true
+        )
+        require(webCenter.added.last?.fireAt == movedAt, "A reminder created in Nest should project onto an authorized signed-in iPhone.")
+        await webScheduler.reconcileCanonical(intents: [], projectionComplete: true)
+        require(webCenter.pending.isEmpty, "An acknowledged reminder missing from a complete canonical list should be removed.")
+        require(webScheduler.activeReminderCount == 0, "A complete canonical deletion boundary should not leave a stale active alert.")
+
         print("TaskReminderSchedulerHarness: PASS")
     }
 }

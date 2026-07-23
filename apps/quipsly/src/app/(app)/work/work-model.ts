@@ -43,7 +43,7 @@ export type RawWorkTask = {
   detail?: string | null;
   status: WorkTaskStatus;
   dueAt?: Date | string | null;
-  reminder?: { remindAt: Date | string; status: string } | null;
+  reminder?: { id: string; remindAt: Date | string; status: string; updatedAt: Date | string } | null;
   completedAt?: Date | string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
@@ -133,6 +133,9 @@ export type WorkTask = {
   status: WorkTaskStatus;
   dueAt: string | null;
   reminderAt?: string | null;
+  reminderId?: string | null;
+  reminderStatus?: string | null;
+  reminderUpdatedAt?: string | null;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -148,6 +151,7 @@ export type WorkTask = {
   project: WorkProject | null;
   tags: WorkTag[];
   canManageTags: boolean;
+  canManageReminder?: boolean;
   bookingStart: string | null;
   sourceAnchor: TranscriptDerivedTaskSourceAnchor | null;
   recurrence?: {
@@ -334,6 +338,9 @@ export function buildWorkSnapshot(input: {
         status: task.status,
         dueAt,
         reminderAt: task.reminder?.status === "ACTIVE" ? iso(task.reminder.remindAt) : null,
+        reminderId: task.reminder?.id ?? null,
+        reminderStatus: task.reminder?.status ?? null,
+        reminderUpdatedAt: iso(task.reminder?.updatedAt),
         completedAt: iso(task.completedAt),
         createdAt,
         updatedAt: iso(task.updatedAt) || now,
@@ -349,6 +356,9 @@ export function buildWorkSnapshot(input: {
         project: task.project ? { id: task.project.id, name: task.project.name, slug: task.project.slug } : null,
         tags: (task.tagLinks ?? []).map((link) => link.tag),
         canManageTags: Boolean(input.actorUserId) && task.assignedUserId === input.actorUserId,
+        canManageReminder: Boolean(input.actorUserId)
+          && task.assignedUserId === input.actorUserId
+          && !recurrence,
         bookingStart: iso(task.booking?.scheduledStart),
         sourceAnchor,
         recurrence,
