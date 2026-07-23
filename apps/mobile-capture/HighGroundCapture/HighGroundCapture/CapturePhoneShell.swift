@@ -1400,6 +1400,10 @@ private struct TodayGoalCheckInControls: View {
     var body: some View {
         if isEditing {
             VStack(alignment: .leading, spacing: 10) {
+                Text("Goal check-ins record progress without changing goal status. They add evidence; they do not complete the goal.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
                 Picker("Progress", selection: $progressPercent) {
                     ForEach([0, 25, 50, 75, 100], id: \.self) { value in
                         Text("\(value)%").tag(value)
