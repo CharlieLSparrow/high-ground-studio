@@ -27,6 +27,7 @@ def release_paths(options)
     build: build,
     output_directory: root,
     archive_path: File.join(root, "#{stem}.xcarchive"),
+    export_directory: File.join(root, "app-store-export"),
     output_name: "#{stem}.ipa",
     ipa_path: File.join(root, "#{stem}.ipa"),
   }
@@ -70,9 +71,25 @@ platform :ios do
       archive_path: paths[:archive_path],
       output_directory: paths[:output_directory],
       output_name: paths[:output_name],
-      export_options: EXPORT_OPTIONS,
       xcargs: "-allowProvisioningUpdates",
+      skip_package_ipa: true,
     )
+
+    FileUtils.mkdir_p(paths[:export_directory])
+    sh(
+      "xcodebuild",
+      "-exportArchive",
+      "-archivePath",
+      paths[:archive_path],
+      "-exportPath",
+      paths[:export_directory],
+      "-exportOptionsPlist",
+      EXPORT_OPTIONS,
+      "-allowProvisioningUpdates",
+    )
+    exported_ipa = Dir[File.join(paths[:export_directory], "*.ipa")].first
+    UI.user_error!("Xcode export did not produce an IPA in #{paths[:export_directory]}") if exported_ipa.to_s.empty?
+    FileUtils.mv(exported_ipa, paths[:ipa_path])
 
     sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])
     receipt_path = File.join(paths[:output_directory], "QuipslyCapture-#{paths[:version]}.#{paths[:build]}-release-receipt.json")
