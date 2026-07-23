@@ -20,6 +20,12 @@ Required stages:
 5. promotion and production revision readback;
 6. rollback path retained.
 
+The Cloud Run workflow is manual-only while the repository recovery branch is
+being integrated. Its legacy schema bridge is fail-closed and requires an
+explicit workflow approval because it still uses Prisma
+`db push --accept-data-loss`. Prefer committed migrations or a targeted
+additive schema job; never enable that bridge merely to make a deploy proceed.
+
 ## Capture
 
 - Architecture:

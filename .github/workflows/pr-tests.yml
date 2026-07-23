@@ -90,6 +90,7 @@ jobs:
           bash -n scripts/release/quipsly-release-preflight.sh
           bash -n scripts/release/quipsly-smoke-preview.sh
           bash -n scripts/release/quipsly-schema-sync.sh
+          bash scripts/release/quipsly-schema-sync.test.sh
           bash -n scripts/release/quipsly-deploy-preview.sh
           bash -n scripts/release/quipsly-promote-preview.sh
 

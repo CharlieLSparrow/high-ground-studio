@@ -1,9 +1,6 @@
 name: Deploy Cloud Run
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       target:
@@ -16,6 +13,11 @@ on:
           - web
           - studio
           - auto
+      apply_legacy_schema_bridge:
+        description: Allow the legacy Prisma db push bridge, including --accept-data-loss
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: cloud-run-deploy-${{ github.ref }}
@@ -206,13 +208,21 @@ jobs:
             --push \
             .
 
-      - name: Run Schema Sync (DB Migrations)
-        if: needs.plan.outputs.schema == 'true'
+      - name: Refuse an unapproved legacy schema bridge
+        if: needs.plan.outputs.schema == 'true' && inputs.apply_legacy_schema_bridge != true
+        run: |
+          echo "This release requires the legacy schema bridge." >&2
+          echo "Re-run manually with apply_legacy_schema_bridge enabled only after reviewing the production schema diff." >&2
+          exit 1
+
+      - name: Run explicitly approved legacy schema bridge
+        if: needs.plan.outputs.schema == 'true' && inputs.apply_legacy_schema_bridge == true
         env:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
           IMAGE_TAG: ${{ github.sha }}
           SKIP_BUILD: "1"
+          ALLOW_PRISMA_ACCEPT_DATA_LOSS: "1"
         run: bash scripts/release/quipsly-schema-sync.sh
 
       - name: Build Studio Image
