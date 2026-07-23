@@ -1,21 +1,58 @@
 import UIKit
-import SwiftUI
 
-class AppDelegate: NSObject, UIApplicationDelegate {
+final class AppDelegate: NSObject, UIApplicationDelegate {
 
     // Store the completion handler for background URL session events
-    var backgroundSessionCompletionHandler: (() -> Void)?
+    private var backgroundSessionCompletionHandler: (() -> Void)?
+    private var backgroundSessionEventsFinishedAt: Date?
 
-    func application(_ application: UIApplication,
-                     handleEventsForBackgroundURLSession identifier: String,
-                     completionHandler: @escaping () -> Void) {
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        // Create the background URLSession during launch even when SwiftUI does
+        // not visit upload UI, then reconcile daemon-owned tasks with the ledger.
+        DispatchQueue.main.async {
+            UploadManager.shared.prepareForBackgroundEvents()
+        }
+        return true
+    }
 
-        // When the OS wakes us up because a background upload finished, we store the closure.
-        // We will call it after URLSession finishes delivering all delegate callbacks.
-        if identifier == "com.quipsly.upload" {
-            backgroundSessionCompletionHandler = completionHandler
+    func application(
+        _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        // When iOS wakes the app because a background upload finished, retain
+        // the closure until URLSession has delivered every delegate callback.
+        if identifier == UploadManager.backgroundSessionIdentifier {
+            if let finishedAt = backgroundSessionEventsFinishedAt,
+               Date().timeIntervalSince(finishedAt) < 10 {
+                backgroundSessionEventsFinishedAt = nil
+                completionHandler()
+            } else {
+                backgroundSessionEventsFinishedAt = nil
+                let previousCompletionHandler = backgroundSessionCompletionHandler
+                backgroundSessionCompletionHandler = {
+                    previousCompletionHandler?()
+                    completionHandler()
+                }
+            }
+            UploadManager.shared.prepareForBackgroundEvents()
         } else {
             completionHandler()
+        }
+    }
+
+    func uploadManagerDidFinishBackgroundSessionEvents() {
+        if let completionHandler = backgroundSessionCompletionHandler {
+            backgroundSessionCompletionHandler = nil
+            completionHandler()
+        } else {
+            // A background URLSession can reconnect during launch just before
+            // UIKit supplies its wake completion closure. Keep only a short-lived
+            // marker so a later, unrelated wake can never consume stale state.
+            backgroundSessionEventsFinishedAt = Date()
         }
     }
 }

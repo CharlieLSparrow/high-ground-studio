@@ -46,12 +46,12 @@ final class MobileContextManager: ObservableObject {
     @Published var isLoading = false
     @Published var errorMessage: String?
     
-    private let authUrlBase = Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com"
+    private let authUrlBase = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
     
     private init() {}
     
     func fetchContext() async {
-        guard let token = AuthManager.shared.getAccessToken() else {
+        guard AuthManager.currentStoredOwnerID() != nil else {
             self.errorMessage = "Not signed in."
             return
         }
@@ -66,17 +66,14 @@ final class MobileContextManager: ObservableObject {
             
             var request = URLRequest(url: url)
             request.httpMethod = "GET"
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse else {
-                throw URLError(.badServerResponse)
-            }
-            
-            if httpResponse.statusCode == 401 {
-                // Token might be expired, need to refresh or sign out
-                AuthManager.shared.signOut()
-                throw NSError(domain: "MobileContext", code: 401, userInfo: [NSLocalizedDescriptionKey: "Session expired."])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            guard response.statusCode < 400 else {
+                throw NSError(
+                    domain: "MobileContext",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: "Context request failed with HTTP \(response.statusCode)."]
+                )
             }
             
             let payload = try JSONDecoder().decode(MobileContextResponse.self, from: data)

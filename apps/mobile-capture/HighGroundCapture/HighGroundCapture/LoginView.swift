@@ -1,59 +1,402 @@
+import Foundation
 import SwiftUI
 
 struct LoginView: View {
     @StateObject private var authManager = AuthManager.shared
+    @State private var email = ""
+    @State private var password = ""
+    @State private var passwordConfirmation = ""
+    @State private var passwordMode: PasswordMode = .signIn
+    @State private var didApplyRuntimeSmokeCredentials = false
+    @FocusState private var focusedField: Field?
+
+    private enum PasswordMode: Equatable {
+        case signIn
+        case createAccount
+    }
+
+    private enum Field {
+        case email
+        case password
+        case passwordConfirmation
+    }
 
     var body: some View {
-        VStack(spacing: 32) {
-            Image(systemName: "mic.badge.plus")
-                .resizable()
-                .scaledToFit()
-                .frame(width: 80, height: 80)
-                .foregroundStyle(.teal)
+        ScrollView {
+            VStack(spacing: 0) {
+                Spacer(minLength: 46)
 
-            VStack(spacing: 8) {
-                Text("Quipsly Capture")
-                    .font(.largeTitle)
-                    .fontWeight(.bold)
-                
-                Text("Sign in to your Quipsly Nest to record and sync audio directly to your projects.")
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 32)
-            }
+                VStack(spacing: 18) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [.teal, .cyan],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 84, height: 84)
+                            .shadow(color: .teal.opacity(0.24), radius: 18, y: 9)
 
-            if let error = authManager.errorMessage {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
+                        Image(systemName: "waveform.badge.mic")
+                            .font(.system(size: 35, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .accessibilityHidden(true)
 
-            Button(action: {
-                authManager.signIn()
-            }) {
-                HStack {
-                    if authManager.isAuthenticating {
-                        ProgressView()
-                            .tint(.white)
-                    } else {
-                        Text("Connect with Quipsly")
-                            .fontWeight(.semibold)
+                    VStack(spacing: 7) {
+                        Text("Quipsly Capture")
+                            .font(.largeTitle.weight(.bold))
+
+                        Text("Record this iPhone's microphone. Keep the source safe. Let Quipsly handle the rest.")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: 340)
                     }
                 }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.teal)
-                .foregroundColor(.white)
-                .cornerRadius(12)
+
+                VStack(spacing: 14) {
+                    passwordModeSelector
+
+                    Text(passwordModeDescription)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                    TextField("Email", text: $email)
+                        .textContentType(.username)
+                        .keyboardType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .submitLabel(.next)
+                        .focused($focusedField, equals: .email)
+                        .onSubmit { focusedField = .password }
+                        .captureLoginField()
+                        .accessibilityIdentifier("QuipslyCaptureEmailField")
+
+                    SecureField(
+                        passwordMode == .createAccount ? "Create password" : "Password",
+                        text: $password
+                    )
+                    .textContentType(
+                        passwordMode == .createAccount && !CaptureLaunchConfiguration.usesLoginPreview
+                            ? .newPassword
+                            : .password
+                    )
+                    .submitLabel(passwordMode == .createAccount ? .next : .go)
+                    .focused($focusedField, equals: .password)
+                    .onSubmit {
+                        if passwordMode == .createAccount {
+                            focusedField = .passwordConfirmation
+                        } else {
+                            submitPasswordAuthIfReady()
+                        }
+                    }
+                    .captureLoginField()
+                    .accessibilityIdentifier("QuipslyCapturePasswordField")
+
+                    if passwordMode == .createAccount {
+                        SecureField("Confirm password", text: $passwordConfirmation)
+                            .textContentType(
+                                CaptureLaunchConfiguration.usesLoginPreview
+                                    ? .password
+                                    : .newPassword
+                            )
+                            .submitLabel(.go)
+                            .focused($focusedField, equals: .passwordConfirmation)
+                            .onSubmit { submitPasswordAuthIfReady() }
+                            .captureLoginField()
+                            .accessibilityIdentifier("QuipslyCapturePasswordConfirmationField")
+
+                        if !password.isEmpty, password.count < 8 {
+                            authValidationLabel(
+                                "Use at least 8 characters. A short phrase is easier to remember.",
+                                systemImage: "character.cursor.ibeam"
+                            )
+                            .accessibilityIdentifier("QuipslyCapturePasswordLengthHint")
+                        } else if !passwordConfirmation.isEmpty, password != passwordConfirmation {
+                            authValidationLabel(
+                                "Those passwords do not match yet.",
+                                systemImage: "equal.circle"
+                            )
+                            .accessibilityIdentifier("QuipslyCapturePasswordMismatchHint")
+                        }
+                    }
+
+                    if let status = authManager.statusMessage {
+                        Label(status, systemImage: "checkmark.circle.fill")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.green)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("QuipslyCaptureLoginStatus")
+                    }
+
+                    if let error = authManager.errorMessage {
+                        Label(error, systemImage: "exclamationmark.triangle.fill")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier("QuipslyCaptureLoginError")
+                    }
+
+                    Button(action: submitPasswordAuthIfReady) {
+                        HStack(spacing: 10) {
+                            if authManager.isAuthenticating {
+                                ProgressView()
+                                    .tint(.white)
+                            } else {
+                                Image(systemName: passwordMode == .createAccount ? "person.badge.plus" : "arrow.right")
+                            }
+                            Text(primaryActionTitle)
+                                .fontWeight(.semibold)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 52)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.teal)
+                    .disabled(!canSubmitPasswordAuth)
+                    .accessibilityIdentifier(
+                        passwordMode == .createAccount
+                            ? "QuipslyCaptureCreateAccountButton"
+                            : "QuipslyCaptureSignInButton"
+                    )
+
+                    if passwordMode == .signIn {
+                        Button {
+                            focusedField = nil
+                            authManager.sendPasswordReset(email: email)
+                        } label: {
+                            Label("Send password reset", systemImage: "envelope.badge")
+                                .frame(maxWidth: .infinity, minHeight: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(authManager.isAuthenticating)
+                        .accessibilityIdentifier("QuipslyCapturePasswordResetButton")
+                    }
+
+                    googleAccountGuidance
+
+                    Label(
+                        "Recordings stay on this iPhone after upload; Quipsly never silently deletes a source.",
+                        systemImage: "lock.shield.fill"
+                    )
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(14)
+                    .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                }
+                .padding(.top, 36)
+
+                Spacer(minLength: 42)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 18) { legalLinks }
+                    VStack(spacing: 12) { legalLinks }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 24)
             }
-            .disabled(authManager.isAuthenticating)
-            .padding(.horizontal, 32)
-            .padding(.top, 16)
+            .frame(maxWidth: 460)
+            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color(.systemBackground))
+        .scrollDismissesKeyboard(.interactively)
+        .background(
+            LinearGradient(
+                colors: [Color(.systemBackground), .teal.opacity(0.045), Color(.systemBackground)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea()
+        )
+        .onAppear {
+            applyRuntimeSmokeCredentialsIfNeeded()
+        }
+        .onChange(of: authManager.recentlyCreatedEmail) { _, createdEmail in
+            guard let createdEmail else { return }
+            passwordMode = .signIn
+            email = createdEmail
+            password = ""
+            passwordConfirmation = ""
+            focusedField = .password
+        }
+        .accessibilityIdentifier("QuipslyCaptureLoginView")
+    }
+
+    private var passwordModeSelector: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                passwordModeButton(.signIn)
+                passwordModeButton(.createAccount)
+            }
+            VStack(spacing: 10) {
+                passwordModeButton(.signIn)
+                passwordModeButton(.createAccount)
+            }
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("QuipslyCapturePasswordModeSelector")
+    }
+
+    private func passwordModeButton(_ mode: PasswordMode) -> some View {
+        Button {
+            guard !authManager.isAuthenticating else { return }
+            passwordMode = mode
+            password = ""
+            passwordConfirmation = ""
+            authManager.clearAuthFeedback()
+            focusedField = email.isEmpty ? .email : .password
+        } label: {
+            Label(
+                mode == .signIn ? "Sign in" : "Create account",
+                systemImage: mode == .signIn ? "person.crop.circle" : "person.crop.circle.badge.plus"
+            )
+            .font(.subheadline.weight(.semibold))
+            .frame(maxWidth: .infinity, minHeight: 44)
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(passwordMode == mode ? .teal : Color.secondary.opacity(0.16))
+        .foregroundStyle(passwordMode == mode ? Color.white : Color.primary)
+        .disabled(authManager.isAuthenticating)
+        .accessibilityIdentifier(
+            mode == .signIn
+                ? "QuipslyCaptureSignInModeButton"
+                : "QuipslyCaptureCreateAccountModeButton"
+        )
+        .accessibilityAddTraits(passwordMode == mode ? .isSelected : [])
+    }
+
+    private var googleAccountGuidance: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            Label("Already use Google for Quipsly?", systemImage: "person.crop.circle.badge.checkmark")
+                .font(.subheadline.weight(.semibold))
+
+            Text("Use the same email here. If that Google-created account has no password, try a password reset. If password access is still unavailable, use Google sign-in on the web or contact support—do not create a second account.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 16) { googleHelpLinks }
+                VStack(alignment: .leading, spacing: 10) { googleHelpLinks }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("QuipslyCaptureGoogleAccountGuidance")
+    }
+
+    @ViewBuilder
+    private var googleHelpLinks: some View {
+        Link(destination: URL(string: "https://quipsly.com/login")!) {
+            Label("Google web sign-in", systemImage: "safari")
+                .font(.footnote.weight(.semibold))
+        }
+        .accessibilityIdentifier("QuipslyCaptureGoogleWebSignInLink")
+
+        Link(destination: URL(string: "https://quipsly.com/support")!) {
+            Label("Account support", systemImage: "questionmark.circle")
+                .font(.footnote.weight(.semibold))
+        }
+        .accessibilityIdentifier("QuipslyCaptureAccountSupportLink")
+    }
+
+    @ViewBuilder
+    private var legalLinks: some View {
+        Link("Privacy", destination: URL(string: "https://www.quipsly.com/privacy")!)
+        Link("Terms", destination: URL(string: "https://www.quipsly.com/terms")!)
+    }
+
+    private var passwordModeDescription: String {
+        switch passwordMode {
+        case .signIn:
+            return "Use a verified Firebase email/password account. Capture checks Nest before opening protected sessions."
+        case .createAccount:
+            return "Create and verify a free Quipsly identity. This does not grant Capture beta recording or upload access; Nest will show the account's access status after sign-in."
+        }
+    }
+
+    private var primaryActionTitle: String {
+        if authManager.isAuthenticating { return "Working…" }
+        return passwordMode == .createAccount ? "Create free account" : "Sign in"
+    }
+
+    private var canSubmitPasswordAuth: Bool {
+        guard !authManager.isAuthenticating,
+              !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              !password.isEmpty else {
+            return false
+        }
+        if passwordMode == .createAccount {
+            return password.count >= 8 && password == passwordConfirmation
+        }
+        return true
+    }
+
+    private func submitPasswordAuthIfReady() {
+        guard canSubmitPasswordAuth else { return }
+        focusedField = nil
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch passwordMode {
+        case .signIn:
+            authManager.signIn(email: normalizedEmail, password: password)
+        case .createAccount:
+            authManager.createAccount(email: normalizedEmail, password: password)
+        }
+    }
+
+    private func authValidationLabel(_ text: String, systemImage: String) -> some View {
+        Label(text, systemImage: systemImage)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(.orange)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func applyRuntimeSmokeCredentialsIfNeeded() {
+        #if DEBUG
+        guard !didApplyRuntimeSmokeCredentials else { return }
+        guard ProcessInfo.processInfo.arguments.contains("--quipsly-capture-runtime-smoke") else { return }
+        didApplyRuntimeSmokeCredentials = true
+
+        let environment = ProcessInfo.processInfo.environment
+        let credentialsPath = environment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"] ?? "/tmp/quipsly-capture-runtime-ui-smoke-credentials.json"
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: credentialsPath)),
+              let payload = try? JSONDecoder().decode(RuntimeSmokeCredentialPayload.self, from: data),
+              !payload.email.isEmpty,
+              !payload.password.isEmpty else {
+            return
+        }
+
+        email = payload.email
+        password = payload.password
+        passwordMode = .signIn
+        guard !authManager.isAuthenticated, !authManager.isAuthenticating else { return }
+        authManager.signIn(email: payload.email, password: payload.password)
+        #endif
+    }
+}
+
+private struct RuntimeSmokeCredentialPayload: Decodable {
+    let baseURL: String
+    let email: String
+    let password: String
+}
+
+private extension View {
+    func captureLoginField() -> some View {
+        self
+            .padding(.horizontal, 16)
+            .frame(minHeight: 54)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+            }
     }
 }
 

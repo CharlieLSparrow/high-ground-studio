@@ -4,36 +4,295 @@ import Combine
 import MediaPlayer
 import UIKit
 
-class AudioCaptureController: NSObject, AVAudioRecorderDelegate, ObservableObject {
-    @Published var isRecording: Bool = false
-    @Published var currentDuration: TimeInterval = 0
-    @Published var currentTakeOrder: Int = 1
-    @Published var currentSegmentOrder: Int = 1
+enum AudioCaptureState: String, Codable, CaseIterable {
+    case idle
+    case preparing
+    case recording
+    case paused
+    case finalizing
+    case saved
+    case failed
+}
 
-    private var displayDurationTimer: Timer?
+enum MicrophonePreflightState: String, Codable {
+    case undetermined
+    case granted
+    case denied
+}
 
+@MainActor
+final class AudioCaptureController: NSObject, ObservableObject {
+    @Published private(set) var captureState: AudioCaptureState = .idle
+    @Published private(set) var microphonePreflightState: MicrophonePreflightState = .undetermined
+    @Published private(set) var isRecording: Bool = false
+    @Published private(set) var currentDuration: TimeInterval = 0
+    @Published private(set) var currentTakeOrder: Int = 1
+    @Published private(set) var currentSegmentOrder: Int = 1
+    @Published private(set) var userMarkOffsets: [TimeInterval] = []
+    @Published private(set) var inputLevelDB: Float = -160
+    @Published private(set) var normalizedInputLevel: Double = 0
+    @Published private(set) var peakInputLevelDB: Float = -160
+    @Published private(set) var inputRouteName: String = "No microphone selected"
+    @Published private(set) var inputRoutePortType: String?
+    @Published private(set) var failureMessage: String?
+    @Published private(set) var lastErrorMessage: String?
+    @Published private(set) var automaticStopReason: String?
+    @Published private(set) var availableCaptureCapacityBytes: Int64?
+    @Published private(set) var recordingConsentGranted: Bool = false
+    @Published private(set) var activeCallRoomLabel: String = "No coaching/podcast room selected"
+    @Published private(set) var localRecordingRecoveryNote: String = "Local recordings are preserved until Quipsly verifies upload."
+
+    let localRecordingLibrary = LocalRecordingLibrary.shared
+
+    // Callback retained for the existing WebView bridge contract.
+    var onStateChange: ((RecorderEvent) -> Void)?
+
+    private let audioSession = AVAudioSession.sharedInstance()
+    private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
+    private let receiptStore = CaptureRoomReceiptStore.shared
+    private let hardStorageReserveBytes: Int64 = 256 * 1024 * 1024
+    private let projectedFinalizeOverheadBytes: Int64 = 8 * 1024 * 1024
+    private let estimatedEncodedBytesPerSecond: Int64 = 30_000
+    private let storageProjectionWindowSeconds: Int64 = 180
+    private let storageCheckInterval: TimeInterval = 2
     private var audioRecorder: AVAudioRecorder?
+    private var displayDurationTimer: Timer?
+    private var startTask: Task<Void, Never>?
+    private var accountObserver: NSObjectProtocol?
+
     private var currentRecordingURL: URL?
-    private var state: RecorderState = .stopped
+    private(set) var activeLocalRecordingID: UUID?
+    private var pendingUploadRecordingID: UUID?
     private var startTime: Date?
     private var accumulatedDuration: TimeInterval = 0
     private var overallStartTimestamp: Date?
+    private var pendingFinalizationStoppedAt: Date?
+    private var pendingFinalizationDuration: TimeInterval = 0
+    private var localFallbackSessionId: String?
+    private var pausedByInterruption = false
+    private var lastStorageCheckAt: Date = .distantPast
+    private var storageCapacityProbeFailed = false
+    private var pendingFinalizationMessage: String?
+
+    private struct CaptureIntent {
+        let captureID: UUID
+        let sessionID: String?
+        let callRoomID: String?
+        let requiresDurableRoomReceipt: Bool
+        let startReceiptID: UUID?
+        let ownerSnapshot: AuthManager.StableOwnerSnapshot
+    }
+
+    private var pendingCaptureIntent: CaptureIntent?
+    private var activeCaptureIntent: CaptureIntent?
+    private var captureOwnerAuthorityLost = false
 
     private var activeProjectSlug: String?
     private var activeEpisodeSlug: String?
+    private var activeCallRoomId: String?
+    private var activeParticipantId: String?
+    private var activeRecordingConsentId: String?
+    private var activeRecordingAssetId: String?
+    private var activeCapturePurpose: String?
 
     private var segments: [RecordingSegment] = []
     private var currentSegmentStart: Date?
 
-    // Callback to notify WebView of state changes
-    var onStateChange: ((RecorderEvent) -> Void)?
+    private var localFallbackParticipantId: String {
+        let deviceId = UIDevice.current.identifierForVendor?.uuidString ?? UIDevice.current.name
+        return "device-\(deviceId)"
+    }
 
     override init() {
         super.init()
-        cleanupOldRecordings()
+        localRecordingRecoveryNote = recoverySummary()
         setupInterruptionHandling()
+        setupRouteChangeHandling()
+        setupAccountIdentityHandling()
         setupUploadObservers()
         setupRemoteCommands()
+        refreshInputRoute()
+    }
+
+    /// Preallocates one immutable source identity and, when this is a Nest-backed
+    /// session, commits its START boundary before AVAudioRecorder may open.
+    /// Callers must treat a thrown error as "nothing was recorded."
+    func armNextCapture(
+        captureID: UUID,
+        sessionID: String?,
+        callRoomID: String?,
+        requiresDurableRoomReceipt: Bool,
+        expectedOwnerSnapshot: AuthManager.StableOwnerSnapshot
+    ) throws {
+        guard !captureState.isCaptureActive, captureState != .preparing,
+              pendingCaptureIntent == nil else {
+            throw CaptureError.captureAlreadyArmed
+        }
+        guard AuthManager.shared.matchesStableOwnerSnapshot(expectedOwnerSnapshot) else {
+            throw CaptureError.captureOwnerChanged
+        }
+
+        let normalizedSessionID = normalized(sessionID)
+        let normalizedCallRoomID = normalized(callRoomID)
+        var startReceiptID: UUID?
+        if requiresDurableRoomReceipt {
+            guard let normalizedSessionID, let normalizedCallRoomID else {
+                throw CaptureError.missingRoomReceiptContext
+            }
+            let receipt = try receiptStore.enqueueDurably(
+                captureID: captureID,
+                sessionID: normalizedSessionID,
+                callRoomID: normalizedCallRoomID,
+                action: .start,
+                ownerAccountID: expectedOwnerSnapshot.ownerAccountID
+            )
+            startReceiptID = receipt.id
+        }
+
+        pendingCaptureIntent = CaptureIntent(
+            captureID: captureID,
+            sessionID: normalizedSessionID,
+            callRoomID: normalizedCallRoomID,
+            requiresDurableRoomReceipt: requiresDurableRoomReceipt,
+            startReceiptID: startReceiptID,
+            ownerSnapshot: expectedOwnerSnapshot
+        )
+        captureOwnerAuthorityLost = false
+    }
+
+    /// The account-generation that armed this take must remain current. This is
+    /// intentionally stronger than comparing account IDs so A -> B -> A cannot
+    /// revive an intent created before the switch.
+    var captureOwnerIsCurrent: Bool {
+        guard !captureOwnerAuthorityLost,
+              let intent = activeCaptureIntent ?? pendingCaptureIntent else {
+            return false
+        }
+        return AuthManager.shared.matchesStableOwnerSnapshot(intent.ownerSnapshot)
+    }
+
+    /// Cancels a permission/preflight-gated take before source bytes begin and
+    /// durably closes any START boundary that was already armed.
+    func abortArmedCaptureBeforeRecording(
+        message: String = "The Quipsly account changed before recording began. Nothing was recorded."
+    ) {
+        guard activeLocalRecordingID == nil,
+              pendingCaptureIntent != nil || captureState == .preparing else { return }
+        startTask?.cancel()
+        startTask = nil
+        let receiptFailure = closeStartBoundaryAfterFailedArm()
+        captureOwnerAuthorityLost = true
+        failureMessage = message
+        lastErrorMessage = combining(message, with: receiptFailure)
+        stopDurationAndMeterTimer()
+        deactivateAudioSession()
+        transition(to: .failed)
+        broadcastError(message: lastErrorMessage ?? message)
+    }
+
+    @discardableResult
+    func prepareForRecording() async -> Bool {
+        guard !captureState.isCaptureActive else {
+            return captureState == .recording || captureState == .paused
+        }
+
+        transition(to: .preparing)
+        failureMessage = nil
+        lastErrorMessage = nil
+
+        let permissionGranted = await resolveMicrophonePermission()
+        guard !Task.isCancelled else {
+            transition(to: .idle)
+            return false
+        }
+        guard permissionGranted else {
+            failCapture("Microphone permission denied. Enable microphone access in Settings to record.")
+            return false
+        }
+
+        guard hasCaptureStorageHeadroom() else {
+            failCapture(storageStartFailureMessage)
+            return false
+        }
+
+        do {
+            try configureAudioSession()
+            refreshInputRoute()
+            guard !audioSession.currentRoute.inputs.isEmpty else {
+                failCapture("No microphone input is available. Connect or enable a microphone, then try again.")
+                return false
+            }
+            transition(to: .idle)
+            return true
+        } catch {
+            failCapture("Quipsly could not prepare the microphone: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    func handleCommand(_ command: RecorderCommand) {
+        switch command.action {
+        case .start:
+            guard !captureState.isCaptureActive, captureState != .preparing else {
+                broadcastError(message: "A recording is already active or being prepared.")
+                return
+            }
+            applySessionContext(from: command)
+            startRecording()
+        case .stop:
+            if captureState == .preparing {
+                startTask?.cancel()
+                startTask = nil
+                if let receiptFailure = closeStartBoundaryAfterFailedArm() {
+                    lastErrorMessage = receiptFailure
+                    broadcastError(message: receiptFailure)
+                }
+                transition(to: .idle)
+                deactivateAudioSession()
+            } else {
+                stopRecording()
+            }
+        case .pause:
+            if captureState == .paused {
+                // A user pause always wins over a pending automatic interruption resume.
+                pausedByInterruption = false
+            } else {
+                pauseRecording(reason: .pause, causedByInterruption: false)
+            }
+        case .resume:
+            resumeRecording()
+        case .markBreak:
+            markBreak()
+        }
+    }
+
+    func resetToIdle() {
+        guard !captureState.isCaptureActive, captureState != .preparing else { return }
+        failureMessage = nil
+        lastErrorMessage = nil
+        transition(to: .idle)
+        deactivateAudioSession()
+    }
+
+    /// Requests stop and waits for AVAudioRecorder's delegate-confirmed file close.
+    /// Callers must not describe a take as saved while the controller is still finalizing.
+    func stopAndFinalize(timeout: TimeInterval = 10) async -> Bool {
+        handleCommand(.stop)
+        let deadline = Date().addingTimeInterval(timeout)
+
+        while Date() < deadline {
+            switch captureState {
+            case .saved:
+                return true
+            case .failed, .idle:
+                return false
+            case .preparing, .recording, .paused, .finalizing:
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+
+        lastErrorMessage = "Quipsly is still waiting for iOS to finish the local audio file. Keep the app open and review the take in Library."
+        return false
     }
 
     private func setupUploadObservers() {
@@ -53,27 +312,70 @@ class AudioCaptureController: NSObject, AVAudioRecorderDelegate, ObservableObjec
 
     @objc private func handleUploadFinished(notification: Notification) {
         guard let userInfo = notification.userInfo,
-              let success = userInfo["success"] as? Bool else { return }
+              let success = userInfo["success"] as? Bool,
+              let ownerAccountID = userInfo["ownerAccountID"] as? String,
+              ownerAccountID == AuthManager.currentStoredOwnerID() else { return }
 
-        if success, let sourceId = userInfo["sourceId"] as? String {
+        let recordingID = (userInfo["localRecordingID"] as? String).flatMap(UUID.init(uuidString:))
+            ?? pendingUploadRecordingID
+            ?? localRecordingLibrary.recordings.first(where: { [.queued, .uploading].contains($0.status) })?.id
+
+        if success {
+            let sourceId = userInfo["sourceId"] as? String
+            if let recordingID {
+                do {
+                    try localRecordingLibrary.markUploadFinished(
+                        recordingID,
+                        sourceId: sourceId,
+                        serverVerificationStatus: UploadManager.shared.lastServerVerificationStatus,
+                        processingDisposition: userInfo["processingDisposition"] as? String,
+                        processingHoldReason: userInfo["processingHoldReason"] as? String,
+                        transcriptDisposition: userInfo["transcriptDisposition"] as? String,
+                        detail: UploadManager.shared.lastServerVerificationDetail
+                    )
+                } catch {
+                    print("Could not update local upload receipt: \(error.localizedDescription)")
+                }
+            }
+
             let detail = EventDetail(mediaAssetId: sourceId)
-            let event = RecorderEvent(type: .uploadComplete, detail: detail)
-            onStateChange?(event)
+            onStateChange?(RecorderEvent(type: .uploadComplete, detail: detail))
         } else {
             let error = userInfo["error"] as? String ?? "Upload failed"
-            let detail = EventDetail(errorMessage: error)
-            let event = RecorderEvent(type: .error, detail: detail)
-            onStateChange?(event)
+            if let recordingID {
+                do {
+                    try localRecordingLibrary.markUploadHeld(recordingID, message: error)
+                } catch {
+                    print("Could not update held upload in local ledger: \(error.localizedDescription)")
+                }
+            }
+            broadcastError(message: error)
         }
+
+        pendingUploadRecordingID = nil
+        localRecordingRecoveryNote = recoverySummary()
     }
 
     @objc private func handleUploadProgress(notification: Notification) {
         guard let userInfo = notification.userInfo,
-              let progress = userInfo["progress"] as? Double else { return }
+              let progress = userInfo["progress"] as? Double,
+              let ownerAccountID = userInfo["ownerAccountID"] as? String,
+              ownerAccountID == AuthManager.currentStoredOwnerID() else { return }
+
+        let recordingID = (userInfo["localRecordingID"] as? String).flatMap(UUID.init(uuidString:))
+            ?? pendingUploadRecordingID
+            ?? localRecordingLibrary.recordings.first(where: { [.queued, .uploading].contains($0.status) })?.id
+        if let recordingID {
+            do {
+                try localRecordingLibrary.markUploading(recordingID, progress: progress)
+                pendingUploadRecordingID = recordingID
+            } catch {
+                print("Could not persist local upload progress: \(error.localizedDescription)")
+            }
+        }
 
         let detail = EventDetail(progress: progress)
-        let event = RecorderEvent(type: .uploadProgress, detail: detail)
-        onStateChange?(event)
+        onStateChange?(RecorderEvent(type: .uploadProgress, detail: detail))
     }
 
     private func setupInterruptionHandling() {
@@ -81,8 +383,52 @@ class AudioCaptureController: NSObject, AVAudioRecorderDelegate, ObservableObjec
             self,
             selector: #selector(handleInterruption),
             name: AVAudioSession.interruptionNotification,
-            object: nil
+            object: audioSession
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleMediaServicesReset),
+            name: AVAudioSession.mediaServicesWereResetNotification,
+            object: audioSession
+        )
+    }
+
+    private func setupRouteChangeHandling() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleRouteChange),
+            name: AVAudioSession.routeChangeNotification,
+            object: audioSession
+        )
+    }
+
+    private func setupAccountIdentityHandling() {
+        accountObserver = NotificationCenter.default.addObserver(
+            forName: .quipslyCaptureAccountIdentityDidChange,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { [weak self] in
+                self?.handleAccountIdentityChange()
+            }
+        }
+    }
+
+    private func handleAccountIdentityChange() {
+        guard let intent = activeCaptureIntent ?? pendingCaptureIntent,
+              !AuthManager.shared.matchesStableOwnerSnapshot(intent.ownerSnapshot) else { return }
+
+        captureOwnerAuthorityLost = true
+        let message = "The Quipsly account changed. Recording cannot continue under a different owner."
+        if activeLocalRecordingID == nil {
+            abortArmedCaptureBeforeRecording(message: "\(message) Nothing was recorded.")
+            return
+        }
+        if captureState == .recording {
+            pauseRecording(reason: .pause, causedByInterruption: false)
+        }
+        lastErrorMessage = "\(message) The local source is paused and preserved; stop and save this take before starting another."
+        broadcastError(message: lastErrorMessage ?? message)
     }
 
     @objc private func handleInterruption(notification: Notification) {
@@ -92,300 +438,955 @@ class AudioCaptureController: NSObject, AVAudioRecorderDelegate, ObservableObjec
             return
         }
 
-        if type == .began {
-            // Audio interrupted (e.g. phone call). Pause recording safely.
-            if state == .recording {
-                pauseRecording()
-                print("Audio session interrupted. Auto-paused recording.")
+        switch type {
+        case .began:
+            if captureState == .recording {
+                pauseRecording(reason: .interruption, causedByInterruption: true)
             }
+        case .ended:
+            guard pausedByInterruption, captureState == .paused else { return }
+            let optionValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionValue)
+            if options.contains(.shouldResume) {
+                // A phone call, alarm, or Siri ending must not silently restart capture.
+                // iOS's shouldResume flag means the route is available; the person still
+                // makes the recording decision from Quipsly's visible Resume control.
+                pausedByInterruption = false
+                refreshInputRoute()
+                lastErrorMessage = "The interruption ended. Tap Resume when everyone is ready to continue recording."
+                broadcastState()
+                broadcastError(message: lastErrorMessage ?? "Recording remains paused.")
+            } else {
+                pausedByInterruption = false
+                lastErrorMessage = "Recording remains paused because the microphone route is not ready to resume."
+                broadcastState()
+                broadcastError(message: lastErrorMessage ?? "Recording remains paused.")
+            }
+        @unknown default:
+            break
         }
     }
 
-    private func cleanupOldRecordings() {
-        let fileManager = FileManager.default
-        let documentPath = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    @objc private func handleRouteChange(notification: Notification) {
+        refreshInputRoute()
+
+        guard captureState == .recording,
+              let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue),
+              reason == .oldDeviceUnavailable else {
+            return
+        }
+
+        pauseRecording(reason: .interruption, causedByInterruption: true)
+        broadcastError(message: "The active microphone changed or disconnected. Recording is paused so you can verify the new route before explicitly resuming.")
+    }
+
+    @objc private func handleMediaServicesReset() {
+        refreshInputRoute()
+        guard captureState == .recording || captureState == .paused else { return }
+        finishCaptureFailure("iOS reset its audio services. The local source was preserved; start a new take after reviewing it.")
+    }
+
+    private func applySessionContext(from command: RecorderCommand) {
+        activeProjectSlug = normalized(command.projectSlug)
+        activeEpisodeSlug = normalized(command.episodeSlug)
+        activeCallRoomId = normalized(command.callRoomId)
+        activeParticipantId = normalized(command.participantId)
+        activeRecordingConsentId = normalized(command.recordingConsentId)
+        activeRecordingAssetId = normalized(command.recordingAssetId)
+        activeCapturePurpose = normalized(command.capturePurpose)
+        recordingConsentGranted = command.recordingConsentGranted == true
+
+        activeCallRoomLabel = activeEpisodeSlug
+            ?? activeProjectSlug
+            ?? activeCapturePurpose
+            ?? activeCallRoomId
+            ?? "Local recording"
+    }
+
+    private func startRecording() {
+        guard recordingConsentGranted else {
+            let baseMessage = "Recording needs explicit consent before capture starts."
+            failCapture(combining(baseMessage, with: closeStartBoundaryAfterFailedArm()))
+            return
+        }
 
         do {
-            let files = try fileManager.contentsOfDirectory(at: documentPath, includingPropertiesForKeys: [.creationDateKey])
-            let now = Date()
+            try ensurePendingCaptureIntent()
+        } catch {
+            failCapture(combining(error.localizedDescription, with: closeStartBoundaryAfterFailedArm()))
+            return
+        }
 
-            for file in files where file.pathExtension == "m4a" {
-                if let attrs = try? fileManager.attributesOfItem(atPath: file.path),
-                   let creationDate = attrs[.creationDate] as? Date {
-                    // Purge anything older than 24 hours to prevent storage leaks
-                    if now.timeIntervalSince(creationDate) > 86400 {
-                        try fileManager.removeItem(at: file)
-                        print("Cleaned up orphaned recording: \(file.lastPathComponent)")
-                    }
+        if AVAudioApplication.shared.recordPermission == .granted {
+            microphonePreflightState = .granted
+            guard hasCaptureStorageHeadroom() else {
+                failCapture(combining(storageStartFailureMessage, with: closeStartBoundaryAfterFailedArm()))
+                return
+            }
+            transition(to: .preparing)
+            failureMessage = nil
+            lastErrorMessage = nil
+            do {
+                try activateAudioSessionAndBeginRecording()
+            } catch {
+                handleStartFailure(error)
+            }
+            return
+        }
+
+        transition(to: .preparing)
+        failureMessage = nil
+        lastErrorMessage = nil
+        startTask?.cancel()
+        startTask = Task { [weak self] in
+            guard let self else { return }
+            await self.beginRecordingAfterPreflight()
+            self.startTask = nil
+        }
+    }
+
+    private func beginRecordingAfterPreflight() async {
+        guard !Task.isCancelled else {
+            if let receiptFailure = closeStartBoundaryAfterFailedArm() {
+                lastErrorMessage = receiptFailure
+                broadcastError(message: receiptFailure)
+            }
+            transition(to: .idle)
+            return
+        }
+        transition(to: .preparing)
+        failureMessage = nil
+        lastErrorMessage = nil
+
+        let permissionGranted = await resolveMicrophonePermission()
+        guard !Task.isCancelled else {
+            if let receiptFailure = closeStartBoundaryAfterFailedArm() {
+                lastErrorMessage = receiptFailure
+                broadcastError(message: receiptFailure)
+            }
+            transition(to: .idle)
+            return
+        }
+        guard pendingCaptureOwnerIsCurrent else {
+            abortArmedCaptureBeforeRecording()
+            return
+        }
+        guard permissionGranted else {
+            let baseMessage = "Microphone permission denied. Enable microphone access in Settings to record."
+            failCapture(combining(baseMessage, with: closeStartBoundaryAfterFailedArm()))
+            return
+        }
+        guard hasCaptureStorageHeadroom() else {
+            failCapture(combining(storageStartFailureMessage, with: closeStartBoundaryAfterFailedArm()))
+            return
+        }
+
+        do {
+            try activateAudioSessionAndBeginRecording()
+        } catch {
+            handleStartFailure(error)
+        }
+    }
+
+    private func handleStartFailure(_ error: Error) {
+        let message = "Could not start recording: \(error.localizedDescription)"
+        if let activeLocalRecordingID {
+            try? localRecordingLibrary.markCaptureFailed(
+                activeLocalRecordingID,
+                durationSeconds: currentDuration,
+                message: message
+            )
+        }
+        failCapture(combining(message, with: closeStartBoundaryAfterFailedArm()))
+    }
+
+    private func ensurePendingCaptureIntent() throws {
+        if let pendingCaptureIntent {
+            guard AuthManager.shared.matchesStableOwnerSnapshot(pendingCaptureIntent.ownerSnapshot) else {
+                throw CaptureError.captureOwnerChanged
+            }
+            return
+        }
+        guard activeCallRoomId == nil else {
+            throw CaptureError.startReceiptNotDurable
+        }
+        guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
+            throw CaptureError.captureOwnerChanged
+        }
+        pendingCaptureIntent = CaptureIntent(
+            captureID: UUID(),
+            sessionID: nil,
+            callRoomID: nil,
+            requiresDurableRoomReceipt: false,
+            startReceiptID: nil,
+            ownerSnapshot: ownerSnapshot
+        )
+        captureOwnerAuthorityLost = false
+    }
+
+    private var pendingCaptureOwnerIsCurrent: Bool {
+        guard let pendingCaptureIntent else { return false }
+        return !captureOwnerAuthorityLost
+            && AuthManager.shared.matchesStableOwnerSnapshot(pendingCaptureIntent.ownerSnapshot)
+    }
+
+    @discardableResult
+    private func closeStartBoundaryAfterFailedArm(at date: Date = Date()) -> String? {
+        let intent = activeCaptureIntent ?? pendingCaptureIntent
+        guard let intent,
+              intent.requiresDurableRoomReceipt,
+              let sessionID = intent.sessionID,
+              let callRoomID = intent.callRoomID else {
+            pendingCaptureIntent = nil
+            activeCaptureIntent = nil
+            return nil
+        }
+        var receiptFailure: String?
+        do {
+            try receiptStore.enqueueDurably(
+                captureID: intent.captureID,
+                sessionID: sessionID,
+                callRoomID: callRoomID,
+                action: .stop,
+                occurredAt: date,
+                ownerAccountID: intent.ownerSnapshot.ownerAccountID
+            )
+        } catch {
+            receiptFailure = "Quipsly preserved the START journal, but could not append its matching STOP boundary: \(error.localizedDescription) Relaunch before recording again so the protected outbox can reconcile."
+        }
+        pendingCaptureIntent = nil
+        activeCaptureIntent = nil
+        return receiptFailure
+    }
+
+    private func resolveMicrophonePermission() async -> Bool {
+        switch AVAudioApplication.shared.recordPermission {
+        case .granted:
+            microphonePreflightState = .granted
+            return true
+        case .denied:
+            microphonePreflightState = .denied
+            return false
+        case .undetermined:
+            let allowed = await withCheckedContinuation { continuation in
+                AVAudioApplication.requestRecordPermission { granted in
+                    continuation.resume(returning: granted)
                 }
             }
-        } catch {
-            print("Failed to cleanup old recordings: \(error)")
+            microphonePreflightState = allowed ? .granted : .denied
+            return allowed
+        @unknown default:
+            microphonePreflightState = .denied
+            return false
         }
     }
 
-    func setupAudioSession() {
-        let audioSession = AVAudioSession.sharedInstance()
+    private func hasCaptureStorageHeadroom() -> Bool {
+        guard let available = availableCapacityBytes() else {
+            storageCapacityProbeFailed = true
+            availableCaptureCapacityBytes = nil
+            return false
+        }
+        storageCapacityProbeFailed = false
+        availableCaptureCapacityBytes = available
+        return available >= projectedSafeCapacityFloorBytes
+    }
+
+    private var projectedSafeCapacityFloorBytes: Int64 {
+        hardStorageReserveBytes
+            + projectedFinalizeOverheadBytes
+            + (estimatedEncodedBytesPerSecond * storageProjectionWindowSeconds)
+    }
+
+    private var storageStartFailureMessage: String {
+        if storageCapacityProbeFailed {
+            return "Quipsly could not verify available storage, so recording stayed off to protect the local original. Unlock the iPhone or make storage available, then try again."
+        }
+        let required = ByteCountFormatter.string(
+            fromByteCount: projectedSafeCapacityFloorBytes,
+            countStyle: .file
+        )
+        return "Quipsly needs at least \(required) free to preserve its hard storage reserve and safely finalize a local recording. Free storage, then try again."
+    }
+
+    private func availableCapacityBytes() -> Int64? {
         do {
-            // mixWithOthers is critical to prevent silent suspension by the OS
-            try audioSession.setCategory(.playAndRecord, mode: .videoRecording, options: [.defaultToSpeaker, .allowBluetooth, .mixWithOthers])
-            try audioSession.setActive(true)
+            let values = try localRecordingLibrary.recordingsDirectoryURL.resourceValues(
+                forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeAvailableCapacityKey]
+            )
+            return values.volumeAvailableCapacityForImportantUsage
+                ?? values.volumeAvailableCapacity.map(Int64.init)
         } catch {
-            print("Failed to set up audio session: \(error)")
+            return nil
         }
     }
 
-    func handleCommand(_ command: RecorderCommand) {
-        switch command.action {
-        case .start:
-            if let projectSlug = command.projectSlug, let episodeSlug = command.episodeSlug {
-                activeProjectSlug = projectSlug
-                activeEpisodeSlug = episodeSlug
+    private func configureAudioSession() throws {
+        try audioSessionCoordinator.prepareLocalCaptureRoute()
+    }
+
+    private func activateAudioSessionAndBeginRecording() throws {
+        try audioSessionCoordinator.activateLocalCapture()
+        refreshInputRoute()
+        try beginActualRecording()
+    }
+
+    private func beginActualRecording() throws {
+        let startedAt = Date()
+        if activeCallRoomId != nil, pendingCaptureIntent == nil {
+            throw CaptureError.startReceiptNotDurable
+        }
+        guard let captureIntent = pendingCaptureIntent,
+              AuthManager.shared.matchesStableOwnerSnapshot(captureIntent.ownerSnapshot),
+              !captureOwnerAuthorityLost else {
+            throw CaptureError.captureOwnerChanged
+        }
+        if captureIntent.requiresDurableRoomReceipt, captureIntent.startReceiptID == nil {
+            throw CaptureError.startReceiptNotDurable
+        }
+        if captureIntent.requiresDurableRoomReceipt,
+           captureIntent.callRoomID != activeCallRoomId {
+            throw CaptureError.armedRoomMismatch
+        }
+        let audioFilename = try localRecordingLibrary.makeUniqueRecordingURL(startedAt: startedAt)
+        let settings: [String: Any] = [
+            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+            AVSampleRateKey: 48_000.0,
+            AVNumberOfChannelsKey: 1,
+            AVEncoderBitRateKey: 192_000,
+            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+        ]
+
+        let recorder = try AVAudioRecorder(url: audioFilename, settings: settings)
+        recorder.delegate = self
+        recorder.isMeteringEnabled = true
+        guard recorder.prepareToRecord() else {
+            throw CaptureError.couldNotPrepareRecorder
+        }
+        try localRecordingLibrary.setInProgressFileProtection(at: audioFilename)
+
+        localFallbackSessionId = "local-recording-\(UUID().uuidString.lowercased())"
+        let context = LocalRecordingSessionContext(
+            projectSlug: activeProjectSlug,
+            episodeSlug: activeEpisodeSlug,
+            callRoomId: activeCallRoomId,
+            participantId: activeParticipantId ?? localFallbackParticipantId,
+            recordingConsentId: activeRecordingConsentId,
+            recordingConsentGranted: recordingConsentGranted,
+            recordingAssetId: activeRecordingAssetId,
+            capturePurpose: activeCapturePurpose
+        )
+        let ledgerEntry = try localRecordingLibrary.beginRecording(
+            id: captureIntent.captureID,
+            at: audioFilename,
+            startedAt: startedAt,
+            context: context,
+            expectedOwnerAccountID: captureIntent.ownerSnapshot.ownerAccountID,
+            displayTitle: activeCallRoomLabel
+        )
+
+        currentRecordingURL = audioFilename
+        activeLocalRecordingID = ledgerEntry.id
+        activeCaptureIntent = captureIntent
+        pendingCaptureIntent = nil
+        overallStartTimestamp = startedAt
+        startTime = startedAt
+        accumulatedDuration = 0
+        currentDuration = 0
+        segments = []
+        userMarkOffsets = []
+        currentSegmentOrder = 1
+        pendingFinalizationStoppedAt = nil
+        pendingFinalizationDuration = 0
+        pendingFinalizationMessage = nil
+        automaticStopReason = nil
+        lastStorageCheckAt = .distantPast
+        pausedByInterruption = false
+
+        guard AuthManager.shared.matchesStableOwnerSnapshot(captureIntent.ownerSnapshot),
+              !captureOwnerAuthorityLost else {
+            throw CaptureError.captureOwnerChanged
+        }
+        guard recorder.record() else {
+            throw CaptureError.couldNotBeginRecorder
+        }
+        audioRecorder = recorder
+        do {
+            try localRecordingLibrary.markRecording(ledgerEntry.id, durationSeconds: 0)
+        } catch {
+            recorder.stop()
+            audioRecorder = nil
+            throw error
+        }
+        startNewSegment(at: startedAt)
+        startDurationAndMeterTimer()
+        transition(to: .recording)
+        updateNowPlayingInfo()
+    }
+
+    private func stopRecording(finalizationMessage: String? = nil) {
+        guard captureState == .recording || captureState == .paused else { return }
+
+        let stoppedAt = Date()
+        if captureState == .recording {
+            endCurrentSegment(reason: .userStop, at: stoppedAt)
+            accumulateActiveDuration(until: stoppedAt)
+        }
+
+        startTime = nil
+        currentDuration = accumulatedDuration
+        pendingFinalizationStoppedAt = stoppedAt
+        pendingFinalizationDuration = max(accumulatedDuration, audioRecorder?.currentTime ?? 0)
+        pendingFinalizationMessage = normalized(finalizationMessage)
+        pausedByInterruption = false
+        stopDurationAndMeterTimer()
+
+        if let activeLocalRecordingID {
+            do {
+                try localRecordingLibrary.markFinalizing(
+                    activeLocalRecordingID,
+                    durationSeconds: pendingFinalizationDuration
+                )
+            } catch {
+                print("Could not mark recording as finalizing: \(error.localizedDescription)")
             }
-            startRecording()
-        case .stop:
-            stopRecording()
-        case .pause:
-            pauseRecording()
-        case .resume:
-            resumeRecording()
-        case .markBreak:
-            markBreak()
+        }
+
+        transition(to: .finalizing)
+        updateNowPlayingInfo()
+
+        guard let audioRecorder else {
+            finishCaptureFailure("The recorder became unavailable while Quipsly was finalizing the file.")
+            return
+        }
+        audioRecorder.stop()
+    }
+
+    private func pauseRecording(reason: RecordingStopReason, causedByInterruption: Bool) {
+        guard captureState == .recording else { return }
+
+        let pausedAt = Date()
+        audioRecorder?.pause()
+        endCurrentSegment(reason: reason, at: pausedAt)
+        accumulateActiveDuration(until: pausedAt)
+        startTime = nil
+        currentDuration = accumulatedDuration
+        pausedByInterruption = causedByInterruption
+        stopDurationAndMeterTimer()
+
+        if let activeLocalRecordingID {
+            do {
+                try localRecordingLibrary.markPaused(
+                    activeLocalRecordingID,
+                    durationSeconds: accumulatedDuration,
+                    interruption: causedByInterruption
+                )
+            } catch {
+                print("Could not persist paused recording state: \(error.localizedDescription)")
+            }
+        }
+
+        transition(to: .paused)
+        updateNowPlayingInfo()
+    }
+
+    private func resumeRecording() {
+        guard captureState == .paused, let audioRecorder else { return }
+
+        guard captureOwnerIsCurrent else {
+            captureOwnerAuthorityLost = true
+            lastErrorMessage = "The take belongs to a different account generation. Stop and save it; Quipsly will not resume capture under the current account."
+            broadcastError(message: lastErrorMessage ?? "Recording remains paused.")
+            return
+        }
+
+        guard let available = availableCapacityBytes() else {
+            stopForStorageSafety(availableBytes: nil)
+            return
+        }
+        availableCaptureCapacityBytes = available
+        guard available > projectedSafetyFloorDuringCapture() else {
+            stopForStorageSafety(availableBytes: available)
+            return
+        }
+
+        do {
+            try audioSessionCoordinator.activateLocalCapture()
+            guard audioRecorder.record() else {
+                throw CaptureError.couldNotResumeRecorder
+            }
+
+            let resumedAt = Date()
+            startTime = resumedAt
+            startNewSegment(at: resumedAt)
+            pausedByInterruption = false
+            lastErrorMessage = nil
+            refreshInputRoute()
+
+            if let activeLocalRecordingID {
+                try localRecordingLibrary.markRecording(
+                    activeLocalRecordingID,
+                    durationSeconds: accumulatedDuration
+                )
+            }
+
+            startDurationAndMeterTimer()
+            transition(to: .recording)
+            updateNowPlayingInfo()
+        } catch {
+            audioRecorder.pause()
+            pausedByInterruption = false
+            lastErrorMessage = "Recording is still paused: \(error.localizedDescription)"
+            transition(to: .paused)
+            broadcastError(message: lastErrorMessage ?? "Recording remains paused.")
         }
     }
 
-    private func endCurrentSegment(reason: RecordingStopReason) {
-        guard let start = currentSegmentStart else { return }
-        let now = Date()
-        let durationSec = now.timeIntervalSince(start)
+    private func markBreak() {
+        guard captureState == .recording else { return }
+        let breakAt = Date()
+        let offset = max(currentDuration, accumulatedDuration + (startTime.map { breakAt.timeIntervalSince($0) } ?? 0))
+        endCurrentSegment(reason: .userMark, at: breakAt)
+        userMarkOffsets.append(max(0, offset))
+        startNewSegment(at: breakAt)
+    }
+
+    private func startNewSegment(at date: Date = Date()) {
+        currentSegmentStart = date
+    }
+
+    private func endCurrentSegment(reason: RecordingStopReason, at stoppedAt: Date) {
+        guard let startedAt = currentSegmentStart else { return }
 
         let segment = RecordingSegment(
-            id: "seg-\(Int(now.timeIntervalSince1970 * 1000))",
-            sessionId: "native-ios-session",
-            participantId: "local-user",
+            id: "seg-\(UUID().uuidString.lowercased())",
+            sessionId: activeCallRoomId
+                ?? activeEpisodeSlug
+                ?? localFallbackSessionId
+                ?? "local-recording-\(UUID().uuidString.lowercased())",
+            participantId: activeParticipantId ?? localFallbackParticipantId,
             deviceKind: UIDevice.current.name,
             status: "local-ready",
-            startedAt: ISO8601DateFormatter().string(from: start),
-            stoppedAt: ISO8601DateFormatter().string(from: now),
-            durationSeconds: durationSec,
+            startedAt: ISO8601DateFormatter().string(from: startedAt),
+            stoppedAt: ISO8601DateFormatter().string(from: stoppedAt),
+            durationSeconds: max(0, stoppedAt.timeIntervalSince(startedAt)),
             stopReason: reason
         )
-        // Simulate segmentOrder injection
         segments.append(segment)
         currentSegmentOrder += 1
         currentSegmentStart = nil
     }
 
-    private func startNewSegment() {
-        currentSegmentStart = Date()
+    private func accumulateActiveDuration(until date: Date) {
+        guard let startTime else { return }
+        accumulatedDuration += max(0, date.timeIntervalSince(startTime))
     }
 
-    private func markBreak() {
-        if state == .recording {
-            endCurrentSegment(reason: .interruption)
-            startNewSegment()
-        }
+    private func startDurationAndMeterTimer() {
+        displayDurationTimer?.invalidate()
+        displayDurationTimer = Timer.scheduledTimer(
+            timeInterval: 0.1,
+            target: self,
+            selector: #selector(handleDurationAndMeterTimer),
+            userInfo: nil,
+            repeats: true
+        )
+        displayDurationTimer?.tolerance = 0.02
     }
 
-    private func startRecording() {
-        let audioSession = AVAudioSession.sharedInstance()
-        switch audioSession.recordPermission {
-        case .granted:
-            beginActualRecording()
-        case .denied:
-            broadcastError(message: "Microphone permission denied. Please enable it in Settings.")
-        case .undetermined:
-            audioSession.requestRecordPermission { [weak self] allowed in
-                DispatchQueue.main.async {
-                    if allowed {
-                        self?.beginActualRecording()
-                    } else {
-                        self?.broadcastError(message: "Microphone permission denied. Please enable it in Settings.")
-                    }
-                }
-            }
-        @unknown default:
-            broadcastError(message: "Unknown microphone permission state.")
+    @objc private func handleDurationAndMeterTimer() {
+        guard captureState == .recording else { return }
+        if let startTime {
+            currentDuration = accumulatedDuration + Date().timeIntervalSince(startTime)
         }
+        updateMeters()
+        checkStorageHeadroomDuringCapture()
     }
 
-    private func beginActualRecording() {
-        setupAudioSession()
-
-        let documentPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        let fileName = "quipsly_recording_\(Date().timeIntervalSince1970).m4a"
-        let audioFilename = documentPath.appendingPathComponent(fileName)
-        currentRecordingURL = audioFilename
-
-        let settings: [String: Any] = [
-            AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
-            AVSampleRateKey: 44100.0,
-            AVNumberOfChannelsKey: 1,
-            AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
-        ]
-
-        do {
-            audioRecorder = try AVAudioRecorder(url: audioFilename, settings: settings)
-            audioRecorder?.delegate = self
-            audioRecorder?.record()
-
-            DispatchQueue.main.async {
-                self.state = .recording
-                self.isRecording = true
-            }
-            
-            let now = Date()
-            startTime = now
-            overallStartTimestamp = now
-            accumulatedDuration = 0
-            segments = []
-            currentSegmentOrder = 1
-            
-            DispatchQueue.main.async {
-                self.currentDuration = 0
-                self.displayDurationTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-                    guard let self = self, let start = self.startTime, self.state == .recording else { return }
-                    self.currentDuration = self.accumulatedDuration + Date().timeIntervalSince(start)
-                }
-            }
-
-            startNewSegment()
-
-            broadcastState()
-            updateNowPlayingInfo()
-        } catch {
-            print("Could not start recording: \(error)")
-            broadcastError(message: error.localizedDescription)
+    private func checkStorageHeadroomDuringCapture(at date: Date = Date()) {
+        guard date.timeIntervalSince(lastStorageCheckAt) >= storageCheckInterval else { return }
+        lastStorageCheckAt = date
+        guard let available = availableCapacityBytes() else {
+            stopForStorageSafety(availableBytes: nil)
+            return
         }
+        availableCaptureCapacityBytes = available
+
+        // Keep enough room to close the current container plus a short projected
+        // capture window. The current source size contributes a bounded mux/index
+        // allowance so a long take gets more finalization headroom without making
+        // the reserve unbounded.
+        let required = projectedSafetyFloorDuringCapture()
+        guard available <= required else { return }
+
+        stopForStorageSafety(availableBytes: available)
     }
 
-    private func stopRecording() {
-        if state == .recording {
-            endCurrentSegment(reason: .userStop)
-        }
-        audioRecorder?.stop()
-        audioRecorder = nil
+    private func projectedSafetyFloorDuringCapture() -> Int64 {
+        let currentFileBytes = currentRecordingURL.map(fileByteCount) ?? 0
+        let projectedContainerOverhead = min(max(currentFileBytes / 100, 1 * 1024 * 1024), 32 * 1024 * 1024)
+        return hardStorageReserveBytes
+            + projectedFinalizeOverheadBytes
+            + projectedContainerOverhead
+            + (estimatedEncodedBytesPerSecond * storageProjectionWindowSeconds)
+    }
 
-        if state == .recording, let start = startTime {
-            accumulatedDuration += Date().timeIntervalSince(start)
+    private func stopForStorageSafety(availableBytes: Int64?) {
+        guard captureState == .recording || captureState == .paused else { return }
+        let message: String
+        if let availableBytes {
+            let availableLabel = ByteCountFormatter.string(fromByteCount: availableBytes, countStyle: .file)
+            message = "Quipsly stopped automatically with \(availableLabel) available so iOS could finalize the local original before storage reached the hard reserve. The take remains on this iPhone."
+        } else {
+            message = "Quipsly stopped automatically because iOS could no longer verify available storage. The app finalized early rather than risk the local original."
         }
+        automaticStopReason = message
+        lastErrorMessage = message
+        broadcastError(message: message)
+        stopRecording(finalizationMessage: message)
+    }
 
-        DispatchQueue.main.async {
-            self.state = .stopped
-            self.isRecording = false
-            self.displayDurationTimer?.invalidate()
-            self.displayDurationTimer = nil
-            self.currentTakeOrder += 1
-        }
-        
-        broadcastState()
-        clearNowPlayingInfo()
+    private func stopDurationAndMeterTimer() {
+        displayDurationTimer?.invalidate()
+        displayDurationTimer = nil
+        inputLevelDB = -160
+        peakInputLevelDB = -160
+        normalizedInputLevel = 0
+    }
 
-        guard let fileUrl = currentRecordingURL,
-              let projectSlug = activeProjectSlug,
-              let episodeSlug = activeEpisodeSlug,
-              let overallStart = overallStartTimestamp else {
+    private func updateMeters() {
+        guard let audioRecorder, audioRecorder.isRecording else {
+            inputLevelDB = -160
+            peakInputLevelDB = -160
+            normalizedInputLevel = 0
             return
         }
 
-        let startedAtString = ISO8601DateFormatter().string(from: overallStart)
-        let stoppedAtString = ISO8601DateFormatter().string(from: Date())
+        audioRecorder.updateMeters()
+        let configuredChannels = audioRecorder.settings[AVNumberOfChannelsKey] as? Int ?? 1
+        let channelCount = max(1, configuredChannels)
+        let average = (0..<channelCount)
+            .map { audioRecorder.averagePower(forChannel: $0) }
+            .max() ?? -160
+        let peak = (0..<channelCount)
+            .map { audioRecorder.peakPower(forChannel: $0) }
+            .max() ?? -160
 
-        var segmentsJson: String? = nil
-        if let data = try? JSONEncoder().encode(segments) {
-            segmentsJson = String(data: data, encoding: .utf8)
-        }
-
-        UploadManager.shared.startUpload(
-            fileUrl: fileUrl,
-            projectSlug: projectSlug,
-            episodeSlug: episodeSlug,
-            startedAt: startedAtString,
-            stoppedAt: stoppedAtString,
-            recordingSegmentsJson: segmentsJson
-        )
+        inputLevelDB = average
+        peakInputLevelDB = peak
+        let floorDB: Float = -60
+        normalizedInputLevel = Double(min(max((average - floorDB) / -floorDB, 0), 1))
     }
 
-    private func pauseRecording() {
-        audioRecorder?.pause()
-        endCurrentSegment(reason: .pause)
-        if let start = startTime {
-            accumulatedDuration += Date().timeIntervalSince(start)
+    private func refreshInputRoute() {
+        guard let input = audioSession.currentRoute.inputs.first ?? audioSession.availableInputs?.first else {
+            inputRouteName = "No microphone selected"
+            inputRoutePortType = nil
+            return
         }
-        startTime = nil
-        state = .paused
-        broadcastState()
-        updateNowPlayingInfo()
+
+        inputRoutePortType = input.portType.rawValue
+        let systemName = input.portName.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch input.portType {
+        case .builtInMic:
+            inputRouteName = "iPhone microphone"
+        case .headsetMic:
+            inputRouteName = systemName == input.portType.rawValue ? "Headset microphone" : systemName
+        case .bluetoothHFP, .bluetoothLE:
+            inputRouteName = systemName == input.portType.rawValue ? "Bluetooth microphone" : systemName
+        case .usbAudio:
+            inputRouteName = systemName == input.portType.rawValue ? "USB microphone" : systemName
+        case .carAudio:
+            inputRouteName = systemName == input.portType.rawValue ? "Car microphone" : systemName
+        default:
+            inputRouteName = systemName.isEmpty || systemName == input.portType.rawValue
+                ? "External microphone"
+                : systemName
+        }
     }
 
-    private func resumeRecording() {
-        setupAudioSession()
-        audioRecorder?.record()
-        startTime = Date()
-        startNewSegment()
-        state = .recording
+    private func transition(to newState: AudioCaptureState) {
+        captureState = newState
+        isRecording = newState.isCaptureActive
+
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.pauseCommand.isEnabled = newState == .recording
+        // Resume stays inside Quipsly so consent revocation, route changes,
+        // and interruption safety can be revalidated before capture restarts.
+        commandCenter.playCommand.isEnabled = false
         broadcastState()
-        updateNowPlayingInfo()
+    }
+
+    private func bridgeState(for state: AudioCaptureState) -> RecorderState {
+        switch state {
+        case .recording:
+            return .recording
+        case .paused:
+            return .paused
+        case .idle, .preparing, .finalizing, .saved, .failed:
+            return .stopped
+        }
     }
 
     private func broadcastState() {
-        var currentDuration = accumulatedDuration
-        if state == .recording, let start = startTime {
-            currentDuration += Date().timeIntervalSince(start)
+        var duration = accumulatedDuration
+        if captureState == .recording, let startTime {
+            duration += Date().timeIntervalSince(startTime)
         }
-        let durationMs = Int(currentDuration * 1000)
 
-        let detail = EventDetail(state: state, durationMs: durationMs)
-        let event = RecorderEvent(type: .stateChange, detail: detail)
-        onStateChange?(event)
+        let detail = EventDetail(
+            state: bridgeState(for: captureState),
+            durationMs: Int(max(0, duration) * 1000),
+            localFilePath: currentRecordingURL?.path,
+            callRoomId: activeCallRoomId,
+            consentStatus: recordingConsentGranted ? "granted" : "missing"
+        )
+        onStateChange?(RecorderEvent(type: .stateChange, detail: detail))
     }
 
     private func broadcastError(message: String) {
         let detail = EventDetail(errorMessage: message)
-        let event = RecorderEvent(type: .error, detail: detail)
-        onStateChange?(event)
+        onStateChange?(RecorderEvent(type: .error, detail: detail))
     }
 
-    // MARK: - Lock Screen Controls (MPNowPlayingInfoCenter)
+    private func finalizeSuccessfulRecording() {
+        guard let fileURL = currentRecordingURL,
+              let recordingID = activeLocalRecordingID else {
+            finishCaptureFailure("Quipsly finalized audio but could not find its local ledger identity.")
+            return
+        }
+
+        let stoppedAt = pendingFinalizationStoppedAt ?? Date()
+        let duration = max(pendingFinalizationDuration, accumulatedDuration)
+        let segmentsJson = encodeSegments()
+
+        do {
+            try localRecordingLibrary.setFinalizedFileProtection(at: fileURL)
+            let finalized = try localRecordingLibrary.finalize(
+                recordingID,
+                stoppedAt: stoppedAt,
+                durationSeconds: duration,
+                recordingSegmentsJson: segmentsJson,
+                statusMessage: pendingFinalizationMessage
+            )
+            guard finalized.status == .saved else {
+                finishCaptureFailure(
+                    finalized.statusDetail,
+                    preserveExistingLibraryStatus: true
+                )
+                return
+            }
+
+            currentDuration = duration
+            accumulatedDuration = duration
+            currentTakeOrder += 1
+            failureMessage = nil
+            if automaticStopReason == nil {
+                lastErrorMessage = nil
+            }
+            stopDurationAndMeterTimer()
+            clearNowPlayingInfo()
+            deactivateAudioSession()
+            closeActiveRoomBoundaryAfterTerminalCapture(at: stoppedAt)
+            transition(to: .saved)
+
+            queueUploadIfPossible(recording: finalized, stoppedAt: stoppedAt, segmentsJson: segmentsJson)
+            localRecordingRecoveryNote = recoverySummary()
+            activeLocalRecordingID = nil
+            activeCaptureIntent = nil
+            localFallbackSessionId = nil
+            pendingFinalizationStoppedAt = nil
+            pendingFinalizationDuration = 0
+            pendingFinalizationMessage = nil
+        } catch {
+            finishCaptureFailure("The audio source remains local, but Quipsly could not finish its ledger: \(error.localizedDescription)")
+        }
+    }
+
+    private func queueUploadIfPossible(
+        recording: LocalRecording,
+        stoppedAt: Date,
+        segmentsJson: String?
+    ) {
+        guard let projectSlug = recording.projectSlug,
+              let episodeSlug = recording.episodeSlug,
+              let fileURL = localRecordingLibrary.fileURL(for: recording) else {
+            return
+        }
+
+        do {
+            try localRecordingLibrary.markUploadQueued(recording.id)
+            pendingUploadRecordingID = recording.id
+        } catch {
+            broadcastError(message: "Recording was saved locally, but its upload could not be queued: \(error.localizedDescription)")
+            return
+        }
+
+        UploadManager.shared.startUpload(
+            fileUrl: fileURL,
+            projectSlug: projectSlug,
+            episodeSlug: episodeSlug,
+            callRoomId: recording.callRoomId,
+            participantId: recording.participantId,
+            recordingConsentId: recording.recordingConsentId,
+            recordingConsentGranted: recording.recordingConsentGranted,
+            recordingAssetId: recording.recordingAssetId,
+            capturePurpose: recording.capturePurpose,
+            startedAt: ISO8601DateFormatter().string(from: recording.startedAt),
+            stoppedAt: ISO8601DateFormatter().string(from: stoppedAt),
+            recordingSegmentsJson: segmentsJson,
+            localRecordingID: recording.id,
+            ownerAccountID: recording.ownerAccountID
+        )
+
+        guard UploadManager.shared.hasDurableUpload(localRecordingID: recording.id) else {
+            try? localRecordingLibrary.markUploadHeld(
+                recording.id,
+                message: "Upload held until Quipsly can save its protected background job. The local original remains preserved."
+            )
+            return
+        }
+
+        do {
+            try localRecordingLibrary.markUploading(recording.id, progress: 0)
+        } catch {
+            print("Could not persist initial upload state: \(error.localizedDescription)")
+        }
+    }
+
+    private func finishCaptureFailure(
+        _ message: String,
+        preserveExistingLibraryStatus: Bool = false
+    ) {
+        let duration = max(currentDuration, accumulatedDuration, audioRecorder?.currentTime ?? 0)
+        audioRecorder?.stop()
+        audioRecorder = nil
+
+        if let fileURL = currentRecordingURL {
+            try? localRecordingLibrary.setFinalizedFileProtection(at: fileURL)
+        }
+        if let activeLocalRecordingID, !preserveExistingLibraryStatus {
+            try? localRecordingLibrary.markCaptureFailed(
+                activeLocalRecordingID,
+                durationSeconds: duration,
+                message: message
+            )
+        }
+        closeActiveRoomBoundaryAfterTerminalCapture()
+
+        currentDuration = duration
+        startTime = nil
+        currentSegmentStart = nil
+        pausedByInterruption = false
+        failureMessage = message
+        lastErrorMessage = message
+        stopDurationAndMeterTimer()
+        clearNowPlayingInfo()
+        deactivateAudioSession()
+        transition(to: .failed)
+        broadcastError(message: message)
+        localRecordingRecoveryNote = recoverySummary()
+    }
+
+    private func closeActiveRoomBoundaryAfterTerminalCapture(at date: Date = Date()) {
+        guard let intent = activeCaptureIntent else { return }
+        defer { activeCaptureIntent = nil }
+        guard intent.requiresDurableRoomReceipt,
+              let sessionID = intent.sessionID,
+              let callRoomID = intent.callRoomID else { return }
+        do {
+            try receiptStore.enqueueDurably(
+                captureID: intent.captureID,
+                sessionID: sessionID,
+                callRoomID: callRoomID,
+                action: .stop,
+                occurredAt: date,
+                ownerAccountID: intent.ownerSnapshot.ownerAccountID
+            )
+        } catch {
+            let message = "The local source is preserved, but Quipsly could not journal its Nest STOP boundary: \(error.localizedDescription)"
+            lastErrorMessage = [lastErrorMessage, message]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            broadcastError(message: message)
+        }
+    }
+
+    private func failCapture(_ message: String) {
+        failureMessage = message
+        lastErrorMessage = message
+        startTime = nil
+        pausedByInterruption = false
+        stopDurationAndMeterTimer()
+        clearNowPlayingInfo()
+        deactivateAudioSession()
+        transition(to: .failed)
+        broadcastError(message: message)
+    }
+
+    private func encodeSegments() -> String? {
+        guard let data = try? JSONEncoder().encode(segments) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    private func deactivateAudioSession() {
+        audioSessionCoordinator.releaseLocalCapture()
+        refreshInputRoute()
+    }
+
+    private func normalized(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    private func combining(_ primary: String, with secondary: String?) -> String {
+        guard let secondary = normalized(secondary) else { return primary }
+        return "\(primary) \(secondary)"
+    }
+
+    private func fileByteCount(at url: URL) -> Int64 {
+        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
+              let size = attributes[.size] as? NSNumber else {
+            return 0
+        }
+        return size.int64Value
+    }
+
+    private func recoverySummary() -> String {
+        // Production capture rule: never silently delete local recordings.
+        let pending = localRecordingLibrary.recordings.filter {
+            [.saved, .queued, .uploading, .awaitingVerification, .uploadHeld, .recovered, .validatingRecovery, .needsRepair, .captureFailed].contains($0.status)
+        }.count
+        if pending == 0 {
+            return "Local recordings are preserved until Quipsly verifies upload."
+        }
+        return "\(pending) local recording\(pending == 1 ? "" : "s") preserved on this iPhone."
+    }
+
+    // MARK: - Lock Screen Controls
+
     private func setupRemoteCommands() {
         let commandCenter = MPRemoteCommandCenter.shared()
-
-        commandCenter.pauseCommand.addTarget { [weak self] event in
-            guard let self = self, self.state == .recording else { return .commandFailed }
-            self.pauseRecording()
+        commandCenter.pauseCommand.addTarget { [weak self] _ in
+            guard let self, self.captureState == .recording else { return .commandFailed }
+            self.pauseRecording(reason: .pause, causedByInterruption: false)
             return .success
         }
-
-        commandCenter.playCommand.addTarget { [weak self] event in
-            guard let self = self, self.state == .paused else { return .commandFailed }
-            self.resumeRecording()
-            return .success
-        }
+        commandCenter.changePlaybackPositionCommand.isEnabled = false
+        commandCenter.pauseCommand.isEnabled = false
+        commandCenter.playCommand.isEnabled = false
     }
 
     private func updateNowPlayingInfo() {
-        let center = MPNowPlayingInfoCenter.default()
-        var nowPlayingInfo = [String: Any]()
-
-        nowPlayingInfo[MPMediaItemPropertyTitle] = "Recording Quipsly Episode"
-        if let episodeSlug = activeEpisodeSlug {
-            nowPlayingInfo[MPMediaItemPropertyArtist] = episodeSlug
-        }
-
-        // Duration properties so the lock screen timer runs
-        var currentDuration = accumulatedDuration
-        if state == .recording, let start = startTime {
-            currentDuration += Date().timeIntervalSince(start)
-        }
-
-        nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentDuration
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = state == .recording ? 1.0 : 0.0
-
-        // Prevent scrubbing
-        let commandCenter = MPRemoteCommandCenter.shared()
-        commandCenter.changePlaybackPositionCommand.isEnabled = false
-
-        center.nowPlayingInfo = nowPlayingInfo
+        var info = [String: Any]()
+        info[MPMediaItemPropertyTitle] = activeCallRoomLabel
+        info[MPMediaItemPropertyArtist] = "Quipsly local recording"
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentDuration
+        info[MPNowPlayingInfoPropertyPlaybackRate] = captureState == .recording ? 1.0 : 0.0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
 
     private func clearNowPlayingInfo() {
@@ -393,6 +1394,74 @@ class AudioCaptureController: NSObject, AVAudioRecorderDelegate, ObservableObjec
     }
 
     deinit {
+        startTask?.cancel()
+        displayDurationTimer?.invalidate()
         NotificationCenter.default.removeObserver(self)
+        if let accountObserver {
+            NotificationCenter.default.removeObserver(accountObserver)
+        }
+    }
+
+    private enum CaptureError: LocalizedError {
+        case couldNotPrepareRecorder
+        case couldNotBeginRecorder
+        case couldNotResumeRecorder
+        case emptyRecording
+        case captureAlreadyArmed
+        case missingRoomReceiptContext
+        case startReceiptNotDurable
+        case armedRoomMismatch
+        case captureOwnerChanged
+
+        var errorDescription: String? {
+            switch self {
+            case .couldNotPrepareRecorder:
+                return "The audio recorder could not prepare the local file."
+            case .couldNotBeginRecorder:
+                return "The audio recorder did not begin writing."
+            case .couldNotResumeRecorder:
+                return "The audio recorder could not resume."
+            case .emptyRecording:
+                return "The finalized recording file is empty."
+            case .captureAlreadyArmed:
+                return "Another capture identity is already armed."
+            case .missingRoomReceiptContext:
+                return "The Nest-backed capture is missing its session or room identity."
+            case .startReceiptNotDurable:
+                return "The Nest START receipt was not durably committed, so recording did not begin."
+            case .armedRoomMismatch:
+                return "The armed Nest receipt does not match the selected call room, so recording did not begin."
+            case .captureOwnerChanged:
+                return "The Quipsly account changed before recording could safely begin. Nothing was recorded."
+            }
+        }
+    }
+}
+
+extension AudioCaptureController: @preconcurrency AVAudioRecorderDelegate {
+    func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
+        guard recorder.url == currentRecordingURL, captureState == .finalizing else { return }
+        audioRecorder = nil
+        if flag {
+            finalizeSuccessfulRecording()
+        } else {
+            finishCaptureFailure("iOS could not finish the audio file cleanly. Any local source bytes remain preserved for review.")
+        }
+    }
+
+    func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
+        guard recorder.url == currentRecordingURL else { return }
+        finishCaptureFailure(error?.localizedDescription ?? "iOS reported an audio encoding failure.")
+    }
+}
+
+private extension AudioCaptureState {
+    var isCaptureActive: Bool {
+        switch self {
+        case .recording, .paused, .finalizing:
+            return true
+        case .idle, .preparing, .saved, .failed:
+            return false
+        }
     }
 }

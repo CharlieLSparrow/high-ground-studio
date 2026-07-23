@@ -7,6 +7,7 @@ enum MobileWorkspaceSection: String, CaseIterable, Identifiable {
     case recorder
     case chat
     case publish
+    case account
 
     var id: String { rawValue }
 
@@ -18,6 +19,7 @@ enum MobileWorkspaceSection: String, CaseIterable, Identifiable {
         case .recorder: "Record"
         case .chat: "Chat"
         case .publish: "Publish"
+        case .account: "Account"
         }
     }
 
@@ -29,6 +31,7 @@ enum MobileWorkspaceSection: String, CaseIterable, Identifiable {
         case .recorder: "mic.circle"
         case .chat: "bubble.left.and.bubble.right"
         case .publish: "paperplane"
+        case .account: "person.crop.circle"
         }
     }
 }
