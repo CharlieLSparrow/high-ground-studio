@@ -1,0 +1,131 @@
+import "server-only";
+
+import { cookies } from "next/headers";
+
+import { adminAuth } from "@/lib/firebase/firebase-admin";
+import { hasQuipslyBetaAccess } from "@/lib/server/patreon-authz";
+import {
+  ensureStudioUserFromFirebaseIdentity,
+  type StudioUserIdentity,
+} from "@/lib/server/studio-user-identity";
+
+export const QUIPSLY_SESSION_COOKIE_NAME = "session";
+
+export type QuipslySession = {
+  user: {
+    id: string;
+    email: string;
+    primaryEmail: string;
+    name: string | null;
+    image: string | null;
+    emailVerified: Date | null;
+    roles: StudioUserIdentity["roles"];
+    isStaff: boolean;
+    hasBetaAccess: boolean;
+  };
+};
+
+type FirebaseIdentityInput = {
+  uid: string;
+  email?: string;
+  email_verified?: boolean;
+  name?: string;
+  picture?: string;
+};
+
+async function sessionFromFirebaseIdentity(
+  decoded: FirebaseIdentityInput,
+): Promise<QuipslySession | null> {
+  // Never resolve or merge a Quipsly user by an unproved mailbox. In
+  // particular, an attacker must not be able to register an invited email and
+  // inherit its pre-created Nest grants before Firebase verifies ownership.
+  if (!decoded.email || decoded.email_verified !== true) return null;
+
+  const identity = await ensureStudioUserFromFirebaseIdentity({
+    firebaseUid: decoded.uid,
+    email: decoded.email,
+    emailVerified: decoded.email_verified,
+    name: decoded.name ?? null,
+    image: decoded.picture ?? null,
+  });
+
+  return {
+    user: {
+      id: identity.id,
+      email: identity.primaryEmail,
+      primaryEmail: identity.primaryEmail,
+      name: identity.name,
+      image: identity.image,
+      emailVerified: decoded.email_verified ? new Date() : null,
+      roles: identity.roles,
+      isStaff: identity.isStaff,
+      hasBetaAccess: await hasQuipslyBetaAccess(identity.primaryEmail),
+    },
+  };
+}
+
+export async function getQuipslySession(): Promise<QuipslySession | null> {
+  const cookieStore = await cookies();
+  const sessionCookie = cookieStore.get(QUIPSLY_SESSION_COOKIE_NAME)?.value;
+
+  if (!sessionCookie) return null;
+
+  try {
+    const checkRevoked =
+      process.env.QUIPSLY_CHECK_REVOKED_SESSION_COOKIES === "true";
+    const decoded = await adminAuth.verifySessionCookie(
+      sessionCookie,
+      checkRevoked,
+    );
+    return sessionFromFirebaseIdentity({
+      uid: decoded.uid,
+      email: decoded.email,
+      email_verified: decoded.email_verified,
+      name: decoded.name,
+      picture: decoded.picture,
+    });
+  } catch (error) {
+    console.warn("Quipsly Firebase session cookie was rejected.", {
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+    return null;
+  }
+}
+
+export async function getQuipslySessionFromBearer(
+  request: Request,
+): Promise<QuipslySession | null> {
+  const authHeader = request.headers.get("authorization");
+  if (!authHeader?.startsWith("Bearer ")) return null;
+
+  const token = authHeader.slice("Bearer ".length).trim();
+  if (!token) return null;
+
+  try {
+    const decoded = await adminAuth.verifyIdToken(token);
+    return sessionFromFirebaseIdentity({
+      uid: decoded.uid,
+      email: decoded.email,
+      email_verified: decoded.email_verified,
+      name: decoded.name,
+      picture: decoded.picture,
+    });
+  } catch (error) {
+    console.warn("Quipsly Firebase bearer token was rejected.", {
+      reason: error instanceof Error ? error.message : "unknown",
+    });
+    return null;
+  }
+}
+
+export async function getQuipslySessionFromRequest(
+  request: Request,
+): Promise<QuipslySession | null> {
+  // A caller that explicitly presents a bearer credential is bound to that
+  // credential's outcome. Never let an invalid/unverified mobile token fall
+  // through to an unrelated browser cookie identity on the same request.
+  if (request.headers.get("authorization")?.startsWith("Bearer ")) {
+    return getQuipslySessionFromBearer(request);
+  }
+  return getQuipslySession();
+}

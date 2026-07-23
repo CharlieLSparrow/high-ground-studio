@@ -1,18 +1,37 @@
-import { handlers } from "@/auth";
+import { NextResponse } from "next/server";
 
-type AuthRouteContext = {
-  params: Promise<{ nextauth: string[] }>;
-};
+// Firebase-first auth owns Quipsly login now.
+// This catch-all route remains only as a legacy Auth.js trap so stale links,
+// bookmarks, or old callback attempts cannot hijack sign-in. Keep it boring:
+// sanitize any callback and send the user back through /login.
+function requestPublicOrigin(request: Request) {
+  const url = new URL(request.url);
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const host = forwardedHost || request.headers.get("host") || url.host;
+  const proto = forwardedProto || url.protocol.replace(/:$/, "") || "https";
 
-type AuthRouteHandler = (
-  request: Request,
-  context: AuthRouteContext,
-) => Response | Promise<Response>;
+  return `${proto}://${host}`;
+}
 
-const authHandlers = handlers as unknown as {
-  GET: AuthRouteHandler;
-  POST: AuthRouteHandler;
-};
+function firebaseLoginRedirect(request: Request) {
+  const url = new URL(request.url);
+  const callbackUrl = url.searchParams.get("callbackUrl") || "/projects";
+  const target = new URL("/login", requestPublicOrigin(request));
+  target.searchParams.set(
+    "callbackUrl",
+    callbackUrl.startsWith("/") && !callbackUrl.startsWith("//")
+      ? callbackUrl
+      : "/projects",
+  );
 
-export const GET = authHandlers.GET;
-export const POST = authHandlers.POST;
+  return NextResponse.redirect(target, { status: 303 });
+}
+
+export function GET(request: Request) {
+  return firebaseLoginRedirect(request);
+}
+
+export function POST(request: Request) {
+  return firebaseLoginRedirect(request);
+}

@@ -45,8 +45,14 @@ export function createInviteLoginToken(): InviteTokenBundle {
   };
 }
 
-export async function consumeInviteLoginToken(token: string): Promise<ConsumedInviteLogin | null> {
-  const rawToken = String(token || "").trim();
+export async function consumeInviteLoginTokenForEmail(input: {
+  token: string;
+  verifiedEmail: string;
+}): Promise<ConsumedInviteLogin | null> {
+  const expectedEmail = normalizeEmail(input.verifiedEmail);
+  if (!expectedEmail) return null;
+
+  const rawToken = String(input.token || "").trim();
   if (!rawToken || !rawToken.startsWith("qinv_")) return null;
 
   const prisma = getPrismaClient();
@@ -69,6 +75,7 @@ export async function consumeInviteLoginToken(token: string): Promise<ConsumedIn
 
   const email = normalizeEmail(invite.email);
   if (!email) return null;
+  if (email !== expectedEmail) return null;
 
   const identity = await prisma.$transaction(async (tx) => {
     const user = await ensureInvitedStudioUserByEmail({

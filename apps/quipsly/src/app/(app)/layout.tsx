@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Merriweather } from "next/font/google";
-import { auth } from "@/auth";
+import { getQuipslySession } from "@/lib/server/quipsly-session";
 import "../globals.css";
 import { SidebarLayout } from "@/components/SidebarLayout";
 import { BetaAccessView } from "@/components/beta/BetaAccessView";
@@ -50,7 +50,7 @@ function NestSignInGate() {
         </p>
         <div className="mt-8 flex flex-wrap gap-3">
           <a
-            href="/api/auth/signin?callbackUrl=/projects"
+            href="/login?callbackUrl=/projects"
             className="rounded-full bg-[#3d2a1e] px-6 py-3 text-sm font-black uppercase tracking-[0.18em] text-white shadow-lg shadow-amber-950/20"
           >
             Sign in to Nest
@@ -81,7 +81,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth();
+  const session = await getQuipslySession();
   const cookieStore = await cookies();
   const ownerOverride = process.env.QUIPSLY_OWNER_OVERRIDE === "true";
   const actorEmail =

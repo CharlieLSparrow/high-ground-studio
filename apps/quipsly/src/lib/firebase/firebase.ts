@@ -1,5 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { connectAuthEmulator, getAuth } from 'firebase/auth';
+
+import { resolveFirebaseAuthEmulatorUrl } from './auth-emulator';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || 'dummy-api-key',
@@ -13,5 +15,12 @@ const firebaseConfig = {
 // Initialize Firebase gracefully
 const app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
 const auth = getAuth(app);
+const authEmulatorUrl = resolveFirebaseAuthEmulatorUrl(
+  process.env.NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL,
+);
+
+if (authEmulatorUrl && !auth.emulatorConfig) {
+  connectAuthEmulator(auth, authEmulatorUrl, { disableWarnings: true });
+}
 
 export { app, auth };
