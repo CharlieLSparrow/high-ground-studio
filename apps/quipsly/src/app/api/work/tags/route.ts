@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   const operation = text(body.operation, 40);
   const label = text(body.label, 120);
   if (operation === "CREATE_AND_ASSIGN") {
-    if (!["task", "goal", "session"].includes(entityKind) || !entityId || !label || !Number.isFinite(expectedUpdatedAt.getTime())) {
+    if (!["task", "goal", "session", "note"].includes(entityKind) || !entityId || !label || !Number.isFinite(expectedUpdatedAt.getTime())) {
       return NextResponse.json({ ok: false, code: "INVALID_INPUT", error: "The reusable tag request is incomplete or invalid." }, { status: 400 });
     }
     try {
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     }
   }
   const tagIds = Array.isArray(body.tagIds) ? body.tagIds.map((value) => text(value)).filter(Boolean) : null;
-  if (!["task", "goal", "session"].includes(entityKind) || !entityId || !tagIds || !Number.isFinite(expectedUpdatedAt.getTime())) {
+  if (!["task", "goal", "session", "note"].includes(entityKind) || !entityId || !tagIds || !Number.isFinite(expectedUpdatedAt.getTime())) {
     return NextResponse.json({ ok: false, code: "INVALID_INPUT", error: "The tag decision is incomplete or invalid." }, { status: 400 });
   }
   try {

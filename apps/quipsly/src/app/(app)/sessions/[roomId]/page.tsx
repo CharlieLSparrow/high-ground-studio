@@ -127,7 +127,7 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
         orderBy: { createdAt: "desc" },
         take: 50,
         select: {
-          id: true, title: true, body: true, sourceJson: true, createdAt: true,
+          id: true, title: true, body: true, sourceJson: true, createdAt: true, updatedAt: true,
           tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
         },
       }),
@@ -136,7 +136,7 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
         orderBy: { createdAt: "desc" },
         take: 50,
         select: {
-          id: true, title: true, detail: true, status: true, sourceJson: true, createdAt: true,
+          id: true, title: true, detail: true, status: true, sourceJson: true, createdAt: true, updatedAt: true,
           tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
         },
       }),
@@ -145,7 +145,7 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
         orderBy: { createdAt: "desc" },
         take: 50,
         select: {
-          id: true, title: true, description: true, status: true, sourceJson: true, createdAt: true,
+          id: true, title: true, description: true, status: true, sourceJson: true, createdAt: true, updatedAt: true,
           tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
         },
       }),
@@ -156,15 +156,16 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
       .filter((tag: any) => tag.isActive && visibleProject && tag.projectId === visibleProject.id)
       .map(({ id, label, slug }: any) => ({ id, label, slug }));
     const sessionQuickEntries = [
-      ...quickNoteRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "NOTE" as const, title: row.title, body: row.body, status: "CAPTURED", createdAt: row.createdAt.toISOString(), tags: quickEntryTags(row) })),
-      ...quickTaskRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "TASK" as const, title: row.title, body: row.detail, status: String(row.status), createdAt: row.createdAt.toISOString(), tags: quickEntryTags(row) })),
-      ...quickGoalRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "GOAL" as const, title: row.title, body: row.description, status: String(row.status), createdAt: row.createdAt.toISOString(), tags: quickEntryTags(row) })),
+      ...quickNoteRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "NOTE" as const, title: row.title, body: row.body, status: "CAPTURED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), tags: quickEntryTags(row) })),
+      ...quickTaskRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "TASK" as const, title: row.title, body: row.detail, status: String(row.status), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), tags: quickEntryTags(row) })),
+      ...quickGoalRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "GOAL" as const, title: row.title, body: row.description, status: String(row.status), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), tags: quickEntryTags(row) })),
     ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
     const sessionTaxonomy = room.project && visibleProject ? {
       project: room.project,
       tags: room.tagLinks.map((link: any) => ({ ...link.tag, category: String(link.tag.category) })).filter((tag: any) => tag.projectId === room.project.id),
       catalog: tagCatalog.map((tag: any) => ({ ...tag, category: String(tag.category) })),
       canManage: room.createdByUserId === session.user.id && (visibleProject.role === "OWNER" || visibleProject.role === "EDITOR"),
+      canManageVocabulary: visibleProject.role === "OWNER" || visibleProject.role === "EDITOR",
       updatedAt: room.updatedAt.toISOString(),
     } : null;
     const promotedMediaIds = room.recordingAssets.map((recording: any) => {

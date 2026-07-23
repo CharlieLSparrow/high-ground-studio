@@ -80,6 +80,7 @@ export type SessionTaxonomy = {
   tags: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
   catalog: Array<{ id: string; label: string; slug: string; category: string; projectId: string }>;
   canManage: boolean;
+  canManageVocabulary: boolean;
   updatedAt: string;
 };
 
@@ -107,6 +108,7 @@ export type SessionQuickEntry = {
   body: string | null;
   status: string;
   createdAt: string;
+  updatedAt: string;
   tags: Array<{ id: string; label: string; slug: string }>;
 };
 
@@ -180,16 +182,105 @@ function SessionCaptureReceiptCard({ receipts }: { receipts: SessionCaptureRecei
   </section>;
 }
 
-function SessionQuickEntryCard({ entries }: { entries: SessionQuickEntry[] }) {
+function SessionQuickEntryCard({ entries, taxonomy }: { entries: SessionQuickEntry[]; taxonomy: SessionTaxonomy | null }) {
+  const [currentEntries, setCurrentEntries] = useState(entries);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => setCurrentEntries(entries), [entries]);
   const icon = (kind: SessionQuickEntry["kind"]) => kind === "NOTE" ? MessageSquareText : kind === "TASK" ? ListTodo : Target;
+  function updateEntry(noteId: string, update: Partial<SessionQuickEntry>) {
+    setCurrentEntries((current) => current.map((entry) => entry.id === noteId ? { ...entry, ...update } : entry));
+  }
+  async function saveNote(entry: SessionQuickEntry, formData: FormData) {
+    setBusyId(entry.id);
+    setNotice(null);
+    try {
+      const response = await fetch(`/api/notes/${encodeURIComponent(entry.id)}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: String(formData.get("title") || ""),
+          body: String(formData.get("body") || ""),
+          expectedUpdatedAt: entry.updatedAt,
+        }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; note?: { title: string | null; body: string; updatedAt: string; tags: SessionQuickEntry["tags"] } };
+      if (!response.ok || !payload.ok || !payload.note) throw new Error(payload.error || "The note was not saved.");
+      updateEntry(entry.id, { title: payload.note.title, body: payload.note.body, updatedAt: payload.note.updatedAt, tags: payload.note.tags });
+      setNotice("Note saved to its original Session identity. No copy, message, calendar event, or publication action was created.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The note was not saved.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+  async function saveNoteTags(entry: SessionQuickEntry, formData: FormData) {
+    setBusyId(entry.id);
+    setNotice(null);
+    try {
+      const tagIds = formData.getAll("noteTagId").map(String);
+      const response = await fetch("/api/work/tags", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ entityKind: "note", entityId: entry.id, tagIds, expectedUpdatedAt: entry.updatedAt }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; updatedAt?: string };
+      if (!response.ok || !payload.ok || !payload.updatedAt) throw new Error(payload.error || "The note tags were not saved.");
+      const catalog = taxonomy?.catalog ?? [];
+      updateEntry(entry.id, { tags: catalog.filter((tag) => tagIds.includes(tag.id)).map(({ id, label, slug }) => ({ id, label, slug })), updatedAt: payload.updatedAt });
+      setNotice("Canonical Nest tags saved on the same note identity.");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The note tags were not saved.");
+    } finally {
+      setBusyId(null);
+    }
+  }
+  async function createNoteTag(entry: SessionQuickEntry, formData: FormData) {
+    setBusyId(entry.id);
+    setNotice(null);
+    try {
+      const response = await fetch("/api/work/tags", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ entityKind: "note", entityId: entry.id, operation: "CREATE_AND_ASSIGN", label: String(formData.get("label") || ""), expectedUpdatedAt: entry.updatedAt }),
+      });
+      const payload = await response.json() as { ok?: boolean; error?: string; updatedAt?: string; tag?: { id: string; label: string; slug: string } };
+      if (!response.ok || !payload.ok || !payload.updatedAt || !payload.tag) throw new Error(payload.error || "The reusable tag was not created.");
+      updateEntry(entry.id, { tags: [...entry.tags.filter((tag) => tag.id !== payload.tag!.id), payload.tag], updatedAt: payload.updatedAt });
+      setNotice(`#${payload.tag.label} is now reusable in this Nest and attached to the note.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The reusable tag was not created.");
+    } finally {
+      setBusyId(null);
+    }
+  }
   return <section className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5" aria-labelledby="quick-entry-heading">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Captured deliberately on iPhone</p><h2 id="quick-entry-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{entries.length} Session note{entries.length === 1 ? "" : "s"}, task{entries.length === 1 ? "" : "s"}, or goal{entries.length === 1 ? "" : "s"}</h2><p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">These are actor-owned canonical records, not AI candidates or copied phone drafts. Offline replay keeps the same ID.</p></div><Link href="/work" className="rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-900">Open Work</Link></div>
-    {entries.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2">{entries.map((entry) => {
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Captured deliberately on iPhone</p><h2 id="quick-entry-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{currentEntries.length} Session note{currentEntries.length === 1 ? "" : "s"}, task{currentEntries.length === 1 ? "" : "s"}, or goal{currentEntries.length === 1 ? "" : "s"}</h2><p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">These are actor-owned canonical records, not AI candidates or copied phone drafts. Offline replay keeps the same ID.</p></div><Link href="/work" className="rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-900">Open Work</Link></div>
+    {notice && <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-950">{notice}</p>}
+    {currentEntries.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2">{currentEntries.map((entry) => {
       const Icon = icon(entry.kind);
       const href = entry.kind === "TASK" ? `/work?task=${encodeURIComponent(entry.id)}` : entry.kind === "GOAL" ? `/work?goal=${encodeURIComponent(entry.id)}` : null;
       return <article id={`quick-entry-${entry.id}`} key={entry.id} tabIndex={-1} className="scroll-mt-24 rounded-xl border border-emerald-200 bg-white p-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
         <div className="flex items-start gap-3"><span className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><Icon className="h-4 w-4" aria-hidden="true" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="font-black text-[#3d3122]">{entry.title || (entry.kind === "NOTE" ? "Quick note" : `Untitled ${entry.kind.toLowerCase()}`)}</p><span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusTone(entry.status)}`}>{humanize(entry.status)}</span></div>{entry.body && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#765f40]">{entry.body}</p>}<p className="mt-3 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">{humanize(entry.kind)} · {new Date(entry.createdAt).toLocaleString()}</p>{href && <Link href={href} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900">Open same {entry.kind.toLowerCase()} in Work</Link>}</div></div>
         {entry.tags.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5" aria-label={`${entry.title || entry.kind} tags`}>{entry.tags.map((tag) => <span key={tag.id} className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-black text-sky-900">#{tag.label}</span>)}</div>}
+        {entry.kind === "NOTE" && <details className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3">
+          <summary className="cursor-pointer text-xs font-black text-emerald-950">Edit note and tags</summary>
+          <form action={(formData) => void saveNote(entry, formData)} className="mt-3 grid gap-3">
+            <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">Title<input name="title" maxLength={500} defaultValue={entry.title ?? ""} className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+            <label className="text-[10px] font-black uppercase tracking-wide text-emerald-900">Note<textarea name="body" required maxLength={20_000} defaultValue={entry.body ?? ""} rows={5} className="mt-1 block w-full rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+            <button type="submit" disabled={busyId === entry.id} className="min-h-11 justify-self-start rounded-full bg-emerald-800 px-4 py-2 text-xs font-black text-white disabled:opacity-50">Save note</button>
+          </form>
+          {taxonomy?.canManageVocabulary && <div className="mt-4 border-t border-emerald-100 pt-4">
+            <form action={(formData) => void saveNoteTags(entry, formData)}>
+              <fieldset className="grid gap-2 sm:grid-cols-2"><legend className="mb-2 text-[10px] font-black uppercase tracking-wide text-sky-900">Canonical {taxonomy.project.name} tags</legend>{taxonomy.catalog.map((tag) => <label key={tag.id} className="flex min-h-11 items-center gap-2 rounded-lg border border-sky-100 bg-white px-3 py-2 text-xs font-bold text-sky-950"><input name="noteTagId" value={tag.id} type="checkbox" defaultChecked={entry.tags.some((selected) => selected.id === tag.id)} />#{tag.label}</label>)}</fieldset>
+              <button type="submit" disabled={busyId === entry.id} className="mt-3 min-h-11 rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black text-sky-950 disabled:opacity-50">Save tags</button>
+            </form>
+            <form action={(formData) => void createNoteTag(entry, formData)} className="mt-3 flex flex-col gap-2 sm:flex-row">
+              <label className="flex-1 text-[10px] font-black uppercase tracking-wide text-violet-900">New reusable tag<input name="label" required maxLength={80} placeholder="e.g. Opening craft" className="mt-1 block w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal" /></label>
+              <button type="submit" disabled={busyId === entry.id} className="min-h-11 self-end rounded-full border border-violet-300 bg-violet-50 px-4 py-2 text-xs font-black text-violet-950 disabled:opacity-50">Create and attach</button>
+            </form>
+          </div>}
+        </details>}
       </article>;
     })}</div> : <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-900">No iPhone quick captures have synced to this Session yet. Quipsly does not invent an Inbox count.</div>}
   </section>;
@@ -472,7 +563,7 @@ export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness 
 
       {sessionTaxonomy && <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} />}
       {contentReadiness && <SessionContentReadinessCard readiness={contentReadiness} />}
-      <SessionQuickEntryCard entries={sessionQuickEntries} />
+      <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} />
       <SessionCaptureReceiptCard receipts={captureReceipts} />
       {studioHandoff && <SessionStudioHandoffCard handoff={studioHandoff} contentReadiness={contentReadiness} />}
 

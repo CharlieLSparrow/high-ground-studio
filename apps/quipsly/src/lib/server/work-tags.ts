@@ -4,7 +4,7 @@ import type { PrismaClient } from "@prisma/client";
 
 import { listProjectsVisibleToEmail } from "./home-nest";
 
-export type WorkTagEntityKind = "task" | "goal" | "session";
+export type WorkTagEntityKind = "task" | "goal" | "session" | "note";
 
 export type ReplaceWorkTagsResult =
   | { ok: true; entityKind: WorkTagEntityKind; entityId: string; projectId: string; tagIds: string[]; updatedAt: Date; receiptId: string }
@@ -93,15 +93,53 @@ function entityWhere(entityKind: WorkTagEntityKind, entityId: string, actorUserI
     ? { id: entityId, assignedUserId: actorUserId }
     : entityKind === "goal"
       ? { id: entityId, ownerUserId: actorUserId }
-      : { id: entityId, createdByUserId: actorUserId };
+      : entityKind === "note"
+        ? { id: entityId, authorUserId: actorUserId }
+        : { id: entityId, createdByUserId: actorUserId };
 }
 
 function entityModel(prisma: any, entityKind: WorkTagEntityKind) {
-  return entityKind === "task" ? prisma.actionItem : entityKind === "goal" ? prisma.goal : prisma.callRoom;
+  return entityKind === "task"
+    ? prisma.actionItem
+    : entityKind === "goal"
+      ? prisma.goal
+      : entityKind === "note"
+        ? prisma.coachingNote
+        : prisma.callRoom;
 }
 
 function entitySourceField(entityKind: WorkTagEntityKind) {
   return entityKind === "session" ? "metadataJson" : "sourceJson";
+}
+
+async function findOwnedTagEntity(
+  prisma: any,
+  entityKind: WorkTagEntityKind,
+  entityId: string,
+  actorUserId: string,
+  expectedUpdatedAt?: Date,
+  expectedProjectId?: string,
+) {
+  const where: any = {
+    ...entityWhere(entityKind, entityId, actorUserId),
+    ...(expectedUpdatedAt ? { updatedAt: expectedUpdatedAt } : {}),
+  };
+  if (entityKind === "note") {
+    if (expectedProjectId) where.room = { projectId: expectedProjectId };
+    const note = await prisma.coachingNote.findFirst({
+      where,
+      select: { id: true, roomId: true, updatedAt: true, sourceJson: true, room: { select: { projectId: true } } },
+    });
+    return note ? { ...note, projectId: note.room?.projectId ?? null } : null;
+  }
+  const sourceField = entitySourceField(entityKind);
+  return entityModel(prisma, entityKind).findFirst({
+    where: {
+      ...where,
+      ...(expectedProjectId ? { projectId: expectedProjectId } : {}),
+    },
+    select: { id: true, projectId: true, updatedAt: true, [sourceField]: true },
+  });
 }
 
 /**
@@ -128,13 +166,9 @@ export async function createAndAssignWorkEntityTag(input: {
   }
 
   const prisma = input.prisma as any;
-  const model = entityModel(prisma, input.entityKind);
   const ownerWhere = entityWhere(input.entityKind, entityId, actorUserId);
   const sourceField = entitySourceField(input.entityKind);
-  const entity = await model.findFirst({
-    where: ownerWhere,
-    select: { id: true, projectId: true, updatedAt: true, [sourceField]: true },
-  });
+  const entity = await findOwnedTagEntity(prisma, input.entityKind, entityId, actorUserId);
   if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only the ${input.entityKind} owner can create and apply its tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before creating a reusable tag." };
   if (entity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before creating a tag." };
@@ -151,10 +185,14 @@ export async function createAndAssignWorkEntityTag(input: {
     });
     if (!activeGrant) return { kind: "forbidden" as const };
 
-    const currentEntity = await entityModel(tx, input.entityKind).findFirst({
-      where: { ...ownerWhere, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt },
-      select: { id: true, updatedAt: true, [sourceField]: true },
-    });
+    const currentEntity = await findOwnedTagEntity(
+      tx,
+      input.entityKind,
+      entityId,
+      actorUserId,
+      input.expectedUpdatedAt,
+      entity.projectId,
+    );
     if (!currentEntity) return { kind: "conflict" as const };
 
     let tag = await tx.studioTag.findUnique({
@@ -210,7 +248,11 @@ export async function createAndAssignWorkEntityTag(input: {
       externalSideEffects: false,
     };
     const update = await entityModel(tx, input.entityKind).updateMany({
-      where: { ...ownerWhere, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt },
+      where: {
+        ...ownerWhere,
+        ...(input.entityKind === "note" ? { room: { projectId: entity.projectId } } : { projectId: entity.projectId }),
+        updatedAt: input.expectedUpdatedAt,
+      },
       data: { [sourceField]: { ...safeRecord(currentEntity[sourceField]), lastTagReceipt: receipt } },
     });
     if (update.count !== 1) return { kind: "conflict" as const };
@@ -220,6 +262,8 @@ export async function createAndAssignWorkEntityTag(input: {
       await tx.actionItemTagLink.createMany({ data: [{ actionItemId: entityId, tagId: tag.id, createdByUserId: actorUserId, sourceJson }], skipDuplicates: true });
     } else if (input.entityKind === "goal") {
       await tx.goalTagLink.createMany({ data: [{ goalId: entityId, tagId: tag.id, createdByUserId: actorUserId, sourceJson }], skipDuplicates: true });
+    } else if (input.entityKind === "note") {
+      await tx.coachingNoteTagLink.createMany({ data: [{ noteId: entityId, tagId: tag.id, createdByUserId: actorUserId, sourceJson }], skipDuplicates: true });
     } else {
       await tx.callRoomTagLink.createMany({ data: [{ roomId: entityId, tagId: tag.id, createdByUserId: actorUserId, sourceJson }], skipDuplicates: true });
     }
@@ -267,11 +311,7 @@ export async function replaceWorkEntityTags(input: {
 
   const writableProjects = await writableProjectIds(input.prisma, actorEmail);
   const prisma = input.prisma as any;
-  const entity = input.entityKind === "task"
-    ? await prisma.actionItem.findFirst({ where: { id: entityId, assignedUserId: actorUserId }, select: { id: true, projectId: true, sourceJson: true, updatedAt: true } })
-    : input.entityKind === "goal"
-      ? await prisma.goal.findFirst({ where: { id: entityId, ownerUserId: actorUserId }, select: { id: true, projectId: true, sourceJson: true, updatedAt: true } })
-      : await prisma.callRoom.findFirst({ where: { id: entityId, createdByUserId: actorUserId }, select: { id: true, projectId: true, metadataJson: true, updatedAt: true } });
+  const entity = await findOwnedTagEntity(prisma, input.entityKind, entityId, actorUserId);
 
   if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only the ${input.entityKind} owner can change these tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before adding its tags." };
@@ -315,7 +355,9 @@ export async function replaceWorkEntityTags(input: {
       ? await tx.actionItem.updateMany({ where: { id: entityId, assignedUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
       : input.entityKind === "goal"
         ? await tx.goal.updateMany({ where: { id: entityId, ownerUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
-        : await tx.callRoom.updateMany({ where: { id: entityId, createdByUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { metadataJson: { ...safeRecord(entity.metadataJson), lastTagReceipt: receipt } } });
+        : input.entityKind === "note"
+          ? await tx.coachingNote.updateMany({ where: { id: entityId, authorUserId: actorUserId, room: { projectId: entity.projectId }, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
+          : await tx.callRoom.updateMany({ where: { id: entityId, createdByUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { metadataJson: { ...safeRecord(entity.metadataJson), lastTagReceipt: receipt } } });
     if (update.count !== 1) return { kind: "conflict" as const };
 
     const sourceJson = { source: "quipsly-work-tags-v1", receiptId, externalSideEffects: false };
@@ -328,6 +370,11 @@ export async function replaceWorkEntityTags(input: {
       await tx.goalTagLink.deleteMany({ where: { goalId: entityId } });
       if (tagIds.length) await tx.goalTagLink.createMany({ data: tagIds.map((tagId) => ({ goalId: entityId, tagId, createdByUserId: actorUserId, sourceJson })) });
       return { kind: "saved" as const, entity: await tx.goal.findUnique({ where: { id: entityId }, select: { updatedAt: true } }) };
+    }
+    if (input.entityKind === "note") {
+      await tx.coachingNoteTagLink.deleteMany({ where: { noteId: entityId } });
+      if (tagIds.length) await tx.coachingNoteTagLink.createMany({ data: tagIds.map((tagId) => ({ noteId: entityId, tagId, createdByUserId: actorUserId, sourceJson })) });
+      return { kind: "saved" as const, entity: await tx.coachingNote.findUnique({ where: { id: entityId }, select: { updatedAt: true } }) };
     }
     await tx.callRoomTagLink.deleteMany({ where: { roomId: entityId } });
     if (tagIds.length) await tx.callRoomTagLink.createMany({ data: tagIds.map((tagId) => ({ roomId: entityId, tagId, createdByUserId: actorUserId, sourceJson })) });

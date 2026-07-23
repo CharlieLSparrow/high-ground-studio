@@ -54,4 +54,14 @@ describe("authenticated shared work tags route", () => {
     expect(await response.json()).toMatchObject({ ok: true, created: true, tag: { slug: "product-development" }, boundaries: { projectScoped: true, reusableVocabulary: true, externalSideEffects: false } });
     expect(createAndAssignWorkEntityTag).toHaveBeenCalledWith(expect.objectContaining({ prisma, actorUserId: "user-1", actorEmail: "person@example.test", entityKind: "task", entityId: "task-1", label: "Product development" }));
   });
+
+  it("routes a canonical note tag replacement through the same audited service", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
+    const prisma = {};
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+    jest.mocked(replaceWorkEntityTags).mockResolvedValue({ ok: true, entityKind: "note", entityId: "note-1", projectId: "project-1", tagIds: ["tag-1"], updatedAt: new Date("2026-07-23T08:00:00.000Z"), receiptId: "receipt-note" });
+    const response = await POST(request({ entityKind: "note", entityId: "note-1", tagIds: ["tag-1"], expectedUpdatedAt: "2026-07-23T07:59:00.000Z" }));
+    expect(response.status).toBe(200);
+    expect(replaceWorkEntityTags).toHaveBeenCalledWith(expect.objectContaining({ prisma, entityKind: "note", entityId: "note-1", tagIds: ["tag-1"] }));
+  });
 });

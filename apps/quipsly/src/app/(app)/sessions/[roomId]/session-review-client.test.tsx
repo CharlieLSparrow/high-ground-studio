@@ -191,6 +191,7 @@ describe("Session review goal candidates", () => {
           { id: "tag-episode", label: "Episode 4", slug: "episode-4", category: "meaning", projectId: "project-1" },
         ],
         canManage: true,
+        canManageVocabulary: true,
         updatedAt: "2026-07-19T08:00:00.000Z",
       }}
     />);
@@ -242,18 +243,87 @@ describe("Session review goal candidates", () => {
       roomId="room-1"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
       sessionQuickEntries={[
-        { id: "mobile-note-1", kind: "NOTE", title: "Quick note", body: "Let the opening breathe.", status: "CAPTURED", createdAt: "2026-07-19T09:00:00.000Z", tags: [{ id: "tag-1", label: "Opening", slug: "opening" }] },
-        { id: "mobile-task-1", kind: "TASK", title: "Proof-listen act one", body: "Use the room mix.", status: "OPEN", createdAt: "2026-07-19T09:01:00.000Z", tags: [] },
-        { id: "mobile-goal-1", kind: "GOAL", title: "Make coaching follow-through obvious", body: null, status: "ACTIVE", createdAt: "2026-07-19T09:02:00.000Z", tags: [] },
+        { id: "mobile-note-1", kind: "NOTE", title: "Quick note", body: "Let the opening breathe.", status: "CAPTURED", createdAt: "2026-07-19T09:00:00.000Z", updatedAt: "2026-07-19T09:00:00.000Z", tags: [{ id: "tag-1", label: "Opening", slug: "opening" }] },
+        { id: "mobile-task-1", kind: "TASK", title: "Proof-listen act one", body: "Use the room mix.", status: "OPEN", createdAt: "2026-07-19T09:01:00.000Z", updatedAt: "2026-07-19T09:01:00.000Z", tags: [] },
+        { id: "mobile-goal-1", kind: "GOAL", title: "Make coaching follow-through obvious", body: null, status: "ACTIVE", createdAt: "2026-07-19T09:02:00.000Z", updatedAt: "2026-07-19T09:02:00.000Z", tags: [] },
       ]}
     />);
     expect(await screen.findByRole("heading", { name: "3 Session notes, tasks, or goals" })).toBeInTheDocument();
-    expect(screen.getByText("Let the opening breathe.")).toBeInTheDocument();
+    expect(screen.getAllByText("Let the opening breathe.")[0]).toBeInTheDocument();
     expect(screen.getByText("#Opening")).toBeInTheDocument();
     expect(screen.getByText("Quick note").closest("article")).toHaveAttribute("id", "quick-entry-mobile-note-1");
     expect(screen.getByRole("link", { name: "Open same task in Work" })).toHaveAttribute("href", "/work?task=mobile-task-1");
     expect(screen.getByRole("link", { name: "Open same goal in Work" })).toHaveAttribute("href", "/work?goal=mobile-goal-1");
     expect(screen.getByText(/not AI candidates or copied phone drafts/i)).toBeInTheDocument();
+  });
+
+  it("edits the same iPhone note and replaces its canonical Nest tags with optimistic revisions", async () => {
+    const fetchMock = jest.fn()
+      .mockResolvedValueOnce(jsonResponse(packet()))
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        note: {
+          id: "mobile-note-1",
+          title: "Opening rhythm",
+          body: "Pause, then let the question breathe.",
+          updatedAt: "2026-07-19T09:05:00.000Z",
+          tags: [{ id: "tag-opening", label: "Opening", slug: "opening" }],
+        },
+      }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true, updatedAt: "2026-07-19T09:06:00.000Z" }));
+    global.fetch = fetchMock as typeof fetch;
+    const user = userEvent.setup();
+    render(<SessionReviewClient
+      roomId="room-1"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
+      sessionTaxonomy={{
+        project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
+        tags: [],
+        catalog: [
+          { id: "tag-opening", label: "Opening", slug: "opening", category: "meaning", projectId: "project-1" },
+          { id: "tag-edit", label: "Edit point", slug: "edit-point", category: "workflow", projectId: "project-1" },
+        ],
+        canManage: true,
+        canManageVocabulary: true,
+        updatedAt: "2026-07-19T09:00:00.000Z",
+      }}
+      sessionQuickEntries={[{
+        id: "mobile-note-1",
+        kind: "NOTE",
+        title: "Quick note",
+        body: "Let the opening breathe.",
+        status: "CAPTURED",
+        createdAt: "2026-07-19T09:00:00.000Z",
+        updatedAt: "2026-07-19T09:00:00.000Z",
+        tags: [{ id: "tag-opening", label: "Opening", slug: "opening" }],
+      }]}
+    />);
+    expect(await screen.findByRole("heading", { name: "Coaching review" })).toBeInTheDocument();
+    await user.click(screen.getByText("Edit note and tags"));
+    const title = screen.getByRole("textbox", { name: "Title" });
+    const note = screen.getByRole("textbox", { name: "Note" });
+    await user.clear(title);
+    await user.type(title, "Opening rhythm");
+    await user.clear(note);
+    await user.type(note, "Pause, then let the question breathe.");
+    await user.click(screen.getByRole("button", { name: "Save note" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("original Session identity");
+    expect(fetchMock.mock.calls[1][0]).toBe("/api/notes/mobile-note-1");
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+      title: "Opening rhythm",
+      body: "Pause, then let the question breathe.",
+      expectedUpdatedAt: "2026-07-19T09:00:00.000Z",
+    });
+
+    await user.click(screen.getByRole("checkbox", { name: "#Edit point" }));
+    await user.click(screen.getByRole("button", { name: "Save tags" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Canonical Nest tags saved");
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
+      entityKind: "note",
+      entityId: "mobile-note-1",
+      tagIds: ["tag-opening", "tag-edit"],
+      expectedUpdatedAt: "2026-07-19T09:05:00.000Z",
+    });
   });
 
   it("shows exact phone capture receipt IDs without pretending the audio uploaded", async () => {
