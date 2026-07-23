@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { homeNestSlugForEmail } from "@/lib/server/home-nest";
 
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySession: jest.fn() }));
 
@@ -47,6 +48,24 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     const project = await prisma.studioProject.create({ data: { workspaceId, slug: `library-${nonce}`, name: "High Ground Library smoke" } });
     projectId = project.id;
     await prisma.studioProjectAccessGrant.create({ data: { projectId, email: actorEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail } });
+    const homeProject = await prisma.studioProject.create({
+      data: {
+        workspaceId,
+        slug: homeNestSlugForEmail(actorEmail),
+        name: "Library actor Home Nest",
+        sourceLabel: "nest-kind:home",
+      },
+    });
+    await prisma.studioProjectAccessGrant.create({
+      data: {
+        projectId: homeProject.id,
+        email: actorEmail,
+        role: "OWNER",
+        status: "ACTIVE",
+        createdByUserId: actorUserId,
+        createdByEmail: actorEmail,
+      },
+    });
 
     const [promotedMedia, standaloneMedia] = await Promise.all([
       prisma.studioMediaAsset.create({ data: { filename: "promoted-session-source.wav", url: `gs://library-${nonce}/promoted.wav`, mimeType: "audio/wav", duration: 1800, projects: { connect: { id: projectId } } } }),
@@ -158,6 +177,11 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     const library = await loadLibrary(actorUserId, actorEmail, false);
     const serialized = JSON.stringify(library);
 
+    expect(library.homeNest).toEqual({
+      id: expect.any(String),
+      slug: homeNestSlugForEmail(actorEmail),
+      name: "Library actor Home Nest",
+    });
     expect(library.entries.find((entry) => entry.id === `session:${actorRoomId}`)).toMatchObject({
       href: `/sessions/${actorRoomId}`,
       title: "Episode 7 field recording",

@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { BookOpenText, CircleAlert, FileAudio, FileText, Film, Highlighter, Library, MessageSquareText, Search } from "lucide-react";
+import { BookOpenText, CircleAlert, FileAudio, FilePlus2, FileText, Film, Highlighter, Library, MessageSquareText, Search } from "lucide-react";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { homeNestSlugForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
+import { createDocumentAction } from "../nests/[slug]/actions";
 import { StudioAccessShell } from "../studio-access-shell";
 import { buildLibraryEntries, filterLibraryEntries, type LibraryEntry, type LibraryKind } from "./library-model";
 
@@ -162,7 +163,7 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
     .filter(Boolean)
     .sort((left: Date, right: Date) => right.getTime() - left.getTime())[0] ?? null;
 
-  return buildLibraryEntries({
+  const library = buildLibraryEntries({
     sessions: sessions.map((session: any) => ({
       ...session,
       project: session.project && visibleProjectIds.has(session.project.id) ? session.project : null,
@@ -182,6 +183,14 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
     media,
     saved: { collectionCount, snippetCount, bookmarkCount, updatedAt: savedUpdatedAt },
   });
+  const expectedHomeSlug = homeNestSlugForEmail(actorEmail);
+  const homeNest = projects.find((project) =>
+    project.slug === expectedHomeSlug && (project.role === "OWNER" || project.role === "EDITOR"),
+  ) ?? null;
+  return {
+    ...library,
+    homeNest: homeNest ? { id: homeNest.id, slug: homeNest.slug, name: homeNest.name } : null,
+  };
 }
 
 function formatDate(value: string) {
@@ -237,6 +246,10 @@ export default async function LibraryPage({ searchParams }: { searchParams?: Pro
         <p className="text-xs font-black uppercase tracking-[0.22em] text-[#76522c]">Library</p>
         <h1 className="mt-2 max-w-4xl font-serif text-4xl font-black tracking-tight md:text-5xl">Every source keeps its identity. One place to continue.</h1>
         <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-[#715a3e]">Library indexes canonical records without flattening them: Session owns capture evidence, Research owns immutable text and annotation anchors, Documents own writing revisions, and Studio owns reusable media references. The iPhone keeps unsynced originals locally until verified upload.</p>
+        {library.homeNest ? <form action={createDocumentAction.bind(null, library.homeNest.slug, "note")} className="mt-5">
+          <button type="submit" className="inline-flex min-h-12 items-center gap-2 rounded-full bg-[#3e2f21] px-5 py-3 text-xs font-black uppercase tracking-wide text-white shadow-sm"><FilePlus2 size={17} aria-hidden="true" />Quick note in {library.homeNest.name}</button>
+          <p className="mt-2 text-xs font-semibold text-[#715a3e]">Creates one private document-kernel note, then opens it for writing. Nothing is sent, scheduled, or published.</p>
+        </form> : null}
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6" aria-label="Library counts">{[
           ["Sessions", library.counts.sessions], ["Notes", library.counts.notes], ["Sources", library.counts.sources], ["Documents", library.counts.documents], ["Media", library.counts.media], ["Saved", library.counts.saved],
         ].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-4"><p className="text-3xl font-black">{value}</p><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{label}</p></div>)}</div>
@@ -251,7 +264,7 @@ export default async function LibraryPage({ searchParams }: { searchParams?: Pro
         {entries.length ? <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{entries.map((entry) => <LibraryCard key={entry.id} entry={entry} />)}</div> : <div className="mt-4 rounded-2xl border border-dashed border-[#d8c7a7] bg-white/55 p-8 text-sm font-semibold text-[#765f40]">No accessible canonical source matches this filter. Library does not insert sample books, recordings, transcripts, or media.</div>}
       </section>
 
-      <footer className="rounded-2xl border border-[#e4d3b3] bg-[#fffaf0] p-5 text-xs font-semibold leading-5 text-[#765f40]">Library is a read-only index. It does not copy bytes, merge identities, rewrite source text, expose private annotations, run transcription, or publish anything. Capture-promoted Studio media is deduplicated here under its owning Session while standalone reusable media remains visible.</footer>
+      <footer className="rounded-2xl border border-[#e4d3b3] bg-[#fffaf0] p-5 text-xs font-semibold leading-5 text-[#765f40]">Library results are a read-only index. The explicit Quick note control creates one private Home Nest document; browsing and filtering do not copy bytes, merge identities, rewrite source text, expose private annotations, run transcription, or publish anything. Capture-promoted Studio media is deduplicated here under its owning Session while standalone reusable media remains visible.</footer>
     </main>;
   } catch (error) {
     console.error("[library] failed to load permission-filtered sources", error);
