@@ -63,32 +63,55 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id, primaryEmail: email, isStaff: false } } as any);
   }
 
-  function post(kind: "NOTE" | "TASK" | "GOAL" | "SOURCE", requestId: string, title: string | null, body: string, sourceUrl?: string, capturedAt = "2026-07-19T09:00:00.000Z", tagIds: string[] = [], dueAt?: string) {
+  function post(kind: "NOTE" | "TASK" | "GOAL" | "SOURCE", requestId: string, title: string | null, body: string, sourceUrl?: string, capturedAt = "2026-07-19T09:00:00.000Z", tagIds: string[] = [], dueAt?: string, reminderAt?: string) {
     return POST(new Request("http://localhost/api/mobile/capture/quick-entry", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ clientRequestId: requestId, callRoomId: kind === "SOURCE" ? null : roomId, kind, title, body, sourceUrl, capturedAt, tagIds, dueAt }),
+      body: JSON.stringify({ clientRequestId: requestId, callRoomId: kind === "SOURCE" ? null : roomId, kind, title, body, sourceUrl, capturedAt, tagIds, dueAt, reminderAt }),
     }));
   }
 
   it("commits Note, Task, and Goal once, replays one task idempotently, and denies another account", async () => {
     signedInAs(actorUserId, actorEmail);
     const taskDueAt = "2026-07-24T15:30:00.000Z";
+    const taskReminderAt = "2026-07-24T14:30:00.000Z";
     const noteResponse = await post("NOTE", requestIds[0], null, "Let the opening breathe before the first cut.", undefined, undefined, [tagId]);
-    const taskResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId], taskDueAt);
+    const taskResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId], taskDueAt, taskReminderAt);
     const goalResponse = await post("GOAL", requestIds[2], "Make episode follow-through obvious", "Every promise returns to source evidence.", undefined, undefined, [tagId]);
-    const taskReplayResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId], taskDueAt);
-    const changedTaskReplayResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId], "2026-07-25T15:30:00.000Z");
+    const taskReplayResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId], taskDueAt, taskReminderAt);
+    const changedTaskReplayResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId], "2026-07-25T15:30:00.000Z", taskReminderAt);
 
     expect(await noteResponse.json()).toMatchObject({ ok: true, idempotentReplay: false, entry: { id: `mobile-note-${requestIds[0]}`, projectId, tags: [{ id: tagId, label: "Follow through" }] } });
-    expect(await taskResponse.json()).toMatchObject({ ok: true, idempotentReplay: false, entry: { id: `mobile-task-${requestIds[1]}`, projectId, status: "OPEN", dueAt: taskDueAt, tags: [{ id: tagId, label: "Follow through" }] } });
+    expect(await taskResponse.json()).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      entry: {
+        id: `mobile-task-${requestIds[1]}`,
+        projectId,
+        status: "OPEN",
+        dueAt: taskDueAt,
+        reminder: {
+          id: `mobile-task-reminder-${requestIds[1]}`,
+          remindAt: taskReminderAt,
+          status: "ACTIVE",
+          deviceNotificationScheduled: false,
+        },
+        tags: [{ id: tagId, label: "Follow through" }],
+      },
+      boundaries: {
+        canonicalReminderIntentCommitted: true,
+        deviceNotificationScheduled: false,
+        delivered: false,
+      },
+    });
     expect(await goalResponse.json()).toMatchObject({ ok: true, idempotentReplay: false, entry: { id: `mobile-goal-${requestIds[2]}`, projectId, status: "ACTIVE", tags: [{ id: tagId, label: "Follow through" }] } });
     expect(await taskReplayResponse.json()).toMatchObject({ ok: true, idempotentReplay: true, entry: { id: `mobile-task-${requestIds[1]}` } });
     expect(changedTaskReplayResponse.status).toBe(409);
 
-    const [note, task, goal, taskCount, noteTags, taskTags, goalTags] = await Promise.all([
+    const [note, task, reminder, goal, taskCount, noteTags, taskTags, goalTags] = await Promise.all([
       prisma.coachingNote.findUniqueOrThrow({ where: { id: `mobile-note-${requestIds[0]}` } }),
       prisma.actionItem.findUniqueOrThrow({ where: { id: `mobile-task-${requestIds[1]}` } }),
+      prisma.taskReminder.findUniqueOrThrow({ where: { id: `mobile-task-reminder-${requestIds[1]}` } }),
       prisma.goal.findUniqueOrThrow({ where: { id: `mobile-goal-${requestIds[2]}` } }),
       prisma.actionItem.count({ where: { id: `mobile-task-${requestIds[1]}` } }),
       prisma.coachingNoteTagLink.findMany({ where: { noteId: `mobile-note-${requestIds[0]}` } }),
@@ -102,7 +125,20 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
       assignedUserId: actorUserId,
       status: "OPEN",
       dueAt: new Date(taskDueAt),
-      sourceJson: { dueAt: taskDueAt, humanCommitted: true, externalSideEffects: false },
+      sourceJson: { dueAt: taskDueAt, reminderAt: taskReminderAt, humanCommitted: true, externalSideEffects: false },
+    });
+    expect(reminder).toMatchObject({
+      actionItemId: task.id,
+      ownerUserId: actorUserId,
+      remindAt: new Date(taskReminderAt),
+      status: "ACTIVE",
+      sourceJson: {
+        schema: "quipsly-task-reminder-intent-v1",
+        explicitHumanIntent: true,
+        devicePermissionObserved: false,
+        deviceNotificationScheduled: false,
+        deliveryClaimed: false,
+      },
     });
     expect(goal).toMatchObject({ roomId, projectId, ownerUserId: actorUserId, status: "ACTIVE" });
     expect(taskCount).toBe(1);

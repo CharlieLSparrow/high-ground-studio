@@ -47,6 +47,14 @@ enum CaptureLaunchConfiguration {
         #endif
     }
 
+    static var usesReminderSystemUITest: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--capture-reminder-system-ui-test")
+        #else
+        false
+        #endif
+    }
+
     static var previewTab: CaptureRootTab? {
         #if DEBUG
         let prefix = "--capture-ui-preview-tab="
@@ -105,6 +113,7 @@ final class CaptureExperienceModel: ObservableObject {
     let uploadManager = UploadManager.shared
     let receiptStore = CaptureRoomReceiptStore.shared
     let quickEntryOutbox = MobileQuickEntryOutbox.shared
+    let taskReminderScheduler = TaskReminderScheduler.shared
 
     private(set) var usesPreviewData: Bool
     private var activeCaptureID: UUID?
@@ -146,6 +155,10 @@ final class CaptureExperienceModel: ObservableObject {
         quickEntryOutbox.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        taskReminderScheduler.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        taskReminderScheduler.activateOwner(observedReceiptOwnerAccountID)
         NotificationCenter.default.publisher(for: .quipslyCaptureAccountIdentityDidChange)
             .sink { [weak self] notification in
                 self?.handleReceiptAccountIdentityChange(notification.object as? String)
@@ -228,6 +241,9 @@ final class CaptureExperienceModel: ObservableObject {
                     quickEntrySyncMessage = "Imported \(importedSharedSources) protected Share Sheet source\(importedSharedSources == 1 ? "" : "s") into this account's outbox."
                 }
             }
+            await taskReminderScheduler.reconcile(
+                drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
+            )
             sessionClient.sessions = MobileCaptureSession.capturePreviewFixtures
             todayClient.loadPreview()
             sessionClient.status = "Preview ready"
@@ -250,6 +266,9 @@ final class CaptureExperienceModel: ObservableObject {
         await sessionClient.load()
         await todayClient.load()
         await readinessClient.load()
+        await taskReminderScheduler.reconcile(
+            drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
+        )
         await retryQuickEntries(automatic: true)
         if selectedSessionID == nil || !sessions.contains(where: { $0.id == selectedSessionID }) {
             selectedSessionID = nextSession?.id
@@ -265,6 +284,7 @@ final class CaptureExperienceModel: ObservableObject {
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
         dueAt: Date? = nil,
+        reminderAt: Date? = nil,
         recurrence: MobileQuickEntryRecurrence? = nil
     ) -> Bool {
         let session = selectedSession
@@ -272,7 +292,7 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "Choose a Session before saving a note, task, or goal."
             return false
         }
-        if usesPreviewData {
+        if usesPreviewData && !CaptureLaunchConfiguration.usesReminderSystemUITest {
             quickEntrySyncMessage = "Preview only — no note, task, goal, or source was saved."
             return true
         }
@@ -286,6 +306,7 @@ final class CaptureExperienceModel: ObservableObject {
                 tagIDs: tagIDs,
                 newTagLabels: newTagLabels,
                 dueAt: dueAt,
+                reminderAt: reminderAt,
                 recurrence: recurrence
             )
             quickEntrySyncMessage = kind == .source
@@ -294,6 +315,27 @@ final class CaptureExperienceModel: ObservableObject {
                     ? "\(kind.title) and \(newTagLabels.count) new tag name\(newTagLabels.count == 1 ? "" : "s") saved on this iPhone. Nest will create or reuse the same private vocabulary on sync."
                 : "\(kind.title) saved on this iPhone. Nest sync uses the same retry-safe ID."
             Task { [weak self] in
+                if let reminderDraft = entry.taskReminderDraft {
+                    guard let self else { return }
+                    let projection = await self.taskReminderScheduler.register(
+                        draft: reminderDraft,
+                        requestPermissionIfNeeded: true
+                    )
+                    if case let .failed(message) = projection {
+                        self.quickEntryOutbox.markHeld(
+                            entry.id,
+                            code: "LOCAL_REMINDER_LEDGER_UNAVAILABLE",
+                            message: message
+                        )
+                        self.quickEntrySyncMessage = message
+                        return
+                    }
+                    if self.usesPreviewData {
+                        self.quickEntrySyncMessage = self.taskReminderScheduler.statusMessage
+                        return
+                    }
+                }
+                if self?.usesPreviewData == true { return }
                 await self?.syncQuickEntry(entry)
             }
             return true
@@ -328,8 +370,33 @@ final class CaptureExperienceModel: ObservableObject {
 
     private func syncQuickEntry(_ entry: PendingMobileQuickEntry, refreshToday: Bool = true) async {
         guard quickEntryOutbox.entries.contains(where: { $0.id == entry.id }) else { return }
+        if let reminderDraft = entry.taskReminderDraft {
+            let projection = await taskReminderScheduler.register(
+                draft: reminderDraft,
+                requestPermissionIfNeeded: false
+            )
+            if case let .failed(message) = projection {
+                quickEntryOutbox.markHeld(
+                    entry.id,
+                    code: "LOCAL_REMINDER_LEDGER_UNAVAILABLE",
+                    message: message
+                )
+                quickEntrySyncMessage = message
+                return
+            }
+        }
         switch await sessionClient.syncQuickEntry(entry) {
-        case let .acknowledged(_, idempotentReplay, message):
+        case let .acknowledged(_, idempotentReplay, message, reminder):
+            if let reminderDraft = entry.taskReminderDraft,
+               !taskReminderScheduler.confirmCanonical(
+                    reminder?.canonicalAcknowledgement,
+                    for: reminderDraft
+               ) {
+                let mismatch = "Nest returned a different reminder identity. The protected phone copy is held for review; no duplicate notification was scheduled."
+                quickEntryOutbox.markHeld(entry.id, code: "REMINDER_IDENTITY_CONFLICT", message: mismatch)
+                quickEntrySyncMessage = mismatch
+                return
+            }
             quickEntryOutbox.markAcknowledged(entry.id)
             quickEntrySyncMessage = idempotentReplay
                 ? "Nest already had this exact \(entry.kind.title.lowercased()); nothing was duplicated."
@@ -1033,6 +1100,7 @@ final class CaptureExperienceModel: ObservableObject {
         let ownerAccountID = normalizedOwnerAccountID(ownerAccountID)
         guard ownerAccountID != observedReceiptOwnerAccountID else { return }
         observedReceiptOwnerAccountID = ownerAccountID
+        taskReminderScheduler.activateOwner(ownerAccountID)
 
         receiptFlushTask?.cancel()
         receiptFlushTask = nil

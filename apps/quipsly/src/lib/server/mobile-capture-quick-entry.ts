@@ -18,6 +18,7 @@ export type MobileCaptureQuickEntryInput = {
   newTagLabels: string[];
   capturedAt: Date;
   dueAt: Date | null;
+  reminderAt: Date | null;
   recurrence: TaskRecurrenceRule | null;
 };
 
@@ -70,6 +71,7 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   const canonicalNewTagLabels = newTagLabels.map((label) => label.normalize("NFKC").toLocaleLowerCase("en-US"));
   const capturedAt = parsedCapturedAt(body.capturedAt);
   const dueAt = parsedOptionalDate(body.dueAt);
+  const reminderAt = parsedOptionalDate(body.reminderAt);
   const rawRecurrence = record(body.recurrence);
   const hasRecurrence = Object.keys(rawRecurrence).length > 0;
   const cadence = normalizedText(rawRecurrence.cadence, 20).toUpperCase();
@@ -107,6 +109,18 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   if (dueAt && kind !== "TASK") {
     return { ok: false, code: "QUICK_ENTRY_DUE_AT_TASK_ONLY", error: "Only a Task can have a due date." };
   }
+  if (reminderAt === "invalid") {
+    return { ok: false, code: "QUICK_ENTRY_REMINDER_AT_INVALID", error: "The task reminder must be a valid date and time." };
+  }
+  if (reminderAt && kind !== "TASK") {
+    return { ok: false, code: "QUICK_ENTRY_REMINDER_AT_TASK_ONLY", error: "Only a Task can have a reminder." };
+  }
+  if (reminderAt && (
+    reminderAt.getTime() <= capturedAt.getTime()
+    || reminderAt.getTime() - capturedAt.getTime() > 10 * 365 * 86_400_000
+  )) {
+    return { ok: false, code: "QUICK_ENTRY_REMINDER_RANGE_INVALID", error: "Choose a reminder after capture and within the next ten years." };
+  }
   if (kind === "NOTE" && !entryBody) {
     return { ok: false, code: "QUICK_ENTRY_NOTE_REQUIRED", error: "Write the note before saving it." };
   }
@@ -140,6 +154,9 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   if (dueAt && recurrence) {
     return { ok: false, code: "QUICK_ENTRY_DUE_AT_RECURRENCE_CONFLICT", error: "A repeating Task gets its timing from the recurrence rule. Remove the separate due date before saving." };
   }
+  if (reminderAt && recurrence) {
+    return { ok: false, code: "QUICK_ENTRY_REMINDER_RECURRENCE_CONFLICT", error: "Repeating reminders need occurrence-aware controls. Save this as a one-time Task reminder for now." };
+  }
   if (recurrence && (
     !["FIXED", "COMPLETION"].includes(recurrence.cadence)
     || !["DAILY", "WEEKLY", "MONTHLY"].includes(recurrence.frequency)
@@ -161,6 +178,7 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
       newTagLabels,
       capturedAt,
       dueAt,
+      reminderAt,
       recurrence,
     },
   };
@@ -172,6 +190,10 @@ export function mobileCaptureQuickEntryId(kind: MobileCaptureQuickEntryKind, cli
 
 export function mobileCaptureQuickEntrySeriesId(clientRequestId: string) {
   return `mobile-task-series-${clientRequestId.toLowerCase()}`;
+}
+
+export function mobileCaptureQuickEntryReminderId(clientRequestId: string) {
+  return `mobile-task-reminder-${clientRequestId.toLowerCase()}`;
 }
 
 export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInput, actorUserId: string, projectId: string | null) {
@@ -187,6 +209,7 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
     newTagLabels: input.newTagLabels,
     capturedAt: input.capturedAt.toISOString(),
     dueAt: input.dueAt?.toISOString() ?? null,
+    reminderAt: input.reminderAt?.toISOString() ?? null,
     actorUserId,
     humanCommitted: true,
     offlineRetrySafe: true,
@@ -200,7 +223,7 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
 
 export function isMobileCaptureQuickEntrySource(
   value: unknown,
-  expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "kind" | "tagIds" | "newTagLabels" | "dueAt">,
+  expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "kind" | "tagIds" | "newTagLabels" | "dueAt" | "reminderAt">,
   actorUserId: string,
 ) {
   const source = record(value);
@@ -217,6 +240,7 @@ export function isMobileCaptureQuickEntrySource(
     && JSON.stringify(sourceTagIds) === JSON.stringify(expected.tagIds)
     && JSON.stringify(sourceNewTagLabels) === JSON.stringify(expected.newTagLabels)
     && (source.dueAt ?? null) === (expected.dueAt?.toISOString() ?? null)
+    && (source.reminderAt ?? null) === (expected.reminderAt?.toISOString() ?? null)
     && source.origin === "explicit-human-capture";
 }
 

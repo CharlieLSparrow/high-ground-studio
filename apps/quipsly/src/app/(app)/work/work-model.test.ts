@@ -80,6 +80,21 @@ describe("Work Queue model", () => {
     expect(snapshot.counts.attentionTasks).toBe(3);
   });
 
+  it("projects only active canonical reminder intents", () => {
+    const snapshot = buildWorkSnapshot({
+      now,
+      tasks: [
+        task({ id: "active", reminder: { remindAt: "2026-07-19T12:00:00.000Z", status: "ACTIVE" } }),
+        task({ id: "canceled", reminder: { remindAt: "2026-07-19T13:00:00.000Z", status: "CANCELED" } }),
+      ],
+      goals: [],
+      commitments: [],
+    });
+
+    expect(snapshot.tasks.find((item) => item.id === "active")?.reminderAt).toBe("2026-07-19T12:00:00.000Z");
+    expect(snapshot.tasks.find((item) => item.id === "canceled")?.reminderAt).toBeNull();
+  });
+
   it("quarantines inferred transcript candidates while retaining accepted work", () => {
     const snapshot = buildWorkSnapshot({
       now,

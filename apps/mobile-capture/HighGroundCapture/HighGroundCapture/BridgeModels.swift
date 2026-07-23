@@ -2146,6 +2146,7 @@ private struct MobileQuickEntrySaveRequest: Encodable {
     let tagIds: [String]
     let newTagLabels: [String]
     let dueAt: String?
+    let reminderAt: String?
     let recurrence: MobileQuickEntryRecurrence?
     let capturedAt: String
 
@@ -2159,12 +2160,35 @@ private struct MobileQuickEntrySaveRequest: Encodable {
         tagIds = entry.tagIDs ?? []
         newTagLabels = entry.newTagLabels ?? []
         dueAt = entry.dueAt.map { ISO8601DateFormatter().string(from: $0) }
+        reminderAt = entry.reminderAt.map { ISO8601DateFormatter().string(from: $0) }
         recurrence = entry.recurrence
         capturedAt = ISO8601DateFormatter().string(from: entry.capturedAt)
     }
 }
 
 struct MobileQuickEntrySaveResponse: Decodable {
+    struct Reminder: Decodable, Equatable {
+        let id: String
+        let actionItemId: String
+        let remindAt: String
+        let status: String
+        let deviceNotificationScheduled: Bool
+
+        var canonicalAcknowledgement: CanonicalTaskReminderAcknowledgement? {
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            guard let date = fractional.date(from: remindAt)
+                ?? ISO8601DateFormatter().date(from: remindAt) else { return nil }
+            return CanonicalTaskReminderAcknowledgement(
+                id: id,
+                actionItemID: actionItemId,
+                remindAt: date,
+                status: status,
+                deviceNotificationScheduled: deviceNotificationScheduled
+            )
+        }
+    }
+
     struct Entry: Decodable {
         let id: String
         let kind: String
@@ -2177,6 +2201,7 @@ struct MobileQuickEntrySaveResponse: Decodable {
         let tags: [MobileCaptureTag]?
         let dueAt: String?
         let recurrence: MobileQuickEntryRecurrence?
+        let reminder: Reminder?
         let createdAt: String?
         let updatedAt: String?
     }
@@ -2190,7 +2215,7 @@ struct MobileQuickEntrySaveResponse: Decodable {
 }
 
 enum MobileQuickEntrySyncResult {
-    case acknowledged(serverRecordID: String, idempotentReplay: Bool, message: String)
+    case acknowledged(serverRecordID: String, idempotentReplay: Bool, message: String, reminder: MobileQuickEntrySaveResponse.Reminder?)
     case retryable(message: String)
     case held(code: String?, message: String)
 }
@@ -3438,7 +3463,8 @@ final class CaptureSessionClient: ObservableObject {
             return .acknowledged(
                 serverRecordID: saved.id,
                 idempotentReplay: payload.idempotentReplay == true,
-                message: payload.nextAction ?? "\(entry.kind.title) saved to Nest."
+                message: payload.nextAction ?? "\(entry.kind.title) saved to Nest.",
+                reminder: saved.reminder
             )
         } catch {
             return .retryable(message: "\(error.localizedDescription) The protected phone copy remains queued.")

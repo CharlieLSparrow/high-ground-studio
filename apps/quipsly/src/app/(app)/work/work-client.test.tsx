@@ -31,7 +31,7 @@ jest.mock("./actions", () => ({
 
 const snapshot: WorkSnapshot = {
   tasks: [{
-    id: "task-1", title: "Finish episode notes", detail: "Use transcript evidence", status: "OPEN", dueAt: null, completedAt: null,
+    id: "task-1", title: "Finish episode notes", detail: "Use transcript evidence", status: "OPEN", dueAt: null, reminderAt: "2026-07-19T12:00:00.000Z", completedAt: null,
     createdAt: "2026-07-18T18:00:00.000Z", updatedAt: "2026-07-18T18:00:00.000Z", isOverdue: false, assigneeLabel: null,
     provenance: "Reviewed transcript timestamp", attentionReason: "Reviewed transcript follow-through", roomId: "room-1", sessionTitle: "Episode review", sessionStatus: "ENDED", workspaceSlug: null, bookingStart: null,
     project: null, tags: [], canManageTags: true,
@@ -50,6 +50,7 @@ describe("Work Queue interactions", () => {
     const link = screen.getByRole("link", { name: "Return to 0:03–0:04" });
     expect(link).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
     expect(screen.getByText(/Charlie: Welcome, everybody/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Reminder .+2026/)).toBeInTheDocument();
   });
 
   it("returns a reviewed transcript goal to its exact segment", () => {

@@ -55,6 +55,7 @@ struct PendingMobileQuickEntry: Codable, Identifiable, Equatable {
     let tagIDs: [String]?
     let newTagLabels: [String]?
     let dueAt: Date?
+    let reminderAt: Date?
     let recurrence: MobileQuickEntryRecurrence?
     let capturedAt: Date
     var disposition: Disposition
@@ -64,6 +65,16 @@ struct PendingMobileQuickEntry: Codable, Identifiable, Equatable {
     var lastErrorMessage: String?
 
     var clientRequestID: String { id.uuidString.lowercased() }
+
+    var taskReminderDraft: TaskReminderDraft? {
+        guard kind == .task, recurrence == nil, let reminderAt else { return nil }
+        return TaskReminderDraft(
+            clientRequestID: clientRequestID,
+            ownerAccountID: ownerAccountID,
+            remindAt: reminderAt,
+            capturedAt: capturedAt
+        )
+    }
 
     var displayTitle: String {
         let cleanTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
@@ -77,6 +88,7 @@ enum MobileQuickEntryStoreError: LocalizedError {
     case accountIdentityUnavailable
     case emptyContent
     case invalidTags
+    case invalidReminder
     case ledgerUnavailable
 
     var errorDescription: String? {
@@ -87,6 +99,8 @@ enum MobileQuickEntryStoreError: LocalizedError {
             "Write the note, task, goal, or source before saving it."
         case .invalidTags:
             "Choose or name at most eight distinct Nest tags before saving."
+        case .invalidReminder:
+            "Choose a future reminder for a one-time task."
         case .ledgerUnavailable:
             "The protected quick-capture outbox is unavailable. Nothing was claimed as saved."
         }
@@ -166,6 +180,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
         dueAt: Date? = nil,
+        reminderAt: Date? = nil,
         recurrence: MobileQuickEntryRecurrence? = nil,
         capturedAt: Date = Date()
     ) throws -> PendingMobileQuickEntry {
@@ -192,6 +207,9 @@ final class MobileQuickEntryOutbox: ObservableObject {
         guard dueAt == nil || kind == .task && recurrence == nil else {
             throw MobileQuickEntryStoreError.emptyContent
         }
+        guard reminderAt == nil || kind == .task && recurrence == nil && reminderAt! > capturedAt else {
+            throw MobileQuickEntryStoreError.invalidReminder
+        }
         let cleanTagIDs = Array(Set(
             tagIDs
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -216,6 +234,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
             tagIDs: cleanTagIDs,
             newTagLabels: cleanNewTagLabels,
             dueAt: dueAt,
+            reminderAt: reminderAt,
             recurrence: recurrence,
             capturedAt: capturedAt,
             disposition: .pending,
@@ -313,6 +332,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
                         tagIDs: nil,
                         newTagLabels: nil,
                         dueAt: nil,
+                        reminderAt: nil,
                         recurrence: nil,
                         capturedAt: envelope.capturedAt,
                         disposition: .pending,

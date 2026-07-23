@@ -233,6 +233,7 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
       callRoomId = room.id;
       const capturedAt = new Date();
       const dueAt = new Date(capturedAt.getTime() + 6 * 60 * 60 * 1000);
+      const reminderAt = new Date(capturedAt.getTime() + 5 * 60 * 60 * 1000);
       const quickEntry = await fetch(
         `${nestOrigin}/api/mobile/capture/quick-entry`,
         {
@@ -249,6 +250,7 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
             body: "Prove the same accepted task in Today, Work, and Calendar.",
             capturedAt: capturedAt.toISOString(),
             dueAt: dueAt.toISOString(),
+            reminderAt: reminderAt.toISOString(),
             tagIds: [],
             newTagLabels: [quickEntryTagLabel],
           }),
@@ -266,7 +268,19 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
           callRoomId,
           projectId: homeProject.id,
           dueAt: dueAt.toISOString(),
+          reminder: {
+            id: `mobile-task-reminder-${quickEntryRequestId}`,
+            actionItemId: quickEntryTaskId,
+            remindAt: reminderAt.toISOString(),
+            status: "ACTIVE",
+            deviceNotificationScheduled: false,
+          },
           tags: [{ label: quickEntryTagLabel }],
+        },
+        boundaries: {
+          canonicalReminderIntentCommitted: true,
+          deviceNotificationScheduled: false,
+          delivered: false,
         },
       });
 
@@ -286,6 +300,7 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
             body: "Prove the same accepted task in Today, Work, and Calendar.",
             capturedAt: capturedAt.toISOString(),
             dueAt: dueAt.toISOString(),
+            reminderAt: reminderAt.toISOString(),
             tagIds: [],
             newTagLabels: [quickEntryTagLabel],
           }),
@@ -305,6 +320,7 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
         const firstHtml = await firstRead.text();
         expect(firstHtml).toContain(quickEntryTaskId);
         expect(firstHtml).toContain(quickEntryTitle);
+        expect(firstHtml).toContain("Reminder");
 
         const reload = await fetch(`${nestOrigin}${route}`, {
           headers: { cookie: sessionCookie },
@@ -313,11 +329,13 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
         const reloadHtml = await reload.text();
         expect(reloadHtml).toContain(quickEntryTaskId);
         expect(reloadHtml).toContain(quickEntryTitle);
+        expect(reloadHtml).toContain("Reminder");
       }
 
       const persistedTask = await prisma.actionItem.findUniqueOrThrow({
         where: { id: quickEntryTaskId },
         include: {
+          reminder: true,
           tagLinks: {
             include: { tag: true },
           },
@@ -333,8 +351,21 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
           schema: "quipsly-mobile-quick-entry-v1",
           surface: "ios-capture",
           dueAt: dueAt.toISOString(),
+          reminderAt: reminderAt.toISOString(),
           humanCommitted: true,
           externalSideEffects: false,
+        },
+        reminder: {
+          id: `mobile-task-reminder-${quickEntryRequestId}`,
+          ownerUserId: actor.id,
+          remindAt: reminderAt,
+          status: "ACTIVE",
+          sourceJson: {
+            schema: "quipsly-task-reminder-intent-v1",
+            explicitHumanIntent: true,
+            deviceNotificationScheduled: false,
+            deliveryClaimed: false,
+          },
         },
         tagLinks: [{ tag: { label: quickEntryTagLabel } }],
       });
@@ -442,6 +473,7 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
         remainingHomeProjects,
         remainingGrants,
         remainingTasks,
+        remainingReminders,
         remainingRooms,
         remainingTags,
       ] =
@@ -455,6 +487,9 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
           }),
           prisma.studioProjectAccessGrant.count({ where: { email } }),
           prisma.actionItem.count({ where: { id: quickEntryTaskId } }),
+          prisma.taskReminder.count({
+            where: { id: `mobile-task-reminder-${quickEntryRequestId}` },
+          }),
           callRoomId
             ? prisma.callRoom.count({ where: { id: callRoomId } })
             : Promise.resolve(0),
@@ -466,6 +501,7 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
         remainingHomeProjects,
         remainingGrants,
         remainingTasks,
+        remainingReminders,
         remainingRooms,
         remainingTags,
       }).toEqual({
@@ -473,6 +509,7 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
         remainingHomeProjects: 0,
         remainingGrants: 0,
         remainingTasks: 0,
+        remainingReminders: 0,
         remainingRooms: 0,
         remainingTags: 0,
       });

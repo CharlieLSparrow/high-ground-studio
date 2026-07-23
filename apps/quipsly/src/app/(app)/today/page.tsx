@@ -92,6 +92,7 @@ export async function loadToday(userId: string, actorEmail: string) {
         title: true,
         detail: true,
         dueAt: true,
+        reminder: { select: { remindAt: true, status: true } },
         createdAt: true,
         sourceJson: true,
         room: { select: { id: true, title: true } },
@@ -247,7 +248,7 @@ export default async function TodayPage() {
 
           <section aria-labelledby="today-attention" className="rounded-3xl border border-amber-200 bg-white p-5 shadow-sm md:p-6">
             <div className="flex items-start gap-3"><ListChecks className="mt-1 text-amber-700" aria-hidden="true" /><div><p className="text-xs font-black uppercase tracking-[0.18em] text-amber-800">Needs a decision</p><h2 id="today-attention" className="mt-1 font-serif text-3xl font-black">Committed work</h2></div></div>
-            {today.tasks.length ? <ul className="mt-4 space-y-3">{today.tasks.map((task) => <li key={task.id} className="rounded-2xl border border-amber-100 bg-amber-50/45 p-4"><p className="text-[10px] font-black uppercase tracking-wide text-amber-800">{task.reason}</p><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="mt-1 block text-base font-black hover:underline">{task.title}</Link><TagPills tags={task.tags} />{task.project && <p className="mt-1 text-xs font-bold text-[#806a4d]">Nest: {task.project.name}</p>}{task.sessionTitle && <p className="mt-1 text-xs font-bold text-[#806a4d]">Session: {task.sessionTitle}</p>}</li>)}</ul> : <Empty>No committed work currently meets the bounded attention rules. Ordinary open tasks remain in Work.</Empty>}
+            {today.tasks.length ? <ul className="mt-4 space-y-3">{today.tasks.map((task) => <li key={task.id} className="rounded-2xl border border-amber-100 bg-amber-50/45 p-4"><p className="text-[10px] font-black uppercase tracking-wide text-amber-800">{task.reason}</p><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="mt-1 block text-base font-black hover:underline">{task.title}</Link>{task.reminderAt && <p className="mt-1 text-xs font-black text-violet-800">Reminder {formatDateTime(task.reminderAt)}</p>}<TagPills tags={task.tags} />{task.project && <p className="mt-1 text-xs font-bold text-[#806a4d]">Nest: {task.project.name}</p>}{task.sessionTitle && <p className="mt-1 text-xs font-bold text-[#806a4d]">Session: {task.sessionTitle}</p>}</li>)}</ul> : <Empty>No committed work currently meets the bounded attention rules. Ordinary open tasks remain in Work.</Empty>}
           </section>
         </div>
 

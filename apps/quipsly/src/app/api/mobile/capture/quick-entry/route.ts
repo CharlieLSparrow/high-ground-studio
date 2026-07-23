@@ -5,6 +5,7 @@ import { captureRoomAccessWhere } from "@/lib/server/mobile-capture-room-join-di
 import {
   isMobileCaptureQuickEntrySource,
   mobileCaptureQuickEntryId,
+  mobileCaptureQuickEntryReminderId,
   mobileCaptureQuickEntrySeriesId,
   mobileCaptureQuickEntrySource,
   mobileCaptureQuickEntryUrl,
@@ -31,7 +32,7 @@ async function requestBody(request: Request) {
 
 type SavedModel = "note" | "task" | "goal" | "snippet" | "bookmark";
 
-function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room: any, model: SavedModel, tags: any[], recurrenceSeries?: any) {
+function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room: any, model: SavedModel, tags: any[], recurrenceSeries?: any, reminder?: any) {
   return {
     id: row.id,
     kind,
@@ -58,10 +59,17 @@ function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room:
       anchorLocalDate: recurrenceSeries.anchorLocalDate,
       status: recurrenceSeries.status,
     } : null,
+    reminder: reminder ? {
+      id: reminder.id,
+      actionItemId: reminder.actionItemId,
+      remindAt: reminder.remindAt.toISOString(),
+      status: reminder.status,
+      deviceNotificationScheduled: false,
+    } : null,
   };
 }
 
-async function existingEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUserId: string): Promise<{ row: any; model: SavedModel; captureReceipt?: any; recurrenceSeries?: any } | null> {
+async function existingEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUserId: string): Promise<{ row: any; model: SavedModel; captureReceipt?: any; recurrenceSeries?: any; reminder?: any } | null> {
   const id = mobileCaptureQuickEntryId(input.kind, input.clientRequestId);
   if (input.kind === "NOTE") return tx.coachingNote.findUnique({ where: { id } }).then((row: any) => row ? ({ row, model: "note" as const }) : null);
   if (input.kind === "TASK" && input.recurrence) {
@@ -76,7 +84,10 @@ async function existingEntry(tx: any, input: MobileCaptureQuickEntryInput, actor
   }
   if (input.kind === "TASK") {
     const row = await tx.actionItem.findUnique({ where: { id } });
-    if (row) return { row, model: "task" };
+    if (row) {
+      const reminder = await tx.taskReminder.findUnique({ where: { actionItemId: row.id } });
+      return { row, model: "task", reminder };
+    }
     const recurrenceSeries = await tx.taskRecurrenceSeries.findUnique({
       where: { id: mobileCaptureQuickEntrySeriesId(input.clientRequestId) },
       include: { occurrences: { orderBy: { scheduledFor: "asc" }, take: 1, include: { actionItem: true } } },
@@ -186,7 +197,7 @@ async function resolveQuickEntryTags(
   };
 }
 
-async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUserId: string, room: any, tags: any[]): Promise<{ row: any; model: SavedModel; sourceIdentityReused?: boolean; recurrenceSeries?: any }> {
+async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUserId: string, room: any, tags: any[]): Promise<{ row: any; model: SavedModel; sourceIdentityReused?: boolean; recurrenceSeries?: any; reminder?: any }> {
   const id = mobileCaptureQuickEntryId(input.kind, input.clientRequestId);
   const sourceJson = mobileCaptureQuickEntrySource(input, actorUserId, room.projectId || null);
   const linkSource = tagLinkSource(input);
@@ -268,7 +279,25 @@ async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUs
       data: tags.map((tag) => ({ actionItemId: row.id, tagId: tag.id, createdByUserId: actorUserId, sourceJson: linkSource })),
       skipDuplicates: true,
     });
-    return { row, model: "task" };
+    const reminder = input.reminderAt ? await tx.taskReminder.create({
+      data: {
+        id: mobileCaptureQuickEntryReminderId(input.clientRequestId),
+        actionItemId: row.id,
+        ownerUserId: actorUserId,
+        remindAt: input.reminderAt,
+        sourceJson: {
+          schema: "quipsly-task-reminder-intent-v1",
+          surface: "ios-capture",
+          clientRequestId: input.clientRequestId,
+          explicitHumanIntent: true,
+          devicePermissionObserved: false,
+          deviceNotificationScheduled: false,
+          deliveryClaimed: false,
+          externalSideEffects: false,
+        },
+      },
+    }) : null;
+    return { row, model: "task", reminder };
   }
   if (input.kind === "GOAL") {
     const row = await tx.goal.upsert({
@@ -409,6 +438,13 @@ function entryMatches(input: MobileCaptureQuickEntryInput, saved: { row: any; mo
       && saved.row.title === input.title
       && (saved.row.detail || "") === input.body
       && (saved.row.dueAt?.toISOString?.() || null) === (input.dueAt?.toISOString() || null)
+      && (input.reminderAt
+        ? Boolean((saved as { reminder?: any }).reminder)
+          && (saved as { reminder?: any }).reminder.ownerUserId === actorUserId
+          && (saved as { reminder?: any }).reminder.actionItemId === saved.row.id
+          && (saved as { reminder?: any }).reminder.remindAt?.toISOString?.() === input.reminderAt.toISOString()
+          && (saved as { reminder?: any }).reminder.status === "ACTIVE"
+        : !(saved as { reminder?: any }).reminder)
       && isMobileCaptureQuickEntrySource(saved.row.sourceJson, input, actorUserId);
   }
   if (input.kind === "GOAL") {
@@ -555,7 +591,7 @@ export async function POST(request: Request) {
     ok: true,
     schema: "quipsly-mobile-quick-entry-v1",
     idempotentReplay: result.idempotentReplay,
-    entry: publicEntry(input.kind, result.row, result.room, result.model, result.tags, result.recurrenceSeries),
+    entry: publicEntry(input.kind, result.row, result.room, result.model, result.tags, result.recurrenceSeries, result.reminder),
     tagVocabulary: input.kind === "SOURCE" ? null : {
       requestedNewLabels: input.newTagLabels,
       createdCount: result.createdTagCount,
@@ -572,6 +608,8 @@ export async function POST(request: Request) {
       canonicalRecordCommitted: true,
       recurrenceAppOwned: input.recurrence !== null,
       dueDateCommitted: input.dueAt !== null,
+      canonicalReminderIntentCommitted: input.reminderAt !== null,
+      deviceNotificationScheduled: false,
       recurrenceNotificationsScheduled: false,
       externalCalendarMutated: false,
       providerMutated: false,
@@ -587,6 +625,10 @@ export async function POST(request: Request) {
       : input.kind === "TASK"
         ? input.recurrence
           ? "The repeating task is saved in Quipsly. Today and Work now share its exact occurrences; no reminder or provider event was scheduled."
+          : input.reminderAt
+            ? input.dueAt
+              ? "The task, due date, and reminder intent are saved in Quipsly. This iPhone schedules the private alert only when local notification permission allows it; no provider calendar event was created."
+              : "The task and reminder intent are saved in Quipsly. This iPhone schedules the private alert only when local notification permission allows it; no provider calendar event was created."
           : input.dueAt
             ? "The task is saved and assigned to you with its due date visible in Today, Work, and Calendar. No reminder or provider event was scheduled."
             : "The task is saved and assigned to you. Set its timing from Today, Work, or Calendar when useful."

@@ -20,6 +20,7 @@ export type TodayTask = {
   title: string;
   detail?: string | null;
   dueAt?: Date | string | null;
+  reminder?: { remindAt: Date | string; status: string } | null;
   createdAt: Date | string;
   sourceJson?: unknown;
   room?: { id: string; title?: string | null } | null;
@@ -132,20 +133,36 @@ export function buildTodayView(input: {
     .filter((task) => !plannedTaskIds.has(task.id))
     .map((task) => {
       const dueAt = time(task.dueAt);
+      const reminderAt = task.reminder?.status === "ACTIVE"
+        ? time(task.reminder.remindAt)
+        : Number.NaN;
       const createdAt = time(task.createdAt);
       const reason = Number.isFinite(dueAt) && dueAt < now
         ? "Overdue commitment" as const
         : Number.isFinite(dueAt) && dueAt <= dayAhead
           ? "Due within 24 hours" as const
+          : Number.isFinite(reminderAt) && reminderAt <= now
+            ? "Reminder time reached" as const
+            : Number.isFinite(reminderAt) && reminderAt <= dayAhead
+              ? "Reminder within 24 hours" as const
           : isReviewedTranscriptTask(task) && createdAt >= weekAgo
             ? "Reviewed transcript follow-through" as const
             : null;
-      const rank = reason === "Overdue commitment" ? 0 : reason === "Due within 24 hours" ? 1 : reason === "Reviewed transcript follow-through" ? 2 : 3;
+      const rank = reason === "Overdue commitment"
+        ? 0
+        : reason === "Due within 24 hours" || reason === "Reminder time reached"
+          ? 1
+          : reason === "Reminder within 24 hours"
+            ? 2
+            : reason === "Reviewed transcript follow-through"
+              ? 3
+              : 4;
       return {
         id: task.id,
         title: task.title,
         detail: task.detail ?? null,
         dueAt: iso(task.dueAt),
+        reminderAt: Number.isFinite(reminderAt) ? new Date(reminderAt).toISOString() : null,
         roomId: task.room?.id ?? null,
         sessionTitle: task.room?.title ?? null,
         project: task.project ?? null,

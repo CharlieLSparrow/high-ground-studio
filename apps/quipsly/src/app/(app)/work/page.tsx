@@ -63,6 +63,7 @@ async function loadWork(userId: string, visibleProjectIds: string[] = []) {
       take: 500,
       select: {
         id: true, title: true, detail: true, status: true, dueAt: true, completedAt: true, createdAt: true, updatedAt: true, assignedUserId: true, sourceJson: true,
+        reminder: { select: { remindAt: true, status: true } },
         project: { select: { id: true, name: true, slug: true } },
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
         room: { select: { id: true, title: true, status: true, nestSlug: true, projectSlug: true } },

@@ -73,6 +73,10 @@ function harness(existing: any = null) {
       findUnique: jest.fn().mockResolvedValue(null),
       create: jest.fn(async ({ data }: any) => ({ ...data, createdAt, updatedAt: createdAt })),
     },
+    taskReminder: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      create: jest.fn(async ({ data }: any) => ({ ...data, status: "ACTIVE", createdAt, updatedAt: createdAt })),
+    },
     goal: {
       findUnique: jest.fn().mockResolvedValue(existing),
       upsert: jest.fn(async ({ create }: any) => ({ ...create, createdAt, updatedAt: createdAt })),
@@ -217,6 +221,51 @@ describe("mobile Capture quick-entry route", () => {
     }));
   });
 
+  it("commits a separate canonical reminder intent while leaving device permission and delivery local", async () => {
+    signedIn();
+    const tx = harness();
+    const dueAt = "2026-07-24T15:30:00.000Z";
+    const reminderAt = "2026-07-24T14:30:00.000Z";
+    const response = await POST(request("TASK", { dueAt, reminderAt }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      entry: {
+        id: `mobile-task-${requestId}`,
+        dueAt,
+        reminder: {
+          id: `mobile-task-reminder-${requestId}`,
+          actionItemId: `mobile-task-${requestId}`,
+          remindAt: reminderAt,
+          status: "ACTIVE",
+          deviceNotificationScheduled: false,
+        },
+      },
+      boundaries: {
+        canonicalReminderIntentCommitted: true,
+        deviceNotificationScheduled: false,
+        externalCalendarMutated: false,
+        delivered: false,
+      },
+      nextAction: expect.stringContaining("local notification permission"),
+    });
+    expect(tx.taskReminder.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: `mobile-task-reminder-${requestId}`,
+        actionItemId: `mobile-task-${requestId}`,
+        ownerUserId: "user-1",
+        remindAt: new Date(reminderAt),
+        sourceJson: expect.objectContaining({
+          schema: "quipsly-task-reminder-intent-v1",
+          explicitHumanIntent: true,
+          deviceNotificationScheduled: false,
+          deliveryClaimed: false,
+        }),
+      }),
+    });
+  });
+
   it("rejects due dates on non-tasks and alongside a recurrence before opening a transaction", async () => {
     signedIn();
     const note = await POST(request("NOTE", { dueAt: "2026-07-24T15:30:00.000Z" }));
@@ -236,6 +285,32 @@ describe("mobile Capture quick-entry route", () => {
     }));
     expect(recurring.status).toBe(400);
     expect(await recurring.json()).toMatchObject({ code: "QUICK_ENTRY_DUE_AT_RECURRENCE_CONFLICT" });
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("rejects reminders on non-tasks, malformed dates, and recurrence before opening a transaction", async () => {
+    signedIn();
+    const note = await POST(request("NOTE", { reminderAt: "2026-07-24T14:30:00.000Z" }));
+    expect(note.status).toBe(400);
+    expect(await note.json()).toMatchObject({ code: "QUICK_ENTRY_REMINDER_AT_TASK_ONLY" });
+
+    const malformed = await POST(request("TASK", { reminderAt: "tomorrow-ish" }));
+    expect(malformed.status).toBe(400);
+    expect(await malformed.json()).toMatchObject({ code: "QUICK_ENTRY_REMINDER_AT_INVALID" });
+
+    const recurring = await POST(request("TASK", {
+      reminderAt: "2026-07-24T14:30:00.000Z",
+      recurrence: {
+        cadence: "FIXED",
+        frequency: "WEEKLY",
+        interval: 1,
+        timezone: "America/Denver",
+        localTimeMinutes: 540,
+        anchorLocalDate: "2026-07-27",
+      },
+    }));
+    expect(recurring.status).toBe(400);
+    expect(await recurring.json()).toMatchObject({ code: "QUICK_ENTRY_REMINDER_RECURRENCE_CONFLICT" });
     expect(getPrismaClient).not.toHaveBeenCalled();
   });
 

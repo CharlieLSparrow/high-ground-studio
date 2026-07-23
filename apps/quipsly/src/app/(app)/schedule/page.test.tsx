@@ -76,6 +76,7 @@ describe("Schedule page truth states", () => {
           detail: null,
           status: "OPEN",
           dueAt: new Date("2026-07-20T14:00:00.000Z"),
+          reminder: { remindAt: new Date("2026-07-20T13:30:00.000Z"), status: "ACTIVE" },
           recurrenceOccurrence: null,
           room: { id: "room-1", title: "Homer coaching session" },
           booking: null,
@@ -93,6 +94,7 @@ describe("Schedule page truth states", () => {
 
     expect(screen.getByText(/Source: Reviewed transcript timestamp/)).toBeInTheDocument();
     expect(screen.getByText("Source: iPhone capture")).toBeInTheDocument();
+    expect(screen.getByText(/^Reminder .+Jul 20/)).toBeInTheDocument();
     expect(screen.getByText("Homer: Keep one clear next move.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute(
       "href",

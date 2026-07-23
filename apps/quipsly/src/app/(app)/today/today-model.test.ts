@@ -42,4 +42,29 @@ describe("Nest Today model", () => {
     });
     expect(result.planBlocks.map((block) => block.id)).toEqual(["tokyo", "denver"]);
   });
+
+  it("surfaces an active reminder without inventing a due date", () => {
+    const result = buildTodayView({
+      now,
+      sessions: [],
+      planBlocks: [],
+      goals: [],
+      tasks: [{
+        id: "reminded",
+        title: "Bring the coaching notes",
+        dueAt: null,
+        reminder: { remindAt: "2026-07-19T18:00:00.000Z", status: "ACTIVE" },
+        createdAt: now,
+      }],
+    });
+
+    expect(result.tasks).toEqual([
+      expect.objectContaining({
+        id: "reminded",
+        dueAt: null,
+        reminderAt: "2026-07-19T18:00:00.000Z",
+        reason: "Reminder within 24 hours",
+      }),
+    ]);
+  });
 });

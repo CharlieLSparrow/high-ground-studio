@@ -1309,6 +1309,20 @@ struct CaptureQuickEntrySyncCard: View {
                 .accessibilityIdentifier("CaptureQuickEntryRetry")
             }
 
+            if model.taskReminderScheduler.activeReminderCount > 0 {
+                Divider()
+                Label(
+                    "\(model.taskReminderScheduler.scheduledReminderCount) of \(model.taskReminderScheduler.activeReminderCount) private task alert\(model.taskReminderScheduler.activeReminderCount == 1 ? "" : "s") scheduled on this iPhone",
+                    systemImage: model.taskReminderScheduler.scheduledReminderCount > 0 ? "bell.badge.fill" : "bell.slash"
+                )
+                .font(.caption.weight(.semibold))
+                .accessibilityIdentifier("CaptureTaskReminderProjectionCount")
+                Text(model.taskReminderScheduler.statusMessage)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureTaskReminderProjectionStatus")
+            }
+
             if let persistenceError = model.quickEntryOutbox.persistenceError {
                 Text(persistenceError)
                     .font(.caption.weight(.semibold))
@@ -1348,6 +1362,8 @@ struct CaptureQuickEntrySheet: View {
     @State private var showsRecurrenceTimezonePicker = false
     @State private var hasOneTimeDueDate = false
     @State private var oneTimeDueAt = Date().addingTimeInterval(86_400)
+    @State private var hasOneTimeReminder = false
+    @State private var oneTimeReminderAt = Date().addingTimeInterval(3_600)
 
     private var availableTags: [MobileCaptureTag] {
         session?.availableTags ?? []
@@ -1417,6 +1433,12 @@ struct CaptureQuickEntrySheet: View {
     private var dueAt: Date? {
         kind == .task && recurrenceMode == "NONE" && hasOneTimeDueDate
             ? oneTimeDueAt
+            : nil
+    }
+
+    private var reminderAt: Date? {
+        kind == .task && recurrenceMode == "NONE" && hasOneTimeReminder
+            ? oneTimeReminderAt
             : nil
     }
 
@@ -1609,6 +1631,11 @@ struct CaptureQuickEntrySheet: View {
                                 ? "Quipsly creates a three-occurrence planning horizon at this local wall-clock time. It does not schedule a reminder or provider calendar event."
                                 : "One-time tasks can be timed later from Today, Work, or Calendar.")
                     }
+                    .onChange(of: recurrenceMode) { _, newValue in
+                        if newValue != "NONE" {
+                            hasOneTimeReminder = false
+                        }
+                    }
 
                     if recurrenceMode == "NONE" {
                         Section {
@@ -1626,8 +1653,25 @@ struct CaptureQuickEntrySheet: View {
                                     .foregroundStyle(.secondary)
                                     .accessibilityIdentifier("CaptureQuickEntryDueDateBoundary")
                             }
+                            Toggle("Remind me", isOn: $hasOneTimeReminder)
+                                .accessibilityIdentifier("CaptureQuickEntryReminderToggle")
+                            if hasOneTimeReminder {
+                                DatePicker(
+                                    "Reminder",
+                                    selection: $oneTimeReminderAt,
+                                    in: Date().addingTimeInterval(60)...,
+                                    displayedComponents: [.date, .hourAndMinute]
+                                )
+                                .accessibilityIdentifier("CaptureQuickEntryReminderDate")
+                                Text("The reminder intent syncs to Nest, while this iPhone privately schedules the alert. Quipsly asks for notification permission only when you save.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("CaptureQuickEntryReminderBoundary")
+                            }
                         } header: {
                             Text("Timing")
+                        } footer: {
+                            Text("Due dates organize Quipsly. Reminders are separate, device-local alerts with canonical intent in Nest. Neither creates a provider calendar event.")
                         }
                     }
                 }
@@ -1654,6 +1698,7 @@ struct CaptureQuickEntrySheet: View {
                             tagIDs: Array(selectedTagIDs).sorted(),
                             newTagLabels: newTagLabels,
                             dueAt: dueAt,
+                            reminderAt: reminderAt,
                             recurrence: recurrence
                         ) {
                             dismiss()

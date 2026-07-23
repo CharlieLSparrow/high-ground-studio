@@ -515,6 +515,7 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
       </div>
       <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-xs font-bold text-[#806a4d]">
         <span className="inline-flex items-center gap-1.5"><CalendarClock size={14} aria-hidden="true" />{formatDate(task.dueAt)}</span>
+        {task.reminderAt && <span className="inline-flex items-center gap-1.5">Reminder {formatDate(task.reminderAt, true)}</span>}
         <span className="inline-flex items-center gap-1.5"><UsersRound size={14} aria-hidden="true" />{task.assigneeLabel || "Unassigned"}</span>
         {task.project && <Link href={`/nests/${task.project.slug}`} className="inline-flex items-center gap-1.5 text-sky-700 hover:underline"><Tags size={14} aria-hidden="true" />{task.project.name}</Link>}
         {task.roomId && <Link href={`/sessions/${task.roomId}`} className="inline-flex items-center gap-1.5 text-violet-700 hover:underline"><ListChecks size={14} aria-hidden="true" />{task.sessionTitle || "Open session"}</Link>}

@@ -43,6 +43,7 @@ export type RawWorkTask = {
   detail?: string | null;
   status: WorkTaskStatus;
   dueAt?: Date | string | null;
+  reminder?: { remindAt: Date | string; status: string } | null;
   completedAt?: Date | string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
@@ -131,6 +132,7 @@ export type WorkTask = {
   detail: string | null;
   status: WorkTaskStatus;
   dueAt: string | null;
+  reminderAt?: string | null;
   completedAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -331,6 +333,7 @@ export function buildWorkSnapshot(input: {
         detail: clean(task.detail) || null,
         status: task.status,
         dueAt,
+        reminderAt: task.reminder?.status === "ACTIVE" ? iso(task.reminder.remindAt) : null,
         completedAt: iso(task.completedAt),
         createdAt,
         updatedAt: iso(task.updatedAt) || now,

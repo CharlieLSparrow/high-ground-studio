@@ -20,6 +20,7 @@ export type ScheduleTask = {
   detail: string | null;
   status: string;
   dueAt: string | null;
+  reminderAt?: string | null;
   sessionTitle: string | null;
   provenance: string;
   roomId: string | null;

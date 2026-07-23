@@ -304,6 +304,11 @@ enum TaskOccurrenceStatus {
   SKIPPED
 }
 
+enum TaskReminderStatus {
+  ACTIVE
+  CANCELED
+}
+
 enum StoryDraftStatus {
   ROUGH
   NEEDS_HOMER_REVIEW
@@ -446,6 +451,7 @@ model User {
   coachingNotesAuthored         CoachingNote[]                       @relation("CoachingNoteAuthor")
   coachingNoteTagsCreated       CoachingNoteTagLink[]                @relation("CoachingNoteTagCreatedBy")
   actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
+  taskReminders                 TaskReminder[]                       @relation("TaskReminderOwner")
   goalsOwned                    Goal[]                               @relation("GoalOwner")
   goalTaskLinksCreated          GoalTaskLink[]                       @relation("GoalTaskLinkCreatedBy")
   goalProgressAuthored          GoalProgressReceipt[]                @relation("GoalProgressActor")
@@ -1498,9 +1504,9 @@ model CoachingNote {
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
 
-  room        CallRoom?        @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  booking     CoachingBooking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  authorUser  User?            @relation("CoachingNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  room        CallRoom?             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  booking     CoachingBooking?      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  authorUser  User?                 @relation("CoachingNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
   actionItems ActionItem[]
   tagLinks    CoachingNoteTagLink[]
 
@@ -1535,12 +1541,32 @@ model ActionItem {
   planBlocks           WorkPlanBlock[]
   tagLinks             ActionItemTagLink[]
   recurrenceOccurrence TaskOccurrence?
+  reminder             TaskReminder?
 
   @@index([roomId, status])
   @@index([bookingId, status])
   @@index([assignedUserId, status])
   @@index([projectId, status, updatedAt])
   @@index([dueAt])
+}
+
+// A reminder is canonical user intent, not proof that any device displayed an
+// alert. Device permission, scheduling, and delivery remain local projections.
+model TaskReminder {
+  id           String             @id
+  actionItemId String             @unique
+  ownerUserId  String
+  remindAt     DateTime
+  status       TaskReminderStatus @default(ACTIVE)
+  sourceJson   Json               @default("{}")
+  createdAt    DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
+
+  actionItem ActionItem @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+  owner      User       @relation("TaskReminderOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId, status, remindAt])
+  @@index([status, remindAt])
 }
 
 // A series stores the human wall-clock promise. Each occurrence stores the

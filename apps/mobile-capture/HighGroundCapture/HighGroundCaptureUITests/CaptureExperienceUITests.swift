@@ -214,6 +214,113 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
     }
 
+    func testTaskQuickCaptureKeepsReminderIntentSeparateAndExplainsPermissionBoundary() {
+        app.tabBars.buttons["Record"].tap()
+        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
+        reveal(taskButton)
+        XCTAssertTrue(taskButton.isHittable)
+        taskButton.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
+        let title = app.textFields["CaptureQuickEntryTitle"]
+        title.tap()
+        title.typeText("Follow up after the coaching session")
+
+        let reminderToggle = app.switches["CaptureQuickEntryReminderToggle"].firstMatch
+        reveal(reminderToggle)
+        XCTAssertTrue(reminderToggle.isHittable)
+        XCTAssertEqual(reminderToggle.value as? String, "0")
+        reminderToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+
+        let reminderDate = app.descendants(matching: .any)["CaptureQuickEntryReminderDate"].firstMatch
+        let boundary = app.descendants(matching: .any)["CaptureQuickEntryReminderBoundary"].firstMatch
+        XCTAssertTrue(reminderDate.waitForExistence(timeout: 5))
+        reveal(boundary)
+        XCTAssertTrue(boundary.label.contains("intent syncs to Nest"))
+        XCTAssertTrue(boundary.label.contains("privately schedules the alert"))
+        XCTAssertTrue(boundary.label.contains("only when you save"))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Due dates organize Quipsly")
+        ).firstMatch.exists)
+
+        let save = app.buttons["CaptureQuickEntrySave"]
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.staticTexts["Preview only — no note, task, goal, or source was saved."].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
+    }
+
+    func testExplicitReminderUsesSystemPermissionAndRecoversAfterRelaunch() {
+        let owner = "reminder-system-ui-\(UUID().uuidString.lowercased())"
+        let launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "--capture-share-owner-ui-preview=\(owner)",
+            "--capture-reminder-system-ui-test",
+        ]
+        app.terminate()
+        app.launchArguments = launchArguments
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+
+        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
+        reveal(taskButton)
+        XCTAssertTrue(taskButton.isHittable)
+        taskButton.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
+
+        let title = app.textFields["CaptureQuickEntryTitle"]
+        title.tap()
+        title.typeText("Private reminder projection proof")
+        let reminderToggle = app.switches["CaptureQuickEntryReminderToggle"].firstMatch
+        reveal(reminderToggle)
+        reminderToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        app.buttons["CaptureQuickEntrySave"].tap()
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.buttons["Allow"].firstMatch
+        if allow.waitForExistence(timeout: 5) {
+            allow.tap()
+            app.activate()
+        }
+
+        let projection = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "private task alert scheduled on this iPhone")
+        ).firstMatch
+        XCTAssertTrue(projection.waitForExistence(timeout: 10), app.debugDescription)
+        XCTAssertTrue(projection.label.contains("1 of 1 private task alert"))
+        let status = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Delivery is controlled by iOS")
+        ).firstMatch
+        XCTAssertTrue(status.label.contains("Delivery is controlled by iOS"))
+        XCTAssertTrue(app.staticTexts["Task · Private reminder projection proof"].exists)
+
+        app.terminate()
+        app.launchArguments = launchArguments
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        let recoveredProjection = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "private task alert scheduled on this iPhone")
+        ).firstMatch
+        XCTAssertTrue(recoveredProjection.waitForExistence(timeout: 10))
+        XCTAssertTrue(recoveredProjection.label.contains("1 of 1 private task alert"))
+        XCTAssertTrue(app.staticTexts["Task · Private reminder projection proof"].exists)
+
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "--capture-share-owner-ui-preview=reminder-system-ui-other-\(UUID().uuidString.lowercased())",
+            "--capture-reminder-system-ui-test",
+        ]
+        app.launch()
+        XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        XCTAssertFalse(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "private task alert scheduled on this iPhone")
+        ).firstMatch.exists)
+        XCTAssertFalse(app.staticTexts["Task · Private reminder projection proof"].exists)
+    }
+
     func testTodayUsesCanonicalFollowThroughWithoutImplyingExternalActions() {
         let card = app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))

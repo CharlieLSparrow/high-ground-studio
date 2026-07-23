@@ -126,6 +126,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
               detail: true,
               status: true,
               dueAt: true,
+              reminder: { select: { remindAt: true, status: true } },
               sourceJson: true,
               recurrenceOccurrence: { select: { seriesId: true } },
               room: { select: { id: true, title: true } },
@@ -197,6 +198,9 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
           detail: task.detail,
           status: task.status,
           dueAt: task.dueAt?.toISOString() ?? null,
+          reminderAt: task.reminder?.status === "ACTIVE"
+            ? task.reminder.remindAt.toISOString()
+            : null,
           sessionTitle: task.room?.title || task.booking?.callRoom?.title || null,
           provenance: sourceAnchor
             ? "Reviewed transcript timestamp"
@@ -421,6 +425,7 @@ export default async function SchedulePage() {
                       {task.detail && <p className="mt-1 text-sm font-semibold leading-relaxed text-[#765f40]">{task.detail}</p>}
                       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs font-bold text-[#8a7354]">
                         <span>{task.dueAt ? `Due ${formatDateTime(task.dueAt)}` : "No due date"}</span>
+                        {task.reminderAt && <span>Reminder {formatDateTime(task.reminderAt)}</span>}
                         {task.sessionTitle && <span>Session: {task.sessionTitle}</span>}
                         <span>Source: {task.provenance}</span>
                       </div>
