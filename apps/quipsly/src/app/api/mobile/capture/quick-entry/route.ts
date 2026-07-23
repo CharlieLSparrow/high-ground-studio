@@ -41,6 +41,7 @@ function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room:
     callRoomId: room?.id || null,
     sessionTitle: room?.title || null,
     projectId: room?.projectId || null,
+    dueAt: model === "task" ? row.dueAt?.toISOString?.() || null : null,
     destination: kind === "SOURCE" ? "INBOX" : "SESSION",
     sourceType: model === "bookmark" ? "BOOKMARK" : model === "snippet" ? "SNIPPET" : null,
     sourceUrl: model === "bookmark" ? row.url : model === "snippet" ? row.sourceUrl : null,
@@ -251,7 +252,17 @@ async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUs
     const row = await tx.actionItem.upsert({
       where: { id },
       update: {},
-      create: { id, roomId: room.id, projectId: room.projectId || null, assignedUserId: actorUserId, title: input.title, detail: input.body || null, status: "OPEN", sourceJson },
+      create: {
+        id,
+        roomId: room.id,
+        projectId: room.projectId || null,
+        assignedUserId: actorUserId,
+        title: input.title,
+        detail: input.body || null,
+        status: "OPEN",
+        dueAt: input.dueAt,
+        sourceJson,
+      },
     });
     if (tags.length) await tx.actionItemTagLink.createMany({
       data: tags.map((tag) => ({ actionItemId: row.id, tagId: tag.id, createdByUserId: actorUserId, sourceJson: linkSource })),
@@ -383,7 +394,31 @@ function entryMatches(input: MobileCaptureQuickEntryInput, saved: { row: any; mo
       && recurrenceSeries.anchorLocalDate === input.recurrence.anchorLocalDate
       && isMobileCaptureQuickEntrySource(seriesSource, input, actorUserId);
   }
-  if (input.kind !== "SOURCE") return isMobileCaptureQuickEntrySource(saved.row.sourceJson, input, actorUserId);
+  if (input.kind === "NOTE") {
+    return saved.model === "note"
+      && saved.row.authorUserId === actorUserId
+      && saved.row.roomId === input.callRoomId
+      && (saved.row.title || "Quick note") === (input.title || "Quick note")
+      && saved.row.body === input.body
+      && isMobileCaptureQuickEntrySource(saved.row.sourceJson, input, actorUserId);
+  }
+  if (input.kind === "TASK") {
+    return saved.model === "task"
+      && saved.row.assignedUserId === actorUserId
+      && saved.row.roomId === input.callRoomId
+      && saved.row.title === input.title
+      && (saved.row.detail || "") === input.body
+      && (saved.row.dueAt?.toISOString?.() || null) === (input.dueAt?.toISOString() || null)
+      && isMobileCaptureQuickEntrySource(saved.row.sourceJson, input, actorUserId);
+  }
+  if (input.kind === "GOAL") {
+    return saved.model === "goal"
+      && saved.row.ownerUserId === actorUserId
+      && saved.row.roomId === input.callRoomId
+      && saved.row.title === input.title
+      && (saved.row.description || "") === input.body
+      && isMobileCaptureQuickEntrySource(saved.row.sourceJson, input, actorUserId);
+  }
   if (saved.row.userId !== actorUserId) return false;
   const sourceUrl = mobileCaptureQuickEntryUrl(input.body);
   return saved.model === "bookmark"
@@ -536,6 +571,7 @@ export async function POST(request: Request) {
       explicitHumanCapture: true,
       canonicalRecordCommitted: true,
       recurrenceAppOwned: input.recurrence !== null,
+      dueDateCommitted: input.dueAt !== null,
       recurrenceNotificationsScheduled: false,
       externalCalendarMutated: false,
       providerMutated: false,
@@ -551,7 +587,9 @@ export async function POST(request: Request) {
       : input.kind === "TASK"
         ? input.recurrence
           ? "The repeating task is saved in Quipsly. Today and Work now share its exact occurrences; no reminder or provider event was scheduled."
-          : "The task is saved and assigned to you. Set its timing from Today, Work, or Calendar when useful."
+          : input.dueAt
+            ? "The task is saved and assigned to you with its due date visible in Today, Work, and Calendar. No reminder or provider event was scheduled."
+            : "The task is saved and assigned to you. Set its timing from Today, Work, or Calendar when useful."
         : "The goal is saved as active. Add progress evidence or supporting tasks when useful.",
   });
 }

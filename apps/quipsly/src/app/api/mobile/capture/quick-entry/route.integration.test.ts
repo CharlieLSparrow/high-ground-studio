@@ -63,25 +63,28 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id, primaryEmail: email, isStaff: false } } as any);
   }
 
-  function post(kind: "NOTE" | "TASK" | "GOAL" | "SOURCE", requestId: string, title: string | null, body: string, sourceUrl?: string, capturedAt = "2026-07-19T09:00:00.000Z", tagIds: string[] = []) {
+  function post(kind: "NOTE" | "TASK" | "GOAL" | "SOURCE", requestId: string, title: string | null, body: string, sourceUrl?: string, capturedAt = "2026-07-19T09:00:00.000Z", tagIds: string[] = [], dueAt?: string) {
     return POST(new Request("http://localhost/api/mobile/capture/quick-entry", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ clientRequestId: requestId, callRoomId: kind === "SOURCE" ? null : roomId, kind, title, body, sourceUrl, capturedAt, tagIds }),
+      body: JSON.stringify({ clientRequestId: requestId, callRoomId: kind === "SOURCE" ? null : roomId, kind, title, body, sourceUrl, capturedAt, tagIds, dueAt }),
     }));
   }
 
   it("commits Note, Task, and Goal once, replays one task idempotently, and denies another account", async () => {
     signedInAs(actorUserId, actorEmail);
+    const taskDueAt = "2026-07-24T15:30:00.000Z";
     const noteResponse = await post("NOTE", requestIds[0], null, "Let the opening breathe before the first cut.", undefined, undefined, [tagId]);
-    const taskResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId]);
+    const taskResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId], taskDueAt);
     const goalResponse = await post("GOAL", requestIds[2], "Make episode follow-through obvious", "Every promise returns to source evidence.", undefined, undefined, [tagId]);
-    const taskReplayResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId]);
+    const taskReplayResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId], taskDueAt);
+    const changedTaskReplayResponse = await post("TASK", requestIds[1], "Proof-listen act one", "Use the immutable room mix.", undefined, undefined, [tagId], "2026-07-25T15:30:00.000Z");
 
     expect(await noteResponse.json()).toMatchObject({ ok: true, idempotentReplay: false, entry: { id: `mobile-note-${requestIds[0]}`, projectId, tags: [{ id: tagId, label: "Follow through" }] } });
-    expect(await taskResponse.json()).toMatchObject({ ok: true, idempotentReplay: false, entry: { id: `mobile-task-${requestIds[1]}`, projectId, status: "OPEN", tags: [{ id: tagId, label: "Follow through" }] } });
+    expect(await taskResponse.json()).toMatchObject({ ok: true, idempotentReplay: false, entry: { id: `mobile-task-${requestIds[1]}`, projectId, status: "OPEN", dueAt: taskDueAt, tags: [{ id: tagId, label: "Follow through" }] } });
     expect(await goalResponse.json()).toMatchObject({ ok: true, idempotentReplay: false, entry: { id: `mobile-goal-${requestIds[2]}`, projectId, status: "ACTIVE", tags: [{ id: tagId, label: "Follow through" }] } });
     expect(await taskReplayResponse.json()).toMatchObject({ ok: true, idempotentReplay: true, entry: { id: `mobile-task-${requestIds[1]}` } });
+    expect(changedTaskReplayResponse.status).toBe(409);
 
     const [note, task, goal, taskCount, noteTags, taskTags, goalTags] = await Promise.all([
       prisma.coachingNote.findUniqueOrThrow({ where: { id: `mobile-note-${requestIds[0]}` } }),
@@ -93,7 +96,14 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
       prisma.goalTagLink.findMany({ where: { goalId: `mobile-goal-${requestIds[2]}` } }),
     ]);
     expect(note).toMatchObject({ roomId, authorUserId: actorUserId, body: "Let the opening breathe before the first cut.", sourceJson: { schema: "quipsly-mobile-quick-entry-v1", humanCommitted: true, externalSideEffects: false } });
-    expect(task).toMatchObject({ roomId, projectId, assignedUserId: actorUserId, status: "OPEN" });
+    expect(task).toMatchObject({
+      roomId,
+      projectId,
+      assignedUserId: actorUserId,
+      status: "OPEN",
+      dueAt: new Date(taskDueAt),
+      sourceJson: { dueAt: taskDueAt, humanCommitted: true, externalSideEffects: false },
+    });
     expect(goal).toMatchObject({ roomId, projectId, ownerUserId: actorUserId, status: "ACTIVE" });
     expect(taskCount).toBe(1);
     expect(noteTags).toHaveLength(1);

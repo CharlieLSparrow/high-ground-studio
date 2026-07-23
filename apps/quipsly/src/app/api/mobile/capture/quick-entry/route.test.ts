@@ -191,6 +191,54 @@ describe("mobile Capture quick-entry route", () => {
     expect(tx.taskOccurrence.create).toHaveBeenCalledTimes(3);
   });
 
+  it("commits an explicit one-time task due date without implying a reminder or provider event", async () => {
+    signedIn();
+    const tx = harness();
+    const dueAt = "2026-07-24T15:30:00.000Z";
+    const response = await POST(request("TASK", { dueAt }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      entry: { kind: "TASK", dueAt },
+      boundaries: {
+        dueDateCommitted: true,
+        recurrenceAppOwned: false,
+        recurrenceNotificationsScheduled: false,
+        externalCalendarMutated: false,
+      },
+      nextAction: expect.stringContaining("No reminder or provider event was scheduled"),
+    });
+    expect(tx.actionItem.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        dueAt: new Date(dueAt),
+        sourceJson: expect.objectContaining({ dueAt }),
+      }),
+    }));
+  });
+
+  it("rejects due dates on non-tasks and alongside a recurrence before opening a transaction", async () => {
+    signedIn();
+    const note = await POST(request("NOTE", { dueAt: "2026-07-24T15:30:00.000Z" }));
+    expect(note.status).toBe(400);
+    expect(await note.json()).toMatchObject({ code: "QUICK_ENTRY_DUE_AT_TASK_ONLY" });
+
+    const recurring = await POST(request("TASK", {
+      dueAt: "2026-07-24T15:30:00.000Z",
+      recurrence: {
+        cadence: "FIXED",
+        frequency: "WEEKLY",
+        interval: 1,
+        timezone: "America/Denver",
+        localTimeMinutes: 540,
+        anchorLocalDate: "2026-07-27",
+      },
+    }));
+    expect(recurring.status).toBe(400);
+    expect(await recurring.json()).toMatchObject({ code: "QUICK_ENTRY_DUE_AT_RECURRENCE_CONFLICT" });
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
   it.each([
     ["NOTE", "coachingNoteTagLink", "noteId", `mobile-note-${requestId}`],
     ["TASK", "actionItemTagLink", "actionItemId", `mobile-task-${requestId}`],
@@ -347,16 +395,53 @@ describe("mobile Capture quick-entry route", () => {
     const createdAt = new Date("2026-07-19T09:00:01.000Z");
     const existing = {
       id: `mobile-task-${requestId}`,
+      assignedUserId: "user-1",
+      roomId: "room-1",
       title: "Quick task",
       detail: "Captured deliberately on iPhone.",
+      dueAt: null,
       status: "OPEN",
       createdAt,
       updatedAt: createdAt,
-      sourceJson: { schema: "quipsly-mobile-quick-entry-v1", origin: "explicit-human-capture", clientRequestId: requestId, callRoomId: "room-1", actorUserId: "user-1" },
+      sourceJson: { schema: "quipsly-mobile-quick-entry-v1", origin: "explicit-human-capture", clientRequestId: requestId, callRoomId: "room-1", actorUserId: "user-1", dueAt: null },
     };
     const tx = harness(existing);
     const response = await POST(request("TASK"));
     expect(await response.json()).toMatchObject({ ok: true, idempotentReplay: true, entry: { id: existing.id } });
+    expect(tx.actionItem.upsert).not.toHaveBeenCalled();
+  });
+
+  it("holds a changed same-ID task retry instead of accepting different due-date intent", async () => {
+    signedIn();
+    const createdAt = new Date("2026-07-19T09:00:01.000Z");
+    const existingDueAt = new Date("2026-07-24T15:30:00.000Z");
+    const existing = {
+      id: `mobile-task-${requestId}`,
+      assignedUserId: "user-1",
+      roomId: "room-1",
+      title: "Quick task",
+      detail: "Captured deliberately on iPhone.",
+      dueAt: existingDueAt,
+      status: "OPEN",
+      createdAt,
+      updatedAt: createdAt,
+      sourceJson: {
+        schema: "quipsly-mobile-quick-entry-v1",
+        origin: "explicit-human-capture",
+        clientRequestId: requestId,
+        callRoomId: "room-1",
+        actorUserId: "user-1",
+        dueAt: existingDueAt.toISOString(),
+      },
+    };
+    const tx = harness(existing);
+    const response = await POST(request("TASK", { dueAt: "2026-07-25T15:30:00.000Z" }));
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: "QUICK_ENTRY_IDENTITY_CONFLICT",
+      localOutboxRetained: true,
+    });
     expect(tx.actionItem.upsert).not.toHaveBeenCalled();
   });
 

@@ -54,6 +54,7 @@ struct PendingMobileQuickEntry: Codable, Identifiable, Equatable {
     let sourceURL: String?
     let tagIDs: [String]?
     let newTagLabels: [String]?
+    let dueAt: Date?
     let recurrence: MobileQuickEntryRecurrence?
     let capturedAt: Date
     var disposition: Disposition
@@ -164,6 +165,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
         sourceURL: String? = nil,
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
+        dueAt: Date? = nil,
         recurrence: MobileQuickEntryRecurrence? = nil,
         capturedAt: Date = Date()
     ) throws -> PendingMobileQuickEntry {
@@ -185,6 +187,9 @@ final class MobileQuickEntryOutbox: ObservableObject {
             throw MobileQuickEntryStoreError.emptyContent
         }
         guard recurrence == nil || kind == .task else {
+            throw MobileQuickEntryStoreError.emptyContent
+        }
+        guard dueAt == nil || kind == .task && recurrence == nil else {
             throw MobileQuickEntryStoreError.emptyContent
         }
         let cleanTagIDs = Array(Set(
@@ -210,6 +215,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
             sourceURL: sourceURL.flatMap(Self.normalizedHTTPURL),
             tagIDs: cleanTagIDs,
             newTagLabels: cleanNewTagLabels,
+            dueAt: dueAt,
             recurrence: recurrence,
             capturedAt: capturedAt,
             disposition: .pending,
@@ -306,6 +312,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
                         sourceURL: sourceURL,
                         tagIDs: nil,
                         newTagLabels: nil,
+                        dueAt: nil,
                         recurrence: nil,
                         capturedAt: envelope.capturedAt,
                         disposition: .pending,

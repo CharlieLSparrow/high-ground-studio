@@ -17,6 +17,7 @@ export type MobileCaptureQuickEntryInput = {
   tagIds: string[];
   newTagLabels: string[];
   capturedAt: Date;
+  dueAt: Date | null;
   recurrence: TaskRecurrenceRule | null;
 };
 
@@ -46,6 +47,13 @@ function parsedCapturedAt(value: unknown) {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
+function parsedOptionalDate(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value !== "string" || !value.trim()) return "invalid" as const;
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : "invalid" as const;
+}
+
 export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQuickEntryValidation {
   const body = record(value);
   const clientRequestId = normalizedText(body.clientRequestId, 80).toLowerCase();
@@ -61,6 +69,7 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   const newTagLabels = rawNewTagLabels.map(normalizeWorkTagLabel).filter(Boolean);
   const canonicalNewTagLabels = newTagLabels.map((label) => label.normalize("NFKC").toLocaleLowerCase("en-US"));
   const capturedAt = parsedCapturedAt(body.capturedAt);
+  const dueAt = parsedOptionalDate(body.dueAt);
   const rawRecurrence = record(body.recurrence);
   const hasRecurrence = Object.keys(rawRecurrence).length > 0;
   const cadence = normalizedText(rawRecurrence.cadence, 20).toUpperCase();
@@ -92,6 +101,12 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   if (!capturedAt) {
     return { ok: false, code: "QUICK_ENTRY_CAPTURED_AT_INVALID", error: "Quick capture time must be a valid ISO date." };
   }
+  if (dueAt === "invalid") {
+    return { ok: false, code: "QUICK_ENTRY_DUE_AT_INVALID", error: "The task due date must be a valid date and time." };
+  }
+  if (dueAt && kind !== "TASK") {
+    return { ok: false, code: "QUICK_ENTRY_DUE_AT_TASK_ONLY", error: "Only a Task can have a due date." };
+  }
   if (kind === "NOTE" && !entryBody) {
     return { ok: false, code: "QUICK_ENTRY_NOTE_REQUIRED", error: "Write the note before saving it." };
   }
@@ -122,6 +137,9 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   if (hasRecurrence && kind !== "TASK") {
     return { ok: false, code: "QUICK_ENTRY_RECURRENCE_TASK_ONLY", error: "Only a Task can repeat. Save the note, goal, or source without recurrence." };
   }
+  if (dueAt && recurrence) {
+    return { ok: false, code: "QUICK_ENTRY_DUE_AT_RECURRENCE_CONFLICT", error: "A repeating Task gets its timing from the recurrence rule. Remove the separate due date before saving." };
+  }
   if (recurrence && (
     !["FIXED", "COMPLETION"].includes(recurrence.cadence)
     || !["DAILY", "WEEKLY", "MONTHLY"].includes(recurrence.frequency)
@@ -142,6 +160,7 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
       tagIds,
       newTagLabels,
       capturedAt,
+      dueAt,
       recurrence,
     },
   };
@@ -167,6 +186,7 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
     tagIds: input.tagIds,
     newTagLabels: input.newTagLabels,
     capturedAt: input.capturedAt.toISOString(),
+    dueAt: input.dueAt?.toISOString() ?? null,
     actorUserId,
     humanCommitted: true,
     offlineRetrySafe: true,
@@ -180,7 +200,7 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
 
 export function isMobileCaptureQuickEntrySource(
   value: unknown,
-  expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "kind" | "tagIds" | "newTagLabels">,
+  expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "kind" | "tagIds" | "newTagLabels" | "dueAt">,
   actorUserId: string,
 ) {
   const source = record(value);
@@ -196,6 +216,7 @@ export function isMobileCaptureQuickEntrySource(
     && source.actorUserId === actorUserId
     && JSON.stringify(sourceTagIds) === JSON.stringify(expected.tagIds)
     && JSON.stringify(sourceNewTagLabels) === JSON.stringify(expected.newTagLabels)
+    && (source.dueAt ?? null) === (expected.dueAt?.toISOString() ?? null)
     && source.origin === "explicit-human-capture";
 }
 

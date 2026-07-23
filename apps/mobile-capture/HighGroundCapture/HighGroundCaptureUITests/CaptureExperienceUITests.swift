@@ -183,6 +183,37 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
     }
 
+    func testTaskQuickCaptureAddsACanonicalDueDateWithoutInventingAReminder() {
+        app.tabBars.buttons["Record"].tap()
+        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
+        reveal(taskButton)
+        XCTAssertTrue(taskButton.isHittable)
+        taskButton.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
+        let title = app.textFields["CaptureQuickEntryTitle"]
+        title.tap()
+        title.typeText("Prepare the next coaching packet")
+
+        let dueDateToggle = app.switches["CaptureQuickEntryDueDateToggle"].firstMatch
+        reveal(dueDateToggle)
+        XCTAssertTrue(dueDateToggle.isHittable)
+        dueDateToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+
+        let boundary = app.descendants(matching: .any)["CaptureQuickEntryDueDateBoundary"].firstMatch
+        XCTAssertTrue(boundary.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Due"].exists)
+        reveal(boundary)
+        XCTAssertTrue(boundary.label.contains("Today, Work, and Calendar"))
+        XCTAssertTrue(boundary.label.contains("does not schedule an alert or provider calendar event"))
+
+        let save = app.buttons["CaptureQuickEntrySave"]
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.staticTexts["Preview only — no note, task, goal, or source was saved."].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
+    }
+
     func testTodayUsesCanonicalFollowThroughWithoutImplyingExternalActions() {
         let card = app.descendants(matching: .any)["CaptureTodayFollowThroughCard"]
         XCTAssertTrue(card.waitForExistence(timeout: 5))

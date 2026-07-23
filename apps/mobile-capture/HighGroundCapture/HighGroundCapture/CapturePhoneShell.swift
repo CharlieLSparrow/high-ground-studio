@@ -1346,6 +1346,8 @@ struct CaptureQuickEntrySheet: View {
     @State private var recurrenceFirstDueAt = Date().addingTimeInterval(86_400)
     @State private var recurrenceTimezoneID = TimeZone.autoupdatingCurrent.identifier
     @State private var showsRecurrenceTimezonePicker = false
+    @State private var hasOneTimeDueDate = false
+    @State private var oneTimeDueAt = Date().addingTimeInterval(86_400)
 
     private var availableTags: [MobileCaptureTag] {
         session?.availableTags ?? []
@@ -1410,6 +1412,12 @@ struct CaptureQuickEntrySheet: View {
             localTimeMinutes: hour * 60 + minute,
             anchorLocalDate: String(format: "%04d-%02d-%02d", year, month, day)
         )
+    }
+
+    private var dueAt: Date? {
+        kind == .task && recurrenceMode == "NONE" && hasOneTimeDueDate
+            ? oneTimeDueAt
+            : nil
     }
 
     private var recurrenceTimeZone: TimeZone {
@@ -1601,6 +1609,27 @@ struct CaptureQuickEntrySheet: View {
                                 ? "Quipsly creates a three-occurrence planning horizon at this local wall-clock time. It does not schedule a reminder or provider calendar event."
                                 : "One-time tasks can be timed later from Today, Work, or Calendar.")
                     }
+
+                    if recurrenceMode == "NONE" {
+                        Section {
+                            Toggle("Set due date", isOn: $hasOneTimeDueDate)
+                                .accessibilityIdentifier("CaptureQuickEntryDueDateToggle")
+                            if hasOneTimeDueDate {
+                                DatePicker(
+                                    "Due",
+                                    selection: $oneTimeDueAt,
+                                    displayedComponents: [.date, .hourAndMinute]
+                                )
+                                .accessibilityIdentifier("CaptureQuickEntryDueDate")
+                                Text("This makes the task visible at the right time in Quipsly Today, Work, and Calendar. It does not schedule an alert or provider calendar event.")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("CaptureQuickEntryDueDateBoundary")
+                            }
+                        } header: {
+                            Text("Timing")
+                        }
+                    }
                 }
 
                 Section {
@@ -1624,6 +1653,7 @@ struct CaptureQuickEntrySheet: View {
                             body: entryBody,
                             tagIDs: Array(selectedTagIDs).sorted(),
                             newTagLabels: newTagLabels,
+                            dueAt: dueAt,
                             recurrence: recurrence
                         ) {
                             dismiss()

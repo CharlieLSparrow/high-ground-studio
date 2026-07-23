@@ -2145,6 +2145,7 @@ private struct MobileQuickEntrySaveRequest: Encodable {
     let sourceUrl: String?
     let tagIds: [String]
     let newTagLabels: [String]
+    let dueAt: String?
     let recurrence: MobileQuickEntryRecurrence?
     let capturedAt: String
 
@@ -2157,6 +2158,7 @@ private struct MobileQuickEntrySaveRequest: Encodable {
         sourceUrl = entry.sourceURL
         tagIds = entry.tagIDs ?? []
         newTagLabels = entry.newTagLabels ?? []
+        dueAt = entry.dueAt.map { ISO8601DateFormatter().string(from: $0) }
         recurrence = entry.recurrence
         capturedAt = ISO8601DateFormatter().string(from: entry.capturedAt)
     }
@@ -2173,6 +2175,7 @@ struct MobileQuickEntrySaveResponse: Decodable {
         let sessionTitle: String?
         let projectId: String?
         let tags: [MobileCaptureTag]?
+        let dueAt: String?
         let recurrence: MobileQuickEntryRecurrence?
         let createdAt: String?
         let updatedAt: String?

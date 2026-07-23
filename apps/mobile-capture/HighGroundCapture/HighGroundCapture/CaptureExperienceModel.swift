@@ -264,6 +264,7 @@ final class CaptureExperienceModel: ObservableObject {
         body: String,
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
+        dueAt: Date? = nil,
         recurrence: MobileQuickEntryRecurrence? = nil
     ) -> Bool {
         let session = selectedSession
@@ -284,6 +285,7 @@ final class CaptureExperienceModel: ObservableObject {
                 body: body,
                 tagIDs: tagIDs,
                 newTagLabels: newTagLabels,
+                dueAt: dueAt,
                 recurrence: recurrence
             )
             quickEntrySyncMessage = kind == .source
