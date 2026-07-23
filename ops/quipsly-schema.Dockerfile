@@ -28,6 +28,7 @@ COPY ops/quipsly-coaching-capture-additive.sql ./ops/quipsly-coaching-capture-ad
 COPY scripts/quipsly-nest-chat-schema-push.mjs ./scripts/quipsly-nest-chat-schema-push.mjs
 COPY scripts/quipsly-production-core-schema-sync.mjs ./scripts/quipsly-production-core-schema-sync.mjs
 COPY scripts/quipsly-coaching-capture-schema-sync.mjs ./scripts/quipsly-coaching-capture-schema-sync.mjs
+COPY scripts/quipsly-foundation-baseline-audit.mjs ./scripts/quipsly-foundation-baseline-audit.mjs
 
 COPY apps/quipsly/package.json ./apps/quipsly/package.json
 COPY apps/web/package.json ./apps/web/package.json

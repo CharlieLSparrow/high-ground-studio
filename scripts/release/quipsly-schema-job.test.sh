@@ -27,4 +27,21 @@ if grep -Eq "gcloud builds submit|gcloud run jobs" "${output_file}"; then
   exit 1
 fi
 
+set +e
+MODE=resolve-foundation \
+  PROJECT_ID=quipsly-schema-job-test \
+  ALLOW_BASELINE_RESOLUTION=0 \
+  bash "${repo_root}/scripts/release/quipsly-schema-job.sh" \
+  >"${output_file}" 2>&1
+status=$?
+set -e
+
+if [[ "${status}" -ne 2 ]]; then
+  cat "${output_file}" >&2
+  echo "Expected an unapproved foundation resolution to exit 2; received ${status}." >&2
+  exit 1
+fi
+
+grep -Fq "Refusing to resolve foundation migrations" "${output_file}"
+
 echo "PASS schema job rejects unknown modes before external work."

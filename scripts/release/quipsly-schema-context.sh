@@ -40,6 +40,7 @@ required_paths=(
   scripts/quipsly-nest-chat-schema-push.mjs
   scripts/quipsly-production-core-schema-sync.mjs
   scripts/quipsly-coaching-capture-schema-sync.mjs
+  scripts/quipsly-foundation-baseline-audit.mjs
   apps/quipsly/package.json
   apps/web/package.json
   apps/motion-lab/package.json
