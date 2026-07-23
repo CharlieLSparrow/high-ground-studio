@@ -13,6 +13,27 @@ It is local proof only; it does not prove production deployment or TestFlight.
 Port `3012` is the repository convention for Nest so another local product can
 continue using the common port `3000`.
 
+## Check the lane before changing code
+
+From the repository root:
+
+```bash
+bash scripts/dev/quipsly-local-doctor.sh
+```
+
+The doctor verifies Nest, the Firebase Auth emulator, and PostgreSQL without
+reading or printing credentials. It also summarizes changed paths by product
+surface so a Nest change is not accidentally committed with unrelated Studio,
+media, iPhone, or HGO work.
+
+This repository is preservation-sensitive. When the doctor reports a dirty
+worktree:
+
+- stage only explicit paths for one coherent slice;
+- inspect `git diff --cached` before committing;
+- keep untracked work visible until its owner and purpose are understood;
+- do not use broad `git add`, `git reset`, `git clean`, or checkout commands.
+
 ## 1. Start and protect the local database
 
 From the repository root:
