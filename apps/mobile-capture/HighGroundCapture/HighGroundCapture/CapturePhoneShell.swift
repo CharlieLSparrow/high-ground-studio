@@ -216,7 +216,7 @@ private struct CaptureTodayView: View {
     }
 }
 
-private struct TodayFollowThroughCard: View {
+struct TodayFollowThroughCard: View {
     private struct TranscriptSourceDestination: Hashable {
         let roomID: String
         let sessionTitle: String
@@ -344,6 +344,7 @@ private struct TodayFollowThroughCard: View {
                                             .font(.caption2.weight(.semibold))
                                             .foregroundStyle(pendingTags.disposition == .held ? Color.orange : Color.blue)
                                             .accessibilityIdentifier("CaptureTodayTaskTagsPending_\(task.id)")
+                                            .accessibilityValue(pendingTags.disposition == .held ? "Held" : "Queued")
                                             if pendingTags.disposition == .held {
                                                 Button("Discard phone tag change") {
                                                     Task {
@@ -649,6 +650,7 @@ private struct TodayFollowThroughCard: View {
                                     .font(.caption2.weight(.semibold))
                                     .foregroundStyle(pendingTags.disposition == .held ? Color.orange : Color.blue)
                                     .accessibilityIdentifier("CaptureTodayGoalTagsPending_\(goal.id)")
+                                    .accessibilityValue(pendingTags.disposition == .held ? "Held" : "Queued")
                                     if pendingTags.disposition == .held {
                                         Button("Discard phone tag change") {
                                             Task {

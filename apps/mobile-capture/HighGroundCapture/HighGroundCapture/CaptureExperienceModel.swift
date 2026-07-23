@@ -263,9 +263,10 @@ final class CaptureExperienceModel: ObservableObject {
         if importedSharedSources > 0 {
             quickEntrySyncMessage = "Imported \(importedSharedSources) protected Share Sheet source\(importedSharedSources == 1 ? "" : "s") into this account's outbox."
         }
-        await sessionClient.load()
-        await todayClient.load()
-        await readinessClient.load()
+        async let sessionLoad = sessionClient.load()
+        async let todayLoad = todayClient.load()
+        async let readinessLoad = readinessClient.load()
+        _ = await (sessionLoad, todayLoad, readinessLoad)
         await taskReminderScheduler.reconcile(
             drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
         )

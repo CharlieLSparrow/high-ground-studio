@@ -2566,6 +2566,9 @@ final class CaptureTodayClient: ObservableObject {
         guard !isLoading, let url = URL(string: "\(baseURL)/api/mobile/capture/today") else { return }
         publishReminderDecisionCounts()
         publishWorkTagDecisionCounts()
+        if brief == nil {
+            _ = restoreProtectedCache()
+        }
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
@@ -3029,7 +3032,9 @@ final class CaptureTodayClient: ObservableObject {
             isUsingProtectedCache = true
             return true
         } catch {
-            Self.clearProtectedCache()
+            // A protected file can be temporarily unavailable while iOS is
+            // transitioning lock state. Keep the last known-good snapshot so
+            // the next unlocked launch can try it again.
             return false
         }
     }
@@ -3040,11 +3045,17 @@ final class CaptureTodayClient: ObservableObject {
               !ownerEmail.isEmpty,
               let url = Self.protectedCacheURL() else { return }
         do {
-            try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.protectionKey: FileProtectionType.complete])
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+            )
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
             encoder.outputFormatting = [.sortedKeys]
-            try encoder.encode(ProtectedCache(schemaVersion: 1, ownerEmail: ownerEmail, savedAt: Date(), brief: brief)).write(to: url, options: [.atomic, .completeFileProtection])
+            try encoder.encode(
+                ProtectedCache(schemaVersion: 1, ownerEmail: ownerEmail, savedAt: Date(), brief: brief)
+            ).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
             var values = URLResourceValues()
             values.isExcludedFromBackup = true
             var mutableURL = url

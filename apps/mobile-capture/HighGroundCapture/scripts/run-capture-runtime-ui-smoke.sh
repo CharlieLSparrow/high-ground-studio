@@ -87,8 +87,15 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  tag-edit-offline)
+    TEST_CASE="testWorkTagOutboxSurvivesOfflineRelaunchAndConverges"
+    if [[ -z "$TEST_TASK_ID" || -z "$TEST_TAG_LABEL" ]]; then
+      echo "Offline tag-edit mode requires one exact writable Task ID and reusable tag label." >&2
+      exit 2
+    fi
+    ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, or tag-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, or tag-edit-offline)" >&2
     exit 2
     ;;
 esac

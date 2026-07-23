@@ -185,6 +185,52 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    private func openTaskTagEditor(taskID: String, in app: XCUIApplication) {
+        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
+        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
+            showMore.tap()
+        }
+        let edit = app.buttons["CaptureTodayTaskTagsEdit_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12),
+            "Today should expose tag editing for the exact writable canonical task."
+        )
+        XCTAssertTrue(edit.isEnabled)
+        edit.tap()
+        XCTAssertTrue(app.navigationBars["Edit tags"].waitForExistence(timeout: 8))
+    }
+
+    private func workTagChoice(label: String, in app: XCUIApplication) -> XCUIElement {
+        let choice = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", label)
+        ).firstMatch
+        XCTAssertTrue(
+            choice.waitForExistence(timeout: 8),
+            "The exact reusable Nest tag should be selectable on iPhone."
+        )
+        return choice
+    }
+
+    private func saveWorkTags(taskID: String, in app: XCUIApplication, expectImmediateReadback: Bool) {
+        let save = app.buttons["CaptureTodayWorkTagsSave"].firstMatch
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        let pending = app.descendants(matching: .any)["CaptureTodayTaskTagsPending_\(taskID)"].firstMatch
+        if expectImmediateReadback {
+            let deadline = Date().addingTimeInterval(30)
+            while pending.exists && Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            }
+            XCTAssertFalse(pending.exists, "Exact Nest readback should clear the protected phone tag decision.")
+        } else {
+            XCTAssertTrue(
+                waitForRuntimeElement(pending, in: app, timeout: 8, swipeAttempts: 12),
+                "An offline tag decision should remain visibly protected for Nest."
+            )
+        }
+    }
+
     private func selectRequestedSession(in app: XCUIApplication, credentials: RuntimeSmokeCredentials) {
         let sessionChooser = app.buttons["CaptureSessionChooser"].firstMatch
         XCTAssertTrue(
@@ -489,68 +535,92 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
         let app = try launchSignedInCaptureApp()
 
-        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
-        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
-            showMore.tap()
-        }
-
-        func openEditor() {
-            let edit = app.buttons["CaptureTodayTaskTagsEdit_\(taskID)"].firstMatch
-            XCTAssertTrue(
-                waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12),
-                "Today should expose tag editing for the exact writable canonical task."
-            )
-            XCTAssertTrue(edit.isEnabled)
-            edit.tap()
-            XCTAssertTrue(app.navigationBars["Edit tags"].waitForExistence(timeout: 8))
-        }
-
-        func tagChoice() -> XCUIElement {
-            let choice = app.buttons.matching(
-                NSPredicate(format: "label CONTAINS %@", tagLabel)
-            ).firstMatch
-            XCTAssertTrue(
-                choice.waitForExistence(timeout: 8),
-                "The exact reusable Nest tag should be selectable on iPhone."
-            )
-            return choice
-        }
-
-        func saveAndWaitForReadback() {
-            let save = app.buttons["CaptureTodayWorkTagsSave"].firstMatch
-            XCTAssertTrue(save.waitForExistence(timeout: 5))
-            XCTAssertTrue(save.isEnabled)
-            save.tap()
-            let pending = app.descendants(matching: .any)["CaptureTodayTaskTagsPending_\(taskID)"].firstMatch
-            let deadline = Date().addingTimeInterval(30)
-            while pending.exists && Date() < deadline {
-                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-            }
-            XCTAssertFalse(pending.exists, "Exact Nest readback should clear the protected phone tag decision.")
-        }
-
-        openEditor()
-        let firstChoice = tagChoice()
+        openTaskTagEditor(taskID: taskID, in: app)
+        let firstChoice = workTagChoice(label: tagLabel, in: app)
         let wasSelected = (firstChoice.value as? String) == "Selected"
         firstChoice.tap()
         XCTAssertEqual(firstChoice.value as? String, wasSelected ? "Not selected" : "Selected")
-        saveAndWaitForReadback()
+        saveWorkTags(taskID: taskID, in: app, expectImmediateReadback: true)
 
-        openEditor()
-        let changedChoice = tagChoice()
+        openTaskTagEditor(taskID: taskID, in: app)
+        let changedChoice = workTagChoice(label: tagLabel, in: app)
         XCTAssertEqual(
             changedChoice.value as? String,
             wasSelected ? "Not selected" : "Selected",
             "Relaunching the editor should read the changed canonical tag set back from Nest."
         )
         changedChoice.tap()
-        saveAndWaitForReadback()
+        saveWorkTags(taskID: taskID, in: app, expectImmediateReadback: true)
 
-        openEditor()
+        openTaskTagEditor(taskID: taskID, in: app)
         XCTAssertEqual(
-            tagChoice().value as? String,
+            workTagChoice(label: tagLabel, in: app).value as? String,
             wasSelected ? "Selected" : "Not selected",
             "The second canonical round trip should restore the starting tag choice."
+        )
+        app.buttons["Cancel"].firstMatch.tap()
+    }
+
+    func testWorkTagOutboxSurvivesOfflineRelaunchAndConverges() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let taskID = credentials.taskID, !taskID.isEmpty,
+              let tagLabel = credentials.tagLabel, !tagLabel.isEmpty else {
+            throw XCTSkip("The offline work-tag journey requires one exact task ID and reusable tag label.")
+        }
+
+        var app = try launchSignedInCaptureApp()
+        openTaskTagEditor(taskID: taskID, in: app)
+        let originalChoice = workTagChoice(label: tagLabel, in: app)
+        let wasSelected = (originalChoice.value as? String) == "Selected"
+        app.buttons["Cancel"].firstMatch.tap()
+        app.terminate()
+
+        app = try launchSignedInCaptureApp(
+            baseURLOverride: "http://127.0.0.1:9",
+            expectProtectedOfflineShell: true
+        )
+        openTaskTagEditor(taskID: taskID, in: app)
+        let offlineChoice = workTagChoice(label: tagLabel, in: app)
+        XCTAssertEqual(offlineChoice.value as? String, wasSelected ? "Selected" : "Not selected")
+        offlineChoice.tap()
+        saveWorkTags(taskID: taskID, in: app, expectImmediateReadback: false)
+        app.terminate()
+
+        app = try launchSignedInCaptureApp(
+            baseURLOverride: "http://127.0.0.1:9",
+            expectProtectedOfflineShell: true
+        )
+        let pending = app.descendants(matching: .any)["CaptureTodayTaskTagsPending_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(pending, in: app, timeout: 15, swipeAttempts: 12),
+            "The same protected tag decision must survive process death while Nest remains unavailable."
+        )
+        XCTAssertEqual(pending.value as? String, "Queued")
+        app.terminate()
+
+        app = try launchSignedInCaptureApp()
+        let reconciledPending = app.descendants(matching: .any)["CaptureTodayTaskTagsPending_\(taskID)"].firstMatch
+        let deadline = Date().addingTimeInterval(35)
+        while reconciledPending.exists && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+        }
+        XCTAssertFalse(reconciledPending.exists, "Reconnect should reconcile and close the exact protected decision.")
+
+        openTaskTagEditor(taskID: taskID, in: app)
+        let canonicalChoice = workTagChoice(label: tagLabel, in: app)
+        XCTAssertEqual(
+            canonicalChoice.value as? String,
+            wasSelected ? "Not selected" : "Selected",
+            "The post-reconnect editor must read the offline choice from canonical Nest."
+        )
+        canonicalChoice.tap()
+        saveWorkTags(taskID: taskID, in: app, expectImmediateReadback: true)
+
+        openTaskTagEditor(taskID: taskID, in: app)
+        XCTAssertEqual(
+            workTagChoice(label: tagLabel, in: app).value as? String,
+            wasSelected ? "Selected" : "Not selected",
+            "Cleanup should restore the task's starting tag selection."
         )
         app.buttons["Cancel"].firstMatch.tap()
     }

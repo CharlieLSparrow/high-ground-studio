@@ -122,6 +122,10 @@ private struct ProtectedOfflineLibraryShell: View {
                         .accessibilityIdentifier("CaptureOfflineQuickEntryBoundary")
                 }
 
+                Section("Follow-through offline") {
+                    TodayFollowThroughCard(client: captureModel.todayClient, previewOnly: false)
+                }
+
                 Section("Local Library") {
                     if library.recordings.isEmpty {
                         ContentUnavailableView(
