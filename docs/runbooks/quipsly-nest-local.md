@@ -65,6 +65,34 @@ Open [http://127.0.0.1:3012](http://127.0.0.1:3012). Both `localhost` and
 `127.0.0.1` are allowed development origins so the Next.js client and hot reload
 hydrate correctly.
 
+### Optional LAN browser surface
+
+To inspect the responsive web UI from another browser on the same trusted
+network, resolve the Mac's current LAN address and explicitly allow that one
+development origin before starting Nest:
+
+```bash
+QUIPSLY_LAN_HOST="$(ipconfig getifaddr en0)"
+test -n "$QUIPSLY_LAN_HOST"
+
+PORT=3012 \
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 \
+QUIPSLY_ALLOWED_DEV_ORIGINS="$QUIPSLY_LAN_HOST" \
+GCLOUD_PROJECT=quipsly-reef \
+GOOGLE_CLOUD_PROJECT=quipsly-reef \
+pnpm --filter quipsly dev
+```
+
+Then open `http://<the-lan-address>:3012`. `QUIPSLY_ALLOWED_DEV_ORIGINS` accepts
+a comma-separated list of hostnames or addresses and is used only by the Next.js
+development server.
+
+This proves the responsive Nest web surface only. The Auth Emulator remains
+bound to loopback by design, so an iPhone browser or native app cannot sign into
+this lane. Do not expose the Auth Emulator to the LAN or treat a rendered signed-
+out page as physical-device Capture proof.
+
 ## 4. Smoke the public and signed-in surfaces
 
 Public route and auth-boundary smoke:
