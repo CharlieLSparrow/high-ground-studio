@@ -20,6 +20,9 @@ case "${MODE}" in
   status)
     job_command="pnpm prisma migrate status"
     ;;
+  diff)
+    job_command="pnpm prisma migrate diff --from-schema=prisma/schema.prisma --to-config-datasource"
+    ;;
   migrate)
     job_command="pnpm prisma migrate deploy"
     ;;
@@ -36,7 +39,7 @@ case "${MODE}" in
     job_command="node scripts/quipsly-nest-chat-schema-push.mjs && node scripts/quipsly-production-core-schema-sync.mjs && node scripts/quipsly-coaching-capture-schema-sync.mjs"
     ;;
   *)
-    echo "Unknown MODE '${MODE}'. Expected status, migrate, coaching-capture, production-core, nest-chat, or targeted." >&2
+    echo "Unknown MODE '${MODE}'. Expected status, diff, migrate, coaching-capture, production-core, nest-chat, or targeted." >&2
     exit 2
     ;;
 esac
