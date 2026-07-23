@@ -89,6 +89,16 @@ enum MembershipStatus {
   EXPIRED
 }
 
+enum UserAccountDeletionRequestStatus {
+  REQUESTED
+  REVIEWING
+  EXPORT_PREPARING
+  READY_FOR_DELETION
+  COMPLETED
+  CANCELED
+  REJECTED
+}
+
 // Appointment state tracks the life of the scheduled event itself.
 enum AppointmentStatus {
   SCHEDULED
@@ -121,10 +131,177 @@ enum CoachingRequestStatus {
   DECLINED
 }
 
+enum CoachingServiceKind {
+  ONE_TO_ONE_COACHING
+  PODCAST_CAPTURE
+  RESEARCH_INTERVIEW
+}
+
+enum CoachingPaymentPolicy {
+  FREE
+  DONATION_SUPPORTED
+  PAID_ONE_TO_ONE
+  MANUAL
+}
+
+enum CoachingBookingStatus {
+  REQUESTED
+  HOLDING_PAYMENT
+  CONFIRMED
+  COMPLETED
+  CANCELED
+  NO_SHOW
+}
+
+enum BookingHoldStatus {
+  ACTIVE
+  EXPIRED
+  CONVERTED
+  CANCELED
+}
+
+enum PaymentRecordStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+  CANCELED
+  DISPUTED
+}
+
+enum CallRoomPurpose {
+  COACHING
+  PODCAST
+  RESEARCH_INTERVIEW
+  INTERNAL_MEETING
+}
+
+enum CallRoomStatus {
+  PLANNED
+  OPEN
+  RECORDING
+  ENDED
+  CANCELED
+  FAILED
+}
+
+enum CaptureRoomStateAction {
+  OPEN
+  START_RECORDING
+  STOP_RECORDING
+  END
+}
+
+enum CallParticipantRole {
+  HOST
+  COACH
+  CLIENT
+  GUEST
+  PRODUCER
+  OBSERVER
+}
+
+enum RecordingConsentStatus {
+  REQUESTED
+  GRANTED
+  DECLINED
+  REVOKED
+}
+
+enum RecordingAssetKind {
+  LOCAL_AUDIO
+  SERVER_MIX
+  LOCAL_VIDEO
+  SCREEN_REFERENCE
+  TRANSCRIPT_SOURCE
+}
+
+enum RecordingAssetStatus {
+  LOCAL_READY
+  UPLOADING
+  UPLOADED
+  VERIFIED
+  FAILED
+  HELD
+}
+
+enum UploadChunkStatus {
+  QUEUED
+  UPLOADING
+  UPLOADED
+  VERIFIED
+  FAILED
+}
+
+enum TranscriptJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  HELD
+}
+
+enum CoachingNoteKind {
+  SESSION_NOTE
+  ACTION_ITEM
+  SUMMARY
+  FOLLOW_UP
+  QUOTE
+  HIGHLIGHT
+}
+
+enum ActionItemStatus {
+  OPEN
+  DONE
+  CANCELED
+}
+
 enum WeeklyCommitmentStatus {
   ACTIVE
   REVIEWED
   ARCHIVED
+}
+
+enum GoalStatus {
+  ACTIVE
+  PAUSED
+  ACHIEVED
+  ARCHIVED
+}
+
+enum GoalTaskRelationship {
+  CONTRIBUTES
+  BLOCKS
+  OUTCOME
+}
+
+enum WorkPlanBlockStatus {
+  PLANNED
+  COMPLETED
+  SKIPPED
+  CANCELED
+}
+
+enum TaskRecurrenceCadence {
+  FIXED
+  COMPLETION
+}
+
+enum TaskRecurrenceFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+}
+
+enum TaskRecurrenceStatus {
+  ACTIVE
+  PAUSED
+  ENDED
+}
+
+enum TaskOccurrenceStatus {
+  MATERIALIZED
+  SKIPPED
 }
 
 enum StoryDraftStatus {
@@ -241,20 +418,47 @@ model User {
   aliases               UserEmail[]
   roles                 UserRole[]
   clientProfile         ClientProfile?
+  coachProfile          CoachProfile?          @relation("CoachProfileUser")
   memberships           Membership[]           @relation("MembershipUser")
   coachingFeatureGrants CoachingFeatureGrant[] @relation("CoachingFeatureGrantUser")
   weeklyCommitments     WeeklyCommitment[]     @relation("WeeklyCommitmentClient")
 
-  clientAppointments       Appointment[]           @relation("AppointmentClient")
-  coachAppointments        Appointment[]           @relation("AppointmentCoach")
-  appointmentsCreated      Appointment[]           @relation("AppointmentCreatedBy")
-  appointmentsUpdated      Appointment[]           @relation("AppointmentUpdatedBy")
-  coachingRequests         CoachingRequest[]       @relation("CoachingRequestClient")
-  assignedCoachingRequests CoachingRequest[]       @relation("CoachingRequestCoach")
-  companySupportRequests   CompanySupportRequest[]
-  storyDraftsCreated       StoryDraft[]            @relation("StoryDraftCreatedBy")
-  storyDraftsUpdated       StoryDraft[]            @relation("StoryDraftUpdatedBy")
-  storyDraftsReviewed      StoryDraft[]            @relation("StoryDraftReviewedBy")
+  clientAppointments            Appointment[]                        @relation("AppointmentClient")
+  coachAppointments             Appointment[]                        @relation("AppointmentCoach")
+  appointmentsCreated           Appointment[]                        @relation("AppointmentCreatedBy")
+  appointmentsUpdated           Appointment[]                        @relation("AppointmentUpdatedBy")
+  coachingRequests              CoachingRequest[]                    @relation("CoachingRequestClient")
+  assignedCoachingRequests      CoachingRequest[]                    @relation("CoachingRequestCoach")
+  bookingHolds                  BookingHold[]                        @relation("BookingHoldClient")
+  coachingBookingsAsClient      CoachingBooking[]                    @relation("CoachingBookingClient")
+  coachingBookingsAsCoach       CoachingBooking[]                    @relation("CoachingBookingCoach")
+  stripeCustomerLinks           StripeCustomerLink[]                 @relation("StripeCustomerLinkUser")
+  paymentRecords                PaymentRecord[]                      @relation("PaymentRecordUser")
+  callRoomsCreated              CallRoom[]                           @relation("CallRoomCreatedBy")
+  callParticipants              CallParticipant[]                    @relation("CallParticipantUser")
+  recordingConsents             RecordingConsent[]                   @relation("RecordingConsentUser")
+  coachingNotesAuthored         CoachingNote[]                       @relation("CoachingNoteAuthor")
+  actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
+  goalsOwned                    Goal[]                               @relation("GoalOwner")
+  goalTaskLinksCreated          GoalTaskLink[]                       @relation("GoalTaskLinkCreatedBy")
+  goalProgressAuthored          GoalProgressReceipt[]                @relation("GoalProgressActor")
+  actionItemTagsCreated         ActionItemTagLink[]                  @relation("ActionItemTagCreatedBy")
+  goalTagsCreated               GoalTagLink[]                        @relation("GoalTagCreatedBy")
+  callRoomTagsCreated           CallRoomTagLink[]                    @relation("CallRoomTagCreatedBy")
+  workPlanBlocks                WorkPlanBlock[]                      @relation("WorkPlanBlockOwner")
+  taskRecurrenceSeries          TaskRecurrenceSeries[]               @relation("TaskRecurrenceOwner")
+  sourceAnnotationsCreated      StudioSourceAnnotation[]             @relation("StudioSourceAnnotationCreatedBy")
+  sourceAnnotationRevisions     StudioSourceAnnotationRevision[]     @relation("StudioSourceAnnotationRevisionActor")
+  sourceAnnotationUsesCreated   StudioSourceAnnotationUse[]          @relation("StudioSourceAnnotationUseCreatedBy")
+  personalSourceCapturesCreated StudioPersonalSourceCaptureReceipt[] @relation("StudioPersonalSourceCaptureCreatedBy")
+  personalSourceFilingsCreated  StudioPersonalSourceFiling[]         @relation("StudioPersonalSourceFilingCreatedBy")
+  transcriptCorrectionsCreated  TranscriptCorrection[]               @relation("TranscriptCorrectionCreatedBy")
+  transcriptCorrectionsReviewed TranscriptCorrection[]               @relation("TranscriptCorrectionReviewedBy")
+  transcriptCorrectionRevisions TranscriptCorrectionRevision[]       @relation("TranscriptCorrectionRevisionActor")
+  companySupportRequests        CompanySupportRequest[]
+  storyDraftsCreated            StoryDraft[]                         @relation("StoryDraftCreatedBy")
+  storyDraftsUpdated            StoryDraft[]                         @relation("StoryDraftUpdatedBy")
+  storyDraftsReviewed           StoryDraft[]                         @relation("StoryDraftReviewedBy")
 
   membershipsGranted           Membership[]           @relation("MembershipGrantedBy")
   coachingFeatureGrantsGranted CoachingFeatureGrant[] @relation("CoachingFeatureGrantGrantedBy")
@@ -272,11 +476,12 @@ model User {
   marketingLeads                   MarketingLead[]
   marketingCampaigns               MarketingCampaign[]
   organizationMemberships          OrganizationMember[]
-  studioProjectAccessGrantsCreated StudioProjectAccessGrant[]  @relation("StudioProjectAccessGrantCreatedBy")
+  studioProjectAccessGrantsCreated StudioProjectAccessGrant[]   @relation("StudioProjectAccessGrantCreatedBy")
   nativeAuthCodes                  StudioNativeAuthCode[]
   nativeDeviceSessions             StudioNativeDeviceSession[]
   feedbackTickets                  FeedbackTicket[]
   userEvents                       UserEvent[]
+  accountDeletionRequests          UserAccountDeletionRequest[] @relation("UserAccountDeletionRequestUser")
 }
 
 model Account {
@@ -315,6 +520,27 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+}
+
+model UserAccountDeletionRequest {
+  id            String                           @id @default(cuid())
+  userId        String
+  emailSnapshot String
+  status        UserAccountDeletionRequestStatus @default(REQUESTED)
+  reason        String?
+  source        String                           @default("unknown")
+  requestedAt   DateTime                         @default(now())
+  reviewedAt    DateTime?
+  completedAt   DateTime?
+  canceledAt    DateTime?
+  metadataJson  Json                             @default("{}")
+  createdAt     DateTime                         @default(now())
+  updatedAt     DateTime                         @updatedAt
+
+  user User @relation("UserAccountDeletionRequestUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, status, createdAt])
+  @@index([status, createdAt])
 }
 
 // Alternate or secondary email addresses linked to the same human.
@@ -544,9 +770,11 @@ model WeeklyCommitment {
   supportNeeded    String?
   progressNotes    String?
   status           WeeklyCommitmentStatus @default(ACTIVE)
+  clientReviewedAt DateTime?
   coachNotes       String?
   reviewedByUserId String?
   reviewedAt       DateTime?
+  sourceJson       Json                   @default("{}")
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
@@ -584,7 +812,7 @@ model Appointment {
   updatedByUserId String?
   scheduledStart  DateTime
   scheduledEnd    DateTime
-  timezone        String                  @default("America/Denver")
+  timezone        String                  @default("America/Los_Angeles")
   status          AppointmentStatus       @default(SCHEDULED)
   locationType    AppointmentLocationType @default(VIDEO)
   locationDetails String?
@@ -599,6 +827,7 @@ model Appointment {
   createdByUser             User             @relation("AppointmentCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   updatedByUser             User?            @relation("AppointmentUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
   coachingRequestConversion CoachingRequest?
+  coachingBooking           CoachingBooking?
 
   @@index([clientUserId, scheduledStart])
   @@index([coachUserId, scheduledStart])
@@ -618,16 +847,838 @@ model CoachingRequest {
   assignedCoachUserId    String?
   convertedAppointmentId String?               @unique
   internalNotes          String?
+  metadataJson           Json                  @default("{}")
   createdAt              DateTime              @default(now())
   updatedAt              DateTime              @updatedAt
 
-  clientUser           User         @relation("CoachingRequestClient", fields: [clientUserId], references: [id], onDelete: Cascade)
-  assignedCoachUser    User?        @relation("CoachingRequestCoach", fields: [assignedCoachUserId], references: [id], onDelete: SetNull)
-  convertedAppointment Appointment? @relation(fields: [convertedAppointmentId], references: [id], onDelete: SetNull)
+  clientUser           User              @relation("CoachingRequestClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  assignedCoachUser    User?             @relation("CoachingRequestCoach", fields: [assignedCoachUserId], references: [id], onDelete: SetNull)
+  convertedAppointment Appointment?      @relation(fields: [convertedAppointmentId], references: [id], onDelete: SetNull)
+  bookings             CoachingBooking[]
 
   @@index([clientUserId, createdAt])
   @@index([status, createdAt])
   @@index([assignedCoachUserId, status])
+}
+
+model CoachProfile {
+  id           String   @id @default(cuid())
+  userId       String   @unique
+  slug         String?  @unique
+  displayName  String?
+  bio          String?
+  timezone     String   @default("America/Los_Angeles")
+  isActive     Boolean  @default(true)
+  metadataJson Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user                User                 @relation("CoachProfileUser", fields: [userId], references: [id], onDelete: Cascade)
+  serviceOfferings    ServiceOffering[]
+  availabilityWindows AvailabilityWindow[]
+  bookingHolds        BookingHold[]
+
+  @@index([isActive, updatedAt])
+}
+
+model ServiceOffering {
+  id              String                @id @default(cuid())
+  coachProfileId  String?
+  slug            String                @unique
+  title           String
+  description     String?
+  kind            CoachingServiceKind   @default(ONE_TO_ONE_COACHING)
+  paymentPolicy   CoachingPaymentPolicy @default(DONATION_SUPPORTED)
+  durationMinutes Int                   @default(60)
+  priceCents      Int?
+  currency        String                @default("USD")
+  stripePriceId   String?
+  isActive        Boolean               @default(true)
+  metadataJson    Json                  @default("{}")
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  coachProfile CoachProfile?     @relation(fields: [coachProfileId], references: [id], onDelete: SetNull)
+  bookingHolds BookingHold[]
+  bookings     CoachingBooking[]
+
+  @@index([coachProfileId, isActive])
+  @@index([kind, isActive])
+  @@index([paymentPolicy, isActive])
+}
+
+model AvailabilityWindow {
+  id             String    @id @default(cuid())
+  coachProfileId String
+  label          String?
+  timezone       String    @default("America/Los_Angeles")
+  dayOfWeek      Int?
+  startMinute    Int?
+  endMinute      Int?
+  startsAt       DateTime?
+  endsAt         DateTime?
+  isActive       Boolean   @default(true)
+  metadataJson   Json      @default("{}")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  coachProfile CoachProfile @relation(fields: [coachProfileId], references: [id], onDelete: Cascade)
+
+  @@index([coachProfileId, isActive])
+  @@index([dayOfWeek, startMinute])
+  @@index([startsAt, endsAt])
+}
+
+model BookingHold {
+  id                 String            @id @default(cuid())
+  offeringId         String?
+  coachProfileId     String?
+  clientUserId       String?
+  contactEmail       String?
+  scheduledStart     DateTime
+  scheduledEnd       DateTime
+  timezone           String            @default("America/Los_Angeles")
+  status             BookingHoldStatus @default(ACTIVE)
+  expiresAt          DateTime
+  convertedBookingId String?           @unique
+  metadataJson       Json              @default("{}")
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+
+  offering         ServiceOffering? @relation(fields: [offeringId], references: [id], onDelete: SetNull)
+  coachProfile     CoachProfile?    @relation(fields: [coachProfileId], references: [id], onDelete: SetNull)
+  clientUser       User?            @relation("BookingHoldClient", fields: [clientUserId], references: [id], onDelete: SetNull)
+  convertedBooking CoachingBooking? @relation(fields: [convertedBookingId], references: [id], onDelete: SetNull)
+
+  @@index([offeringId, status, expiresAt])
+  @@index([coachProfileId, scheduledStart])
+  @@index([clientUserId, createdAt])
+  @@index([status, expiresAt])
+}
+
+model CoachingBooking {
+  id              String                @id @default(cuid())
+  requestId       String?
+  appointmentId   String?               @unique
+  offeringId      String?
+  clientUserId    String
+  coachUserId     String?
+  status          CoachingBookingStatus @default(REQUESTED)
+  scheduledStart  DateTime
+  scheduledEnd    DateTime
+  timezone        String                @default("America/Los_Angeles")
+  paymentPolicy   CoachingPaymentPolicy @default(DONATION_SUPPORTED)
+  paymentRecordId String?               @unique
+  calendarEventId String?
+  notes           String?
+  metadataJson    Json                  @default("{}")
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  request                CoachingRequest?              @relation(fields: [requestId], references: [id], onDelete: SetNull)
+  appointment            Appointment?                  @relation(fields: [appointmentId], references: [id], onDelete: SetNull)
+  offering               ServiceOffering?              @relation(fields: [offeringId], references: [id], onDelete: SetNull)
+  clientUser             User                          @relation("CoachingBookingClient", fields: [clientUserId], references: [id], onDelete: Cascade)
+  coachUser              User?                         @relation("CoachingBookingCoach", fields: [coachUserId], references: [id], onDelete: SetNull)
+  paymentRecord          PaymentRecord?                @relation(fields: [paymentRecordId], references: [id], onDelete: SetNull)
+  hold                   BookingHold?
+  callRoom               CallRoom?
+  notesLog               CoachingNote[]
+  actionItems            ActionItem[]
+  goals                  Goal[]
+  checkoutSessionLedgers StripeCheckoutSessionLedger[]
+  calendarLinks          CalendarEventLink[]
+
+  @@index([clientUserId, scheduledStart])
+  @@index([coachUserId, scheduledStart])
+  @@index([status, scheduledStart])
+  @@index([requestId])
+  @@index([offeringId])
+}
+
+model StripeCustomerLink {
+  id               String   @id @default(cuid())
+  userId           String
+  stripeCustomerId String   @unique
+  livemode         Boolean  @default(false)
+  metadataJson     Json     @default("{}")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  user User @relation("StripeCustomerLinkUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([livemode, updatedAt])
+}
+
+model CalendarEventLink {
+  id                 String    @id @default(cuid())
+  bookingId          String?
+  roomId             String?
+  provider           String    @default("google")
+  providerCalendarId String?
+  providerEventId    String?
+  status             String    @default("planned")
+  title              String?
+  scheduledStart     DateTime?
+  scheduledEnd       DateTime?
+  timezone           String    @default("America/Los_Angeles")
+  htmlLink           String?
+  conferenceDataJson Json      @default("{}")
+  rawJson            Json      @default("{}")
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  booking CoachingBooking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  room    CallRoom?        @relation(fields: [roomId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, createdAt])
+  @@index([roomId, createdAt])
+  @@index([provider, providerEventId])
+  @@index([status, scheduledStart])
+}
+
+model PaymentRecord {
+  id                        String              @id @default(cuid())
+  userId                    String?
+  provider                  String              @default("stripe")
+  status                    PaymentRecordStatus @default(PENDING)
+  amountCents               Int
+  currency                  String              @default("USD")
+  description               String?
+  providerCustomerId        String?
+  providerCheckoutSessionId String?
+  providerPaymentIntentId   String?
+  paidAt                    DateTime?
+  refundedAt                DateTime?
+  metadataJson              Json                @default("{}")
+  createdAt                 DateTime            @default(now())
+  updatedAt                 DateTime            @updatedAt
+
+  user                   User?                         @relation("PaymentRecordUser", fields: [userId], references: [id], onDelete: SetNull)
+  coachingBooking        CoachingBooking?
+  checkoutSessionLedgers StripeCheckoutSessionLedger[]
+
+  @@index([userId, createdAt])
+  @@index([provider, status, createdAt])
+  @@index([providerCheckoutSessionId])
+  @@index([providerPaymentIntentId])
+}
+
+model StripeCheckoutSessionLedger {
+  id                String    @id @default(cuid())
+  bookingId         String?
+  paymentRecordId   String?
+  checkoutSessionId String    @unique
+  mode              String
+  status            String    @default("created")
+  url               String?
+  livemode          Boolean   @default(false)
+  expiresAt         DateTime?
+  rawJson           Json      @default("{}")
+  metadataJson      Json      @default("{}")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  booking       CoachingBooking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  paymentRecord PaymentRecord?   @relation(fields: [paymentRecordId], references: [id], onDelete: SetNull)
+
+  @@index([bookingId, createdAt])
+  @@index([paymentRecordId, createdAt])
+  @@index([status, createdAt])
+}
+
+model StripeWebhookEvent {
+  id                 String    @id @default(cuid())
+  externalEventId    String?   @unique
+  eventType          String
+  livemode           Boolean   @default(false)
+  verificationStatus String    @default("unchecked")
+  processingStatus   String    @default("received")
+  payloadHash        String?
+  payloadJson        Json      @default("{}")
+  errorMessage       String?
+  occurredAt         DateTime?
+  receivedAt         DateTime  @default(now())
+  processedAt        DateTime?
+  retryCount         Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([eventType, receivedAt])
+  @@index([processingStatus, receivedAt])
+  @@index([livemode, receivedAt])
+}
+
+model CallRoom {
+  id                   String          @id @default(cuid())
+  bookingId            String?         @unique
+  createdByUserId      String?
+  projectId            String?
+  purpose              CallRoomPurpose @default(COACHING)
+  status               CallRoomStatus  @default(PLANNED)
+  provider             String          @default("planned")
+  providerRoomId       String?         @unique
+  title                String?
+  scheduledStart       DateTime?
+  scheduledEnd         DateTime?
+  openedAt             DateTime?
+  recordingStartedAt   DateTime?
+  endedAt              DateTime?
+  nestSlug             String?
+  projectSlug          String?
+  recordingPolicyJson  Json            @default("{}")
+  transcriptPolicyJson Json            @default("{}")
+  metadataJson         Json            @default("{}")
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  booking               CoachingBooking?          @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  createdByUser         User?                     @relation("CallRoomCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  project               StudioProject?            @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  participants          CallParticipant[]
+  recordingConsents     RecordingConsent[]
+  stateReceipts         CaptureRoomStateReceipt[]
+  recordingAssets       RecordingAsset[]
+  transcriptJobs        TranscriptJob[]
+  transcriptCorrections TranscriptCorrection[]
+  notes                 CoachingNote[]
+  actionItems           ActionItem[]
+  goals                 Goal[]
+  calendarLinks         CalendarEventLink[]
+  tagLinks              CallRoomTagLink[]
+
+  @@index([purpose, status, scheduledStart])
+  @@index([createdByUserId, createdAt])
+  @@index([projectId, status, scheduledStart])
+  @@index([nestSlug, createdAt])
+  @@index([projectSlug, createdAt])
+}
+
+model CaptureRoomStateReceipt {
+  receiptId              String                 @id @db.Uuid
+  sequence               BigInt                 @unique @default(autoincrement())
+  roomId                 String
+  captureId              String?                @db.Uuid
+  actorUserId            String
+  captureOwnerUserId     String?
+  action                 CaptureRoomStateAction
+  source                 String                 @default("mobile-capture")
+  occurredAt             DateTime
+  receivedAt             DateTime               @default(now())
+  outcome                String                 @default("APPLIED")
+  stateApplied           Boolean                @default(true)
+  roomStatusBefore       CallRoomStatus?
+  roomStatusAfter        CallRoomStatus?
+  httpStatus             Int                    @default(200)
+  errorCode              String?
+  errorMessage           String?
+  actorConsentId         String?
+  consentVersion         String?
+  staffCrashCompensation Boolean                @default(false)
+  metadataJson           Json                   @default("{}")
+  createdAt              DateTime               @default(now())
+
+  room CallRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  @@index([roomId, receivedAt])
+  @@index([roomId, captureId, receivedAt])
+  @@index([captureId, action, receivedAt])
+  @@index([actorUserId, receivedAt])
+  @@index([roomId, captureId, captureOwnerUserId])
+  @@index([outcome, receivedAt])
+}
+
+model MobileCaptureFinalizationReceipt {
+  uploadSessionId            String    @id @db.Uuid
+  captureId                  String    @db.Uuid
+  roomId                     String
+  actorUserId                String
+  startReceiptId             String?   @db.Uuid
+  consentVersion             String?
+  processingDisposition      String
+  transcriptDisposition      String
+  holdReasonCode             String?
+  holdReason                 String?
+  transcriptHoldReasonCode   String?
+  transcriptHoldReason       String?
+  sourceId                   String?
+  mediaAssetId               String?
+  recordingAssetId           String?
+  transcriptJobId            String?
+  releasedByUserId           String?
+  releaseReason              String?
+  releasedAt                 DateTime?
+  transcriptReleasedByUserId String?
+  transcriptReleaseReason    String?
+  transcriptReleasedAt       DateTime?
+  metadataJson               Json      @default("{}")
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
+
+  @@index([roomId, captureId])
+  @@index([actorUserId, createdAt])
+  @@index([processingDisposition, createdAt])
+  @@index([recordingAssetId])
+}
+
+model MobileCaptureEpisodeAttachment {
+  uploadSessionId String   @id @db.Uuid
+  productionId    String
+  mediaAssetId    String
+  sourceId        String
+  createdAt       DateTime @default(now())
+
+  @@unique([productionId, mediaAssetId])
+  @@index([productionId, createdAt])
+}
+
+model MediaVaultUploadReservation {
+  id                     String    @id @default(cuid())
+  lane                   String
+  requestId              String    @db.Uuid
+  actorUserId            String
+  actorEmail             String
+  projectId              String
+  projectSlug            String
+  bucketName             String
+  objectPath             String
+  contentType            String
+  expectedSizeBytes      BigInt
+  status                 String    @default("ACTIVE")
+  expiresAt              DateTime
+  expiredAt              DateTime?
+  abandonedAt            DateTime?
+  abandonedReason        String?
+  completedAt            DateTime?
+  completedSizeBytes     BigInt?
+  completionGeneration   String?
+  completionSource       String?
+  completionEvidenceJson Json      @default("{}")
+  metadataJson           Json      @default("{}")
+  issuedAt               DateTime  @default(now())
+  renewedAt              DateTime?
+  renewalCount           Int       @default(0)
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([lane, actorUserId, requestId])
+  @@unique([bucketName, objectPath])
+  @@index([actorUserId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([actorUserId, issuedAt])
+  @@index([projectId, issuedAt])
+  @@index([actorUserId, status, expiresAt])
+  @@index([projectId, status, expiresAt])
+  @@index([status, expiresAt])
+}
+
+model CallParticipant {
+  id             String              @id @default(cuid())
+  roomId         String
+  userId         String?
+  displayName    String?
+  email          String?
+  role           CallParticipantRole @default(GUEST)
+  joinedAt       DateTime?
+  leftAt         DateTime?
+  deviceLabel    String?
+  connectionJson Json                @default("{}")
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  room              CallRoom           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user              User?              @relation("CallParticipantUser", fields: [userId], references: [id], onDelete: SetNull)
+  recordingConsents RecordingConsent[]
+  recordingAssets   RecordingAsset[]
+
+  @@index([roomId, role])
+  @@index([userId, createdAt])
+  @@index([email, createdAt])
+}
+
+model RecordingConsent {
+  id             String                 @id @default(cuid())
+  roomId         String
+  participantId  String?
+  userId         String?
+  status         RecordingConsentStatus @default(REQUESTED)
+  consentText    String
+  policyVersion  String                 @default("2026-07-04")
+  canRecordAudio Boolean                @default(false)
+  canRecordVideo Boolean                @default(false)
+  canTranscribe  Boolean                @default(false)
+  consentedAt    DateTime?
+  declinedAt     DateTime?
+  revokedAt      DateTime?
+  metadataJson   Json                   @default("{}")
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  room        CallRoom         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant CallParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  user        User?            @relation("RecordingConsentUser", fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([roomId, status])
+  @@index([participantId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model RecordingAsset {
+  id                String               @id @default(cuid())
+  roomId            String
+  participantId     String?
+  kind              RecordingAssetKind   @default(LOCAL_AUDIO)
+  status            RecordingAssetStatus @default(LOCAL_READY)
+  fileName          String?
+  contentType       String?
+  byteSize          BigInt?
+  durationSeconds   Float?
+  storageBucket     String?
+  storageObjectPath String?
+  localManifestJson Json                 @default("{}")
+  segmentsJson      Json                 @default("[]")
+  checksum          String?
+  errorMessage      String?
+  recordedStartedAt DateTime?
+  recordedStoppedAt DateTime?
+  uploadedAt        DateTime?
+  verifiedAt        DateTime?
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+
+  room           CallRoom         @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  participant    CallParticipant? @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  uploadChunks   UploadChunk[]
+  transcriptJobs TranscriptJob[]
+
+  @@index([roomId, status])
+  @@index([participantId, createdAt])
+  @@index([kind, status, createdAt])
+}
+
+model UploadChunk {
+  id                String            @id @default(cuid())
+  assetId           String
+  chunkIndex        Int
+  status            UploadChunkStatus @default(QUEUED)
+  byteStart         BigInt?
+  byteEnd           BigInt?
+  byteSize          BigInt?
+  checksum          String?
+  storageObjectPath String?
+  uploadedAt        DateTime?
+  verifiedAt        DateTime?
+  errorMessage      String?
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  asset RecordingAsset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, chunkIndex])
+  @@index([status, createdAt])
+}
+
+model TranscriptJob {
+  id           String              @id @default(cuid())
+  roomId       String?
+  assetId      String?
+  status       TranscriptJobStatus @default(QUEUED)
+  provider     String              @default("pending")
+  language     String?
+  requestedBy  String?
+  startedAt    DateTime?
+  completedAt  DateTime?
+  errorMessage String?
+  resultJson   Json                @default("{}")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  room     CallRoom?           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  asset    RecordingAsset?     @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  segments TranscriptSegment[]
+
+  @@index([roomId, status, createdAt])
+  @@index([assetId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model TranscriptSegment {
+  id              String   @id @default(cuid())
+  transcriptJobId String
+  speakerLabel    String?
+  speakerUserId   String?
+  startSeconds    Float
+  endSeconds      Float
+  text            String
+  confidence      Float?
+  metadataJson    Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  transcriptJob TranscriptJob          @relation(fields: [transcriptJobId], references: [id], onDelete: Cascade)
+  corrections   TranscriptCorrection[]
+
+  @@index([transcriptJobId, startSeconds])
+  @@index([speakerLabel])
+}
+
+// Provider transcript segments remain immutable evidence. Corrections are
+// reviewed overlays pinned to the provider text and timing that a person heard.
+// Human corrections may be accepted at creation; AI-origin proposals must stay
+// proposed until an authorized reviewer explicitly decides them.
+model TranscriptCorrection {
+  id                     String    @id @default(cuid())
+  roomId                 String
+  transcriptJobId        String
+  segmentId              String
+  createdByUserId        String
+  createdByEmailSnapshot String?
+  clientRequestId        String
+  origin                 String    @default("human")
+  status                 String    @default("proposed")
+  baseTextSha256         String
+  expectedText           String    @db.Text
+  expectedSpeakerLabel   String?
+  startSecondsSnapshot   Float
+  endSecondsSnapshot     Float
+  correctedText          String?   @db.Text
+  correctedSpeakerLabel  String?
+  reason                 String?   @db.Text
+  provenanceJson         Json      @default("{}")
+  reviewedByUserId       String?
+  reviewedAt             DateTime?
+  reviewNote             String?   @db.Text
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  room       CallRoom                       @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  segment    TranscriptSegment              @relation(fields: [segmentId], references: [id], onDelete: Restrict)
+  createdBy  User                           @relation("TranscriptCorrectionCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  reviewedBy User?                          @relation("TranscriptCorrectionReviewedBy", fields: [reviewedByUserId], references: [id], onDelete: SetNull)
+  revisions  TranscriptCorrectionRevision[]
+
+  @@unique([createdByUserId, clientRequestId])
+  @@index([roomId, status, createdAt])
+  @@index([transcriptJobId, segmentId, status, updatedAt])
+  @@index([reviewedByUserId, reviewedAt])
+}
+
+model TranscriptCorrectionRevision {
+  id           String   @id @default(cuid())
+  correctionId String
+  revision     Int
+  operation    String
+  actorUserId  String?
+  snapshotJson Json
+  createdAt    DateTime @default(now())
+
+  correction TranscriptCorrection @relation(fields: [correctionId], references: [id], onDelete: Cascade)
+  actor      User?                @relation("TranscriptCorrectionRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([correctionId, revision])
+  @@index([actorUserId, createdAt])
+}
+
+model CoachingNote {
+  id           String           @id @default(cuid())
+  roomId       String?
+  bookingId    String?
+  authorUserId String?
+  kind         CoachingNoteKind @default(SESSION_NOTE)
+  title        String?
+  body         String
+  sourceJson   Json             @default("{}")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  room        CallRoom?        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  booking     CoachingBooking? @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  authorUser  User?            @relation("CoachingNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  actionItems ActionItem[]
+
+  @@index([roomId, createdAt])
+  @@index([bookingId, createdAt])
+  @@index([authorUserId, createdAt])
+  @@index([kind, createdAt])
+}
+
+model ActionItem {
+  id             String           @id @default(cuid())
+  roomId         String?
+  bookingId      String?
+  noteId         String?
+  assignedUserId String?
+  projectId      String?
+  title          String
+  detail         String?
+  status         ActionItemStatus @default(OPEN)
+  dueAt          DateTime?
+  completedAt    DateTime?
+  sourceJson     Json             @default("{}")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  room                 CallRoom?           @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  booking              CoachingBooking?    @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  note                 CoachingNote?       @relation(fields: [noteId], references: [id], onDelete: SetNull)
+  assignedUser         User?               @relation("ActionItemAssignedTo", fields: [assignedUserId], references: [id], onDelete: SetNull)
+  project              StudioProject?      @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  goalLinks            GoalTaskLink[]
+  planBlocks           WorkPlanBlock[]
+  tagLinks             ActionItemTagLink[]
+  recurrenceOccurrence TaskOccurrence?
+
+  @@index([roomId, status])
+  @@index([bookingId, status])
+  @@index([assignedUserId, status])
+  @@index([projectId, status, updatedAt])
+  @@index([dueAt])
+}
+
+// A series stores the human wall-clock promise. Each occurrence stores the
+// exact instant and canonical ActionItem created from that promise. Keeping
+// both prevents UTC arithmetic from moving a 9:00 task across DST.
+model TaskRecurrenceSeries {
+  id               String                  @id @default(cuid())
+  ownerUserId      String
+  projectId        String?
+  title            String
+  detail           String?
+  cadence          TaskRecurrenceCadence
+  frequency        TaskRecurrenceFrequency
+  interval         Int                     @default(1)
+  timezone         String
+  localTimeMinutes Int
+  anchorLocalDate  String
+  anchorDayOfMonth Int
+  status           TaskRecurrenceStatus    @default(ACTIVE)
+  endedAt          DateTime?
+  sourceJson       Json                    @default("{}")
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  owner       User             @relation("TaskRecurrenceOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  project     StudioProject?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  occurrences TaskOccurrence[]
+
+  @@index([ownerUserId, status, updatedAt])
+  @@index([projectId, status])
+}
+
+model TaskOccurrence {
+  id                 String               @id @default(cuid())
+  seriesId           String
+  actionItemId       String?              @unique
+  occurrenceKey      String
+  scheduledLocalDate String
+  scheduledFor       DateTime
+  status             TaskOccurrenceStatus @default(MATERIALIZED)
+  sourceJson         Json                 @default("{}")
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  series     TaskRecurrenceSeries @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  actionItem ActionItem?          @relation(fields: [actionItemId], references: [id], onDelete: SetNull)
+
+  @@unique([seriesId, occurrenceKey])
+  @@index([seriesId, scheduledFor])
+  @@index([status, scheduledFor])
+}
+
+// Goal is durable direction, not a decorated note. Session context may
+// project into it, but its identity and lifecycle survive the source session.
+model Goal {
+  id           String     @id @default(cuid())
+  ownerUserId  String
+  roomId       String?
+  bookingId    String?
+  projectId    String?
+  parentGoalId String?
+  title        String
+  description  String?
+  status       GoalStatus @default(ACTIVE)
+  targetAt     DateTime?
+  achievedAt   DateTime?
+  sourceJson   Json       @default("{}")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  owner            User                  @relation("GoalOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  room             CallRoom?             @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  booking          CoachingBooking?      @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  project          StudioProject?        @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  parent           Goal?                 @relation("GoalHierarchy", fields: [parentGoalId], references: [id], onDelete: SetNull)
+  children         Goal[]                @relation("GoalHierarchy")
+  taskLinks        GoalTaskLink[]
+  progressReceipts GoalProgressReceipt[]
+  planBlocks       WorkPlanBlock[]
+  tagLinks         GoalTagLink[]
+
+  @@index([ownerUserId, status, updatedAt])
+  @@index([roomId, status])
+  @@index([bookingId, status])
+  @@index([projectId, status])
+  @@index([parentGoalId])
+}
+
+model GoalTaskLink {
+  goalId          String
+  actionItemId    String
+  relationship    GoalTaskRelationship @default(CONTRIBUTES)
+  createdByUserId String?
+  sourceJson      Json                 @default("{}")
+  createdAt       DateTime             @default(now())
+
+  goal       Goal       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  actionItem ActionItem @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("GoalTaskLinkCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@id([goalId, actionItemId])
+  @@index([actionItemId, relationship])
+  @@index([createdByUserId, createdAt])
+}
+
+model GoalProgressReceipt {
+  id              String   @id @default(cuid())
+  goalId          String
+  actorUserId     String?
+  kind            String
+  progressPercent Int?
+  note            String?
+  evidenceJson    Json     @default("{}")
+  occurredAt      DateTime
+  createdAt       DateTime @default(now())
+
+  goal  Goal  @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  actor User? @relation("GoalProgressActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([goalId, occurredAt])
+  @@index([actorUserId, createdAt])
+}
+
+// A personal focus block says when one actor intends to work. It is not the
+// task deadline, the goal target, a coaching appointment, or provider evidence.
+model WorkPlanBlock {
+  id           String              @id @default(cuid())
+  ownerUserId  String
+  actionItemId String?
+  goalId       String?
+  startsAt     DateTime
+  endsAt       DateTime
+  timezone     String
+  status       WorkPlanBlockStatus @default(PLANNED)
+  completedAt  DateTime?
+  sourceJson   Json                @default("{}")
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  owner      User        @relation("WorkPlanBlockOwner", fields: [ownerUserId], references: [id], onDelete: Cascade)
+  actionItem ActionItem? @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+  goal       Goal?       @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@index([ownerUserId, status, startsAt])
+  @@index([actionItemId, startsAt])
+  @@index([goalId, startsAt])
 }
 
 model CompanySupportRequest {
@@ -1000,32 +2051,39 @@ model StudioProject {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  workspace           StudioWorkspace            @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  documents           StudioDocument[]
-  tags                StudioTag[]
-  viewDefinitions     StudioViewDefinition[]
-  knowledgeNodes      StudioKnowledgeNode[]
-  manuscript          StudioManuscript?          @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
-  mediaAssets         StudioMediaAsset[]
-  mediaBins           MediaBin[]
-  episodeProductions  StudioEpisodeProduction[]
-  scenes              Scene[]
-  shootDays           ShootDay[]
-  storyEntities       StoryEntity[]
-  storyBibleActions   StoryBibleAction[]
-  storyboards         StudioStoryboard[]
-  chatThreads         StudioNestChatThread[]
-  chatMessages        StudioNestChatMessage[]
-  accessGrants        StudioProjectAccessGrant[]
-  nestInvites         StudioNestInvite[]
-  assetAttachments    StudioAssetAttachment[]
-  assetProcessingJobs StudioAssetProcessingJob[]
-  sourceUnits         StudioSourceUnit[]
-  documentOperations  StudioDocumentOperation[]
-  productionRooms     StudioProductionRoom[]
-  outputPackets       StudioOutputPacket[]
-  publishedArtifacts  StudioPublishedArtifact[]
-  workflowJobs        StudioWorkflowJob[]
+  workspace             StudioWorkspace              @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  documents             StudioDocument[]
+  tags                  StudioTag[]
+  viewDefinitions       StudioViewDefinition[]
+  knowledgeNodes        StudioKnowledgeNode[]
+  manuscript            StudioManuscript?            @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
+  mediaAssets           StudioMediaAsset[]
+  mediaBins             MediaBin[]
+  episodeProductions    StudioEpisodeProduction[]
+  scenes                Scene[]
+  shootDays             ShootDay[]
+  storyEntities         StoryEntity[]
+  storyBibleActions     StoryBibleAction[]
+  storyboards           StudioStoryboard[]
+  chatThreads           StudioNestChatThread[]
+  chatMessages          StudioNestChatMessage[]
+  accessGrants          StudioProjectAccessGrant[]
+  nestInvites           StudioNestInvite[]
+  assetAttachments      StudioAssetAttachment[]
+  assetProcessingJobs   StudioAssetProcessingJob[]
+  sourceUnits           StudioSourceUnit[]
+  personalSourceFilings StudioPersonalSourceFiling[]
+  sourceAnnotations     StudioSourceAnnotation[]
+  sourceAnnotationUses  StudioSourceAnnotationUse[]
+  documentOperations    StudioDocumentOperation[]
+  productionRooms       StudioProductionRoom[]
+  outputPackets         StudioOutputPacket[]
+  publishedArtifacts    StudioPublishedArtifact[]
+  workflowJobs          StudioWorkflowJob[]
+  goals                 Goal[]
+  actionItems           ActionItem[]
+  taskRecurrenceSeries  TaskRecurrenceSeries[]
+  callRooms             CallRoom[]
 
   // QuipLore Relations
   quipLoreWorks       QuipLoreWork[]
@@ -1077,15 +2135,17 @@ model StudioDocument {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  project            StudioProject             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  blocks             StudioDocumentBlock[]
-  taggedSpans        StudioTaggedSpan[]
-  knowledgeNodes     StudioKnowledgeNode[]
-  episodeProductions StudioEpisodeProduction[]
-  sourceUnits        StudioSourceUnit[]
-  documentOperations StudioDocumentOperation[]
-  productionRooms    StudioProductionRoom[]
-  outputPackets      StudioOutputPacket[]
+  project              StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  blocks               StudioDocumentBlock[]
+  taggedSpans          StudioTaggedSpan[]
+  knowledgeNodes       StudioKnowledgeNode[]
+  episodeProductions   StudioEpisodeProduction[]
+  sourceUnits          StudioSourceUnit[]
+  sourceAnnotations    StudioSourceAnnotation[]
+  sourceAnnotationUses StudioSourceAnnotationUse[]
+  documentOperations   StudioDocumentOperation[]
+  productionRooms      StudioProductionRoom[]
+  outputPackets        StudioOutputPacket[]
 
   @@index([projectId, stableId])
   @@index([projectId, projectionStatus])
@@ -1223,14 +2283,175 @@ model StudioSourceUnit {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  project  StudioProject     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  document StudioDocument?   @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  asset    StudioMediaAsset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  project              StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document             StudioDocument?             @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  asset                StudioMediaAsset?           @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  annotations          StudioSourceAnnotation[]
+  personalSourceFiling StudioPersonalSourceFiling?
 
   @@unique([projectId, slug])
   @@index([projectId, kind])
   @@index([documentId])
   @@index([assetId])
+}
+
+// Explicit promotion receipt from an actor-owned personal capture into one
+// shared Nest research source. The personal Snippet/Bookmark remains unchanged;
+// the receipt pins the immutable capture snapshot used to create the source.
+model StudioPersonalSourceFiling {
+  id                     String   @id @default(cuid())
+  projectId              String
+  sourceUnitId           String   @unique
+  createdByUserId        String?
+  createdByEmailSnapshot String?
+  captureType            String
+  snippetId              String?
+  bookmarkId             String?
+  clientRequestId        String
+  captureSnapshotJson    Json
+  createdAt              DateTime @default(now())
+
+  project    StudioProject    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceUnit StudioSourceUnit @relation(fields: [sourceUnitId], references: [id], onDelete: Cascade)
+  createdBy  User?            @relation("StudioPersonalSourceFilingCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  snippet    Snippet?         @relation(fields: [snippetId], references: [id], onDelete: SetNull)
+  bookmark   Bookmark?        @relation(fields: [bookmarkId], references: [id], onDelete: SetNull)
+
+  @@unique([createdByUserId, clientRequestId])
+  @@unique([projectId, snippetId])
+  @@unique([projectId, bookmarkId])
+  @@index([createdByUserId, createdAt])
+  @@index([projectId, createdAt])
+}
+
+// One immutable receipt per deliberate iPhone/Share Sheet capture request.
+// Multiple receipts may point to the same deduplicated personal source identity.
+model StudioPersonalSourceCaptureReceipt {
+  id                     String   @id @default(cuid())
+  createdByUserId        String
+  createdByEmailSnapshot String?
+  clientRequestId        String
+  captureType            String
+  snippetId              String?
+  bookmarkId             String?
+  sourceFingerprint      String
+  capturedAt             DateTime
+  captureSnapshotJson    Json
+  createdAt              DateTime @default(now())
+
+  createdBy User      @relation("StudioPersonalSourceCaptureCreatedBy", fields: [createdByUserId], references: [id], onDelete: Cascade)
+  snippet   Snippet?  @relation(fields: [snippetId], references: [id], onDelete: Cascade)
+  bookmark  Bookmark? @relation(fields: [bookmarkId], references: [id], onDelete: Cascade)
+
+  @@unique([createdByUserId, clientRequestId])
+  @@index([snippetId, capturedAt])
+  @@index([bookmarkId, capturedAt])
+  @@index([createdByUserId, capturedAt])
+}
+
+// Durable overlays around immutable source material. The source bytes/text stay
+// untouched; selectors retain both positions and quote context so anchors can be
+// verified, exported, and repaired without silently moving a person's note.
+model StudioSourceAnnotation {
+  id                     String    @id @default(cuid())
+  projectId              String
+  sourceUnitId           String
+  documentId             String?
+  blockId                String?
+  createdByUserId        String?
+  createdByEmailSnapshot String?
+  kind                   String    @default("note")
+  status                 String    @default("active")
+  visibility             String    @default("private")
+  body                   String    @db.Text
+  selectorKind           String
+  startOffset            Int?
+  endOffset              Int?
+  exactText              String?   @db.Text
+  prefixText             String?   @db.Text
+  suffixText             String?   @db.Text
+  startSeconds           Float?
+  endSeconds             Float?
+  sourceFingerprint      String?
+  clientRequestId        String?
+  provenanceJson         Json      @default("{}")
+  archivedAt             DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  project    StudioProject                    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceUnit StudioSourceUnit                 @relation(fields: [sourceUnitId], references: [id], onDelete: Restrict)
+  document   StudioDocument?                  @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  block      StudioDocumentBlock?             @relation(fields: [blockId], references: [id], onDelete: SetNull)
+  createdBy  User?                            @relation("StudioSourceAnnotationCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+  tags       StudioSourceAnnotationTag[]
+  revisions  StudioSourceAnnotationRevision[]
+  uses       StudioSourceAnnotationUse[]
+
+  @@unique([createdByUserId, clientRequestId])
+  @@index([projectId, visibility, status, updatedAt])
+  @@index([sourceUnitId, status, updatedAt])
+  @@index([createdByUserId, visibility, updatedAt])
+  @@index([documentId, blockId])
+}
+
+model StudioSourceAnnotationTag {
+  annotationId String
+  tagId        String
+  createdAt    DateTime @default(now())
+
+  annotation StudioSourceAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  tag        StudioTag              @relation(fields: [tagId], references: [id], onDelete: Restrict)
+
+  @@id([annotationId, tagId])
+  @@index([tagId, createdAt])
+}
+
+// Append-only before/after receipts make edits and archive decisions inspectable.
+model StudioSourceAnnotationRevision {
+  id           String   @id @default(cuid())
+  annotationId String
+  revision     Int
+  operation    String
+  actorUserId  String?
+  snapshotJson Json
+  createdAt    DateTime @default(now())
+
+  annotation StudioSourceAnnotation @relation(fields: [annotationId], references: [id], onDelete: Cascade)
+  actor      User?                  @relation("StudioSourceAnnotationRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([annotationId, revision])
+  @@index([actorUserId, createdAt])
+}
+
+// Durable evidence-to-writing link. The target block may quote or interpret an
+// annotation, but retains an immutable snapshot and pointer back to the source.
+model StudioSourceAnnotationUse {
+  id              String    @id @default(cuid())
+  annotationId    String
+  projectId       String
+  documentId      String
+  blockId         String
+  createdByUserId String?
+  clientRequestId String?
+  useKind         String    @default("evidence")
+  citationKey     String
+  quoteSnapshot   String    @db.Text
+  citationLabel   String
+  sourceJson      Json      @default("{}")
+  archivedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  annotation StudioSourceAnnotation @relation(fields: [annotationId], references: [id], onDelete: Restrict)
+  project    StudioProject          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  document   StudioDocument         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  block      StudioDocumentBlock    @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  createdBy  User?                  @relation("StudioSourceAnnotationUseCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@unique([annotationId, blockId, useKind])
+  @@unique([createdByUserId, clientRequestId])
+  @@index([documentId, createdAt])
+  @@index([projectId, useKind, createdAt])
 }
 
 model StudioDocumentOperation {
@@ -1625,9 +2846,11 @@ model StudioDocumentBlock {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  document       StudioDocument        @relation(fields: [documentId], references: [id], onDelete: Cascade)
-  taggedSpans    StudioTaggedSpan[]
-  knowledgeNodes StudioKnowledgeNode[]
+  document             StudioDocument              @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  taggedSpans          StudioTaggedSpan[]
+  knowledgeNodes       StudioKnowledgeNode[]
+  sourceAnnotations    StudioSourceAnnotation[]
+  sourceAnnotationUses StudioSourceAnnotationUse[]
 
   @@unique([documentId, stableId])
   @@unique([documentId, order])
@@ -1672,14 +2895,70 @@ model StudioTag {
   createdAt   DateTime                @default(now())
   updatedAt   DateTime                @updatedAt
 
-  project        StudioProject         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taggedSpans    StudioTaggedSpan[]
-  knowledgeNodes StudioKnowledgeNode[]
-  mediaClips     MediaClip[]
+  project           StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taggedSpans       StudioTaggedSpan[]
+  knowledgeNodes    StudioKnowledgeNode[]
+  mediaClips        MediaClip[]
+  sourceAnnotations StudioSourceAnnotationTag[]
+  actionItems       ActionItemTagLink[]
+  goals             GoalTagLink[]
+  callRooms         CallRoomTagLink[]
 
   @@unique([projectId, slug])
   @@index([projectId, category])
   @@index([projectId, isActive])
+}
+
+// Work and Session tags are explicit per-entity joins. The linked StudioTag
+// supplies canonical project identity; mutation services reject cross-project
+// links. Keeping separate joins makes ownership, access, and deletion behavior
+// inspectable without an orphan-prone polymorphic target column.
+model ActionItemTagLink {
+  actionItemId    String
+  tagId           String
+  createdByUserId String?
+  sourceJson      Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  actionItem ActionItem @relation(fields: [actionItemId], references: [id], onDelete: Cascade)
+  tag        StudioTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdBy  User?      @relation("ActionItemTagCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@id([actionItemId, tagId])
+  @@index([tagId, createdAt])
+  @@index([createdByUserId, createdAt])
+}
+
+model GoalTagLink {
+  goalId          String
+  tagId           String
+  createdByUserId String?
+  sourceJson      Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  goal      Goal      @relation(fields: [goalId], references: [id], onDelete: Cascade)
+  tag       StudioTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("GoalTagCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@id([goalId, tagId])
+  @@index([tagId, createdAt])
+  @@index([createdByUserId, createdAt])
+}
+
+model CallRoomTagLink {
+  roomId          String
+  tagId           String
+  createdByUserId String?
+  sourceJson      Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  room      CallRoom  @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  tag       StudioTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdBy User?     @relation("CallRoomTagCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@id([roomId, tagId])
+  @@index([tagId, createdAt])
+  @@index([createdByUserId, createdAt])
 }
 
 model StudioTaggedSpan {
@@ -1779,19 +3058,24 @@ model Collection {
 }
 
 model Snippet {
-  id              String   @id @default(cuid())
-  userId          String
-  collectionId    String?
-  sourceUrl       String?
-  sourceTitle     String?
-  highlightedText String
-  note            String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  userId             String
+  collectionId       String?
+  sourceUrl          String?
+  sourceTitle        String?
+  highlightedText    String
+  note               String?
+  metadataJson       Json?
+  captureFingerprint String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  user            User                                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection      Collection?                          @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  researchFilings StudioPersonalSourceFiling[]
+  captureReceipts StudioPersonalSourceCaptureReceipt[]
 
+  @@unique([userId, captureFingerprint])
   @@index([userId, createdAt])
   @@index([collectionId])
 }
@@ -1806,8 +3090,10 @@ model Bookmark {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  collection Collection? @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  user            User                                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  collection      Collection?                          @relation(fields: [collectionId], references: [id], onDelete: SetNull)
+  researchFilings StudioPersonalSourceFiling[]
+  captureReceipts StudioPersonalSourceCaptureReceipt[]
 
   @@unique([userId, url])
   @@index([userId, createdAt])
@@ -3120,9 +4406,9 @@ model QuipLoreCollection {
 // -----------------------------------------------------------------------------
 
 model QuipslyNote {
-  id        String   @id @default(uuid())
-  userId    String
-  title     String
+  id         String   @id @default(uuid())
+  userId     String
+  title      String
   content    String
   tags       String[] @default([])
   folderName String?
@@ -3133,4 +4419,107 @@ model QuipslyNote {
 
   @@index([userId])
   @@index([updatedAt(sort: Desc)])
+}
+
+// Browser episode editing keeps immutable sync/source truth separate from
+// lightweight, attributable edit intent.
+model StudioEditBaseline {
+  id                  String   @id @default(cuid())
+  projectId           String
+  episodeProductionId String
+  stableKey           String
+  version             Int      @default(1)
+  label               String
+  durationSeconds     Float    @default(0)
+  sourceFingerprint   String?
+  sourceManifestJson  Json     @default("{}")
+  syncSummaryJson     Json     @default("{}")
+  importReceiptJson   Json     @default("{}")
+  importedByUserId    String?
+  importedByEmail     String?
+  importedAt          DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  branches StudioEditBranch[]
+
+  @@unique([episodeProductionId, stableKey, version])
+  @@index([projectId, episodeProductionId])
+}
+
+model StudioEditBranch {
+  id                 String   @id @default(cuid())
+  baselineId         String
+  slug               String
+  name               String
+  role               String   @default("episode-edit")
+  status             String   @default("active")
+  headRevision       Int      @default(0)
+  stateJson          Json     @default("{}")
+  stateFingerprint   String?
+  createdByUserId    String?
+  createdByEmail     String?
+  createdByActorType String   @default("human")
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  baseline    StudioEditBaseline         @relation(fields: [baselineId], references: [id], onDelete: Cascade)
+  operations  StudioEditOperation[]
+  annotations StudioTimelineAnnotation[]
+
+  @@unique([baselineId, slug])
+  @@index([baselineId, status])
+}
+
+model StudioEditOperation {
+  id                       String    @id @default(cuid())
+  branchId                 String
+  revision                 Int
+  clientRequestId          String
+  expectedRevision         Int
+  actorUserId              String?
+  actorEmail               String?
+  actorLabel               String?
+  actorType                String    @default("human")
+  operationType            String
+  sequenceTime             Float?
+  endTime                  Float?
+  payloadJson              Json      @default("{}")
+  beforeJson               Json?
+  afterJson                Json?
+  sourceTimestampPrecision String    @default("exact")
+  sourceCreatedBefore      DateTime?
+  createdAt                DateTime  @default(now())
+
+  branch StudioEditBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, revision])
+  @@unique([branchId, clientRequestId])
+  @@index([branchId, createdAt])
+  @@index([actorUserId, createdAt])
+}
+
+model StudioTimelineAnnotation {
+  id                 String    @id @default(cuid())
+  branchId           String
+  startSeconds       Float
+  endSeconds         Float?
+  kind               String    @default("note")
+  title              String?
+  body               String?
+  hookKey            String?
+  tagsJson           Json      @default("[]")
+  status             String    @default("active")
+  createdByUserId    String?
+  createdByEmail     String?
+  createdByActorType String    @default("human")
+  clientRequestId    String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  archivedAt         DateTime?
+
+  branch StudioEditBranch @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([branchId, clientRequestId])
+  @@index([branchId, startSeconds])
+  @@index([branchId, status, createdAt])
 }

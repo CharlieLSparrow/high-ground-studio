@@ -31,16 +31,18 @@ into one mystery commit, reset, or cleaned as generated debris without review.
 ## Proposed commit sequence
 
 1. Local Nest development harness and repeatable smoke proof.
-2. Firebase identity and account-recovery cutover.
-3. Canonical Nest work system: Today, Inbox, Work, goals, recurrence, tags, and
+2. Replayable Prisma baseline and additive schema foundation for every later
+   Quipsly slice.
+3. Firebase identity and account-recovery cutover.
+4. Canonical Nest work system: Today, Inbox, Work, goals, recurrence, tags, and
    search, including migrations and focused tests.
-4. Notes, sources, annotations, research, and Studio handoff.
-5. Coaching Session lifecycle, transcription, correction, packets, and calendar
+5. Notes, sources, annotations, research, and Studio handoff.
+6. Coaching Session lifecycle, transcription, correction, packets, and calendar
    integration.
-6. iPhone Capture product and App Store/TestFlight release surfaces.
-7. QuipslyStudio editor and media-vault changes.
-8. Episode 4 production tools and evidence, split from reusable product code.
-9. Deployment and release runbooks after the code they describe.
+7. iPhone Capture product and App Store/TestFlight release surfaces.
+8. QuipslyStudio editor and media-vault changes.
+9. Episode 4 production tools and evidence, split from reusable product code.
+10. Deployment and release runbooks after the code they describe.
 
 Each slice should end with its focused automated checks plus a visible app or
 artifact readback. After the sequence is coherent, compare it with
