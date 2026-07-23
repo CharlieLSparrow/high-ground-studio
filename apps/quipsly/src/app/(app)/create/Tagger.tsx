@@ -43,6 +43,7 @@ export function uniqueTagIds(block: Block) {
 
 const UNDO_GROUP_WINDOW_MS = 1400;
 const MAX_UNDO_HISTORY = 40;
+const BLOCK_AUTOSAVE_DELAY_MS = 600;
 const STRUCTURE_TAG_IDS = new Set(["chapter", "episode"]);
 
 type PersistedTagSpan = {
@@ -173,6 +174,7 @@ export default function Tagger({
   const committedSnapshotsRef = useRef<Record<string, BlockSnapshot>>({});
   const lastUndoActionTimeRef = useRef<number>(0);
   const undoGroupIdRef = useRef<string>(`undo-group-${Date.now()}`);
+  const saveInFlightRef = useRef<Set<string>>(new Set());
   
   // Track save status per block
   const [savingBlocks, setSavingBlocks] = useState<Record<string, boolean>>({});
@@ -776,6 +778,9 @@ export default function Tagger({
   };
 
   const handleTextBlur = async (blockId: string, newText: string) => {
+    if (saveInFlightRef.current.has(blockId)) return;
+    saveInFlightRef.current.add(blockId);
+
     const previousScroll = captureScrollState();
     const currentBlock = getCurrentBlock(blockId);
     const committed = committedSnapshotsRef.current[blockId] ?? (currentBlock ? snapshotFromBlock(currentBlock) : null);
@@ -807,9 +812,13 @@ export default function Tagger({
       await saveBlockContent(blockId, newText);
       const committedAfter = getCurrentBlock(blockId);
       if (committedAfter) {
-        ensureCommittedSnapshot(committedAfter);
+        committedSnapshotsRef.current[blockId] = {
+          ...snapshotFromBlock(committedAfter),
+          text: newText,
+        };
       }
       setDirtyBlocks(prev => {
+        if (getCurrentBlock(blockId)?.text !== newText) return prev;
         const next = { ...prev };
         delete next[blockId];
         return next;
@@ -818,9 +827,33 @@ export default function Tagger({
       console.error("Block save failed.", error);
       setDirtyBlocks(prev => ({ ...prev, [blockId]: true }));
     } finally {
+      saveInFlightRef.current.delete(blockId);
       setSavingBlocks(prev => ({ ...prev, [blockId]: false }));
     }
   };
+
+  useEffect(() => {
+    const timeoutIds = Object.entries(dirtyBlocks)
+      .filter(([blockId, isDirty]) => isDirty && !savingBlocks[blockId])
+      .map(([blockId]) => window.setTimeout(() => {
+        const block = getCurrentBlock(blockId);
+        if (block) void handleTextBlur(blockId, block.text);
+      }, BLOCK_AUTOSAVE_DELAY_MS));
+
+    return () => timeoutIds.forEach((timeoutId) => window.clearTimeout(timeoutId));
+  }, [blocks, dirtyBlocks, savingBlocks]);
+
+  useEffect(() => {
+    const hasUnsavedWork = Object.values(dirtyBlocks).some(Boolean) || Object.values(savingBlocks).some(Boolean);
+    if (!hasUnsavedWork) return;
+
+    const guardUnsavedWork = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guardUnsavedWork);
+    return () => window.removeEventListener("beforeunload", guardUnsavedWork);
+  }, [dirtyBlocks, savingBlocks]);
 
   const handleNavigatePrevious = useCallback((blockId: string) => {
     const index = blocksRef.current.findIndex(b => b.id === blockId);

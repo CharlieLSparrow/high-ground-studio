@@ -657,7 +657,7 @@ export default function Workspace({
                   Show full document
                 </button>
               ) : null}
-              <div className={`px-3 py-1 rounded-full text-xs font-bold border shadow-sm flex items-center gap-2 ${
+              <div role="status" aria-live="polite" data-testid="document-save-status" className={`px-3 py-1 rounded-full text-xs font-bold border shadow-sm flex items-center gap-2 ${
                 saveState === "saving"
                   ? "border-blue-200 bg-blue-50 text-blue-800"
                   : saveState === "unsaved"
