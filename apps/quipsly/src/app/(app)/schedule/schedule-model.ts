@@ -2,6 +2,12 @@ import type { TranscriptDerivedGoalSourceAnchor, TranscriptDerivedTaskSourceAnch
 
 export type ScheduleTranscriptSourceAnchor = TranscriptDerivedTaskSourceAnchor | TranscriptDerivedGoalSourceAnchor;
 
+export type ScheduleTag = {
+  id: string;
+  label: string;
+  isActive: boolean;
+};
+
 export type ScheduleSession = {
   id: string;
   title: string;
@@ -12,6 +18,7 @@ export type ScheduleSession = {
   calendarStatus: string;
   calendarLinked: boolean;
   participantLabel: string | null;
+  tags: ScheduleTag[];
 };
 
 export type ScheduleTask = {
@@ -25,6 +32,7 @@ export type ScheduleTask = {
   provenance: string;
   roomId: string | null;
   sourceAnchor: TranscriptDerivedTaskSourceAnchor | null;
+  tags: ScheduleTag[];
 };
 
 export type SchedulePlanBlockStatus = "PLANNED" | "COMPLETED" | "SKIPPED" | "CANCELED";
@@ -43,6 +51,7 @@ export type SchedulePlanBlock = {
   updatedAt: string;
   roomId: string | null;
   sourceAnchor: ScheduleTranscriptSourceAnchor | null;
+  tags: ScheduleTag[];
 };
 
 export type SchedulePlanTarget = {

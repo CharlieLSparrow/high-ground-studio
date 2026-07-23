@@ -15,6 +15,7 @@ import {
   type SchedulePlanBlock,
   type SchedulePlanBlockStatus,
   type SchedulePlanTarget,
+  type ScheduleTag,
 } from "./schedule-model";
 
 function localInputValue(date: Date) {
@@ -36,6 +37,14 @@ function formatPlanTime(value: string, timezone: string) {
 
 function formatPlanDay(value: string) {
   return new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long", day: "numeric" }).format(new Date(`${value}T12:00:00`));
+}
+
+function ScheduleTagChips({ tags }: { tags: ScheduleTag[] }) {
+  if (!tags.length) return null;
+  const labels = tags.map((tag) => `${tag.label}${tag.isActive ? "" : " (archived)"}`);
+  return <div className="mt-3 flex flex-wrap gap-1.5" aria-label={`Tags: ${labels.join(", ")}`}>
+    {tags.map((tag) => <span key={tag.id} className={`rounded-full border px-2 py-0.5 text-[0.68rem] font-black ${tag.isActive ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950" : "border-stone-300 bg-stone-100 text-stone-700"}`}>#{tag.label}{tag.isActive ? "" : " · archived"}</span>)}
+  </div>;
 }
 
 function PlanBlockCard({ block, onRefresh }: { block: SchedulePlanBlock; onRefresh: () => void }) {
@@ -77,6 +86,7 @@ function PlanBlockCard({ block, onRefresh }: { block: SchedulePlanBlock; onRefre
       <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone}`}>{humanizeScheduleValue(block.status)}</span><span className="text-[10px] font-black uppercase tracking-wide text-[#92754f]">{block.targetType}</span></div><h4 className="mt-2 text-lg font-black text-[#3d3122]">{block.title}</h4><p className="mt-1 text-xs font-bold text-[#806a4d]">{humanizeScheduleValue(block.targetStatus)} source · completing this block does not complete it</p></div>
       <div className="text-right text-sm font-black text-[#5f4b32]"><p>{formatPlanTime(block.startsAt, block.timezone)}–{formatPlanTime(block.endsAt, block.timezone)}</p><p className="mt-1 text-[10px] uppercase tracking-wide text-[#92754f]">{duration ? `${duration} min` : "Duration needs review"}</p></div>
     </div>
+    <ScheduleTagChips tags={block.tags} />
     <div className="mt-4 flex flex-wrap gap-2">
       {block.status !== "COMPLETED" && <button type="button" disabled={pending} onClick={() => decide("COMPLETED")} className="inline-flex items-center gap-1.5 rounded-full bg-emerald-700 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50"><Check size={13} aria-hidden="true" />Block done</button>}
       {block.status === "PLANNED" && <button type="button" disabled={pending} onClick={() => decide("SKIPPED")} className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-amber-800 disabled:opacity-50"><SkipForward size={13} aria-hidden="true" />Skip</button>}

@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 
@@ -26,6 +26,20 @@ function roomAccessWhere(userId: string) {
   ];
 }
 
+function tagTextWhere(query: string): Prisma.StudioTagWhereInput {
+  return {
+    OR: [
+      { label: { contains: query, mode: "insensitive" } },
+      { slug: { contains: query, mode: "insensitive" } },
+      { description: { contains: query, mode: "insensitive" } },
+      { aliases: { some: { OR: [
+        { label: { contains: query, mode: "insensitive" } },
+        { slug: { contains: query, mode: "insensitive" } },
+      ] } } },
+    ],
+  };
+}
+
 export function normalizeWorkspaceSearchQuery(value: unknown) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 120) : "";
 }
@@ -38,21 +52,61 @@ export async function searchWorkspace(
   if (query.length < 2) return { query, tasks: [], goals: [], sessions: [], sources: [], documents: [], annotations: [], tags: [], projectCount: 0, boundaries: { actorScoped: true, minimumQueryLength: 2, perKindLimit: RESULT_LIMIT, unreviewedTranscriptCandidatesExcluded: true, externalSideEffects: false } };
   const projects = input.visibleProjects;
   const projectIds = projects.map((project) => project.id);
+  const visibleTagMatch: Prisma.StudioTagWhereInput = {
+    projectId: { in: projectIds },
+    ...tagTextWhere(query),
+  };
+  const taskContentMatches: Prisma.ActionItemWhereInput[] = [
+    { title: { contains: query, mode: "insensitive" } },
+    { detail: { contains: query, mode: "insensitive" } },
+    ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.ActionItemWhereInput] : []),
+  ];
+  const goalContentMatches: Prisma.GoalWhereInput[] = [
+    { title: { contains: query, mode: "insensitive" } },
+    { description: { contains: query, mode: "insensitive" } },
+    ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.GoalWhereInput] : []),
+  ];
+  const sessionContentMatches: Prisma.CallRoomWhereInput[] = [
+    { title: { contains: query, mode: "insensitive" } },
+    { projectSlug: { contains: query, mode: "insensitive" } },
+    { nestSlug: { contains: query, mode: "insensitive" } },
+    ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.CallRoomWhereInput] : []),
+  ];
+  const visibleAssignedTags = {
+    where: { tag: { projectId: { in: projectIds } } },
+    orderBy: { createdAt: "asc" as const },
+    take: 12,
+    select: { tag: { select: { id: true, slug: true, label: true, isActive: true } } },
+  };
   const [taskRows, goals, sessions, sources, documents, annotations, tags] = await Promise.all([
     prisma.actionItem.findMany({
-      where: { AND: [{ OR: taskAccessWhere(input.actorUserId) }, { OR: [{ title: { contains: query, mode: "insensitive" } }, { detail: { contains: query, mode: "insensitive" } }] }] },
+      where: { AND: [{ OR: taskAccessWhere(input.actorUserId) }, { OR: taskContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT + 10,
-      select: { id: true, title: true, detail: true, status: true, dueAt: true, sourceJson: true, room: { select: { id: true, title: true } } },
+      select: {
+        id: true, title: true, detail: true, status: true, dueAt: true, sourceJson: true,
+        room: { select: { id: true, title: true } },
+        project: { select: { id: true, name: true, slug: true } },
+        tagLinks: visibleAssignedTags,
+      },
     }),
     prisma.goal.findMany({
-      where: { AND: [{ OR: [{ ownerUserId: input.actorUserId }, { room: { OR: roomAccessWhere(input.actorUserId) } }, { booking: { OR: [{ clientUserId: input.actorUserId }, { coachUserId: input.actorUserId }] } }] }, { OR: [{ title: { contains: query, mode: "insensitive" } }, { description: { contains: query, mode: "insensitive" } }] }] },
+      where: { AND: [{ OR: [{ ownerUserId: input.actorUserId }, { room: { OR: roomAccessWhere(input.actorUserId) } }, { booking: { OR: [{ clientUserId: input.actorUserId }, { coachUserId: input.actorUserId }] } }] }, { OR: goalContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
-      select: { id: true, title: true, description: true, status: true, project: { select: { name: true, slug: true } }, room: { select: { title: true } } },
+      select: {
+        id: true, title: true, description: true, status: true,
+        project: { select: { id: true, name: true, slug: true } },
+        room: { select: { title: true } },
+        tagLinks: visibleAssignedTags,
+      },
     }),
     prisma.callRoom.findMany({
-      where: { AND: [{ OR: roomAccessWhere(input.actorUserId) }, { OR: [{ title: { contains: query, mode: "insensitive" } }, { projectSlug: { contains: query, mode: "insensitive" } }, { nestSlug: { contains: query, mode: "insensitive" } }] }] },
+      where: { AND: [{ OR: roomAccessWhere(input.actorUserId) }, { OR: sessionContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
-      select: { id: true, title: true, purpose: true, status: true, projectSlug: true, scheduledStart: true },
+      select: {
+        id: true, title: true, purpose: true, status: true, projectSlug: true, scheduledStart: true,
+        project: { select: { id: true, name: true, slug: true } },
+        tagLinks: visibleAssignedTags,
+      },
     }),
     projectIds.length ? prisma.studioSourceUnit.findMany({
       where: { projectId: { in: projectIds }, OR: [{ title: { contains: query, mode: "insensitive" } }, { author: { contains: query, mode: "insensitive" } }, { editableNotes: { contains: query, mode: "insensitive" } }] },
@@ -73,15 +127,7 @@ export async function searchWorkspace(
       where: {
         projectId: { in: projectIds },
         isActive: true,
-        OR: [
-          { label: { contains: query, mode: "insensitive" } },
-          { slug: { contains: query, mode: "insensitive" } },
-          { description: { contains: query, mode: "insensitive" } },
-          { aliases: { some: { OR: [
-            { label: { contains: query, mode: "insensitive" } },
-            { slug: { contains: query, mode: "insensitive" } },
-          ] } } },
-        ],
+        ...tagTextWhere(query),
       },
       orderBy: [{ label: "asc" }, { updatedAt: "desc" }],
       take: RESULT_LIMIT,

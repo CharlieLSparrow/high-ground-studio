@@ -54,6 +54,7 @@ describe("Schedule page truth states", () => {
           recurrenceOccurrence: null,
           room: { id: "room-1", title: "Homer coaching session" },
           booking: null,
+          tagLinks: [{ tag: { id: "tag-1", label: "Coaching follow-up", isActive: true } }],
           sourceJson: {
             schema: "quipsly-transcript-derived-task-v1",
             roomId: "room-1",
@@ -80,6 +81,7 @@ describe("Schedule page truth states", () => {
           recurrenceOccurrence: null,
           room: { id: "room-1", title: "Homer coaching session" },
           booking: null,
+          tagLinks: [],
           sourceJson: {
             schema: "quipsly-mobile-quick-entry-v1",
             surface: "ios-capture",
@@ -94,6 +96,7 @@ describe("Schedule page truth states", () => {
 
     expect(screen.getByText(/Source: Reviewed transcript timestamp/)).toBeInTheDocument();
     expect(screen.getByText("Source: iPhone capture")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tags: Coaching follow-up")).toHaveTextContent("#Coaching follow-up");
     expect(screen.getByText(/^Reminder .+Jul 20/)).toBeInTheDocument();
     expect(screen.getByText("Homer: Keep one clear next move.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute(

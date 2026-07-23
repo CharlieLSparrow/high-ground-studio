@@ -24,6 +24,7 @@ import {
   type SchedulePlanTarget,
   type ScheduleSession,
   type ScheduleSnapshot,
+  type ScheduleTag,
   type ScheduleTask,
 } from "./schedule-model";
 import { SchedulePlanner } from "./schedule-planner";
@@ -57,6 +58,18 @@ function accessibleRoomWhere(userId: string) {
   };
 }
 
+function scheduleTags(tagLinks: Array<{ tag: ScheduleTag }> | undefined): ScheduleTag[] {
+  return (tagLinks ?? []).map(({ tag }) => tag);
+}
+
+function CalendarTags({ tags }: { tags: ScheduleTag[] }) {
+  if (!tags.length) return null;
+  const labels = tags.map((tag) => `${tag.label}${tag.isActive ? "" : " (archived)"}`);
+  return <div className="mt-3 flex flex-wrap gap-1.5" aria-label={`Tags: ${labels.join(", ")}`}>
+    {tags.map((tag) => <span key={tag.id} className={`rounded-full border px-2 py-0.5 text-[0.68rem] font-black ${tag.isActive ? "border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950" : "border-stone-300 bg-stone-100 text-stone-700"}`}>#{tag.label}{tag.isActive ? "" : " · archived"}</span>)}
+  </div>;
+}
+
 async function loadSchedule(): Promise<ScheduleSnapshot> {
   const session = await getQuipslySession();
   const signedInEmail = normalizeAccessEmail(
@@ -73,8 +86,15 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
 
   try {
     const projects = signedInEmail ? await listProjectsVisibleToEmail(signedInEmail, prisma) : [];
+    const projectIds = projects.map((project) => project.id);
     const userId = session.user.id;
     const roomAccess = accessibleRoomWhere(userId);
+    const visibleTagLinks = {
+      where: { tag: { projectId: { in: projectIds } } },
+      orderBy: { createdAt: "asc" },
+      take: 12,
+      select: { tag: { select: { id: true, label: true, isActive: true } } },
+    };
 
     const [roomRows, taskRows, goalRows, planBlockRows] = await Promise.all([
       prisma.callRoom.findMany({
@@ -103,6 +123,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
                 take: 1,
                 select: { status: true, provider: true, providerEventId: true },
               },
+              tagLinks: visibleTagLinks,
             },
           }),
       prisma.actionItem.findMany({
@@ -131,13 +152,14 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
               recurrenceOccurrence: { select: { seriesId: true } },
               room: { select: { id: true, title: true } },
               booking: { select: { callRoom: { select: { title: true } } } },
+              tagLinks: visibleTagLinks,
             },
           }),
       prisma.goal.findMany({
         where: { ownerUserId: userId, status: "ACTIVE" },
         orderBy: [{ targetAt: "asc" }, { updatedAt: "desc" }],
         take: 200,
-        select: { id: true, title: true, status: true, targetAt: true, sourceJson: true, room: { select: { id: true } } },
+        select: { id: true, title: true, status: true, targetAt: true, sourceJson: true, room: { select: { id: true } }, tagLinks: visibleTagLinks },
       }),
       prisma.workPlanBlock.findMany({
         where: { ownerUserId: userId, startsAt: { gte: new Date(Date.now() - 14 * 86_400_000) } },
@@ -151,8 +173,8 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
           status: true,
           completedAt: true,
           updatedAt: true,
-          actionItem: { select: { id: true, title: true, status: true, sourceJson: true, room: { select: { id: true } } } },
-          goal: { select: { id: true, title: true, status: true, sourceJson: true, room: { select: { id: true } } } },
+          actionItem: { select: { id: true, title: true, status: true, sourceJson: true, room: { select: { id: true } }, tagLinks: visibleTagLinks } },
+          goal: { select: { id: true, title: true, status: true, sourceJson: true, room: { select: { id: true } }, tagLinks: visibleTagLinks } },
         },
       }),
     ]);
@@ -175,6 +197,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
             : "Quipsly schedule only",
           calendarLinked: Boolean(calendar?.providerEventId),
           participantLabel: participant?.name || participant?.primaryEmail || null,
+          tags: scheduleTags(room.tagLinks),
         };
       });
 
@@ -214,6 +237,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
             : "Quipsly action item",
           roomId: task.room?.id ?? null,
           sourceAnchor,
+          tags: scheduleTags(task.tagLinks),
         };
       });
 
@@ -240,6 +264,7 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
         updatedAt: block.updatedAt.toISOString(),
         roomId: targetRoomId,
         sourceAnchor,
+        tags: scheduleTags(target.tagLinks),
       }];
     });
 
@@ -394,6 +419,7 @@ export default async function SchedulePage() {
                     </div>
                     <p className="mt-4 flex items-center gap-2 text-sm font-bold text-[#5f4b32]"><Clock3 size={16} aria-hidden="true" />{formatDateTime(session.scheduledStart)}</p>
                     {session.participantLabel && <p className="mt-2 text-sm font-semibold text-[#80694a]">With {session.participantLabel}</p>}
+                    <CalendarTags tags={session.tags} />
                     <p className={`mt-3 text-xs font-black ${session.calendarLinked ? "text-emerald-700" : "text-[#8a7354]"}`}>{session.calendarStatus}{session.calendarLinked ? " · receipt linked" : ""}</p>
                     <Link href={`/sessions/${session.id}`} className="mt-4 inline-flex items-center gap-1 text-xs font-black text-[#76522c] hover:underline">Open review desk <ChevronRight size={14} aria-hidden="true" /></Link>
                   </article>
@@ -429,6 +455,7 @@ export default async function SchedulePage() {
                         {task.sessionTitle && <span>Session: {task.sessionTitle}</span>}
                         <span>Source: {task.provenance}</span>
                       </div>
+                      <CalendarTags tags={task.tags} />
                       {task.sourceAnchor && task.roomId ? (
                         <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
                           <p className="text-[10px] font-black uppercase tracking-wide text-sky-800">Reviewed transcript source</p>

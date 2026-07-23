@@ -37,6 +37,7 @@ describe("schedule runway model", () => {
       completedAt: null,
       updatedAt: "2026-07-18T18:00:00.000Z",
       roomId: null,
+      tags: [],
       sourceAnchor: null,
     };
     const blocks: SchedulePlanBlock[] = [

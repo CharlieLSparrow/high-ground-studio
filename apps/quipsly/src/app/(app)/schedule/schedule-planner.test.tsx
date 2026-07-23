@@ -35,6 +35,7 @@ describe("SchedulePlanner", () => {
       completedAt: null,
       updatedAt: "2026-07-18T18:00:00.000Z",
       roomId: "room-1",
+      tags: [{ id: "tag-1", label: "Coaching follow-up", isActive: true }],
       sourceAnchor: {
         schema: "quipsly-transcript-derived-task-v1",
         roomId: "room-1",
@@ -54,6 +55,7 @@ describe("SchedulePlanner", () => {
     const link = screen.getByRole("link", { name: "Return to 0:03–0:04" });
     expect(link).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
     expect(screen.getByText("Homer: Keep one clear next move.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Tags: Coaching follow-up")).toHaveTextContent("#Coaching follow-up");
   });
 
   it("keeps a planned transcript-derived goal linked to the same exact source", () => {
@@ -70,6 +72,7 @@ describe("SchedulePlanner", () => {
       completedAt: null,
       updatedAt: "2026-07-18T18:00:00.000Z",
       roomId: "room-2",
+      tags: [],
       sourceAnchor: {
         schema: "quipsly-transcript-derived-goal-v1",
         roomId: "room-2",
@@ -146,6 +149,7 @@ describe("SchedulePlanner", () => {
       completedAt: null,
       updatedAt: "2026-07-18T18:00:00.000Z",
       roomId: null,
+      tags: [],
       sourceAnchor: null,
     }]} targets={[]} />);
 

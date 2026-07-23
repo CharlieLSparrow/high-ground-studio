@@ -27,19 +27,19 @@ describe("Search All page", () => {
     jest.mocked(auth).mockResolvedValue({ user: { id: "user-1", primaryEmail: "Person@Example.com" } } as any);
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{ id: "project-1", slug: "high-ground", name: "High Ground" }] as any);
     jest.mocked(getPrismaClient).mockReturnValue({
-      actionItem: { findMany: jest.fn().mockResolvedValue([{ id: "task-1", title: "Episode proof-listen", detail: null, status: "OPEN", dueAt: null, sourceJson: {}, room: { id: "room-1", title: "Episode review" } }]) },
-      goal: { findMany: jest.fn().mockResolvedValue([{ id: "goal-1", title: "Episode quality", description: null, status: "ACTIVE", project: { name: "High Ground", slug: "high-ground" }, room: null }]) },
-      callRoom: { findMany: jest.fn().mockResolvedValue([{ id: "room-1", title: "Episode review", purpose: "PODCAST", status: "ENDED", projectSlug: "high-ground", scheduledStart: null }]) },
+      actionItem: { findMany: jest.fn().mockResolvedValue([{ id: "task-1", title: "Episode proof-listen", detail: null, status: "OPEN", dueAt: null, sourceJson: {}, room: { id: "room-1", title: "Episode review" }, project: { id: "project-1", name: "High Ground", slug: "high-ground" }, tagLinks: [{ tag: { id: "tag-1", slug: "episode-seed", label: "Episode seed", isActive: true } }] }]) },
+      goal: { findMany: jest.fn().mockResolvedValue([{ id: "goal-1", title: "Episode quality", description: null, status: "ACTIVE", project: { id: "project-1", name: "High Ground", slug: "high-ground" }, room: null, tagLinks: [] }]) },
+      callRoom: { findMany: jest.fn().mockResolvedValue([{ id: "room-1", title: "Episode review", purpose: "PODCAST", status: "ENDED", projectSlug: "high-ground", scheduledStart: null, project: { id: "project-1", name: "High Ground", slug: "high-ground" }, tagLinks: [] }]) },
       studioDocument: { findMany: jest.fn().mockResolvedValue([{ id: "document-1", title: "Episode outline", projectionStatus: "draft", project: { name: "High Ground", slug: "high-ground" } }]) },
       studioSourceUnit: { findMany: jest.fn().mockResolvedValue([{ id: "source-1", title: "Episode transcript", kind: "transcript", author: "Charlie", project: { name: "High Ground", slug: "high-ground" } }]) },
       studioSourceAnnotation: { findMany: jest.fn().mockResolvedValue([{ id: "annotation-1", kind: "quote", body: "Episode evidence", exactText: "Episode exact words", visibility: "private", sourceUnit: { title: "Episode transcript" }, project: { name: "High Ground", slug: "high-ground" } }]) },
-      studioTag: { findMany: jest.fn().mockResolvedValue([{ id: "tag-1", slug: "episode-seed", label: "Episode seed", description: "Material for a future episode", category: "source", isPrivate: true, project: { name: "High Ground", slug: "high-ground" } }]) },
+      studioTag: { findMany: jest.fn().mockResolvedValue([{ id: "tag-1", slug: "episode-seed", label: "Episode seed", description: "Material for a future episode", category: "source", isPrivate: true, aliases: [], project: { name: "High Ground", slug: "high-ground" } }]) },
     } as any);
 
     render(await FindPage({ searchParams: Promise.resolve({ q: "episode" }) }));
-    expect(screen.getByRole("link", { name: "Episode proof-listen open · Episode review" })).toHaveAttribute("href", "/work?task=task-1");
+    expect(screen.getByRole("link", { name: "Episode proof-listen open · High Ground · Episode review Tags: Episode seed" })).toHaveAttribute("href", "/work?task=task-1");
     expect(screen.getByRole("link", { name: "Episode quality active · High Ground" })).toHaveAttribute("href", "/work?goal=goal-1");
-    expect(screen.getByRole("link", { name: "Episode review podcast · ended" })).toHaveAttribute("href", "/sessions/room-1");
+    expect(screen.getByRole("link", { name: "Episode review podcast · ended · High Ground" })).toHaveAttribute("href", "/sessions/room-1");
     expect(screen.getByRole("link", { name: "Episode outline High Ground · draft" })).toHaveAttribute("href", "/create?project=high-ground&document=document-1");
     expect(screen.getByRole("link", { name: "Episode transcript High Ground · transcript · Charlie" })).toHaveAttribute("href", "/research?query=Episode%20transcript");
     expect(screen.getByRole("link", { name: "Episode exact words Episode transcript · High Ground · private" })).toHaveAttribute("href", "/research?query=Episode%20exact%20words");
