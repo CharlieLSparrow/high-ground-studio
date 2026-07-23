@@ -107,6 +107,11 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
     let firebaseIdToken = "";
     let firebaseIdentityDeleted = false;
     let sessionCookie = "";
+    let callRoomId = "";
+    const quickEntryRequestId = randomUUID();
+    const quickEntryTaskId = `mobile-task-${quickEntryRequestId}`;
+    const quickEntryTitle = `Local iPhone follow-through ${nonce}`;
+    const quickEntryTagLabel = `Local proof ${nonce}`;
 
     const firebasePost = async (
       route: string,
@@ -204,6 +209,139 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
         expectedHomeSlug,
       );
 
+      const [actor, homeProject] = await Promise.all([
+        prisma.user.findUniqueOrThrow({
+          where: { primaryEmail: email },
+          select: { id: true },
+        }),
+        prisma.studioProject.findFirstOrThrow({
+          where: {
+            slug: expectedHomeSlug,
+            sourceLabel: "nest-kind:home",
+          },
+          select: { id: true },
+        }),
+      ]);
+      const room = await prisma.callRoom.create({
+        data: {
+          createdByUserId: actor.id,
+          projectId: homeProject.id,
+          title: "Local iPhone planning proof",
+        },
+        select: { id: true },
+      });
+      callRoomId = room.id;
+      const capturedAt = new Date();
+      const dueAt = new Date(capturedAt.getTime() + 6 * 60 * 60 * 1000);
+      const quickEntry = await fetch(
+        `${nestOrigin}/api/mobile/capture/quick-entry`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${firebaseIdToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            clientRequestId: quickEntryRequestId,
+            callRoomId,
+            kind: "TASK",
+            title: quickEntryTitle,
+            body: "Prove the same accepted task in Today, Work, and Calendar.",
+            capturedAt: capturedAt.toISOString(),
+            dueAt: dueAt.toISOString(),
+            tagIds: [],
+            newTagLabels: [quickEntryTagLabel],
+          }),
+        },
+      );
+      const quickEntryBody = await readJson(
+        quickEntry,
+        "iPhone due-task capture",
+      );
+      expect(quickEntryBody).toMatchObject({
+        ok: true,
+        idempotentReplay: false,
+        entry: {
+          id: quickEntryTaskId,
+          callRoomId,
+          projectId: homeProject.id,
+          dueAt: dueAt.toISOString(),
+          tags: [{ label: quickEntryTagLabel }],
+        },
+      });
+
+      const replay = await fetch(
+        `${nestOrigin}/api/mobile/capture/quick-entry`,
+        {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${firebaseIdToken}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            clientRequestId: quickEntryRequestId,
+            callRoomId,
+            kind: "TASK",
+            title: quickEntryTitle,
+            body: "Prove the same accepted task in Today, Work, and Calendar.",
+            capturedAt: capturedAt.toISOString(),
+            dueAt: dueAt.toISOString(),
+            tagIds: [],
+            newTagLabels: [quickEntryTagLabel],
+          }),
+        },
+      );
+      expect(await readJson(replay, "iPhone due-task replay")).toMatchObject({
+        ok: true,
+        idempotentReplay: true,
+        entry: { id: quickEntryTaskId },
+      });
+
+      for (const route of ["/today", "/work", "/schedule"]) {
+        const firstRead = await fetch(`${nestOrigin}${route}`, {
+          headers: { cookie: sessionCookie },
+        });
+        expect(firstRead.status).toBe(200);
+        const firstHtml = await firstRead.text();
+        expect(firstHtml).toContain(quickEntryTaskId);
+        expect(firstHtml).toContain(quickEntryTitle);
+
+        const reload = await fetch(`${nestOrigin}${route}`, {
+          headers: { cookie: sessionCookie },
+        });
+        expect(reload.status).toBe(200);
+        const reloadHtml = await reload.text();
+        expect(reloadHtml).toContain(quickEntryTaskId);
+        expect(reloadHtml).toContain(quickEntryTitle);
+      }
+
+      const persistedTask = await prisma.actionItem.findUniqueOrThrow({
+        where: { id: quickEntryTaskId },
+        include: {
+          tagLinks: {
+            include: { tag: true },
+          },
+        },
+      });
+      expect(persistedTask).toMatchObject({
+        id: quickEntryTaskId,
+        assignedUserId: actor.id,
+        roomId: callRoomId,
+        projectId: homeProject.id,
+        dueAt,
+        sourceJson: {
+          schema: "quipsly-mobile-quick-entry-v1",
+          surface: "ios-capture",
+          dueAt: dueAt.toISOString(),
+          humanCommitted: true,
+          externalSideEffects: false,
+        },
+        tagLinks: [{ tag: { label: quickEntryTagLabel } }],
+      });
+      await expect(
+        prisma.actionItem.count({ where: { id: quickEntryTaskId } }),
+      ).resolves.toBe(1);
+
       const nativeSession = await fetch(
         `${nestOrigin}/api/mac/session-check`,
         { headers: { authorization: `Bearer ${firebaseIdToken}` } },
@@ -282,6 +420,12 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
       });
 
       await prisma.$transaction(async (tx) => {
+        await tx.actionItem.deleteMany({
+          where: { id: quickEntryTaskId },
+        });
+        if (callRoomId) {
+          await tx.callRoom.deleteMany({ where: { id: callRoomId } });
+        }
         await tx.studioProjectAccessGrant.deleteMany({
           where: { email },
         });
@@ -293,7 +437,14 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
         }
       });
 
-      const [remainingUsers, remainingHomeProjects, remainingGrants] =
+      const [
+        remainingUsers,
+        remainingHomeProjects,
+        remainingGrants,
+        remainingTasks,
+        remainingRooms,
+        remainingTags,
+      ] =
         await Promise.all([
           prisma.user.count({ where: { primaryEmail: email } }),
           prisma.studioProject.count({
@@ -303,16 +454,27 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
             },
           }),
           prisma.studioProjectAccessGrant.count({ where: { email } }),
+          prisma.actionItem.count({ where: { id: quickEntryTaskId } }),
+          callRoomId
+            ? prisma.callRoom.count({ where: { id: callRoomId } })
+            : Promise.resolve(0),
+          prisma.studioTag.count({ where: { label: quickEntryTagLabel } }),
         ]);
 
       expect({
         remainingUsers,
         remainingHomeProjects,
         remainingGrants,
+        remainingTasks,
+        remainingRooms,
+        remainingTags,
       }).toEqual({
         remainingUsers: 0,
         remainingHomeProjects: 0,
         remainingGrants: 0,
+        remainingTasks: 0,
+        remainingRooms: 0,
+        remainingTags: 0,
       });
       await prisma.$disconnect();
     }
