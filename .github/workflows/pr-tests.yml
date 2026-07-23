@@ -6,6 +6,13 @@ on:
       - main
       - master
 
+concurrency:
+  group: quipsly-pr-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run Quipsly Validation
@@ -54,7 +61,7 @@ jobs:
         if: steps.changes.outputs.quipsly == 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: 'pnpm'
 
       - name: Install dependencies
