@@ -7,7 +7,7 @@ import { listProjectsVisibleToEmail } from "./home-nest";
 export type WorkTagEntityKind = "task" | "goal" | "session" | "note";
 
 export type ReplaceWorkTagsResult =
-  | { ok: true; entityKind: WorkTagEntityKind; entityId: string; projectId: string; tagIds: string[]; updatedAt: Date; receiptId: string }
+  | { ok: true; entityKind: WorkTagEntityKind; entityId: string; projectId: string; tagIds: string[]; updatedAt: Date; receiptId: string; idempotentReplay: boolean }
   | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT"; error: string };
 
 export type CreateAndAssignWorkTagResult =
@@ -24,6 +24,7 @@ export type CreateAndAssignWorkTagResult =
   | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ARCHIVED"; error: string };
 
 export type WorkTagTaxonomyOperation = "RENAME" | "ARCHIVE" | "RESTORE";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export type MutateWorkTagTaxonomyResult =
   | {
@@ -300,12 +301,16 @@ export async function replaceWorkEntityTags(input: {
   entityId: string;
   tagIds: string[];
   expectedUpdatedAt: Date;
+  clientRequestId?: string;
+  surface?: "nest-work" | "ios-capture-today";
 }): Promise<ReplaceWorkTagsResult> {
   const actorUserId = cleanId(input.actorUserId);
   const actorEmail = typeof input.actorEmail === "string" ? input.actorEmail.trim().toLowerCase() : "";
   const entityId = cleanId(input.entityId);
   const tagIds = normalizedTagIds(input.tagIds);
-  if (!actorUserId || !actorEmail || !entityId || !tagIds || !Number.isFinite(input.expectedUpdatedAt?.getTime())) {
+  const clientRequestId = cleanId(input.clientRequestId);
+  if (!actorUserId || !actorEmail || !entityId || !tagIds || !Number.isFinite(input.expectedUpdatedAt?.getTime())
+    || (clientRequestId && !UUID_PATTERN.test(clientRequestId))) {
     return { ok: false, code: "INVALID_INPUT", error: "The tag decision is incomplete or invalid." };
   }
 
@@ -316,6 +321,27 @@ export async function replaceWorkEntityTags(input: {
   if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only the ${input.entityKind} owner can change these tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before adding its tags." };
   if (!writableProjects.has(entity.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to change tags." };
+  const priorReceipt = safeRecord(safeRecord(entity[entitySourceField(input.entityKind)]).lastTagReceipt);
+  const receiptId = clientRequestId ? `work-tags-${clientRequestId}` : randomUUID();
+  if (priorReceipt.id === receiptId) {
+    const priorTagIds = normalizedTagIds(priorReceipt.tagIds);
+    const sameRequest = priorReceipt.entityKind === input.entityKind
+      && priorReceipt.projectId === entity.projectId
+      && priorReceipt.changedByUserId === actorUserId
+      && priorReceipt.clientRequestId === clientRequestId
+      && JSON.stringify(priorTagIds) === JSON.stringify(tagIds);
+    if (!sameRequest) return { ok: false, code: "CONFLICT", error: "That phone request identity is already bound to a different tag decision." };
+    return {
+      ok: true,
+      entityKind: input.entityKind,
+      entityId,
+      projectId: entity.projectId,
+      tagIds,
+      updatedAt: entity.updatedAt,
+      receiptId,
+      idempotentReplay: true,
+    };
+  }
   if (entity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before changing tags." };
 
   if (tagIds.length) {
@@ -328,7 +354,6 @@ export async function replaceWorkEntityTags(input: {
     }
   }
 
-  const receiptId = randomUUID();
   const now = new Date();
   const receipt = {
     id: receiptId,
@@ -338,6 +363,8 @@ export async function replaceWorkEntityTags(input: {
     tagIds,
     changedAt: now.toISOString(),
     changedByUserId: actorUserId,
+    clientRequestId: clientRequestId || null,
+    surface: input.surface ?? "nest-work",
     externalSideEffects: false,
   };
 
@@ -383,7 +410,16 @@ export async function replaceWorkEntityTags(input: {
 
   if (saved.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Editor access and active same-Nest tags are required." };
   if (saved.kind === "conflict" || !saved.entity) return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before changing tags." };
-  return { ok: true, entityKind: input.entityKind, entityId, projectId: entity.projectId, tagIds, updatedAt: saved.entity.updatedAt, receiptId };
+  return {
+    ok: true,
+    entityKind: input.entityKind,
+    entityId,
+    projectId: entity.projectId,
+    tagIds,
+    updatedAt: saved.entity.updatedAt,
+    receiptId,
+    idempotentReplay: false,
+  };
 }
 
 /**

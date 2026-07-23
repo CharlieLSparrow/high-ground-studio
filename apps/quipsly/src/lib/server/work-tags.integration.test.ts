@@ -107,6 +107,69 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     expect(task?.sourceJson).toMatchObject({ lastTagReceipt: { externalSideEffects: false, projectId, tagIds: [tagId] } });
   });
 
+  it("replays one iPhone tag decision exactly and rejects identity reuse for different tags", async () => {
+    const task = await prisma.actionItem.findUniqueOrThrow({ where: { id: taskId } });
+    const clientRequestId = randomUUID();
+    const first = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "task",
+      entityId: taskId,
+      tagIds: [tagId],
+      expectedUpdatedAt: task.updatedAt,
+      clientRequestId,
+      surface: "ios-capture-today",
+    });
+    const replay = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "task",
+      entityId: taskId,
+      tagIds: [tagId],
+      expectedUpdatedAt: task.updatedAt,
+      clientRequestId,
+      surface: "ios-capture-today",
+    });
+    const conflictingReuse = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "task",
+      entityId: taskId,
+      tagIds: [],
+      expectedUpdatedAt: task.updatedAt,
+      clientRequestId,
+      surface: "ios-capture-today",
+    });
+    expect(first).toMatchObject({
+      ok: true,
+      receiptId: `work-tags-${clientRequestId}`,
+      idempotentReplay: false,
+    });
+    expect(replay).toMatchObject({
+      ok: true,
+      receiptId: `work-tags-${clientRequestId}`,
+      idempotentReplay: true,
+    });
+    expect(conflictingReuse).toMatchObject({ ok: false, code: "CONFLICT" });
+    const persisted = await prisma.actionItem.findUniqueOrThrow({ where: { id: taskId } });
+    expect(persisted.sourceJson).toMatchObject({
+      lastTagReceipt: {
+        id: `work-tags-${clientRequestId}`,
+        clientRequestId,
+        surface: "ios-capture-today",
+        tagIds: [tagId],
+        externalSideEffects: false,
+      },
+    });
+    await expect(prisma.actionItemTagLink.findMany({
+      where: { actionItemId: taskId },
+      select: { tagId: true },
+    })).resolves.toEqual([{ tagId }]);
+  });
+
   it("creates reusable vocabulary from an owned Session note and rejects another actor", async () => {
     const note = await prisma.coachingNote.findUniqueOrThrow({ where: { id: noteId } });
     const created = await createAndAssignWorkEntityTag({

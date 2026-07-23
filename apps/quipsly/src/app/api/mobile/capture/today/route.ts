@@ -93,6 +93,8 @@ function responseBoundaries(taskReminderIntentProjectionComplete = false) {
     deviceNotificationsReconciled: false,
     reminderDeliveryClaimed: false,
     goalCheckInMutatesStatus: false,
+    canonicalProjectTags: true,
+    tagMutationExternalSideEffects: false,
   };
 }
 
@@ -106,7 +108,10 @@ export async function GET(request: Request) {
   try {
     const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
     const visibleProjectIds = visibleProjects.map((project) => project.id);
-    const [taskRows, goalRows, blockRows, weeklyPlan, annotationRows, transcriptReviewRooms, reminderRows] = await Promise.all([
+    const writableProjectIds = new Set(visibleProjects
+      .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
+      .map((project) => project.id));
+    const [taskRows, goalRows, blockRows, weeklyPlan, annotationRows, transcriptReviewRooms, reminderRows, tagRows] = await Promise.all([
       prisma.actionItem.findMany({
         where: { status: "OPEN", OR: taskAccessWhere(userId) },
         orderBy: [{ dueAt: "asc" }, { updatedAt: "desc" }],
@@ -115,7 +120,7 @@ export async function GET(request: Request) {
           id: true, title: true, detail: true, status: true, dueAt: true, updatedAt: true, sourceJson: true,
           reminder: { select: { id: true, remindAt: true, status: true, updatedAt: true } },
           project: { select: { id: true, name: true, slug: true } },
-          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, projectId: true } } } },
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
           room: { select: { id: true, title: true } },
           recurrenceOccurrence: { select: {
             occurrenceKey: true,
@@ -131,7 +136,7 @@ export async function GET(request: Request) {
         where: { ownerUserId: userId, status: "ACTIVE" },
         orderBy: [{ targetAt: "asc" }, { updatedAt: "desc" }],
         take: 20,
-        select: { id: true, title: true, description: true, status: true, targetAt: true, updatedAt: true, sourceJson: true, project: { select: { id: true, name: true, slug: true } }, tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, projectId: true } } } }, room: { select: { id: true, title: true } }, progressReceipts: { orderBy: { occurredAt: "desc" }, take: 1, select: { progressPercent: true, note: true, occurredAt: true } } },
+        select: { id: true, title: true, description: true, status: true, targetAt: true, updatedAt: true, sourceJson: true, project: { select: { id: true, name: true, slug: true } }, tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } }, room: { select: { id: true, title: true } }, progressReceipts: { orderBy: { occurredAt: "desc" }, take: 1, select: { progressPercent: true, note: true, occurredAt: true } } },
       }),
       prisma.workPlanBlock.findMany({
         where: { ownerUserId: userId, startsAt: { gte: new Date(now.getTime() - 12 * 3_600_000), lte: new Date(now.getTime() + 7 * 86_400_000) }, status: { in: ["PLANNED", "COMPLETED", "SKIPPED"] } },
@@ -182,6 +187,12 @@ export async function GET(request: Request) {
           updatedAt: true,
         },
       }),
+      visibleProjectIds.length > 0 ? prisma.studioTag.findMany({
+        where: { projectId: { in: visibleProjectIds }, isActive: true },
+        orderBy: [{ label: "asc" }, { id: "asc" }],
+        take: 500,
+        select: { id: true, projectId: true, slug: true, label: true, isActive: true },
+      }) : Promise.resolve([]),
     ]);
     const todayWindowEnd = new Date(now.getTime() + 24 * 3_600_000);
     const plannedTaskIds = new Set(blockRows
@@ -214,6 +225,8 @@ export async function GET(request: Request) {
         roomId: task.room?.id ?? null,
         sessionTitle: task.room?.title ?? null,
         project: projectVisible ? task.project : null,
+        canEditTags: projectVisible ? writableProjectIds.has(task.project.id) : false,
+        tagIds: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.id) : [],
         tagLabels: projectVisible ? task.tagLinks.filter((link: any) => link.tag.projectId === task.project.id).map((link: any) => link.tag.label) : [],
         sourceAnchor,
         recurrence: task.recurrenceOccurrence ? {
@@ -262,6 +275,8 @@ export async function GET(request: Request) {
         roomId: goal.room?.id ?? null,
         sessionTitle: goal.room?.title ?? null,
         project: projectVisible ? goal.project : null,
+        canEditTags: projectVisible ? writableProjectIds.has(goal.project.id) : false,
+        tagIds: projectVisible ? goal.tagLinks.filter((link: any) => link.tag.projectId === goal.project.id).map((link: any) => link.tag.id) : [],
         tagLabels: projectVisible ? goal.tagLinks.filter((link: any) => link.tag.projectId === goal.project.id).map((link: any) => link.tag.label) : [],
         sourceAnchor,
       };
@@ -299,6 +314,12 @@ export async function GET(request: Request) {
         updatedAt: proposal.updatedAt,
       })));
     }).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)).slice(0, 8);
+    const tagCatalogById = new Map<string, any>();
+    for (const tag of tagRows) tagCatalogById.set(tag.id, tag);
+    for (const entity of [...taskRows, ...goalRows]) {
+      if (!entity.project || !visibleProjectIds.includes(entity.project.id)) continue;
+      for (const link of entity.tagLinks) tagCatalogById.set(link.tag.id, link.tag);
+    }
     return NextResponse.json({
       ok: true,
       briefKind: "quipsly-mobile-today-v1",
@@ -328,6 +349,15 @@ export async function GET(request: Request) {
         remindAt: reminder.remindAt.toISOString(),
         status: reminder.status,
         updatedAt: reminder.updatedAt.toISOString(),
+      })),
+      tagCatalog: [...tagCatalogById.values()]
+        .sort((left: any, right: any) => left.label.localeCompare(right.label) || left.id.localeCompare(right.id))
+        .map((tag: any) => ({
+        id: tag.id,
+        projectId: tag.projectId,
+        slug: tag.slug,
+        label: tag.label,
+        isActive: tag.isActive,
       })),
       boundaries: responseBoundaries(reminderRows.length <= 500),
     });

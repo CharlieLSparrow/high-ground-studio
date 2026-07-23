@@ -231,6 +231,8 @@ private struct TodayFollowThroughCard: View {
     @State private var missedOccurrenceToSkip: MobileCaptureTodayTask?
     @State private var reminderToEdit: MobileCaptureTodayTask?
     @State private var reminderToCancel: MobileCaptureTodayTask?
+    @State private var taskTagsToEdit: MobileCaptureTodayTask?
+    @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var showsAllCommittedTasks = false
 
     private var nextFocus: MobileCaptureTodayFocusBlock? {
@@ -314,14 +316,60 @@ private struct TodayFollowThroughCard: View {
                                     .foregroundStyle(.orange)
                                     .padding(.top, 2)
                                 VStack(alignment: .leading, spacing: 2) {
+                                    let pendingTags = client.pendingWorkTagDecision(kind: .task, entityID: task.id)
+                                    let visibleTagIDs = client.effectiveTagIDs(
+                                        kind: .task,
+                                        entityID: task.id,
+                                        canonicalTagIDs: task.tagIds ?? []
+                                    )
                                     Text(task.title)
                                         .font(.subheadline.weight(.semibold))
                                         .accessibilityIdentifier("CaptureTodayTask_\(task.id)")
                                     if let sessionTitle = task.sessionTitle {
                                         Text(sessionTitle).font(.caption).foregroundStyle(.secondary)
                                     }
-                                    if task.project != nil || !(task.tagLabels ?? []).isEmpty {
-                                        TodayProjectTagLine(project: task.project, tagLabels: task.tagLabels ?? [], identifier: "CaptureTodayTaskTags_\(task.id)")
+                                    if let project = task.project {
+                                        TodayProjectTagLine(
+                                            project: project,
+                                            tagLabels: pendingTags == nil
+                                                ? task.tagLabels ?? []
+                                                : client.tagLabels(projectID: project.id, tagIDs: visibleTagIDs),
+                                            identifier: "CaptureTodayTaskTags_\(task.id)"
+                                        )
+                                        if let pendingTags {
+                                            Label(
+                                                pendingTags.disposition == .held ? "Phone tag change needs review" : "Tag change queued for Nest",
+                                                systemImage: pendingTags.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
+                                            )
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(pendingTags.disposition == .held ? Color.orange : Color.blue)
+                                            .accessibilityIdentifier("CaptureTodayTaskTagsPending_\(task.id)")
+                                            if pendingTags.disposition == .held {
+                                                Button("Discard phone tag change") {
+                                                    Task {
+                                                        await client.discardHeldWorkTagDecision(kind: .task, entityID: task.id)
+                                                    }
+                                                }
+                                                .font(.caption.weight(.bold))
+                                                .buttonStyle(.bordered)
+                                                .accessibilityIdentifier("CaptureTodayTaskTagsDiscard_\(task.id)")
+                                            }
+                                        }
+                                        if task.canEditTags == true {
+                                            Button {
+                                                taskTagsToEdit = task
+                                            } label: {
+                                                Label("Edit tags", systemImage: "tag")
+                                                    .frame(minHeight: 44)
+                                            }
+                                            .font(.caption.weight(.bold))
+                                            .buttonStyle(.bordered)
+                                            .disabled(previewOnly || client.isMutating || pendingTags != nil)
+                                            .accessibilityIdentifier("CaptureTodayTaskTagsEdit_\(task.id)")
+                                            .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
+                                        }
+                                    } else if !(task.tagLabels ?? []).isEmpty {
+                                        TodayProjectTagLine(project: nil, tagLabels: task.tagLabels ?? [], identifier: "CaptureTodayTaskTags_\(task.id)")
                                     }
                                     if let todayReason = task.todayReason?.nonempty {
                                         Text(todayReason)
@@ -559,6 +607,12 @@ private struct TodayFollowThroughCard: View {
                         .foregroundStyle(.purple)
                     ForEach(client.goals.prefix(2)) { goal in
                         VStack(alignment: .leading, spacing: 7) {
+                            let pendingTags = client.pendingWorkTagDecision(kind: .goal, entityID: goal.id)
+                            let visibleTagIDs = client.effectiveTagIDs(
+                                kind: .goal,
+                                entityID: goal.id,
+                                canonicalTagIDs: goal.tagIds ?? []
+                            )
                             HStack {
                                 Text(goal.title)
                                     .font(.subheadline.weight(.semibold))
@@ -579,8 +633,48 @@ private struct TodayFollowThroughCard: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
-                            if goal.project != nil || !(goal.tagLabels ?? []).isEmpty {
-                                TodayProjectTagLine(project: goal.project, tagLabels: goal.tagLabels ?? [], identifier: "CaptureTodayGoalTags_\(goal.id)")
+                            if let project = goal.project {
+                                TodayProjectTagLine(
+                                    project: project,
+                                    tagLabels: pendingTags == nil
+                                        ? goal.tagLabels ?? []
+                                        : client.tagLabels(projectID: project.id, tagIDs: visibleTagIDs),
+                                    identifier: "CaptureTodayGoalTags_\(goal.id)"
+                                )
+                                if let pendingTags {
+                                    Label(
+                                        pendingTags.disposition == .held ? "Phone tag change needs review" : "Tag change queued for Nest",
+                                        systemImage: pendingTags.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
+                                    )
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(pendingTags.disposition == .held ? Color.orange : Color.blue)
+                                    .accessibilityIdentifier("CaptureTodayGoalTagsPending_\(goal.id)")
+                                    if pendingTags.disposition == .held {
+                                        Button("Discard phone tag change") {
+                                            Task {
+                                                await client.discardHeldWorkTagDecision(kind: .goal, entityID: goal.id)
+                                            }
+                                        }
+                                        .font(.caption.weight(.bold))
+                                        .buttonStyle(.bordered)
+                                        .accessibilityIdentifier("CaptureTodayGoalTagsDiscard_\(goal.id)")
+                                    }
+                                }
+                                if goal.canEditTags == true {
+                                    Button {
+                                        goalTagsToEdit = goal
+                                    } label: {
+                                        Label("Edit tags", systemImage: "tag")
+                                            .frame(minHeight: 44)
+                                    }
+                                    .font(.caption.weight(.bold))
+                                    .buttonStyle(.bordered)
+                                    .disabled(previewOnly || client.isMutating || pendingTags != nil)
+                                    .accessibilityIdentifier("CaptureTodayGoalTagsEdit_\(goal.id)")
+                                    .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
+                                }
+                            } else if !(goal.tagLabels ?? []).isEmpty {
+                                TodayProjectTagLine(project: nil, tagLabels: goal.tagLabels ?? [], identifier: "CaptureTodayGoalTags_\(goal.id)")
                             }
                             TodayGoalCheckInControls(
                                 client: client,
@@ -689,7 +783,7 @@ private struct TodayFollowThroughCard: View {
                     .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
             }
 
-            Text("One-time task reminder changes are protected on this iPhone before Nest sync; iOS controls notification delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion never completes its task or goal. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
+            Text("Task and goal tag selections and one-time reminder changes are protected on this iPhone before Nest sync. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion never completes its task or goal. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureTodayFollowThroughBoundary")
@@ -769,6 +863,32 @@ private struct TodayFollowThroughCard: View {
         }
         .sheet(item: $reminderToEdit) { task in
             TodayTaskReminderSheet(client: client, task: task)
+        }
+        .sheet(item: $taskTagsToEdit) { task in
+            if let project = task.project {
+                TodayWorkTagSheet(
+                    client: client,
+                    kind: .task,
+                    entityID: task.id,
+                    entityTitle: task.title,
+                    project: project,
+                    canonicalTagIDs: task.tagIds ?? [],
+                    expectedUpdatedAt: task.updatedAt
+                )
+            }
+        }
+        .sheet(item: $goalTagsToEdit) { goal in
+            if let project = goal.project {
+                TodayWorkTagSheet(
+                    client: client,
+                    kind: .goal,
+                    entityID: goal.id,
+                    entityTitle: goal.title,
+                    project: project,
+                    canonicalTagIDs: goal.tagIds ?? [],
+                    expectedUpdatedAt: goal.updatedAt
+                )
+            }
         }
     }
 
@@ -888,6 +1008,160 @@ private struct TodayTaskReminderSheet: View {
             }
         }
         .presentationDetents([.medium, .large])
+    }
+}
+
+private struct TodayWorkTagSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: CaptureTodayClient
+    let kind: PendingWorkTagDecision.EntityKind
+    let entityID: String
+    let entityTitle: String
+    let project: MobileCaptureTodayProject
+    let canonicalTagIDs: [String]
+    let expectedUpdatedAt: String
+
+    @State private var selectedTagIDs: Set<String>
+    @State private var searchText = ""
+
+    init(
+        client: CaptureTodayClient,
+        kind: PendingWorkTagDecision.EntityKind,
+        entityID: String,
+        entityTitle: String,
+        project: MobileCaptureTodayProject,
+        canonicalTagIDs: [String],
+        expectedUpdatedAt: String
+    ) {
+        self.client = client
+        self.kind = kind
+        self.entityID = entityID
+        self.entityTitle = entityTitle
+        self.project = project
+        self.canonicalTagIDs = canonicalTagIDs
+        self.expectedUpdatedAt = expectedUpdatedAt
+        _selectedTagIDs = State(initialValue: Set(canonicalTagIDs))
+    }
+
+    private var visibleTags: [MobileCaptureTodayTag] {
+        let tags = client.tags(for: project.id)
+        guard let query = searchText.nonempty else { return tags }
+        return tags.filter {
+            $0.label.localizedCaseInsensitiveContains(query)
+                || $0.slug.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var selectionChanged: Bool {
+        selectedTagIDs != Set(canonicalTagIDs)
+    }
+
+    private var archivedSelection: [MobileCaptureTodayTag] {
+        client.tags(for: project.id).filter {
+            !$0.isActive && selectedTagIDs.contains($0.id)
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(entityTitle)
+                            .font(.headline)
+                        Label(project.name, systemImage: "bird")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+
+                Section("Tags in this Nest") {
+                    if visibleTags.isEmpty {
+                        ContentUnavailableView(
+                            searchText.isEmpty ? "No reusable tags yet" : "No matching tags",
+                            systemImage: "tag.slash",
+                            description: Text(searchText.isEmpty
+                                ? "Create the first reusable label in Nest, then refresh Today."
+                                : "Try another search.")
+                        )
+                    } else {
+                        ForEach(visibleTags) { tag in
+                            Button {
+                                if selectedTagIDs.contains(tag.id) {
+                                    selectedTagIDs.remove(tag.id)
+                                } else if tag.isActive && selectedTagIDs.count < 24 {
+                                    selectedTagIDs.insert(tag.id)
+                                }
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(tag.label)
+                                            .foregroundStyle(.primary)
+                                        if !tag.isActive {
+                                            Text("Archived · remove to save another change")
+                                                .font(.caption2)
+                                                .foregroundStyle(.orange)
+                                        }
+                                    }
+                                    Spacer()
+                                    if selectedTagIDs.contains(tag.id) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                                .frame(minHeight: 44)
+                            }
+                            .accessibilityIdentifier("CaptureTodayWorkTag_\(tag.id)")
+                            .accessibilityValue(selectedTagIDs.contains(tag.id) ? "Selected" : "Not selected")
+                            .accessibilityHint(tag.isActive ? "Active reusable Nest tag." : "Archived tag. It can be removed but not newly applied.")
+                        }
+                    }
+                }
+
+                Section {
+                    if !archivedSelection.isEmpty {
+                        Label(
+                            "Remove archived selections before saving a new tag set.",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                    }
+                    Text("This saves the complete tag selection in a protected phone outbox first, so it can survive a lost connection or relaunch. It changes only this Quipsly record—never a calendar, provider, message, delivery, or publication.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Create, rename, merge, and archive the reusable vocabulary in Nest. Today applies the active labels from this exact Nest.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .searchable(text: $searchText, prompt: "Find a tag")
+            .navigationTitle("Edit tags")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        let selection = selectedTagIDs.sorted()
+                        Task {
+                            let saved = await client.setWorkTags(
+                                kind: kind,
+                                entityID: entityID,
+                                projectID: project.id,
+                                tagIDs: selection,
+                                expectedUpdatedAt: expectedUpdatedAt
+                            )
+                            if saved { dismiss() }
+                        }
+                    }
+                    .disabled(!selectionChanged || !archivedSelection.isEmpty || client.isMutating)
+                    .accessibilityIdentifier("CaptureTodayWorkTagsSave")
+                }
+            }
+        }
     }
 }
 

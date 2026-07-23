@@ -785,6 +785,8 @@ struct MobileCaptureTodayTask: Codable, Identifiable, Hashable {
     let roomId: String?
     let sessionTitle: String?
     let project: MobileCaptureTodayProject?
+    let canEditTags: Bool?
+    let tagIds: [String]?
     let tagLabels: [String]?
     let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
     let todayReason: String?
@@ -804,6 +806,8 @@ struct MobileCaptureTodayGoal: Codable, Identifiable, Hashable {
     let roomId: String?
     let sessionTitle: String?
     let project: MobileCaptureTodayProject?
+    let canEditTags: Bool?
+    let tagIds: [String]?
     let tagLabels: [String]?
     let sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor?
 }
@@ -883,6 +887,16 @@ struct MobileCaptureTodayBoundaries: Codable, Hashable {
     let taskReminderIntentProjectionComplete: Bool?
     let deviceNotificationsReconciled: Bool?
     let reminderDeliveryClaimed: Bool?
+    let canonicalProjectTags: Bool?
+    let tagMutationExternalSideEffects: Bool?
+}
+
+struct MobileCaptureTodayTag: Codable, Identifiable, Hashable {
+    let id: String
+    let projectId: String
+    let slug: String
+    let label: String
+    let isActive: Bool
 }
 
 struct MobileCaptureTodayResponse: Codable, Hashable {
@@ -897,7 +911,21 @@ struct MobileCaptureTodayResponse: Codable, Hashable {
     let sourceAnnotations: [MobileCaptureTodaySourceAnnotation]?
     let weeklyPlan: MobileCaptureTodayWeeklyPlan?
     let taskReminderIntents: [MobileCaptureTodayReminderIntent]?
+    let tagCatalog: [MobileCaptureTodayTag]?
     let boundaries: MobileCaptureTodayBoundaries?
+}
+
+struct MobileCaptureWorkTagMutationResponse: Codable {
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let entityKind: String?
+    let entityId: String?
+    let projectId: String?
+    let tagIds: [String]?
+    let updatedAt: String?
+    let receiptId: String?
+    let idempotentReplay: Bool?
 }
 
 struct MobileCaptureTodayMutationResponse: Codable {
@@ -2404,11 +2432,15 @@ final class CaptureTodayClient: ObservableObject {
     @Published private(set) var isUsingProtectedCache = false
     @Published private(set) var pendingReminderDecisionCount = 0
     @Published private(set) var heldReminderDecisionCount = 0
+    @Published private(set) var pendingWorkTagDecisionCount = 0
+    @Published private(set) var heldWorkTagDecisionCount = 0
     @Published var errorMessage: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
     private let reminderDecisionOutbox = TaskReminderDecisionOutbox.shared
+    private let workTagDecisionOutbox = WorkTagDecisionOutbox.shared
     private var isFlushingReminderDecisions = false
+    private var isFlushingWorkTagDecisions = false
 
     private struct ProtectedCache: Codable {
         let schemaVersion: Int
@@ -2428,7 +2460,37 @@ final class CaptureTodayClient: ObservableObject {
         reminderDecisionOutbox.decision(forTaskID: taskID)
     }
 
+    func tags(for projectID: String) -> [MobileCaptureTodayTag] {
+        (brief?.tagCatalog ?? [])
+            .filter { $0.projectId == projectID }
+            .sorted {
+                $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+            }
+    }
+
+    func pendingWorkTagDecision(
+        kind: PendingWorkTagDecision.EntityKind,
+        entityID: String
+    ) -> PendingWorkTagDecision? {
+        workTagDecisionOutbox.decision(entityKind: kind, entityID: entityID)
+    }
+
+    func effectiveTagIDs(
+        kind: PendingWorkTagDecision.EntityKind,
+        entityID: String,
+        canonicalTagIDs: [String]
+    ) -> [String] {
+        pendingWorkTagDecision(kind: kind, entityID: entityID)?.tagIDs ?? canonicalTagIDs
+    }
+
+    func tagLabels(projectID: String, tagIDs: [String]) -> [String] {
+        let labels = Dictionary(uniqueKeysWithValues: tags(for: projectID).map { ($0.id, $0.label) })
+        return tagIDs.compactMap { labels[$0] }
+    }
+
     func loadPreview() {
+        publishReminderDecisionCounts()
+        publishWorkTagDecisionCounts()
         let now = Date()
         let start = ISO8601DateFormatter().string(from: now.addingTimeInterval(1_800))
         let end = ISO8601DateFormatter().string(from: now.addingTimeInterval(4_800))
@@ -2448,6 +2510,8 @@ final class CaptureTodayClient: ObservableObject {
                 roomId: "room-preview-coaching-ready",
                 sessionTitle: "Homer coaching session",
                 project: MobileCaptureTodayProject(id: "preview-high-ground", name: "High Ground Odyssey", slug: "preview-high-ground"),
+                canEditTags: false,
+                tagIds: ["preview-proof-listen", "preview-episode-4"],
                 tagLabels: ["Proof listen", "Episode 4"],
                 sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(
                     schema: "quipsly-transcript-derived-task-v1",
@@ -2480,13 +2544,19 @@ final class CaptureTodayClient: ObservableObject {
                 ),
                 reminder: nil
             )],
-            goals: [MobileCaptureTodayGoal(id: "preview-goal", title: "Leave the client with one clear next move", description: nil, status: "ACTIVE", targetAt: nil, progressPercent: 50, progressNote: "Session notes are captured.", updatedAt: ISO8601DateFormatter().string(from: now), roomId: "room-preview-coaching-ready", sessionTitle: "Homer coaching session", project: MobileCaptureTodayProject(id: "preview-high-ground", name: "High Ground Odyssey", slug: "preview-high-ground"), tagLabels: ["Coaching", "Follow-through"], sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(schema: "quipsly-transcript-derived-goal-v1", roomId: "room-preview-coaching-ready", transcriptJobId: "preview-job", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: String(repeating: "a", count: 64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Leave the client with one clear next move.", effectiveSpeakerLabelSnapshot: "Homer", acceptedCorrectionId: nil, recordingAssetId: "preview-recording-asset", playbackSourceId: "preview-playback-source"))],
+            goals: [MobileCaptureTodayGoal(id: "preview-goal", title: "Leave the client with one clear next move", description: nil, status: "ACTIVE", targetAt: nil, progressPercent: 50, progressNote: "Session notes are captured.", updatedAt: ISO8601DateFormatter().string(from: now), roomId: "room-preview-coaching-ready", sessionTitle: "Homer coaching session", project: MobileCaptureTodayProject(id: "preview-high-ground", name: "High Ground Odyssey", slug: "preview-high-ground"), canEditTags: false, tagIds: ["preview-coaching", "preview-follow-through"], tagLabels: ["Coaching", "Follow-through"], sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(schema: "quipsly-transcript-derived-goal-v1", roomId: "room-preview-coaching-ready", transcriptJobId: "preview-job", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: String(repeating: "a", count: 64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Leave the client with one clear next move.", effectiveSpeakerLabelSnapshot: "Homer", acceptedCorrectionId: nil, recordingAssetId: "preview-recording-asset", playbackSourceId: "preview-playback-source"))],
             focusBlocks: [MobileCaptureTodayFocusBlock(id: "preview-block", targetType: "task", targetId: "preview-task", title: "Proof-listen the coaching recap", targetStatus: "OPEN", startsAt: start, endsAt: end, timezone: TimeZone.current.identifier, status: "PLANNED", completedAt: nil, updatedAt: ISO8601DateFormatter().string(from: now))],
             transcriptReviews: [MobileCaptureTodayTranscriptReview(id: "preview-transcript-proposal", roomId: "room-preview-coaching-ready", sessionTitle: "Homer coaching session", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerText: "Welcome, everybody.", providerSpeakerLabel: "Speaker", proposedText: nil, proposedSpeakerLabel: "Charlie", reason: "The isolated host track suggests this speaker label.", recordingAssetId: "preview-recording-asset", playbackAvailable: true, updatedAt: ISO8601DateFormatter().string(from: now))],
             sourceAnnotations: [MobileCaptureTodaySourceAnnotation(id: "preview-annotation", kind: "question", body: "Does this distinction give us the episode's opening tension?", exactText: "Keep the source intact and let decisions live around it.", status: "active", visibility: "private", createdByMe: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", tagLabels: ["Episode seed"], updatedAt: ISO8601DateFormatter().string(from: now))],
             weeklyPlan: MobileCaptureTodayWeeklyPlan(id: "preview-week", weekStartsAt: ISO8601DateFormatter().string(from: now), commitments: ["Proof-listen one real session", "Send one source-linked follow-up"], supportNeeded: "A second listener for the final recap", progressNotes: nil, clientReviewedAt: nil, updatedAt: ISO8601DateFormatter().string(from: now)),
             taskReminderIntents: [],
-            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false)
+            tagCatalog: [
+                MobileCaptureTodayTag(id: "preview-proof-listen", projectId: "preview-high-ground", slug: "proof-listen", label: "Proof listen", isActive: true),
+                MobileCaptureTodayTag(id: "preview-episode-4", projectId: "preview-high-ground", slug: "episode-4", label: "Episode 4", isActive: true),
+                MobileCaptureTodayTag(id: "preview-coaching", projectId: "preview-high-ground", slug: "coaching", label: "Coaching", isActive: true),
+                MobileCaptureTodayTag(id: "preview-follow-through", projectId: "preview-high-ground", slug: "follow-through", label: "Follow-through", isActive: true),
+            ],
+            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false)
         )
         isUsingProtectedCache = false
         errorMessage = nil
@@ -2494,6 +2564,8 @@ final class CaptureTodayClient: ObservableObject {
 
     func load() async {
         guard !isLoading, let url = URL(string: "\(baseURL)/api/mobile/capture/today") else { return }
+        publishReminderDecisionCounts()
+        publishWorkTagDecisionCounts()
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
@@ -2518,8 +2590,9 @@ final class CaptureTodayClient: ObservableObject {
                     requestPermissionIfNeeded: false
                 )
             }
-            let synchronized = await flushReminderDecisions()
-            if synchronized {
+            let synchronizedReminders = await flushReminderDecisions()
+            let synchronizedTags = await flushWorkTagDecisions()
+            if synchronizedReminders || synchronizedTags {
                 Task { [weak self] in
                     await self?.load()
                 }
@@ -2527,7 +2600,7 @@ final class CaptureTodayClient: ObservableObject {
         } catch {
             if brief == nil { _ = restoreProtectedCache() }
             errorMessage = isUsingProtectedCache
-                ? "Nest is unavailable. Showing a protected Today snapshot; work decisions are disabled."
+                ? "Nest is unavailable. Showing a protected Today snapshot; tag choices can be queued safely, while other online work decisions stay disabled."
                 : error.localizedDescription
         }
     }
@@ -2592,6 +2665,69 @@ final class CaptureTodayClient: ObservableObject {
               decision.disposition == .held else { return }
         reminderDecisionOutbox.markAcknowledged(decision.id)
         publishReminderDecisionCounts()
+        errorMessage = nil
+        await load()
+    }
+
+    func setWorkTags(
+        kind: PendingWorkTagDecision.EntityKind,
+        entityID: String,
+        projectID: String,
+        tagIDs: [String],
+        expectedUpdatedAt: String
+    ) async -> Bool {
+        let allowedTagIDs = Set(tags(for: projectID).filter(\.isActive).map(\.id))
+        let normalized = Array(Set(tagIDs)).sorted()
+        guard normalized.count == tagIDs.count,
+              normalized.count <= 24,
+              normalized.allSatisfy(allowedTagIDs.contains) else {
+            errorMessage = "Choose up to 24 active tags from this record’s Nest."
+            return false
+        }
+        do {
+            let decision = try workTagDecisionOutbox.enqueue(
+                entityKind: kind,
+                entityID: entityID,
+                projectID: projectID,
+                tagIDs: normalized,
+                expectedUpdatedAt: expectedUpdatedAt
+            )
+            publishWorkTagDecisionCounts()
+            guard AuthManager.shared.networkActionsAllowed else {
+                errorMessage = "Tag choices are protected on this iPhone and queued for Nest."
+                return true
+            }
+            isMutating = true
+            defer { isMutating = false }
+            let synchronized = await syncWorkTagDecision(decision)
+            if synchronized {
+                errorMessage = nil
+                await load()
+            }
+            return synchronized
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func retryHeldWorkTagDecisions() async {
+        for decision in workTagDecisionOutbox.entries where decision.disposition == .held {
+            workTagDecisionOutbox.markRetryable(decision.id, message: "Retry requested.")
+        }
+        publishWorkTagDecisionCounts()
+        _ = await flushWorkTagDecisions()
+        await load()
+    }
+
+    func discardHeldWorkTagDecision(
+        kind: PendingWorkTagDecision.EntityKind,
+        entityID: String
+    ) async {
+        guard let decision = workTagDecisionOutbox.decision(entityKind: kind, entityID: entityID),
+              decision.disposition == .held else { return }
+        workTagDecisionOutbox.markAcknowledged(decision.id)
+        publishWorkTagDecisionCounts()
         errorMessage = nil
         await load()
     }
@@ -2786,6 +2922,80 @@ final class CaptureTodayClient: ObservableObject {
     private func publishReminderDecisionCounts() {
         pendingReminderDecisionCount = reminderDecisionOutbox.pendingCount
         heldReminderDecisionCount = reminderDecisionOutbox.heldCount
+    }
+
+    @discardableResult
+    private func flushWorkTagDecisions() async -> Bool {
+        guard !isFlushingWorkTagDecisions,
+              AuthManager.shared.networkActionsAllowed else {
+            publishWorkTagDecisionCounts()
+            return false
+        }
+        isFlushingWorkTagDecisions = true
+        defer {
+            isFlushingWorkTagDecisions = false
+            publishWorkTagDecisionCounts()
+        }
+        var synchronizedAny = false
+        for decision in workTagDecisionOutbox.entries where decision.disposition == .pending {
+            if await syncWorkTagDecision(decision) {
+                synchronizedAny = true
+            }
+        }
+        return synchronizedAny
+    }
+
+    private func syncWorkTagDecision(_ decision: PendingWorkTagDecision) async -> Bool {
+        guard let url = URL(string: "\(baseURL)/api/work/tags") else { return false }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "entityKind": decision.entityKind.rawValue,
+                "entityId": decision.entityID,
+                "tagIds": decision.tagIDs,
+                "expectedUpdatedAt": decision.expectedUpdatedAt,
+                "clientRequestId": decision.clientRequestID,
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureWorkTagMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                let message = payload.error ?? "Nest could not reconcile this tag change."
+                if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
+                    workTagDecisionOutbox.markRetryable(decision.id, message: message)
+                } else {
+                    workTagDecisionOutbox.markHeld(decision.id, code: payload.code, message: message)
+                }
+                errorMessage = message
+                publishWorkTagDecisionCounts()
+                return false
+            }
+            guard payload.entityKind == decision.entityKind.rawValue,
+                  payload.entityId == decision.entityID,
+                  payload.projectId == decision.projectID,
+                  payload.tagIds?.sorted() == decision.tagIDs,
+                  payload.receiptId == "work-tags-\(decision.clientRequestID)" else {
+                let message = "Nest returned a different tag identity or selection. The protected phone decision is held for review."
+                workTagDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
+                errorMessage = message
+                publishWorkTagDecisionCounts()
+                return false
+            }
+            workTagDecisionOutbox.markAcknowledged(decision.id)
+            publishWorkTagDecisionCounts()
+            return true
+        } catch {
+            workTagDecisionOutbox.markRetryable(decision.id, message: error.localizedDescription)
+            errorMessage = "Tag change remains protected for retry: \(error.localizedDescription)"
+            publishWorkTagDecisionCounts()
+            return false
+        }
+    }
+
+    private func publishWorkTagDecisionCounts() {
+        pendingWorkTagDecisionCount = workTagDecisionOutbox.pendingCount
+        heldWorkTagDecisionCount = workTagDecisionOutbox.heldCount
     }
 
     nonisolated private static func localReminderString(_ date: Date, timezone: String) -> String {

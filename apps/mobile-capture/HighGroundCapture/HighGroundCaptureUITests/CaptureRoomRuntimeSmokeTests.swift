@@ -481,6 +481,80 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    func testCanonicalWorkTagsRoundTripThroughSignedInToday() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let taskID = credentials.taskID, !taskID.isEmpty,
+              let tagLabel = credentials.tagLabel, !tagLabel.isEmpty else {
+            throw XCTSkip("The work-tag journey requires one exact task ID and reusable tag label.")
+        }
+        let app = try launchSignedInCaptureApp()
+
+        let showMore = app.buttons["CaptureTodayShowMoreTasks"].firstMatch
+        if waitForRuntimeElement(showMore, in: app, timeout: 12, swipeAttempts: 6) {
+            showMore.tap()
+        }
+
+        func openEditor() {
+            let edit = app.buttons["CaptureTodayTaskTagsEdit_\(taskID)"].firstMatch
+            XCTAssertTrue(
+                waitForRuntimeElement(edit, in: app, timeout: 30, swipeAttempts: 12),
+                "Today should expose tag editing for the exact writable canonical task."
+            )
+            XCTAssertTrue(edit.isEnabled)
+            edit.tap()
+            XCTAssertTrue(app.navigationBars["Edit tags"].waitForExistence(timeout: 8))
+        }
+
+        func tagChoice() -> XCUIElement {
+            let choice = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS %@", tagLabel)
+            ).firstMatch
+            XCTAssertTrue(
+                choice.waitForExistence(timeout: 8),
+                "The exact reusable Nest tag should be selectable on iPhone."
+            )
+            return choice
+        }
+
+        func saveAndWaitForReadback() {
+            let save = app.buttons["CaptureTodayWorkTagsSave"].firstMatch
+            XCTAssertTrue(save.waitForExistence(timeout: 5))
+            XCTAssertTrue(save.isEnabled)
+            save.tap()
+            let pending = app.descendants(matching: .any)["CaptureTodayTaskTagsPending_\(taskID)"].firstMatch
+            let deadline = Date().addingTimeInterval(30)
+            while pending.exists && Date() < deadline {
+                RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            }
+            XCTAssertFalse(pending.exists, "Exact Nest readback should clear the protected phone tag decision.")
+        }
+
+        openEditor()
+        let firstChoice = tagChoice()
+        let wasSelected = (firstChoice.value as? String) == "Selected"
+        firstChoice.tap()
+        XCTAssertEqual(firstChoice.value as? String, wasSelected ? "Not selected" : "Selected")
+        saveAndWaitForReadback()
+
+        openEditor()
+        let changedChoice = tagChoice()
+        XCTAssertEqual(
+            changedChoice.value as? String,
+            wasSelected ? "Not selected" : "Selected",
+            "Relaunching the editor should read the changed canonical tag set back from Nest."
+        )
+        changedChoice.tap()
+        saveAndWaitForReadback()
+
+        openEditor()
+        XCTAssertEqual(
+            tagChoice().value as? String,
+            wasSelected ? "Selected" : "Not selected",
+            "The second canonical round trip should restore the starting tag choice."
+        )
+        app.buttons["Cancel"].firstMatch.tap()
+    }
+
     func testCanonicalRecurrenceRoundTripsThroughSignedInToday() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let taskID = credentials.taskID, !taskID.isEmpty,
