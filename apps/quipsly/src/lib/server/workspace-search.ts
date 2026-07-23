@@ -77,6 +77,17 @@ export async function searchWorkspace(
     { body: { contains: query, mode: "insensitive" } },
     ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.CoachingNoteWhereInput] : []),
   ];
+  const documentBlockMatches: Prisma.StudioDocumentBlockWhereInput[] = [
+    { title: { contains: query, mode: "insensitive" } },
+    { body: { contains: query, mode: "insensitive" } },
+    ...(projectIds.length ? [{ taggedSpans: { some: { tag: visibleTagMatch } } } satisfies Prisma.StudioDocumentBlockWhereInput] : []),
+  ];
+  const documentContentMatches: Prisma.StudioDocumentWhereInput[] = [
+    { title: { contains: query, mode: "insensitive" } },
+    { sourceLabel: { contains: query, mode: "insensitive" } },
+    { blocks: { some: { archivedAt: null, OR: documentBlockMatches } } },
+    ...(projectIds.length ? [{ taggedSpans: { some: { tag: visibleTagMatch } } } satisfies Prisma.StudioDocumentWhereInput] : []),
+  ];
   const visibleAssignedTags = {
     where: { tag: { projectId: { in: projectIds } } },
     orderBy: { createdAt: "asc" as const },
@@ -134,9 +145,18 @@ export async function searchWorkspace(
       select: { id: true, title: true, kind: true, author: true, project: { select: { name: true, slug: true } } },
     }) : Promise.resolve([]),
     projectIds.length ? prisma.studioDocument.findMany({
-      where: { projectId: { in: projectIds }, OR: [{ title: { contains: query, mode: "insensitive" } }, { sourceLabel: { contains: query, mode: "insensitive" } }] },
+      where: { projectId: { in: projectIds }, OR: documentContentMatches },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
-      select: { id: true, title: true, projectionStatus: true, project: { select: { name: true, slug: true } } },
+      select: {
+        id: true, title: true, sourceLabel: true, projectionStatus: true,
+        project: { select: { name: true, slug: true } },
+        blocks: {
+          where: { archivedAt: null, OR: documentBlockMatches },
+          orderBy: { order: "asc" },
+          take: 1,
+          select: { id: true, title: true, body: true },
+        },
+      },
     }) : Promise.resolve([]),
     projectIds.length ? prisma.studioSourceAnnotation.findMany({
       where: { projectId: { in: projectIds }, status: "active", AND: [{ OR: [{ visibility: "project" }, { createdByUserId: input.actorUserId }] }, { OR: [{ body: { contains: query, mode: "insensitive" } }, { exactText: { contains: query, mode: "insensitive" } }] }] },

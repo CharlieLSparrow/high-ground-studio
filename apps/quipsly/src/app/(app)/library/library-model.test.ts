@@ -49,6 +49,40 @@ describe("source-first Library model", () => {
     expect(filterLibraryEntries(result.entries, { query: "leadership is learnable", kind: "source" }).map((entry) => entry.id)).toEqual(["source:source-1"]);
   });
 
+  it("projects document-kernel notes as searchable Notes with exact block continuation", () => {
+    const result = buildLibraryEntries({
+      sessions: [],
+      notes: [],
+      sources: [],
+      documents: [{
+        id: "doc-note",
+        title: "Coaching reflection",
+        sourceLabel: "document-kind:note",
+        projectionStatus: "private",
+        updatedAt: "2026-07-19T13:00:00Z",
+        project: { name: "Home Nest", slug: "home-person" },
+        blocks: [
+          { id: "block-title", title: "Note Title", body: "Note Title" },
+          { id: "block-insight", body: "Protect one honest editing block before Thursday." },
+        ],
+        episodeProductions: [],
+        _count: { blocks: 2 },
+      }],
+      media: [],
+    });
+
+    expect(result.entries[0]).toMatchObject({
+      id: "document:doc-note",
+      kind: "NOTE",
+      detail: "Protect one honest editing block before Thursday.",
+      href: "/create?project=home-person&document=doc-note&block=block-insight",
+      stateLabel: "Writing note",
+      badges: ["Document-kernel note", "2 blocks", "Stable document identity"],
+    });
+    expect(result.counts).toMatchObject({ notes: 1, documents: 0 });
+    expect(filterLibraryEntries(result.entries, { query: "honest editing", kind: "note" })).toHaveLength(1);
+  });
+
   it("fails closed when a promotion manifest is malformed", () => {
     expect(promotedMediaAssetId(null)).toBeNull();
     expect(promotedMediaAssetId({ promotion: { mediaAssetId: "" } })).toBeNull();

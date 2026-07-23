@@ -119,9 +119,16 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
       select: {
         id: true,
         title: true,
+        sourceLabel: true,
         projectionStatus: true,
         updatedAt: true,
         project: { select: { name: true, slug: true } },
+        blocks: {
+          where: { archivedAt: null },
+          orderBy: { order: "asc" },
+          take: 4,
+          select: { id: true, title: true, body: true },
+        },
         episodeProductions: { orderBy: { updatedAt: "desc" }, take: 1, select: { slug: true, title: true, status: true } },
         _count: { select: { blocks: { where: { archivedAt: null } } } },
       },

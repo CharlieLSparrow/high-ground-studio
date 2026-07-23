@@ -74,9 +74,11 @@ export function buildLibraryEntries(input: {
   documents: Array<{
     id: string;
     title: string;
+    sourceLabel?: string | null;
     projectionStatus: string;
     updatedAt: Date | string;
     project: { name: string; slug: string };
+    blocks?: Array<{ id: string; title?: string | null; body: string }>;
     episodeProductions: Array<{ slug: string; title: string; status: string }>;
     _count?: { blocks: number };
   }>;
@@ -173,22 +175,32 @@ export function buildLibraryEntries(input: {
   for (const document of input.documents) {
     const episode = document.episodeProductions[0] ?? null;
     const blockCount = document._count?.blocks ?? 0;
+    const writingNote = clean(document.sourceLabel).toLowerCase().includes("document-kind:note");
+    const previewBlock = (document.blocks ?? []).find((block) => {
+      const body = clean(block.body);
+      return body && body.toLowerCase() !== "note title" && body !== clean(block.title);
+    }) ?? document.blocks?.[0] ?? null;
+    const preview = clean(previewBlock?.body);
     entries.push({
       id: `document:${document.id}`,
-      kind: "DOCUMENT",
+      kind: writingNote ? "NOTE" : "DOCUMENT",
       title: clean(document.title) || "Untitled document",
-      detail: episode
+      detail: writingNote && preview
+        ? (preview.length > 220 ? `${preview.slice(0, 217)}…` : preview)
+        : episode
         ? `${episode.title} manuscript; ${blockCount} active block${blockCount === 1 ? "" : "s"}.`
         : `${blockCount} active manuscript block${blockCount === 1 ? "" : "s"}.`,
       projectName: document.project.name,
       projectSlug: document.project.slug,
-      href: episode
+      href: writingNote
+        ? `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}${previewBlock ? `&block=${encode(previewBlock.id)}` : ""}`
+        : episode
         ? `/read?projectSlug=${encode(document.project.slug)}&episodeSlug=${encode(episode.slug)}`
         : `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}`,
       updatedAt: iso(document.updatedAt),
-      stateLabel: episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
-      badges: [episode ? "Episode manuscript" : "Document", `${blockCount} blocks`, "Stable document identity"],
-      searchText: [document.title, document.projectionStatus, document.project.name, episode?.title, episode?.status].map(clean).join(" "),
+      stateLabel: writingNote ? "Writing note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
+      badges: [writingNote ? "Document-kernel note" : episode ? "Episode manuscript" : "Document", `${blockCount} blocks`, "Stable document identity"],
+      searchText: [document.title, document.projectionStatus, document.project.name, episode?.title, episode?.status, ...(document.blocks ?? []).flatMap((block) => [block.title, block.body])].map(clean).join(" "),
     });
   }
 

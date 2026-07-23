@@ -27,6 +27,8 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
   let workspaceId = "";
   let sourceId = "";
   let documentId = "";
+  let writingNoteDocumentId = "";
+  let writingNoteBlockId = "";
   let promotedMediaId = "";
   let standaloneMediaId = "";
   let actorNoteId = "";
@@ -107,6 +109,24 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     documentId = document.id;
     await prisma.studioDocumentBlock.create({ data: { documentId, stableId: `block-${nonce}`, order: 1, body: "A real manuscript block for proof." } });
     await prisma.studioEpisodeProduction.create({ data: { projectId, documentId, slug: `episode-7-${nonce}`, title: "Episode 7", boundaryLabel: "Episode 7" } });
+    const writingNote = await prisma.studioDocument.create({
+      data: {
+        projectId,
+        stableId: `writing-note-${nonce}`,
+        title: "Production reflection",
+        sourceLabel: "document-kind:note",
+      },
+    });
+    writingNoteDocumentId = writingNote.id;
+    const writingNoteBlock = await prisma.studioDocumentBlock.create({
+      data: {
+        documentId: writingNote.id,
+        stableId: `writing-note-block-${nonce}`,
+        order: 0,
+        body: "The document kernel keeps this everyday thought searchable.",
+      },
+    });
+    writingNoteBlockId = writingNoteBlock.id;
 
     const collection = await prisma.collection.create({ data: { userId: actorUserId, slug: `saved-${nonce}`, name: "Actor saved material" } });
     await Promise.all([
@@ -155,9 +175,15 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
       badges: expect.arrayContaining(["#Opening thought", "Offline retry safe"]),
     });
     expect(library.entries.find((entry) => entry.id === `document:${documentId}`)?.href).toContain(`/read?projectSlug=library-${nonce}&episodeSlug=episode-7-${nonce}`);
+    expect(library.entries.find((entry) => entry.id === `document:${writingNoteDocumentId}`)).toMatchObject({
+      kind: "NOTE",
+      detail: "The document kernel keeps this everyday thought searchable.",
+      href: `/create?project=library-${nonce}&document=${writingNoteDocumentId}&block=${writingNoteBlockId}`,
+      stateLabel: "Writing note",
+    });
     expect(library.entries.find((entry) => entry.id === `media:${standaloneMediaId}`)).toMatchObject({ title: "reusable-cold-open.mov" });
     expect(library.entries.some((entry) => entry.id === `media:${promotedMediaId}`)).toBe(false);
-    expect(library.counts).toMatchObject({ sessions: 1, notes: 1, sources: 1, documents: 1, media: 1, saved: 1 });
+    expect(library.counts).toMatchObject({ sessions: 1, notes: 2, sources: 1, documents: 1, media: 1, saved: 1 });
     expect(library.boundaries).toEqual({
       permissionFilteredBeforeProjection: true,
       immutableSourcesPreserved: true,
