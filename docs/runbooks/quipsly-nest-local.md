@@ -119,6 +119,26 @@ session validation, Home Nest onboarding, Projects, account switching, and
 logout. Keep local credentials out of committed files and shell history when
 they are anything other than disposable emulator values.
 
+For a fully disposable replay, run the opt-in integration test while Nest,
+PostgreSQL, and the Auth Emulator are already running:
+
+```bash
+cd apps/quipsly
+QUIPSLY_LOCAL_AUTH_SMOKE=1 \
+QUIPSLY_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio \
+QUIPSLY_LOCAL_NEST_URL=http://127.0.0.1:3012 \
+QUIPSLY_LOCAL_FIREBASE_AUTH_URL=http://127.0.0.1:9099 \
+  pnpm exec jest --runInBand \
+  src/app/api/auth/session/local-onboarding.integration.test.ts
+```
+
+The test refuses non-loopback service origins. It creates and verifies a unique
+Firebase emulator identity, operates the real HTTP session/onboarding/native
+session/Projects/Home Nest/Create/logout path, and then deletes the exact
+emulator identity plus its disposable database user, Home Nest, access grants,
+and membership cascade. Do not point this test at shared, staging, or production
+services.
+
 ## 5. Dogfood the canonical workflow
 
 Before treating a change as useful, operate the visible app:
