@@ -1,0 +1,89 @@
+/** @jest-environment node */
+
+jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
+jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
+
+import { buildPacketGoalCandidates } from "./route";
+
+const packetBuildId = "packet-build-1";
+const summary = {
+  sourceJson: {
+    packetBrief: {
+      kind: "quipsly-transcript-packet-brief-v1",
+      candidateOnly: true,
+      humanApprovalRequired: true,
+      sections: [{
+        id: "goals",
+        items: [{ segmentId: "segment-1", text: "Build a repeatable coaching review habit." }],
+      }],
+    },
+  },
+};
+const latestTranscriptJob = {
+  id: "job-1",
+  roomId: "room-1",
+  assetId: "asset-1",
+  status: "COMPLETED",
+  segments: [{ id: "segment-1", speakerLabel: "Homer", startSeconds: 12.4, endSeconds: 17.8, text: "My goal is to build a repeatable coaching review habit." }],
+};
+
+describe("packet goal candidates", () => {
+  it("binds a candidate to current provider evidence without creating work", () => {
+    expect(buildPacketGoalCandidates({ summary, latestTranscriptJob, goals: [], packetBuildId })).toEqual([expect.objectContaining({
+      id: "packet-goal-packet-build-1-segment-1",
+      clientRequestId: "packet-goal-packet-build-1-segment-1",
+      roomId: "room-1",
+      transcriptJobId: "job-1",
+      recordingAssetId: "asset-1",
+      segmentId: "segment-1",
+      startSeconds: 12.4,
+      providerTextSha256: expect.stringMatching(/^[a-f0-9]{64}$/),
+      suggestedTitle: "Build a repeatable coaching review habit.",
+      reviewStatus: "READY_FOR_HUMAN_REVIEW",
+      committedGoalId: null,
+    })]);
+  });
+
+  it("correlates the actor's accepted goal by deterministic request identity", () => {
+    const goals = [{ id: "goal-1", sourceJson: { schema: "quipsly-transcript-derived-goal-v1", clientRequestId: "packet-goal-packet-build-1-segment-1" } }];
+    expect(buildPacketGoalCandidates({ summary, latestTranscriptJob, goals, packetBuildId })[0]).toMatchObject({
+      reviewStatus: "ACCEPTED_AS_GOAL",
+      humanApprovalRequired: false,
+      committedGoalId: "goal-1",
+    });
+  });
+
+  it("replays the latest exact-source human review draft without manufacturing a goal", () => {
+    const reviewedSummary = {
+      sourceJson: {
+        ...summary.sourceJson,
+        goalCandidateReviewReceipts: [{
+          id: "receipt-1",
+          kind: "quipsly-goal-candidate-review-receipt-v1",
+          decision: "EDIT",
+          goalCandidateId: "packet-goal-packet-build-1-segment-1",
+          roomId: "room-1",
+          transcriptJobId: "job-1",
+          recordingAssetId: "asset-1",
+          packetBuildId,
+          reviewedAt: "2026-07-18T23:00:00.000Z",
+          reviewedByUserId: "user-1",
+          candidateDraftAfter: { title: "Review one coaching session each week", description: "A concrete weekly review habit." },
+        }],
+      },
+    };
+    expect(buildPacketGoalCandidates({ summary: reviewedSummary, latestTranscriptJob, goals: [], packetBuildId })[0]).toMatchObject({
+      suggestedTitle: "Review one coaching session each week",
+      suggestedDescription: "A concrete weekly review habit.",
+      reviewStatus: "EDITED_FOR_REVIEW",
+      committedGoalId: null,
+      lastHumanReview: { receiptId: "receipt-1", decision: "EDIT", reviewedByUserId: "user-1" },
+    });
+  });
+
+  it("fails closed for a non-candidate or uncorrelated brief", () => {
+    expect(buildPacketGoalCandidates({ summary: { sourceJson: { packetBrief: { ...summary.sourceJson.packetBrief, candidateOnly: false } } }, latestTranscriptJob, goals: [], packetBuildId })).toEqual([]);
+    expect(buildPacketGoalCandidates({ summary, latestTranscriptJob: { ...latestTranscriptJob, status: "RUNNING" }, goals: [], packetBuildId })).toEqual([]);
+  });
+});
