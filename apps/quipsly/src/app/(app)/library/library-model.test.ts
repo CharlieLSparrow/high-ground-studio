@@ -1,0 +1,44 @@
+import { buildLibraryEntries, filterLibraryEntries, promotedMediaAssetId } from "./library-model";
+
+describe("source-first Library model", () => {
+  it("deduplicates promoted capture media while retaining canonical Session continuation", () => {
+    const result = buildLibraryEntries({
+      sessions: [{
+        id: "room-1", title: "Episode 5", purpose: "PODCAST", status: "ENDED", updatedAt: "2026-07-19T16:00:00Z", project: { name: "High Ground Odyssey", slug: "high-ground" },
+        recordingAssets: [{ id: "recording-1", fileName: "episode5.wav", kind: "LOCAL_AUDIO", status: "VERIFIED", localManifestJson: { promotion: { mediaAssetId: "media-promoted" } } }],
+        transcriptJobs: [{ id: "job-1", status: "COMPLETED", provider: "deepgram", updatedAt: "2026-07-19T16:00:00Z", _count: { segments: 84 } }],
+      }],
+      sources: [], documents: [],
+      media: [
+        { id: "media-promoted", filename: "episode5.wav", isProxy: false, updatedAt: "2026-07-19T15:00:00Z", projects: [{ id: "project-1", name: "High Ground Odyssey", slug: "high-ground" }] },
+        { id: "standalone", filename: "cover.png", mimeType: "image/png", isProxy: false, updatedAt: "2026-07-19T14:00:00Z", projects: [{ id: "project-1", name: "High Ground Odyssey", slug: "high-ground" }] },
+      ],
+    });
+    expect(result.entries.map((entry) => entry.id)).toEqual(["session:room-1", "media:standalone"]);
+    expect(result.entries[0]).toMatchObject({ href: "/sessions/room-1", detail: "1 source recording; 84 transcript segments." });
+    expect(result.promotedMediaIds).toEqual(["media-promoted"]);
+    expect(result.boundaries).toMatchObject({ immutableSourcesPreserved: true, promotedCaptureMediaDeduplicated: true });
+  });
+
+  it("routes preserved sources, episode manuscripts, and legacy saves to their exact owning surfaces", () => {
+    const result = buildLibraryEntries({
+      sessions: [],
+      sources: [{ id: "source-1", title: "Leadership transcript", kind: "transcript", updatedAt: "2026-07-19T12:00:00Z", project: { name: "High Ground", slug: "high-ground" }, annotations: [{ id: "a1", kind: "quote", body: "Use this", exactText: "Leadership is learnable", visibility: "private" }] }],
+      documents: [{ id: "doc-1", title: "Episode 5 manuscript", projectionStatus: "private", updatedAt: "2026-07-19T11:00:00Z", project: { name: "High Ground", slug: "high-ground" }, episodeProductions: [{ slug: "episode-5", title: "Episode 5", status: "draft" }], _count: { blocks: 12 } }],
+      media: [],
+      saved: { collectionCount: 2, snippetCount: 3, bookmarkCount: 4, updatedAt: "2026-07-19T10:00:00Z" },
+    });
+    expect(result.entries.map((entry) => [entry.kind, entry.href])).toEqual([
+      ["SOURCE", "/research?source=source-1"],
+      ["DOCUMENT", "/read?projectSlug=high-ground&episodeSlug=episode-5"],
+      ["SAVED", "/collections"],
+    ]);
+    expect(filterLibraryEntries(result.entries, { query: "leadership is learnable", kind: "source" }).map((entry) => entry.id)).toEqual(["source:source-1"]);
+  });
+
+  it("fails closed when a promotion manifest is malformed", () => {
+    expect(promotedMediaAssetId(null)).toBeNull();
+    expect(promotedMediaAssetId({ promotion: { mediaAssetId: "" } })).toBeNull();
+    expect(promotedMediaAssetId({ promotion: { mediaAssetId: "media-1" } })).toBe("media-1");
+  });
+});
