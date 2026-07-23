@@ -2,6 +2,10 @@ import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/server/access";
 import { NextResponse } from "next/server";
+import {
+  commitAssistantEntityAction,
+  recordAssistantProposalDecisionAction,
+} from "@/app/(app)/create/actions";
 
 export async function GET(req: Request) {
   try {
@@ -40,7 +44,8 @@ export async function GET(req: Request) {
     const actions = await prisma.studioAssistantAction.findMany({
       where: {
         session: { projectId },
-        status: "proposed",
+        kind: { in: ["PROPOSE_ENTITY", "PROPOSE_ENTITY_UPDATE"] },
+        status: { in: ["proposed", "approved"] },
       },
       orderBy: { createdAt: "desc" },
     });
@@ -54,122 +59,32 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const session = await auth();
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const prisma = getPrismaClient();
-
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { primaryEmail: session.user.email.toLowerCase() },
-          { aliases: { some: { email: session.user.email.toLowerCase() } } },
-        ],
-      },
-    });
-
-    if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
-    }
-
     const body = await req.json();
-    const { actionId, status, comments } = body;
+    const actionId = typeof body.actionId === "string" ? body.actionId : "";
+    const status = body.status;
 
-    if (!actionId || !status) {
-      return NextResponse.json({ error: "actionId and status are required" }, { status: 400 });
+    if (!actionId || !["proposed", "approved", "rejected", "committed"].includes(status)) {
+      return NextResponse.json({ error: "actionId and a supported lowercase status are required" }, { status: 400 });
     }
 
-    const action = await prisma.studioAssistantAction.findUnique({
-      where: { id: actionId },
-      include: { session: true },
-    });
-
-    if (!action) {
-      return NextResponse.json({ error: "Action not found" }, { status: 404 });
+    const result = status === "committed"
+      ? await commitAssistantEntityAction(actionId)
+      : await recordAssistantProposalDecisionAction(actionId, status);
+    if (!result.ok) {
+      const responseStatus = result.code === "AUTH_REQUIRED"
+        ? 401
+        : result.code === "ACCESS_NOT_VERIFIED"
+          ? 403
+          : result.code === "ACTION_NOT_FOUND"
+            ? 404
+            : result.code === "PERSISTENCE_UNAVAILABLE"
+              ? 503
+              : 409;
+      return NextResponse.json({ error: result.error, code: result.code }, { status: responseStatus });
     }
-
-    const project = await prisma.studioProject.findUnique({
-      where: { id: action.session.projectId },
-    });
-
-    if (!project) {
-      return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    }
-
-    try {
-      await requireProjectAccess(project.slug, "write");
-    } catch (e: any) {
-      const message = e.message || "Forbidden";
-      if (message.startsWith("UNAUTHORIZED")) {
-        return NextResponse.json({ error: message }, { status: 401 });
-      }
-      return NextResponse.json({ error: message }, { status: 403 });
-    }
-
-    const result = await prisma.$transaction(async (tx: any) => {
-      const updatedAction = await tx.studioAssistantAction.update({
-        where: { id: actionId },
-        data: { status: status as string },
-      });
-
-      // Log the transition in the ledger
-      await tx.studioAssistantLedger.create({
-        data: {
-          actionId,
-          previousStatus: action.status,
-          newStatus: status as string,
-          notes: comments || null,
-        }
-      });
-
-      if (status === "APPROVED" && action.kind === "PROPOSE_ENTITY") {
-        const payload = action.payloadJson as any;
-        if (payload && payload.name && payload.type) {
-          await tx.storyEntity.create({
-            data: {
-              projectId: action.session.projectId,
-              type: payload.type,
-              name: payload.name,
-              aliases: payload.aliases || [],
-              attributes: payload.attributes || {},
-            }
-          });
-        }
-      }
-
-      if (status === "APPROVED" && action.kind === "PROPOSE_ENTITY_UPDATE") {
-        const payload = action.payloadJson as any;
-        if (payload && payload.entityId) {
-          const existing = await tx.storyEntity.findUnique({
-            where: { id: payload.entityId },
-          });
-          if (existing) {
-            const mergedAttributes = {
-              ...(existing.attributes as Record<string, any> || {}),
-              ...(payload.attributes || {}),
-            };
-            await tx.storyEntity.update({
-              where: { id: payload.entityId },
-              data: {
-                ...(payload.name && { name: payload.name }),
-                ...(payload.type && { type: payload.type }),
-                ...(payload.aliases && { aliases: payload.aliases }),
-                attributes: mergedAttributes,
-              },
-            });
-          }
-        }
-      }
-
-      return { updatedAction };
-    });
-
-    return NextResponse.json({ success: true, ...result });
+    return NextResponse.json({ ok: true, state: result.state, replay: result.replay, receipt: result.receipt });
   } catch (error: any) {
     console.error("POST /api/story-bible/actions error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
-

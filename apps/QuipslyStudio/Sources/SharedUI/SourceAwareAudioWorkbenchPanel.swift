@@ -54,9 +54,15 @@ private func audioRoomFormatDuration(_ seconds: Double) -> String {
     return String(format: "%d:%02d:%02d", total / 3600, (total % 3600) / 60, total % 60)
 }
 
+enum SourceAwareAudioWorkbenchPresentation {
+    case sidebar
+    case workspace
+}
+
 struct SourceAwareAudioWorkbenchPanel: View {
     var activeSessionName: String
     @ObservedObject var playbackEngine: PlaybackEngine
+    var presentation: SourceAwareAudioWorkbenchPresentation = .sidebar
     var onSeek: (Double) -> Void
     var onOpenPath: (String, String) -> Void
     var onCopyText: (String, String) -> Void
@@ -67,22 +73,17 @@ struct SourceAwareAudioWorkbenchPanel: View {
     @State private var sequenceTime = 0.0
     @State private var audioRoomClock = AudioRoomLiveClock()
     @State private var selectedTrackRoleId = "charlie"
-    @State private var showListeningRoom = true
+    @State private var showListeningRoom = false
     @State private var statusNote = "Ready to listen from source-aware truth."
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 12) {
-                headerCard
-                sharedTransportCard
-                stemLaneStack
-                referenceMixCard
-                reviewWindowsCard
-                doctrineCard
+        Group {
+            if presentation == .workspace {
+                listeningRoomContent
+            } else {
+                sidebarContent
             }
-            .padding(14)
         }
-        .background(QuipslyStudioTheme.sidePanelGradient)
         .task(id: activeSessionName) {
             snapshot = SourceAwareAudioWorkbenchSnapshot.load()
             sequenceTime = playbackEngine.playhead
@@ -116,39 +117,63 @@ struct SourceAwareAudioWorkbenchPanel: View {
                 }
             }
         }
-        .onDisappear {
-            teardownAudioPlayer()
-        }
-        .sheet(isPresented: $showListeningRoom) {
-            SourceAwareAudioListeningRoom(
-                snapshot: snapshot,
-                clock: audioRoomClock,
-                selectedTrackRoleId: $selectedTrackRoleId,
-                isPlaying: playbackEngine.isAuditioning && playbackEngine.isPlaying,
-                playingLabel: playingLabel,
-                onPlayTrack: { track, time in
-                    playAudio(track.path, label: track.label, startAt: time)
-                },
-                onPlayMix: { time in
-                    playStemMix(startAt: time, label: "Charlie + Homer + source live stem mix")
-                },
-                onPlayTrackRange: { track, start, end, shouldLoop in
-                    playAudio(track.path, label: "\(track.label) range", startAt: start, stopAt: end, loopStart: shouldLoop ? start : nil)
-                },
-                onPlayMixRange: { start, end, shouldLoop in
-                    playStemMix(startAt: start, stopAt: end, loopStart: shouldLoop ? start : nil, label: "Charlie + Homer + source live stem mix")
-                },
-                onPause: pauseAudio,
-                onSeekEditor: { time in
-                    setSequenceTime(time, syncEditor: true)
-                },
-                onCopyState: {
-                    onCopyText(audioStateReadback, "Copied source-aware audio state")
-                }
-            )
-            .frame(minWidth: 1380, minHeight: 880)
-        }
+        .onDisappear { teardownAudioPlayer() }
+        .sheet(isPresented: $showListeningRoom) { listeningRoomSheet }
         .accessibilityIdentifier("quipsly.workbench.audio.sourceAware")
+    }
+
+    private var sidebarContent: some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 12) {
+                headerCard
+                sharedTransportCard
+                stemLaneStack
+                referenceMixCard
+                reviewWindowsCard
+                doctrineCard
+            }
+            .padding(14)
+        }
+        .background(QuipslyStudioTheme.sidePanelGradient)
+    }
+
+    private var listeningRoomContent: some View {
+        SourceAwareAudioListeningRoom(
+            snapshot: snapshot,
+            clock: audioRoomClock,
+            selectedTrackRoleId: $selectedTrackRoleId,
+            isPlaying: playbackEngine.isAuditioning && playbackEngine.isPlaying,
+            playingLabel: playingLabel,
+            onPlayTrack: { track, time in playAudio(track.path, label: track.label, startAt: time) },
+            onPlayMix: { time in playStemMix(startAt: time, label: "Charlie + Homer + source live stem mix") },
+            onPlayTrackRange: { track, start, end, shouldLoop in
+                playAudio(track.path, label: "\(track.label) range", startAt: start, stopAt: end, loopStart: shouldLoop ? start : nil)
+            },
+            onPlayMixRange: { start, end, shouldLoop in
+                playStemMix(startAt: start, stopAt: end, loopStart: shouldLoop ? start : nil, label: "Charlie + Homer + source live stem mix")
+            },
+            onPause: pauseAudio,
+            onSeekEditor: { time in setSequenceTime(time, syncEditor: true) },
+            onCopyState: { onCopyText(audioStateReadback, "Copied source-aware audio state") }
+        )
+    }
+
+    private var listeningRoomSheet: some View {
+        ZStack(alignment: .topTrailing) {
+            listeningRoomContent
+            Button { showListeningRoom = false } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.title2)
+                    .symbolRenderingMode(.hierarchical)
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+            .help("Close Audio Room [Esc]")
+            .accessibilityLabel("Close Audio Room")
+            .accessibilityIdentifier("quipsly.audioRoom.close")
+            .padding(18)
+        }
+        .frame(minWidth: 1380, minHeight: 880)
     }
 
     private var selectedTrack: SourceAwareAudioTrackSnapshot? {

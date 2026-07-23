@@ -633,6 +633,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@google-cloud/storage':
+        specifier: ^7.19.0
+        version: 7.19.0(encoding@0.1.13)
       '@google/genai':
         specifier: ^2.7.0
         version: 2.7.0

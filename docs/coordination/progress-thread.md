@@ -1565,3 +1565,425 @@ checks, blockers, and next handoff.
 - Video can remain synchronized as an asset layer: local/remote video tracks, YouTube/reference clips, screen/video cues, and later multicam assets align to the high-quality audio spine rather than defining the whole recording system up front.
 - This connects naturally to transcript generation, paper edit, multitrack podcast editing, show notes, clip extraction, and publishing. The editing system should remain robust and multitrack, but connected tangibly to manuscript blocks, recording cues, and transcript ranges.
 - Existing video-editor work remains useful as timeline/render/segment/asset/360 groundwork, but mock assets and toy UI assumptions should not be treated as product truth.
+
+## 2026-07-18 - Unified Quipsly product goal active
+
+- Activated the persistent iPhone-first Quipsly product goal and recorded its architecture, research, acceptance gates, and loop-back rules in `docs/plans/quipsly-unified-product-goal-2026-07-18.md`.
+- iPhone Capture is now a focused Today/Record/Library/Account app with explicit consent, truthful local/upload state, a primary Session Plan, revision conflict review, and local-draft preservation. Simulator proof passed on iPhone 17 Pro; physical-device and real-session endurance proof remains open.
+- Hardened note sync/parse ownership and no-loss conflict behavior. Transcript-derived actions remain packet candidates until an explicit human decision; release evidence is checked again inside the accepting transaction.
+- Added the v2 canonical session-context spine without a schema migration: structured note/goal/task entries, stable IDs, optimistic revision, bounded receipts, transactional source-marked CoachingNote/ActionItem projections, idempotent resaves, and safe archive/cancel behavior.
+- Replaced misleading or fabricated states across Projects, Research, Schedule, Collections, Read, Publishing, Outputs, Analytics, and the routable legacy Publishing Suite with actor-scoped real reads or explicit signed-out/empty/unavailable/archived boundaries.
+- Retired randomized retention-telemetry seeding and fallback success. The reader is staff-gated, read-only, exact-ID only, and derives alerts solely from persisted points.
+- Visible local proof completed in the installed simulator and in-app browser. Consolidated focused Quipsly regression passed 22 suites / 114 tests; packet, session, public-failure, and source-only capture contract gates are green.
+- Public host truth remains blocked before app code: `highgroundodyssey.com`, `app.highgroundodyssey.com`, `quipsly.com`, and `nest.quipsly.com` return uniform Google Frontend HTTP 503. `gcloud` and ADC need interactive refresh. Loop back with `gcloud auth login --update-adc --brief`, then `bash scripts/release/quipsly-gcloud-auth-check.sh`, then read-only service/billing/revision/database inspection before any deployment decision.
+- No production write, deployment, provider call, OAuth grant, calendar mutation, publication, commit, or push was performed.
+
+## 2026-07-18 - Work Queue and runtime truth checkpoint
+
+- Added primary `/work` navigation and a canonical actor-scoped Work Queue for committed ActionItems, exact active Session Plan goal projections, and WeeklyCommitments.
+- Added explicit self-assigned personal task capture plus conflict-safe OPEN/DONE/CANCELED transitions. Creation and status changes write bounded internal receipts and explicitly claim no messaging, calendar, delivery, or publication side effect.
+- Kept inferred transcript candidates out of the queue until ACCEPT materializes one committed ActionItem. Preserved distinct provenance for accepted transcript proposals, Session Plan tasks, and manual tasks.
+- Fixed signed-out Settings to remain on `/settings` with a callback-safe sign-in gate.
+- Removed the unauthenticated development-owner bypass from `requireProjectAccess`; authentication now fails before private database reads in every environment.
+- Separated Jest `*.test.*` files from Playwright `*.spec.ts` journeys.
+- Running `http://127.0.0.1:3012` dogfood verified:
+  - private Work and Session Review sign-in gates;
+  - Schedule's honest database-unavailable state;
+  - render-worker retirement with no fake queue claim;
+  - beta-readiness `blocked`, 1/11 required gates passing, 14 production-core tables unproven/missing, and no valid release-smoke secret;
+  - repaired Settings callback path.
+- Authenticated web mutation remains unproven: available browser surfaces were signed out, the Google popup did not establish a local Quipsly session, and the configured database was unavailable.
+- Consolidated verification passed:
+  - Quipsly Jest: 47 suites / 218 tests;
+  - web Jest: 2 suites / 6 tests;
+  - Quipsly, domain, and web TypeScript checks;
+  - 76 capture/security/release contracts, including 50/50 iPhone durability checks;
+  - native Xcode iPhone 17 Pro simulator test: 8 UI tests passed; credential-dependent signed-in runtime smoke skipped as designed.
+- Physical iPhone, real QA credential/session, reachable persistence, cross-device receipt readback, real episode/coaching dogfood, public host recovery, and authorized destination readback remain open completion gates.
+- Public loop-back remains: `gcloud auth login --update-adc --brief`, `bash scripts/release/quipsly-gcloud-auth-check.sh`, then read-only service/billing/revision/database inspection.
+- No production write, deploy, provider call, OAuth grant, calendar mutation, publication, commit, or push was performed.
+
+## 2026-07-18 - Canonical Goal and follow-through checkpoint
+
+- Added additive canonical `Goal`, `GoalTaskLink`, and `GoalProgressReceipt` Prisma models plus the reversible `20260718190000_add_canonical_goals` migration. Goals now have an owner/lifecycle/target, optional room/booking/project and hierarchy links, explicit task relationships, and append-only progress evidence.
+- Regenerated Prisma and validated the schema. The migration was not applied: the configured database remains unavailable and no production mutation was authorized.
+- Session Plan v2 now dual-writes goal entries to the compatibility `CoachingNote` projection and canonical `Goal` in one transaction. Stable legacy projection IDs remain readable; canonical records retain exact context-entry and legacy-note provenance; removals archive history.
+- Upgraded `/work` from legacy goal-note display to canonical goal create, status, progress, task-connect, and task-disconnect decisions with owner/access rechecks and optimistic concurrency. Canonical goals suppress duplicate legacy projections; unmatched legacy goals remain read-only.
+- Expanded production-core readiness to 17 required tables with a dedicated three-table `goals-follow-through` group. Runtime error responses preserve the checklist and redact private database diagnostics.
+- Local runtime proof returned all 17 tables unproven/missing, including the goal group, with only a generic database-unavailable error. No persistence claim was made.
+- Consolidated verification passed: Quipsly Jest 49 suites / 227 tests, Quipsly and domain TypeScript checks, Prisma validation, and the six-fact mobile Session Plan static smoke.
+- Authenticated cross-device goal/task persistence, real episode/coaching use, physical iPhone operation, and the previously recorded public-service recovery gates remain open.
+- No database migration, production write, deploy, provider call, OAuth grant, calendar mutation, publication, commit, or push was performed.
+
+## 2026-07-18 - Personal planning and weekly review checkpoint
+
+- Added additive actor-owned `WorkPlanBlock` records with exact-one task/goal targeting, finite time windows, IANA timezone, explicit lifecycle, optimistic revisions, and bounded internal receipts.
+- Added the reversible `20260718203000_add_work_plan_blocks` migration. It also adds `WeeklyCommitment.clientReviewedAt` and `sourceJson` so client reflection evidence remains separate from coach review. The migration was generated/validated but not applied.
+- Schedule now requires a real Quipsly session and no longer falls back to an unauthenticated local operator identity.
+- Added a visible personal planning surface for accessible open tasks and owned active goals. Completing or moving a focus block never mutates target status, deadlines, appointments, provider calendars, or invitations.
+- Added actor-owned weekly commitment create/update, support requests, progress reflection, and explicit client-reviewed evidence. One required plus two optional commitments discourage overloaded plans; stale writes conflict.
+- Running-app proof: signed-out `/schedule` returns the private-runway lock. Production-core readiness returns `error`, 0/18 present, 18 missing/unproven, all four goals/follow-through tables missing, and a generic database-only diagnostic.
+- Consolidated verification passed: Quipsly Jest 52 suites / 237 tests, Quipsly and domain TypeScript checks, Prisma validation/client generation, and scoped diff checks.
+- Authenticated persistence/cross-device readback and real episode/coaching dogfood remain blocked on a real QA session and reachable schema; no external calendar/provider action was attempted.
+- No database migration, production write, deploy, provider call, OAuth grant, calendar mutation, invitation, publication, commit, or push was performed.
+
+## 2026-07-18 - iPhone Today follow-through checkpoint
+
+- Added authenticated `/api/mobile/capture/today` readback for canonical actor-scoped tasks, goals/progress, personal focus blocks, and the active weekly plan. Unreviewed transcript candidates remain quarantined.
+- Added conflict-safe iPhone task-status and focus-status decisions with access rechecks and bounded internal receipts. Focus completion cannot complete its target or mutate recording/provider/calendar state.
+- Capture Today now displays the next focus block, committed tasks, active goals, and weekly commitments beneath the next session, with useful Task Done and Block done actions.
+- Added an owner-bound, complete-file-protection, backup-excluded Today cache. Offline snapshots are read-only, network authority is required for mutations, and sign-out clears the cache.
+- Running local endpoint proof: signed-out `/api/mobile/capture/today` returned HTTP 401 before private reads.
+- Consolidated web verification passed: Quipsly Jest 53 suites / 240 tests, TypeScript, and scoped diff checks.
+- Native Xcode test succeeded on iOS 26.3 / iPhone 17 Pro simulator: 9 deterministic UI tests passed, including Today canonical follow-through; signed-in credential smoke skipped. Evidence: `/tmp/quipsly-capture-derived/Logs/Test/Test-HighGroundCapture-2026.07.18_18-56-51--0600.xcresult`.
+- Authenticated cross-device mutation, safe schema application, physical iPhone work, and real coaching/episode dogfood remain open. No schema migration, production write, deploy, provider/calendar call, invitation, publication, commit, or push occurred.
+
+## 2026-07-18 - Source-aware annotation checkpoint
+
+- Consolidated the next annotation lane around immutable `StudioSourceUnit`, canonical project `StudioTag`, and additive revisioned `StudioSourceAnnotation` overlays. Legacy Studio spans and QuipLore notes remain intact during migration.
+- Added quote-and-position selectors with prefix/suffix context and source fingerprints; stale anchors fail closed. Private overlays are author-only, Nest-visible overlays still require project access, and only authors can change review state.
+- Added reversible source-annotation and annotation-use migrations and expanded production-core readiness to 22 tables. They were not applied.
+- `/research` now exposes a real source reader and selection-first annotation composer with types, privacy, tags, visible source boundary, idempotent saves, and resolve/reopen receipts.
+- iPhone Today now reads active source-linked research cues and lets their author resolve one without changing preserved source text. Protected offline readback is decision-disabled.
+- Added an idempotent annotation-to-private-draft handoff with a typed evidence-use row, stable citation, reversible document operation, writing-editor provenance panel, and Research-side `Used in writing` readback.
+- Added private/no-store per-Nest research export with full preserved text, source hashes, actor-scoped annotations/revisions, tags, writing-use links, explicit boundaries, and a manifest digest. Restore mutation remains deliberately unclaimed.
+- Verification passed: Prisma validate/generate; Quipsly TypeScript; 55 Jest suites / 246 tests; 47/47 mobile source-contract checks; 7/7 deterministic `CaptureExperienceUITests` on iPhone 17 Pro simulator. Xcode evidence: `/tmp/quipsly-capture-derived/Logs/Test/Test-HighGroundCapture-2026.07.18_19-18-22--0600.xcresult`.
+- Running Nest proof on port 3012 showed honest `/research` database-unavailable UI; mobile Today and research export HTTP 401 before private reads; and production-core `error` with 0/22 tables present and the six-table source-aware group unproven.
+- Authenticated persistence, separate-account privacy, physical iPhone, real HGO/coaching evidence flows, writing/Studio handoff, export/restore, and public-service recovery remain open. Loop back after safe schema sync and a real QA session; no production/external mutation, migration application, commit, or push occurred.
+
+## 2026-07-18 - Real research dogfood and no-overwrite restore checkpoint
+
+- Started only the disposable local Postgres lane, reviewed Prisma's datasource-to-schema SQL for drops, then used `prisma db push` against `localhost:5432/high_ground_studio`. Production and migration history were untouched; local production-core now reports 22/22 required tables ready.
+- Added explicit `server-only` dependency ownership and aligned Jest to one workspace React dispatcher after the forced reinstall exposed duplicate React copies.
+- Dogfooded real repository work into `quipsly-local-dogfood`: the Homer coaching workflow guide and Episode 4 audio-first publication goal were stored as versioned immutable sources, annotated at exact passages, resolved/reopened, and converted into private citation-linked writing drafts. Direct readback proved hashes, quote anchors, tags, three revisions per annotation, reversible draft operations, and retry reuse.
+- Fixed Create's legacy-workspace-only lookup. Dynamic canonical Nests now resolve by the same slug rule as access checks, so evidence draft links no longer reject a valid project outside `tonight-pack`.
+- Operated `/research` in the in-app browser at desktop and 390x844 phone dimensions. It rendered eight persisted source cards across the source and restored Nests with no horizontal overflow. Local fallback is now visibly read-only and exposes no annotation, draft, private export, or restore mutation controls.
+- Added `quipsly-research-export-v1` validation and authenticated `/api/research/restore`. Validation checks manifest/count/source hashes/exact anchors/size/write access and returns a no-overwrite plan; apply is a separate request, versioning source-name collisions and using deterministic actor-bound annotation identities.
+- Added app-visible export/restore UX: choose destination, load JSON locally, validate, inspect create/reuse/collision/deferred-use counts, then explicitly apply only when overwrite and source-mutation counts are zero. Writing-use target restore remains deferred and visibly named.
+- Dogfooded export-to-restore into `quipsly-local-restored-research`. The expanded bundle contains two coaching and two Episode 4 sources, tags, annotations, revision receipts, and deferred private writing uses. After adding the second pair, apply created two and reused two of each source/tag/annotation identity; the immediate retry reused all four with zero creates, zero overwrites, and zero source mutations. Direct readback verified all four hashes, exact anchors, and `restored-from-export` receipts.
+- Verification at this checkpoint: Quipsly TypeScript; full Jest 58 suites / 254 tests; mobile source-only contract smoke 47/47; local restore endpoint HTTP 401 before body/private reads when signed out; production-core 22/22 ready; `git diff --check` clean.
+- Still open: real authenticated browser export/apply, separate-account privacy, physical iPhone and cross-device annotation decisions, restored writing-use target documents, production/public host recovery, and Studio proof-watch/listen. The local two-coaching/two-episode source-to-writing requirement is satisfied with repository truth, but these are not recorded coaching sessions or complete produced episode flows. No migration-history application, production mutation, deploy, provider call, invitation, calendar action, publication, commit, or push occurred.
+
+## 2026-07-18 - Canonical Research to Studio handoff and native launch repair
+
+- Added `quipsly-research-studio-handoff-v1` on canonical `StudioOutputPacket` rows. A handoff pins one project-visible annotation revision, exact source selector, source SHA-256, tags, and safe writing provenance. Private annotations are blocked; private draft IDs/titles/blocks/bodies are omitted; retries reuse the same revision packet; changed anchors or fingerprints fail closed.
+- Research now offers `Send pinned revision to Studio` only for signed-in writers and Nest-visible annotations. The two Episode 4 dogfood annotations produced two real `ready-for-studio` packets at revision 3. Direct local readback verified both exact quotes and hashes, one hidden private writing use per packet, zero source/media mutations, no publish authority, and idempotent retry.
+- Extended the existing Firebase bearer-token Mac session envelope and QuipslyStudio Account workbench with a read-only `Nest evidence inbox`. The inbox renders source title, exact quote, annotation note/revision/kind/tags, short hash receipt, human-review requirement, and a count of private links whose contents remain hidden.
+- Built and launched the exact `/tmp/quipsly-studio-handoff-derived/Build/Products/Debug/QuipslyMac.app` bundle. Real UI operation exposed a launch freeze: first-layout agent state synchronously crawled `~/Movies/QuipslyExports`, a symlink to the removable `My Passport` drive. Removed the implicit main-thread crawl; queue paths now come only from explicit import/generate state. The rebuilt app became AX-readable in 3.2 seconds, drained the Account command to handled state, and visibly rendered the evidence inbox.
+- Fixed agent JSON readback so a re-sanitized numeric zero remains `0` instead of bridging to boolean `false`. The running app now reports numeric `studioEvidenceHandoffCount: 0` and `visibleProjectCount: 0` while signed out.
+- Current verification: Quipsly TypeScript passed; Jest 59 suites / 258 tests passed; mobile source-only contract smoke 47/47 passed; production-core reports 22/22 ready; QuipslyMac Debug build succeeded; `git diff --check` passed. ESLint is not installed in the Quipsly package, so the attempted focused lint command could not run.
+- Authenticated native packet readback remains open: this Mac has no saved Firebase refresh token, and signed-out `/api/mac/session-check` correctly returns 401 before private reads. Loop back after a real QA native session exists, then verify these exact two packet IDs appear on the Mac under authorized project access and remain absent for a separate unauthorized account. No credentials were entered or created.
+
+## 2026-07-18 - Playback-reviewed transcript correction checkpoint
+
+- Added additive `TranscriptCorrection` and `TranscriptCorrectionRevision`
+  models plus reversible migration `20260719001500_add_transcript_corrections`.
+  Provider `TranscriptSegment` rows remain immutable; accepted overlays retain
+  original SHA-256/text/speaker and unchanged media-time snapshots.
+- Nest Session Review now has protected audio/video controls, per-segment play,
+  human word/speaker correction, correction history, and AI proposal
+  accept/reject. Accepted changes require an explicit listen checkbox and the
+  player's actual position inside the segment window. AI output always begins
+  proposed and does not change effective transcript text before review.
+- Reads, mutations, and idempotent replays all recheck room access and capture
+  release evidence. Stale provider text, a newly active overlay, missing
+  playback, or a save race fails closed. Transcript runner replacement is now
+  atomic and refuses to overwrite a version with correction history.
+- Native Firebase session context now carries accessible, released correction
+  briefs into QuipslyStudio. The Account workbench has a read-only Transcript
+  Review inbox that distinguishes proposals from accepted overlays and sends
+  decisions back to the Nest playback desk.
+- Local-only dogfood used the real repository Episode 4 Charlie 680–740 second
+  WAV and its MLX Whisper draft: 60-second playable source, five timed segments,
+  stable source/asset/job lineage, and one filename-derived Charlie speaker
+  proposal with one revision. QuickTime opened the exact copied WAV and
+  playback advanced through the first segment to six seconds.
+- The proposal remains `proposed`; `humanListenPerformed=false`. UI automation
+  proved bytes and controls, but Codex cannot hear the speaker output and did
+  not fabricate a human approval receipt.
+- The additive local schema diff was inspected with no drops and pushed only to
+  `localhost:5432/high_ground_studio`; a second diff is empty. Production-core
+  readiness is now 24/24 locally. Production and migration history were not
+  changed.
+- Verification at this checkpoint: Quipsly TypeScript passed; full Jest 61
+  suites / 266 tests passed; focused correction service 6/6 and UI 2/2 passed.
+  Signed-out GET/POST correction routes and raw playback all returned HTTP 401
+  before private evidence. The exact rebuilt QuipslyMac bundle succeeded and
+  its Account accessibility tree visibly reads `Transcript review inbox 0`
+  plus the AI/protected-playback boundary while signed out. Authenticated
+  web/native correction readback remains open.
+
+## 2026-07-18 - iPhone playback-reviewed transcript correction checkpoint
+
+- Added a first-class Transcript Review destination to each eligible retained source in Capture Library. It reads the same canonical Nest correction desk as web and shows immutable provider evidence, effective reviewed overlays, correction history, and quarantined AI proposals.
+- iPhone acceptance now requires an exact `recordingAssetId` match between the retained local original and the recording asset backing Nest playback. Missing, deleted, remote-only, preview, mismatched, or not-yet-playable media remains review-only instead of silently falling back to a different recording.
+- Native playback seeks the retained `AVAudioPlayer` to the exact segment, records actual player position, and pauses near the review window. Human correction and AI acceptance unlock only while that measured position is inside the server-enforced timestamp window. A checkbox or preview claim cannot unlock the mutation.
+- Human word/speaker changes preserve provider text, speaker, SHA-256, and media time underneath the versioned overlay. AI rejection remains available without pretending playback occurred; AI acceptance requires the same exact-source position proof. Neither path creates work, sends notes, moves media, or publishes.
+- Added deterministic preview UI for review-state inspection with every mutation disabled and explicit `Preview data — no server actions` plus `Review-only on this iPhone` boundaries.
+- Today now answers `what needs review?` with up to eight accessible, release-gated AI transcript proposals. The server reads each candidate through the canonical correction desk and omits held or inaccessible rooms. Each phone row keeps the proposal non-authoritative, names the session/timestamp, shows exact-local-source readiness, and opens the same correction surface instead of inventing a second decision contract.
+- The protected Today snapshot can retain proposal readback offline, but all decisions remain disabled without current authority and exact local playback. Transcript review does not complete tasks, change goals, send notes, or mutate provider/calendar/recording state.
+- Added a per-session protected transcript-desk cache bound to the signed-in email, written atomically with complete file protection, excluded from backup, capped at 30 days, and cleared on sign-out. Offline users can inspect provider/correction evidence and play an exact retained original; human/AI decisions stay locked until Nest verifies current authority. Cache failures never replace a newer in-memory desk with fabricated data.
+- Added protected local correction drafts keyed by account, room, segment, and provider-text SHA-256. Word/speaker/reason edits survive navigation and outages, are visibly `not synced`, fail restoration when provider evidence changes, clear after a successful canonical save or explicit discard, and are erased on sign-out. Offline drafting does not create an accepted overlay or queue a hidden mutation.
+- Simulator build succeeded. All 8 primary `CaptureExperienceUITests` passed on iPhone 17 Pro / iOS 26.3.1, including consent, navigation, session planning, accessibility, Today follow-through, and the new transcript/AI boundary journey. Evidence: `/tmp/quipsly-capture-transcript-derived/Logs/Test/Test-HighGroundCapture-2026.07.18_21-24-16--0600.xcresult`.
+- Mobile source contract now passes 50/50 checks, including authenticated correction-route, immutable-evidence, exact-source iPhone, AI-quarantine, and no-delivery/no-publication boundaries. App Store static smoke passes 563/563. `git diff --check` remains clean.
+- The Today route's signed-out runtime boundary still returns HTTP 401 before private reads. Its focused server contract passes 3/3; Quipsly TypeScript and the full 61-suite / 266-test regression pass. Focused simulator rerun passed both Today resurfacing and transcript-review journeys.
+- The focused transcript-review simulator journey additionally passes iOS accessibility audit checks for hit regions, sufficient descriptions, and clipped text.
+- Deterministic preview can open the correction editor for UX inspection, but playback proof, canonical save, local draft persistence, AI accept, and AI reject remain disabled. The simulator re-proved that editor boundary and accessibility audit.
+- Repaired Capture's existing `Mark` control from toast-only behavior into visible source metadata. Live capture shows mark count and latest audio time without pausing; finalized Library cards reconstruct every numbered timestamp from persisted `user-mark` segment boundaries. The mark remains metadata around immutable bytes, not an audio edit.
+- Kept `New session` permanently available in Today's top bar after the richer follow-through content pushed the old Later-section action outside LazyVStack's instantiated viewport. Session-duplication UI proof now checks canonical row identity rather than globally counting a title that legitimately appears in transcript review.
+- Final unified iPhone 17 Pro / iOS 26.3.1 run passed all 8 primary journeys after those repairs. Evidence: `/tmp/quipsly-capture-transcript-derived/Logs/Test/Test-HighGroundCapture-2026.07.18_21-49-48--0600.xcresult`. Mobile source/capture contract passes 51/51; App Store static smoke remains 563/563; scoped and repository diff checks are clean.
+- This is simulator and static proof, not physical-iPhone or authenticated cross-device proof. Loop back when an iPhone and real QA account are available: retain/upload one real take, load its canonical transcript, play and correct one segment on-device, review one AI proposal, then read the same correction IDs/revisions in Nest and Studio. No production write, deploy, provider/calendar call, invitation, publication, commit, or push occurred.
+
+## 2026-07-18 - Explicit transcript-derived task checkpoint
+
+- Added one deliberate `Make this my task` composer to the shared Nest and iPhone transcript-correction surfaces. Opening the composer creates nothing; only the final `Create my task` decision may create one self-owned `OPEN` ActionItem.
+- The server re-reads current room access, release/consent gate, protected playback, transcript segment, accepted correction overlay, and provider-text SHA inside the creation transaction. Stale, held, inaccessible, or mismatched evidence fails closed.
+- Each committed task retains the room, transcript job, segment, exact start/end seconds, provider text/hash/speaker, current reviewed overlay snapshot, accepted correction identity, recording asset, playback source, actor, surface, and stable client request identity under `quipsly-transcript-derived-task-v1`.
+- Retried requests are idempotent and reauthorize the source before returning the existing task. An identity rebound to different evidence is rejected. Creation does not change transcript/provider evidence, recording bytes, correction overlays, deadlines, reminders, calendar, messages, delivery, or publication.
+- Fixed two accessibility defects revealed by operating the combined correction/task composer: the local-draft discard target now meets the 44-point minimum, and correction decisions stack at full width so `Accept reviewed correction` grows under Dynamic Type instead of clipping.
+- Focused native transcript/task/a11y proof passed on iPhone 17 Pro / iOS 26.3.1. The final unified native run passed all 8 primary journeys: `/tmp/quipsly-capture-transcript-derived/Logs/Test/Test-HighGroundCapture-2026.07.18_22-09-14--0600.xcresult`.
+- Verification passed: focused route/web 7/7; full Quipsly Jest 62 suites / 271 tests; TypeScript; mobile source contract 52/52. Running local POST while signed out returned HTTP 401 before private evidence reads.
+- Authenticated task creation and cross-device readback remain unproven without a real QA session. Required loop-back: play a released exact-source segment on a physical iPhone, create one real task from it, verify the identical task and source receipt in Today, Work, Schedule, the session, and a second client, then reopen the exact recording timestamp. No production write, deploy, provider/calendar call, invitation, publication, commit, or push occurred.
+
+### Exact transcript-task source return checkpoint
+
+- Promoted `quipsly-transcript-derived-task-v1` into a shared, fail-closed source-anchor parser. Work and mobile Today only expose the anchor when schema, room, job, segment, ordered media time, provider SHA-256, effective reviewed text, recording asset, and playback source are complete and the task room still matches.
+- Work now shows the reviewed transcript speaker/text and returns to the exact Session segment hash. The Session correction desk scrolls and focuses that segment after load instead of dropping the user at the top of a long transcript.
+- Native Today now offers a visible `Return to 00:03–00:04` action for a transcript-derived task. It opens the shared transcript review surface at the preserved segment and retained recording source, identifies that it was opened from task evidence, and never starts playback automatically.
+- Operating the new Today journey exposed a real SwiftUI infinite-layout regression: scrolling the source link into a giant lazy/grouped follow-through card trapped the app in `LazySubviewPlacements` / `AttributeGraph` updates until XCTest timed out. Today now uses its bounded non-lazy stack and smaller labeled accessibility landmarks, removing the cycle and improving VoiceOver control granularity.
+- Focused Today-to-source and transcript-review journeys pass. The final unified iPhone 17 Pro / iOS 26.3.1 simulator run passed 10 tests, skipped 1 explicit environment-dependent test, and failed 0: `/tmp/quipsly-capture-transcript-derived/Logs/Test/Test-HighGroundCapture-2026.07.18_22-46-20--0600.xcresult`.
+- Refreshed verification passes: full Quipsly Jest 62 suites / 273 tests, Quipsly and shared-domain TypeScript, mobile source contract 52/52, App Store static contract 563/563, and `git diff --check`.
+- This proves the deterministic simulator and local contract round trip, not authenticated or production truth. Required loop-back remains: use a released recording on a physical iPhone under a real QA account, create the task, verify the identical task/source IDs in Today, Work, Schedule, Session, and a second client, manually play the exact timestamp, and then repeat after editing/resurfacing. No production write, deploy, provider/calendar call, invitation, publication, commit, or push occurred.
+
+### Portable research writing-target restore checkpoint
+
+- Portable Research exports now include a typed, SHA-256-manifested snapshot of each eligible writing-use target document and referenced block. Another member's private draft link is excluded unless the exporter created that use; project-visible writing targets remain portable.
+- Validation binds every writing target to its exported use, annotation, document, and block identities; malformed dates, repeated IDs, inconsistent shared-document snapshots, and block/document rebounds fail before Prisma opens. Older valid exports without target snapshots remain accepted and report those legacy links as deferred.
+- Restore creates private excerpt documents containing only the referenced blocks and says so explicitly; it never claims the original full document was exported. Source text, existing documents, and existing blocks are never overwritten. Each create/reuse decision is deterministic, actor-bound, reversible, and backed by restore provenance plus a `StudioDocumentOperation` receipt.
+- Writing-link identity now includes the verified use+target snapshot digest. Retrying an identical export reuses the same document, block, annotation, and use IDs. A later export whose referenced writing bytes changed creates a new private excerpt/link version while leaving the first version untouched.
+- The opt-in local PostgreSQL smoke created and inspected a real source, tag, annotation, private excerpt document/block, evidence link, and receipts; granted a second actor Viewer access; retried the same package; then restored a changed block snapshot. It proved the creator can resolve the private link while the second authorized actor and signed-out predicate both receive zero writing-use rows, first-retry ID reuse, changed-snapshot versioning, exact preserved source bytes, private projection status, zero overwrites, and 0 temporary workspace/account leftovers after cleanup.
+- Verification passes: focused portability/export/restore 10/10; opt-in local DB smoke 1/1; full Quipsly Jest 62 passing suites / 277 passing tests with the DB smoke skipped by default; Quipsly and shared-domain TypeScript; mobile source contract 52/52; `git diff --check`.
+- Authenticated browser download/validate/apply/readback, second-account privacy through the real UI, and cross-device writing-open behavior remain unproven until a real QA session is available. No production write, deploy, provider/calendar call, invitation, publication, commit, or push occurred.
+
+### Schedule exact-source continuity checkpoint
+
+- Schedule now parses the same fail-closed `quipsly-transcript-derived-task-v1` source receipt used by Work and Today and exposes it only when the preserved room ID still matches the ActionItem relationship.
+- An accepted transcript-derived task shows its reviewed speaker/text and exact Session timestamp in the committed-work lane. The focus picker names it as reviewed transcript work, and a saved focus block retains the same source return instead of flattening the task to a title.
+- Planning, moving, completing, skipping, or canceling the focus block remains independent from task state, deadlines, transcript truth, recording evidence, and external calendars. The source link only navigates to the exact review segment; it does not autoplay or mutate evidence.
+- Focused Schedule model/page/planner proof passes 13/13. Full Quipsly Jest passes 62 suites / 277 tests with the opt-in DB smoke skipped, TypeScript passes, mobile source contract remains 52/52 with Schedule included in the exact-source invariant, App Store static checks pass 563/563, and `git diff --check` passes.
+- Real-account persistence is still required: create the task from released playback, plan it, reopen the same task/segment from Schedule and iPhone, complete only its focus block, and verify the task stays open on a second client. No external calendar mutation, production write, deploy, invitation, publication, commit, or push occurred.
+
+### Evidence-aware next-day Today checkpoint
+
+- Reworked mobile Today's committed-task selection from raw database order into a bounded relevance order: focus blocks beginning within 24 hours, overdue/due-within-24-hours commitments, recently created reviewed-transcript work, then ordinary open tasks. A task planned later in the seven-day planning horizon no longer masquerades as today's focus.
+- Added an app-visible explanation for every elevated task. The iPhone shows `Planned focus`, `Overdue commitment`, `Due within 24 hours`, `Reviewed transcript follow-through`, or the combined planned/reviewed state while preserving the exact reviewed speaker, words, session, and source-return action.
+- Ranking reads at most 200 actor-visible open rows and returns at most 20. It still quarantines unreviewed transcript candidates and has no implicit calendar, provider, reminder, delivery, publication, transcript, correction, recording, or source mutation.
+- Focused route proof passes 3/3 and explicitly covers a future planned task not receiving today's priority. Quipsly TypeScript, the generic iOS simulator build, 52/52 source contract, and the focused Today exact-source simulator journey pass. Visible iPhone 17 Pro preview evidence is `/tmp/quipsly-today-ranked.png`.
+- Real elapsed-day and cross-device proof remains open. Required loop-back: create a no-deadline task from reviewed physical-iPhone playback, leave it open overnight, verify the same ID/source outranks newer generic work the next day in Capture and Nest, then complete it and read its receipt from another client. No production write, deploy, provider/calendar call, invitation, notification, publication, commit, or push occurred.
+
+### Canonical task navigation checkpoint
+
+- Replaced display-only copies of accepted tasks in Session Review, Schedule, and Goal linked-work rows with links to `/work?task=<same ActionItem ID>`.
+- Work resolves requested task/goal IDs only inside its already actor-scoped snapshot. The exact card receives a stable element ID, visible ring, programmatic keyboard focus, and centered scroll; deep links to DONE/CANCELED work switch to `All` so the record remains visible.
+- Focused Work and Schedule tests pass 11/11, including a completed-task deep link and focus assertion. Quipsly TypeScript passes. The unified source contract adds the canonical-deep-link invariant and passes 53/53.
+- Operated the real local `/work` route in the in-app browser. The available browser session was signed out, and the page correctly rendered `Sign in to Studio` before private reads. No mock task or local-operator bypass was introduced to manufacture visual proof.
+- Notification and global-search task entry points plus authenticated cross-client focus remain open. Required loop-back: use a real QA account, open one same-ID task from Session, Schedule, Goal, Nest, iPhone Today, and a second client, then repeat after completing and reopening it. No production write, deploy, OAuth grant, provider/calendar call, invitation, message, publication, commit, or push occurred.
+
+### Nest project follow-through checkpoint
+
+- Added a dominant Project follow-through panel to each signed-in Nest dashboard so documents, media, goals, and committed work finally meet in the project context rather than forcing a jump to a disconnected queue.
+- Project goals are owner-only. Project tasks must first relate through a matching Session slug or an actor-owned project Goal, then independently pass the same assignment/Session participant, creator, client, or coach access boundary. Another collaborator's task is not exposed solely through project access.
+- The panel links goals/tasks to the same canonical Work IDs and carries exact transcript return when the fail-closed source receipt still matches its room. Unreviewed transcript candidates remain outside committed work.
+- Added `nest-project-follow-through.ts` as the shared read boundary plus focused UI coverage. A real disposable-PostgreSQL smoke created two actors, separate rooms, actor/other goals, accepted room/goal-linked tasks, an unreviewed candidate, and another actor's private task. The actor received exactly one owned goal and two accepted tasks; source time survived; the other task remained stored but invisible; cleanup left zero smoke tasks, goals, workspaces, or users.
+- Full Quipsly regression passes 63 suites / 279 tests with two opt-in DB suites skipped; the new DB smoke passes 1/1 when enabled. Quipsly/shared-domain TypeScript, 54/54 source contract, 563/563 App Store static contract, and diff checks pass.
+- Authenticated browser rendering and physical/cross-device readback remain required. The local browser correctly stopped at the private sign-in boundary; no operator bypass or fake data was added. No production write, deploy, OAuth grant, provider/calendar call, invitation, message, publication, commit, or push occurred.
+
+### Permission-filtered Search All checkpoint
+
+- Added `/find` plus a persistent desktop Search All control and mobile More entry. One read-only query spans tasks, goals, Sessions, documents, sources, and annotations and routes canonical work back to `/work?task=`, `/work?goal=`, `/sessions/`, or the exact document/research context.
+- Access inputs are explicit: the page resolves visible Nests once, then passes those IDs into a pure search query. Tasks/Sessions remain actor scoped; goals require ownership or accessible Session/booking context; sources/documents stay inside visible Nests; private annotations require creator identity. Unreviewed transcript candidates are filtered out.
+- Search requires 2 characters, caps normalized input at 120 characters, returns at most 10 per kind, bounds research handoff URLs, and fails honestly without sample results. It has no mutation or provider/calendar/message/publication path.
+- Focused proof passes 5/5 across query and rendered page contracts. The disposable-PostgreSQL Nest smoke now also searches the live mixed-privacy fixture and returns only the exact actor task; cleanup remains zero. Full Quipsly regression passes 65 suites / 285 tests with two opt-in DB suites skipped; TypeScript, 55/55 unified source contract, 563/563 App Store checks, and diff checks pass.
+- Indexed full-text scale and latency remain unproven; do not claim the one-million-token/sub-second acceptance bar from this bounded query implementation. Authenticated browser/cross-device search and notification deep links remain open. No production write, deploy, OAuth grant, provider/calendar call, invitation, notification, message, publication, commit, or push occurred.
+
+### Immutable transcript-version checkpoint
+
+- A cross-runner audit found destructive transcript retry behavior in both Quipsly and the legacy web coaching path: stored provider segments were deleted before replacement. That would invalidate JSON source anchors used throughout task, correction, schedule, Today, search, Nest, and Studio surfaces.
+- Both runners now stop before media/provider work when an existing transcript version has segments. Quipsly returns `TRANSCRIPT_VERSION_IMMUTABLE`; its retry route creates a new queued version with explicit prior-job and prior-segment receipts. Segment insertion plus completion is transactional, and no runtime segment delete remains.
+- Updated the lifecycle static audit to reflect the safer packet architecture: packet generation creates review candidates, never ActionItems; only explicit ACCEPT may materialize committed work. The provider egress assertion now enforces current all-party audio/video consent language.
+- Real local PostgreSQL proof created v1 + anchored task + v2 and read back the original segment ID, exact words, 12.25-17.5 timing, and task source unchanged. Test cleanup was independently queried and left zero fixture rooms, users, and tasks.
+- Verification passes: Quipsly 67 suites / 290 tests (three opt-in DB suites skipped), focused transcript runner/route 5/5, web transcript/packet 5/5, transcript-version DB smoke 1/1, all three relevant TypeScript checks, source contract 56/56, live local mobile capture contract 79/79, lifecycle static audit, and `git diff --check`.
+- The local dev server was restarted after Prisma regeneration; this resolved stale-client HTTP 500s, and the full signed-out runtime boundary then passed. Real provider transcription and authenticated physical/cross-device retry proof remain open. No external write or irreversible action occurred.
+
+### Canonical attention checkpoint
+
+- Added a persistent Attention control that routes to the existing Work Queue with a derived `ATTENTION` lens. It does not create a notification record or claim an unread state.
+- The server snapshot marks only open overdue work, due-within-24-hours work, and recently accepted reviewed-transcript follow-through. Later-week tasks stay out. Cards retain the same ActionItem ID, status controls, Session link, and exact transcript segment return.
+- Completing/canceling work removes it from Attention in the current client snapshot; reopening recalculates urgency. The attention URL survives sign-in redirect while unauthenticated access still performs zero private reads.
+- Focused model/client/page/sidebar proof passes 20/20. Full regression is 67 suites / 293 tests with three opt-in DB suites skipped; all relevant TypeScript checks, 57/57 source contract, 80/80 live local contract, lifecycle static audit, and diff checks pass.
+- This deliberately does not claim push notification, local reminder, badge, or delivery proof. Those require an explicit opt-in product contract and physical-device acceptance rather than a decorative bell.
+
+### Tag discovery and taxonomy-truth checkpoint
+
+- Search All now includes active project-scoped Studio tags from only the actor's visible Nests and opens Research with the exact tag label.
+- Corrected a semantic bug in Research: the available project taxonomy is now `tagCatalog`, not “tags applied to this source.” Search/filter matching uses tags actually attached to annotations and evidence, so an unused catalog tag no longer makes every source appear tagged.
+- The mixed-privacy PostgreSQL smoke created and found a private `Episode workflow` taxonomy tag through explicit project visibility, then removed every fixture; independent readback returned zero tags/workspaces/users. Focused Search/Research coverage passes 14/14.
+- Architecture boundary is explicit: StudioTag is the semantic project taxonomy; StudioMediaTag remains a separate operational media label. Work/session entities need canonical project foreign keys plus explicit joins before tagging. No JSON tag strings or generic polymorphic assignments were added.
+- Full regression is 67 suites / 294 tests; relevant TypeScript, 57/57 source contract, 80/80 live local contract, and diff checks pass.
+
+### Calendar identity and cancellation checkpoint
+
+- Google event creation now uses a deterministic calendar+booking SHA-256 ID. A provider-success/local-receipt-failure retry recovers POST 409 into PUT of the same event instead of duplicating the appointment.
+- Cross-calendar receipt reuse is blocked. Provider mutation is followed by one local transaction for CalendarEventLink, CoachingBooking, and Appointment receipts.
+- Fixed authorization so sync, manual receipt attachment, reschedule, Quipsly cancellation, and provider cancellation require the assigned coach, room creator, or staff. A generic active coach profile is no longer sufficient for a guessed booking ID.
+- Added separately confirmed provider cancellation after Quipsly-first cancellation. It recovers the provider event hidden behind `cancel-planned`, records 404/410 as already absent, preserves booking history, and exposes the staff button only while an external event still exists.
+- Calendar unit proof passes 7/7; scheduling contract 19/19. Full Quipsly is 68 suites / 301 tests with three DB suites skipped; all relevant TypeScript, 57/57 source, 80/80 live local, lifecycle, 563/563 App Store, and diff checks pass.
+- This is code/mock/local proof only. No real Calendar credential or event was touched. Credentialed provider replay, reschedule, cancellation, and invite-delivery readback remain mandatory before production-ready claims.
+
+### Source-linked session brief checkpoint
+
+- Upgraded deterministic transcript packets from speaker counts plus opening/closing excerpts into separate candidate decisions, goals, questions, commitments, and key moments.
+- The classifier/shape lives in shared `coaching-packet` domain code and is used by both Quipsly and legacy web builders. Each item retains segment ID, speaker, exact media time, and bounded text; the summary source stores `quipsly-transcript-packet-brief-v1`.
+- Briefs are candidate-only and human-review-required. Packet generation still creates zero goals and zero ActionItems, preserving the explicit acceptance boundary.
+- Focused Quipsly 4/4, web 5/5; full Quipsly 68 suites / 302 tests; TypeScript, 57/57 source, 80/80 live local, lifecycle/scheduling audits, and diff checks pass.
+- Real usefulness proof and explicit goal-candidate acceptance remain open; no provider, production, message, calendar, or publication side effect occurred.
+
+### Explicit transcript-derived goal checkpoint
+
+- Added explicit `Make this my goal` / `Create my goal` interactions to both Nest and iPhone transcript review. The composer itself is non-mutating; the final action creates one actor-owned ACTIVE canonical Goal.
+- The route re-reads the current correction desk inside its transaction, checks access, release/playback evidence, segment identity, and provider hash, and stores the exact transcript/recording receipt behind a deterministic actor+request identity. It creates no task, target, reminder, focus block, calendar event, message, delivery, or publication.
+- Work and personal Schedule now retain goal transcript provenance just as tasks do. A room-matched goal or focus block returns to the same segment/time; partial or room-mismatched source JSON fails closed.
+- Disposable PostgreSQL created transcript v1 + source-linked canonical goal + transcript v2 and read back the untouched v1 goal anchor. Cleanup independently returned zero smoke users, rooms, and goals.
+- Native iPhone 17 Pro simulator build passed. The focused UI journey opened the goal composer, proved preview creation disabled, showed the negative side-effect contract, and passed accessibility audit. Focused Jest is 34/34; full Quipsly is 69 suites / 309 tests with three opt-in DB suites skipped; legacy web packet/release is 7/7; TypeScript, 58/58 source, 81/81 live local, lifecycle, 19/19 scheduling, 563/563 App Store static, and diff checks pass.
+- Mobile Today now carries the exact goal source receipt and opens it on iPhone. A mismatched room fails closed. Simulator proof caught and fixed an accessibility collision between task and goal source buttons: each now has a distinct spoken label and independent identifier. Both exact-source Today journeys pass; full Quipsly remains 69/309, source 58/58, live local 81/81, App Store static 563/563, and diff checks clean.
+- Still required: real signed-in physical-iPhone creation from released episode and coaching audio, same-ID cross-surface readback, and human progress/completion use. No production/provider/calendar/message/publication/deploy/commit/push action occurred.
+
+### Packet goal-candidate review checkpoint
+
+- Packet goal candidates now render as exact-source review cards in Nest and iPhone transcript review. Viewing remains non-mutating; accept, edit, defer, and reject are explicit actor decisions.
+- The candidate builder revalidates the current completed transcript segment and provider-text SHA-256. A serializable goal-review route locks the current packet summary, rejects stale evidence, writes edit/defer/reject receipts without work, and atomically creates one canonical Goal plus receipt only on accept.
+- Accepted candidates resolve to the same canonical Goal ID and link into Work. Fixed refresh feedback on the web and form resynchronization after edited truth reload. iPhone preserves the same candidate status, exact timestamp/source return, and mutation boundary; Preview/offline decisions are disabled.
+- Focused web proof passes 17/17; full Quipsly is 72 suites / 319 tests with three opt-in DB suites skipped by default. The enabled transcript-version PostgreSQL smoke retained the accepted packet-goal receipt and exact v1 anchor after v2, then cleanup readback returned zero smoke users, rooms, goals, and notes. TypeScript, 59/59 source, 85/85 live local, lifecycle, 563/563 App Store static, native build, and diff checks pass. The focused iPhone 17 Pro journey passed with hit-region, description, and clipped-text accessibility audit after multiline title fields fixed a Dynamic Type clipping failure.
+- Real-audio judgment, authenticated cross-surface readback, and physical-device use remain required. No production/provider/calendar/message/publication/deploy/commit/push action occurred.
+
+### iPhone packet task-review checkpoint
+
+- Capture now reads packet action candidates on the same transcript screen as packet goals. Cards retain exact media time/speaker/source return and the current server review status.
+- Native accept/edit/defer/reject calls the canonical action-review ledger; only accept creates one unassigned ActionItem. Preview/offline modes lock all decisions. No parallel local task projection was introduced.
+- Corrected Preview source continuity so its displayed task and goal suggestions are actually present in the matching transcript segment. The longer truthful fixture exposed title clipping; packet and direct task/goal title fields now support multiline Dynamic Type layout.
+- Source contract remains 59/59 and App Store static 563/563. Native build passes; the focused iPhone 17 Pro journey exercised task and goal cards, source links, edit states, disabled Preview writes, and the full accessibility audit.
+- Real signed-in physical-device acceptance and same-ID Today/Work/Nest/Studio readback remain required. No production/provider/calendar/message/publication/deploy/commit/push action occurred.
+
+### iPhone Today goal check-in checkpoint
+
+- Native Today now uses the canonical Goal progress ledger rather than a local projection. A goal card shows its latest percent/evidence and opens an explicit progress/evidence form; Preview and protected offline snapshots remain inspectable but read-only.
+- The mobile action requires goal ownership and the current `updatedAt`, appends one `GoalProgressReceipt`, records the `ios-capture-today` surface, and leaves goal status/achievement, tasks, plans, providers, Calendar, messages, delivery, and publication unchanged.
+- Route proof passes 5/5. Disposable PostgreSQL route proof passes 1/1 with one 75% receipt and an unchanged ACTIVE goal; cleanup readback is zero. Two actual iPhone 17 Pro Today journeys pass, including exact-source navigation and disabled Preview mutation.
+- Full evidence: Quipsly 72 suites / 321 tests with four DB suites skipped by default; relevant TypeScript passes; 60/60 source and 88/88 live-local mobile contracts pass; packet/lifecycle gates and 563/563 App Store static checks pass; native build and diff checks pass.
+- Production remains unavailable before application routes across all checked Quipsly/High Ground hosts, and gcloud user/ADC credentials are expired. Reauthenticate, then inspect billing and Cloud Run read-only before any deploy. Physical-device authenticated use, cross-device same-ID readback, separate-account privacy, and real episode/coaching check-ins remain required.
+
+### Canonical project and work/session tag checkpoint
+
+- Added nullable canonical `projectId` foreign keys to Sessions and Tasks, preserved legacy slugs, and introduced explicit audited tag joins for Task, Goal, and Session over the shared `StudioTag` taxonomy. The reversible migration backfills only unique/unanimous matches and leaves ambiguity unresolved.
+- Work can now file new Tasks/Goals into an editable Nest, show project/tag chips, and replace tags with entity ownership, Owner/Editor, active same-Nest tag, and optimistic revision checks. Viewer UI remains read-only and server enforcement is rechecked in the transaction. Actor-visible Session access alone cannot expose hidden project/tag metadata.
+- New Capture Sessions plus Session-context, exact-transcript, and packet-accepted work inherit canonical project identity. Nest follow-through prefers the foreign key while retaining a labeled slug fallback.
+- iPhone Today visibly reads the same Nest/tag context. The focused iPhone 17 Pro journey operated the actual preview card and verified `High Ground Odyssey`, `Proof listen`, and the exact transcript return; native build passes.
+- All 77 Quipsly suites / 329 tests pass with five real local database suites enabled. The new journey proved Task/Goal/Session tag persistence plus cross-Nest, Viewer, stale-revision, and second-actor rejection; cleanup is zero. Quipsly/shared-domain/legacy-web TypeScript, Prisma validation/generation, source 61/61, live local 89/89, packet/lifecycle, App Store 563/563, and diff checks pass.
+- Production migration, authenticated browser/iPhone use, physical-device and cross-device same-ID proof, Studio readback, and separate-account privacy remain open. No production write, deploy, provider/calendar mutation, invite, message, delivery, publication, commit, or push occurred.
+
+### Canonical Session to Studio handoff checkpoint
+
+- Session Review now shows and permission-checks canonical Nest tags, then reads per-recording Studio handoff truth from real `RecordingAsset` promotion manifests plus unique `StudioAssetAttachment` receipts. Attached recordings open the exact project/episode editor; missing receipts and project conflicts are explicit holds.
+- Recording promotion now treats the Session's relational project as authoritative, refuses silent cross-Nest promotion, snapshots only same-project tag provenance, and preserves original bytes. New media/source/attachment/workflow/episode/manifest writes commit together; replay reuses the one episode source without duplicate imported media or jobs.
+- Studio episode inventory now uses the authorized project ID, canonical room `projectId`, real project `name`, and Session-context provenance. The editor links each handed-off source back to its Session and labels tag names as a snapshot rather than canonical assignments.
+- The actual iPhone Record Session chooser now receives and displays the canonical relational project, holds unfiled Sessions instead of inventing a destination, labels legacy-slug fallback, and omits a client slug during canonical promotion so server-side Session truth remains decisive.
+- Disposable PostgreSQL dogfood promoted and replayed an Episode 4 room mix with a Proof-listen tag through the actual inventory route. Counts remained one attachment/source/media/imported item across replay; cleanup independently returned zero handoff users/projects/assets/sources. The run found and fixed invalid `orderIndex`, project `title`, and non-unique slug queries that static typing had missed.
+- Verification passes: 81 Quipsly suites / 341 tests with all six database suites enabled; Quipsly/shared-domain/legacy-web TypeScript; 62/62 source and 90/90 live-local contracts; packet/lifecycle gates; App Store static 563/563; and diff checks. The focused real-shell journey `CaptureExperienceUITests.testCaptureFirstNavigationKeepsFourFocusedDestinations()` passed on iPhone 17 Pro / iOS 26.3.1 (`Test-HighGroundCapture-2026.07.19_02-37-59--0600.xcresult`) and visibly found High Ground Odyssey on the Session chooser. No production write, migration, deploy, provider/calendar call, invitation, message, delivery, publication, commit, or push occurred.
+- Physical-iPhone/authenticated cross-surface use, separate-account privacy, real HGO proof-watch/listen, real coaching handoff, and authorized production readback remain open acceptance gates.
+
+### iPhone local-first quick Note, Task, and Goal checkpoint
+
+- Record now exposes Note, Task, and Goal as an immediate `Capture the work` action bar, with the current Session/Nest visible and an honest protected-local-first Save boundary.
+- Added a file-protected, actor-partitioned outbox with stable request UUIDs, last-known-good recovery, automatic retry for transient failures, and visible held state for access or validation failures. Account switching cannot upload or reveal another actor's queue.
+- The authenticated mobile route writes canonical private Session notes, assigned Tasks, and owned Goals under the Session's authoritative project. Exact source receipts and deterministic IDs make replay idempotent; no Calendar, provider, message, delivery, publication, or media side effect is reachable.
+- Session Review reads the actor's same canonical records back. Task and Goal deep-link to the exact Work IDs; Notes stay private to the Session. No copied mobile-only work model was added.
+- Actual disposable-PostgreSQL use committed Note/Task/Goal, replayed Task at count one, denied a second actor, and cleaned all fixture rows to zero. The running local route returned signed-out 401 before private reads.
+- Proof passes: 84 Quipsly suites / 357 tests with all local DB suites enabled; focused API/helper 14/14; Session Review 5/5; all relevant TypeScript; 63/63 source and 91/91 live-local contracts; lifecycle, coaching-handoff, App Store static, native build, and diff checks. The focused iPhone 17 Pro / iOS 26.3.1 real-shell journey passed 1/1 (`Test-HighGroundCapture-2026.07.19_02-57-12--0600.xcresult`).
+- Still required: signed-in physical-iPhone offline save, kill/relaunch recovery, authenticated same-ID Nest readback, and separate-account privacy proof. The locked Mac prevented an additional computer-use visual audit; XCUITest remained available and passed. No production write, deploy, provider/calendar call, invitation, message, delivery, publication, commit, or push occurred.
+
+### Unified Nest operating shell checkpoint
+
+- The primary Nest shell now matches the daily product loop: Today, Inbox, Work, Sessions, Library, and Calendar. Nests, Research, production, Publishing, and administration remain reachable under More; mobile web keeps the first four plus More.
+- New Today is a bounded canonical read: one upcoming Session, four timezone-aware chosen blocks, three evidence-aware attention Tasks, and two owned Goals. It deduplicates planned Tasks, excludes unreviewed transcript proposals, and filters project names through explicit Nest access.
+- New Inbox reads the newest packet from actor-accessible Sessions and separates ready, revise, and deferred action/goal/lane proposals. Exact segments return to Session Review; accepted/rejected proposals leave triage. It makes no unread, assignment, schedule, delivery, or publication claim.
+- Disposable PostgreSQL created two actors and complete private Today/Inbox fixtures. The actor saw only the actor Episode Session, plan, Task, Goal, and proposal; the other actor's records stayed stored and invisible. Independent cleanup returned zero fixture users/workspaces/projects/rooms/tasks/notes/goals.
+- The in-app browser operated the live local shell from Today to Inbox, found all six exact destinations and correct page titles/callbacks, and logged no console errors. The unsigned browser stopped at the private-data gate, so authenticated rendered records remain an explicit loop-back rather than being simulated.
+- Proof passes: 87 suites / 363 tests with all local DB suites enabled; focused shell 7/7; DB loader 2/2; all relevant TypeScript; 64/64 source and 92/92 live-local contracts; App Store 563/563; lifecycle/handoff gates; diff checks.
+- Still open: authenticated real-data UI, same-ID cross-surface operation, physical iPhone, separate-account UI privacy, production reachability, and future canonical research/share/import Inbox lanes. No production write, deploy, provider/calendar call, invitation, message, delivery, publication, commit, or push occurred.
+
+### Dedicated Calendar checkpoint
+
+- `/schedule` is now visibly Calendar rather than a second Today or a generic production runway. It centers personal focus blocks, upcoming Sessions, and accepted Tasks available to plan; the unrelated five-lane production board no longer competes for attention here.
+- The surface explicitly separates personal planning, Quipsly Session time, and provider-event receipts. Focus completion does not complete work, and planning never changes deadlines/targets, sends invitations, or mutates an external calendar by implication.
+- The in-app browser rendered the live local `Calendar - Quipsly` hierarchy and exact signed-out callback with zero console errors. Authenticated real records remain open rather than bypassed.
+- Focused Calendar proof passes 18/18; full Quipsly remains 87 suites / 363 tests with all local DB suites enabled; TypeScript, 64/64 source, 92/92 live-local, and diff checks pass.
+- Required real-use loop-back: plan, move, and complete real episode/coaching focus blocks; verify Tasks/Goals stay unchanged; compare provider-linked and Quipsly-only Sessions; then perform separate authorized provider replay/cancel/invite readback. No external or production mutation occurred.
+
+### Canonical Library checkpoint
+
+- Library now indexes canonical Session, Research source, Document, Studio media, and actor-owned saved-capture identities without creating a parallel record model. Exact links continue at the same ID and Research validates the requested source against the already authorized snapshot.
+- Permission projection is fail-closed: Session access is actor-scoped, Nest metadata requires separate project visibility, and private source annotations are visible only to their creator. Capture media already promoted to Studio is deduplicated beneath its owning Session; standalone reusable media remains visible.
+- Actual local-database use proved one actor could see the intended Session with two transcript segments, two visible annotations, exact episode manuscript, standalone media, and personal saved capture while a second actor's room, private note, and bookmark stayed stored but absent. Cleanup readback returned zero fixture users.
+- The running local app exposed Library in primary navigation and enforced the real private sign-in gate with a `/library` callback. Full proof is 89 suites / 369 tests with all DB smokes enabled, focused 9/9, Library DB 2/2, Quipsly TypeScript, and source contract 64/64.
+- Authenticated real-record card operation, second-account rendered privacy, physical-iPhone promotion/readback, and production reachability remain open. No production or external mutation occurred.
+
+### iPhone personal-source to Nest Inbox checkpoint
+
+- iPhone `Capture the work` now includes a local-first Source action for a URL or quoted passage. Source does not require or invent a Session/Nest; the composer says `Personal Inbox` and `Not chosen yet` while reusing the protected actor outbox and stable retry ID.
+- Nest saves URL capture as the existing actor-owned Bookmark identity and text capture as the existing actor-owned Snippet identity. Inbox reads all actor-owned unfiled sources, never another actor's, and opens the exact ID in Collections before any deliberate Research filing.
+- Disposable PostgreSQL proved URL/text creation, exact replay, actor ownership, second-actor exclusion, and cleanup. Full web proof is 90 suites / 375 tests; focused 21/21; enabled DB 4/4; TypeScript and source 64/64 pass.
+- Native build passes. The actual iPhone 17 Pro / iOS 26.3.1 journey opened Source, verified the private/unfiled destination, entered a URL, and proved Preview created no pending record (`Test-HighGroundCapture-2026.07.19_03-45-04--0600.xcresult`). Local web Inbox enforced its private callback.
+- Still open: iOS Share Extension intake, physical offline/relaunch sync, authenticated same-ID cross-device readback, explicit Research filing/provenance, separate-account rendered privacy, and production reachability. No production or external mutation occurred.
+
+### Protected iOS Share Sheet intake checkpoint
+
+- Added and embedded a genuine iOS Share Extension for URLs, webpages, and text. It never authenticates or uploads independently; it accepts Post only when the containing app has published a verified owner snapshot and stages one bounded, atomic, file-protected envelope in the shared app group.
+- Capture imports only a matching-owner envelope into the existing protected Source outbox, preserves the staging UUID as the retry identity, commits locally before deleting the handoff, and leaves mismatched-account files sealed. Pending UI now shows the exact shared URL and the honest `Saved on iPhone · waiting for Nest` boundary.
+- Actual Safari and iOS Share Sheet journeys pass on iPhone 17 Pro / iOS 26.3.1 for both states: signed out finds Quipsly but cannot Post; signed in posts and sees the exact pending source in Capture. The combined order-independent suite is `Test-HighGroundCapture-2026.07.19_04-16-04--0600.xcresult`.
+- Debug and Release simulator builds pass embedded-extension validation. Plist/entitlement lint, source contract, and diff checks pass. Physical-device offline/relaunch sync, authenticated same-ID Nest readback, separate-account rendered privacy, and explicit Research filing remain open. No production or external mutation occurred.
+
+### Deliberate personal-source to Research filing checkpoint
+
+- Collections now lets a signed-in owner explicitly choose a writable Nest and file a private Snippet/Bookmark into Research. One serializable transaction creates the canonical `StudioSourceUnit` and a provenance receipt; the personal capture stays unchanged and retries converge on the same source.
+- Inbox removal follows the committed filing receipt instead of a UI assumption. Collections retains the original and canonical source links. Research exposes capture provenance while returning to the private original only for its owner.
+- Passage text and source URL are preserved. A bookmark remains honest link evidence with `pageContentImported: false`; private notes/metadata are not copied. Another actor and a Viewer both produced zero writes in disposable PostgreSQL.
+- Proof passes: Prisma format/validate/generate and exact local migration; focused UI/model 18/18; database filing 3/3 with zero cleanup; full Quipsly 91 suites / 379 tests with all DB smokes enabled; TypeScript; source contract 66/66; diff checks. Signed-in real browser use, physical-iPhone origin, rendered collaborator privacy, and production schema/readback remain open. No production or external mutation occurred.
+
+### Selected-passage webpage provenance checkpoint
+
+- Share envelope v2, the protected outbox, and the authenticated quick-entry route now carry exact selected text separately from its validated HTTP(S) webpage URL. Nest stores a passage as a source-linked Snippet with original device capture time; later Research filing preserves that time instead of the delayed sync timestamp. URL-only sharing remains a Bookmark.
+- Actual iOS operation caught that Safari's contextual selection Share exports only `public.plain-text`. The extension now includes Apple's documented webpage preprocessor, limited to current URL/title/explicit selection. The proven interaction keeps text selected and uses Safari page Share; a truly text-only provider remains allowed but visibly says `Text only · no webpage` rather than inventing provenance.
+- The focused iPhone 17 Pro / iOS 26.3.1 journey visibly reached `Passage + webpage`, posted, and read both `Example Domain` plus `example.com` from Capture's protected pending card. Ordinary URL share still reads `Web link`; the unsigned boundary still disables Post.
+- Web proof passes: 91 suites / 382 tests with every database smoke enabled, TypeScript, Prisma validation, source contract 67/67, plist/entitlement/JavaScript lint, and diff checks. The final actual-system Share suite passes 3/3 with zero skips/failures at `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-gkbduygtikskhbarozfvqyxytyrq/Logs/Test/Test-HighGroundCapture-2026.07.19_05-03-47--0600.xcresult`; the current Release simulator build also passes with the embedded extension and webpage preprocessor. Physical-iPhone, real-account/cross-device, separate-account rendered privacy, actual HGO/coaching source filing, and production migration remain open. No production or external mutation occurred.
+
+### Duplicate-safe source receipts and visible capture history checkpoint
+
+- URL and passage content now have one actor-owned source identity while each deliberate request has its own immutable receipt. Exact request replay is idempotent; a new share of the same evidence increases capture history without creating another Bookmark/Snippet. A database check requires each receipt to point to exactly one correctly typed source.
+- Inbox orders by latest receipt time and shows the capture count. Collections exposes the latest date and up to ten timestamped/title-preserving receipts, with an honest legacy-history state. Research filing pins the earliest receipt time and count at filing while leaving the private source/history unchanged.
+- Actual disposable-PostgreSQL route use proved one URL plus one passage each remained one source after two distinct captures, retained two receipts, and did not gain a third receipt on exact replay. Filing proof used a twice-captured passage and retained the first capture timestamp in canonical Research provenance.
+- Proof passes: focused API/helper 23/23, Inbox/Collections 8/8, database 5/5; full Quipsly 91 suites / 385 tests with every database smoke enabled; TypeScript; Prisma validation/generation; exact local migration plus target constraint; source contract 68/68; Share Extension JavaScript/plist/entitlement lint; diff checks. Physical-iPhone offline/relaunch, authenticated cross-device history, rendered second-account privacy, real HGO/coaching filing, and authorized production migration remain open. No production or external mutation occurred.
+
+### iPhone protected-source relaunch and owner-isolation checkpoint
+
+- Extended the real Safari Share Sheet journey through app termination and relaunch. The protected ledger restores the exact `iana.org` URL, one waiting-capture count, honest local-save boundary, and explicit retry control while network actions remain disabled.
+- Switched the relaunched app to a unique second simulator owner and proved the first owner's URL/receipt/retry UI remained absent; switching back restored the original pending identity. No upload or synthetic synced state was used to satisfy the assertion.
+- Focused proof passes 1/1; the complete `ShareCaptureExtensionUITests` suite passes 3/3 on iPhone 17 Pro / iOS 26.3.1 at `/tmp/quipsly-share-suite-0605.xcresult`. Source contract is 68/68 and diff checks pass.
+- Local rendered Inbox stops at the correct private sign-in boundary, but Firebase Admin ADC is unavailable for authenticated local use. Live Nest Inbox currently returns Google Frontend 503. Physical-device offline/relaunch/retry, real-account same-ID web readback, rendered second-account privacy, HGO/coaching dogfood, and authorized production service/schema proof remain open. No production or external mutation occurred.
+
+### Honest and atomic AI research-index checkpoint
+
+- Replaced the Writing Assistant's fake zero-count embedding sync with an authenticated, Nest-write-authorized refresh using current `gemini-embedding-2` at the schema's 768 dimensions. Query/document prefixes now match current retrieval guidance; missing credentials and invalid vectors fail closed.
+- The refresh precomputes all provider results before one managed-origin replacement transaction. Provider failure leaves the previous index untouched; successful refresh deletes only `studio-document-block` and `quipsly-lore-quote` rows. Corrected the raw SQL from nonexistent `sourceType` to canonical `sourceOrigin`.
+- UI copy now discloses the provider boundary before the person presses `Refresh AI research index`, reports real model/count evidence, and renders failure separately while promising only that the prior index remains.
+- Real disposable PostgreSQL/pgvector proof wrote one block and one quote as 768-dimensional vectors, removed one obsolete managed row, preserved one unrelated external-origin row, and retained the exact result after an injected provider failure. Cleanup completed. Focused proof is 17/17 including DB; full Quipsly is 93 suites / 395 tests; TypeScript and diff checks pass.
+- No real Gemini call or production/external mutation occurred. Authenticated rendered use, HGO evidence-quality judgment, private-coaching provider consent, separate-account denial, and production pgvector/model readback remain required.

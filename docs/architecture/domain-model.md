@@ -136,6 +136,119 @@ Current reality:
   `GOOGLE_CALENDAR_*` credentials are mounted, create/update Google Calendar
   events and write `googleEventId`
 
+## Quipsly Goals, Tasks, And Personal Planning
+
+### `Goal`
+
+Durable direction owned by one Quipsly user. A goal may retain room, coaching
+booking, Studio project, and parent-goal context without becoming a copy of any
+of those records.
+
+Current lifecycle:
+- `ACTIVE`
+- `PAUSED`
+- `ACHIEVED`
+- `ARCHIVED`
+
+Session Plan v2 dual-writes canonical goals while retaining its source-marked
+`CoachingNote` compatibility projection. Goal progress is append-only evidence;
+recording 100 percent does not silently change lifecycle state.
+
+### `GoalTaskLink` And `GoalProgressReceipt`
+
+`GoalTaskLink` connects one canonical ActionItem to one Goal as `CONTRIBUTES`,
+`BLOCKS`, or `OUTCOME`. It does not copy either record or synchronize their
+statuses. `GoalProgressReceipt` records status/progress decisions, notes, actor,
+time, and evidence separately from the current Goal row.
+
+### `TaskRecurrenceSeries` And `TaskOccurrence`
+
+`TaskRecurrenceSeries` is the actor-owned wall-clock rule for repeating
+`ActionItem` work. `TaskOccurrence` is the durable, idempotent receipt joining
+one scheduled occurrence to at most one canonical `ActionItem`; the series is
+never presented as an external-calendar event or notification schedule.
+
+The series stores both an IANA timezone and the human local date/time rule.
+Each occurrence stores that local date plus its exact resolved instant. This
+keeps a 9:00 AM Denver commitment at 9:00 AM across daylight-saving changes
+while giving Today and Calendar one unambiguous timestamp to render. Monthly
+rules retain their anchor day, so January 31 can resolve to February's last day
+and then return to March 31 rather than drifting to the 28th.
+
+Current cadence semantics:
+- `FIXED` materializes the first three occurrences and tops the horizon back up
+  when the next open item is completed or canceled;
+- `COMPLETION` materializes one occurrence, then creates exactly one successor
+  from the completion's local date;
+- pause stops future materialization without altering already-created tasks;
+- resume restores a bounded horizon of three fixed or one completion-based open
+  task without altering already-created tasks; end is terminal;
+- cancel skips an occurrence; a completion-based series schedules its next item
+  from that explicit skip time instead of becoming an invisible active series;
+- stable occurrence keys and completion receipts make retry converge on the
+  existing task instead of creating a duplicate; a transaction-scoped lock on
+  that exact identity makes simultaneous materialization attempts converge too.
+
+Current boundary:
+- a missed occurrence remains an ordinary open task until its owner explicitly
+  marks it done or chooses `Skip missed` on the oldest overdue open occurrence;
+  that decision preserves the task as `CANCELED`, the occurrence as `SKIPPED`,
+  and a shared resolution receipt before topping up the bounded horizon. There
+  is no unattended catch-up or auto-skip scheduler;
+- fixed schedules are bounded to a three-item planning horizon rather than
+  expanding forever;
+- Quipsly creates no provider calendar event or local/push notification from a
+  recurrence rule;
+- native iPhone Task quick capture can author an explicit fixed-schedule or
+  completion-based rule into its protected retry outbox. Nest commits the
+  deterministic series and canonical occurrences transactionally, and Today
+  reads those same occurrence IDs back;
+- after a recently verified identity loses transport, the native protected
+  shell can capture Note, Task, Goal, or Source only against a cached accessible
+  Session. It journals the actor-partitioned payload before attempting sync,
+  survives process relaunch, and deletes the phone copy only after Nest
+  acknowledges the same client UUID. Recording and every other network action
+  remain unavailable in this shell;
+- an owner can edit one open occurrence's wording without moving it or changing
+  series identity. `THIS_AND_FUTURE` is allowed only from the next open
+  occurrence: Quipsly transactionally ends the predecessor, preserves completed
+  and skipped history, marks only its still-open horizon as superseded, and
+  creates a new versioned series with a stable retry identity;
+- there is deliberately no "rewrite the entire historical series" operation.
+  Reusing a revision UUID with different wording or rule is an identity
+  conflict, and a concurrent task edit/completion aborts the whole revision
+  instead of overwriting newer evidence;
+- this-and-future editing accepts an explicit IANA timezone on iPhone and Nest.
+  Original quick authoring still defaults to the phone's active timezone.
+  Physical-device recovery remains open.
+
+### `WorkPlanBlock`
+
+Personal Quipsly planning intent for exactly one accessible open ActionItem or
+one active Goal owned by the actor.
+
+Key boundaries:
+- a block start/end is when the actor intends to focus, not the task deadline;
+- it is not a Goal target, Appointment, CallRoom schedule, publish time, or
+  external calendar event;
+- completing a block never completes its ActionItem or achieves its Goal;
+- create/status/reschedule receipts explicitly record that no provider calendar
+  or target lifecycle was mutated.
+
+Current lifecycle:
+- `PLANNED`
+- `COMPLETED`
+- `SKIPPED`
+- `CANCELED`
+
+### `WeeklyCommitment`
+
+The existing coaching cadence remains a distinct record rather than being
+flattened into tasks. Client-authored weekly commitments now have source receipt
+metadata and `clientReviewedAt`; coach review continues to use
+`reviewedByUserId`, `reviewedAt`, and `coachNotes`. This keeps self-reflection
+from impersonating a coach decision.
+
 ## Coaching Requests
 
 ### `CoachingRequest`
@@ -241,6 +354,144 @@ Current reality:
   persist data
 - this is not real-time collaboration or a canonical manuscript document model
 - SMS/Twilio notification sending is not wired into the current request flow
+
+## Source Evidence and Annotations
+
+### `StudioSourceUnit`
+
+Canonical imported or captured source identity. `immutableText`, source URL/path,
+asset attachment, author, capture time, and metadata describe preserved evidence;
+editable interpretation belongs in overlays rather than this source body.
+
+### `StudioPersonalSourceFiling`
+
+Explicit promotion receipt from one actor-owned `Snippet` or `Bookmark` into a
+canonical `StudioSourceUnit` in a chosen writable Nest. The operation creates
+preserved Research evidence without moving, editing, or sharing the personal
+capture record. The receipt pins the source fingerprint, capture type, actor,
+destination, and negative side-effect boundary; a stable client request ID and
+per-Nest capture uniqueness make retries idempotent.
+
+Once the receipt commits, the personal source leaves Inbox triage but remains
+available in Collections. Collaborators receive the new Nest source through
+normal project access, not access to the owner's private Collection record. A
+saved web link preserves its URL as link evidence and explicitly records that
+Quipsly did not import the page body.
+
+An actor-owned `Snippet` may also preserve a selected passage's HTTP(S)
+`sourceUrl` plus bounded `metadataJson` for capture mode and the original
+device timestamp. A URL-only share remains a `Bookmark`; a passage shared from
+Safari's page Share control while selection is active becomes a `Snippet` with
+both exact text and webpage provenance. Safari's contextual text-only Share
+path does not provide a webpage URL, so Capture labels that state honestly
+instead of inferring one. Later Research filing reads the original captured
+time from this metadata rather than substituting the delayed Nest sync time.
+
+### `StudioSourceAnnotation`
+
+Permission-aware overlay anchored to one `StudioSourceUnit` and optionally its
+document projection. Text anchors retain UTF-16 character positions, the exact
+quote, prefix/suffix context, and a SHA-256 fingerprint of the preserved source.
+Time/media selectors have separate second-based fields. A selector mismatch is
+a conflict requiring reselection; Quipsly does not silently move the note.
+
+Key boundaries:
+
+- `private` annotations are visible only to their author; `project` annotations
+  also require active Nest access;
+- the author owns active/resolved/archived review state;
+- `StudioTag` remains the canonical project taxonomy and joins through
+  `StudioSourceAnnotationTag`;
+- client request IDs make retried saves idempotent per author;
+- annotation creation, review, and archive never mutate source text/media;
+- legacy `StudioTaggedSpan` and `QuipLoreUserAnnotation` rows remain readable
+  compatibility stores until an explicit, verified migration maps them.
+
+### `StudioSourceAnnotationRevision`
+
+Append-only created/updated/resolved/reopened/archived receipt containing the
+selector, note, visibility, status, source fingerprint, and tag IDs at that
+revision. This is audit/recovery evidence, not a second editable annotation.
+
+### `StudioSourceAnnotationUse`
+
+Typed evidence-to-writing link from an annotation to the exact project,
+document, and block that used it. It snapshots the quote and citation label,
+retains a stable citation key and source fingerprint metadata, records the human
+actor, and supports idempotent client retries. The first supported operation
+creates a private draft plus reversible `StudioDocumentOperation`; it never
+changes the source or annotation. `evidence`, `quotation`, `inspiration`, and
+`counterpoint` remain distinct use meanings rather than generic backlinks.
+
+### Research export and restore
+
+`quipsly-research-export-v1` is the portable envelope for one actor-visible Nest
+research graph. It contains full preserved source text and per-source SHA-256,
+canonical tags, actor-scoped annotation overlays and their revision history,
+writing-use references, explicit privacy/provider boundaries, and a stable
+whole-manifest digest.
+
+Restore is intentionally a new import receipt, not a rewind or an overwrite:
+
+- validation checks the whole manifest, each source fingerprint, exact text
+  anchors, record counts, destination write access, and bounded bundle size
+  before mutation is offered;
+- validate is the default mode and returns a visible create/reuse/collision plan;
+- apply requires an explicit second request, creates versioned source copies on
+  slug/content collision, reuses exact sources and existing taxonomy, and never
+  edits destination source text;
+- deterministic per-actor restore request IDs make a retry idempotent;
+- restored annotation provenance retains the source manifest, original IDs,
+  exported revision history, and `restored-from-export` receipt;
+- writing-use rows are exported but deliberately deferred until their target
+  document/block payload is portable too. The UI states that boundary instead
+  of inventing a backlink to a document that was not restored.
+
+### Research to Studio handoff
+
+`StudioOutputPacket.kind = research-studio-handoff` is the canonical, read-only
+bridge from a reviewed Nest annotation into Quipsly Studio. Each packet uses the
+`quipsly-research-studio-handoff-v1` envelope and is immutable for one
+`annotationId + revision` pair.
+
+- the packet pins the exact quote, offsets, annotation revision/operation, tags,
+  source path, and full-source SHA-256 without copying or changing source media;
+- only `project`-visible annotations can enter the shared Studio inbox; private
+  annotations must remain private until their author deliberately changes the
+  sharing boundary;
+- public writing-use pointers may be carried, but private writing is represented
+  only by a count and privacy receipt. Its document/block IDs, titles, and bodies
+  are not disclosed;
+- a retry reuses the same packet slug, while a later annotation revision produces
+  a new packet; source-fingerprint or exact-anchor drift blocks handoff;
+- `ready-for-studio` means the verified brief is available for human review. It
+  does not authorize an edit, media mutation, export, upload, or publication;
+- the Mac app receives these records only through its Firebase bearer-token
+  session context and shows them in the read-only Nest evidence inbox.
+
+### Playback-reviewed transcript corrections
+
+`TranscriptSegment` is immutable provider evidence. `TranscriptCorrection` is
+the canonical overlay for corrected words and speaker assignments, and
+`TranscriptCorrectionRevision` is its append-only decision history.
+
+- each correction pins the provider job/segment, original text SHA-256, exact
+  original text/speaker, and unchanged media start/end times;
+- a human correction can become `accepted` only when protected promoted media
+  exists, the reviewer explicitly confirms listening, and the player's current
+  position is inside the segment window;
+- AI output always enters as `proposed`. Accepting an AI proposal requires the
+  same playback proof; rejecting it preserves the proposal and its receipt;
+- optimistic provider and active-overlay checks prevent a stale browser from
+  replacing evidence it did not see. A retry is actor-idempotent;
+- accepting a replacement marks the previous overlay `superseded`; provider
+  text is never updated or deleted. Corrected transcript versions make in-place
+  provider-segment regeneration fail closed and require a new job;
+- consent/release policy and room access are rechecked on reads, writes, and
+  idempotent replays. Held sessions return no transcript fallback;
+- Nest owns correction decisions beside protected playback. Studio receives a
+  Firebase-bearer, read-only correction inbox with proposals visibly distinct
+  from accepted overlays and a link back to the session review desk.
 
 ## Coaching Feature Access
 

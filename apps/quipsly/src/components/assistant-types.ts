@@ -10,7 +10,17 @@ export type AssistantSuggestion = {
   confidence: number;
 };
 
-export type AssistantActionStatus = "proposed" | "approved" | "rejected" | "undone" | "saved";
+export type AssistantActionStatus =
+  | "proposed"
+  | "deciding"
+  | "applying"
+  | "applied"
+  | "approved"
+  | "rejected"
+  | "undone"
+  | "committing"
+  | "committed"
+  | "saved";
 
 export type AssistantAction = {
   id: string;
@@ -29,7 +39,7 @@ export type AssistantPreviewCard = {
   title: string;
   kind: string;
   detail: string;
-  items: Array<{ label: string; detail?: string }>;
+  items: Array<{ label: string; detail?: string; source?: string; href?: string }>;
   createdAt: string;
 };
 

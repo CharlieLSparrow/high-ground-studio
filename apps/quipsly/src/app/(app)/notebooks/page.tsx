@@ -278,10 +278,9 @@ function NotebookCard({
 export default async function NotebooksPage({
   searchParams,
 }: {
-  searchParams?: Promise<{ q?: string; missingNest?: string; notAllowed?: string }>
-    | { q?: string; missingNest?: string; notAllowed?: string };
-} = {}) {
-  const params = await searchParams;
+  searchParams?: Promise<{ q?: string; missingNest?: string; notAllowed?: string }>;
+}) {
+  const params = searchParams ? await searchParams : {};
   const searchQuery = typeof params?.q === "string" ? params.q.trim() : "";
   const missingNest = params?.missingNest === "1";
   const notAllowed = params?.notAllowed === "1";
@@ -289,7 +288,7 @@ export default async function NotebooksPage({
   const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
 
   if (!actorEmail) {
-    redirect("/api/auth/signin?callbackUrl=/notebooks");
+    redirect("/login?callbackUrl=/notebooks");
   }
 
   const prisma = getPrismaClient();

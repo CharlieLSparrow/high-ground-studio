@@ -3,7 +3,7 @@
  * @module lib/retrieval/embeddings
  * @description 
  * Semantic Search and Embeddings pipeline for the Quipsly Document Kernel.
- * Implements a `MockEmbeddingProvider` (for local dev) and provides the
+ * Provides an explicit `MockEmbeddingProvider` for tests and the
  * `hybridSearchExamples` function, which uses Reciprocal Rank Fusion (RRF)
  * to perfectly blend keyword BM25/`contains` hits with `pgvector` semantic hits.
  */
@@ -18,19 +18,49 @@ export interface EmbeddingProvider {
   generateEmbedding(text: string): Promise<number[]>;
 }
 
+export const QUIPSLY_EMBEDDING_MODEL = "gemini-embedding-2";
+export const QUIPSLY_EMBEDDING_DIMENSIONS = 768;
+export const MAX_PROJECT_EMBEDDING_ITEMS = 500;
+const MAX_EMBEDDING_INPUT_CHARACTERS = 24_000;
+const MANAGED_SOURCE_ORIGINS = ["studio-document-block", "quipsly-lore-quote"] as const;
+
+export function prepareRetrievalDocument(content: string, title?: string | null) {
+  const cleanContent = content.trim().slice(0, MAX_EMBEDDING_INPUT_CHARACTERS);
+  const cleanTitle = title?.replace(/\s+/g, " ").trim().slice(0, 500) || "none";
+  return `title: ${cleanTitle} | text: ${cleanContent}`;
+}
+
+export function prepareRetrievalQuery(query: string) {
+  return `task: search result | query: ${query.trim().slice(0, MAX_EMBEDDING_INPUT_CHARACTERS)}`;
+}
+
+function requireValidVector(vector: number[]) {
+  if (
+    vector.length !== QUIPSLY_EMBEDDING_DIMENSIONS
+    || vector.some((value) => !Number.isFinite(value))
+    || vector.every((value) => value === 0)
+  ) {
+    throw new Error(`Embedding provider returned an invalid ${QUIPSLY_EMBEDDING_DIMENSIONS}-dimension vector.`);
+  }
+  return vector;
+}
+
 export class GeminiEmbeddingProvider implements EmbeddingProvider {
   async generateEmbedding(text: string): Promise<number[]> {
+    if (process.env.QUIPSLY_DISABLE_AI_PROVIDER === "true") {
+      throw new Error("AI provider access is disabled; the existing research index was not changed.");
+    }
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      console.warn("GEMINI_API_KEY missing, using zero-vector fallback");
-      return new Array(768).fill(0);
+      throw new Error("GEMINI_API_KEY is not configured; the existing research index was not changed.");
     }
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.embedContent({
-      model: "text-embedding-004",
+      model: QUIPSLY_EMBEDDING_MODEL,
       contents: text,
+      config: { outputDimensionality: QUIPSLY_EMBEDDING_DIMENSIONS },
     });
-    return response.embeddings?.[0]?.values || new Array(768).fill(0);
+    return requireValidVector(response.embeddings?.[0]?.values ?? []);
   }
 }
 
@@ -40,9 +70,9 @@ export class GeminiEmbeddingProvider implements EmbeddingProvider {
  */
 export class MockEmbeddingProvider implements EmbeddingProvider {
   async generateEmbedding(text: string): Promise<number[]> {
-    // Generate a deterministic mock 1536-dimensional vector based on the text length
+    // Generate a deterministic same-shape vector for isolated tests only.
     // to allow for basic distance testing.
-    const vector = new Array(1536).fill(0).map((_, i) => {
+    const vector = new Array(QUIPSLY_EMBEDDING_DIMENSIONS).fill(0).map((_, i) => {
       return (text.length % (i + 1)) / (i + 1);
     });
     
@@ -63,56 +93,85 @@ export async function embedAndStoreDocumentBlock(
   provider: EmbeddingProvider = new GeminiEmbeddingProvider()
 ): Promise<void> {
   const prisma = getPrismaClient();
-  const vector = await provider.generateEmbedding(content);
+  const embeddedContent = content.trim().slice(0, MAX_EMBEDDING_INPUT_CHARACTERS);
+  const vector = requireValidVector(await provider.generateEmbedding(prepareRetrievalDocument(embeddedContent)));
   const vectorString = `[${vector.join(",")}]`;
 
-  // Upsert pattern using raw SQL for pgvector
-  await prisma.$executeRaw`
-    INSERT INTO "RetrievalEmbedding" ("id", "sourceType", "sourceId", "projectId", "contentSnapshot", "embedding")
-    VALUES (${randomUUID()}, 'DOCUMENT_BLOCK', ${blockId}, ${projectId}, ${content}, ${vectorString}::vector)
-    ON CONFLICT ("id") DO NOTHING;
-  `;
+  await prisma.$transaction(async (tx) => {
+    await tx.retrievalEmbedding.deleteMany({
+      where: { projectId, sourceOrigin: "studio-document-block", sourceId: blockId },
+    });
+    await tx.$executeRaw`
+      INSERT INTO "RetrievalEmbedding" ("id", "sourceOrigin", "sourceId", "projectId", "contentSnapshot", "embedding")
+      VALUES (${randomUUID()}, 'studio-document-block', ${blockId}, ${projectId}, ${embeddedContent}, ${vectorString}::vector)
+    `;
+  });
 }
 
 export async function syncProjectEmbeddings(projectId: string, provider: EmbeddingProvider = new GeminiEmbeddingProvider()) {
   const prisma = getPrismaClient();
-  
-  // 1. Clear old embeddings for this project to avoid duplicates on re-sync (simple strategy)
-  await prisma.$executeRaw`DELETE FROM "RetrievalEmbedding" WHERE "projectId" = ${projectId};`;
 
-  // 2. Fetch all blocks
   const documents = await prisma.studioDocument.findMany({
     where: { projectId },
-    include: { blocks: { where: { archivedAt: null } } }
+    select: {
+      title: true,
+      blocks: {
+        where: { archivedAt: null },
+        select: { id: true, title: true, body: true },
+      },
+    },
   });
-
-  const blocksToEmbed = documents.flatMap(d => d.blocks).filter(b => b.body.trim().length > 10);
-
-  // 3. Embed and store
-  for (const block of blocksToEmbed) {
-    const vector = await provider.generateEmbedding(block.body);
-    const vectorString = `[${vector.join(",")}]`;
-    await prisma.$executeRaw`
-      INSERT INTO "RetrievalEmbedding" ("id", "sourceType", "sourceId", "projectId", "contentSnapshot", "embedding")
-      VALUES (${randomUUID()}, 'DOCUMENT_BLOCK', ${block.id}, ${projectId}, ${block.body}, ${vectorString}::vector);
-    `;
-  }
-
-  // 4. Do the same for QuipLoreQuotes
   const quotes = await prisma.quipLoreQuote.findMany({
-    where: { projectId }
+    where: { projectId },
+    select: { id: true, text: true },
   });
 
-  for (const quote of quotes) {
-    const vector = await provider.generateEmbedding(quote.text);
-    const vectorString = `[${vector.join(",")}]`;
-    await prisma.$executeRaw`
-      INSERT INTO "RetrievalEmbedding" ("id", "sourceType", "sourceId", "projectId", "contentSnapshot", "embedding")
-      VALUES (${randomUUID()}, 'QUIPLORE_QUOTE', ${quote.id}, ${projectId}, ${quote.text}, ${vectorString}::vector);
-    `;
+  const blockUnits = documents.flatMap((document) => document.blocks
+    .filter((block) => block.body.trim().length > 10)
+    .map((block) => ({
+      sourceOrigin: "studio-document-block" as const,
+      sourceId: block.id,
+      title: block.title || document.title,
+      contentSnapshot: block.body.trim().slice(0, MAX_EMBEDDING_INPUT_CHARACTERS),
+    })));
+  const quoteUnits = quotes
+    .filter((quote) => quote.text.trim().length > 10)
+    .map((quote) => ({
+      sourceOrigin: "quipsly-lore-quote" as const,
+      sourceId: quote.id,
+      title: "Quipsly Lore quote",
+      contentSnapshot: quote.text.trim().slice(0, MAX_EMBEDDING_INPUT_CHARACTERS),
+    }));
+  const units = [...blockUnits, ...quoteUnits];
+
+  if (units.length > MAX_PROJECT_EMBEDDING_ITEMS) {
+    throw new Error(`This Nest has ${units.length} eligible items; narrow the index below ${MAX_PROJECT_EMBEDDING_ITEMS + 1} items before refreshing.`);
   }
 
-  return { syncedBlocks: blocksToEmbed.length, syncedQuotes: quotes.length };
+  // Finish every provider call before opening the replacement transaction. A
+  // missing credential, quota error, or malformed vector therefore leaves the
+  // last-known-good index intact.
+  const prepared = [] as Array<(typeof units)[number] & { vectorString: string }>;
+  for (const unit of units) {
+    const vector = requireValidVector(await provider.generateEmbedding(
+      prepareRetrievalDocument(unit.contentSnapshot, unit.title),
+    ));
+    prepared.push({ ...unit, vectorString: `[${vector.join(",")}]` });
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.retrievalEmbedding.deleteMany({
+      where: { projectId, sourceOrigin: { in: [...MANAGED_SOURCE_ORIGINS] } },
+    });
+    for (const unit of prepared) {
+      await tx.$executeRaw`
+        INSERT INTO "RetrievalEmbedding" ("id", "sourceOrigin", "sourceId", "projectId", "contentSnapshot", "embedding")
+        VALUES (${randomUUID()}, ${unit.sourceOrigin}, ${unit.sourceId}, ${projectId}, ${unit.contentSnapshot}, ${unit.vectorString}::vector)
+      `;
+    }
+  });
+
+  return { syncedBlocks: blockUnits.length, syncedQuotes: quoteUnits.length };
 }
 
 /**
@@ -122,30 +181,52 @@ export async function hybridSearchExamples(
   query: string,
   projectId: string,
   limit: number = 20,
-  provider: EmbeddingProvider = new MockEmbeddingProvider()
+  provider: EmbeddingProvider = new GeminiEmbeddingProvider()
 ): Promise<{ sourceId: string; score: number }[]> {
   const prisma = getPrismaClient();
 
   // 1. Keyword search baseline
-  const keywordHits = await prisma.studioDocumentBlock.findMany({
+  const stopWords = new Set([
+    "about", "after", "examples", "find", "from", "into", "nest", "related",
+    "that", "this", "what", "when", "where", "which", "with",
+  ]);
+  const queryTerms = Array.from(new Set(
+    query
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, " ")
+      .split(/\s+/)
+      .filter((term) => term.length > 3 && !stopWords.has(term)),
+  )).slice(0, 10);
+  const keywordHits = queryTerms.length > 0 ? await prisma.studioDocumentBlock.findMany({
     where: {
       document: { projectId },
-      body: { contains: query, mode: "insensitive" }
+      OR: queryTerms.map((term) => ({ body: { contains: term, mode: "insensitive" as const } })),
     },
     take: limit * 2,
-    select: { id: true }
-  });
+    select: { id: true, body: true },
+  }) : [];
+  const rankedKeywordHits = keywordHits
+    .map((hit) => ({
+      id: hit.id,
+      matches: queryTerms.reduce(
+        (total, term) => total + (hit.body.toLowerCase().includes(term) ? 1 : 0),
+        0,
+      ),
+    }))
+    .sort((left, right) => right.matches - left.matches || left.id.localeCompare(right.id));
   
   // 2. Vector semantic search
   let vectorHits: { sourceId: string; distance: number }[] = [];
   try {
-    const queryVector = await provider.generateEmbedding(query);
+    const queryVector = requireValidVector(await provider.generateEmbedding(prepareRetrievalQuery(query)));
     if (queryVector.length > 0) {
       const vectorString = `[${queryVector.join(",")}]`;
       vectorHits = await prisma.$queryRaw<Array<{ sourceId: string; distance: number }>>`
         SELECT "sourceId", embedding <=> ${vectorString}::vector as distance
         FROM "RetrievalEmbedding"
-        WHERE "projectId" = ${projectId} AND embedding IS NOT NULL
+        WHERE "projectId" = ${projectId}
+          AND "sourceOrigin" = 'studio-document-block'
+          AND embedding IS NOT NULL
         ORDER BY distance ASC
         LIMIT ${limit * 2};
       `;
@@ -157,7 +238,7 @@ export async function hybridSearchExamples(
   // 3. Reciprocal Rank Fusion (RRF) blending
   const scores = new Map<string, number>();
   
-  keywordHits.forEach((hit, index) => {
+  rankedKeywordHits.forEach((hit, index) => {
     // Basic RRF score: 1 / (rank + 60)
     scores.set(hit.id, 1 / (index + 60));
   });
@@ -188,7 +269,7 @@ export async function searchSemanticLoreQuotes(
   const prisma = getPrismaClient();
 
   try {
-    const queryVector = await provider.generateEmbedding(query);
+    const queryVector = requireValidVector(await provider.generateEmbedding(prepareRetrievalQuery(query)));
     if (queryVector.length > 0) {
       const vectorString = `[${queryVector.join(",")}]`;
       

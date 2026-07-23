@@ -1,63 +1,7 @@
-import { NextRequest, NextResponse } from "next/server";
-import { PublishingDispatcher, QuipslyPublicPackage, mapDomainPacketToQuipslyPackage } from "@/lib/publishing/DestinationAdapters";
-import type { PublicPublishPacket } from "@high-ground/quipsly-domain";
+import { retiredPublishingExecutionResponse } from "@/lib/server/retired-publishing-execution";
 
-export async function POST(req: NextRequest) {
-  try {
-    const body = await req.json();
-
-    const { package: pkg, destinations } = body as {
-      package: QuipslyPublicPackage | PublicPublishPacket;
-      destinations: string[];
-    };
-
-    if (!pkg || !pkg.id || !pkg.title) {
-      return NextResponse.json({ error: "Invalid package payload: missing id or title" }, { status: 400 });
-    }
-
-    // Adapt if it's a domain packet
-    const isDomainPacket = "packetVersion" in pkg && pkg.packetVersion === 1;
-    const localPkg = isDomainPacket
-      ? mapDomainPacketToQuipslyPackage(pkg as PublicPublishPacket)
-      : pkg as QuipslyPublicPackage;
-
-    if (!localPkg.body && !isDomainPacket) {
-      return NextResponse.json({ error: "Invalid QuipslyPublicPackage payload: missing body" }, { status: 400 });
-    }
-
-    if (!destinations || !Array.isArray(destinations) || destinations.length === 0) {
-      return NextResponse.json({ error: "Missing destinations array" }, { status: 400 });
-    }
-
-    const dispatcher = new PublishingDispatcher();
-
-    // Validate first
-    const validationResults = await dispatcher.validateForDestinations(localPkg, destinations);
-
-    // Check if there are critical validation errors
-    const errors: Record<string, string[]> = {};
-    let hasCriticalErrors = false;
-    for (const [dest, result] of Object.entries(validationResults)) {
-      if (!result.isValid) {
-        errors[dest] = result.errors;
-        hasCriticalErrors = true;
-      }
-    }
-
-    if (hasCriticalErrors) {
-      return NextResponse.json({ error: "Validation failed", details: errors }, { status: 422 });
-    }
-
-    // Execute dispatch
-    const publishResults = await dispatcher.dispatch(localPkg, destinations);
-
-    return NextResponse.json({
-      success: true,
-      results: publishResults,
-    });
-
-  } catch (error: any) {
-    console.error("[Publish Handoff Error]", error);
-    return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
-  }
+// Retired before request parsing: the historical route was public and could
+// call external adapters without a scoped actor or persisted attempt receipt.
+export async function POST() {
+  return retiredPublishingExecutionResponse();
 }

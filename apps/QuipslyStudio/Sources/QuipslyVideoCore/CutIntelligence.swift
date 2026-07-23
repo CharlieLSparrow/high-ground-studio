@@ -30,7 +30,7 @@ public struct CutIntelligenceReport: Codable, Equatable, Sendable {
 
     public init(
         model: String = "quipsly-cut-intelligence-report",
-        version: String = "2026-06-30.v4",
+        version: String = "2026-07-17.v5",
         generatedAt: Date = Date(),
         sequenceId: UUID,
         sequenceTitle: String,
@@ -1018,7 +1018,7 @@ public enum CutIntelligenceAnalyzer {
                         "reviewLens=overlapping-metadata"
                     ]
                 ))
-            } else if sameLane && gap >= 0 && gap < 0.35 {
+            } else if sameLane && gap > (1.0 / 240.0) && gap < 0.35 {
                 findings.append(CutIntelligenceFinding(
                     id: "jump-\(index)-\(current.laneId.uuidString.prefix(8))",
                     kind: "jump-cut-risk",
@@ -1030,7 +1030,7 @@ public enum CutIntelligenceAnalyzer {
                     targetLaneId: current.laneId,
                     targetLaneName: current.laneName,
                     cutStyle: "jump-cut-risk",
-                    reason: "Two adjacent SHOW decisions stay on \(current.laneName) with only \(formatSeconds(gap)) between them.",
+                    reason: "Two adjacent SHOW decisions stay on \(current.laneName) after removing \(formatSeconds(gap)) of that source.",
                     suggestedAction: "Cover with the other camera reaction, B-roll, a wide/two-shot, or preserve a slightly longer pause.",
                     evidence: [
                         "previousEnd=\(formatSeconds(previous.end))",

@@ -189,7 +189,7 @@ function PageCard({
 export default async function NotebookNestPage({
   params,
 }: {
-  params: Promise<{ projectSlug: string }> | { projectSlug: string };
+  params: Promise<{ projectSlug: string }>;
 }) {
   const resolvedParams = await params;
   const projectSlug = decodeURIComponent(resolvedParams.projectSlug);
@@ -197,7 +197,7 @@ export default async function NotebookNestPage({
   const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
 
   if (!actorEmail) {
-    redirect(`/api/auth/signin?callbackUrl=/notebooks/${encodeURIComponent(projectSlug)}`);
+    redirect(`/login?callbackUrl=/notebooks/${encodeURIComponent(projectSlug)}`);
   }
 
   const prisma = getPrismaClient();

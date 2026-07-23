@@ -17,6 +17,7 @@ import html
 import json
 import re
 import shlex
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,7 @@ RELEASE_ROOT = Path("/Volumes/My Passport/Episode_and_Shorts_Test")
 READINESS_POINTER = RELEASE_ROOT / "review-board/transcript-execution-readiness/latest-transcript-execution-readiness.json"
 OUT_ROOT = RELEASE_ROOT / "review-board/transcript-pilots"
 LATEST_POINTER = OUT_ROOT / "latest-transcript-pilot.json"
-PROVIDER = Path(__file__).resolve().parent / "local_transcript_provider.py"
+PROVIDER = Path(__file__).resolve().parent.parent / "local_transcript_provider.py"
 SCHEMA = "quipsly.episode-transcript-pilot.v1"
 
 DANGEROUS_TRUTH_KEYS = [
@@ -51,6 +52,12 @@ def iso_now() -> str:
 
 def stamp() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f-transcript-pilot")
+
+
+def latest_pointer_for_episode(episode: int | None) -> Path:
+    if episode:
+        return OUT_ROOT / f"latest-transcript-pilot-episode-{episode:02d}.json"
+    return LATEST_POINTER
 
 
 def esc(value: Any) -> str:
@@ -279,6 +286,10 @@ def normalize_provider_output(raw_text: str, source: dict[str, Any], raw_path: P
             "fileName": source.get("fileName"),
             "sourcePath": source.get("sourcePath"),
             "durationSeconds": source.get("durationSeconds"),
+            "isManagedExcerpt": bool(source.get("isManagedExcerpt")),
+            "originalSourcePath": source.get("originalSourcePath") or source.get("sourcePath"),
+            "excerptStartSeconds": source.get("excerptStartSeconds"),
+            "excerptDurationSeconds": source.get("excerptDurationSeconds"),
             "rawProviderOutputPath": str(raw_path),
         },
         "counts": {
@@ -346,7 +357,70 @@ def run_provider(source: dict[str, Any], raw_path: Path, timeout: int, provider:
     return result.returncode == 0 and raw_path.exists() and raw_path.stat().st_size > 0, result.stdout, result.stderr, result.returncode
 
 
+def create_excerpt_source(source: dict[str, Any], session_dir: Path, start_seconds: float, duration_seconds: float) -> tuple[dict[str, Any], list[str]]:
+    warnings: list[str] = []
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        return source, ["ffmpeg is not available, so the pilot cannot create a managed excerpt from a long source."]
+
+    source_path = Path(str(source.get("sourcePath") or ""))
+    if not source_path.exists() or not source_path.is_file():
+        return source, [f"Pilot excerpt source is not readable: {source_path}"]
+
+    excerpt_dir = session_dir / "managed-excerpts"
+    excerpt_dir.mkdir(parents=True, exist_ok=True)
+    queue_id = str(source.get("queueId") or "pilot-source")
+    excerpt_path = excerpt_dir / f"{queue_id}-excerpt-{int(start_seconds)}s-{int(duration_seconds)}s.wav"
+    command = [
+        ffmpeg,
+        "-y",
+        "-hide_banner",
+        "-nostdin",
+        "-loglevel",
+        "error",
+        "-ss",
+        f"{max(0.0, start_seconds):.3f}",
+        "-t",
+        f"{max(0.1, duration_seconds):.3f}",
+        "-i",
+        str(source_path),
+        "-vn",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
+        str(excerpt_path),
+    ]
+    result = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
+    if result.returncode != 0 or not excerpt_path.exists() or excerpt_path.stat().st_size <= 0:
+        detail = (result.stderr or result.stdout or f"ffmpeg exited {result.returncode}").strip()
+        return source, [f"Managed excerpt creation failed: {detail[-1600:]}"]
+
+    excerpt = dict(source)
+    excerpt.update({
+        "queueId": f"{queue_id}-pilot-excerpt",
+        "fileName": excerpt_path.name,
+        "sourcePath": str(excerpt_path),
+        "durationSeconds": duration_seconds,
+        "durationLabel": f"{duration_seconds:.0f}s excerpt",
+        "sourceKind": f"{source.get('sourceKind') or 'source'}-pilot-excerpt",
+        "isManagedExcerpt": True,
+        "originalSourcePath": str(source_path),
+        "excerptStartSeconds": start_seconds,
+        "excerptDurationSeconds": duration_seconds,
+        "truth": {
+            "managedExcerpt": True,
+            "originalSourceMutated": False,
+            "purpose": "Short ASR pipeline proof before transcribing the full source.",
+        },
+    })
+    warnings.append(f"Created managed ASR pilot excerpt: {excerpt_path}")
+    return excerpt, warnings
+
+
 def planned_raw_path(candidate: dict[str, Any], session_dir: Path) -> Path:
+    if candidate.get("isManagedExcerpt"):
+        return session_dir / f"{candidate.get('queueId') or 'pilot-excerpt'}.provider-output.txt"
     existing = str(candidate.get("plannedRawProviderOutputPath") or "")
     if existing:
         return Path(existing)
@@ -355,6 +429,8 @@ def planned_raw_path(candidate: dict[str, Any], session_dir: Path) -> Path:
 
 
 def planned_normalized_path(candidate: dict[str, Any], session_dir: Path) -> Path:
+    if candidate.get("isManagedExcerpt"):
+        return session_dir / f"{candidate.get('queueId') or 'pilot-excerpt'}.quipsly-transcript.json"
     existing = str(candidate.get("plannedNormalizedTranscriptJsonPath") or "")
     if existing:
         return Path(existing)
@@ -369,6 +445,7 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def render_markdown(payload: dict[str, Any]) -> str:
     source = payload.get("selectedSource") if isinstance(payload.get("selectedSource"), dict) else {}
+    execution_source = payload.get("executionSource") if isinstance(payload.get("executionSource"), dict) else {}
     counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
     truth = payload.get("truth") if isinstance(payload.get("truth"), dict) else {}
     lines = [
@@ -386,6 +463,8 @@ def render_markdown(payload: dict[str, Any]) -> str:
         f"- File: `{source.get('fileName')}`",
         f"- Duration: `{source.get('durationSeconds')}` seconds",
         f"- Source path: `{source.get('sourcePath')}`",
+        f"- Execution source path: `{execution_source.get('sourcePath') or source.get('sourcePath')}`",
+        f"- Execution source duration: `{execution_source.get('durationSeconds') or source.get('durationSeconds')}` seconds",
         f"- Raw provider output: `{payload.get('rawProviderOutputPath')}`",
         f"- Normalized transcript: `{payload.get('normalizedTranscriptJsonPath')}`",
         "",
@@ -412,6 +491,7 @@ def render_markdown(payload: dict[str, Any]) -> str:
 
 def write_html(path: Path, payload: dict[str, Any]) -> None:
     source = payload.get("selectedSource") if isinstance(payload.get("selectedSource"), dict) else {}
+    execution_source = payload.get("executionSource") if isinstance(payload.get("executionSource"), dict) else {}
     counts = payload.get("counts") if isinstance(payload.get("counts"), dict) else {}
     truth = payload.get("truth") if isinstance(payload.get("truth"), dict) else {}
     warnings = payload.get("warnings") if isinstance(payload.get("warnings"), list) else []
@@ -438,7 +518,7 @@ code,pre {{ color:var(--leaf); white-space:pre-wrap; }}
 @media(max-width:850px) {{ .grid {{ grid-template-columns:1fr; }} }}
 </style></head><body><main>
 <header><p class=\"eyebrow\">Quipsly Studio · transcript pilot</p><h1>{esc(payload.get('status'))}</h1><p>{esc(payload.get('nextSafestAction'))}</p><div class=\"counts\"><span class=\"pill\">ASR runs: {esc(counts.get('asrRun'))}</span><span class=\"pill\">raw outputs: {esc(counts.get('rawProviderOutputsWritten'))}</span><span class=\"pill\">normalized: {esc(counts.get('normalizedTranscriptsWritten'))}</span><span class=\"pill\">segments: {esc(counts.get('segments'))}</span></div></header>
-<div class=\"grid\"><section class=\"panel\"><p class=\"eyebrow\">Selected source</p><h2>{esc(source.get('fileName'))}</h2><p>{esc(source.get('episodeLabel'))} · {esc(source.get('sourceKind'))} · {esc(source.get('durationSeconds'))}s</p><p class=\"path\">{esc(source.get('sourcePath'))}</p><h3>Outputs</h3><p class=\"path\">Raw: {esc(payload.get('rawProviderOutputPath'))}</p><p class=\"path\">Normalized: {esc(payload.get('normalizedTranscriptJsonPath'))}</p></section><section class=\"panel\"><p class=\"eyebrow\">Truth receipt</p><table>{truth_rows}</table></section></div>
+<div class=\"grid\"><section class=\"panel\"><p class=\"eyebrow\">Selected source</p><h2>{esc(source.get('fileName'))}</h2><p>{esc(source.get('episodeLabel'))} · {esc(source.get('sourceKind'))} · {esc(source.get('durationSeconds'))}s</p><p class=\"path\">{esc(source.get('sourcePath'))}</p><h3>Execution source</h3><p>{esc(execution_source.get('fileName') or source.get('fileName'))} · {esc(execution_source.get('durationSeconds') or source.get('durationSeconds'))}s</p><p class=\"path\">{esc(execution_source.get('sourcePath') or source.get('sourcePath'))}</p><h3>Outputs</h3><p class=\"path\">Raw: {esc(payload.get('rawProviderOutputPath'))}</p><p class=\"path\">Normalized: {esc(payload.get('normalizedTranscriptJsonPath'))}</p></section><section class=\"panel\"><p class=\"eyebrow\">Truth receipt</p><table>{truth_rows}</table></section></div>
 <section class=\"panel\"><p class=\"eyebrow\">Warnings</p><ul>{warnings_html}</ul></section>
 <section class=\"panel\"><p class=\"eyebrow\">Commands</p><pre>{esc(payload.get('safeExecuteCommand'))}</pre><p>This command targets one source only. It does not import or reconcile transcripts automatically.</p></section>
 </main></body></html>"""
@@ -449,7 +529,7 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
     readiness = load_pointer(Path(args.readiness_pointer))
     rows = iter_sources(readiness)
     session_dir = OUT_ROOT / stamp()
-    candidate, warnings = choose_candidate(rows, args.episode, args.max_duration)
+    candidate, warnings = choose_candidate(rows, args.episode, None)
     doctor = provider_doctor()
 
     status = "transcript-pilot-ready"
@@ -461,6 +541,7 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
     provider_exit_code: int | None = None
     asr_ok = False
     normalized_ok = False
+    execution_source = candidate
 
     if candidate:
         raw_path = planned_raw_path(candidate, session_dir)
@@ -470,15 +551,33 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
 
     if candidate and args.execute:
         if source_duration(candidate) > args.max_duration > 0:
-            status = "transcript-pilot-blocked"
-            warnings.append(f"Refusing to execute because selected duration {source_duration(candidate):.1f}s exceeds --max-duration {args.max_duration:.1f}s.")
+            if args.excerpt_duration > 0:
+                execution_source, excerpt_warnings = create_excerpt_source(
+                    candidate,
+                    session_dir,
+                    args.excerpt_start,
+                    min(args.excerpt_duration, args.max_duration),
+                )
+                warnings.extend(excerpt_warnings)
+                if execution_source == candidate:
+                    status = "transcript-pilot-blocked"
+                    warnings.append(f"Refusing full-source execution because selected duration {source_duration(candidate):.1f}s exceeds --max-duration {args.max_duration:.1f}s and excerpt creation did not succeed.")
+                else:
+                    raw_path = planned_raw_path(execution_source, session_dir)
+                    normalized_path = planned_normalized_path(execution_source, session_dir)
+            else:
+                status = "transcript-pilot-blocked"
+                warnings.append(f"Refusing to execute because selected duration {source_duration(candidate):.1f}s exceeds --max-duration {args.max_duration:.1f}s.")
+
+        if status == "transcript-pilot-blocked":
+            pass
         elif not bool(doctor.get("available")):
             status = "transcript-pilot-blocked"
             warnings.append("Provider doctor says no ASR provider is available; not executing.")
         else:
-            asr_ok, provider_stdout, provider_stderr, provider_exit_code = run_provider(candidate, raw_path, args.timeout, args.provider, args.model, args.language)
+            asr_ok, provider_stdout, provider_stderr, provider_exit_code = run_provider(execution_source or candidate, raw_path, args.timeout, args.provider, args.model, args.language)
             if asr_ok:
-                normalized_payload, normalization_warnings = normalize_provider_output(provider_stdout, candidate, raw_path)
+                normalized_payload, normalization_warnings = normalize_provider_output(provider_stdout, execution_source or candidate, raw_path)
                 warnings.extend(normalization_warnings)
                 write_json(normalized_path, normalized_payload)
                 normalized_ok = normalized_path.exists() and normalized_path.stat().st_size > 0 and normalized_payload.get("status") == "normalized-transcript-ready"
@@ -489,7 +588,10 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
                     warnings.append(provider_stderr.strip()[-2000:])
                 warnings.append(f"Provider exited with code {provider_exit_code}.")
     elif candidate and not args.execute:
-        warnings.append("Dry run only. Pass --execute to run exactly one ASR provider command.")
+        if source_duration(candidate) > args.max_duration > 0 and args.excerpt_duration > 0:
+            warnings.append(f"Dry run only. Pass --execute to create a managed {min(args.excerpt_duration, args.max_duration):.0f}s excerpt instead of transcribing the full {source_duration(candidate):.1f}s source.")
+        else:
+            warnings.append("Dry run only. Pass --execute to run exactly one ASR provider command.")
 
     truth = {
         "executionDryRun": bool(not args.execute),
@@ -522,12 +624,17 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
     if candidate:
         safe_command = (
             f"python3 {shell_quote(str(Path(__file__).resolve()))} --execute --episode {candidate.get('episode') or ''} "
-            f"--max-duration {args.max_duration:g} --provider {shell_quote(args.provider)} --model {shell_quote(args.model)} --language {shell_quote(args.language)}"
+            f"--readiness-pointer {shell_quote(str(args.readiness_pointer))} --max-duration {args.max_duration:g} "
+            f"--excerpt-start {args.excerpt_start:g} --excerpt-duration {args.excerpt_duration:g} "
+            f"--provider {shell_quote(args.provider)} --model {shell_quote(args.model)} --language {shell_quote(args.language)}"
         )
 
     next_action = ""
     if status == "transcript-pilot-executed":
-        next_action = "Open the normalized transcript JSON, review timing/speaker quality, then decide whether to run the next Episode 1/6 source or build reconciliation tooling."
+        if candidate and candidate.get("episode"):
+            next_action = f"Open the normalized transcript JSON, review timing/speaker quality, then decide whether to run full Episode {candidate.get('episode')} ASR, another Episode {candidate.get('episode')} source, or transcript reconciliation tooling."
+        else:
+            next_action = "Open the normalized transcript JSON, review timing/speaker quality, then decide whether to run full-source ASR, another source, or transcript reconciliation tooling."
     elif status == "transcript-pilot-ready":
         next_action = "Run the safe execute command for this one selected source, then review the normalized transcript before importing or reconciling anything."
     elif status == "transcript-pilot-blocked":
@@ -546,6 +653,7 @@ def build_payload(args: argparse.Namespace) -> dict[str, Any]:
         "providerDoctor": doctor,
         "providerAvailable": bool(doctor.get("available")),
         "selectedSource": candidate or {},
+        "executionSource": execution_source or {},
         "rawProviderOutputPath": str(raw_path),
         "normalizedTranscriptJsonPath": str(normalized_path),
         "safeExecuteCommand": safe_command,
@@ -563,6 +671,8 @@ def main() -> int:
     parser.add_argument("--readiness-pointer", default=str(READINESS_POINTER))
     parser.add_argument("--episode", type=int, default=None, help="Limit candidate selection to one episode number.")
     parser.add_argument("--max-duration", type=float, default=180.0, help="Refuse execution if selected source is longer than this many seconds.")
+    parser.add_argument("--excerpt-start", type=float, default=60.0, help="When selected source is long, create a managed excerpt starting here before ASR.")
+    parser.add_argument("--excerpt-duration", type=float, default=120.0, help="When selected source is long, transcribe only this managed excerpt for the pilot.")
     parser.add_argument("--execute", action="store_true", help="Run exactly one ASR command and normalize its output.")
     parser.add_argument("--timeout", type=int, default=900, help="Provider timeout in seconds for --execute.")
     parser.add_argument("--provider", default="auto")
@@ -590,7 +700,11 @@ def main() -> int:
     markdown_path.parent.mkdir(parents=True, exist_ok=True)
     markdown_path.write_text(render_markdown(payload), encoding="utf-8")
     write_html(html_path, payload)
-    write_json(LATEST_POINTER, payload)
+    selected_episode = None
+    selected = payload.get("selectedSource") if isinstance(payload.get("selectedSource"), dict) else {}
+    if isinstance(selected.get("episode"), int):
+        selected_episode = selected.get("episode")
+    write_json(latest_pointer_for_episode(selected_episode), payload)
     print(json.dumps({
         "status": payload.get("status"),
         "htmlPath": payload.get("htmlPath"),

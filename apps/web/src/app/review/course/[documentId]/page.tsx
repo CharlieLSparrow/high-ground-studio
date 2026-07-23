@@ -10,8 +10,9 @@ export const dynamic = "force-dynamic";
 export default async function DocumentCourseReviewPage({
   params,
 }: {
-  params: { documentId: string };
+  params: Promise<{ documentId: string }>;
 }) {
+  const { documentId } = await params;
   const session = await auth();
   if (!session?.user) {
     return <div className="p-8 text-white">Access Denied. Beta authentication required.</div>;
@@ -19,7 +20,7 @@ export default async function DocumentCourseReviewPage({
 
   // Fetch the StudioDocument with its blocks
   const document = await prisma.studioDocument.findUnique({
-    where: { id: params.documentId },
+    where: { id: documentId },
     include: {
       blocks: {
         where: { archivedAt: null },

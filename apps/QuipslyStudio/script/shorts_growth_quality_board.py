@@ -249,7 +249,71 @@ def score_short(row: dict[str, Any], card: dict[str, Any]) -> dict[str, Any]:
     if "listen" not in " ".join(audio_notes).lower() and not card.get("primaryExportExists"):
         missing.append("listen-through")
 
+    dimensions = [
+        {
+            "id": "hook",
+            "name": "Opening hook",
+            "score": round(hook_points, 1),
+            "label": "hook-ready" if hook else "needs-hook",
+            "rationale": "The first second needs a concrete stop signal for a feed viewer.",
+            "nextAction": "Watch the first 3 seconds and sharpen the promise, tension, question, or payoff.",
+            "evidence": hook_notes,
+        },
+        {
+            "id": "duration",
+            "name": "Pacing window",
+            "score": round(duration_points, 1),
+            "label": duration_note,
+            "rationale": "Duration controls whether the short can carry setup and payoff without dragging.",
+            "nextAction": "Split, trim, or justify the length with a stronger payoff.",
+            "evidence": [f"duration={duration:.1f}s"],
+        },
+        {
+            "id": "platform-pack",
+            "name": "Native platform pack",
+            "score": round(platform_points, 1),
+            "label": "platform-mapped" if destinations else "needs-destination",
+            "rationale": "Shorts, Reels, Facebook, LinkedIn, Patreon, and site embeds each need native framing.",
+            "nextAction": "Draft platform-specific title, caption, hashtags, and posting note.",
+            "evidence": platform_notes,
+        },
+        {
+            "id": "visual",
+            "name": "Visual proof",
+            "score": round(visual_points, 1),
+            "label": "proof-visible" if card.get("primaryExportExists") else "needs-export-proof",
+            "rationale": "Crop, face safety, captions, and platform UI cannot be trusted from metadata alone.",
+            "nextAction": "Export locally and inspect proof/contact-sheet frames.",
+            "evidence": visual_notes,
+        },
+        {
+            "id": "audio",
+            "name": "Audio/listen proof",
+            "score": round(audio_points, 1),
+            "label": "listen-signal-present" if "listen" in " ".join(audio_notes).lower() else "needs-listen-through",
+            "rationale": "A short can look right and still fail if cadence, noise, or cuts feel unnatural.",
+            "nextAction": "Listen through once before Keep or Tower handoff.",
+            "evidence": audio_notes,
+        },
+        {
+            "id": "coherence",
+            "name": "Self-contained idea",
+            "score": round(standalone_points, 1),
+            "label": "standalone-check",
+            "rationale": "A good short should feel like one complete mini-thought, even with multiple segments.",
+            "nextAction": "Confirm setup, turn, and payoff are understandable without episode context.",
+            "evidence": standalone_notes,
+        },
+    ]
+
     return {
+        "qualityPassport": {
+            "model": "quipsly-short-quality-passport",
+            "version": "2026-06-30.batch-projection.v1",
+            "truth": "Batch projection of the same visible quality-passport dimensions used by Quipsly Studio. It is a heuristic for choosing what to polish next, not a promise of performance or approval.",
+            "dimensions": dimensions,
+        },
+        "qualityDimensions": dimensions,
         "growthScore": score,
         "growthTier": tier,
         "subscores": {

@@ -3,9 +3,8 @@
 import { SyncDeck } from "./SyncDeck";
 import { ChangeEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Player } from "@remotion/player";
-import { submitRenderJob } from "../render-queue/actions";
 import { VisualTimeline } from "./VisualTimeline";
 import { InteractiveTimeline } from "./timeline/InteractiveTimeline";
 import { MediaAssetPicker } from "./MediaAssetPicker";
@@ -35,6 +34,10 @@ const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 const EDITOR_LEGACY_VERSION = 0;
 type TimelineSaveState = "idle" | "queued" | "saving" | "saved" | "error" | "fallback" | "conflict";
 type TimelineHydrationSource = "loading" | "saved timeline" | "recording room" | "transcript payload" | "default timeline" | "error";
+
+type AiEditSuggestion =
+  | { type: "deactivate"; blockId: string }
+  | { type: "add_keyframe"; timeOffset: number; x: number; y: number; scale: number };
 
 type EpisodeProductionState = {
   ok: boolean;
@@ -144,6 +147,81 @@ type ImportedMediaAsset = {
     status?: string;
     proxyUrl?: string;
     note?: string;
+  };
+};
+
+type EpisodeMediaTruth = {
+  ok: boolean;
+  error?: string;
+  summary?: {
+    importedMediaCount?: number;
+    videoCount?: number;
+    audioCount?: number;
+    sourceRecordingCount?: number;
+    proxyReadyCount?: number;
+    proxyNeededCount?: number;
+    completedTranscriptJobCount?: number;
+    attachedAssetCount?: number;
+  };
+  episode?: {
+    found?: boolean;
+    title?: string;
+    status?: string;
+    updatedAt?: string;
+  };
+  importedMedia?: Array<{
+    id?: string | null;
+    originalName?: string;
+    kind?: string | null;
+    importRole?: string | null;
+    syncStatus?: string | null;
+    proxyStatus?: string | null;
+    recordingAssetId?: string | null;
+    sessionContext?: {
+      roomId: string;
+      projectSlug: string;
+      canonicalTagSource?: string | null;
+      tagSnapshot?: Array<{ id: string; label: string; slug: string; category: string }>;
+    } | null;
+    safeNextAction?: string;
+    asset?: {
+      readiness?: {
+        hasProxy?: boolean;
+        needsProxy?: boolean;
+        hasThumbnail?: boolean;
+        sourceSafe?: boolean;
+      };
+    } | null;
+    recording?: {
+      status?: string;
+      readiness?: {
+        verified?: boolean;
+        promotedToStudioMedia?: boolean;
+        completedTranscriptCount?: number;
+        needsTranscript?: boolean;
+      };
+    } | null;
+  }>;
+  recordingEvidence?: Array<{
+    id: string;
+    status?: string;
+    kind?: string;
+    fileName?: string | null;
+    readiness?: {
+      verified?: boolean;
+      promotedToStudioMedia?: boolean;
+      completedTranscriptCount?: number;
+      needsTranscript?: boolean;
+    };
+  }>;
+  safeNextActions?: string[];
+  boundaries?: {
+    sideEffectFree?: boolean;
+    noOriginalMutation?: boolean;
+    noExternalMutation?: boolean;
+    inventoryOnly?: boolean;
+    sourceTruth?: string;
+    editorRule?: string;
   };
 };
 
@@ -2718,9 +2796,9 @@ function parseCoPilotCommand(input: string): EditorCoPilotParse {
 function CloudEditorContent() {
   const [currentTime, setCurrentTime] = useState(0);
   const [viewMode, setViewMode] = useState<"timeline" | "transcript" | "reframe" | "segmenter">("timeline");
-  const [isExporting, setIsExporting] = useState(false);
   const [sessionSummary, setSessionSummary] = useState<string | null>(null);
   const [productionState, setProductionState] = useState<EpisodeProductionState | null>(null);
+  const [productionEntryError, setProductionEntryError] = useState<string | null>(null);
   const [collaborationState, setCollaborationState] = useState<EpisodeCollaborationState | null>(null);
   const [remoteTimelineNotice, setRemoteTimelineNotice] = useState<string | null>(null);
   const [isImportingMedia, setIsImportingMedia] = useState(false);
@@ -2734,14 +2812,7 @@ function CloudEditorContent() {
   const [restoringTimelineBackupId, setRestoringTimelineBackupId] = useState<string | null>(null);
   const [editorCoPilotInput, setEditorCoPilotInput] = useState("");
   const [editorCoPilotLog, setEditorCoPilotLog] = useState<EditorCoPilotLogEntry[]>([]);
-  const [editorCoPilotMessages, setEditorCoPilotMessages] = useState<EditorCoPilotMessage[]>(() => [
-    {
-      id: makeId("copilot-msg"),
-      at: new Date().toISOString(),
-      role: "system",
-      text: "Editor co-pilot online. I can run editor actions and keep a rollback log for each successful change.",
-    },
-  ]);
+  const [editorCoPilotMessages, setEditorCoPilotMessages] = useState<EditorCoPilotMessage[]>([]);
   const [isEditorCoPilotBusy, setIsEditorCoPilotBusy] = useState(false);
   const [sourceClipUrl, setSourceClipUrl] = useState("");
   const [sourceClipTitle, setSourceClipTitle] = useState("");
@@ -2771,7 +2842,6 @@ function CloudEditorContent() {
   const timelineRouteRef = useRef("");
   const syncPreviewSpineRef = useRef<HTMLAudioElement | null>(null);
   const syncPreviewTargetRef = useRef<HTMLMediaElement | null>(null);
-  const router = useRouter();
   const searchParams = useSearchParams();
   const projectId = searchParams.get("project") ?? searchParams.get("projectId");
   const episodeSlug = searchParams.get("episode") ?? searchParams.get("boundary") ?? "current-episode";
@@ -2818,47 +2888,77 @@ function CloudEditorContent() {
   const timelineFingerprint = useMemo(() => timelineContentFingerprint(timelineState), [timelineState]);
   const routeToken = useMemo(() => `${resolvedProjectSlug}::${episodeSlug}`, [resolvedProjectSlug, episodeSlug]);
   const [isAiAutoEditing, setIsAiAutoEditing] = useState(false);
+  const [isAiDisclosureOpen, setIsAiDisclosureOpen] = useState(false);
+  const [aiEditSuggestions, setAiEditSuggestions] = useState<AiEditSuggestion[]>([]);
+  const [aiEditMessage, setAiEditMessage] = useState("");
 
   const handleAiAutoEdit = async () => {
     if (!timelineState.transcript?.length) return;
     try {
+      setIsAiDisclosureOpen(false);
       setIsAiAutoEditing(true);
+      setAiEditMessage("");
       const res = await fetch("/api/ai-edit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ transcriptBlocks: timelineState.transcript })
+        body: JSON.stringify({
+          transcriptBlocks: timelineState.transcript,
+          providerDisclosureAccepted: true,
+        }),
       });
       const data = await res.json();
-
-      if (data.edits && data.edits.length > 0) {
-        for (const edit of data.edits) {
-          if (edit.type === "deactivate" && edit.blockId) {
-             const block = timelineState.transcript.find(b => b.id === edit.blockId);
-             if (block && !block.deactivated) {
-                 toggleDeleteBlock(edit.blockId);
-             }
-          } else if (edit.type === "add_keyframe" && typeof edit.timeOffset === "number") {
-             const videoClip = timelineState.clips.find(c => isVideoTrackId(c.trackId));
-             if (videoClip) {
-                // Safely add keyframe using the new reducer action
-                addClipKeyframe(videoClip.id, {
-                   id: `kf-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-                   timeOffset: edit.timeOffset,
-                   x: edit.x ?? 0,
-                   y: edit.y ?? 0,
-                   scale: edit.scale ?? 90,
-                   easing: "ease-in-out",
-                   aiSuggested: true // For visual indicator
-                });
-             }
-          }
-        }
+      if (!res.ok) {
+        setAiEditSuggestions([]);
+        setAiEditMessage(data.error || "Edit suggestions are unavailable. The timeline is unchanged.");
+        return;
       }
+      const suggestions = Array.isArray(data.edits) ? data.edits as AiEditSuggestion[] : [];
+      setAiEditSuggestions(suggestions);
+      setAiEditMessage(suggestions.length
+        ? `${suggestions.length} proposal${suggestions.length === 1 ? "" : "s"} ready for review. Nothing has been applied.`
+        : "No valid edit suggestions were returned. The timeline is unchanged.");
     } catch (e) {
       console.error(e);
+      setAiEditSuggestions([]);
+      setAiEditMessage("Edit suggestions could not be loaded. The timeline is unchanged.");
     } finally {
       setIsAiAutoEditing(false);
     }
+  };
+
+  const dismissAiEditSuggestion = (index: number) => {
+    setAiEditSuggestions((current) => current.filter((_, candidateIndex) => candidateIndex !== index));
+  };
+
+  const applyAiEditSuggestion = (edit: AiEditSuggestion, index: number) => {
+    if (edit.type === "deactivate") {
+      const block = timelineState.transcript.find((candidate) => candidate.id === edit.blockId);
+      if (!block) {
+        setAiEditMessage("That transcript block is no longer present, so the proposal was not applied.");
+        return;
+      }
+      if (!block.deactivated) toggleDeleteBlock(edit.blockId);
+      dismissAiEditSuggestion(index);
+      setAiEditMessage("Transcript cut applied to the editable timeline. Review playback before saving or rendering.");
+      return;
+    }
+
+    const videoClip = timelineState.clips.find((clip) => isVideoTrackId(clip.trackId));
+    if (!videoClip) {
+      setAiEditMessage("No video clip is available for that reframe, so the proposal was not applied.");
+      return;
+    }
+    addClipKeyframe(videoClip.id, {
+      id: `kf-${crypto.randomUUID()}`,
+      timeOffset: edit.timeOffset,
+      x: edit.x,
+      y: edit.y,
+      scale: edit.scale,
+      easing: "ease-in-out",
+      aiSuggested: true,
+    });
+    dismissAiEditSuggestion(index);
+    setAiEditMessage("Reframe keyframe applied to the editable timeline. Review playback before saving or rendering.");
   };
 
   const setTimelineSaveStateSafe = (next: TimelineSaveState) => {
@@ -2867,6 +2967,17 @@ function CloudEditorContent() {
   };
 
   useEffect(() => {
+    setEditorCoPilotMessages([{
+      id: makeId("copilot-msg"),
+      at: new Date().toISOString(),
+      role: "system",
+      text: "Editor co-pilot online. I can run editor actions and keep a rollback log for each successful change.",
+    }]);
+  }, []);
+
+  useEffect(() => {
+    setProductionState(null);
+    setProductionEntryError(null);
     hasHydratedProductionTimeline.current = false;
     setIsTimelineHydrated(false);
     timelineSavedFingerprintRef.current = "";
@@ -2926,6 +3037,13 @@ function CloudEditorContent() {
       if (activeRoute !== timelineRouteRef.current) return;
 
       setProductionState(state);
+      setProductionEntryError(null);
+      if (state.mode !== "database" && (state.status === "auth-required" || state.status === "access-denied")) {
+        setTimelineSaveStateSafe("error");
+        setTimelineHydrationSource("error");
+        setSessionSummary(state.message || "This Nest editor is private.");
+        return;
+      }
       if (state.mode === "database") {
         setTimelineSaveStateSafe("idle");
       } else {
@@ -2968,6 +3086,7 @@ function CloudEditorContent() {
       if (requestId !== timelineHydrationRequestRef.current) return;
       if (activeRoute !== timelineRouteRef.current) return;
       console.warn("Could not hydrate episode timeline production state.", error);
+      setProductionEntryError(error instanceof Error ? error.message : "The protected editor could not be opened.");
       setTimelineSaveStateSafe("error");
       setTimelineHydrationSource("error");
       setSessionSummary("Failed to hydrate timeline from server.");
@@ -2999,16 +3118,6 @@ function CloudEditorContent() {
     window.addEventListener("quipsly:timeline-json-saved", handleSyncDeckTimelineSave);
     return () => window.removeEventListener("quipsly:timeline-json-saved", handleSyncDeckTimelineSave);
   }, [replaceTimeline]);
-
-  const handleExportToQueue = async () => {
-    setIsExporting(true);
-    await submitRenderJob("The AI Revolution (Final Cut)", {
-      ...timelineState,
-      manuscriptBlockId: productionState?.boundaryStartBlockId || undefined
-    });
-    setIsExporting(false);
-    router.push("/render-queue");
-  };
 
   const buildTimelineArtifact = useCallback((generatedFrom: string, savedAt: string): EpisodeArtifact => {
     return buildEpisodeArtifactPayload(timelineState, resolvedProjectSlug, episodeSlug, generatedFrom, savedAt);
@@ -3251,6 +3360,53 @@ function CloudEditorContent() {
     const parsed = normalizeImportedMediaAssets(productionState?.productionJson);
     return parsed.length > 0 ? parsed : STARTER_KIT_ASSETS;
   }, [productionState?.productionJson]);
+  const [episodeMediaTruth, setEpisodeMediaTruth] = useState<EpisodeMediaTruth | null>(null);
+  const [episodeMediaTruthStatus, setEpisodeMediaTruthStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [episodeMediaTruthError, setEpisodeMediaTruthError] = useState<string | null>(null);
+  const [episodeMediaTruthRefreshToken, setEpisodeMediaTruthRefreshToken] = useState(0);
+
+  useEffect(() => {
+    if (!productionState || productionState.mode !== "database" || !resolvedProjectSlug || !episodeSlug) {
+      setEpisodeMediaTruth(null);
+      setEpisodeMediaTruthStatus("idle");
+      setEpisodeMediaTruthError(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    setEpisodeMediaTruthStatus("loading");
+    setEpisodeMediaTruthError(null);
+
+    const loadEpisodeMediaTruth = async () => {
+      try {
+        const params = new URLSearchParams({
+          projectSlug: resolvedProjectSlug,
+          episodeSlug,
+        });
+        const response = await fetch(`/api/media-vault/episode-inventory?${params.toString()}`, {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = await response.json().catch(() => null) as EpisodeMediaTruth | null;
+        if (controller.signal.aborted) return;
+
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || `Episode media truth returned ${response.status}.`);
+        }
+
+        setEpisodeMediaTruth(payload);
+        setEpisodeMediaTruthStatus("ready");
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setEpisodeMediaTruth(null);
+        setEpisodeMediaTruthStatus("error");
+        setEpisodeMediaTruthError(error instanceof Error ? error.message : "Could not load episode media truth.");
+      }
+    };
+
+    void loadEpisodeMediaTruth();
+    return () => controller.abort();
+  }, [episodeMediaTruthRefreshToken, episodeSlug, productionState, resolvedProjectSlug, routeToken]);
 
   const premiereDraftEdits = useMemo(() => {
     return normalizePremiereDraftEdits(productionState?.productionJson);
@@ -3421,7 +3577,7 @@ function CloudEditorContent() {
       const response = await fetch("/api/episode-production/media-health", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: mediaHealthProbeItems }),
+        body: JSON.stringify({ projectSlug: resolvedProjectSlug, items: mediaHealthProbeItems }),
       });
       const payload = await response.json();
       if (!response.ok || !payload?.ok) {
@@ -3447,7 +3603,7 @@ function CloudEditorContent() {
     } finally {
       setIsCheckingMediaHealth(false);
     }
-  }, [mediaHealthProbeItems]);
+  }, [mediaHealthProbeItems, resolvedProjectSlug]);
 
   useEffect(() => {
     void refreshMediaHealth();
@@ -5502,6 +5658,51 @@ function CloudEditorContent() {
     }
   }, [episodeSlug, resolvedProjectSlug]);
 
+  if (!productionState) {
+    return (
+      <main className="flex min-h-[70vh] items-center justify-center bg-[#fdfaf6] px-4 py-10 text-[#3d3122]">
+        <section className="w-full max-w-xl rounded-3xl border border-[#e8dcc4] bg-white p-8 text-center shadow-sm" aria-live="polite">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-[#8c6b4a]">Protected episode editor</div>
+          <h1 className="mt-3 font-serif text-3xl font-black">
+            {productionEntryError ? "The editor could not be opened." : "Checking Nest access…"}
+          </h1>
+          <p className="mt-4 text-sm font-semibold leading-6 text-[#6b5b45]">
+            {productionEntryError
+              ? "No timeline or starter content has been loaded. Retry after checking the app connection, or choose another accessible Nest."
+              : "Quipsly is verifying the signed-in account before it loads any timeline, transcript, or media state."}
+          </p>
+          {productionEntryError ? (
+            <div className="mt-6 flex flex-wrap justify-center gap-3">
+              <button type="button" onClick={() => setTimelineReloadToken((token) => token + 1)} className="rounded-full bg-[#3d3122] px-5 py-3 text-xs font-black uppercase tracking-wide text-white">
+                Retry
+              </button>
+              <Link href="/projects" className="rounded-full border border-[#d9c9ad] bg-white px-5 py-3 text-xs font-black uppercase tracking-wide text-[#5d4934]">
+                Choose a Nest
+              </Link>
+            </div>
+          ) : null}
+        </section>
+      </main>
+    );
+  }
+
+  if (productionState.mode !== "database" && (productionState.status === "auth-required" || productionState.status === "access-denied")) {
+    return (
+      <main className="flex min-h-[70vh] items-center justify-center bg-[#fdfaf6] px-4 py-10 text-[#3d3122]">
+        <section className="w-full max-w-xl rounded-3xl border border-rose-200 bg-white p-8 text-center shadow-sm" role="alert">
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-rose-700">Access protected</div>
+          <h1 className="mt-3 font-serif text-3xl font-black">This Nest editor is private.</h1>
+          <p className="mt-4 text-sm font-semibold leading-6 text-[#6b5b45]">
+            No timeline, transcript, media, or representative starter content was loaded for this account.
+          </p>
+          <Link href="/projects" className="mt-6 inline-flex rounded-full bg-[#3d3122] px-5 py-3 text-xs font-black uppercase tracking-wide text-white">
+            Choose an accessible Nest
+          </Link>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen overflow-hidden">
       <header className="flex justify-between items-center p-4 border-b border-[#e8dcc4] bg-[#fdfaf6]">
@@ -6061,10 +6262,10 @@ function CloudEditorContent() {
                 Record this episode
               </Link>
               <Link
-                href={`/call?project=${encodeURIComponent(projectId ?? DEFAULT_EDITOR_PROJECT_SLUG)}&episode=${encodeURIComponent(episodeSlug)}&room=${encodeURIComponent(episodeSlug)}&role=host`}
+                href="/coaching/sessions"
                 className="rounded-lg border border-[#3d3122] bg-[#3d3122] px-3 py-2 font-black text-white hover:bg-[#59442d]"
               >
-                Live call for this episode
+                Prepare a session for this episode
               </Link>
             </div>
           </div>
@@ -6075,10 +6276,10 @@ function CloudEditorContent() {
             Open Recording Room
           </Link>
           <Link
-            href={`/call?project=${encodeURIComponent(projectId ?? DEFAULT_EDITOR_PROJECT_SLUG)}&episode=${encodeURIComponent(episodeSlug)}&room=${encodeURIComponent(episodeSlug)}&role=host`}
+            href="/coaching/sessions"
             className={`bg-[#7b4f1f] text-white border border-[#7b4f1f] px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-[#9a662c] ${realEditingMode ? "hidden" : ""}`}
           >
-            Open Live Call
+            Prepare Session
           </Link>
           <label className={`cursor-pointer bg-white text-[#3d3122] border border-[#e8dcc4] px-3 py-2 rounded-lg text-xs font-bold shadow-sm hover:bg-[#fff8ec] ${realEditingMode ? "hidden" : ""}`}>
             Import session JSON
@@ -7166,6 +7367,123 @@ function CloudEditorContent() {
                   7. Save synced alignment
                 </button>
               </div>
+            </div>
+            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 shadow-sm" data-testid="episode-media-truth-panel">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-800">Episode media truth</div>
+                  <div className="mt-1 font-black text-[#12382c]">Recordings, proxies, transcripts, and safe next actions</div>
+                  <p className="mt-1 text-[11px] font-bold leading-5 text-emerald-950/75">
+                    Read-only Nest truth from <code className="rounded bg-white/70 px-1">/api/media-vault/episode-inventory</code>. It never uploads, promotes, transcribes, publishes, or mutates originals.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEpisodeMediaTruthRefreshToken((token) => token + 1)}
+                  className="rounded-full border border-emerald-200 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-emerald-900 shadow-sm hover:bg-emerald-100"
+                >
+                  Refresh truth
+                </button>
+              </div>
+
+              {episodeMediaTruthStatus === "loading" ? (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-white/70 px-3 py-2 text-[11px] font-bold text-emerald-900">
+                  Loading server media truth...
+                </div>
+              ) : episodeMediaTruthStatus === "error" ? (
+                <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] font-bold text-red-900">
+                  {episodeMediaTruthError ?? "Could not load episode media truth."}
+                </div>
+              ) : episodeMediaTruth ? (
+                <>
+                  <div className="mt-3 grid gap-2 md:grid-cols-4">
+                    {[
+                      ["Imported", episodeMediaTruth.summary?.importedMediaCount ?? 0],
+                      ["Recordings", episodeMediaTruth.summary?.sourceRecordingCount ?? 0],
+                      ["Proxy ready", episodeMediaTruth.summary?.proxyReadyCount ?? 0],
+                      ["Need proxy", episodeMediaTruth.summary?.proxyNeededCount ?? 0],
+                      ["Transcripts", episodeMediaTruth.summary?.completedTranscriptJobCount ?? 0],
+                      ["Attached assets", episodeMediaTruth.summary?.attachedAssetCount ?? 0],
+                      ["Video", episodeMediaTruth.summary?.videoCount ?? 0],
+                      ["Audio", episodeMediaTruth.summary?.audioCount ?? 0],
+                    ].map(([label, value]) => (
+                      <div key={String(label)} className="rounded-lg border border-emerald-200 bg-white px-3 py-2">
+                        <div className="font-mono text-xl font-black text-[#12382c]">{value}</div>
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-emerald-800">{label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+                    <div className="rounded-lg border border-emerald-200 bg-white p-3">
+                      <div className="font-black text-[#12382c]">Whole-source media</div>
+                      <div className="mt-2 max-h-52 space-y-2 overflow-y-auto pr-1">
+                        {(episodeMediaTruth.importedMedia ?? []).slice(0, 8).map((item, index) => (
+                          <div key={`${item.id ?? item.originalName ?? index}`} className="rounded-lg border border-[#d9eadf] bg-[#fbfffb] p-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <div className="truncate font-black text-[#12382c]">{item.originalName ?? "Unnamed media"}</div>
+                                <div className="mt-1 flex flex-wrap gap-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+                                  <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-900">{item.kind ?? "media"}</span>
+                                  <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-900">{item.importRole ?? "role pending"}</span>
+                                  <span className="rounded-full bg-emerald-100 px-2 py-1 text-emerald-900">{item.syncStatus ?? "sync pending"}</span>
+                                  <span className={`rounded-full px-2 py-1 ${item.asset?.readiness?.needsProxy || item.proxyStatus === "queued" ? "bg-amber-100 text-amber-900" : "bg-green-100 text-green-900"}`}>
+                                    {item.asset?.readiness?.needsProxy || item.proxyStatus === "queued" ? "proxy needed" : item.asset?.readiness?.hasProxy || item.proxyStatus === "ready" ? "proxy ready" : "proxy unknown"}
+                                  </span>
+                                  {item.recordingAssetId ? (
+                                    <span className="rounded-full bg-sky-100 px-2 py-1 text-sky-900">recording linked</span>
+                                  ) : null}
+                                  {item.sessionContext ? (
+                                    <span className="rounded-full bg-violet-100 px-2 py-1 text-violet-900">Session context linked</span>
+                                  ) : null}
+                                </div>
+                              </div>
+                            </div>
+                            {item.sessionContext ? (
+                              <div className="mt-2 rounded-md border border-violet-100 bg-violet-50/70 px-2 py-2 text-[10px] font-bold text-violet-950">
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <Link href={item.sessionContext.canonicalTagSource || `/sessions/${encodeURIComponent(item.sessionContext.roomId)}`} className="rounded-full border border-violet-200 bg-white px-2 py-1 font-black hover:underline">Open source Session</Link>
+                                  {(item.sessionContext.tagSnapshot ?? []).map((tag) => <span key={tag.id} className="rounded-full border border-violet-200 bg-white px-2 py-1">#{tag.label}</span>)}
+                                </div>
+                                <p className="mt-1 text-violet-900/75">Tag labels are a handoff snapshot; the Session remains canonical.</p>
+                              </div>
+                            ) : null}
+                            <div className="mt-2 text-[11px] font-bold leading-5 text-emerald-950/75">
+                              {item.safeNextAction ?? "Review sync role and timeline use in the episode editor."}
+                            </div>
+                          </div>
+                        ))}
+                        {(episodeMediaTruth.importedMedia ?? []).length === 0 ? (
+                          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-900">
+                            No whole-source media is attached to this episode yet.
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-emerald-200 bg-white p-3">
+                      <div className="font-black text-[#12382c]">Safe next actions</div>
+                      <div className="mt-2 space-y-2">
+                        {(episodeMediaTruth.safeNextActions ?? []).slice(0, 5).map((action, index) => (
+                          <div key={`${action}-${index}`} className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-5 text-emerald-950">
+                            {action}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="mt-3 rounded-lg border border-[#d9eadf] bg-[#fbfffb] px-3 py-2 text-[11px] font-bold leading-5 text-emerald-950/75">
+                        {episodeMediaTruth.boundaries?.sourceTruth ?? "RecordingAsset owns capture evidence; StudioMediaAsset owns reusable media; StudioEpisodeProduction owns episode-editor meaning."}
+                      </div>
+                      <div className="mt-2 rounded-lg border border-[#d9eadf] bg-[#fbfffb] px-3 py-2 text-[11px] font-bold leading-5 text-emerald-950/75">
+                        {episodeMediaTruth.boundaries?.editorRule ?? "Whole sources stay intact. Proxy, transcript, sync, and edit decisions are inspectable metadata."}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-white/70 px-3 py-2 text-[11px] font-bold text-emerald-900">
+                  Media truth appears after a database-backed episode production room is loaded.
+                </div>
+              )}
             </div>
             <div className="mt-3 rounded-lg border border-[#e8dcc4] bg-white p-3">
               <div className="flex items-center justify-between gap-3">
@@ -8398,12 +8716,13 @@ function CloudEditorContent() {
                      </button>
                    </div>
                    <button
-                     onClick={handleAiAutoEdit}
+                     onClick={() => setIsAiDisclosureOpen(true)}
                      disabled={isAiAutoEditing || !timelineState.transcript?.length}
                      className={`text-[10px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-md text-white transition-colors flex items-center gap-2 ${isAiAutoEditing ? "bg-emerald-800 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-500"}`}
+                     title="Review a disclosure before sending selected transcript text to the configured AI provider"
                    >
                       <span className={`w-1.5 h-1.5 bg-white rounded-full ${isAiAutoEditing ? "animate-ping" : "animate-pulse"}`}></span>
-                      {isAiAutoEditing ? "AI Editing..." : "AI Auto-Edit"}
+                      {isAiAutoEditing ? "Requesting..." : "Suggest edits"}
                    </button>
                 </div>
                 {/* REMOTION PLAYER INTEGRATION */}
@@ -8417,6 +8736,72 @@ function CloudEditorContent() {
                   style={{ width: "100%", aspectRatio: "16/9" }}
                   controls
                 />
+
+                {isAiDisclosureOpen && (
+                  <section role="alertdialog" aria-labelledby="ai-edit-disclosure-title" className="border-t border-[#2d2d2d] bg-[#111] p-4 text-white">
+                    <h3 id="ai-edit-disclosure-title" className="text-sm font-black">Send this transcript for suggestions?</h3>
+                    <p className="mt-2 text-xs leading-5 text-gray-300">
+                      Quipsly will send {timelineState.transcript.length} transcript block{timelineState.transcript.length === 1 ? "" : "s"} to the configured AI provider. It will return proposals only; nothing changes until you apply one here.
+                    </p>
+                    <div className="mt-4 flex justify-end gap-2">
+                      <button type="button" onClick={() => setIsAiDisclosureOpen(false)} className="rounded-lg border border-gray-600 px-3 py-2 text-xs font-bold text-gray-200 hover:border-gray-400">
+                        Cancel
+                      </button>
+                      <button type="button" onClick={handleAiAutoEdit} className="rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white hover:bg-emerald-500">
+                        Send for suggestions
+                      </button>
+                    </div>
+                  </section>
+                )}
+
+                {aiEditMessage && (
+                  <div role="status" className="border-t border-[#2d2d2d] bg-[#171717] px-4 py-3 text-xs leading-5 text-gray-200">
+                    {aiEditMessage}
+                  </div>
+                )}
+
+                {aiEditSuggestions.length > 0 && (
+                  <section aria-label="AI edit proposals" className="max-h-80 overflow-y-auto border-t border-[#2d2d2d] bg-[#111] p-4 text-white">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <h3 className="text-sm font-black">Review proposals</h3>
+                        <p className="mt-1 text-[11px] text-gray-400">Apply or dismiss one at a time. Playback remains the acceptance check.</p>
+                      </div>
+                      <button type="button" onClick={() => setAiEditSuggestions([])} className="rounded-lg border border-gray-700 px-2.5 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-500">
+                        Dismiss all
+                      </button>
+                    </div>
+
+                    <div className="mt-3 space-y-2">
+                      {aiEditSuggestions.map((edit, index) => {
+                        const transcriptBlock = edit.type === "deactivate"
+                          ? timelineState.transcript.find((block) => block.id === edit.blockId)
+                          : null;
+                        const label = edit.type === "deactivate"
+                          ? `Proposed transcript cut at ${formatClock(transcriptBlock?.time || 0)}`
+                          : `Proposed 360 reframe at ${formatClock(edit.timeOffset)}`;
+                        return (
+                          <article key={`${edit.type}-${edit.type === "deactivate" ? edit.blockId : edit.timeOffset}-${index}`} className="rounded-xl border border-[#333] bg-[#1b1b1b] p-3">
+                            <p className="text-xs font-black text-emerald-300">{label}</p>
+                            <p className="mt-1 line-clamp-3 text-xs leading-5 text-gray-300">
+                              {edit.type === "deactivate"
+                                ? transcriptBlock?.text || `Block ${edit.blockId} is no longer present.`
+                                : `Yaw ${edit.x}°, pitch ${edit.y}°, field of view ${edit.scale}°.`}
+                            </p>
+                            <div className="mt-3 flex justify-end gap-2">
+                              <button type="button" onClick={() => dismissAiEditSuggestion(index)} className="rounded-lg border border-gray-600 px-3 py-1.5 text-[10px] font-bold text-gray-300 hover:border-gray-400">
+                                Dismiss
+                              </button>
+                              <button type="button" onClick={() => applyAiEditSuggestion(edit, index)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-[10px] font-black text-white hover:bg-emerald-500">
+                                Apply proposal
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                )}
              </div>
 
              {selectedClip && (

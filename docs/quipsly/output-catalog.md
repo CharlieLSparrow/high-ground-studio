@@ -6,7 +6,21 @@ The shared catalog lives in `packages/quipsly-domain/src/output-catalog.ts` and 
 
 Each output also has a detail page at `/outputs/<outputId>` and a non-mutating API contract at `/api/output-catalog/<outputId>`.
 
-The detail API includes a starter `packetSkeleton`. This is not a published artifact; it is the JSON shape a future packet builder can fill from the Nest/source spine.
+The detail API includes a starter `packetSkeleton`. This is not a produced or published artifact; it is the JSON shape a future packet builder can fill from the Nest/source spine.
+
+## Truth boundary
+
+`/outputs` is a static capability and roadmap catalog. A catalog entry does not prove that:
+
+- a packet or artifact was created or persisted
+- a destination provider is connected or reachable
+- a publish attempt succeeded
+- an external URL still resolves
+- Quipsly, HGO, or a provider is currently healthy
+
+Use `/publishing` for accessible-Nest persisted output packets, internal publish plans, provider attempts, and external-artifact receipt records. A provider attempt is not publication proof, and recorded URLs are not automatically live-rechecked. The private HGO publish queue remains a separate candidate-review lane; its existence in the catalog is not a current availability claim.
+
+The API repeats this boundary as `catalogBoundary`, including explicit false values for artifact, packet, publication, provider-connection, and service-health proof. List APIs use `definitionCount`, not a generic count that could be mistaken for produced output inventory.
 
 Nest kinds map to likely output paths through `OUTPUT_IDS_BY_NEST_KIND` and `listOutputsForNestKind()` in the same shared catalog file. Keep this mapping shared so `/projects`, assistant suggestions, and future APIs do not invent separate output logic.
 
@@ -15,15 +29,17 @@ Nest-kind output maps are also available at `/api/output-catalog/nest-kind/<nest
 Each output records:
 
 - family
-- status
-- priority
+- catalog definition stage (`runway-mapped`, `contract-defined`, `workflow-draft`, or `concept-only`)
+- roadmap horizon (`active-design`, `near-term`, or `explore-later`)
 - source inputs
 - packet shape
 - publishing targets
 - visual helper roles
 - human promise
 
-This makes future feature work safer because every new output must explain what source data it consumes, what public-safe packet it emits, and which kind of Quipsly companion naturally helps with that output.
+Catalog stages describe only how complete the static product definition is. They are never artifact, publication, provider, or runtime statuses. Required source inputs are always returned as `evidenceState: "not-checked"` until an operational surface verifies real records.
+
+This makes future feature work safer because every new output must explain what source data it would consume, what public-safe packet it would emit, and which kind of Quipsly companion naturally helps with that output.
 
 Near-term focus:
 

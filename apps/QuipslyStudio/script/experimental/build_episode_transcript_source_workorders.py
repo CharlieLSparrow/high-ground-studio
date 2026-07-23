@@ -17,6 +17,7 @@ import re
 import shlex
 import shutil
 import subprocess
+import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -25,7 +26,7 @@ RELEASE_ROOT = Path("/Volumes/My Passport/Episode_and_Shorts_Test")
 EXTERNAL_ROOT = Path("/Volumes/My Passport")
 OUT_ROOT = RELEASE_ROOT / "review-board" / "transcript-source-workorders"
 SCHEMA = "quipsly.episode-transcript-source-workorders.v1"
-TRANSCRIPT_PROVIDER = Path(__file__).resolve().parent / "local_transcript_provider.py"
+TRANSCRIPT_PROVIDER = Path(__file__).resolve().parent.parent / "local_transcript_provider.py"
 
 MEDIA_EXTENSIONS = {".wav", ".aif", ".aiff", ".m4a", ".mp3", ".aac", ".flac", ".mp4", ".mov", ".mkv", ".insv"}
 AUDIO_EXTENSIONS = {".wav", ".aif", ".aiff", ".m4a", ".mp3", ".aac", ".flac"}
@@ -60,7 +61,7 @@ def safe_id(path: Path) -> str:
     return f"{slug(path.stem)[:50]}-{digest}"
 
 
-def candidate_roots() -> list[dict[str, Any]]:
+def candidate_roots(episode_filter: int | None = None) -> list[dict[str, Any]]:
     roots = [
         {"label": "release packages", "path": RELEASE_ROOT, "kind": "release-package"},
         {"label": "Episode 1 source folder", "path": EXTERNAL_ROOT / "Episode 1", "kind": "source-folder"},
@@ -74,6 +75,14 @@ def candidate_roots() -> list[dict[str, Any]]:
         {"label": "Episode Potential Recordings", "path": EXTERNAL_ROOT / "Episode Potential Recordings", "kind": "source-folder"},
         {"label": "Insta360 Download", "path": EXTERNAL_ROOT / "Insta360 Download", "kind": "source-folder"},
     ]
+    if episode_filter:
+        keep_labels = {
+            "release packages",
+            f"Episode {episode_filter} source folder",
+            "Podcast_Episodes source folders",
+            "Desktop Media audio stash",
+        }
+        roots = [root for root in roots if root["label"] in keep_labels]
     return [root for root in roots if Path(root["path"]).exists()]
 
 
@@ -93,10 +102,10 @@ def is_derivative_path(path: Path) -> bool:
     return bool(parts & LOW_VALUE_PART_NAMES) or "short" in name or "thumbnail" in name
 
 
-def discover_media() -> list[dict[str, Any]]:
+def discover_media(episode_filter: int | None = None) -> list[dict[str, Any]]:
     seen: set[Path] = set()
     records: list[dict[str, Any]] = []
-    for root in candidate_roots():
+    for root in candidate_roots(episode_filter):
         root_path = Path(root["path"])
         for dirpath, dirnames, filenames in os.walk(root_path, topdown=True, onerror=lambda _err: None):
             dirnames[:] = [d for d in dirnames if d.lower() not in SKIP_PART_NAMES]
@@ -293,12 +302,14 @@ def provider_doctor() -> dict[str, Any]:
         return {"exists": TRANSCRIPT_PROVIDER.exists(), "path": str(TRANSCRIPT_PROVIDER), "available": False, "error": str(exc)}
 
 
-def build() -> dict[str, Any]:
+def build(episode_filter: int | None = None) -> dict[str, Any]:
     records: list[dict[str, Any]] = []
     probe_failures: list[dict[str, Any]] = []
-    for item in discover_media():
+    for item in discover_media(episode_filter):
         record = build_record(item)
         if not record:
+            continue
+        if episode_filter and record.get("episode") != episode_filter:
             continue
         if record.get("status") == "probe-failed":
             probe_failures.append(record)
@@ -336,7 +347,8 @@ def build() -> dict[str, Any]:
         "generatedAt": iso_now(),
         "status": "transcript-source-workorders-ready" if records else "transcript-source-workorders-empty",
         "releaseRoot": str(RELEASE_ROOT),
-        "candidateRoots": [{**root, "path": str(root["path"])} for root in candidate_roots()],
+        "episodeFilter": episode_filter,
+        "candidateRoots": [{**root, "path": str(root["path"])} for root in candidate_roots(episode_filter)],
         "providerDoctor": doctor,
         "counts": {
             "episodes": len(episode_packets),
@@ -481,8 +493,18 @@ pre {{ white-space:pre-wrap; color:var(--leaf); }}
     path.write_text(html_text, encoding="utf-8")
 
 
+def latest_pointer_name(episode_filter: int | None) -> str:
+    if episode_filter:
+        return f"latest-transcript-source-workorders-episode-{episode_filter:02d}.json"
+    return "latest-transcript-source-workorders.json"
+
+
 def main() -> None:
-    payload = build()
+    parser = argparse.ArgumentParser(description="Build transcript source work orders.")
+    parser.add_argument("--episode", type=int, choices=range(1, 99), help="Focus on one episode without overwriting the global latest pointer.")
+    args = parser.parse_args()
+
+    payload = build(args.episode)
     session_dir = OUT_ROOT / stamp()
     session_dir.mkdir(parents=True, exist_ok=True)
     json_path = session_dir / "transcript-source-workorders.json"
@@ -503,7 +525,7 @@ def main() -> None:
     write_json(json_path, payload)
     write_markdown(markdown_path, payload)
     write_html(html_path, payload)
-    latest = OUT_ROOT / "latest-transcript-source-workorders.json"
+    latest = OUT_ROOT / latest_pointer_name(args.episode)
     latest.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({
         "status": payload["status"],

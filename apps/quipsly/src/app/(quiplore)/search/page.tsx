@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export default async function QuipLoreSearchPage({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
   const session = await auth();
   if (!session?.user) {
-    redirect("/api/auth/signin?callbackUrl=/search");
+    redirect("/login?callbackUrl=/search");
   }
 
   const { project } = await searchParams;

@@ -356,12 +356,21 @@ def export_clip(
         raise RuntimeError(f"Missing outputPath for clip {clip_id}")
 
     ranges = clip_request.get("ranges") or []
-    clean_ranges: list[tuple[float, float]] = []
+    clean_ranges: list[dict[str, Any]] = []
     for item in ranges:
         start = safe_float(item.get("start"), safe_float(item.get("sequenceStartTime"), 0.0))
         duration = safe_float(item.get("duration"), 0.0)
         if start >= 0 and duration > 0:
-            clean_ranges.append((start, duration))
+            clean_item = dict(item)
+            clean_item["start"] = start
+            clean_item["sequenceStartTime"] = start
+            clean_item["sequenceEndTime"] = safe_float(item.get("sequenceEndTime"), start + duration)
+            clean_item["duration"] = duration
+            clean_item["sourceLocalStartTime"] = safe_float(item.get("sourceLocalStartTime"), start)
+            clean_item["sourceLocalEndTime"] = safe_float(item.get("sourceLocalEndTime"), clean_item["sourceLocalStartTime"] + duration)
+            clean_item["sourceLaneId"] = str(item.get("sourceLaneId") or "")
+            clean_item["sourceTagId"] = str(item.get("sourceTagId") or "")
+            clean_ranges.append(clean_item)
     if not clean_ranges:
         raise RuntimeError(f"Clip {clip.get('title') or clip_id} has no positive export ranges.")
 
@@ -369,18 +378,30 @@ def export_clip(
     part_dir.mkdir(parents=True, exist_ok=True)
     parts: list[Path] = []
     rendered_ranges: list[dict[str, Any]] = []
-    for index, (start, duration) in enumerate(clean_ranges, start=1):
+    for index, range_item in enumerate(clean_ranges, start=1):
+        start = safe_float(range_item.get("sequenceStartTime"), safe_float(range_item.get("start"), 0.0))
+        duration = safe_float(range_item.get("duration"), 0.0)
         part_path = part_dir / f"part-{index:03d}.mp4"
-        rendered_ranges.append(
-            render_part(
-                ffmpeg=ffmpeg,
-                sequence=sequence,
-                clip=clip,
-                start=start,
-                duration=duration,
-                output_path=part_path,
-            )
+        rendered = render_part(
+            ffmpeg=ffmpeg,
+            sequence=sequence,
+            clip=clip,
+            start=start,
+            duration=duration,
+            output_path=part_path,
         )
+        rendered["sequenceStartTime"] = start
+        rendered["sequenceEndTime"] = start + duration
+        requested_source_lane_id = str(range_item.get("sourceLaneId") or "")
+        requested_source_tag_id = str(range_item.get("sourceTagId") or "")
+        rendered["sourceLocalStartTime"] = safe_float(range_item.get("sourceLocalStartTime"), start)
+        rendered["sourceLocalEndTime"] = safe_float(range_item.get("sourceLocalEndTime"), rendered["sourceLocalStartTime"] + duration)
+        rendered["sourceLaneId"] = requested_source_lane_id
+        rendered["sourceTagId"] = requested_source_tag_id
+        rendered["renderedVideoLaneId"] = str(rendered.get("videoLaneId") or "")
+        rendered["renderedVideoLaneName"] = str(rendered.get("videoLaneName") or "")
+        rendered["sourceLineageStatus"] = "explicit" if requested_source_lane_id else "rendered-video-lane-fallback"
+        rendered_ranges.append(rendered)
         parts.append(part_path)
 
     concat_parts(ffmpeg, parts, output_path)
@@ -394,8 +415,17 @@ def export_clip(
         "status": "exported",
         "outputPath": str(output_path),
         "sizeBytes": size,
-        "duration": sum(duration for _, duration in clean_ranges),
+        "duration": sum(safe_float(item.get("duration"), 0.0) for item in clean_ranges),
         "ranges": rendered_ranges,
+        "lineage": {
+            "timeBase": "sequence-seconds",
+            "sourcePolicy": "proxy-only; originals untouched",
+            "explicitSourceLaneCount": len([item for item in rendered_ranges if item.get("sourceLineageStatus") == "explicit"]),
+            "explicitSourceTagCount": len([item for item in rendered_ranges if item.get("sourceTagId")]),
+            "renderedVideoLaneFallbackCount": len([item for item in rendered_ranges if item.get("sourceLineageStatus") == "rendered-video-lane-fallback"]),
+            "rangeCount": len(rendered_ranges),
+            "truth": "Ranges preserve sequence time plus authored source-local lane/tag lineage when the selected short recipe provided it. Rendered video lane fallback is export evidence, not explicit recipe authorship."
+        },
         "sourcePolicy": "proxy-only; original media was not opened",
         "error": "",
     }

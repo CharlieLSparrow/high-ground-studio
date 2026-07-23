@@ -1,11 +1,15 @@
 "use server";
 
-import { redirect } from "next/navigation";
+const legacyConnectionUnavailable = {
+  ok: false,
+  errorCode: "LEGACY_PUBLISHING_SUITE_RETIRED",
+  error: "Legacy channel connections are disabled. No provider authorization was started.",
+} as const;
 
 export async function connectTwitterAction() {
-  redirect("/api/connections/twitter/authorize");
+  return legacyConnectionUnavailable;
 }
 
 export async function connectYouTubeAction() {
-  redirect("/api/connections/youtube/authorize");
+  return legacyConnectionUnavailable;
 }

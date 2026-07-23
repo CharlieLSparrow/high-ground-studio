@@ -15,7 +15,14 @@ const PROXY_TARGET_DIR = path.join(process.cwd(), "apps", "studio", "public", "m
 // 2. Create a key and download the JSON.
 // 3. Set the environment variable in your .env file:
 //    GOOGLE_APPLICATION_CREDENTIALS="/Users/wall-e/Dev/high-ground-studio/gcp-key.json"
-// 4. Set your bucket name: GCS_RAW_BUCKET="high-ground-raw-footage"
+// 4. Set your bucket name: QUIPSLY_MEDIA_BUCKET="high-ground-odyssey-media"
+//
+// Cloud object policy:
+// - Raw/source media belongs under media-vault/raw/...
+// - Proxy media belongs under media-vault/proxy/...
+// - Meaning, Nest attachment, and editor role belong in Quipsly records.
+// This file is legacy/dev-only. Do not use the retired high-ground-raw-footage
+// bucket for new work.
 
 async function run() {
   console.log(`🚀 Starting Media Ingest Pipeline from ${SOURCE_DIR}`);

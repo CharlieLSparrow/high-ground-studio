@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { Search, Filter, Image as ImageIcon, Video, Mic, FileText, Download, Trash2, MoreVertical, Loader2, UploadCloud } from "lucide-react";
 import { getVaultAssets, deleteVaultAsset } from "./actions";
 
@@ -19,8 +19,6 @@ export default function AssetsPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [assets, setAssets] = useState<Asset[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isUploading, setIsUploading] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const loadAssets = async () => {
     setIsLoading(true);
@@ -37,41 +35,6 @@ export default function AssetsPage() {
   useEffect(() => {
     loadAssets();
   }, []);
-
-  const handleUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploading(true);
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("type", file.type.startsWith("video") ? "video" : "audio");
-    formData.append("projectSlug", "vault-upload");
-
-    try {
-      const res = await fetch("/api/ingest/mobile", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (res.ok) {
-        await loadAssets(); // Refresh list
-      } else {
-        const err = await res.json();
-        alert(`Upload failed: ${err.error || 'Unknown error'}`);
-      }
-    } catch (err) {
-      console.error("Upload error:", err);
-      alert("Network error during upload.");
-    } finally {
-      setIsUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }
-  };
 
   const handleDelete = async (id: string) => {
     if (!confirm("Are you sure you want to delete this asset?")) return;
@@ -110,23 +73,25 @@ export default function AssetsPage() {
                <Filter size={16} /> Filter
              </button>
              
-             <input 
-               type="file" 
-               ref={fileInputRef} 
-               onChange={handleFileChange} 
-               className="hidden" 
-               accept="video/*,audio/*,image/*"
-             />
-             
              <button 
-               onClick={handleUploadClick}
-               disabled={isUploading}
-               className="px-6 py-2 bg-[#8c6b4a] text-white rounded-xl font-bold text-sm shadow-sm hover:bg-[#7a5d40] transition-colors disabled:opacity-50 flex items-center gap-2"
+               type="button"
+               disabled
+               aria-describedby="vault-upload-paused"
+               title="Web Vault upload is paused until resumable-v2 registration is available."
+               className="px-6 py-2 bg-[#8c6b4a] text-white rounded-xl font-bold text-sm shadow-sm disabled:cursor-not-allowed disabled:opacity-50 flex items-center gap-2"
              >
-               {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <UploadCloud className="w-4 h-4" />}
-               {isUploading ? "Uploading..." : "Upload"}
+               <UploadCloud className="w-4 h-4" />
+               Upload paused
              </button>
           </div>
+        </div>
+        <div
+          id="vault-upload-paused"
+          role="status"
+          className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950"
+        >
+          <strong>Web Vault upload is temporarily unavailable.</strong>{" "}
+          Quipsly is moving this surface to resumable-v2 with verified private-media registration. No file is selected or sent from this page while that migration is incomplete.
         </div>
       </header>
 

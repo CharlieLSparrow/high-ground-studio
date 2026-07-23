@@ -55,14 +55,16 @@ export async function getCurrentHomeNestActorEmail() {
   return "";
 }
 
-function slugifyEmailForHomeNest(email: string) {
-  return email
+export function homeNestSlugForEmail(email: string) {
+  const suffix = normalizeAccessEmail(email)
     .toLowerCase()
     .trim()
     .replace(/@/g, "-at-")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 72);
+
+  return suffix ? `home-${suffix}` : "";
 }
 
 function displayNameForEmail(email: string) {
@@ -106,7 +108,7 @@ export async function ensureHomeNestForEmail(
 
   const user = await ensureUserForEmail(prisma, normalizedEmail);
   const workspace = await ensureStudioWorkspace(prisma as any);
-  const slug = `home-${slugifyEmailForHomeNest(normalizedEmail)}`;
+  const slug = homeNestSlugForEmail(normalizedEmail);
 
   let project = await prisma.studioProject.findUnique({
     where: { workspaceId_slug: { workspaceId: workspace.id, slug } },

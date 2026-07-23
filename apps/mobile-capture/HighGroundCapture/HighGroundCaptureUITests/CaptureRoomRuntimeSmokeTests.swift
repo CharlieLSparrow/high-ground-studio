@@ -156,7 +156,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             if element.exists { return true }
             if attempts < swipeAttempts {
                 let recorderSurface = app.scrollViews.firstMatch
-                if recorderSurface.exists {
+                if recorderSurface.exists && recorderSurface.isHittable {
                     recorderSurface.swipeUp()
                 } else {
                     app.swipeUp()
@@ -450,6 +450,86 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
         attachRecordingIdentity(titleText, name: "Personal Home Nest note title")
+    }
+
+    func testPersonalHomeNestNoteSurvivesOfflineRelaunchAndConverges() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let titleText = "Offline Home Nest note \(credentials.email)"
+        let bodyText = "This private note was saved without Nest, survived process death, and must converge under one canonical identity."
+        let tagText = "Offline note proof"
+
+        // Warm the verified account and protected Session snapshot before
+        // deliberately removing Nest from the phone's reachable network.
+        var app = try launchSignedInCaptureApp()
+        app.terminate()
+
+        app = try launchSignedInCaptureApp(
+            baseURLOverride: "http://127.0.0.1:9",
+            expectProtectedOfflineShell: true
+        )
+        let noteButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureQuickEntry_NOTE_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(noteButton, in: app, timeout: 20, swipeAttempts: 8),
+            "Protected offline access must keep personal Quick Note available."
+        )
+        noteButton.tap()
+        let sheet = app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 6))
+        let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
+        if destination.waitForExistence(timeout: 4) {
+            destination.buttons["Home Nest"].tap()
+        }
+
+        let title = app.textFields["CaptureQuickEntryTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 4))
+        title.tap()
+        title.typeText(titleText)
+        let body = app.textFields["CaptureQuickEntryBody"].firstMatch
+        body.tap()
+        body.typeText(bodyText)
+        let tag = app.textFields["CaptureQuickEntryNewTagField"].firstMatch
+        for _ in 0..<10 where !tag.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(tag.isHittable)
+        tag.tap()
+        tag.typeText(tagText)
+        app.buttons["CaptureQuickEntryNewTagAdd"].tap()
+        app.buttons["CaptureQuickEntrySave"].tap()
+
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 6))
+        let retry = app.buttons["CaptureQuickEntryRetry"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(retry, in: app, timeout: 20, swipeAttempts: 8),
+            "Unreachable Nest must leave the exact personal note visibly queued on the iPhone."
+        )
+        XCTAssertTrue(app.staticTexts["1 quick capture waiting"].exists)
+        XCTAssertTrue(app.staticTexts["Note · \(titleText)"].exists)
+        app.terminate()
+
+        // A second offline process must read the same account-partitioned
+        // journal entry rather than asking the person to recreate the note.
+        app = try launchSignedInCaptureApp(
+            baseURLOverride: "http://127.0.0.1:9",
+            expectProtectedOfflineShell: true
+        )
+        XCTAssertTrue(app.staticTexts["1 quick capture waiting"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Note · \(titleText)"].exists)
+        XCTAssertTrue(app.staticTexts["Saved on iPhone · waiting for Nest"].exists)
+        XCTAssertTrue(app.buttons["CaptureQuickEntryRetry"].exists)
+        app.terminate()
+
+        // Reconnect through the normal signed lane. Startup reconciliation
+        // must acknowledge the same UUID before removing the phone copy.
+        app = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: app)
+        XCTAssertTrue(
+            app.staticTexts["The private note is saved in your Home Nest document kernel. Continue it from Library or Search."].waitForExistence(timeout: 30)
+        )
+        XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
+        attachRecordingIdentity(titleText, name: "Offline personal Home Nest note title")
     }
 
     func testCoachingQuickEntriesSyncToCanonicalNest() throws {

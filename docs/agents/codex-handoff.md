@@ -19,7 +19,7 @@ Read in this order:
 - The main app is `apps/web`.
 - Team workflows are real and Prisma-backed.
 - The coaching page is a public offer/front-door page and sign-in handoff, not a live Stripe checkout funnel.
-- Signed-in users request coaching from `/dashboard?intent=coaching`.
+- Coaching intake/booking is Quipsly-owned. HGO `/coaching` explains and routes; do not rebuild `/dashboard?intent=coaching` as the active source of truth.
 - `/dashboard` shows recent coaching requests and converted appointment summaries.
 - `/team/coaching-requests` is the internal queue for request management and request-to-appointment conversion.
 - Converting a coaching request creates an appointment, marks the request `SCHEDULED`, assigns the coach, links `convertedAppointmentId`, and revalidates dashboard/team routes.

@@ -29,18 +29,14 @@ public final class ExternalMediaAccess: ObservableObject {
     public init() {
         let savedRootPath = UserDefaults.standard.string(forKey: pathKey) ?? ""
         self.rootPath = savedRootPath
-        if !savedRootPath.isEmpty, Self.isProtectedUserMediaPath(savedRootPath) {
-            self.status = "External media folder remembered. Quipsly will not touch protected originals until you intentionally restore or grant access."
-            self.hasActiveAccess = false
-            self.hasExplicitProtectedOriginalAccess = false
-        } else if savedRootPath.isEmpty, Self.hasDirectFilesystemAccess {
+        if savedRootPath.isEmpty, Self.hasDirectFilesystemAccess {
             self.status = "This local Quipsly Studio build can read normal media paths directly. No folder grant is needed unless macOS blocks a protected location."
             self.hasActiveAccess = true
             self.hasExplicitProtectedOriginalAccess = false
         } else if savedRootPath.isEmpty {
             self.status = "No external media folder has been granted yet."
         } else {
-            self.status = "External media folder remembered. Restore access if macOS asks again."
+            self.status = "External media folder remembered. Restoring access."
             restoreAccess()
         }
     }
@@ -138,7 +134,8 @@ public final class ExternalMediaAccess: ObservableObject {
         let url = URL(fileURLWithPath: savedRootPath, isDirectory: true).standardizedFileURL
         activeURL = url
         rootPath = url.path
-        if Self.isProtectedUserMediaPath(url.path) {
+        let isManagedVault = Self.isQuipslyManagedVaultRoot(url.path)
+        if Self.isProtectedUserMediaPath(url.path), !(Self.hasDirectFilesystemAccess && isManagedVault) {
             hasActiveAccess = false
             hasExplicitProtectedOriginalAccess = false
             status = "External folder remembered, but Quipsly will not probe protected folders without an active macOS folder grant. Re-grant access when you need originals."
@@ -148,9 +145,13 @@ public final class ExternalMediaAccess: ObservableObject {
         let readable = FileManager.default.fileExists(atPath: url.path) && FileManager.default.isReadableFile(atPath: url.path)
         hasActiveAccess = readable
         hasExplicitProtectedOriginalAccess = false
-        status = readable
-            ? "External folder path is readable in this local build. Originals stay outside the vault."
-            : "External folder remembered, but the path is not readable right now."
+        if readable, isManagedVault {
+            status = "Quipsly-managed external MediaVault restored. Originals outside this vault remain protected."
+        } else {
+            status = readable
+                ? "External folder path is readable in this local build. Originals stay outside the vault."
+                : "External folder remembered, but the path is not readable right now."
+        }
         return readable
     }
 
@@ -201,7 +202,8 @@ public final class ExternalMediaAccess: ObservableObject {
     public func hasReadableAccess(to url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         if Self.isProtectedUserMediaPath(path) {
-            return hasExplicitFolderGrant && contains(url)
+            return (hasActiveAccess && isInsideManagedVault(url))
+                || (hasExplicitFolderGrant && contains(url))
         }
         if hasActiveAccess && contains(url) {
             return true
@@ -212,6 +214,9 @@ public final class ExternalMediaAccess: ObservableObject {
     public func canProbeWithoutPrompt(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         if Self.isProtectedUserMediaPath(path) {
+            if hasActiveAccess && isInsideManagedVault(url) {
+                return true
+            }
             // Important: this method is used by passive UI/readiness paths.
             // On macOS, even FileManager.fileExists/isReadableFile against Desktop,
             // Documents, Downloads, iCloud, or external volumes can trigger a TCC
@@ -221,6 +226,10 @@ public final class ExternalMediaAccess: ObservableObject {
             return false
         }
         return true
+    }
+
+    private func isInsideManagedVault(_ url: URL) -> Bool {
+        Self.isQuipslyManagedVaultRoot(rootPath) && contains(url)
     }
 
     public func hasUserGrantedAccess(to url: URL) -> Bool {
@@ -251,6 +260,13 @@ public final class ExternalMediaAccess: ObservableObject {
             "/Volumes/"
         ]
         return protectedPrefixes.contains { path == String($0.dropLast()) || path.hasPrefix($0) }
+    }
+
+    private static func isQuipslyManagedVaultRoot(_ path: String) -> Bool {
+        guard !path.isEmpty else { return false }
+        return URL(fileURLWithPath: path, isDirectory: true)
+            .standardizedFileURL
+            .lastPathComponent == "Quipsly Media Vault"
     }
 
     private static var hasDirectFilesystemAccess: Bool {

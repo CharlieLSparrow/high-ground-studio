@@ -45,7 +45,9 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showAssetPicker, setShowAssetPicker] = useState(false);
-  const [isSimulated, setIsSimulated] = useState(false);
+  const [episodeState, setEpisodeState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [cloudRenderState, setCloudRenderState] = useState<"loading" | "ready" | "unavailable">("loading");
+  const [cloudRenderMessage, setCloudRenderMessage] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
@@ -66,19 +68,39 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
   // Reload Episodes
   const loadEpisodes = async () => {
     setLoading(true);
-    const res = await getEpisodesAction();
-    if (res.success) {
-      setEpisodes(res.episodes);
-      setIsSimulated(!!res.isSimulated);
-    } else {
-      setErrorMsg(res.error || "Failed to load episodes.");
+    setErrorMsg("");
+    try {
+      const res = await getEpisodesAction();
+      if (res.success) {
+        setEpisodes(res.episodes);
+        setEpisodeState("ready");
+      } else {
+        setEpisodes([]);
+        setEpisodeState("unavailable");
+        setErrorMsg(res.error || "Podcast records are unavailable.");
+      }
+    } catch {
+      setEpisodes([]);
+      setEpisodeState("unavailable");
+      setErrorMsg("Podcast records are unavailable. Nothing was loaded or substituted.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   useEffect(() => {
-    loadEpisodes();
-    getCloudRendersAction().then(setCloudRenders);
+    void loadEpisodes();
+    void getCloudRendersAction()
+      .then((result) => {
+        setCloudRenders(result.renders);
+        setCloudRenderState(result.success ? "ready" : "unavailable");
+        setCloudRenderMessage(result.error || "");
+      })
+      .catch(() => {
+        setCloudRenders([]);
+        setCloudRenderState("unavailable");
+        setCloudRenderMessage("Cloud render inventory is unavailable. Enter a verified URL manually.");
+      });
   }, []);
 
   // Set form fields for Editing
@@ -138,7 +160,9 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
     }
 
     if (res.success) {
-      setSuccessMsg(selectedEpisode ? "Episode updated successfully!" : "Episode published successfully!");
+      setSuccessMsg(selectedEpisode
+        ? "Episode record updated in the Quipsly database."
+        : "Episode record created in the Quipsly database. No external publication was attempted.");
       await loadEpisodes();
       setTimeout(() => {
         setView("list");
@@ -152,10 +176,10 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
 
   // Handle Delete
   const handleDelete = async (id: string, name: string) => {
-    if (!confirm(`Are you sure you want to unpublish and delete "${name}"?`)) return;
+    if (!confirm(`Delete the Quipsly episode record "${name}"? This does not verify or change any external podcast platform.`)) return;
     const res = await deleteEpisodeAction(id);
     if (res.success) {
-      setSuccessMsg("Episode deleted successfully.");
+      setSuccessMsg("Quipsly episode record deleted. No external platform was changed.");
       await loadEpisodes();
       setTimeout(() => setSuccessMsg(""), 2000);
     } else {
@@ -200,8 +224,8 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
               <Disc className="h-5 w-5 text-white animate-spin" style={{ animationDuration: '8s' }} />
             </span>
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-white uppercase">Podcast Publishing Desk</h1>
-              <p className="text-xs text-zinc-400 font-mono mt-0.5">HIGH GROUND MEDIA ENGINE</p>
+              <h1 className="text-2xl font-black tracking-tight text-white uppercase">Podcast Episode Registry</h1>
+              <p className="text-xs text-zinc-400 font-mono mt-0.5">QUIPSLY DATABASE RECORDS</p>
             </div>
           </div>
         </div>
@@ -219,14 +243,15 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
                 className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 transition px-4 py-2 text-xs font-bold text-zinc-300 hover:text-white"
               >
                 <BarChart className="h-4 w-4" />
-                View Demographics
+                Analytics demo
               </button>
               <button 
                 onClick={startAdd}
-                className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:scale-[1.02] transition-all px-4 py-2 text-xs font-black text-black active:scale-[0.98] shadow-lg shadow-amber-500/10"
+                disabled={episodeState !== "ready"}
+                className="flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:scale-[1.02] transition-all px-4 py-2 text-xs font-black text-black active:scale-[0.98] shadow-lg shadow-amber-500/10 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:scale-100"
               >
                 <Plus className="h-4 w-4 text-black stroke-[3px]" />
-                PUBLISH EPISODE
+                NEW EPISODE RECORD
               </button>
             </>
           )}
@@ -257,13 +282,19 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
         </div>
       )}
 
-      {/* Database offline seeder warning */}
-      {isSimulated && (
-        <div className="mb-8 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 text-amber-300 text-xs flex items-center gap-3">
-          <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 animate-bounce" />
+      {episodeState === "unavailable" && (
+        <div className="mb-8 p-5 rounded-xl border border-rose-500/40 bg-rose-500/10 text-rose-200 text-sm flex items-start gap-3" role="alert">
+          <AlertTriangle className="h-5 w-5 text-rose-400 shrink-0 mt-0.5" />
           <div>
-            <p className="font-bold">PostgreSQL Connection Warning</p>
-            <p className="text-zinc-400 mt-0.5">Could not establish direct pool to PostgreSQL cluster. Switched to high-fidelity simulated memory state. You can still create and manage items inside the session context.</p>
+            <p className="font-black uppercase tracking-wider">Episode database unavailable</p>
+            <p className="text-zinc-300 mt-1 leading-6">No episode records were loaded, no demo episodes were substituted, and record creation is disabled. This screen cannot confirm the state of your feed or any external platform.</p>
+            <button
+              type="button"
+              onClick={() => void loadEpisodes()}
+              className="mt-3 rounded-lg border border-rose-300/30 bg-black/20 px-3 py-2 text-xs font-black text-rose-100 hover:bg-black/35"
+            >
+              Retry database read
+            </button>
           </div>
         </div>
       )}
@@ -293,16 +324,22 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
             <div className="flex items-center justify-center py-24">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-amber-500"></div>
             </div>
+          ) : episodeState === "unavailable" ? (
+            <div className="flex flex-col items-center justify-center py-24 border border-dashed border-rose-900/70 rounded-3xl bg-rose-950/10 text-center px-6">
+              <AlertTriangle className="h-12 w-12 text-rose-700 mb-3" />
+              <p className="text-sm font-black text-rose-200">Episode list not loaded</p>
+              <p className="text-xs text-zinc-500 mt-2 max-w-lg leading-5">An empty-looking grid here is an outage state, not proof that the show has no episodes.</p>
+            </div>
           ) : filteredEpisodes.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-24 border border-dashed border-zinc-800 rounded-3xl bg-zinc-950/20">
               <Music className="h-12 w-12 text-zinc-700 mb-3" />
-              <p className="text-sm font-semibold text-zinc-400">No episodes registered yet.</p>
-              <p className="text-xs text-zinc-600 mt-1">Ready to launch your first high-interest podcast transmission.</p>
+              <p className="text-sm font-semibold text-zinc-400">No persisted episode records found.</p>
+              <p className="text-xs text-zinc-600 mt-1">Create a Quipsly database record when your verified media and metadata are ready.</p>
               <button 
                 onClick={startAdd}
                 className="mt-6 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-xs font-bold text-amber-400 hover:bg-amber-500/20 transition-all"
               >
-                Launch Episode 1
+                Create episode record
               </button>
             </div>
           ) : (
@@ -356,7 +393,7 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
                       <button 
                         onClick={() => handleDelete(ep.id, ep.title)}
                         className="p-2 rounded-lg bg-zinc-950 hover:bg-rose-950/40 text-zinc-500 hover:text-rose-400 border border-white/5 hover:border-rose-900/50 transition-colors"
-                        title="Unpublish episode"
+                        title="Delete Quipsly episode record"
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
@@ -370,13 +407,13 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
         </div>
       )}
 
-      {/* 2. FORM CREATIVE VIEW (PUBLISH / EDIT) */}
+      {/* 2. FORM CREATIVE VIEW (CREATE / EDIT DATABASE RECORD) */}
       {view === "form" && (
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           
           <form onSubmit={handleSave} className="bg-zinc-950/40 border border-white/5 rounded-3xl p-6 md:p-8 backdrop-blur-md space-y-6">
             <h2 className="text-xl font-bold text-white uppercase tracking-wider border-b border-white/5 pb-4">
-              {selectedEpisode ? "EDIT EPISODE METADATA" : "TRANSMIT NEW PODCAST EPISODE"}
+              {selectedEpisode ? "EDIT EPISODE RECORD" : "CREATE EPISODE RECORD"}
             </h2>
 
             <div className="grid gap-6 sm:grid-cols-2">
@@ -428,10 +465,12 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
                 <button 
                   type="button"
                   onClick={() => setShowAssetPicker(true)}
-                  className="text-xs text-amber-500 hover:text-amber-400 font-bold flex items-center gap-1.5"
+                  disabled={cloudRenderState !== "ready"}
+                  title={cloudRenderState === "unavailable" ? cloudRenderMessage : undefined}
+                  className="text-xs text-amber-500 hover:text-amber-400 font-bold flex items-center gap-1.5 disabled:cursor-not-allowed disabled:text-zinc-600"
                 >
                   <FolderPlus className="h-3.5 w-3.5" />
-                  Pick from GCS Renders
+                  {cloudRenderState === "loading" ? "Checking render inventory..." : cloudRenderState === "unavailable" ? "Render inventory unavailable" : "Pick verified render"}
                 </button>
               </div>
               <div className="relative">
@@ -514,7 +553,7 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
                 disabled={saving}
                 className="flex-1 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 py-3.5 text-sm font-black text-black hover:scale-[1.01] active:scale-[0.99] transition-all disabled:opacity-50 shadow-lg shadow-amber-500/10"
               >
-                {saving ? "TRANSMITTING..." : selectedEpisode ? "SAVE CHANGES" : "PUBLISH TRANSMISSION"}
+                {saving ? "SAVING RECORD..." : selectedEpisode ? "SAVE RECORD CHANGES" : "CREATE DATABASE RECORD"}
               </button>
               <button 
                 type="button"
@@ -532,23 +571,23 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
             <div className="bg-zinc-950/40 border border-white/5 rounded-3xl p-5 backdrop-blur-md">
               <h3 className="text-xs font-bold uppercase tracking-wider text-zinc-500 mb-3 flex items-center gap-1.5">
                 <Settings className="h-3.5 w-3.5" />
-                Publishing Specs
+                What this save does
               </h3>
               <p className="text-xs text-zinc-400 leading-relaxed">
-                When you publish, this episode is instantly injected into your iTunes and Spotify compliant RSS XML feed.
+                This form creates or updates a Quipsly database record. It does not itself verify an RSS enclosure, update Apple Podcasts or Spotify, or prove that an external publication succeeded.
               </p>
               <div className="mt-4 p-3 bg-black/35 rounded-xl border border-white/5 text-[11px] font-mono text-zinc-500 space-y-2">
                 <div className="flex justify-between">
-                  <span>Feed Schema</span>
-                  <span className="text-amber-500">RSS 2.0</span>
+                  <span>Quipsly record</span>
+                  <span className="text-amber-500">Database write</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>Compliance</span>
-                  <span className="text-emerald-500">IAB Tech Lab V2</span>
+                  <span>RSS delivery</span>
+                  <span className="text-zinc-300">Not verified here</span>
                 </div>
                 <div className="flex justify-between">
-                  <span>SSL Routing</span>
-                  <span className="text-zinc-300">Enforced</span>
+                  <span>Platform status</span>
+                  <span className="text-zinc-300">Not checked here</span>
                 </div>
               </div>
             </div>
@@ -574,9 +613,13 @@ export function PodcastDeskClient({ actor }: PodcastDeskClientProps) {
             <div className="flex items-center justify-between border-b border-white/5 pb-4 mb-6">
               <h2 className="text-xl font-bold text-white uppercase tracking-wider flex items-center gap-2">
                 <BarChart className="h-5 w-5 text-amber-500" />
-                CREATOR PERFORMANCE DEMOGRAPHICS
+                ANALYTICS UI PREVIEW
               </h2>
-              <span className="text-xs font-mono text-zinc-500">IAB Standardized</span>
+              <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1 text-xs font-black text-amber-300">DEMO DATA · NOT LIVE</span>
+            </div>
+
+            <div className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-100" role="note">
+              These numbers are static layout examples. Quipsly has not queried a podcast analytics provider, and nothing on this page should be used as audience or publishing evidence.
             </div>
 
             <div className="grid gap-6 md:grid-cols-3 mb-8">

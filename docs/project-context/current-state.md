@@ -20,7 +20,7 @@ High Ground Studio is a monorepo with:
 - `/dashboard` renders signed-in client membership, manual coaching feature
   grants, appointment, recent coaching request, and converted appointment data
   from Prisma.
-- `/dashboard?intent=coaching` renders the signed-in coaching request form and posts to `submitCoachingRequestAction`.
+- HighGroundOdyssey `/coaching` is now a public doorway: it explains coaching and routes operational intake/booking to Quipsly Nest. `/dashboard?intent=coaching` is legacy background and must not be treated as the active source of booking or capture truth.
 - `/dashboard` shows recent coaching request status, assigned coach when present, converted appointment summaries, Google Calendar add links for converted appointments, and a pay-what-you-can contribution CTA when `HGO_COACHING_DONATION_URL` and appointment data are present.
 - `/team/clients` supports:
   - pre-provisioning client users
@@ -367,8 +367,8 @@ High Ground Studio is a monorepo with:
 
 ## Current Coaching Workflow
 
-- `/coaching` is the public coaching front door. Its `Book a Session` calls to action send signed-in users to `/dashboard?intent=coaching` and anonymous users through sign-in with that dashboard intent as the callback.
-- `/dashboard?intent=coaching` is the active signed-in intake surface. The form captures preferred contact method, optional phone, optional note, and an SMS consent notice if the user selects text follow-up.
+- `/coaching` is the public coaching front door. Its primary action sends users to Quipsly Nest for booking/intake; its secondary action points to Quipsly.com coaching education. HGO does not own booking, payment, consent, capture, transcript, or packet truth.
+- `/dashboard?intent=coaching` is legacy background from the older HGO intake path. New coaching/capture work should use Quipsly-owned booking, payment evidence, consent, capture, transcript, and packet records.
 - Submitting a coaching request writes Prisma state first, then attempts internal email notification. The primary user path succeeds even if the email attempt returns a structured failure.
 - `/dashboard` shows the latest coaching request plus recent older requests. Converted requests show appointment summaries and Google Calendar links.
 - `/team/coaching-requests` is the internal request queue and appointment conversion screen. Conversion creates an `Appointment`, marks the request `SCHEDULED`, assigns the coach, links `convertedAppointmentId`, appends internal scheduling notes, and revalidates `/team/coaching-requests`, `/team/appointments`, and `/dashboard`.

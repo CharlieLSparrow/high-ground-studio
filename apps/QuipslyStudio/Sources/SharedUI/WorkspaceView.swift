@@ -472,7 +472,7 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
         case .inspector:
             return "Frame"
         case .cuts:
-            return "Cuts"
+            return "Edit"
         case .audio:
             return "Audio"
         case .shorts:
@@ -497,7 +497,7 @@ private enum LeftWorkbenchMode: String, CaseIterable, Identifiable {
         case .inspector:
             return "Tune"
         case .cuts:
-            return "Cuts"
+            return "Edit"
         case .audio:
             return "Audio"
         case .shorts:
@@ -912,6 +912,7 @@ private final class WorkspaceAgentCommandBridge: ObservableObject {
 }
 
 struct WorkspaceView: View {
+    @Environment(\.undoManager) private var undoManager
     @ObservedObject var playbackEngine: PlaybackEngine
     @ObservedObject var projectStore: ProjectStore
 
@@ -962,6 +963,7 @@ struct WorkspaceView: View {
     @State private var proxyAttachingLaneId: UUID? = nil
     @State private var selectedLaneId: UUID? = nil
     @State private var selectedTagId: UUID? = nil
+    @State private var lastProgramMigrationSequenceId: UUID? = nil
     @State private var lastAgentPlayheadUpdate: Double = -1
     @State private var lastDrainedAgentCommandSerial: Int = 0
     @State private var agentCommandConsumerId = UUID()
@@ -984,7 +986,7 @@ struct WorkspaceView: View {
     @State private var audioProxyValidationInFlight: Set<String> = []
     @State private var videoProxyValidationInFlight: Set<String> = []
     @State private var isInspectorVisible = false
-    @State private var leftWorkbenchMode: LeftWorkbenchMode = .audio
+    @State private var leftWorkbenchMode: LeftWorkbenchMode = .cuts
     @State private var cutIntelligenceCadenceMode: CutIntelligenceMode = .warmConversation
     @State private var agentReceiptRefreshTick = 0
     @State private var selectedNestDocumentId: UUID? = nil
@@ -1013,11 +1015,7 @@ struct WorkspaceView: View {
     @State private var timelinePixelsPerSecond: Double = 10.0
 
     private var effectiveLeftWorkbenchOpenForAgent: Bool {
-        #if os(macOS)
-        true
-        #else
         isInspectorVisible
-        #endif
     }
     @State private var isTimelineFitToWindow = true
     @State private var timelineFocusRequest = 0
@@ -1159,7 +1157,9 @@ struct WorkspaceView: View {
                         programCrop: selectedProgramCropAdjustment(),
                         programCropAtPlayhead: selectedProgramCropAtPlayheadAdjustment(),
                         programCropKeyframeCount: selectedProgramCropKeyframeCount(),
+                        clipFocusLayout: selectedClipFocusLayoutSettings(),
                         updateKeyframe: updateKeyframe,
+                        updateClipFocusLayout: applyClipFocusLayoutSettings,
                         updateProgramCrop: { crop in
                             applyProgramCropAdjustment(
                                 laneId: selectedLaneId?.uuidString,
@@ -1239,11 +1239,7 @@ struct WorkspaceView: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    #if os(macOS)
-                    let showWorkbench = true
-                    #else
                     let showWorkbench = isInspectorVisible
-                    #endif
 
                     if showWorkbench {
                         VStack(spacing: 0) {
@@ -1274,7 +1270,9 @@ struct WorkspaceView: View {
                                     programCrop: selectedProgramCropAdjustment(),
                                     programCropAtPlayhead: selectedProgramCropAtPlayheadAdjustment(),
                                     programCropKeyframeCount: selectedProgramCropKeyframeCount(),
+                                    clipFocusLayout: selectedClipFocusLayoutSettings(),
                                     updateKeyframe: updateKeyframe,
+                                    updateClipFocusLayout: applyClipFocusLayoutSettings,
                                     updateProgramCrop: { crop in
                                         applyProgramCropAdjustment(
                                             laneId: selectedLaneId?.uuidString,
@@ -1346,7 +1344,11 @@ struct WorkspaceView: View {
                             }
                         }
                         .background(QuipslyStudioTheme.toolBayGradient)
-                        .frame(minWidth: 318, idealWidth: 348, maxWidth: 372)
+            .frame(
+                minWidth: leftWorkbenchMode == .transcript ? 440 : 318,
+                idealWidth: leftWorkbenchMode == .transcript ? 480 : 348,
+                maxWidth: leftWorkbenchMode == .transcript ? 560 : 372
+            )
                     } else {
                         inspectorRail
                     }
@@ -1355,27 +1357,29 @@ struct WorkspaceView: View {
 
                     mainWorkspace
 
-                    Divider()
+                    if leftWorkbenchMode != .audio {
+                        Divider()
 
-                    RightSidebarView(
-                        playbackEngine: playbackEngine,
-                        projectStore: projectStore,
-                        selectedLaneId: selectedLaneId,
-                        onDropVideo: { url in
-                        _ = url.startAccessingSecurityScopedResource()
-                        loadVideoIntoProject(url: url, allowProtectedOriginalProbe: true)
-                        },
-                        onSelectLane: selectSourceLane,
-                        onRelinkLane: beginRelinkLane,
-                        onAttachProxy: beginAttachProxy,
-                        onShowLaneWindow: showSourceLaneWindow,
-                        onCutLaneWindow: cutSourceLaneWindow,
-                        sourceStopCount: sourceReviewBoundaryCount,
-                        onSourceStopNavigate: { laneId, direction in
-                            jumpToAdjacentSourceDecision(direction: direction, laneId: laneId)
-                        }
-                    )
-                    .frame(minWidth: 330, idealWidth: 360, maxWidth: 388)
+                        RightSidebarView(
+                            playbackEngine: playbackEngine,
+                            projectStore: projectStore,
+                            selectedLaneId: selectedLaneId,
+                            onDropVideo: { url in
+                            _ = url.startAccessingSecurityScopedResource()
+                            loadVideoIntoProject(url: url, allowProtectedOriginalProbe: true)
+                            },
+                            onSelectLane: selectSourceLane,
+                            onRelinkLane: beginRelinkLane,
+                            onAttachProxy: beginAttachProxy,
+                            onShowLaneWindow: showSourceLaneWindow,
+                            onCutLaneWindow: cutSourceLaneWindow,
+                            sourceStopCount: sourceReviewBoundaryCount,
+                            onSourceStopNavigate: { laneId, direction in
+                                jumpToAdjacentSourceDecision(direction: direction, laneId: laneId)
+                            }
+                        )
+                        .frame(minWidth: 330, idealWidth: 360, maxWidth: 388)
+                    }
                 }
             }
         }
@@ -1453,62 +1457,58 @@ struct WorkspaceView: View {
     }
 
     private var inspectorRail: some View {
-        VStack(spacing: 12) {
-            ForEach(LeftWorkbenchMode.allCases) { mode in
+        let primaryModes: [LeftWorkbenchMode] = [.cuts, .audio, .shorts, .transcript, .inspector, .publish]
+        return VStack(spacing: 6) {
+            Image(systemName: "leaf.fill")
+                .font(.title3)
+                .foregroundStyle(QuipslyStudioTheme.honey)
+                .frame(width: 48, height: 42)
+
+            ForEach(primaryModes) { mode in
                 Button {
                     withAnimation(.easeInOut(duration: 0.16)) {
                         leftWorkbenchMode = mode
                         isInspectorVisible = true
                     }
                 } label: {
-                    Image(systemName: mode.icon)
-                        .font(.headline)
-                        .frame(width: 32, height: 32)
-                        .foregroundStyle(mode.tint)
-                        .background(mode.tint.opacity(0.13))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .stroke(mode.tint.opacity(0.18), lineWidth: 1)
-                        )
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    VStack(spacing: 4) {
+                        Image(systemName: mode.icon)
+                            .font(.system(size: 17, weight: .semibold))
+                        Text(mode.title)
+                            .font(.system(size: 9, weight: .bold, design: .rounded))
+                    }
+                    .foregroundStyle(leftWorkbenchMode == mode ? QuipslyStudioTheme.night : mode.tint)
+                    .frame(width: 58, height: 48)
+                    .background(
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .fill(leftWorkbenchMode == mode ? AnyShapeStyle(QuipslyStudioTheme.selectedToolGradient) : AnyShapeStyle(Color.clear))
+                    )
                 }
                 .buttonStyle(.plain)
                 .help("Open \(mode.title): \(mode.helperText)")
                 .accessibilityIdentifier("quipsly.workbench.rail.\(mode.rawValue)")
             }
 
-            Text("Workbench")
-                .font(.caption2)
-                .fontWeight(.black)
-                .foregroundStyle(QuipslyStudioTheme.sage)
-                .rotationEffect(.degrees(-90))
-                .fixedSize()
-
             Spacer()
 
-            VStack(spacing: 8) {
-                Button("16:9") {
-                    playbackEngine.playbackFormat = .horizontal16x9
-                    rebuildPlayer()
+            Menu {
+                ForEach([LeftWorkbenchMode.nest, .agent, .account, .os]) { mode in
+                    Button {
+                        leftWorkbenchMode = mode
+                    } label: {
+                        Label(mode.title, systemImage: mode.icon)
+                    }
                 }
-                .font(.caption2)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.mini)
-
-                Button("9:16") {
-                    playbackEngine.playbackFormat = .vertical9x16
-                    rebuildPlayer()
-                }
-                .font(.caption2)
-                .buttonStyle(.bordered)
-                .controlSize(.mini)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+                    .frame(width: 48, height: 42)
             }
-            .rotationEffect(.degrees(-90))
-            .fixedSize()
-            .padding(.bottom, 26)
+            .menuStyle(.borderlessButton)
         }
-        .padding(.vertical, 12)
-        .frame(width: 58)
+        .padding(.vertical, 10)
+        .frame(width: 74)
         .background(QuipslyStudioTheme.toolBayGradient)
         .overlay(alignment: .trailing) {
             Rectangle()
@@ -1641,30 +1641,180 @@ struct WorkspaceView: View {
         .accessibilityLabel("Open \(mode.title) workbench. \(mode.helperText)")
     }
 
+    private var activeEditDurationSeconds: Double {
+        guard let sequence = projectStore.activeSequence else { return 0 }
+        return PlaybackEngine.computeProgramDuration(for: sequence)
+    }
+
+    private var activeSourceDurationSeconds: Double {
+        max(0, projectStore.activeSequence?.duration ?? 0)
+    }
+
+    private func editorClockLabel(_ seconds: Double) -> String {
+        let safe = max(0, seconds.isFinite ? seconds : 0)
+        let totalSeconds = Int(safe.rounded())
+        let hours = totalSeconds / 3_600
+        let minutes = (totalSeconds % 3_600) / 60
+        let remainingSeconds = totalSeconds % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, remainingSeconds)
+            : String(format: "%d:%02d", minutes, remainingSeconds)
+    }
+
+    private func editorClockMetric(_ title: String, seconds: Double, tint: Color) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(title)
+                .font(.system(size: 8, weight: .black, design: .rounded))
+                .tracking(0.8)
+                .foregroundStyle(tint.opacity(0.76))
+            Text(editorClockLabel(seconds))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(tint)
+                .contentTransition(.numericText())
+        }
+        .frame(minWidth: 62, alignment: .trailing)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(title), \(editorClockLabel(seconds))")
+    }
+
+    private var professionalEditorBar: some View {
+        HStack(spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(
+                    projectStore.activeSequence?.title.localizedCaseInsensitiveContains("Part 1") == true
+                        ? "EPISODE 4 · PART 1"
+                        : projectStore.activeSequence?.title.localizedCaseInsensitiveContains("Part 2") == true
+                            ? "EPISODE 4 · PART 2"
+                            : "EPISODE 4"
+                )
+                    .font(.system(size: 10, weight: .black, design: .rounded))
+                    .tracking(1.4)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                Text(projectStore.activeSequence?.branchMetadata.branchName ?? "Producer Edit")
+                    .font(.title3.weight(.bold))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            }
+
+            Spacer()
+
+            HStack(spacing: 6) {
+                Button(action: performUndo) {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .keyboardShortcut("z", modifiers: .command)
+                .disabled(undoManager?.canUndo != true)
+                .help("Undo the last edit (Command-Z)")
+                .accessibilityLabel("Undo last edit")
+
+                Button(action: performRedo) {
+                    Image(systemName: "arrow.uturn.forward")
+                }
+                .keyboardShortcut("z", modifiers: [.command, .shift])
+                .disabled(undoManager?.canRedo != true)
+                .help("Redo the last edit (Shift-Command-Z)")
+                .accessibilityLabel("Redo last edit")
+            }
+            .buttonStyle(.borderless)
+
+            Picker("Format", selection: $playbackEngine.playbackFormat) {
+                Text("16:9").tag(ExportFormat.horizontal16x9)
+                Text("9:16").tag(ExportFormat.vertical9x16)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(width: 126)
+            .onChange(of: playbackEngine.playbackFormat) { _, _ in rebuildPlayer() }
+
+            HStack(spacing: 10) {
+                editorClockMetric("PLAYHEAD", seconds: playbackEngine.playhead, tint: QuipslyStudioTheme.creekMist)
+                editorClockMetric("EDIT LENGTH", seconds: activeEditDurationSeconds, tint: QuipslyStudioTheme.honey)
+                editorClockMetric("SOURCE", seconds: activeSourceDurationSeconds, tint: QuipslyStudioTheme.sage)
+            }
+            .help("Edit Length is the collapsed Play Edit runtime. Source is the intact synchronized recording clock.")
+            .accessibilityIdentifier("quipsly.editor.durationClocks")
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 11)
+        .background(QuipslyStudioTheme.panel.opacity(0.96))
+        .overlay(alignment: .bottom) { Rectangle().fill(QuipslyStudioTheme.quietStroke).frame(height: 1) }
+    }
+
+    private var professionalProgramStage: some View {
+        let shouldBlankProgram = programShouldShowBlankSlate()
+        let blankState = programBlankSlateState()
+
+        return VStack(spacing: 0) {
+            HStack {
+                Label("PROGRAM", systemImage: "play.rectangle.fill")
+                    .font(.caption.weight(.black))
+                    .tracking(1.1)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+                Spacer()
+                Text(playbackEngine.playbackMode == .playEdit ? "PLAY EDIT" : "PLAY THROUGH")
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+
+            ZStack {
+                Color.black
+                if shouldBlankProgram {
+                    programBlankSlate(
+                        title: blankState.title,
+                        detail: blankState.detail,
+                        systemImage: blankState.systemImage
+                    )
+                } else if playbackEngine.player != nil {
+                    PlayerView(player: playbackEngine.player)
+                        .aspectRatio(playbackEngine.playbackFormat == .vertical9x16 ? 9.0 / 16.0 : 16.0 / 9.0, contentMode: .fit)
+                } else {
+                    VStack(spacing: 10) {
+                        Image(systemName: "play.rectangle")
+                            .font(.system(size: 40, weight: .light))
+                        Text("Load an episode to begin")
+                            .font(.headline)
+                    }
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+                }
+            }
+            .frame(minHeight: 390, maxHeight: 590)
+        }
+        .background(QuipslyStudioTheme.night)
+        .accessibilityIdentifier("quipsly.editor.program")
+    }
+
+    @ViewBuilder
     private var mainWorkspace: some View {
+        if leftWorkbenchMode == .audio {
+            SourceAwareAudioWorkbenchPanel(
+                activeSessionName: normalizedActiveSessionName(),
+                playbackEngine: playbackEngine,
+                presentation: .workspace,
+                onSeek: { time in
+                    playbackEngine.seek(to: time)
+                    updateAgentState()
+                },
+                onOpenPath: openQuipslyOSPath,
+                onCopyText: copyAgentWorkbenchText
+            )
+        } else {
+            editorWorkspace
+        }
+    }
+
+    private var editorWorkspace: some View {
         ZStack {
             studioBackdrop
                 .ignoresSafeArea()
             QuipslyStudioTheme.clearingGlowGradient
                 .ignoresSafeArea()
 
-            VStack(spacing: 10) {
-                studioMasthead
-                    .accessibilityIdentifier("quipsly.editor.masthead")
-
-                studioCompassStrip
-                    .padding(.horizontal, 14)
-                    .accessibilityIdentifier("quipsly.editor.studioCompass")
-
-                editorNextActionRail
-                    .padding(.horizontal, 14)
-                    .accessibilityIdentifier("quipsly.editor.nextActionRail")
-
-                monitorWall
+            VStack(spacing: 0) {
+                professionalEditorBar
+                professionalProgramStage
                     .id(WorkspaceScrollTarget.monitors)
-                    .frame(minHeight: 450, maxHeight: 690)
-                    .padding(.horizontal, 14)
-                    .accessibilityIdentifier("quipsly.editor.monitorWall")
 
                 ScrollViewReader { scrollProxy in
                     ScrollView(.vertical) {
@@ -1691,7 +1841,7 @@ struct WorkspaceView: View {
                                 .padding(.horizontal, 14)
                                 .accessibilityIdentifier("quipsly.editor.selectedShortFocus")
 
-                            TimelineEditorView(
+                            ProfessionalDecisionTimelineView(
                                 playbackEngine: playbackEngine,
                                 projectStore: projectStore,
                                 selectedLaneId: selectedLaneId,
@@ -1715,27 +1865,30 @@ struct WorkspaceView: View {
                                     scheduleAutosave(reason: "added decision")
                                 },
                                 onRemoveTag: { laneId, tagId in
-                                    guard var seq = projectStore.activeSequence,
-                                          let laneIndex = seq.lanes.firstIndex(where: { $0.id == laneId }) else { return }
-                                    seq.lanes[laneIndex].tags.removeAll(where: { $0.id == tagId })
-                                    if selectedLaneId == laneId && selectedTagId == tagId {
-                                        selectedLaneId = nil
-                                        selectedTagId = nil
-                                    }
-                                    projectStore.updateSequence(seq, undoManager: nil, actionName: "Remove Tag")
-                                    rebuildPlayer()
-                                    scheduleAutosave(reason: "removed decision")
+                                    removeProgramDecisionForDerivedTag(laneId: laneId, tagId: tagId)
                                 },
                                 onUpdateTag: { laneId, updatedTag in
-                                    guard var seq = projectStore.activeSequence,
-                                          let laneIndex = seq.lanes.firstIndex(where: { $0.id == laneId }),
-                                          let tagIndex = seq.lanes[laneIndex].tags.firstIndex(where: { $0.id == updatedTag.id }) else { return }
-                                    seq.lanes[laneIndex].tags[tagIndex] = updatedTag
-                                    selectedLaneId = laneId
-                                    selectedTagId = updatedTag.id
-                                    projectStore.updateSequence(seq, undoManager: nil, actionName: "Update Tag")
-                                    rebuildPlayer()
-                                    scheduleAutosave(reason: "updated decision")
+                                    updateProgramBoundariesFromDerivedTag(laneId: laneId, updatedTag: updatedTag)
+                                },
+                                onSelectProgramDecision: { sequenceTime in
+                                    guard let sequence = projectStore.activeSequence else { return }
+                                    selectDerivedProgramDecision(in: sequence, at: sequenceTime)
+                                    playbackEngine.seek(to: sequenceTime)
+                                    lastMediaAction = String(format: "Selected Program decision at %.2fs", sequenceTime)
+                                    updateAgentState()
+                                },
+                                onSwitchSelectedProgramDecision: { sequenceTime, kind in
+                                    _ = switchSelectedDecision(
+                                        to: editDecisionType(for: kind),
+                                        at: sequenceTime
+                                    )
+                                },
+                                onSetSelectedProgramClipMotion: { sequenceTime, motion, holdSourceTime in
+                                    _ = setProgramClipMotion(
+                                        at: sequenceTime,
+                                        motion: motion,
+                                        holdSourceTime: holdSourceTime
+                                    )
                                 },
                                 onSelectAdjacentDecision: { direction in
                                     jumpToAdjacentDecision(direction: direction, scope: "video")
@@ -1774,28 +1927,6 @@ struct WorkspaceView: View {
                             .id(WorkspaceScrollTarget.timeline)
                             .accessibilityIdentifier("quipsly.editor.timeline")
 
-                            productionActionBar
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                        .fill(QuipslyStudioTheme.quietInsetGradient)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                                                .stroke(QuipslyStudioTheme.quietStroke, lineWidth: 1)
-                                        )
-                                )
-                                .padding(.horizontal, 14)
-                                .accessibilityIdentifier("quipsly.editor.productionDock")
-
-                            externalStorageOnboardingBanner
-                                .padding(.horizontal, 14)
-                                .accessibilityIdentifier("quipsly.editor.externalStorageBanner")
-
-                            productionDetailsDrawer
-                                .padding(.horizontal, 14)
-                                .accessibilityIdentifier("quipsly.editor.productionDetails")
-
                             Spacer()
                         }
                         .padding(.bottom, 14)
@@ -1814,9 +1945,14 @@ struct WorkspaceView: View {
             // agents a visible acknowledgement via lastMediaAction.
         }
         .onChange(of: projectStore.project) { _ in
-            updateAgentState()
+            Task { @MainActor in
+                await Task.yield()
+                ensureProgramDecisionTrackForActiveSequence()
+                updateAgentState()
+            }
         }
         .onChange(of: projectStore.activeSequenceId) { _ in
+            ensureProgramDecisionTrackForActiveSequence()
             requestMonitorFocus(reason: "Focused monitor wall for loaded sequence")
         }
         .onChange(of: playbackEngine.playhead) { newValue in
@@ -2851,6 +2987,9 @@ struct WorkspaceView: View {
                         decisionButton(key: "6", title: "H+Clip", subtitle: "source", type: .homerClip, color: QuipslyStudioTheme.fern)
                             .accessibilityIdentifier("quipsly.liveSwitch.homerClip")
                             .accessibilityLabel("Live choices six: show Homer with a source clip.")
+                        decisionButton(key: "7", title: "Both+Clip", subtitle: "clip focus", type: .bothClip, color: QuipslyStudioTheme.honey)
+                            .accessibilityIdentifier("quipsly.liveSwitch.bothClip")
+                            .accessibilityLabel("Live choices seven: keep the full clip visible with Charlie and Homer in the reaction rail.")
                     }
                 }
             }
@@ -12620,6 +12759,98 @@ struct WorkspaceView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
+    private enum TranscriptEditDisposition: String {
+        case kept
+        case skipped
+        case boundary
+        case unclassified
+
+        var label: String {
+            switch self {
+            case .kept: return "KEPT"
+            case .skipped: return "SKIPPED"
+            case .boundary: return "CUT BOUNDARY"
+            case .unclassified: return "SOURCE"
+            }
+        }
+
+        var isIncludedInPlayEdit: Bool {
+            self == .kept || self == .boundary
+        }
+    }
+
+    private func transcriptEditDisposition(startTime: Double, endTime: Double) -> TranscriptEditDisposition {
+        guard let sequence = projectStore.activeSequence else { return .unclassified }
+        let start = min(startTime, endTime)
+        let end = max(startTime, endTime)
+        let validRanges = PlaybackEngine.computeValidRanges(for: sequence)
+        guard !validRanges.isEmpty else { return .skipped }
+
+        if end - start <= 0.001 {
+            return validRanges.contains(where: { $0.contains(start) }) ? .kept : .skipped
+        }
+
+        let coveredDuration = validRanges.reduce(0.0) { total, range in
+            let overlapStart = max(start, range.lowerBound)
+            let overlapEnd = min(end, range.upperBound)
+            return total + max(0, overlapEnd - overlapStart)
+        }
+        let duration = end - start
+        if coveredDuration <= 0.001 { return .skipped }
+        if coveredDuration >= duration - 0.001 { return .kept }
+        return .boundary
+    }
+
+    private func transcriptWordToken(
+        _ token: String,
+        timing: TranscriptWordTiming?,
+        segment: TranscriptSegment,
+        index: Int,
+        isActive: Bool
+    ) -> some View {
+        let disposition = timing.map {
+            transcriptEditDisposition(startTime: $0.startTime, endTime: $0.endTime)
+        } ?? transcriptEditDisposition(startTime: segment.startTime, endTime: segment.endTime)
+        let foreground: Color = {
+            if isActive { return QuipslyStudioTheme.night }
+            if disposition == .skipped { return Color.orange.opacity(0.9) }
+            return QuipslyStudioTheme.moonMilk.opacity(0.92)
+        }()
+        let background: Color = {
+            if isActive { return QuipslyStudioTheme.honey.opacity(0.92) }
+            if disposition == .skipped { return Color.orange.opacity(0.1) }
+            return .clear
+        }()
+
+        return Text(token)
+            .font(.callout)
+            .fontWeight(isActive ? .black : .regular)
+            .foregroundStyle(foreground)
+            .strikethrough(disposition == .skipped, color: Color.orange.opacity(0.95))
+            .opacity(disposition == .skipped && !isActive ? 0.62 : 1)
+            .lineLimit(1)
+            .padding(.horizontal, isActive ? 7 : 3)
+            .padding(.vertical, isActive ? 4 : 2)
+            .background(background)
+            .clipShape(Capsule())
+            .overlay(
+                Capsule()
+                    .stroke(
+                        disposition == .boundary ? QuipslyStudioTheme.honey.opacity(0.9) : Color.clear,
+                        lineWidth: disposition == .boundary ? 1.5 : 0
+                    )
+            )
+            .contentShape(Capsule())
+            .onTapGesture {
+                guard let timing else { return }
+                selectedTranscriptWordSegmentId = segment.id
+                selectedTranscriptWordIndex = index
+                playbackEngine.scrub(to: timing.startTime)
+                updateAgentState()
+            }
+            .help("\(token): \(disposition.label.lowercased()) in Play Edit. Click to seek.")
+    }
+
     private func transcriptHighlightedLine(
         segment: TranscriptSegment,
         words: [TranscriptWordTiming],
@@ -12654,18 +12885,27 @@ struct WorkspaceView: View {
                 }
             }
 
+            HStack(spacing: 8) {
+                Label("kept", systemImage: "play.fill")
+                    .foregroundStyle(QuipslyStudioTheme.moss)
+                Label("edited out", systemImage: "scissors")
+                    .foregroundStyle(Color.orange.opacity(0.9))
+                Label("cut boundary", systemImage: "timeline.selection")
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+            }
+            .font(.caption2)
+            .fontWeight(.bold)
+
             LazyVGrid(columns: columns, alignment: .leading, spacing: 4) {
                 ForEach(Array(tokens.enumerated()), id: \.offset) { index, token in
                     let isActive = activeIndex == index && !words.isEmpty
-                    Text(token)
-                        .font(.callout)
-                        .fontWeight(isActive ? .black : .regular)
-                        .foregroundStyle(isActive ? QuipslyStudioTheme.night : QuipslyStudioTheme.moonMilk.opacity(0.92))
-                        .lineLimit(1)
-                        .padding(.horizontal, isActive ? 7 : 3)
-                        .padding(.vertical, isActive ? 4 : 2)
-                        .background(isActive ? QuipslyStudioTheme.honey.opacity(0.92) : Color.clear)
-                        .clipShape(Capsule())
+                    transcriptWordToken(
+                        token,
+                        timing: words.indices.contains(index) ? words[index] : nil,
+                        segment: segment,
+                        index: index,
+                        isActive: isActive
+                    )
                 }
             }
                 .padding(9)
@@ -12682,6 +12922,7 @@ struct WorkspaceView: View {
     private func transcriptSegmentCard(_ segment: TranscriptSegment, currentSegmentId: UUID?) -> some View {
         let isSelected = selectedTranscriptSegmentId == segment.id
         let isCurrent = currentSegmentId == segment.id
+        let disposition = transcriptEditDisposition(startTime: segment.startTime, endTime: segment.endTime)
         let speakerContext = transcriptSpeakerContext(for: segment, at: (segment.startTime + segment.endTime) / 2.0)
         return Button {
             selectTranscriptSegment(segment)
@@ -12696,6 +12937,14 @@ struct WorkspaceView: View {
                     Text(String(format: "%.2fs - %.2fs", segment.startTime, segment.endTime))
                         .font(.caption2.monospaced())
                         .foregroundStyle(.secondary)
+                    Text(disposition.label)
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .foregroundStyle(
+                            disposition == .skipped
+                                ? Color.orange.opacity(0.95)
+                                : (disposition == .boundary ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss)
+                        )
                     Spacer()
                     if isCurrent {
                         Text("NOW")
@@ -12706,7 +12955,9 @@ struct WorkspaceView: View {
                 }
                 Text(segment.text)
                     .font(.caption)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(disposition == .skipped ? Color.orange.opacity(0.82) : Color.primary)
+                    .strikethrough(disposition == .skipped, color: Color.orange.opacity(0.92))
+                    .opacity(disposition == .skipped ? 0.72 : 1)
                     .lineLimit(4)
             }
             .padding(9)
@@ -12714,7 +12965,12 @@ struct WorkspaceView: View {
             .background(transcriptSegmentCardBackground(isSelected: isSelected, isCurrent: isCurrent))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(isSelected ? QuipslyStudioTheme.creek.opacity(0.55) : QuipslyStudioTheme.sage.opacity(0.08), lineWidth: 1)
+                    .stroke(
+                        isSelected
+                            ? QuipslyStudioTheme.creek.opacity(0.55)
+                            : (disposition == .boundary ? QuipslyStudioTheme.honey.opacity(0.7) : QuipslyStudioTheme.sage.opacity(0.08)),
+                        lineWidth: disposition == .boundary ? 1.5 : 1
+                    )
             )
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
@@ -22349,6 +22605,7 @@ struct WorkspaceView: View {
                     HStack(spacing: 8) {
                         decisionButton(key: "5", title: "Charlie+Clip", subtitle: "host + source", type: .charlieClip, color: QuipslyStudioTheme.lichen)
                         decisionButton(key: "6", title: "Homer+Clip", subtitle: "host + source", type: .homerClip, color: QuipslyStudioTheme.moss)
+                        decisionButton(key: "7", title: "Both+Clip", subtitle: "clip focus", type: .bothClip, color: QuipslyStudioTheme.honey)
                     }
                 }
             }
@@ -23034,8 +23291,31 @@ struct WorkspaceView: View {
             return false
         }
 
+        if playEditExcludes(playbackEngine.playhead, from: sequence) {
+            return true
+        }
+
+        if !sequence.programDecisions.isEmpty {
+            return !programHasPlayableSource(at: playbackEngine.playhead, in: sequence)
+        }
+
         let programLanes = primaryProgramLanes(in: sequence)
         return !programLanes.contains { decisionAtPlayhead(for: $0)?.type == .active }
+    }
+
+    private func playEditExcludes(_ sequenceTime: Double, from sequence: MediaSequence) -> Bool {
+        !PlaybackEngine.computeValidRanges(for: sequence).contains { range in
+            // Media ranges are half-open even though the model uses ClosedRange.
+            // This makes every cut boundary deterministic and agrees with the
+            // collapsed AVComposition clock used by Play Edit and export.
+            sequenceTime >= range.lowerBound && sequenceTime < range.upperBound
+        }
+    }
+
+    private func programHasPlayableSource(at sequenceTime: Double, in sequence: MediaSequence) -> Bool {
+        sequence.programPlayableRanges().contains { range in
+            range.contains(sequenceTime)
+        }
     }
 
     private func programBlankSlateState() -> (title: String, detail: String, systemImage: String) {
@@ -23044,6 +23324,30 @@ struct WorkspaceView: View {
                 "No program output",
                 "Load an episode before the program monitor can show edit truth.",
                 "play.slash"
+            )
+        }
+
+        if playEditExcludes(playbackEngine.playhead, from: sequence) {
+            return (
+                "Skipped gap",
+                "This time is outside the branch's Play Edit output. Play Edit jumps to the next kept moment; Play Through preserves the synchronized sources for inspection.",
+                "forward.end.fill"
+            )
+        }
+
+        if !sequence.programDecisions.isEmpty {
+            if sequence.programDecision(at: playbackEngine.playhead)?.kind == .skip {
+                return (
+                    "Skipped gap",
+                    "Play Edit intentionally skips this interval. Play Through and the source grove preserve the synchronized source context.",
+                    "forward.end.fill"
+                )
+            }
+
+            return (
+                "Source gap",
+                "The Program decision continues here, but its selected source has no media on this part of the shared clock.",
+                "rectangle.dashed"
             )
         }
 
@@ -23674,6 +23978,42 @@ struct WorkspaceView: View {
         return .pending("Verifying audio proxy duration before production editing.")
     }
 
+    private var hasPendingManagedMediaValidation: Bool {
+        !audioProxyValidationInFlight.isEmpty || !videoProxyValidationInFlight.isEmpty
+    }
+
+    private func resumeAfterManagedMediaValidation(
+        actionLabel: String,
+        statusKind: String,
+        blocksFullRelease: Bool = false,
+        action: @escaping @MainActor () -> Void
+    ) {
+        lastMediaAction = "Validating managed media before \(actionLabel)"
+        updateAgentState()
+
+        Task { @MainActor in
+            let deadline = Date().addingTimeInterval(45)
+            while hasPendingManagedMediaValidation && Date() < deadline {
+                try? await Task.sleep(nanoseconds: 150_000_000)
+            }
+
+            guard !hasPendingManagedMediaValidation else {
+                let reason = "\(actionLabel.capitalized) could not start because managed-media validation did not settle within 45 seconds. No source media was touched."
+                blockExportStatus(kind: statusKind, reason: reason)
+                if blocksFullRelease {
+                    blockFullReleaseStatus(reason: reason)
+                }
+                lastMediaAction = reason
+                errorMessage = reason
+                showErrorAlert = true
+                updateAgentState()
+                return
+            }
+
+            action()
+        }
+    }
+
     private func scheduleAudioProxyValidation(proxyPath: String, expectedDuration: Double) {
         guard !audioProxyValidationInFlight.contains(proxyPath) else { return }
 
@@ -23880,6 +24220,22 @@ struct WorkspaceView: View {
     }
 
     private func jumpToAdjacentDecision(direction: Int, scope: String = "video") {
+        if let sequence = projectStore.activeSequence, !sequence.programDecisions.isEmpty {
+            let events = sequence.sortedProgramDecisions
+            let playhead = playbackEngine.playhead
+            let event: ProgramDecisionEvent
+            if direction >= 0 {
+                event = events.first(where: { $0.startTime > playhead + 0.05 }) ?? events.first!
+            } else {
+                event = events.last(where: { $0.startTime < playhead - 0.05 }) ?? events.last!
+            }
+            selectDerivedProgramDecision(in: sequence, at: event.startTime)
+            playbackEngine.seek(to: event.startTime)
+            lastMediaAction = "\(direction >= 0 ? "Next" : "Previous") Program decision: \(programDecisionLabel(event.kind))"
+            updateAgentState()
+            return
+        }
+
         let normalizedScope = normalizedDecisionScope(scope)
         let markers = normalizedScope == "video"
             ? decisionBoundaryMarkers(scope: normalizedScope)
@@ -24361,6 +24717,75 @@ struct WorkspaceView: View {
         .clipShape(Capsule())
     }
 
+    private func canonicalProgramDecisionContext(
+        in sequence: MediaSequence
+    ) -> (
+        event: ProgramDecisionEvent,
+        selectedLanes: [VideoLane],
+        playableSelectedLanes: [VideoLane],
+        blockedSelectedLanes: [VideoLane],
+        quietPlayableLaneCount: Int
+    )? {
+        guard !sequence.programDecisions.isEmpty,
+              let event = sequence.programDecision(at: playbackEngine.playhead) else {
+            return nil
+        }
+
+        let selectedIDs = Set(event.sourceLaneIDs)
+        let selectedLanes = event.sourceLaneIDs.compactMap { laneID in
+            sequence.lanes.first(where: { $0.id == laneID })
+        }
+        let playableSelectedLanes = selectedLanes.filter { lane in
+            sourceReadiness(for: lane).isReady && laneIsPresentAtPlayhead(lane)
+        }
+        let blockedSelectedLanes = selectedLanes.filter { lane in
+            !sourceReadiness(for: lane).isReady || !laneIsPresentAtPlayhead(lane)
+        }
+        let quietPlayableLaneCount = playableProgramLanes(in: sequence).filter { lane in
+            !selectedIDs.contains(lane.id) && laneIsPresentAtPlayhead(lane)
+        }.count
+
+        return (
+            event,
+            selectedLanes,
+            playableSelectedLanes,
+            blockedSelectedLanes,
+            quietPlayableLaneCount
+        )
+    }
+
+    private func programAudioRoutingPayload(
+        for event: ProgramDecisionEvent,
+        in sequence: MediaSequence
+    ) -> [String: Any] {
+        let audioLaneIDs = event.resolvedAudioSourceLaneIDs
+        let audioLaneNames = audioLaneIDs.compactMap { laneID in
+            sequence.lanes.first(where: { $0.id == laneID })?.name
+        }
+        let plainEnglish: String
+        switch event.resolvedAudioPolicy {
+        case .hostMix:
+            plainEnglish = "Host dialogue stems only"
+        case .selectedSources:
+            plainEnglish = audioLaneNames.isEmpty
+                ? "Selected source audio, but no source lane is named"
+                : "Selected source audio: \(audioLaneNames.joined(separator: " + "))"
+        case .hostMixAndSelectedSources:
+            plainEnglish = audioLaneNames.isEmpty
+                ? "Host dialogue stems plus selected source audio"
+                : "Host dialogue stems plus \(audioLaneNames.joined(separator: " + "))"
+        case .silence:
+            plainEnglish = "Silent program audio"
+        }
+
+        return [
+            "policy": event.resolvedAudioPolicy.rawValue,
+            "sourceLaneIDs": audioLaneIDs.map(\.uuidString),
+            "sourceLaneNames": audioLaneNames,
+            "plainEnglish": plainEnglish
+        ]
+    }
+
     private func currentProgramState() -> (title: String, detail: String, color: Color, systemImage: String) {
         guard let sequence = projectStore.activeSequence, !sequence.lanes.isEmpty else {
             return (
@@ -24368,6 +24793,56 @@ struct WorkspaceView: View {
                 detail: "Import media or load the demo edit to start building decisions.",
                 color: .secondary,
                 systemImage: "rectangle.stack.badge.plus"
+            )
+        }
+
+        if playEditExcludes(playbackEngine.playhead, from: sequence) {
+            return (
+                title: "Skipping this section",
+                detail: "This interval is outside the branch's output. Play Edit jumps it; Play Through keeps every synchronized source available.",
+                color: .red,
+                systemImage: "forward.end.fill"
+            )
+        }
+
+        if let context = canonicalProgramDecisionContext(in: sequence) {
+            if context.event.kind.isSkipped {
+                return (
+                    title: "Skipping this section",
+                    detail: "The canonical Program track marks this interval as skipped. Play Through keeps the synchronized sources available for inspection.",
+                    color: .red,
+                    systemImage: "forward.end.fill"
+                )
+            }
+
+            if !context.playableSelectedLanes.isEmpty {
+                let names = conciseLaneNames(context.playableSelectedLanes)
+                let blockedDetail = context.blockedSelectedLanes.isEmpty
+                    ? ""
+                    : " \(context.blockedSelectedLanes.count) additionally selected source(s) need recovery."
+                return (
+                    title: "Showing \(names)",
+                    detail: "The canonical Program decision selects these whole source lanes at this sequence time.\(blockedDetail)",
+                    color: .yellow,
+                    systemImage: "eye.fill"
+                )
+            }
+
+            if !context.blockedSelectedLanes.isEmpty {
+                let names = conciseLaneNames(context.blockedSelectedLanes)
+                return (
+                    title: "Selected source needs recovery",
+                    detail: "The Program track selects \(names), but its media is not playable at this clock. Relink the whole source or attach a full-length proxy.",
+                    color: .orange,
+                    systemImage: "externaldrive.badge.exclamationmark"
+                )
+            }
+
+            return (
+                title: "Program source gap",
+                detail: "The canonical Program decision has no selected visual source at this clock. The source lanes remain intact for recovery.",
+                color: .red,
+                systemImage: "rectangle.dashed"
             )
         }
 
@@ -24459,6 +24934,79 @@ struct WorkspaceView: View {
                 showCount: 0,
                 skipCount: 0,
                 quietCount: 0,
+                blockedCount: 0
+            )
+        }
+
+
+        if playEditExcludes(playbackEngine.playhead, from: sequence) {
+            return (
+                label: "Play Edit skips this span",
+                explanation: "The branch excludes this source-clock interval. Play Edit jumps to the next kept moment while Play Through preserves the synchronized source context.",
+                mode: "SKIP",
+                color: QuipslyStudioTheme.clay,
+                icon: "forward.end.fill",
+                showCount: 0,
+                skipCount: 1,
+                quietCount: 0,
+                blockedCount: 0
+            )
+        }
+
+
+        if let context = canonicalProgramDecisionContext(in: sequence) {
+            if context.event.kind.isSkipped {
+                return (
+                    label: "Play Edit skips this span",
+                    explanation: "The canonical Program track skips this source-clock interval. Play Through preserves the synchronized source context.",
+                    mode: "SKIP",
+                    color: QuipslyStudioTheme.clay,
+                    icon: "forward.end.fill",
+                    showCount: 0,
+                    skipCount: 1,
+                    quietCount: context.quietPlayableLaneCount,
+                    blockedCount: 0
+                )
+            }
+
+            if !context.playableSelectedLanes.isEmpty {
+                let names = conciseLaneNames(context.playableSelectedLanes)
+                return (
+                    label: "Program is showing \(names)",
+                    explanation: "Play Edit follows the canonical Program decision. Other synchronized source lanes remain available in the monitor wall without becoming program output.",
+                    mode: "SHOW",
+                    color: QuipslyStudioTheme.honey,
+                    icon: "eye.fill",
+                    showCount: context.playableSelectedLanes.count,
+                    skipCount: 0,
+                    quietCount: context.quietPlayableLaneCount,
+                    blockedCount: context.blockedSelectedLanes.count
+                )
+            }
+
+            if !context.blockedSelectedLanes.isEmpty {
+                return (
+                    label: "Program source needs recovery",
+                    explanation: "The canonical Program decision is preserved, but its selected media is not playable at this clock.",
+                    mode: "RECOVER",
+                    color: QuipslyStudioTheme.clay,
+                    icon: "externaldrive.badge.exclamationmark",
+                    showCount: 0,
+                    skipCount: 0,
+                    quietCount: context.quietPlayableLaneCount,
+                    blockedCount: context.blockedSelectedLanes.count
+                )
+            }
+
+            return (
+                label: "Program source gap",
+                explanation: "The canonical Program decision selects no playable visual source at this clock. The whole source lanes remain intact.",
+                mode: "EMPTY",
+                color: QuipslyStudioTheme.clay,
+                icon: "rectangle.dashed",
+                showCount: 0,
+                skipCount: 0,
+                quietCount: context.quietPlayableLaneCount,
                 blockedCount: 0
             )
         }
@@ -24555,7 +25103,11 @@ struct WorkspaceView: View {
     private func currentProgramMomentAgentPayload() -> [String: Any] {
         let moment = currentProgramMoment()
         let status = moment.mode.lowercased().replacingOccurrences(of: " ", with: "-")
-        return [
+        let sequence = projectStore.activeSequence
+        let isInPlayEditOutput = sequence.map {
+            !playEditExcludes(playbackEngine.playhead, from: $0)
+        } ?? false
+        var payload: [String: Any] = [
             "status": status,
             "label": moment.label,
             "plainEnglish": moment.explanation,
@@ -24565,8 +25117,24 @@ struct WorkspaceView: View {
             "skippedSourceCount": moment.skipCount,
             "availableQuietSourceCount": moment.quietCount,
             "blockedPresentSourceCount": moment.blockedCount,
-            "truth": "Program state is derived from whole source lanes plus SHOW/SKIP metadata at the shared playhead; it is not a chopped media timeline."
+            "sequenceTime": playbackEngine.playhead,
+            "isInPlayEditOutput": isInPlayEditOutput,
+            "activePlaybackMode": playbackEngine.playbackMode == .playThrough ? "play-through" : "play-edit",
+            "truth": "When present, the sparse Program decision track is canonical. Whole source lanes remain intact; materialized SHOW/SKIP overlays are views of that decision truth."
         ]
+
+        if let sequence,
+           let context = canonicalProgramDecisionContext(in: sequence) {
+            payload["decisionID"] = context.event.id.uuidString
+            payload["decisionKind"] = context.event.kind.rawValue
+            payload["selectedVisualSourceLaneIDs"] = context.event.sourceLaneIDs.map(\.uuidString)
+            payload["selectedVisualSourceLaneNames"] = context.selectedLanes.map(\.name)
+            payload["playableSelectedVisualSourceLaneNames"] = context.playableSelectedLanes.map(\.name)
+            payload["blockedSelectedVisualSourceLaneNames"] = context.blockedSelectedLanes.map(\.name)
+            payload["audioRouting"] = programAudioRoutingPayload(for: context.event, in: sequence)
+        }
+
+        return payload
     }
 
     private func sourceWallAtPlayheadPayload(for sequence: MediaSequence?, laneInventory: [[String: Any]]) -> [String: Any] {
@@ -29285,11 +29853,13 @@ struct WorkspaceView: View {
     }
 
     private func currentSocialPublicationQueueOutputPath() -> String {
-        let explicit = socialPublicationQueueOutputPath.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !explicit.isEmpty, FileManager.default.fileExists(atPath: explicit) {
-            return explicit
-        }
-        return latestSocialPublicationQueueDirectoryPath() ?? explicit
+        // Agent state and first layout are main-actor work. Never turn either one
+        // into an implicit filesystem crawl: QuipslyExports may intentionally be
+        // a symlink to a removable production drive, and an unavailable volume
+        // can otherwise freeze the entire app before the first frame. Queue paths
+        // become canonical only after an explicit generate/import action records
+        // them in state; disk discovery belongs in a cancellable user action.
+        socialPublicationQueueOutputPath.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private func currentSocialPublicationQueueManifestPath() -> String {
@@ -30469,7 +31039,7 @@ struct WorkspaceView: View {
         return socialMasterQueueCandidatePreview.first
     }
 
-    private func fullReleasePayload() -> [String: Any] {
+    private func fullReleasePayload(allowExternalVolumeRead: Bool = false) -> [String: Any] {
         let formatter = ISO8601DateFormatter()
         let ledger = publishLedgerPayload(for: projectStore.activeSequence)
         let checklist = publishReleaseChecklistPayload(for: projectStore.activeSequence)
@@ -30485,8 +31055,8 @@ struct WorkspaceView: View {
             "error": fullReleaseErrorMessage,
             "startedAt": fullReleaseStartedAt.map { formatter.string(from: $0) } ?? "",
             "completedAt": fullReleaseCompletedAt.map { formatter.string(from: $0) } ?? "",
-            "exportState": exportStatePayload(),
-            "artifactSummary": exportArtifactSummaryPayload(),
+            "exportState": exportStatePayload(allowExternalVolumeRead: allowExternalVolumeRead),
+            "artifactSummary": exportArtifactSummaryPayload(allowExternalVolumeRead: allowExternalVolumeRead),
             "deliveryPacketStatus": deliveryPacketStatus,
             "deliveryPacketOutputPath": deliveryPacketOutputPath,
             "publishLedgerRecordCount": ledger["recordCount"] ?? 0,
@@ -34091,7 +34661,10 @@ struct WorkspaceView: View {
             .path
     }
 
-    private func podcastReadyPacketManifestIsOperatorReady(_ path: String) -> Bool {
+    private func podcastReadyPacketManifestIsOperatorReady(
+        _ path: String,
+        allowExternalVolumeRead: Bool = false
+    ) -> Bool {
         guard !path.isEmpty else {
             return false
         }
@@ -34100,7 +34673,7 @@ struct WorkspaceView: View {
         // can block on file open while waking, reconnecting, or prompting for
         // access. Keep UI/auth/agent control responsive and let explicit
         // validators inspect external publication packets off the hot path.
-        if path.hasPrefix("/Volumes/") {
+        if path.hasPrefix("/Volumes/"), !allowExternalVolumeRead {
             return false
         }
 
@@ -35334,7 +35907,10 @@ struct WorkspaceView: View {
                 case .success:
                     if FileManager.default.fileExists(atPath: readyManifestURL.path) {
                         podcastReadyPacketOutputPath = readyManifestURL.path
-                        if podcastReadyPacketManifestIsOperatorReady(readyManifestURL.path) {
+                        if podcastReadyPacketManifestIsOperatorReady(
+                            readyManifestURL.path,
+                            allowExternalVolumeRead: true
+                        ) {
                             podcastReadyPacketStatus = "generated"
                             podcastReadyPacketErrorMessage = ""
                             podcastReadyPacketGeneratedAt = Date()
@@ -35446,7 +36022,10 @@ struct WorkspaceView: View {
             }
             podcastReadyPacketStatus = "generated"
             podcastReadyPacketOutputPath = readyManifestURL.path
-            if podcastReadyPacketManifestIsOperatorReady(readyManifestURL.path) {
+            if podcastReadyPacketManifestIsOperatorReady(
+                readyManifestURL.path,
+                allowExternalVolumeRead: true
+            ) {
                 podcastReadyPacketErrorMessage = ""
                 podcastReadyPacketGeneratedAt = Date()
                 lastMediaAction = "Generated podcast ready packet: \(readyManifestURL.lastPathComponent)"
@@ -41685,6 +42264,7 @@ struct WorkspaceView: View {
         let isDemo = word.source.localizedCaseInsensitiveContains("demo")
         let isEstimated = word.source.localizedCaseInsensitiveContains("estimated")
         let speakerContext = transcriptSpeakerContext(for: segment, at: time)
+        let editDisposition = transcriptEditDisposition(startTime: word.startTime, endTime: word.endTime)
         return [
             "segmentId": segment.id.uuidString,
             "speaker": segment.speaker,
@@ -41699,6 +42279,8 @@ struct WorkspaceView: View {
             "wordStart": word.startTime,
             "wordEnd": word.endTime,
             "wordSource": word.source,
+            "editDisposition": editDisposition.rawValue,
+            "includedInPlayEdit": editDisposition.isIncludedInPlayEdit,
             "segmentStart": segment.startTime,
             "segmentEnd": segment.endTime,
             "time": time,
@@ -43438,6 +44020,12 @@ struct WorkspaceView: View {
             return
         }
         let sourceAssetId = sourceVideo.id
+        let normalizedLaneName = lane.name.lowercased()
+        let generatedSpeaker: String = {
+            if normalizedLaneName.contains("charlie") { return "Charlie" }
+            if normalizedLaneName.contains("homer") || normalizedLaneName.contains("scott") { return "Homer" }
+            return lane.name
+        }()
 
         guard let mediaURL = transcriptReadableMediaURL(for: lane) else {
             lastMediaAction = "Script generation blocked: selected lane needs a readable proxy or local media path"
@@ -43476,6 +44064,8 @@ struct WorkspaceView: View {
                 let generatedSegments = generated.segments.map { segment -> TranscriptSegment in
                     var updated = segment
                     updated.sourceAssetId = sourceAssetId
+                    updated.speaker = generatedSpeaker
+                    updated.reviewStatus = "asr-draft"
                     return updated
                 }
                 let generatedProvider = generated.provider
@@ -43492,7 +44082,25 @@ struct WorkspaceView: View {
                         currentSequence.transcriptJobs[index].error = ""
                         currentSequence.transcriptJobs[index].segmentCount = generatedCount
                     }
-                    currentSequence.transcriptSegments = generatedSegments
+                    let hasRealWordTiming = generatedSegments.contains { segment in
+                        segment.words.contains { word in
+                            !word.source.localizedCaseInsensitiveContains("estimated")
+                                && !word.source.localizedCaseInsensitiveContains("demo")
+                        }
+                    }
+                    currentSequence.transcriptSegments.removeAll { existing in
+                        if existing.sourceAssetId == sourceAssetId { return true }
+                        guard hasRealWordTiming, existing.speaker == "Speaker" else { return false }
+                        return !existing.words.isEmpty && existing.words.allSatisfy { word in
+                            word.source.localizedCaseInsensitiveContains("estimated")
+                                || word.source.localizedCaseInsensitiveContains("demo")
+                        }
+                    }
+                    currentSequence.transcriptSegments.append(contentsOf: generatedSegments)
+                    currentSequence.transcriptSegments.sort {
+                        if $0.startTime == $1.startTime { return $0.endTime < $1.endTime }
+                        return $0.startTime < $1.startTime
+                    }
                     selectedTranscriptSegmentId = generatedSegments.first?.id
                     selectedTranscriptWordSegmentId = generatedSegments.first?.id
                     selectedTranscriptWordIndex = generatedSegments.first.map { _ in 0 }
@@ -43587,6 +44195,14 @@ struct WorkspaceView: View {
         let process = Process()
         process.executableURL = commandURL
         process.arguments = [mediaURL.path]
+        var environment = ProcessInfo.processInfo.environment
+        if environment["QUIPSLY_TRANSCRIPT_MODEL"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            environment["QUIPSLY_TRANSCRIPT_MODEL"] = "turbo"
+        }
+        if environment["QUIPSLY_TRANSCRIPT_LANGUAGE"]?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
+            environment["QUIPSLY_TRANSCRIPT_LANGUAGE"] = "en"
+        }
+        process.environment = environment
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -44260,6 +44876,80 @@ struct WorkspaceView: View {
     private func selectedProgramCropKeyframeCount() -> Int {
         guard let lane = selectedProgramCropLane() else { return 0 }
         return programCropKeyframes(for: lane, format: playbackEngine.playbackFormat).count
+    }
+
+    private func selectedClipFocusLayoutSettings() -> ClipFocusLayoutSettings {
+        guard let sequence = projectStore.activeSequence else {
+            return playbackEngine.playbackFormat == .horizontal16x9 ? .horizontalDefault : .verticalDefault
+        }
+        switch playbackEngine.playbackFormat {
+        case .horizontal16x9:
+            return sequence.clipFocusLayout16x9.normalized()
+        case .vertical9x16:
+            return sequence.clipFocusLayout9x16.normalized()
+        }
+    }
+
+    private func applyClipFocusLayoutSettings(_ settings: ClipFocusLayoutSettings) {
+        guard var sequence = projectStore.activeSequence else { return }
+        let normalized = settings.normalized()
+        switch playbackEngine.playbackFormat {
+        case .horizontal16x9:
+            sequence.clipFocusLayout16x9 = normalized
+        case .vertical9x16:
+            sequence.clipFocusLayout9x16 = normalized
+        }
+        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Adjust Clip Focus Layout")
+        rebuildPlayer()
+        lastMediaAction = "Updated \(playbackEngine.playbackFormat.rawValue) clip layout: \(normalized.placement.title), \(normalized.clipContentMode.title), \(Int((normalized.reactionSize * 100).rounded()))% reactions, focus \(Int((normalized.focusX * 100).rounded()))/\(Int((normalized.focusY * 100).rounded()))"
+        scheduleAutosave(reason: "clip focus layout")
+        updateAgentState()
+    }
+
+    private func applyAgentClipFocusLayout(values: [String: String]) {
+        guard var sequence = projectStore.activeSequence else {
+            lastMediaAction = "Clip layout blocked: no active sequence"
+            updateAgentState()
+            return
+        }
+
+        let formatValue = (values["format"] ?? playbackEngine.playbackFormat.rawValue).lowercased()
+        let format: ExportFormat = formatValue.contains("9:16") || formatValue.contains("vertical")
+            ? .vertical9x16
+            : .horizontal16x9
+        var settings = format == .horizontal16x9
+            ? sequence.clipFocusLayout16x9
+            : sequence.clipFocusLayout9x16
+
+        if let rawPlacement = values["placement"],
+           let placement = ClipFocusPlacement(rawValue: rawPlacement) {
+            settings.placement = placement
+        }
+        if let reactionSize = Double(values["reaction_size"] ?? "") {
+            settings.reactionSize = reactionSize
+        }
+        if let rawContentMode = values["content_mode"],
+           let contentMode = ClipFocusContentMode(rawValue: rawContentMode) {
+            settings.clipContentMode = contentMode
+        }
+        if let focusX = Double(values["focus_x"] ?? "") {
+            settings.focusX = focusX
+        }
+        if let focusY = Double(values["focus_y"] ?? "") {
+            settings.focusY = focusY
+        }
+
+        let normalized = settings.normalized()
+        if format == .horizontal16x9 {
+            sequence.clipFocusLayout16x9 = normalized
+        } else {
+            sequence.clipFocusLayout9x16 = normalized
+        }
+        projectStore.updateSequence(sequence, undoManager: undoManager, actionName: "Set Clip Focus Layout")
+        rebuildPlayer()
+        lastMediaAction = "Set \(format.rawValue) clip layout to \(normalized.placement.title)"
+        scheduleAutosave(reason: "agent clip focus layout")
+        updateAgentState()
     }
 
     private func clearSelection() {
@@ -45062,15 +45752,7 @@ struct WorkspaceView: View {
         let laneDuration = lane.sourceVideo?.duration ?? sequence.duration
         var tag = sequence.lanes[laneIndex].tags[tagIndex]
         tag.startTime = min(max(0, tag.startTime + delta), max(0, laneDuration - tag.duration))
-        sequence.lanes[laneIndex].tags[tagIndex] = tag
-
-        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Nudge Decision")
-        playbackEngine.updateValidRanges(for: sequence)
-        playbackEngine.seek(to: (lane.sourceVideo?.offset ?? 0) + tag.startTime)
-        rebuildPlayer()
-        lastMediaAction = String(format: "Nudged selected decision to %.2fs", tag.startTime)
-        scheduleAutosave(reason: "nudged decision")
-        updateAgentState()
+        updateProgramBoundariesFromDerivedTag(laneId: laneId, updatedTag: tag, actionName: "Nudge Program Decision")
     }
 
     private func trimSelectedTag(startDelta: Double, durationDelta: Double) {
@@ -45098,15 +45780,116 @@ struct WorkspaceView: View {
 
         tag.startTime = boundedStart
         tag.duration = boundedDuration
-        sequence.lanes[laneIndex].tags[tagIndex] = tag
+        updateProgramBoundariesFromDerivedTag(laneId: laneId, updatedTag: tag, actionName: "Trim Program Decision")
+    }
 
-        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Trim Decision")
+    private func updateProgramBoundariesFromDerivedTag(
+        laneId: UUID,
+        updatedTag: VideoTag,
+        actionName: String = "Adjust Program Decision"
+    ) {
+        guard var sequence = projectStore.activeSequence,
+              !sequence.programDecisions.isEmpty,
+              let laneIndex = sequence.lanes.firstIndex(where: { $0.id == laneId }),
+              let originalTag = sequence.lanes[laneIndex].tags.first(where: { $0.id == updatedTag.id }) else {
+            lastMediaAction = "Program boundary adjustment failed: no canonical decision was selected"
+            updateAgentState()
+            return
+        }
+
+        let offset = sequence.lanes[laneIndex].sourceVideo?.offset ?? 0
+        let oldStart = offset + originalTag.startTime
+        let oldEnd = oldStart + originalTag.duration
+        let requestedStart = offset + updatedTag.startTime
+        let requestedEnd = requestedStart + updatedTag.duration
+        var selectedTime = oldStart
+
+        if abs(requestedStart - oldStart) > 0.000_1,
+           let moved = moveProgramDecision(in: &sequence, from: oldStart, to: requestedStart) {
+            selectedTime = moved
+        }
+        if abs(requestedEnd - oldEnd) > 0.000_1 {
+            _ = moveProgramDecision(in: &sequence, from: oldEnd, to: requestedEnd)
+        }
+
+        materializeProgramDecisionOverlays(in: &sequence)
+        projectStore.updateSequence(sequence, undoManager: undoManager, actionName: actionName)
+        selectDerivedProgramDecision(in: sequence, at: selectedTime)
         playbackEngine.updateValidRanges(for: sequence)
-        playbackEngine.seek(to: (lane.sourceVideo?.offset ?? 0) + tag.startTime)
+        playbackEngine.seek(to: selectedTime)
         rebuildPlayer()
-        lastMediaAction = String(format: "Trimmed selected decision to %.2fs for %.2fs", tag.startTime, tag.duration)
-        scheduleAutosave(reason: "trimmed decision")
+        lastMediaAction = String(format: "Adjusted Program boundaries to %.2fs–%.2fs", requestedStart, requestedEnd)
+        scheduleAutosave(reason: "adjusted program boundary")
         updateAgentState()
+    }
+
+    @discardableResult
+    private func moveProgramDecision(
+        in sequence: inout MediaSequence,
+        from existingTime: Double,
+        to requestedTime: Double
+    ) -> Double? {
+        let tolerance = 0.05
+        guard let index = sequence.programDecisions.indices.min(by: {
+            abs(sequence.programDecisions[$0].startTime - existingTime) < abs(sequence.programDecisions[$1].startTime - existingTime)
+        }), abs(sequence.programDecisions[index].startTime - existingTime) <= tolerance else {
+            return nil
+        }
+
+        let eventID = sequence.programDecisions[index].id
+        sequence.programDecisions.sort { $0.startTime < $1.startTime }
+        guard let sortedIndex = sequence.programDecisions.firstIndex(where: { $0.id == eventID }) else { return nil }
+        let minimumGap = 0.05
+        let lowerBound = sortedIndex > 0
+            ? sequence.programDecisions[sortedIndex - 1].startTime + minimumGap
+            : 0
+        let upperBound = sortedIndex + 1 < sequence.programDecisions.count
+            ? sequence.programDecisions[sortedIndex + 1].startTime - minimumGap
+            : max(lowerBound, sequence.duration)
+        let boundedTime = min(max(requestedTime, lowerBound), upperBound)
+        sequence.programDecisions[sortedIndex].startTime = boundedTime
+        sequence.programDecisions.sort { $0.startTime < $1.startTime }
+        return boundedTime
+    }
+
+    private func removeProgramDecisionForDerivedTag(laneId: UUID, tagId: UUID) {
+        guard var sequence = projectStore.activeSequence,
+              let lane = sequence.lanes.first(where: { $0.id == laneId }),
+              let source = lane.sourceVideo,
+              let tag = lane.tags.first(where: { $0.id == tagId }),
+              !sequence.programDecisions.isEmpty else { return }
+        let eventTime = source.offset + tag.startTime
+        guard let index = sequence.programDecisions.indices.min(by: {
+            abs(sequence.programDecisions[$0].startTime - eventTime) < abs(sequence.programDecisions[$1].startTime - eventTime)
+        }), abs(sequence.programDecisions[index].startTime - eventTime) <= 0.05 else { return }
+
+        sequence.programDecisions.remove(at: index)
+        sequence.programDecisions.sort { $0.startTime < $1.startTime }
+        if let first = sequence.programDecisions.first, first.startTime > 0 {
+            sequence.programDecisions[0].startTime = 0
+        }
+        materializeProgramDecisionOverlays(in: &sequence)
+        projectStore.updateSequence(sequence, undoManager: undoManager, actionName: "Remove Program Decision")
+        selectedLaneId = nil
+        selectedTagId = nil
+        playbackEngine.updateValidRanges(for: sequence)
+        rebuildPlayer()
+        lastMediaAction = "Removed Program decision; neighboring state now continues through the boundary"
+        scheduleAutosave(reason: "removed program decision")
+        updateAgentState()
+    }
+
+    private func programDecisionLabel(_ kind: ProgramDecisionKind) -> String {
+        switch kind {
+        case .primary: return "Charlie"
+        case .secondary: return "Homer"
+        case .both: return "Both"
+        case .skip: return "Skip"
+        case .primaryWithClip: return "Charlie + Clip"
+        case .secondaryWithClip: return "Homer + Clip"
+        case .bothWithClip: return "Both + Clip"
+        case .custom: return "Custom"
+        }
     }
 
     private func handleAgentCommandDispatch(fallbackToLegacy: Bool) {
@@ -45249,7 +46032,8 @@ struct WorkspaceView: View {
             prepareReleaseForAgent(
                 directoryPath: request.values["directory"],
                 basename: request.values["basename"],
-                proofSeconds: Double(request.values["proof_seconds"] ?? "")
+                proofSeconds: Double(request.values["proof_seconds"] ?? ""),
+                requestedFormats: request.values["formats"]
             )
         case "full_release_prepare":
             prepareFullReleaseForAgent(
@@ -45483,6 +46267,8 @@ struct WorkspaceView: View {
             }
         case "format":
             applyAgentFormat(request.values["value"])
+        case "clip_focus_layout":
+            applyAgentClipFocusLayout(values: request.values)
         case "program_crop_mode":
             applyAgentProgramCropMode(request.values["mode"])
         case "program_crop":
@@ -45525,6 +46311,8 @@ struct WorkspaceView: View {
             setEditPassContext(values: request.values)
         case "create_branch":
             createEditBranchFromAgent(values: request.values)
+        case "import_render_branch":
+            importProducerRenderBranchFromAgent(values: request.values)
         case "switch_branch":
             switchEditBranchFromAgent(values: request.values)
         case "program_ambiguity_report":
@@ -45954,6 +46742,10 @@ struct WorkspaceView: View {
             ]
         }
 
+        let declaredKeepDuration = sequence.branchMetadata.programKeepRanges?.reduce(0) { $0 + $1.duration } ?? 0
+        let renderableRanges = PlaybackEngine.computeValidRanges(for: sequence)
+        let renderableDuration = PlaybackEngine.computeProgramDuration(for: sequence)
+
         return [
             "branchId": sequence.branchMetadata.branchId.uuidString,
             "branchName": sequence.branchMetadata.branchName,
@@ -45965,7 +46757,17 @@ struct WorkspaceView: View {
             "createdBy": sequence.branchMetadata.createdBy,
             "createdAt": ISO8601DateFormatter().string(from: sequence.branchMetadata.createdAt),
             "updatedAt": ISO8601DateFormatter().string(from: sequence.branchMetadata.updatedAt),
-            "truth": "Branch is a metadata-only decision layer over intact synced source lanes; it is not a copied media timeline or a publication receipt."
+            "programKeepRangeCount": sequence.branchMetadata.programKeepRanges?.count ?? 0,
+            "declaredProgramKeepDuration": declaredKeepDuration,
+            "programRenderableRangeCount": renderableRanges.count,
+            "programKeepDuration": renderableDuration,
+            "programSkippedWithinKeepsDuration": max(0, declaredKeepDuration - renderableDuration),
+            "renderManifestPath": sequence.branchMetadata.renderManifestPath ?? "",
+            "renderArtifactPaths": sequence.branchMetadata.renderArtifactPaths ?? [],
+            "renderVersion": sequence.branchMetadata.renderVersion ?? "",
+            "renderTarget": sequence.branchMetadata.renderTarget ?? "",
+            "renderEditorialTradeoff": sequence.branchMetadata.renderEditorialTradeoff ?? "",
+            "truth": "Branch is a metadata-only decision layer over intact synced source lanes. Program duration is the collapsed Play Edit duration after explicit SKIP decisions, not the raw sum of branch keep ranges."
         ]
     }
 
@@ -45980,6 +46782,9 @@ struct WorkspaceView: View {
                 "branchStatus": branchSequence.branchMetadata.branchStatus,
                 "parentSequenceId": branchSequence.branchMetadata.parentSequenceId?.uuidString ?? "",
                 "sourceBaselineSequenceId": branchSequence.branchMetadata.sourceBaselineSequenceId?.uuidString ?? "",
+                "programKeepRangeCount": branchSequence.branchMetadata.programKeepRanges?.count ?? 0,
+                "renderManifestPath": branchSequence.branchMetadata.renderManifestPath ?? "",
+                "renderVersion": branchSequence.branchMetadata.renderVersion ?? "",
                 "laneCount": branchSequence.lanes.count,
                 "shortRecipeCount": branchSequence.shortClipQueue.count,
                 "active": branchSequence.id == projectStore.activeSequenceId
@@ -46384,6 +47189,9 @@ struct WorkspaceView: View {
                 "branchStatus": branchSequence.branchMetadata.branchStatus,
                 "parentSequenceId": branchSequence.branchMetadata.parentSequenceId?.uuidString ?? "",
                 "sourceBaselineSequenceId": branchSequence.branchMetadata.sourceBaselineSequenceId?.uuidString ?? "",
+                "programKeepRangeCount": branchSequence.branchMetadata.programKeepRanges?.count ?? 0,
+                "renderManifestPath": branchSequence.branchMetadata.renderManifestPath ?? "",
+                "renderVersion": branchSequence.branchMetadata.renderVersion ?? "",
                 "laneCount": branchSequence.lanes.count,
                 "shortRecipeCount": branchSequence.shortClipQueue.count,
                 "active": branchSequence.id == projectStore.activeSequenceId
@@ -46393,19 +47201,7 @@ struct WorkspaceView: View {
         agentServer.writeStatus([
             "projectTitle": projectStore.project.title,
             "sequenceTitle": sequence.title,
-            "branchTruth": [
-                "branchId": sequence.branchMetadata.branchId.uuidString,
-                "branchName": sequence.branchMetadata.branchName,
-                "branchRole": sequence.branchMetadata.branchRole,
-                "branchStatus": sequence.branchMetadata.branchStatus,
-                "branchPurpose": sequence.branchMetadata.branchPurpose,
-                "parentSequenceId": sequence.branchMetadata.parentSequenceId?.uuidString ?? "",
-                "sourceBaselineSequenceId": sequence.branchMetadata.sourceBaselineSequenceId?.uuidString ?? "",
-                "createdBy": sequence.branchMetadata.createdBy,
-                "createdAt": ISO8601DateFormatter().string(from: sequence.branchMetadata.createdAt),
-                "updatedAt": ISO8601DateFormatter().string(from: sequence.branchMetadata.updatedAt),
-                "truth": "Branch is a metadata-only decision layer over intact synced source lanes; it is not a copied media timeline or a publication receipt."
-            ],
+            "branchTruth": branchTruthPayload(for: sequence),
             "branchList": branchListPayload,
             "sequenceDuration": sequence.duration,
             "mediaBinCount": projectStore.project.mediaBin.count,
@@ -48152,6 +48948,42 @@ struct WorkspaceView: View {
         updateAgentState()
     }
 
+    private func importProducerRenderBranchFromAgent(values: [String: String]) {
+        let rawPath = (values["path"] ?? values["manifest"] ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !rawPath.isEmpty else {
+            lastMediaAction = "Import render branch blocked: manifest path was empty"
+            updateAgentState()
+            return
+        }
+
+        let manifestURL: URL
+        if rawPath.hasPrefix("file://"), let fileURL = URL(string: rawPath) {
+            manifestURL = fileURL
+        } else {
+            manifestURL = URL(fileURLWithPath: rawPath)
+        }
+
+        do {
+            let manifest = try ProducerRenderManifest(contentsOf: manifestURL)
+            let result = try projectStore.importProducerRenderManifest(
+                manifest,
+                manifestURL: manifestURL,
+                createdBy: values["actor"] ?? "Codex producer",
+                undoManager: nil
+            )
+            selectedTagId = nil
+            selectedLaneId = projectStore.activeSequence?.lanes.first?.id
+            rebuildPlayer()
+            playbackEngine.seek(to: projectStore.activeSequence?.branchMetadata.programKeepRanges?.first?.startTime ?? 0)
+            lastMediaAction = "Imported \(result.branchName): \(result.keepRangeCount) keep ranges, \(result.pictureDecisionCount) picture decisions, \(result.outputArtifactCount) render artifacts"
+            scheduleAutosave(reason: "imported producer render branch")
+        } catch {
+            lastMediaAction = "Import render branch blocked: \(error.localizedDescription)"
+        }
+        updateAgentState()
+    }
+
     private func switchEditBranchFromAgent(values: [String: String]) {
         let requestedId = values["id"].flatMap(UUID.init(uuidString:))
         let requestedName = (values["name"] ?? values["title"] ?? "")
@@ -48602,89 +49434,97 @@ struct WorkspaceView: View {
     private func applyAgentDecision(_ decision: String, start: Double?, duration: Double?) {
         guard var seq = projectStore.activeSequence else { return }
 
-        let normalized = decision
-            .lowercased()
-            .replacingOccurrences(of: " ", with: "")
-            .replacingOccurrences(of: "_", with: "")
-            .replacingOccurrences(of: "-", with: "")
-            .replacingOccurrences(of: "+", with: "")
+        guard let decisionType = editDecisionType(from: decision) else {
+            lastMediaAction = "Agent decision failed: unknown decision type"
+            updateAgentState()
+            return
+        }
+
         let sequenceStart = max(0, start ?? playbackEngine.playhead)
         let sequenceDuration = max(0.1, duration ?? 5)
-        let sequenceEnd = sequenceStart + sequenceDuration
-        var preferredSelectedDecision: (laneId: UUID, tagId: UUID, isSupportOnly: Bool)? = nil
-        var fallbackSelectedDecision: (laneId: UUID, tagId: UUID, isSupportOnly: Bool)? = nil
+        let sequenceEnd = min(seq.duration, sequenceStart + sequenceDuration)
+        guard sequenceEnd - sequenceStart >= 0.05 else { return }
 
-        func appendDecision(to laneIndex: Int, type: TagType) {
-            guard seq.lanes.indices.contains(laneIndex) else { return }
-            let offset = seq.lanes[laneIndex].sourceVideo?.offset ?? 0
-            let laneDuration = max(0, seq.lanes[laneIndex].duration)
-            guard laneDuration > 0 else { return }
+        bootstrapProgramDecisionTrackIfNeeded(in: &seq)
 
-            let localStart = max(0, sequenceStart - offset)
-            let localEnd = min(laneDuration, sequenceEnd - offset)
-            let boundedDuration = localEnd - localStart
-            guard boundedDuration >= 0.05 else { return }
-
-            let newTag = VideoTag(type: type, startTime: localStart, duration: boundedDuration)
-            seq.lanes[laneIndex].tags.append(newTag)
-            let candidateIsSupportOnly = isSupportOnlyLane(seq.lanes[laneIndex])
-            let selected = (seq.lanes[laneIndex].id, newTag.id, candidateIsSupportOnly)
-            if type == .active {
-                if preferredSelectedDecision == nil || preferredSelectedDecision?.isSupportOnly == true && !candidateIsSupportOnly {
-                    preferredSelectedDecision = selected
-                }
-            } else if fallbackSelectedDecision == nil || fallbackSelectedDecision?.isSupportOnly == true && !candidateIsSupportOnly {
-                fallbackSelectedDecision = selected
-            }
+        // A finite agent edit is a Program decision window, not another layer of
+        // legacy lane tags. Capture the decision that should resume after the
+        // window before removing boundaries that fall inside it.
+        let decisionAfterWindow = seq.programDecision(at: sequenceEnd)
+        let hasBoundaryAtEnd = seq.programDecisions.contains {
+            abs($0.startTime - sequenceEnd) < 0.000_1
+        }
+        let existingAtStart = seq.programDecisions.first {
+            abs($0.startTime - sequenceStart) < 0.000_1
         }
 
-        for index in seq.lanes.indices {
-            let shouldActivate: Bool
-            let shouldCut: Bool
-
-            switch normalized {
-            case "charlie":
-                shouldActivate = laneMatchesDecisionCategory(seq.lanes[index], "charlie")
-                shouldCut = !shouldActivate
-            case "homer":
-                shouldActivate = laneMatchesDecisionCategory(seq.lanes[index], "homer")
-                shouldCut = !shouldActivate
-            case "both":
-                shouldActivate = laneMatchesDecisionCategory(seq.lanes[index], "charlie") ||
-                    laneMatchesDecisionCategory(seq.lanes[index], "homer")
-                shouldCut = false
-            case "skip", "skipover":
-                shouldActivate = false
-                shouldCut = true
-            case "charlieclip":
-                shouldActivate = laneMatchesDecisionCategory(seq.lanes[index], "charlie") ||
-                    laneMatchesDecisionCategory(seq.lanes[index], "clip")
-                shouldCut = !shouldActivate
-            case "homerclip":
-                shouldActivate = laneMatchesDecisionCategory(seq.lanes[index], "homer") ||
-                    laneMatchesDecisionCategory(seq.lanes[index], "clip")
-                shouldCut = !shouldActivate
-            default:
-                shouldActivate = false
-                shouldCut = false
-            }
-
-            if shouldActivate {
-                appendDecision(to: index, type: .active)
-            } else if shouldCut {
-                appendDecision(to: index, type: .cut)
-            }
+        seq.programDecisions.removeAll {
+            $0.startTime > sequenceStart + 0.000_1 &&
+                $0.startTime < sequenceEnd - 0.000_1
         }
+
+        let sourceLaneIDs = laneIdsForDecisionType(
+            decisionType,
+            in: seq,
+            at: sequenceStart,
+            preferredClipLaneID: existingAtStart?.clipLaneID
+        )
+        let usesClip = decisionType == .charlieClip ||
+            decisionType == .homerClip ||
+            decisionType == .bothClip ||
+            decisionType == .clipOnly
+        let clipLaneID = usesClip
+            ? sourceLaneIDs.first(where: { id in
+                guard let lane = seq.lanes.first(where: { $0.id == id }) else { return false }
+                return laneLooksLikeClip(lane)
+            })
+            : nil
+
+        seq.upsertProgramDecision(ProgramDecisionEvent(
+            id: existingAtStart?.id ?? UUID(),
+            startTime: sequenceStart,
+            kind: programDecisionKind(for: decisionType),
+            sourceLaneIDs: Array(sourceLaneIDs),
+            clipLaneID: clipLaneID,
+            clipMotion: existingAtStart?.clipMotion,
+            clipHoldSourceTime: existingAtStart?.clipHoldSourceTime,
+            audioPolicy: existingAtStart?.audioPolicy,
+            audioSourceLaneIDs: existingAtStart?.audioSourceLaneIDs,
+            assemblySegmentID: existingAtStart?.assemblySegmentID,
+            assemblyLocalTime: existingAtStart?.assemblyLocalTime,
+            actor: "Quipsly Studio agent",
+            createdAt: existingAtStart?.createdAt ?? Date()
+        ))
+
+        if !hasBoundaryAtEnd, let decisionAfterWindow {
+            seq.upsertProgramDecision(ProgramDecisionEvent(
+                startTime: sequenceEnd,
+                kind: decisionAfterWindow.kind,
+                sourceLaneIDs: decisionAfterWindow.sourceLaneIDs,
+                clipLaneID: decisionAfterWindow.clipLaneID,
+                clipMotion: decisionAfterWindow.clipMotion,
+                clipHoldSourceTime: decisionAfterWindow.clipHoldSourceTime,
+                audioPolicy: decisionAfterWindow.audioPolicy,
+                audioSourceLaneIDs: decisionAfterWindow.audioSourceLaneIDs,
+                assemblySegmentID: decisionAfterWindow.assemblySegmentID,
+                assemblyLocalTime: decisionAfterWindow.assemblyLocalTime,
+                actor: "Quipsly Studio agent restore"
+            ))
+        }
+
+        materializeProgramDecisionOverlays(in: &seq)
 
         projectStore.updateSequence(seq, undoManager: nil, actionName: "Agent Decision")
-        if let selectedDecision = preferredSelectedDecision ?? fallbackSelectedDecision {
-            selectedLaneId = selectedDecision.laneId
-            selectedTagId = selectedDecision.tagId
-        }
+        selectDerivedProgramDecision(in: seq, at: sequenceStart)
         playbackEngine.updateValidRanges(for: seq)
         rebuildPlayer()
-        lastMediaAction = String(format: "Added %@ decision at %.2fs for %.2fs", normalized, sequenceStart, sequenceDuration)
-        scheduleAutosave(reason: "agent decision")
+        lastMediaAction = String(
+            format: "Set %@ Program decision from %.2fs to %.2fs",
+            labelForDecisionType(decisionType),
+            sequenceStart,
+            sequenceEnd
+        )
+        scheduleAutosave(reason: "agent program decision")
         updateAgentState()
     }
 
@@ -48717,7 +49557,20 @@ struct WorkspaceView: View {
     }
 
     enum EditDecisionType {
-        case charlie, homer, both, skip, charlieClip, homerClip
+        case charlie, homer, both, skip, charlieClip, homerClip, bothClip, clipOnly
+    }
+
+    private func programDecisionKind(for type: EditDecisionType) -> ProgramDecisionKind {
+        switch type {
+        case .charlie: return .primary
+        case .homer: return .secondary
+        case .both: return .both
+        case .skip: return .skip
+        case .charlieClip: return .primaryWithClip
+        case .homerClip: return .secondaryWithClip
+        case .bothClip: return .bothWithClip
+        case .clipOnly: return .custom
+        }
     }
 
     private func editDecisionType(from value: String) -> EditDecisionType? {
@@ -48741,160 +49594,379 @@ struct WorkspaceView: View {
             return .charlieClip
         case "homerclip", "hclip":
             return .homerClip
+        case "bothclip", "twoclip", "reactionclip":
+            return .bothClip
+        case "clip", "cliponly", "stinger", "interstitial":
+            return .clipOnly
         default:
             return nil
         }
     }
 
     private func applyDecision(_ type: EditDecisionType) {
-        if switchSelectedDecision(to: type) {
-            return
-        }
-
-        guard var sequence = projectStore.activeSequence else { return }
-
-        let splitTime = playbackEngine.playhead
-
-        for i in 0..<sequence.lanes.count {
-            let offset = sequence.lanes[i].sourceVideo?.offset ?? 0
-            var newTags: [VideoTag] = []
-
-            for tag in sequence.lanes[i].tags {
-                if tag.type == .active || tag.type == .cut {
-                    let tagStartSeq = tag.startTime + offset
-                    let tagEndSeq = tagStartSeq + tag.duration
-
-                    if tagEndSeq <= splitTime {
-                        newTags.append(tag)
-                    } else if tagStartSeq < splitTime {
-                        var trimmedTag = tag
-                        trimmedTag.duration = splitTime - tagStartSeq
-                        newTags.append(trimmedTag)
-                    }
-                } else {
-                    newTags.append(tag)
-                }
-            }
-            sequence.lanes[i].tags = newTags
-        }
-
-        let remainingDuration = sequence.duration - splitTime
-        guard remainingDuration > 0 else { return }
-        var lastSelectedDecision: (laneId: UUID, tagId: UUID, isSupportOnly: Bool)? = nil
-
-        func rememberSelectedDecision(laneIndex: Int, tagId: UUID) {
-            guard laneIndex < sequence.lanes.count else { return }
-            let isSupportOnly = isSupportOnlyLane(sequence.lanes[laneIndex])
-            if lastSelectedDecision == nil || lastSelectedDecision?.isSupportOnly == true && !isSupportOnly {
-                lastSelectedDecision = (sequence.lanes[laneIndex].id, tagId, isSupportOnly)
-            }
-        }
-
-        func activate(laneIndex: Int) {
-            guard laneIndex < sequence.lanes.count else { return }
-            let offset = sequence.lanes[laneIndex].sourceVideo?.offset ?? 0
-            let newTag = VideoTag(
-                type: .active,
-                startTime: splitTime - offset,
-                duration: remainingDuration,
-                editIntent: liveDecisionIntent(
-                    type: type,
-                    laneName: sequence.lanes[laneIndex].name,
-                    tagType: .active,
-                    duration: remainingDuration
-                )
-            )
-            sequence.lanes[laneIndex].tags.append(newTag)
-            rememberSelectedDecision(laneIndex: laneIndex, tagId: newTag.id)
-        }
-
-        func skip(laneIndex: Int) {
-            guard laneIndex < sequence.lanes.count else { return }
-            let offset = sequence.lanes[laneIndex].sourceVideo?.offset ?? 0
-            let newTag = VideoTag(
-                type: .cut,
-                startTime: splitTime - offset,
-                duration: remainingDuration,
-                editIntent: liveDecisionIntent(
-                    type: type,
-                    laneName: sequence.lanes[laneIndex].name,
-                    tagType: .cut,
-                    duration: remainingDuration
-                )
-            )
-            sequence.lanes[laneIndex].tags.append(newTag)
-            rememberSelectedDecision(laneIndex: laneIndex, tagId: newTag.id)
-        }
-
-        let charlieLanes = laneIndices(in: sequence, matching: "charlie", fallback: [0])
-        let homerLanes = laneIndices(in: sequence, matching: "homer", fallback: [1])
-        let clipLanes = laneIndices(in: sequence, matching: "clip", fallback: [2])
-
-        func activate(_ laneIndices: [Int]) {
-            for laneIndex in laneIndices {
-                activate(laneIndex: laneIndex)
-            }
-        }
-
-        switch type {
-        case .charlie:
-            activate(charlieLanes)
-        case .homer:
-            activate(homerLanes)
-        case .both:
-            activate(uniqueLaneIndices(charlieLanes + homerLanes))
-        case .skip:
-            for index in sequence.lanes.indices {
-                skip(laneIndex: index)
-            }
-        case .charlieClip:
-            activate(uniqueLaneIndices(charlieLanes + clipLanes))
-        case .homerClip:
-            activate(uniqueLaneIndices(homerLanes + clipLanes))
-        }
-
-        projectStore.updateSequence(sequence, undoManager: nil, actionName: "Edit Decision")
-        if let lastSelectedDecision {
-            selectedLaneId = lastSelectedDecision.laneId
-            selectedTagId = lastSelectedDecision.tagId
-        }
-        playbackEngine.updateValidRanges(for: sequence)
-        rebuildPlayer()
-        scheduleAutosave(reason: "live switch decision")
+        setProgramDecision(type, at: playbackEngine.playhead, actionName: "Program Decision")
     }
 
     @discardableResult
-    private func switchSelectedDecision(to type: EditDecisionType) -> Bool {
+    private func switchSelectedDecision(
+        to type: EditDecisionType,
+        at selectedProgramStartTime: Double? = nil
+    ) -> Bool {
+        if let selectedProgramStartTime,
+           let sequence = projectStore.activeSequence,
+           let existingEvent = sequence.programDecisions.first(where: {
+               abs($0.startTime - selectedProgramStartTime) < 0.000_1
+           }) {
+            return setProgramDecision(
+                type,
+                at: existingEvent.startTime,
+                actionName: "Switch Program Decision",
+                replacing: existingEvent
+            )
+        }
         guard let selected = selectedDecision(),
-              let sequence = projectStore.activeSequence else {
+              projectStore.activeSequence != nil else {
             return false
         }
 
         let sequenceStart = max(0, (selected.lane.sourceVideo?.offset ?? 0) + selected.tag.startTime)
-        let sequenceDuration = max(0.1, selected.tag.duration)
-        let showLaneIds = type == .skip ? [] : laneIdsForDecisionType(type, in: sequence)
-        let decisionMap = visualDecisionMap(
-            in: sequence,
-            showLaneIds: showLaneIds,
-            cutOtherVisuals: true
+        let existingEvent = projectStore.activeSequence?.programDecision(at: sequenceStart)
+        return setProgramDecision(
+            type,
+            at: sequenceStart,
+            actionName: "Switch Program Decision",
+            replacing: existingEvent
         )
+    }
 
-        applyDecisionWindowMap(
-            decisionMap,
-            sequenceStart: sequenceStart,
-            sequenceDuration: sequenceDuration,
-            actionName: "Switch Selected Decision",
-            autosaveReason: "switched selected decision",
-            mediaActionLabel: labelForDecisionType(type),
-            editIntent: switchDecisionIntent(
-                type: type,
-                duration: sequenceDuration
-            )
+    @discardableResult
+    private func setProgramDecision(
+        _ type: EditDecisionType,
+        at requestedTime: Double,
+        actionName: String,
+        replacing existingEvent: ProgramDecisionEvent? = nil
+    ) -> Bool {
+        guard var sequence = projectStore.activeSequence else { return false }
+        bootstrapProgramDecisionTrackIfNeeded(in: &sequence)
+
+        let sequenceTime = min(max(0, requestedTime), max(0, sequence.duration))
+        if sequence.programDecisions.isEmpty, sequenceTime > 1.0 / 600.0 {
+            let defaultIDs = laneIdsForDecisionType(.charlie, in: sequence, at: 0)
+            sequence.upsertProgramDecision(ProgramDecisionEvent(
+                startTime: 0,
+                kind: .primary,
+                sourceLaneIDs: Array(defaultIDs),
+                actor: "Quipsly Studio default"
+            ))
+        }
+
+        let sourceLaneIDs = laneIdsForDecisionType(
+            type,
+            in: sequence,
+            at: sequenceTime,
+            preferredClipLaneID: existingEvent?.clipLaneID
         )
+        let usesClip = type == .charlieClip || type == .homerClip || type == .bothClip || type == .clipOnly
+        let clipLaneID = usesClip
+            ? sourceLaneIDs.first(where: { id in
+                guard let lane = sequence.lanes.first(where: { $0.id == id }) else { return false }
+                return laneLooksLikeClip(lane)
+            })
+            : nil
+        sequence.upsertProgramDecision(ProgramDecisionEvent(
+            id: existingEvent?.id ?? UUID(),
+            startTime: sequenceTime,
+            kind: programDecisionKind(for: type),
+            sourceLaneIDs: Array(sourceLaneIDs),
+            clipLaneID: clipLaneID,
+            clipMotion: existingEvent?.clipMotion,
+            clipHoldSourceTime: existingEvent?.clipHoldSourceTime,
+            audioPolicy: existingEvent?.audioPolicy,
+            audioSourceLaneIDs: existingEvent?.audioSourceLaneIDs,
+            assemblySegmentID: existingEvent?.assemblySegmentID,
+            assemblyLocalTime: existingEvent?.assemblyLocalTime,
+            actor: "Quipsly Studio",
+            createdAt: existingEvent?.createdAt ?? Date()
+        ))
+        materializeProgramDecisionOverlays(in: &sequence)
+
+        projectStore.updateSequence(sequence, undoManager: undoManager, actionName: actionName)
+        selectDerivedProgramDecision(in: sequence, at: sequenceTime)
+        playbackEngine.updateValidRanges(for: sequence)
+        rebuildPlayer()
+        lastMediaAction = String(
+            format: "%@ from %0.2fs until the next Program decision",
+            labelForDecisionType(type),
+            sequenceTime
+        )
+        scheduleAutosave(reason: "program decision track")
+        updateAgentState()
         return true
     }
 
-    private func laneIdsForDecisionType(_ type: EditDecisionType, in sequence: MediaSequence) -> Set<UUID> {
+    @discardableResult
+    private func setProgramClipMotion(
+        at sequenceTime: Double,
+        motion: ProgramClipMotion,
+        holdSourceTime: Double?
+    ) -> Bool {
+        guard var sequence = projectStore.activeSequence,
+              let eventIndex = sequence.programDecisions.firstIndex(where: {
+                  abs($0.startTime - sequenceTime) < 0.000_1
+              }) else { return false }
+
+        var event = sequence.programDecisions[eventIndex]
+        guard event.clipLaneID != nil else { return false }
+        event.clipMotion = motion
+        event.clipHoldSourceTime = motion == .holdFrame ? holdSourceTime : nil
+        sequence.programDecisions[eventIndex] = event
+
+        projectStore.updateSequence(
+            sequence,
+            undoManager: undoManager,
+            actionName: motion == .holdFrame ? "Hold Clip Frame" : "Play Clip"
+        )
+        selectDerivedProgramDecision(in: sequence, at: sequenceTime)
+        playbackEngine.updateValidRanges(for: sequence)
+        rebuildPlayer()
+        lastMediaAction = motion == .holdFrame
+            ? "Held watched clip frame while host video remains live"
+            : "Restored watched clip playback"
+        scheduleAutosave(reason: "program clip motion")
+        updateAgentState()
+        return true
+    }
+
+    private func performUndo() {
+        guard let undoManager, undoManager.canUndo else { return }
+        let actionName = undoManager.undoActionName
+        undoManager.undo()
+        refreshAfterHistoryChange(
+            message: actionName.isEmpty ? "Undid last edit" : "Undid \(actionName)"
+        )
+    }
+
+    private func performRedo() {
+        guard let undoManager, undoManager.canRedo else { return }
+        let actionName = undoManager.redoActionName
+        undoManager.redo()
+        refreshAfterHistoryChange(
+            message: actionName.isEmpty ? "Redid last edit" : "Redid \(actionName)"
+        )
+    }
+
+    private func refreshAfterHistoryChange(message: String) {
+        guard let sequence = projectStore.activeSequence else { return }
+        playbackEngine.updateValidRanges(for: sequence)
+        selectDerivedProgramDecision(in: sequence, at: playbackEngine.playhead)
+        rebuildPlayer()
+        lastMediaAction = message
+        scheduleAutosave(reason: message.lowercased())
+        updateAgentState()
+    }
+
+    private func bootstrapProgramDecisionTrackIfNeeded(in sequence: inout MediaSequence) {
+        guard sequence.programDecisions.isEmpty else { return }
+        let visualLanes = sequence.lanes.filter {
+            $0.metadata?.ignoreForProduction != true && !isSupportOnlyLane($0)
+        }
+        guard visualLanes.contains(where: { lane in
+            lane.tags.contains { $0.type == .active || $0.type == .cut }
+        }) else { return }
+
+        var boundaries: [Double] = [0, sequence.duration]
+        for lane in visualLanes {
+            let offset = lane.sourceVideo?.offset ?? 0
+            for tag in lane.tags where tag.type == .active || tag.type == .cut {
+                boundaries.append(min(max(0, tag.startTime + offset), sequence.duration))
+                boundaries.append(min(max(0, tag.startTime + offset + tag.duration), sequence.duration))
+            }
+        }
+
+        let sorted = Array(Set(boundaries)).sorted()
+        guard sorted.count > 1 else { return }
+        let primaryIDs = Set(laneIndices(in: sequence, matching: "charlie", fallback: [0]).map { sequence.lanes[$0].id })
+        let secondaryIDs = Set(laneIndices(in: sequence, matching: "homer", fallback: [1]).map { sequence.lanes[$0].id })
+        let clipIDs = Set(sequence.lanes.filter(laneLooksLikeClip).map(\.id))
+        var previousSignature = ""
+
+        for index in 0..<(sorted.count - 1) {
+            let start = sorted[index]
+            let end = sorted[index + 1]
+            guard end - start >= 0.000_1 else { continue }
+            let midpoint = (start + end) / 2
+            var activeIDs: Set<UUID> = []
+            var hasDecision = false
+
+            for lane in visualLanes {
+                let offset = lane.sourceVideo?.offset ?? 0
+                let localTime = midpoint - offset
+                if let tag = lane.tags.last(where: {
+                    ($0.type == .active || $0.type == .cut) &&
+                    localTime >= $0.startTime &&
+                    localTime < $0.startTime + max(0, $0.duration)
+                }) {
+                    hasDecision = true
+                    if tag.type == .active { activeIDs.insert(lane.id) }
+                }
+            }
+            guard hasDecision else { continue }
+
+            let hasPrimary = !activeIDs.isDisjoint(with: primaryIDs)
+            let hasSecondary = !activeIDs.isDisjoint(with: secondaryIDs)
+            let activeClipIDs = activeIDs.intersection(clipIDs)
+            let kind: ProgramDecisionKind
+            if activeIDs.isEmpty {
+                kind = .skip
+            } else if hasPrimary && hasSecondary && !activeClipIDs.isEmpty {
+                kind = .bothWithClip
+            } else if hasPrimary && !activeClipIDs.isEmpty {
+                kind = .primaryWithClip
+            } else if hasSecondary && !activeClipIDs.isEmpty {
+                kind = .secondaryWithClip
+            } else if hasPrimary && hasSecondary {
+                kind = .both
+            } else if hasPrimary {
+                kind = .primary
+            } else if hasSecondary {
+                kind = .secondary
+            } else {
+                kind = .custom
+            }
+
+            let orderedIDs = activeIDs.sorted { $0.uuidString < $1.uuidString }
+            let signature = kind.rawValue + ":" + orderedIDs.map(\.uuidString).joined(separator: ",")
+            guard signature != previousSignature else { continue }
+            previousSignature = signature
+            sequence.programDecisions.append(ProgramDecisionEvent(
+                startTime: start,
+                kind: kind,
+                sourceLaneIDs: orderedIDs,
+                clipLaneID: activeClipIDs.first,
+                actor: "Migrated from legacy lane decisions"
+            ))
+        }
+        sequence.programDecisions.sort { $0.startTime < $1.startTime }
+    }
+
+    private func ensureProgramDecisionTrackForActiveSequence() {
+        guard let sequenceId = projectStore.activeSequenceId,
+              sequenceId != lastProgramMigrationSequenceId,
+              var sequence = projectStore.activeSequence else { return }
+
+        lastProgramMigrationSequenceId = sequenceId
+        let neededMigration = sequence.programDecisions.isEmpty
+        bootstrapProgramDecisionTrackIfNeeded(in: &sequence)
+        guard !sequence.programDecisions.isEmpty else { return }
+
+        materializeProgramDecisionOverlays(in: &sequence)
+        projectStore.updateSequence(
+            sequence,
+            undoManager: nil,
+            actionName: neededMigration ? "Migrate Program Decisions" : "Refresh Program Decisions"
+        )
+        playbackEngine.updateValidRanges(for: sequence)
+        rebuildPlayer()
+        if neededMigration {
+            lastMediaAction = "Migrated legacy edit decisions into the Program track"
+            scheduleAutosave(reason: "program decision migration")
+        }
+    }
+
+    private func materializeProgramDecisionOverlays(in sequence: inout MediaSequence) {
+        let visualLaneIDs = Set(sequence.lanes.filter {
+            $0.metadata?.ignoreForProduction != true && !isSupportOnlyLane($0)
+        }.map(\.id))
+
+        for index in sequence.lanes.indices where visualLaneIDs.contains(sequence.lanes[index].id) {
+            sequence.lanes[index].tags.removeAll { $0.type == .active || $0.type == .cut }
+        }
+
+        for span in sequence.resolvedProgramDecisionSpans() {
+            for index in sequence.lanes.indices where visualLaneIDs.contains(sequence.lanes[index].id) {
+                guard let source = sequence.lanes[index].sourceVideo else { continue }
+                let start = max(span.startTime, source.offset)
+                let end = min(span.endTime, source.offset + source.duration)
+                guard end - start >= 0.05 else { continue }
+                let isVisible = !span.event.kind.isSkipped && span.event.sourceLaneIDs.contains(sequence.lanes[index].id)
+                let type: TagType = isVisible ? .active : .cut
+                let editType = editDecisionType(for: span.event.kind)
+                sequence.lanes[index].tags.append(VideoTag(
+                    type: type,
+                    startTime: start - source.offset,
+                    duration: end - start,
+                    editIntent: liveDecisionIntent(
+                        type: editType,
+                        laneName: sequence.lanes[index].name,
+                        tagType: type,
+                        duration: end - start
+                    )
+                ))
+            }
+        }
+    }
+
+    private func editDecisionType(for kind: ProgramDecisionKind) -> EditDecisionType {
+        switch kind {
+        case .primary: return .charlie
+        case .secondary: return .homer
+        case .both: return .both
+        case .skip: return .skip
+        case .primaryWithClip: return .charlieClip
+        case .secondaryWithClip: return .homerClip
+        case .bothWithClip: return .bothClip
+        case .custom: return .clipOnly
+        }
+    }
+
+    private func laneLooksLikeClip(_ lane: VideoLane) -> Bool {
+        let role = lane.metadata?.role.lowercased() ?? ""
+        let kind = lane.metadata?.mediaKind.lowercased() ?? ""
+        let name = lane.name.lowercased()
+        return role.contains("clip") || role.contains("reference") || kind.contains("clip") || name.contains("clip") || name.contains("reference")
+    }
+
+    private func selectDerivedProgramDecision(in sequence: MediaSequence, at sequenceTime: Double) {
+        guard let event = sequence.programDecision(at: sequenceTime) else { return }
+        let preferredLaneID = event.sourceLaneIDs.first ?? sequence.lanes.first(where: {
+            $0.metadata?.ignoreForProduction != true && !isSupportOnlyLane($0)
+        })?.id
+        guard let laneID = preferredLaneID,
+              let lane = sequence.lanes.first(where: { $0.id == laneID }),
+              let source = lane.sourceVideo else { return }
+        let localTime = sequenceTime - source.offset
+        guard let tag = lane.tags.last(where: {
+            ($0.type == .active || $0.type == .cut) &&
+            localTime >= $0.startTime - 0.000_1 &&
+            localTime < $0.startTime + $0.duration
+        }) else { return }
+        selectedLaneId = laneID
+        selectedTagId = tag.id
+    }
+
+    private func laneIdsForDecisionType(
+        _ type: EditDecisionType,
+        in sequence: MediaSequence,
+        at sequenceTime: Double? = nil,
+        preferredClipLaneID: UUID? = nil
+    ) -> Set<UUID> {
+        let time = sequenceTime ?? playbackEngine.playhead
+        let clipIndices = sequence.lanes.indices.filter { laneLooksLikeClip(sequence.lanes[$0]) }
+        let selectedClipID = selectedLaneId.flatMap { selectedID in
+            clipIndices.map { sequence.lanes[$0].id }.contains(selectedID) ? selectedID : nil
+        }
+        let presentClipID = clipIndices.compactMap { index -> UUID? in
+            guard sequence.lanes.indices.contains(index),
+                  let source = sequence.lanes[index].sourceVideo,
+                  time >= source.offset,
+                  time < source.offset + source.duration else { return nil }
+            return sequence.lanes[index].id
+        }.first
+        let preferredClipID = preferredClipLaneID.flatMap { preferredID in
+            clipIndices.map { sequence.lanes[$0].id }.contains(preferredID) ? preferredID : nil
+        }
+        let clipID = preferredClipID ?? selectedClipID ?? presentClipID
+
         switch type {
         case .charlie:
             return Set(laneIndices(in: sequence, matching: "charlie", fallback: [0]).map { sequence.lanes[$0].id })
@@ -48908,32 +49980,43 @@ struct WorkspaceView: View {
         case .skip:
             return []
         case .charlieClip:
-            return Set(uniqueLaneIndices(
-                laneIndices(in: sequence, matching: "charlie", fallback: [0]) +
-                laneIndices(in: sequence, matching: "clip", fallback: [2])
-            ).map { sequence.lanes[$0].id })
+            var ids = Set(laneIndices(in: sequence, matching: "charlie", fallback: [0]).map { sequence.lanes[$0].id })
+            if let clipID { ids.insert(clipID) }
+            return ids
         case .homerClip:
-            return Set(uniqueLaneIndices(
-                laneIndices(in: sequence, matching: "homer", fallback: [1]) +
-                laneIndices(in: sequence, matching: "clip", fallback: [2])
+            var ids = Set(laneIndices(in: sequence, matching: "homer", fallback: [1]).map { sequence.lanes[$0].id })
+            if let clipID { ids.insert(clipID) }
+            return ids
+        case .bothClip:
+            var ids = Set(uniqueLaneIndices(
+                laneIndices(in: sequence, matching: "charlie", fallback: [0]) +
+                laneIndices(in: sequence, matching: "homer", fallback: [1])
             ).map { sequence.lanes[$0].id })
+            if let clipID { ids.insert(clipID) }
+            return ids
+        case .clipOnly:
+            return clipID.map { [$0] } ?? []
         }
     }
 
     private func labelForDecisionType(_ type: EditDecisionType) -> String {
         switch type {
         case .charlie:
-            return "Switched selected span to Charlie"
+            return "Show Charlie"
         case .homer:
-            return "Switched selected span to Homer"
+            return "Show Homer"
         case .both:
-            return "Switched selected span to Both"
+            return "Show Both"
         case .skip:
-            return "Switched selected span to Skip"
+            return "Skip"
         case .charlieClip:
-            return "Switched selected span to Charlie + Clip"
+            return "Show Charlie + Clip"
         case .homerClip:
-            return "Switched selected span to Homer + Clip"
+            return "Show Homer + Clip"
+        case .bothClip:
+            return "Show Both + Clip"
+        case .clipOnly:
+            return "Show Clip Only"
         }
     }
 
@@ -49287,6 +50370,9 @@ struct WorkspaceView: View {
             return true
         case "6":
             applyDecision(.homerClip)
+            return true
+        case "7":
+            applyDecision(.bothClip)
             return true
         default:
             return false
@@ -51224,7 +52310,7 @@ struct WorkspaceView: View {
         return true
     }
 
-    private func exportStatePayload() -> [String: Any] {
+    private func exportStatePayload(allowExternalVolumeRead: Bool = false) -> [String: Any] {
         let formatter = ISO8601DateFormatter()
         let health = exportHealthPayload()
         let bridgeProgress = proxyExportProgressPayload()
@@ -51243,8 +52329,8 @@ struct WorkspaceView: View {
             "bridgeProgress": bridgeProgress,
             "currentItem": bridgeProgress["currentTitle"] ?? "",
             "currentOutputPath": bridgeProgress["currentOutputPath"] ?? "",
-            "artifactStates": exportArtifactStatePayloads(),
-            "artifactSummary": exportArtifactSummaryPayload(),
+            "artifactStates": exportArtifactStatePayloads(allowExternalVolumeRead: allowExternalVolumeRead),
+            "artifactSummary": exportArtifactSummaryPayload(allowExternalVolumeRead: allowExternalVolumeRead),
             "error": exportErrorMessage,
             "startedAt": exportStartedAt.map { formatter.string(from: $0) } ?? "",
             "completedAt": exportCompletedAt.map { formatter.string(from: $0) } ?? "",
@@ -51316,15 +52402,19 @@ struct WorkspaceView: View {
         return ["16:9", "9:16"]
     }
 
-    private func exportArtifactStatePayloads() -> [[String: Any]] {
+    private func exportArtifactStatePayloads(allowExternalVolumeRead: Bool = false) -> [[String: Any]] {
         let fileManager = FileManager.default
         return exportOutputPaths.enumerated().map { index, path in
             let url = URL(fileURLWithPath: path)
             let sidecars = exportSidecarPaths(for: path)
             let finalExists = fileManager.fileExists(atPath: path)
-            let finalSize = fileSize(atPath: path)
-            let sidecarSize = sidecars.map { fileSize(atPath: $0) }.max() ?? 0
-            let sidecarPath = sidecars.first { fileSize(atPath: $0) > 0 } ?? ""
+            let finalSize = fileSize(atPath: path, allowExternalVolumeRead: allowExternalVolumeRead)
+            let sidecarSize = sidecars.map {
+                fileSize(atPath: $0, allowExternalVolumeRead: allowExternalVolumeRead)
+            }.max() ?? 0
+            let sidecarPath = sidecars.first {
+                fileSize(atPath: $0, allowExternalVolumeRead: allowExternalVolumeRead) > 0
+            } ?? ""
             let status: String
             if finalExists && finalSize > 0 {
                 status = "ready"
@@ -51349,8 +52439,8 @@ struct WorkspaceView: View {
         }
     }
 
-    private func exportArtifactSummaryPayload() -> [String: Any] {
-        let states = exportArtifactStatePayloads()
+    private func exportArtifactSummaryPayload(allowExternalVolumeRead: Bool = false) -> [String: Any] {
+        let states = exportArtifactStatePayloads(allowExternalVolumeRead: allowExternalVolumeRead)
         let ready = states.filter { ($0["status"] as? String) == "ready" }.count
         let writing = states.filter { ($0["status"] as? String) == "writing" }.count
         let empty = states.filter { ($0["status"] as? String) == "empty" }.count
@@ -51399,7 +52489,7 @@ struct WorkspaceView: View {
             .map { URL(fileURLWithPath: directory).appendingPathComponent($0).path }
     }
 
-    private func fileSize(atPath path: String) -> Int64 {
+    private func fileSize(atPath path: String, allowExternalVolumeRead: Bool = false) -> Int64 {
         guard !path.isEmpty else {
             return 0
         }
@@ -51409,7 +52499,7 @@ struct WorkspaceView: View {
         // drives wake, prompt, or disconnect. Returning unknown/0 here is safer
         // than starving auth/session commands; export validators can still do
         // deliberate off-hot-path file inspection when they need artifact proof.
-        if path.hasPrefix("/Volumes/") {
+        if path.hasPrefix("/Volumes/"), !allowExternalVolumeRead {
             return 0
         }
 
@@ -51591,6 +52681,15 @@ struct WorkspaceView: View {
         #if os(macOS)
         guard let sequence = projectStore.activeSequence else { return }
         let readiness = mediaReadinessSummary()
+        if hasPendingManagedMediaValidation {
+            resumeAfterManagedMediaValidation(
+                actionLabel: "video export",
+                statusKind: "manual-ui"
+            ) {
+                exportVideo()
+            }
+            return
+        }
         if !readiness.isProductionReady {
             isShowingProductionDetails = true
             errorMessage = "Export needs a proxy-ready production session first. \(readiness.detail)"
@@ -51600,6 +52699,7 @@ struct WorkspaceView: View {
             updateAgentState()
             return
         }
+        let allowedMediaRootPath = allowedManagedMediaRootPathForExport()
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.mpeg4Movie]
@@ -51619,7 +52719,8 @@ struct WorkspaceView: View {
                         to: wideURL,
                         format: .horizontal16x9,
                         allowExternalOriginalMedia: false,
-                        allowedOriginalMediaRootPath: nil
+                        allowedOriginalMediaRootPath: allowedMediaRootPath,
+                        allowedProxyMediaRootPath: allowedMediaRootPath
                     )
 
                     // Export 9x16 Reframed
@@ -51628,7 +52729,8 @@ struct WorkspaceView: View {
                         to: verticalURL,
                         format: .vertical9x16,
                         allowExternalOriginalMedia: false,
-                        allowedOriginalMediaRootPath: nil
+                        allowedOriginalMediaRootPath: allowedMediaRootPath,
+                        allowedProxyMediaRootPath: allowedMediaRootPath
                     )
 
                     await MainActor.run {
@@ -51663,6 +52765,19 @@ struct WorkspaceView: View {
         }
 
         let readiness = mediaReadinessSummary()
+        if hasPendingManagedMediaValidation {
+            resumeAfterManagedMediaValidation(
+                actionLabel: "agent proxy export",
+                statusKind: "agent-proxy-package"
+            ) {
+                exportProxyPackageForAgent(
+                    directoryPath: directoryPath,
+                    basename: basename,
+                    proofSeconds: proofSeconds
+                )
+            }
+            return
+        }
         guard readiness.isProductionReady else {
             lastMediaAction = "Export proof blocked: \(readiness.detail)"
             isShowingProductionDetails = true
@@ -51672,6 +52787,7 @@ struct WorkspaceView: View {
         }
 
         let cleanBasename = sanitizedExportBasename(basename?.isEmpty == false ? basename! : normalizedActiveSessionName())
+        let allowedMediaRootPath = allowedManagedMediaRootPathForExport()
         let outputDirectory: URL
         if let directoryPath, !directoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             outputDirectory = URL(fileURLWithPath: directoryPath, isDirectory: true)
@@ -51695,7 +52811,8 @@ struct WorkspaceView: View {
                     to: wideURL,
                     format: .horizontal16x9,
                     allowExternalOriginalMedia: false,
-                    allowedOriginalMediaRootPath: nil,
+                    allowedOriginalMediaRootPath: allowedMediaRootPath,
+                    allowedProxyMediaRootPath: allowedMediaRootPath,
                     durationLimitSeconds: proofLimit
                 )
                 try await ExportEngine.shared.export(
@@ -51703,7 +52820,8 @@ struct WorkspaceView: View {
                     to: verticalURL,
                     format: .vertical9x16,
                     allowExternalOriginalMedia: false,
-                    allowedOriginalMediaRootPath: nil,
+                    allowedOriginalMediaRootPath: allowedMediaRootPath,
+                    allowedProxyMediaRootPath: allowedMediaRootPath,
                     durationLimitSeconds: proofLimit
                 )
 
@@ -51733,6 +52851,19 @@ struct WorkspaceView: View {
         }
 
         let readiness = mediaReadinessSummary()
+        if hasPendingManagedMediaValidation {
+            resumeAfterManagedMediaValidation(
+                actionLabel: "podcast audio export",
+                statusKind: "agent-audio-master"
+            ) {
+                exportAudioMasterForAgent(
+                    directoryPath: directoryPath,
+                    basename: basename,
+                    proofSeconds: proofSeconds
+                )
+            }
+            return
+        }
         guard readiness.hasSequence,
               readiness.audioReadyCount > 0,
               readiness.audioBlockedCount == 0 else {
@@ -51747,6 +52878,7 @@ struct WorkspaceView: View {
         }
 
         let cleanBasename = sanitizedExportBasename(basename?.isEmpty == false ? basename! : normalizedActiveSessionName())
+        let allowedMediaRootPath = allowedManagedMediaRootPathForExport()
         let outputDirectory: URL
         if let directoryPath, !directoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             outputDirectory = URL(fileURLWithPath: directoryPath, isDirectory: true)
@@ -51768,7 +52900,7 @@ struct WorkspaceView: View {
                     sequence: sequence,
                     to: audioURL,
                     allowExternalOriginalMedia: false,
-                    allowedOriginalMediaRootPath: nil,
+                    allowedOriginalMediaRootPath: allowedMediaRootPath,
                     durationLimitSeconds: proofLimit
                 )
 
@@ -51842,8 +52974,8 @@ struct WorkspaceView: View {
             "sessionName": normalizedActiveSessionName(),
             "basename": basename,
             "outputDirectory": outputDirectory.path,
-            "exportState": exportStatePayload(),
-            "fullRelease": fullReleasePayload(),
+            "exportState": exportStatePayload(allowExternalVolumeRead: true),
+            "fullRelease": fullReleasePayload(allowExternalVolumeRead: true),
             "sourcePolicy": "receipt records release progress and artifact truth; it does not mutate source media or platform state"
         ]
         if !extra.isEmpty {
@@ -51876,7 +53008,13 @@ struct WorkspaceView: View {
         )
     }
 
-    private func prepareReleaseForAgent(directoryPath: String?, basename: String?, proofSeconds: Double?, generatePublishHandoff: Bool = false) {
+    private func prepareReleaseForAgent(
+        directoryPath: String?,
+        basename: String?,
+        proofSeconds: Double?,
+        generatePublishHandoff: Bool = false,
+        requestedFormats: String? = nil
+    ) {
         guard let sequence = projectStore.activeSequence else {
             lastMediaAction = "Release prep blocked: no active sequence"
             if generatePublishHandoff {
@@ -51888,6 +53026,22 @@ struct WorkspaceView: View {
         }
 
         let readiness = mediaReadinessSummary()
+        if hasPendingManagedMediaValidation {
+            resumeAfterManagedMediaValidation(
+                actionLabel: "release preparation",
+                statusKind: "release-prep",
+                blocksFullRelease: generatePublishHandoff
+            ) {
+                prepareReleaseForAgent(
+                    directoryPath: directoryPath,
+                    basename: basename,
+                    proofSeconds: proofSeconds,
+                    generatePublishHandoff: generatePublishHandoff,
+                    requestedFormats: requestedFormats
+                )
+            }
+            return
+        }
         guard readiness.isProductionReady else {
             lastMediaAction = "Release prep blocked: \(readiness.detail)"
             if generatePublishHandoff {
@@ -51909,6 +53063,7 @@ struct WorkspaceView: View {
         }
 
         let cleanBasename = sanitizedExportBasename(basename?.isEmpty == false ? basename! : normalizedActiveSessionName())
+        let allowedMediaRootPath = allowedManagedMediaRootPathForExport()
         let outputDirectory: URL
         if let directoryPath, !directoryPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             outputDirectory = URL(fileURLWithPath: directoryPath, isDirectory: true)
@@ -51917,10 +53072,21 @@ struct WorkspaceView: View {
                 .appendingPathComponent("release-prep", isDirectory: true)
         }
         let proofLimit = (proofSeconds?.isFinite == true && (proofSeconds ?? 0) > 0) ? proofSeconds : nil
+        let requestedFormatSet = Set(
+            (requestedFormats ?? "")
+                .split(separator: ",")
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
+                .filter { !$0.isEmpty }
+        )
+        let useDefaultFormats = requestedFormatSet.isEmpty
+        let includeWide = useDefaultFormats || !requestedFormatSet.isDisjoint(with: ["16:9", "16x9", "wide", "episode"])
+        let includeVertical = useDefaultFormats || !requestedFormatSet.isDisjoint(with: ["9:16", "9x16", "vertical"])
+        let includeShorts = useDefaultFormats || requestedFormatSet.contains("shorts")
+        let includeAudio = useDefaultFormats || !requestedFormatSet.isDisjoint(with: ["audio", "podcast"])
         let wideURL = outputDirectory.appendingPathComponent("\(cleanBasename)-16x9.mp4")
         let verticalURL = outputDirectory.appendingPathComponent("\(cleanBasename)-9x16.mp4")
         let audioURL = outputDirectory.appendingPathComponent("\(cleanBasename)-podcast-audio.m4a")
-        let shortJobs: [(clip: ShortClipCandidate, url: URL, sequenceRanges: [(start: Double, duration: Double)], proofDuration: Double)] = sequence.shortClipQueue.enumerated().compactMap { index, clip in
+        let shortJobs: [(clip: ShortClipCandidate, url: URL, sequenceRanges: [(start: Double, duration: Double)], proofDuration: Double)] = includeShorts ? sequence.shortClipQueue.enumerated().compactMap { index, clip in
             let exportRanges = shortClipExportRanges(for: clip, in: sequence)
             let proofDuration = exportRanges.reduce(0) { $0 + $1.duration }
             guard proofDuration.isFinite, proofDuration > 0 else {
@@ -51934,8 +53100,8 @@ struct WorkspaceView: View {
                 sequenceRanges: exportRanges,
                 proofDuration: proofDuration
             )
-        }
-        let skippedInvalidShorts: [[String: Any]] = sequence.shortClipQueue.enumerated().compactMap { index, clip in
+        } : []
+        let skippedInvalidShorts: [[String: Any]] = includeShorts ? sequence.shortClipQueue.enumerated().compactMap { index, clip in
             let exportRanges = shortClipExportRanges(for: clip, in: sequence)
             let proofDuration = exportRanges.reduce(0) { $0 + $1.duration }
             guard !proofDuration.isFinite || proofDuration <= 0 else {
@@ -51949,7 +53115,7 @@ struct WorkspaceView: View {
                 "duration": clip.duration,
                 "reason": "Short recipe produced no positive export ranges."
             ]
-        }
+        } : []
         if !skippedInvalidShorts.isEmpty {
             let skippedIds = Set(skippedInvalidShorts.compactMap { $0["id"] as? String })
             for clip in sequence.shortClipQueue where skippedIds.contains(clip.id.uuidString) {
@@ -51960,7 +53126,19 @@ struct WorkspaceView: View {
                 )
             }
         }
-        let plannedOutputs = [wideURL, verticalURL] + shortJobs.map { $0.url } + [audioURL]
+        var plannedOutputs: [URL] = []
+        if includeWide { plannedOutputs.append(wideURL) }
+        if includeVertical { plannedOutputs.append(verticalURL) }
+        plannedOutputs.append(contentsOf: shortJobs.map { $0.url })
+        if includeAudio { plannedOutputs.append(audioURL) }
+
+        guard !plannedOutputs.isEmpty else {
+            let reason = "Release prep needs at least one requested format: 16x9, 9x16, shorts, or audio."
+            lastMediaAction = "Release prep blocked: \(reason)"
+            blockExportStatus(kind: "release-prep", reason: reason)
+            updateAgentState()
+            return
+        }
 
         beginExportStatus(kind: "release-prep", outputURLs: plannedOutputs, proofSeconds: proofLimit)
         if generatePublishHandoff {
@@ -52036,22 +53214,28 @@ struct WorkspaceView: View {
         Task {
             do {
                 try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
-                try await ExportEngine.shared.export(
-                    sequence: sequence,
-                    to: wideURL,
-                    format: .horizontal16x9,
-                    allowExternalOriginalMedia: false,
-                    allowedOriginalMediaRootPath: nil,
-                    durationLimitSeconds: proofLimit
-                )
-                try await ExportEngine.shared.export(
-                    sequence: sequence,
-                    to: verticalURL,
-                    format: .vertical9x16,
-                    allowExternalOriginalMedia: false,
-                    allowedOriginalMediaRootPath: nil,
-                    durationLimitSeconds: proofLimit
-                )
+                if includeWide {
+                    try await ExportEngine.shared.export(
+                        sequence: sequence,
+                        to: wideURL,
+                        format: .horizontal16x9,
+                        allowExternalOriginalMedia: false,
+                        allowedOriginalMediaRootPath: allowedMediaRootPath,
+                        allowedProxyMediaRootPath: allowedMediaRootPath,
+                        durationLimitSeconds: proofLimit
+                    )
+                }
+                if includeVertical {
+                    try await ExportEngine.shared.export(
+                        sequence: sequence,
+                        to: verticalURL,
+                        format: .vertical9x16,
+                        allowExternalOriginalMedia: false,
+                        allowedOriginalMediaRootPath: allowedMediaRootPath,
+                        allowedProxyMediaRootPath: allowedMediaRootPath,
+                        durationLimitSeconds: proofLimit
+                    )
+                }
                 for job in shortJobs {
                     await MainActor.run {
                         markShortClipExportResult(
@@ -52065,7 +53249,8 @@ struct WorkspaceView: View {
                         to: job.url,
                         format: .vertical9x16,
                         allowExternalOriginalMedia: false,
-                        allowedOriginalMediaRootPath: nil,
+                        allowedOriginalMediaRootPath: allowedMediaRootPath,
+                        allowedProxyMediaRootPath: allowedMediaRootPath,
                         sequenceRanges: proofLimit.map { limit in
                             var remaining = max(0, limit)
                             return job.sequenceRanges.compactMap { range -> (start: Double, duration: Double)? in
@@ -52086,13 +53271,15 @@ struct WorkspaceView: View {
                         )
                     }
                 }
-                try await ExportEngine.shared.exportAudioMaster(
-                    sequence: sequence,
-                    to: audioURL,
-                    allowExternalOriginalMedia: false,
-                    allowedOriginalMediaRootPath: nil,
-                    durationLimitSeconds: proofLimit
-                )
+                if includeAudio {
+                    try await ExportEngine.shared.exportAudioMaster(
+                        sequence: sequence,
+                        to: audioURL,
+                        allowExternalOriginalMedia: false,
+                        allowedOriginalMediaRootPath: allowedMediaRootPath,
+                        durationLimitSeconds: proofLimit
+                    )
+                }
 
                 await MainActor.run {
                     completeExportStatus(outputURLs: plannedOutputs)
@@ -52389,6 +53576,12 @@ struct WorkspaceView: View {
             .appendingPathComponent("Quipsly", isDirectory: true)
             .appendingPathComponent("MediaVault", isDirectory: true)
             .appendingPathComponent("exports", isDirectory: true)
+    }
+
+    private func allowedManagedMediaRootPathForExport() -> String? {
+        guard externalMediaAccess.hasActiveAccess else { return nil }
+        let path = externalMediaAccess.rootPath.trimmingCharacters(in: .whitespacesAndNewlines)
+        return path.isEmpty ? nil : path
     }
 
     private func syncAudio() {

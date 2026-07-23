@@ -22,6 +22,7 @@ import argparse
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import shutil
 import sys
@@ -75,11 +76,30 @@ def provider_doctor() -> dict[str, Any]:
     }
 
 
+def json_has_transcript_payload(data: Any) -> bool:
+    if not isinstance(data, dict):
+        return False
+    if isinstance(data.get("text"), str) and data.get("text", "").strip():
+        return True
+    segments = data.get("segments")
+    if isinstance(segments, list):
+        for segment in segments:
+            if isinstance(segment, dict) and str(segment.get("text") or "").strip():
+                return True
+    return False
+
+
 def find_sidecar(media_path: Path) -> Path | None:
     base = media_path.with_suffix("")
     for extension in SIDE_CAR_EXTENSIONS:
         candidate = base.with_suffix(extension)
         if candidate.exists() and candidate.is_file() and candidate.stat().st_size > 0:
+            if extension == ".json":
+                try:
+                    if not json_has_transcript_payload(json.loads(candidate.read_text(encoding="utf-8"))):
+                        continue
+                except (OSError, json.JSONDecodeError):
+                    continue
             return candidate
     return None
 
@@ -146,6 +166,61 @@ def whisper_result_to_quipsly_json(result: dict[str, Any], provider: str, model:
     if not segments:
         fail(f"{provider} produced no usable transcript segments.", code=3)
 
+    return json.dumps(
+        {
+            "provider": provider,
+            "model": model,
+            "language": language,
+            "segments": segments,
+            "truth": (
+                "Generated transcript is ASR draft metadata. Review before "
+                "publication captions or quote extraction."
+            ),
+        },
+        ensure_ascii=False,
+    )
+
+
+def timestamp_to_seconds(raw: str) -> float:
+    match = re.search(r"(?:(\d+):)?(\d{1,2}):(\d{2})(?:[,.](\d{1,3}))?", raw.strip())
+    if not match:
+        return 0.0
+    hours = float(match.group(1) or 0)
+    minutes = float(match.group(2) or 0)
+    seconds = float(match.group(3) or 0)
+    millis = float((match.group(4) or "0").ljust(3, "0")[:3]) / 1000.0
+    return hours * 3600 + minutes * 60 + seconds + millis
+
+
+def subtitle_text_to_quipsly_json(text: str, provider: str, model: str, language: str) -> str:
+    segments: list[dict[str, Any]] = []
+    blocks = re.split(r"\n\s*\n", text.replace("\ufeff", "").strip())
+    for block in blocks:
+        lines = [line.strip() for line in block.splitlines() if line.strip()]
+        if not lines:
+            continue
+        timing_index = next((index for index, line in enumerate(lines) if "-->" in line), -1)
+        if timing_index < 0:
+            continue
+        start_raw, end_raw = [part.strip() for part in lines[timing_index].split("-->", 1)]
+        start = timestamp_to_seconds(start_raw)
+        end = timestamp_to_seconds(end_raw.split()[0])
+        caption = " ".join(lines[timing_index + 1 :]).strip()
+        if not caption or end <= start:
+            continue
+        segments.append(
+            {
+                "speaker": "Speaker",
+                "start": start,
+                "end": end,
+                "text": caption,
+                "words": [],
+                "confidence": None,
+                "reviewStatus": "asr-draft",
+            }
+        )
+    if not segments:
+        fail(f"{provider} produced no usable subtitle transcript segments.", code=3)
     return json.dumps(
         {
             "provider": provider,
@@ -257,7 +332,12 @@ def run_whisper_cpp_cli(media_path: Path, model_name: str, language: str) -> str
                 srt_path = candidates[0]
         if not srt_path.exists():
             fail("whisper.cpp completed but produced no SRT transcript.", code=11)
-        return srt_path.read_text(encoding="utf-8")
+        return subtitle_text_to_quipsly_json(
+            srt_path.read_text(encoding="utf-8"),
+            "whisper-cpp-cli",
+            model_name,
+            language,
+        )
 
 
 def whisper_cpp_readable_audio(media_path: Path, temp_dir: Path) -> Path:
@@ -328,7 +408,10 @@ def transcribe(media_path: Path, provider: str, model: str, language: str) -> st
     if provider in {"auto", "sidecar"}:
         sidecar = find_sidecar(media_path)
         if sidecar:
-            return sidecar.read_text(encoding="utf-8")
+            sidecar_text = sidecar.read_text(encoding="utf-8")
+            if sidecar.suffix.lower() in {".srt", ".vtt"}:
+                return subtitle_text_to_quipsly_json(sidecar_text, "subtitle-sidecar", model, language)
+            return sidecar_text
         if provider == "sidecar":
             fail(
                 f"No transcript sidecar found next to {media_path.name}. "

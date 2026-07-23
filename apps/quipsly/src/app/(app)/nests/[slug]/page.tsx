@@ -5,6 +5,7 @@ import {
   BookOpen,
   Boxes,
   Camera,
+  CheckCircle2,
   ExternalLink,
   FileText,
   Film,
@@ -12,18 +13,21 @@ import {
   MessageCircle,
   Microscope,
   Mic,
+  ListTodo,
   PackageCheck,
   PanelsTopLeft,
   Radio,
   Share2,
   ShieldCheck,
   Sparkles,
+  Target,
   Users,
 } from "lucide-react";
 import { getOutputFamilyLabel, listOutputsForNestKind } from "@high-ground/quipsly-domain/output-catalog";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { readNestProjectFollowThrough } from "@/lib/server/nest-project-follow-through";
 import {
   findStudioProjectForAccess,
   listStudioProjectAccessGrants,
@@ -149,6 +153,16 @@ function defaultEpisodeForNest(slug: string) {
   return "current-episode";
 }
 
+function mediaTime(value: number) {
+  const seconds = Math.max(0, Math.floor(value));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
+    : `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
 function ToolCard({
   href,
   title,
@@ -186,9 +200,10 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
   const { slug } = await params;
   const session = await auth();
   const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
+  const actorUserId = session?.user?.id;
 
-  if (!actorEmail) {
-    redirect(`/api/auth/signin?callbackUrl=/nests/${encodeURIComponent(slug)}`);
+  if (!actorEmail || !actorUserId) {
+    redirect(`/login?callbackUrl=/nests/${encodeURIComponent(slug)}`);
   }
 
   const access = await resolveStudioProjectAccess({
@@ -203,7 +218,7 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
   const project = await findStudioProjectForAccess(slug, prisma);
   if (!project) notFound();
 
-  const [documents, grants, assets, mediaBins] = await Promise.all([
+  const [documents, grants, assets, mediaBins, projectFollowThrough] = await Promise.all([
     prisma.studioDocument.findMany({
       where: { projectId: project.id },
       select: {
@@ -227,6 +242,7 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
       take: 6,
       orderBy: { updatedAt: "desc" },
     }),
+    readNestProjectFollowThrough(prisma, { projectId: project.id, projectSlug: project.slug, actorUserId }),
   ]);
 
   const nestKind = nestKindFromSourceLabel(project.sourceLabel);
@@ -237,6 +253,8 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
   const activeCollaborators = grants.filter((grant) => grant.status === "ACTIVE");
   const episodeSlug = defaultEpisodeForNest(project.slug);
   const hasVisualResearchLab = project.slug === "marine-biology-research" || nestKind === "gallery";
+  const goalRows = projectFollowThrough.goals;
+  const projectTasks = projectFollowThrough.tasks;
 
   return (
     <main className="min-h-full bg-[#fdfaf6] px-4 py-6 text-[#3d3122] md:px-8 md:py-10">
@@ -269,7 +287,7 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
                   {WORKFLOW_SYSTEM_LABELS[workflowSystem]}
                 </span>
                 <span className="rounded-full border border-[#eadfca] bg-[#fffaf3] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]">
-                  Your role: {access.role}
+                  {access.source === "operator-override" ? `Operator override: ${access.role}` : `Your role: ${access.role}`}
                 </span>
               </div>
             </div>
@@ -320,6 +338,42 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
             </aside>
           </div>
         </header>
+
+        {project.slug === "high-ground-odyssey-manuscript" ? (
+          <section className="rounded-[2rem] border border-[#ccb477] bg-[linear-gradient(135deg,#173127_0%,#0b1d16_58%,#3a2d19_100%)] p-6 text-[#fff8e7] shadow-[0_24px_70px_rgba(44,35,20,0.18)] md:p-8">
+            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+              <div className="max-w-3xl">
+                <p className="text-xs font-black uppercase tracking-[0.3em] text-[#e7c86f]">High Ground Odyssey editing desk</p>
+                <h2 className="mt-3 font-serif text-3xl md:text-4xl">Switch episodes. Watch every angle. Make the cut.</h2>
+                <p className="mt-3 max-w-2xl text-sm leading-7 text-[#cbd7ce]">The shared browser editor keeps the protected sync baseline intact while Mako, Charlie, Homer, and Quipsly agents add attributable display decisions, notes, and tags.</p>
+              </div>
+              <Link href={`/nests/${project.slug}/episode-editor?episode=${episodeSlug}`} className="inline-flex shrink-0 items-center justify-center rounded-full bg-[#e7c86f] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-[#172018] shadow-lg transition hover:-translate-y-0.5 hover:bg-[#f4da8d]">
+                Open episode editor
+              </Link>
+            </div>
+          </section>
+        ) : null}
+
+        <section aria-labelledby="nest-follow-through-heading" className="rounded-3xl border border-sky-200 bg-[linear-gradient(135deg,#f7fcff,#fffdf9)] p-5 shadow-sm md:p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="flex items-center gap-3"><span className="rounded-2xl border border-sky-200 bg-white p-3 text-sky-800"><ListTodo size={20} aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-sky-800">Same work, in context</p><h2 id="nest-follow-through-heading" className="font-serif text-3xl font-black">Project follow-through</h2></div></div>
+              <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-[#6b5b45]">Owned project goals and committed tasks stay canonical. Open one here, in Schedule, Session, Today, or Work without creating a copy.</p>
+            </div>
+            <Link href="/work" className="inline-flex min-h-11 items-center justify-center rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 hover:underline">Open all work</Link>
+          </div>
+          <div className="mt-5 grid gap-4 lg:grid-cols-2">
+            <div className="rounded-2xl border border-violet-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-3"><h3 className="inline-flex items-center gap-2 font-serif text-xl font-black"><Target size={18} className="text-violet-700" aria-hidden="true" />Goals</h3><span className="text-[10px] font-black uppercase tracking-wide text-violet-800">Owned by you</span></div>
+              {goalRows.length ? <ul className="mt-3 space-y-2">{goalRows.map((goal) => { const progress = goal.progressReceipts[0]?.progressPercent; return <li key={goal.id}><Link href={`/work?goal=${encodeURIComponent(goal.id)}`} className="block rounded-xl border border-violet-100 bg-violet-50/50 p-3 outline-none hover:border-violet-300 focus-visible:ring-2 focus-visible:ring-violet-500"><span className="font-black text-[#3d3122]">{goal.title}</span><span className="mt-1 block text-xs font-bold text-[#806a4d]">{goal.status.toLowerCase().replaceAll("_", " ")} · {progress === null || progress === undefined ? "no progress update" : `${progress}% progress`}{goal.targetAt ? ` · target ${goal.targetAt.toLocaleDateString()}` : ""}</span></Link></li>; })}</ul> : <p className="mt-3 rounded-xl border border-dashed border-violet-200 p-4 text-sm font-semibold text-[#765f40]">No owned goals are attached to this Nest yet.</p>}
+            </div>
+            <div className="rounded-2xl border border-emerald-200 bg-white p-4">
+              <div className="flex items-center justify-between gap-3"><h3 className="inline-flex items-center gap-2 font-serif text-xl font-black"><CheckCircle2 size={18} className="text-emerald-700" aria-hidden="true" />Tasks</h3><span className="text-[10px] font-black uppercase tracking-wide text-emerald-800">Actor scoped</span></div>
+              {projectTasks.length ? <ul className="mt-3 space-y-2">{projectTasks.map((task) => <li key={task.id} className="rounded-xl border border-emerald-100 bg-emerald-50/35 p-3"><Link href={`/work?task=${encodeURIComponent(task.id)}`} className="font-black text-[#3d3122] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-emerald-600">{task.title}</Link><p className="mt-1 text-xs font-bold text-[#806a4d]">{task.status.toLowerCase()} · {task.dueAt ? `due ${task.dueAt.toLocaleDateString()}` : "no due date"}{task.room?.title ? ` · ${task.room.title}` : ""}</p>{task.sourceAnchor ? <Link href={`/sessions/${encodeURIComponent(task.sourceAnchor.roomId)}#transcript-segment-${encodeURIComponent(task.sourceAnchor.segmentId)}`} className="mt-2 inline-flex min-h-11 items-center rounded-full border border-sky-200 bg-white px-3 py-2 text-xs font-black text-sky-900 hover:underline">Return to {mediaTime(task.sourceAnchor.startSeconds)}–{mediaTime(task.sourceAnchor.endSeconds)}</Link> : null}</li>)}</ul> : <p className="mt-3 rounded-xl border border-dashed border-emerald-200 p-4 text-sm font-semibold text-[#765f40]">No committed actor-visible tasks are attached to this Nest. Transcript suggestions remain excluded until accepted.</p>}
+            </div>
+          </div>
+          <p className="mt-4 text-[11px] font-semibold leading-5 text-[#806a4d]">Opening work only navigates. This panel cannot complete goals/tasks, schedule time, send messages, change external calendars, or publish.</p>
+        </section>
 
         {documents.length === 1 ? (
           <section className="rounded-3xl border-2 border-emerald-100 bg-emerald-50/50 p-6 text-center shadow-sm md:p-10">
@@ -629,9 +683,9 @@ export default async function NestDashboardPage({ params }: NestDashboardPagePro
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
               <ToolCard
-                href={`/call?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}&room=${encodeURIComponent(episodeSlug)}&role=host`}
-                title="Live call room"
-                description="Host a browser recording call attached to this Nest and episode slug."
+                href="/coaching/sessions"
+                title="Session preparation"
+                description="Prepare participants, consent, capture readiness, and follow-through before opening any live room."
                 icon={Radio}
               />
               <ToolCard

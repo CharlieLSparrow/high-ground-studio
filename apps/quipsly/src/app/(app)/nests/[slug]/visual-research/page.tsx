@@ -367,7 +367,7 @@ export default async function VisualResearchPage({ params }: VisualResearchPageP
   );
 
   if (!actorEmail) {
-    redirect(`/api/auth/signin?callbackUrl=/nests/${encodeURIComponent(slug)}/visual-research`);
+    redirect(`/login?callbackUrl=/nests/${encodeURIComponent(slug)}/visual-research`);
   }
 
   const access = await resolveStudioProjectAccess({

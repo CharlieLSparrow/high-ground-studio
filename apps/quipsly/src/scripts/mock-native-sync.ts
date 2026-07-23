@@ -2,9 +2,15 @@
  * mock-native-sync.ts
  * 
  * Simulates a MacOS/iOS Native App operating offline, capturing edits,
- * and performing a bi-directional conflict-resolving sync when returning online.
+ * and performing a bi-directional, conflict-detecting sync when returning online.
  * 
- * Run via: npx tsx src/scripts/mock-native-sync.ts <USER_TOKEN>
+ * Run via:
+ * After securely exporting QUIPSLY_NOTES_SYNC_FIREBASE_ID_TOKEN in the task
+ * environment (from apps/quipsly):
+ * node --experimental-strip-types src/scripts/mock-native-sync.ts
+ *
+ * The token is intentionally read from a task-specific environment variable
+ * instead of argv so it is not advertised in the process command line.
  */
 
 import crypto from "crypto";
@@ -35,7 +41,15 @@ async function sync(token: string) {
   });
 
   if (!response.ok) {
-    console.error("[SYNC] Error", await response.text());
+    const failure = await response.json().catch(() => null);
+    if (failure?.code === "SYNC_CONFLICT_REVIEW_REQUIRED") {
+      console.error(
+        "[SYNC] Conflict needs review. Both the local copy and the returned server copy were preserved.",
+        failure.conflicts,
+      );
+      return;
+    }
+    console.error("[SYNC] Error", failure ?? response.statusText);
     return;
   }
 
@@ -52,9 +66,11 @@ async function sync(token: string) {
 }
 
 async function run() {
-  const token = process.argv[2];
+  const token = process.env.QUIPSLY_NOTES_SYNC_FIREBASE_ID_TOKEN?.trim();
   if (!token) {
-    console.error("Please provide a Firebase ID Token as an argument.");
+    console.error(
+      "Set QUIPSLY_NOTES_SYNC_FIREBASE_ID_TOKEN to a fresh Firebase ID token before running note sync.",
+    );
     process.exit(1);
   }
 

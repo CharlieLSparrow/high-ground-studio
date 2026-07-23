@@ -7945,3 +7945,1277 @@ Validation:
 - Triage evidence: status=`studio-package-blockers-found`, blockerRows=`46`, warningRows=`8`, categories=`{'duration-review': 8, 'long-form-shape-proof': 10, 'short-count-insufficient': 5, 'short-proof-missing': 31}`.
 - Validation: Python compile passed for changed scripts; `bash -n script/agentctl.sh` passed; both new agentctl commands generated parseable JSON and HTML pointers.
 - Safety: originals, exports, sidecars, approvals, uploads, publishing state, account state, deletes, overwrites, and receipt truth were not changed.
+
+## 2026-07-02 - Native recommended shorts gained a watch-first review theater
+
+- Added `script/studio_recommended_shorts_review_theater.py` as a read-only local theater for the Studio command room's `recommendedNextShorts` queue.
+- Added `script/agentctl.sh studio-recommended-shorts-review-theater` with aliases `recommended-shorts-review-theater` and `shorts-recommendation-theater`.
+- Updated `docs/production/studio-goal-review-board.md` so reviewers know the command room recommendations can be opened as a theater before recording local short intent.
+- Latest theater artifacts: `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/recommended-review-theater/quipsly-studio-recommended-shorts-review-theater.html`, `.json`, and `.md`.
+- Evidence after regeneration: 12 recommended shorts, 12 playable video embeds, 60 copyable local-intent commands, 0 probe warnings, 12 pending local reviews, 0 reviewed local decisions.
+- Product reason: Episodes 2, 3, 5, and 6 already had native current-version shorts and a decision ledger, but they needed the same watch-first ergonomics as Episode 1's carry-forward theater. Reviewers should be able to watch, compare, dry-run intent, and only then record local review decisions.
+- Safety boundary: theater generation/readback only. It records no decisions, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites no exports, deletes nothing, and creates no platform receipt truth.
+- Validation: `python3 -m py_compile script/studio_recommended_shorts_review_theater.py` passed; `script/agentctl.sh studio-recommended-shorts-review-theater --limit 12 --all` regenerated consistent JSON/Markdown/HTML theater artifacts; final readback showed 12 items, 12 HTML video tags, 60 copy buttons, and false approval/publication/receipt flags.
+
+## 2026-07-02 - Recommended shorts gained a next-review steering command
+
+- Added `script/studio_recommended_short_next.py` as a read-only selector for the first pending recommended native short from the recommended shorts theater.
+- Added `script/agentctl.sh studio-recommended-short-next` with aliases `recommended-short-next` and `short-next`.
+- Updated `docs/production/studio-goal-review-board.md` with next-short usage examples.
+- The command returns the selected short, media facts, current local review decision, platform fit, watch-first checklist, and safe commands for opening the theater/short and dry-running local review intent.
+- Product reason: the theater is useful for batch review, but humans and agents also need a tiny steering wheel that answers “what should I watch next?” without scanning a full page or mutating review truth.
+- Safety boundary: selector output only. It records no decisions, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites no exports, deletes nothing, and creates no platform receipt truth.
+- Validation: `python3 -m py_compile script/studio_recommended_short_next.py` passed; `bash -n script/agentctl.sh` passed; Markdown output included the watch-first checklist; JSON output selected `episode-2-short-01` as the first pending recommendation; explicit `--short-id episode-3-short-01` selected Episode 3 correctly; output included dry-run commands and no-publication truth text.
+
+## 2026-07-02 - Recommended shorts gained focused watch/listen review packets
+
+- Added `script/studio_recommended_short_review_packet.py` as a focused evidence packet for one recommended native short.
+- Added `script/agentctl.sh studio-recommended-short-review-packet` with aliases `recommended-short-review-packet` and `short-review-packet`.
+- Updated `docs/production/studio-goal-review-board.md` with the focused packet workflow.
+- Latest default packet: `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/recommended-review-packets/episode-2-short-01/recommended-short-review-packet.html`, `.json`, and `.md`.
+- The packet embeds the selected local short, reports media facts, checks for nearby transcript/caption candidates, asks structured review questions for hook, cadence, meaning, framing, captions, audio, ending, platform fit, and risk/tradeoff, and exposes safe dry-run/local-intent commands.
+- Evidence after validation: default packet selected `episode-2-short-01`; explicit `--short-id episode-3-short-01` selected Episode 3; packet had 9 review dimensions, 1 playable video embed, 9 review textareas, copyable safe commands, and transcript status `missing-transcript-or-caption-evidence`.
+- Product reason: the next-short selector tells a reviewer what to watch next; the focused packet tells the reviewer what to listen/look for before local intent is recorded. This moves shorts quality toward meaning, cadence, framing, captions, and tradeoff evidence instead of only file readiness.
+- Safety boundary: packet generation/readback only. It records no decisions, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites no exports, deletes nothing, and creates no platform receipt truth.
+- Validation: `python3 -m py_compile script/studio_recommended_short_review_packet.py script/studio_recommended_short_next.py` passed; `bash -n script/agentctl.sh` passed; default and explicit packet generation produced parseable JSON and matching HTML/Markdown evidence surfaces.
+
+## 2026-07-02 - Recommended shorts gained versioned evidence drafts and dry-run bridge
+
+- Added `script/studio_recommended_short_evidence_draft.py` as the bridge from a focused short review packet to a structured local evidence draft.
+- Added `script/agentctl.sh studio-recommended-short-evidence-draft` with aliases `recommended-short-evidence-draft` and `short-evidence-draft`.
+- Updated `docs/production/studio-goal-review-board.md` with evidence-draft usage and truth boundaries.
+- Evidence drafts are versioned under each packet folder, for example `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/recommended-review-packets/episode-2-short-01/evidence-drafts/20260702-100146-episode-2-short-01-refine/`.
+- The draft captures outcome, reviewer, confidence, summary, hook, cadence, meaning, framing, captions, audio, ending, platform fit, and risk/tradeoff evidence. It computes specificity and generates both a dry-run decision command and a recorded-intent template.
+- Product reason: reviewers and agents need a reusable evidence layer between “I watched this” and “record a local review decision.” This keeps shorts feedback useful for future edit intelligence without turning every observation into approval or receipt truth.
+- Safety boundary: evidence-draft generation only. It records no review decision, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites no exports, deletes nothing, and creates no platform receipt truth.
+- Validation: `python3 -m py_compile script/studio_recommended_short_evidence_draft.py script/studio_recommended_short_review_packet.py script/studio_recommended_short_next.py` passed; `bash -n script/agentctl.sh` passed; a refine evidence draft for `episode-2-short-01` wrote JSON/Markdown/HTML artifacts, included 4 filled dimensions, 9 rendered dimension cards, 6 copyable commands, and left the short-review decision ledger at 0 recorded decisions.
+- Dry-run bridge validation: the generated `studio-short-review-decision-dry-run` command returned `ok=true`, `dryRun=true`, `ledgerMutated=false`, `eventAppended=false`, `externalActionTaken=false`, and `mediaMutated=false`; ledger decisions remained 0 before and after.
+
+## 2026-07-02 - Short evidence drafts gained an index board
+
+- Added `script/studio_short_evidence_draft_index.py` as a read-only index for recommended-short evidence drafts.
+- Added `script/agentctl.sh studio-short-evidence-draft-index` with aliases `short-evidence-draft-index` and `evidence-draft-index`.
+- Updated `docs/production/studio-goal-review-board.md` with the evidence-draft index workflow.
+- Latest index artifacts: `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/recommended-review-packets/evidence-draft-index/quipsly-studio-short-evidence-draft-index.html`, `.json`, and `.md`.
+- The index reports all evidence drafts, latest draft per short, outcome/status counts, ledger decision state, specificity counts, safe dry-run commands, and next safest actions.
+- Evidence after validation: 2 versioned drafts found, 1 short with drafts, 2 drafts specific enough for dry-run, 2 drafts specific enough for recorded local intent, 2 ledger-pending drafts, 0 ledger-recorded drafts, 1 latest-by-short card, 2 copyable commands, and ledger decisions remained 0 before and after.
+- Product reason: versioned evidence drafts are safer than overwriting review thinking, but they need an index to remain useful. This board turns draft history into a working memory for Charlie, Mako, Homer, and Codex without turning draft evidence into approval or publication truth.
+- Safety boundary: index generation/readback only. It records no review decisions, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites no exports, deletes nothing, and creates no platform receipt truth.
+- Validation: `python3 -m py_compile script/studio_short_evidence_draft_index.py script/studio_recommended_short_evidence_draft.py` passed; `bash -n script/agentctl.sh` passed; generated JSON/Markdown/HTML artifacts were parseable and carried false approval/publication/receipt truth.
+
+## 2026-07-02 - Short evidence drafts gained a next-action selector
+
+- Added `script/studio_short_evidence_draft_next.py` as a read-only selector for the next safest evidence draft from the short evidence-draft index.
+- Added `script/agentctl.sh studio-short-evidence-draft-next` with aliases `short-evidence-draft-next` and `evidence-draft-next`.
+- Updated `docs/production/studio-goal-review-board.md` with next-draft selector usage.
+- The selector prefers drafts that are still pending in the local review ledger and specific enough for recorded-intent consideration, then falls back to dry-run-ready pending drafts, weaker pending drafts, and finally any draft.
+- Evidence after validation: default selector chose `episode-2-short-01` draft `20260702-100146-episode-2-short-01-refine`, outcome `refine`, ledger decision `pending`, and exposed a dry-run decision command. Explicit `--short-id episode-2-short-01` and `--draft-id 20260702-100146-episode-2-short-01-refine` selected the same draft.
+- Product reason: the index shows all draft evidence, but humans and agents need a tiny steering command that says which evidence draft to act on next without scanning folder trees.
+- Safety boundary: selector output only. It records no review decisions, runs no dry-run command, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites no exports, deletes nothing, and creates no platform receipt truth.
+- Validation: `python3 -m py_compile script/studio_short_evidence_draft_next.py script/studio_short_evidence_draft_index.py` passed; `bash -n script/agentctl.sh` passed; Markdown and JSON selector outputs were parseable; ledger decisions remained 0 before and after.
+
+## 2026-07-02 - Evidence drafts gained a dry-run-first local intent helper
+
+- Added `script/studio_short_evidence_draft_record.py` as the bridge from a structured short evidence draft to the existing Studio short review decision ledger.
+- Added `script/agentctl.sh studio-short-evidence-draft-record` with aliases `short-evidence-draft-record` and `evidence-draft-record`.
+- Updated `docs/production/studio-goal-review-board.md` with dry-run and explicit `--record` usage.
+- The helper selects a draft from the evidence-draft index or a specific draft JSON, builds a review note from the structured evidence dimensions, and invokes the existing local short review decision ledger command.
+- Default behavior is dry-run only. `--record` is required to mutate the local review ledger. Recording is refused unless the evidence draft is specific enough for recorded intent, unless a reviewer deliberately uses `--force`.
+- Product reason: the pipeline now has a controlled handoff from watch/listen evidence to local review intent without forcing reviewers to copy long commands manually or accidentally create fake approval/publishing truth.
+- Safety boundary: dry-run mode mutates nothing. Record mode mutates only the local short review decision ledger. Neither mode approves publication, uploads, schedules, mutates accounts, mutates media, overwrites exports, deletes files, or creates platform receipt truth.
+- Validation note: no full validation run was performed in this pass. The implementation was patched after inspecting the existing ledger CLI shape, including its `record ... --root ... --dry-run` argument contract.
+
+## 2026-07-02 - Evidence draft record helper gained a preflight-first mutation contract
+
+- Updated `script/studio_short_evidence_draft_record.py` so the default mode is now preflight, not ledger dry-run.
+- Updated `script/agentctl.sh` help text and `docs/production/studio-goal-review-board.md` to show the three-step ladder: preflight, `--dry-run`, then explicit `--record`.
+- Preflight mode selects the evidence draft, summarizes specificity, builds the exact ledger command preview, and reports a mutation contract without invoking the ledger at all.
+- `--dry-run` still invokes the local short review decision ledger in dry-run mode and should mutate nothing.
+- `--record` is still required before the local review decision ledger can change, and it refuses insufficiently specific evidence unless a reviewer deliberately uses `--force`.
+- Product reason: review helpers need a visible mutation boundary before even dry-run execution. This gives Charlie, Mako, Homer, and Codex a safer “what would happen?” surface before any command touches ledger code.
+- Safety boundary: preflight mode executes no ledger command. Dry-run mode mutates nothing. Record mode mutates only the local short review decision ledger. No mode approves publication, uploads, schedules, mutates accounts, mutates media, overwrites exports, deletes files, or creates platform receipt truth.
+- Validation note: no validation run was performed in this pass. The change was a focused contract hardening patch and should be validated next with preflight JSON, dry-run JSON, and ledger before/after counts before anyone uses `--record`.
+
+## 2026-07-02 - Shorts review gained a Start Here board
+
+- Added `script/studio_shorts_review_start_here.py` as the front door for the native shorts review ladder.
+- Added `script/agentctl.sh studio-shorts-review-start-here` with aliases `shorts-review-start-here` and `recommended-shorts-start-here`.
+- Updated `docs/production/studio-goal-review-board.md` with Start Here usage and truth boundaries.
+- Product reason: the command room, theater, packet, evidence drafts, evidence index, preflight helper, and ledger are useful only if reviewers can find the right next doorway. The Start Here board turns the ladder into one visible map instead of another folder archaeology exercise.
+- Architecture note: the board names current active surfaces explicitly while keeping migrations possible. `apps/QuipslyStudio` is the active native Studio surface, `/Volumes/My Passport/Episode_and_Shorts_Test` is the current Episode 1-6 review/export root, and older names or paths are archaeological unless an intentional migration note says otherwise.
+- Safety boundary: the board is navigation only. It records no review decision, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites exports, deletes files, or creates platform receipt truth.
+- Validation note: no validation run was performed in this pass. The next safe check is to run `script/agentctl.sh studio-shorts-review-start-here --all` and inspect the generated JSON/Markdown/HTML paths.
+
+## 2026-07-02 - Shorts Start Here now points at the active-source contract
+
+- Updated `script/studio_shorts_review_start_here.py` so the generated board includes the Studio active-source map as an artifact door and the first command in the review ladder.
+- Updated `docs/production/studio-goal-review-board.md` to put `script/agentctl.sh active-source-map` before architecture-changing work.
+- Product reason: folder structure should be allowed to evolve, but not by accident. Agents need a visible contract that separates active product truth, deliberate migrations, and stale archaeology before they edit.
+- Safety boundary: this is orientation and navigation only. It mutates no review decisions, media, exports, publication state, accounts, or receipt truth.
+- Validation note: no full validation run was performed in this pass. The updated Start Here artifact was regenerated with `script/agentctl.sh studio-shorts-review-start-here --all`.
+
+## 2026-07-02 - Main goal board now surfaces the shorts review front door
+
+- Updated `script/studio_goal_review_board.py` so the main Episode 1-6 goal board reads the generated Shorts Review Start Here artifact.
+- The board now includes a `shortsReviewStartHere` object with artifact paths, counts, first recommended short, first evidence draft, refresh/open commands, next safest action, and truth boundary.
+- Updated `docs/production/studio-goal-review-board.md` to show the intended path from episode package state to shorts review evidence and explicit local ledger recording.
+- Product reason: package readiness and shorts review were drifting into separate surfaces. The goal board should answer both “what is the package state?” and “where do I start reviewing shorts?” without making the reviewer browse folder archaeology.
+- Safety boundary: this is read-only package/review navigation. It records no review decision, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites exports, deletes files, or creates receipt truth.
+- Validation note: no full validation run was performed in this pass. The main board artifact was regenerated after the patch.
+
+## 2026-07-02 - Recommended shorts gained transcript/caption readiness mapping
+
+- Added `script/studio_shorts_transcript_readiness.py` as a read-only board for recommended native shorts.
+- Added `script/agentctl.sh studio-shorts-transcript-readiness` with aliases `shorts-transcript-readiness` and `shorts-caption-readiness`.
+- Updated `script/studio_shorts_review_start_here.py` so the Start Here board includes transcript readiness artifact doors, counts, and a transcript/caption step before evidence drafting.
+- Updated `docs/production/studio-goal-review-board.md` to make transcript/caption readiness explicit in the shorts review path.
+- Product reason: hook, cadence, caption, and word-aware cut review need visible word evidence. The new board separates timed captions, structured transcript candidates, text-only evidence, and missing word evidence so reviewers do not treat any nearby text as canonical transcript truth.
+- Safety boundary: this is evidence routing only. It runs no ASR, imports no transcripts, burns no captions, records no review decisions, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites no exports, deletes no files, and creates no receipt truth.
+- Validation note: no full validation run was performed in this pass. The transcript readiness board and Start Here board were regenerated as local artifacts.
+
+## 2026-07-02 - Recommended shorts gained transcript/caption workorders
+
+- Added `script/studio_shorts_transcript_workorders.py` to convert transcript readiness into concrete sidecar workorders for recommended native shorts.
+- Added `script/agentctl.sh studio-shorts-transcript-workorders` with aliases `shorts-transcript-workorders` and `shorts-caption-workorders`.
+- Updated `script/studio_shorts_review_start_here.py` so the Start Here board includes transcript workorder artifact doors, counts, and a workorder step after transcript readiness.
+- Updated `docs/production/studio-goal-review-board.md` to make the path explicit: readiness identifies the word-evidence state, workorders say what to do next.
+- Product reason: missing transcript evidence should create clear next actions instead of vague warnings. The workorders plan raw provider output, normalized transcript JSON, SRT/VTT caption drafts, review notes, and transcript decision-ledger sidecars without pretending those files already exist.
+- Safety boundary: workorders are planning artifacts only. They run no ASR, generate no transcript text, import no captions, burn no captions, mutate no media, record no review decision, approve nothing, publish nothing, upload nothing, schedule nothing, overwrite no exports, delete no files, and create no receipt truth.
+- Validation note: no full validation run was performed in this pass. The workorder board, Start Here board, and main goal board were regenerated as local artifacts.
+
+## 2026-07-02 - Recommended shorts gained a cut-quality workbench
+
+- Added `script/studio_shorts_cut_quality_workbench.py` as a read-only editorial question board for recommended native shorts.
+- Added `script/agentctl.sh studio-shorts-cut-quality-workbench` with aliases `shorts-cut-quality-workbench` and `shorts-edit-quality-workbench`.
+- Updated `script/studio_shorts_review_start_here.py` so the Start Here board includes cut-quality artifact doors, counts, and a command ladder step after transcript workorders.
+- Updated `docs/production/studio-goal-review-board.md` to place the workbench after transcript readiness/workorders and before evidence drafting.
+- Product reason: transcript readiness tells us what word evidence exists, but it does not tell a reviewer what to watch for. The cut-quality workbench turns that evidence into concrete questions about hook, cadence, J-cuts, L-cuts, jump-cut cover, reaction beats, caption-safe framing, crop, and platform fit.
+- Safety boundary: the workbench is watch/listen routing only. It edits no timelines, exports no media, runs no ASR, generates no transcript text, records no review decision, approves nothing, publishes nothing, uploads nothing, schedules nothing, mutates no accounts, mutates no media, overwrites no exports, deletes no files, and creates no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-workbench --all`.
+
+## 2026-07-02 - Cut-quality review gained a next-target steering command
+
+- Added `script/studio_shorts_cut_quality_next.py` to return one actionable cut-quality target from the generated workbench.
+- Added `script/agentctl.sh studio-shorts-cut-quality-next` with aliases `shorts-cut-quality-next` and `shorts-edit-quality-next`.
+- Updated `script/studio_shorts_review_start_here.py` so the ladder exposes the next-target command after the full cut-quality board.
+- Updated `docs/production/studio-goal-review-board.md` with next-target examples.
+- Product reason: a full workbench helps orientation, but humans and agents need a tiny steering wheel when they are ready to do the next piece of edit-quality review.
+- Safety boundary: the next-target command is routing only. It records no review decision, edits no timeline, exports nothing, publishes nothing, runs no ASR, generates no transcript text, mutates no media, overwrites no exports, deletes no files, and creates no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe command check is `script/agentctl.sh studio-shorts-cut-quality-next --json`.
+
+## 2026-07-02 - Cut-quality review gained versioned worksheets
+
+- Added `script/studio_shorts_cut_quality_worksheet.py` to create timestamped local worksheets for one recommended short.
+- Added `script/agentctl.sh studio-shorts-cut-quality-worksheet` with aliases `shorts-cut-quality-worksheet` and `shorts-edit-quality-worksheet`.
+- Updated `script/studio_shorts_review_start_here.py` so the ladder exposes worksheet creation after the next-target command.
+- Updated `docs/production/studio-goal-review-board.md` with worksheet examples.
+- Product reason: the workbench and next-target command identify what to review, but reviewers still need a calm place to write observations before an evidence draft or ledger decision. Worksheets turn watch/listen review into reusable editing data without forcing bureaucracy.
+- Safety boundary: worksheets are local note-taking artifacts only. They record no review decision, edit no timeline, export nothing, publish nothing, run no ASR, generate no transcript text, mutate no media, overwrite no prior worksheet, delete no files, and create no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-worksheet`.
+
+## 2026-07-02 - Cut-quality worksheets gained an index
+
+- Added `script/studio_shorts_cut_quality_worksheet_index.py` to scan versioned cut-quality worksheet JSON files.
+- Added `script/agentctl.sh studio-shorts-cut-quality-worksheet-index` with aliases `shorts-cut-quality-worksheet-index` and `shorts-edit-quality-worksheet-index`.
+- Updated `script/studio_shorts_review_start_here.py` so the ladder exposes worksheet indexing after worksheet creation.
+- Updated `docs/production/studio-goal-review-board.md` with worksheet index usage.
+- Product reason: worksheets are only useful if reviewers and agents can find the latest notes per short and see what is still empty. The index keeps the review loop visible without turning notes into approval.
+- Safety boundary: the worksheet index is read-only over local worksheet artifacts. It records no review decision, edits no timeline, exports nothing, publishes nothing, runs no ASR, mutates no media, overwrites no worksheet, deletes no files, and creates no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-worksheet-index --all`.
+
+## 2026-07-02 - Cut-quality worksheets gained versioned field notes
+
+- Added `script/studio_shorts_cut_quality_note.py` to create timestamped sidecar notes for individual worksheet fields.
+- Added `script/agentctl.sh studio-shorts-cut-quality-note` with aliases `shorts-cut-quality-note` and `shorts-edit-quality-note`.
+- Updated `script/studio_shorts_cut_quality_worksheet_index.py` so `review-evidence` notes count as filled worksheet fields while `system-check` notes stay visible but do not pollute editorial completion.
+- Updated `script/studio_shorts_review_start_here.py` and `docs/production/studio-goal-review-board.md` with the note-capture command.
+- Updated `script/studio_shorts_review_start_here.py` so Start Here reads the worksheet index and surfaces worksheet/note counts.
+- Product reason: worksheets need a durable capture path. A local note sidecar lets reviewers and agents record specific evidence field by field without editing the worksheet in place or turning notes into approval.
+- Safety boundary: field notes are local sidecar artifacts only. They record no review decision, edit no timeline, export nothing, publish nothing, run no ASR, generate no transcript text, mutate no media, overwrite no prior notes, delete no files, and create no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe checks are a dry-run note command and worksheet index regeneration.
+
+## 2026-07-02 - Cut-quality notes gained an evidence-preview bridge
+
+- Added `script/studio_shorts_cut_quality_evidence_preview.py` to read the worksheet index and preview an evidence-draft command from captured `review-evidence` notes.
+- Added `script/agentctl.sh studio-shorts-cut-quality-evidence-preview` with aliases `shorts-cut-quality-evidence-preview` and `shorts-edit-quality-evidence-preview`.
+- Updated `script/studio_shorts_review_start_here.py` so the ladder exposes the evidence preview after note capture.
+- Updated `docs/production/studio-goal-review-board.md` with evidence-preview usage.
+- Product reason: notes need a safe bridge into reusable editing intelligence. The preview command makes the eventual evidence draft inspectable before any local review intent is recorded.
+- Safety boundary: evidence previews are local preview artifacts only. They record no review decision, edit no timeline, export nothing, publish nothing, run no ASR, mutate no media, overwrite no prior previews, delete no files, and create no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-evidence-preview`.
+
+## 2026-07-02 - Cut-quality evidence previews gained an index
+
+- Added `script/studio_shorts_cut_quality_evidence_preview_index.py` to scan versioned evidence preview packets and surface the latest preview per short.
+- Added `script/agentctl.sh studio-shorts-cut-quality-evidence-preview-index` with aliases `shorts-cut-quality-evidence-preview-index` and `shorts-edit-quality-evidence-preview-index`.
+- Updated `script/studio_shorts_review_start_here.py` so Start Here reads evidence-preview index counts and exposes the index command.
+- Updated `docs/production/studio-goal-review-board.md` with evidence-preview index usage.
+- Product reason: preview packets should not become another artifact pile. The index shows whether a short is ready for an evidence-draft command or still waiting on review notes.
+- Safety boundary: the preview index is read-only over local preview artifacts. It records no review decision, edits no timeline, exports nothing, publishes nothing, runs no ASR, mutates no media, overwrites no preview, deletes no files, and creates no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-evidence-preview-index --all`.
+
+## 2026-07-02 - Cut-quality worksheets gained per-field note command templates
+
+- Updated `script/studio_shorts_cut_quality_worksheet.py` so every worksheet field includes a ready-to-copy `studio-shorts-cut-quality-note` command template.
+- Product reason: a worksheet is only useful if the reviewer can easily turn observations into durable sidecar notes. Per-field commands reduce friction for humans and make Codex/agent review loops less dependent on fragile command construction.
+- Safety boundary: this only changes generated worksheet artifacts. It records no review decision, edits no timeline, exports nothing, publishes nothing, runs no ASR, mutates no media, overwrites no prior worksheet, and creates no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is to generate a new worksheet and confirm its fields include note templates.
+
+## 2026-07-02 - Cut-quality review gained visual contact sheets
+
+- Added `script/studio_shorts_cut_quality_contact_sheet.py` to create timestamped visual contact-sheet artifacts for one recommended native short.
+- Added `script/agentctl.sh studio-shorts-cut-quality-contact-sheet` with aliases `shorts-cut-quality-contact-sheet` and `shorts-edit-quality-contact-sheet`.
+- Updated `script/studio_shorts_review_start_here.py` so the ladder exposes contact-sheet generation before worksheet/note capture.
+- Updated `docs/production/studio-goal-review-board.md` with contact-sheet usage and truth boundaries.
+- Contact-sheet note templates map visual prompt labels to existing worksheet field ids (`hook`, `cropFraming`, `captionPlan`, `jumpCutCover`, `reactionBeat`, `platformFit`) so visual notes flow into the current worksheet index instead of creating a parallel vocabulary.
+- Product reason: watch/listen review needs visible frame evidence, especially for hook frame, face placement, caption-safe space, jump-cut risk, reaction beats, and platform fit. A contact sheet lets humans and agents review the same visual evidence before writing notes.
+- Safety boundary: contact sheets are derived local review artifacts only. They record no review decision, edit no timeline, export nothing, publish nothing, run no ASR, mutate no media, overwrite no prior contact sheet, delete no files, and create no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-contact-sheet --short-id episode-2-short-01 --frames 8 --json`.
+
+## 2026-07-02 - Cut-quality contact sheets gained an index
+
+- Added `script/studio_shorts_cut_quality_contact_sheet_index.py` to scan versioned visual contact sheets and surface the latest packet per short.
+- Added `script/agentctl.sh studio-shorts-cut-quality-contact-sheet-index` with aliases `shorts-cut-quality-contact-sheet-index` and `shorts-edit-quality-contact-sheet-index`.
+- Updated `script/studio_shorts_review_start_here.py` so Start Here exposes contact-sheet counts, index artifact doors, and a stable contact-sheet index command.
+- Updated `docs/production/studio-goal-review-board.md` with contact-sheet index usage.
+- Product reason: visual evidence should not become another timestamped artifact pile. The index gives Charlie, Mako, and Codex a stable front door to the latest frame evidence per short.
+- Safety boundary: the contact-sheet index is read-only over local contact-sheet artifacts. It records no review decision, edits no timeline, exports nothing, publishes nothing, runs no ASR, mutates no media, overwrites no contact sheet, deletes no files, and creates no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-contact-sheet-index --all`.
+
+## 2026-07-02 - Cut-quality review gained audio/cadence probes
+
+- Added `script/studio_shorts_cut_quality_audio_probe.py` to create timestamped audio/cadence evidence for one recommended native short.
+- Added `script/agentctl.sh studio-shorts-cut-quality-audio-probe` with aliases `shorts-cut-quality-audio-probe` and `shorts-edit-quality-audio-probe`.
+- Updated `script/studio_shorts_review_start_here.py` so the ladder exposes audio/cadence probing after visual contact-sheet indexing and before worksheet capture.
+- Updated `docs/production/studio-goal-review-board.md` with audio-probe usage and truth boundaries.
+- Product reason: human-feeling shorts need cadence evidence, not just visual frames. The probe measures pause density, loudness, waveform shape, and review questions so editors can preserve useful air while tightening dead air.
+- Safety boundary: audio probes are derived local review artifacts only. They record no review decision, edit no timeline, export nothing, publish nothing, run no ASR, transcribe nothing, mutate no media, overwrite no prior probe, delete no files, and create no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-audio-probe --short-id episode-2-short-01 --json`.
+
+## 2026-07-02 - Cut-quality audio probes gained an index
+
+- Added `script/studio_shorts_cut_quality_audio_probe_index.py` to scan versioned audio/cadence probes and surface the latest packet per short.
+- Added `script/agentctl.sh studio-shorts-cut-quality-audio-probe-index` with aliases `shorts-cut-quality-audio-probe-index` and `shorts-edit-quality-audio-probe-index`.
+- Updated `script/studio_shorts_review_start_here.py` so Start Here exposes audio-probe counts, index artifact doors, and the audio-probe index command.
+- Updated `docs/production/studio-goal-review-board.md` with audio-probe index usage.
+- Product reason: cadence evidence should stay comparable across shorts. The index keeps pause counts, silence fraction, loudness, waveform paths, and measurement warnings visible without converting measurement into taste or approval.
+- Safety boundary: the audio-probe index is read-only over local audio-probe artifacts. It records no review decision, edits no timeline, exports nothing, publishes nothing, runs no ASR, transcribes nothing, mutates no media, overwrites no probe, deletes no files, and creates no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-audio-probe-index --all`.
+
+## 2026-07-02 - Cut-quality evidence gained one-short review packets
+
+- Added `script/studio_shorts_cut_quality_review_packet.py` to merge playable media, latest visual contact-sheet frames, latest audio/cadence probe evidence, editor questions, and safe note commands for one short.
+- Added `script/agentctl.sh studio-shorts-cut-quality-review-packet` with aliases `shorts-cut-quality-review-packet` and `shorts-edit-quality-review-packet`.
+- Updated `script/studio_shorts_review_start_here.py` so Start Here exposes the one-short review packet after visual/audio evidence generation and indexing.
+- Updated `docs/production/studio-goal-review-board.md` with review-packet usage and truth boundaries.
+- Product reason: reviewers should not have to mentally stitch frames, waveform, pause facts, and worksheet commands together. A one-short cockpit makes evidence-first review calmer for humans and agents.
+- Safety boundary: review packets are local review artifacts only. They record no review decision, edit no timeline, export nothing, publish nothing, run no ASR, transcribe nothing, mutate no media, overwrite no prior packet, delete no files, and create no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-review-packet --short-id episode-2-short-01 --json`.
+
+## 2026-07-02 - Cut-quality review packets gained an index
+
+- Added `script/studio_shorts_cut_quality_review_packet_index.py` to scan versioned one-short review packets and surface the latest packet per short.
+- Added `script/agentctl.sh studio-shorts-cut-quality-review-packet-index` with aliases `shorts-cut-quality-review-packet-index` and `shorts-edit-quality-review-packet-index`.
+- Updated `script/studio_shorts_review_start_here.py` so Start Here exposes review-packet counts, index artifact doors, and the review-packet index command.
+- Updated `docs/production/studio-goal-review-board.md` with review-packet index usage.
+- Product reason: the merged review packet is now the preferred one-short cockpit. The index makes that cockpit findable without digging through timestamped packet folders.
+- Safety boundary: the review-packet index is read-only over local packet artifacts. It records no review decision, edits no timeline, exports nothing, publishes nothing, runs no ASR, transcribes nothing, mutates no media, overwrites no packet, deletes no files, and creates no receipt truth.
+- Validation note: no full validation run was performed in this pass. The next safe artifact check is `script/agentctl.sh studio-shorts-cut-quality-review-packet-index --all`.
+
+## 2026-07-02 - Cut-quality review evidence gained a batch conveyor
+
+- Added `script/studio_shorts_cut_quality_batch.py` to generate missing contact sheets, audio/cadence probes, merged review packets, and indexes for the next ranked shorts in the cut-quality workbench.
+- Added `script/agentctl.sh studio-shorts-cut-quality-batch` with aliases `shorts-cut-quality-batch` and `shorts-edit-quality-batch`.
+- Updated `script/studio_shorts_review_start_here.py` so Start Here exposes the batch conveyor immediately after review-packet indexing.
+- Updated `docs/production/studio-goal-review-board.md` with the batch command and truth boundary.
+- Product reason: one-short review packets are useful, but manually building them one at a time slows the human/agent review loop. A bounded batch command lets us make the next few shorts reviewable without pretending any creative decision has been made.
+- Safety boundary: the batch command generates local review evidence and indexes only. It records no review decision, edits no timeline, exports no media, publishes nothing, uploads nothing, transcribes nothing, mutates no source media, overwrites no prior packets, deletes nothing, and creates no approval or receipt truth.
+- Validation note: no full app build was performed in this pass. Artifact run `script/agentctl.sh studio-shorts-cut-quality-batch --limit 4 --all` initially exposed an argparse bug where `--noise -42dB` was parsed as a flag-like value. Updated the batch command and docs to use `--noise=-42dB`, then reran successfully with 4 selected shorts, 4 available review packets, 14 commands run, and 0 failed commands.
+
+## 2026-07-02 - Cut-quality batch now advances to uncovered shorts
+
+- Updated `script/studio_shorts_cut_quality_batch.py` so the default selection skips shorts that already have merged review packets. Use `--include-covered` when a deliberate rebuild/recheck is wanted.
+- Updated `script/agentctl.sh` usage to expose `--include-covered`.
+- Product reason: a conveyor should advance the review queue instead of repeatedly rebuilding the same top-ranked evidence. This makes the next safest action obvious for humans and agents.
+- Validation note: reran `script/agentctl.sh studio-shorts-cut-quality-batch --limit 4 --all` after the selector change. It selected ranks 5-8 (`episode-2-short-02`, `episode-3-short-02`, `episode-5-short-02`, `episode-6-short-02`), ran 20 commands, reported 0 failures, and produced 4 available review packets.
+- Current readback after refreshing indexes: 8 shorts have complete cut-quality review packets with visual and audio evidence. Coverage is now two shorts each for Episodes 2, 3, 5, and 6.
+
+## 2026-07-02 - Recommended shorts now have full evidence coverage and a refinement queue
+
+- Ran `script/agentctl.sh studio-shorts-cut-quality-batch --limit 4 --all` again after the uncovered-short selector change. It selected ranks 9-12 (`episode-2-short-03`, `episode-3-short-03`, `episode-5-short-03`, `episode-6-short-03`), ran 20 commands, reported 0 failures, and produced 4 available review packets.
+- Refreshed `script/agentctl.sh studio-shorts-cut-quality-review-packet-index --all`. Current evidence coverage is 12 review packets, 12 shorts with packets, and 12 latest packets with complete visual/audio evidence. Coverage is now three shorts each for Episodes 2, 3, 5, and 6.
+- Added `script/studio_shorts_cut_quality_refinement_queue.py` to rank completed review packets into `polish-first`, `review-then-polish`, `cadence-review-first`, and `hold-for-human-feel-review` lanes.
+- Added `script/agentctl.sh studio-shorts-cut-quality-refinement-queue` with aliases `shorts-cut-quality-refinement-queue` and `shorts-edit-quality-refinement-queue`.
+- Updated `script/studio_shorts_review_start_here.py` so Start Here exposes the refinement queue after the batch conveyor and before worksheet note-taking.
+- Refinement readback: 12 queued shorts, 1 `polish-first`, 5 `review-then-polish`, 5 `cadence-review-first`, and 1 `hold-for-human-feel-review`. The top polish-first candidate is `episode-5-short-01` because it has complete evidence, caption/timing review readiness, `rhythm-plausible` cadence, 4 meaningful pauses, and 0 long pauses.
+- Safety boundary: the refinement queue ranks evidence for review only. It records no decision, edits no timeline, exports no media, publishes nothing, uploads nothing, mutates no source media, overwrites nothing, deletes nothing, and creates no approval or receipt truth.
+
+## 2026-07-02 - Top short gained a concrete polish workorder
+
+- Added `script/studio_shorts_cut_quality_polish_workorder.py` to turn one ranked short's frames, waveform, cadence facts, and platform checks into concrete review/refinement tasks.
+- Added `script/agentctl.sh studio-shorts-cut-quality-polish-workorder` with aliases `shorts-cut-quality-polish-workorder` and `shorts-edit-quality-polish-workorder`.
+- Updated `script/studio_shorts_review_start_here.py` and `docs/production/studio-goal-review-board.md` so the polish workorder is part of the official evidence-to-refinement ladder.
+- Generated the first polish workorder for `episode-5-short-01` at `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/cut-quality-polish-workorders/episode-5-short-01/20260702T173629Z-episode-5-short-01-polish-workorder/episode-5-short-01-polish-workorder.html`.
+- Evidence readback: `episode-5-short-01` is `polish-first`, score 94, has 8 visual frames, a waveform, `rhythm-plausible` cadence, 4 meaningful pauses, 0 long pauses, mean volume -24.1 dB, and max volume -1.1 dB.
+- Workorder tasks: hook, crop/framing, caption plan, cadence, audio feel, J/L cut context, and ending payoff. Suggested note commands are included but were not run automatically.
+- Safety boundary: the polish workorder proposes evidence-based tasks only. It records no review decision, edits no timeline, exports no media, publishes nothing, uploads nothing, transcribes nothing, mutates no source media, overwrites no previous workorder, deletes nothing, and creates no approval or receipt truth.
+
+## 2026-07-02 - Top short gained worksheet and safe note-preview bridge
+
+- Created a versioned Codex worksheet for `episode-5-short-01` at `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/cut-quality-worksheets/episode-5-short-01/20260702T174105Z-episode-5-short-01-cut-quality-worksheet.html`.
+- Added `script/studio_shorts_cut_quality_polish_note_preview.py` to package polish-workorder suggested note commands without running them.
+- Added `script/agentctl.sh studio-shorts-cut-quality-polish-note-preview` with aliases `shorts-cut-quality-polish-note-preview` and `shorts-edit-quality-polish-note-preview`.
+- Updated `script/studio_shorts_review_start_here.py` and `docs/production/studio-goal-review-board.md` so the safe bridge is visible between polish workorder and recorded worksheet notes.
+- Generated a note preview for `episode-5-short-01` at `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/cut-quality-polish-note-previews/episode-5-short-01/20260702T174625Z-episode-5-short-01-polish-note-preview/episode-5-short-01-polish-note-preview.html`.
+- Preview readback: 7 tasks, 7 suggested commands, 0 notes recorded, 0 decisions recorded, 0 external publishing, and 0 receipt truth.
+- Worksheet-index readback after this pass: 3 worksheets, 2 shorts with worksheets, 0 review-evidence notes, 0 system-check notes, and 0 filled latest worksheets.
+- Product reason: this creates an intentional pause between suggested notes and recorded notes. Reviewers can copy commands after watch/listen confirmation without Quipsly pretending the suggested note was already verified.
+- Safety boundary: the note preview does not run note commands, records no notes, records no review decision, edits no timeline, exports no media, publishes nothing, uploads nothing, mutates no source media, overwrites no previous preview, deletes nothing, and creates no approval or receipt truth.
+
+## 2026-07-02 - Top short gained a one-screen polish cockpit
+
+- Added `script/studio_shorts_cut_quality_polish_cockpit.py` to gather the playable short, representative visual frame, waveform, review packet, polish workorder, worksheet, note-preview bridge, and safe commands into one local review cockpit.
+- Added `script/agentctl.sh studio-shorts-cut-quality-polish-cockpit` with aliases `shorts-cut-quality-polish-cockpit` and `shorts-edit-quality-polish-cockpit`.
+- Updated `script/studio_shorts_review_start_here.py` and `docs/production/studio-goal-review-board.md` so the cockpit is part of the official evidence-to-polish ladder.
+- Generated the first cockpit for `episode-5-short-01` at `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/cut-quality-polish-cockpits/episode-5-short-01/20260702T175438Z-episode-5-short-01-polish-cockpit/episode-5-short-01-polish-cockpit.html`.
+- Readback: playable media path present, review/workorder/note-preview/worksheet doors present, 8 visual frames, waveform present, `rhythm-plausible` cadence, 4 meaningful pauses, 0 long pauses, 7 tasks, 7 preview rows, worksheet available, 0 notes recorded, 0 decisions recorded, 0 external publishing, and 0 receipt truth.
+- Product reason: one-screen polish review reduces systems anxiety. The reviewer should not have to dig through timestamped folders to understand what to watch, what to listen for, what notes are suggested, and what remains unverified.
+- Safety boundary: the polish cockpit gathers review surfaces only. It records no notes, records no review decision, edits no timeline, exports no media, publishes nothing, uploads nothing, mutates no source media, overwrites no previous cockpit, deletes nothing, and creates no approval or receipt truth.
+
+## 2026-07-02 - Polish cockpits gained a latest-per-short index
+
+- Added `script/studio_shorts_cut_quality_polish_cockpit_index.py` to scan versioned polish cockpit artifacts and expose the latest cockpit per short.
+- Added `script/agentctl.sh studio-shorts-cut-quality-polish-cockpit-index` with aliases `shorts-cut-quality-polish-cockpit-index` and `shorts-edit-quality-polish-cockpit-index`.
+- Updated `script/studio_shorts_review_start_here.py` and `docs/production/studio-goal-review-board.md` so the cockpit index is part of the official evidence-to-polish ladder.
+- Generated the cockpit index at `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/cut-quality-polish-cockpits/index/quipsly-studio-shorts-cut-quality-polish-cockpit-index.html`.
+- Readback: 1 cockpit, 1 short with cockpit, 1 latest cockpit with complete doors, 1 worksheet available, 7 tasks, 7 note-preview rows, 0 notes recorded, 0 decisions recorded, 0 external publishing, and 0 receipt truth.
+- Refreshed Start Here. Readback: 12 cut-quality review packets, 12 latest packets with complete visual/audio evidence, 1 polish cockpit, cockpit index JSON/HTML present, and command ladder step `6n-index` present.
+- Product reason: the one-short cockpit is useful only if reviewers can find it. The index keeps polish surfaces discoverable without turning discovery into approval.
+- Safety boundary: the cockpit index is read-only over local cockpit artifacts. It records no notes, records no review decision, edits no timeline, exports no media, publishes nothing, uploads nothing, mutates no source media, overwrites no cockpit, deletes nothing, and creates no approval or receipt truth.
+
+## 2026-07-02 - Polish cockpit lane expanded beyond the first candidate
+
+- Generated review-only polish surfaces for `episode-5-short-02`, `episode-6-short-01`, and `episode-6-short-03`: polish workorder, blank Codex worksheet, polish note-preview bridge, and one-screen polish cockpit.
+- Refreshed the cockpit index and Start Here after generation.
+- Readback from the cockpit index: 4 cockpits, 4 shorts with cockpits, 4 latest cockpits with complete doors, 4 worksheets available, 4 latest cockpits with tasks, 0 notes recorded, 0 decisions recorded, 0 external publishing, and 0 receipt truth.
+- Current cockpit queue: `episode-5-short-01` (`polish-first`, score 94), `episode-5-short-02` (`review-then-polish`, score 64), `episode-6-short-01` (`review-then-polish`, score 56), and `episode-6-short-03` (`review-then-polish`, score 56).
+- Start Here readback after refresh: 12 cut-quality review packets, 12 latest packets with complete visual/audio evidence, 4 polish cockpits, 4 shorts with polish cockpits, 4 complete cockpit doors, 0 cockpit notes, and 0 cockpit decisions.
+- Product reason: this proves the polish cockpit workflow is not a one-off. Reviewers now have a small ranked queue they can open directly, watch/listen, and turn into evidence notes when the observations are real.
+- Safety boundary: this pass created local review surfaces only. It recorded no notes, recorded no review decisions, edited no timeline, exported no media, published nothing, uploaded nothing, mutated no source media, overwrote no previous artifacts, deleted nothing, and created no approval or receipt truth.
+
+## 2026-07-02 - Polish review gained a batch conveyor and full 12-short cockpit coverage
+
+- Added `script/studio_shorts_cut_quality_polish_batch.py` to batch-generate missing polish workorders, blank worksheets, note-preview bridges, one-short polish cockpits, and refreshed cockpit indexes from the ranked refinement queue.
+- Added `script/agentctl.sh studio-shorts-cut-quality-polish-batch` with aliases `shorts-cut-quality-polish-batch` and `shorts-edit-quality-polish-batch`.
+- Updated `script/studio_shorts_review_start_here.py` and `docs/production/studio-goal-review-board.md` so the polish batch is part of the official evidence-to-polish ladder.
+- First batch run generated cockpit surfaces for `episode-2-short-02`, `episode-2-short-03`, `episode-2-short-01`, and `episode-3-short-01`; it exposed a batch-report readback bug where task/preview counts were not backfilled from the refreshed index when command output was too large to parse.
+- Fixed the batch report readback so index-derived `taskCount`, `previewRowCount`, notes, and decisions backfill when command output is not directly parseable.
+- Second batch run generated cockpit surfaces for `episode-3-short-02`, `episode-5-short-03`, `episode-6-short-02`, and `episode-3-short-03`.
+- Refreshed the cockpit index and Start Here.
+- Final readback from the cockpit index: 12 cockpits, 12 shorts with cockpits, 12 latest cockpits with complete doors, 12 worksheets available, 12 latest cockpits with tasks, 0 notes recorded, 0 decisions recorded, 0 external publishing, and 0 receipt truth.
+- Episode coverage now has 3 cockpit-ready shorts each for Episodes 2, 3, 5, and 6. Lane coverage is 1 `polish-first`, 5 `review-then-polish`, 5 `cadence-review-first`, and 1 `hold-for-human-feel-review`.
+- Start Here readback after refresh: 12 cut-quality review packets, 12 evidence-complete packets, 12 polish cockpits, 12 shorts with polish cockpits, 12 complete cockpit doors, 0 cockpit notes, and 0 cockpit decisions.
+- Product reason: this turns the polish cockpit from a one-off artifact into a repeatable production conveyor. Humans and agents can now open ranked review surfaces for every current evidence-complete short without folder archaeology.
+- Safety boundary: this pass created local review surfaces and indexes only. It recorded no notes, recorded no review decisions, edited no timeline, exported no media, published nothing, uploaded nothing, mutated no source media, overwrote no previous artifacts, deleted nothing, and created no approval or receipt truth.
+
+## 2026-07-02 - Cockpit-ready shorts gained a polish triage board
+
+- Added `script/studio_shorts_cut_quality_polish_triage.py` to group cockpit-ready shorts by review lane and explain what to inspect first.
+- Added `script/agentctl.sh studio-shorts-cut-quality-polish-triage` with aliases `shorts-cut-quality-polish-triage` and `shorts-edit-quality-polish-triage`.
+- Updated `script/studio_shorts_review_start_here.py` and `docs/production/studio-goal-review-board.md` so polish triage is visible from the official review ladder.
+- Generated the triage board at `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/cut-quality-polish-triage/quipsly-studio-shorts-cut-quality-polish-triage.html`.
+- Triage readback: 12 cockpit-ready shorts, 1 `polish-first`, 5 `review-then-polish`, 5 `cadence-review-first`, 1 `hold-for-human-feel-review`, 11 `cadence-review`, 1 `rhythm-plausible`, 0 notes recorded, 0 decisions recorded, 0 external publishing, and 0 receipt truth.
+- First review target: `episode-5-short-01`, with prompt to check hook, caption-safe framing, audio feel, and ending payoff before marking any intent.
+- Refreshed Start Here. Readback: 12 cut-quality review packets, 12 evidence-complete packets, 12 polish cockpits, 12 triage items, triage JSON/HTML present, and command ladder step `6n-triage` present.
+- Product reason: cockpit coverage alone answers “what exists?”; triage answers “what should I open first and what am I looking for?” without forcing reviewers to interpret raw scores.
+- Safety boundary: the polish triage board is local navigation and review planning only. It records no notes, records no review decisions, edits no timeline, exports no media, publishes nothing, uploads nothing, mutates no source media, overwrites no cockpit, deletes nothing, and creates no approval or receipt truth.
+
+## 2026-07-02 - First cockpit short gained evidence-draft dry-run proof
+
+- Fixed `script/studio_recommended_short_review_packet.py` so empty SRT/VTT shells are not counted as useful transcript evidence. The packet now reports readable-word counts and marks timestamp-only caption files as `placeholder-transcript-or-caption-files-found-no-words`.
+- Regenerated the focused review packet for `episode-5-short-01`. Readback: 30 caption-shaped candidates, 0 readable candidates, 30 placeholder candidates, and a clear note that semantic review still needs actual watch/listen evidence or a real transcript.
+- Created a versioned evidence draft for `episode-5-short-01` with outcome `needs-more-evidence`, confidence `visual-audio-shape-only`, and notes covering framing, captions, audio shape, cadence, and risk/tradeoff.
+- Refreshed the evidence-draft index. Readback: 3 drafts, 2 shorts with drafts, 3 drafts specific enough for dry-run/recorded-intent consideration, 0 ledger decisions recorded, 0 external publishing, and 0 receipt truth.
+- Fixed the execute bit on `script/studio_short_evidence_draft_record.py` so `agentctl.sh studio-short-evidence-draft-record` can run through the official command seam.
+- Ran `script/agentctl.sh studio-short-evidence-draft-record --short-id episode-5-short-01 --dry-run --json`. Readback: mode `ledger-dry-run`, outcome `needs-more-evidence`, `recordRequested=false`, `ledgerMutationRequested=false`, `ledgerMutated=false`, `externalActionTaken=false`, `mediaMutated=false`, and `receiptTruthCreated=false`.
+- Updated `script/studio_shorts_review_start_here.py` so the HTML front door shows evidence-note, preview-ready, draft, draft-ready, ledger-pending, and ledger-recorded counts instead of hiding the review pipeline state behind JSON.
+- Refreshed Start Here. Readback: 80 native shorts, 5 review-evidence notes, 1 evidence preview ready, 3 evidence drafts, 3 draft-ready entries, 80 ledger-pending shorts, and 0 recorded decisions.
+- Product reason: this closes the loop from cockpit evidence to draft to dry-run without pretending that visual/audio-shape evidence proves spoken hook or ending payoff. The system now names the missing semantic evidence instead of quietly laundering empty caption shells into transcript confidence.
+- Safety boundary: this pass generated local review artifacts and dry-run proof only. It recorded no review decision, edited no timeline, exported no media, published nothing, uploaded nothing, mutated no source media, overwrote no exports, deleted nothing, and created no approval or receipt truth.
+
+## 2026-07-02 - Transcript readiness now distinguishes empty caption shells
+
+- Updated `script/studio_shorts_transcript_readiness.py` so transcript/caption candidates include readable-word counts and timestamp-only caption shells are classified as `placeholder-word-evidence`.
+- Updated `script/studio_shorts_transcript_workorders.py` so placeholder word evidence routes to `create-or-link-word-evidence`, not `verify-timed-captions`.
+- Updated `script/studio_shorts_review_start_here.py` so the front-door HTML/JSON exposes `timedCaptionsAvailable`, `missingWordEvidence`, and `placeholderWordEvidence`.
+- Regenerated focused review packets for all 12 current recommended shorts with the corrected packet classifier.
+- Packet readback across 12 current recommended shorts: 6 `missing-transcript-or-caption-evidence` shorts, 3 `placeholder-transcript-or-caption-files-found-no-words` shorts, and 3 `candidate-transcript-or-caption-files-found` shorts.
+- Transcript-readiness readback: 12 items, 3 timed-caption-ready shorts, 6 missing-word-evidence shorts, and 3 placeholder-word-evidence shorts.
+- Workorder readback: 12 workorders, 9 `createOrLinkWordEvidence`, 3 `verifyTimedCaptions`, 6 `missingWordEvidence`, and 3 `placeholderWordEvidence`.
+- Start Here readback: 3 timed captions available, 6 missing word evidence, 3 placeholder word evidence, 12 transcript workorders, 9 create/link word-evidence workorders, 3 evidence drafts, and 0 recorded decisions.
+- Product reason: Episode 6 can now be treated as the best semantic-review proof lane, while Episodes 2, 3, and 5 are visibly blocked on usable word evidence instead of being mislabeled as caption-ready.
+- Safety boundary: this pass generated and refreshed local review/readiness/workorder artifacts only. It ran no ASR, imported no transcript, burned no captions, recorded no review decision, edited no timeline, exported no media, published nothing, uploaded nothing, mutated no source media, overwrote no exports, deleted nothing, and created no approval or receipt truth.
+
+## 2026-07-02 - Scouting-caption placeholders stopped counting as semantic transcript evidence
+
+- Inspected Episode 6 caption candidates and found they were readable review/scouting labels such as "Episode 6 scouting clip" and "Candidate insight moment," not spoken transcript.
+- Tightened `script/studio_recommended_short_review_packet.py` and `script/studio_shorts_transcript_readiness.py` to distinguish readable text from usable spoken-word transcript evidence. Candidates now include `hasReadableWords`, `hasTranscriptWords`, `looksLikeReviewPlaceholder`, readable word counts, and an `evidenceStatus`.
+- Regenerated focused review packets for all 12 current recommended shorts.
+- Regenerated transcript readiness, transcript workorders, and Start Here.
+- Readback after the stricter classifier: 0 timed-caption-ready shorts, 6 missing-word-evidence shorts, 6 placeholder-word-evidence shorts, 12 transcript workorders, 12 create/link word-evidence workorders, 3 evidence drafts, and 0 recorded decisions.
+- Updated Start Here next action so transcript work outranks ledger recording when current recommended shorts are missing usable word evidence.
+- Product reason: readable review labels should help humans route work, but they must not become semantic evidence for hook, meaning, ending payoff, caption timing, or word-aware cuts.
+- Safety boundary: this pass changed local classification and regenerated local review/readiness artifacts only. It ran no ASR, imported no transcript, burned no captions, recorded no review decision, edited no timeline, exported no media, published nothing, uploaded nothing, mutated no source media, overwrote no exports, deleted nothing, and created no approval or receipt truth.
+
+## 2026-07-02 - Current recommended shorts gained transcript-intake audio sidecars
+
+- Added `script/studio_shorts_transcript_intake_batch.py` to create versioned transcript-intake packets from transcript workorders.
+- Added `script/agentctl.sh studio-shorts-transcript-intake-batch` with aliases `shorts-transcript-intake-batch` and `shorts-caption-intake-batch`.
+- Updated Start Here with a `Prepare transcript intake audio` ladder step so the ASR/manual transcript input path is discoverable from the official front door.
+- Ran `script/agentctl.sh studio-shorts-transcript-intake-batch --limit 12 --json`.
+- Generated batch: `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/transcript-intake/20260702T194602Z-transcript-intake-batch`.
+- Readback: 12 items, 12 audio-ready-for-ASR WAV sidecars, 0 media missing, 0 needs-audio-intake, `asrRun=false`, `transcriptTruthCreated=false`, `sourceMediaMutated=false`, `reviewDecisionRecorded=false`, `externalPublishing=false`, and `receiptTruthCreated=false`.
+- Latest pointer: `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/transcript-intake/latest-transcript-intake-batch.json`.
+- Product reason: the review system now has concrete audio inputs for real transcript generation instead of trying to reason semantically from captions that are missing or placeholder-only.
+- Safety boundary: this pass created local audio sidecars from exported short files and local manifests only. It did not mutate original/source media, run ASR, create transcript truth, record review decisions, edit timelines, publish, upload, schedule, overwrite previous exports, delete files, or create receipt truth.
+
+## 2026-07-02 - Transcript intake index and next selector landed
+
+- Added transcript-intake index/readback tooling so generated ASR-ready audio sidecars are visible by short instead of buried in timestamped folders.
+- Added a next-target selector that routes one audio-ready short to its planned raw ASR output, normalized transcript JSON, SRT, and VTT sidecar paths without running ASR or creating transcript truth.
+- Refreshed the shorts Start Here board to include transcript-intake counts and commands. Current readback: 12 shorts have intake packets, 12 have ASR-ready audio sidecars, 0 need audio intake, and 12 still need real word evidence before caption-aware or semantic review intent.
+- Truth boundary: transcript intake is routing/input evidence only. It is not transcript truth, review approval, publication, upload, schedule, source mutation, or receipt truth.
+
+## 2026-07-02 - Transcript intake workbench created
+
+- Added a transcript-intake workbench for the current recommended shorts. It turns the transcript-intake index into a reviewer-usable surface with audio sidecar paths, planned raw ASR output paths, normalized transcript JSON paths, caption draft paths, and non-overwriting worksheet files.
+- Wired the workbench into `agentctl.sh` and the shorts Start Here command ladder.
+- Latest readback: 12 workbench items, 12 ASR/manual-transcript-ready audio sidecars, 12 worksheet files, 0 normalized transcript sidecars, 0 transcript truth, 0 review decisions, 0 publishing receipts.
+- Product boundary: this is a transcript preparation and review surface. It does not run ASR, create spoken-word truth, approve captions, mutate source media, publish, upload, schedule, or create receipts.
+
+## 2026-07-02 - First local ASR draft entered the shorts review ladder
+
+- Added `studio-shorts-transcript-asr-draft`, a safe local Whisper wrapper that creates raw provider output, ASR draft transcript JSON, and draft SRT/VTT caption sidecars from one transcript-intake audio sidecar.
+- Ran one bounded ASR proof for `episode-2-short-01` using the cached local Whisper `base` model. Result: 45 approximate words, 4 segments, raw provider JSON copied, ASR draft transcript copied, SRT copied, VTT copied.
+- Updated transcript readiness to scan transcript-workorder sidecars and classify machine outputs as `machine-draft-word-evidence`, not reviewed transcript truth.
+- Updated transcript workorders so machine drafts become `review-machine-draft-word-evidence` tasks instead of missing-word-evidence tasks.
+- Latest Start Here readback: 1 machine draft word-evidence item, 1 review-machine-draft workorder, 1 ASR draft transcript, 11 current recommended shorts still requiring create/link word evidence.
+- Truth boundary: local ASR output is machine evidence. It is not normalized transcript truth until reviewed against the audio.
+
+## 2026-07-02 - Current recommended shorts all have ASR draft evidence
+
+- Ran local Whisper `base` ASR drafts for the remaining current recommended shorts after the first proof run.
+- Current transcript intake workbench readback: 12 items, 12 ASR draft transcripts, 12 raw provider outputs, 12 caption draft sidecar sets, 12 worksheets, 0 audio sidecars missing, 0 transcript truth created.
+- Current transcript readiness readback: 12 `machine-draft-word-evidence`, 0 missing word evidence, 0 placeholder word evidence.
+- Current transcript workorders readback: 12 `review-machine-draft-word-evidence`, 0 create/link word evidence.
+- Updated Start Here next action to prioritize reviewing ASR/caption drafts before promoting words into transcript truth or caption-aware edit intent.
+- Truth boundary: these are machine draft words. They are now useful review evidence, but not normalized transcript truth and not approval to publish or make final caption/cut claims.
+
+## 2026-07-02 - Transcript workbench now shows ASR draft summaries
+
+- Upgraded the transcript-intake workbench so each short displays ASR draft word count, segment count, provider/model, and a sample of the machine draft text.
+- Latest workbench readback: 12 ASR draft transcripts, 12 raw provider outputs, 12 caption draft sets, 609 approximate draft words, 66 draft segments, 0 transcript truth created.
+- This improves review usability: humans and agents can now inspect the words enough to choose what needs correction without opening raw JSON first.
+- Truth boundary remains unchanged: ASR draft text is machine evidence that must be reviewed before promotion into normalized transcript truth or caption-aware edit intent.
+
+## 2026-07-02 - First ASR draft promoted to normalized edit-review transcript
+
+- Added `studio-shorts-transcript-review-promote`, a dry-run-first review/promote command for ASR draft transcripts.
+- Recorded one review event for `episode-2-short-01` with outcome `accept-for-edit-review` and wrote a normalized transcript sidecar plus local transcript review ledger event.
+- Refined transcript readiness so normalized edit-review transcript sidecars rank above machine draft caption files while still remaining separate from final caption approval.
+- Current readback: 1 normalized transcript edit-review item, 11 machine draft word-evidence items, 1 use-normalized-transcript-for-edit-review workorder, 11 review-machine-draft workorders, 0 missing/placeholder word evidence.
+- Truth boundary: normalized transcript sidecar is accepted for edit-review context only. It is not final caption approval, external publication approval, upload, schedule, source mutation, or receipt truth.
+
+## 2026-07-02 - Transcript review cockpit added
+
+- Added `studio-shorts-transcript-review-cockpit`, a generated reviewer/agent surface over transcript-intake workbench data.
+- The cockpit shows each current recommended short with audio, ASR draft sample, word/segment counts, normalized transcript state, ledger event count, and copyable dry-run/accept/needs-correction/hold commands.
+- Wired the cockpit into `agentctl.sh` and the shorts Start Here ladder/artifact doors.
+- Latest proof: 12 cockpit items, 1 accepted-for-edit-review transcript, 11 machine drafts needing review, 1 transcript review ledger event, 0 final caption approvals, 0 publication receipts.
+- Truth boundary: the cockpit records no review by itself. It is workflow UI over sidecars and ledgers, not source media mutation or publication truth.
+
+## 2026-07-02 - Shorts cut-quality workbench transcript cockpit context
+
+Added transcript review cockpit context to the read-only shorts cut-quality workbench. The board now distinguishes accepted edit-review transcript context from raw machine-draft word evidence, so humans and agents can use words to improve hooks, cadence, captions, and cut rhythm without claiming final caption approval.
+
+Validation:
+
+```bash
+python3 -m py_compile script/studio_shorts_cut_quality_workbench.py
+script/agentctl.sh studio-shorts-cut-quality-workbench --all
+script/agentctl.sh studio-shorts-review-start-here --all
+```
+
+Readback:
+
+```json
+{
+  "items": 12,
+  "transcriptEditReviewReady": 1,
+  "transcriptDraftReview": 11,
+  "normalizedTranscriptEditReview": 1,
+  "machineDraftWordEvidence": 11,
+  "transcriptWordsApprox": 609,
+  "transcriptSegments": 66,
+  "transcriptLedgerEvents": 1,
+  "approvalCreated": false,
+  "receiptTruthCreated": false
+}
+```
+
+Truth boundary: this is evidence and review workflow only. It does not edit, export, approve captions, publish, upload, schedule, mutate media, overwrite sources, or create receipt truth.
+
+## 2026-07-02 - Semantic shorts review queue
+
+Added a transcript-aware semantic review queue for recommended shorts. It reads the current cut-quality workbench and surfaces hook strength, generic-opener risk, abrupt-ending risk, cadence guidance, caption truth state, and safe evidence-note commands.
+
+New command:
+
+```bash
+script/agentctl.sh studio-shorts-semantic-review-queue --all
+```
+
+Validation:
+
+```bash
+python3 -m py_compile script/studio_shorts_semantic_review_queue.py script/studio_shorts_review_start_here.py
+script/agentctl.sh studio-shorts-semantic-review-queue --all
+script/agentctl.sh studio-shorts-review-start-here --all
+```
+
+Readback:
+
+```json
+{
+  "semanticReviewQueueItems": 12,
+  "semanticGenericOpenerRisk": 6,
+  "semanticAbruptEndingRisk": 2,
+  "semanticReviewableHookCandidate": 5,
+  "transcriptAcceptedForEditReview": 1,
+  "transcriptMachineDraftNeedsReview": 11,
+  "semanticDoorReady": true
+}
+```
+
+Truth boundary: semantic guidance is heuristic review evidence only. It does not approve transcripts, edit timelines, export media, publish, upload, schedule, mutate source media, or create receipt truth.
+
+## 2026-07-02 - First semantic hook evidence note recorded
+
+Used the semantic review queue to create one versioned local cut-quality evidence note for `episode-2-short-01`.
+
+Note summary: the opening reads like episode setup/housekeeping rather than a stranger-facing social hook, so the next edit-review action is to test a stronger in-point or consciously preserve the setup with a visible tradeoff.
+
+Artifacts:
+
+```json
+{
+  "shortId": "episode-2-short-01",
+  "field": "hook",
+  "kind": "review-evidence",
+  "reviewer": "Codex-Semantic",
+  "folder": "/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/cut-quality-worksheets/episode-2-short-01/notes"
+}
+```
+
+Index readback after refresh:
+
+```json
+{
+  "cutQualityWorksheets": 14,
+  "cutQualityReviewEvidenceNotes": 6,
+  "semanticReviewQueueItems": 12,
+  "semanticGenericOpenerRisk": 6,
+  "semanticAbruptEndingRisk": 2
+}
+```
+
+Truth boundary: this is a versioned local note sidecar only. It records no final review decision, edits no timeline, exports nothing, publishes nothing, mutates no media, and creates no receipt truth.
+
+## 2026-07-02 - Timestamped semantic edit candidates
+
+Added a non-mutating semantic edit-candidate layer for shorts. It reads the semantic review queue plus transcript cockpit sidecars and proposes timestamped in/out tests such as stronger in-points after generic greetings and earlier out-points for abrupt endings.
+
+New command:
+
+```bash
+script/agentctl.sh studio-shorts-semantic-edit-candidates --all
+```
+
+Validation:
+
+```bash
+python3 -m py_compile script/studio_shorts_semantic_edit_candidates.py script/studio_shorts_review_start_here.py
+script/agentctl.sh studio-shorts-semantic-edit-candidates --all
+script/agentctl.sh studio-shorts-review-start-here --all
+```
+
+Readback:
+
+```json
+{
+  "semanticReviewQueueItems": 12,
+  "semanticGenericOpenerRisk": 6,
+  "semanticAbruptEndingRisk": 2,
+  "semanticEditCandidateItems": 12,
+  "semanticTestStrongerInPoint": 5,
+  "semanticCheckEarlierOutPoint": 2,
+  "semanticEditCandidatesDoorReady": true
+}
+```
+
+First useful candidate: `episode-2-short-01` should audition an in-point around `19.40s` on the phrase `how you feeling about episode two?`, with an audio lead around `19.05s`. This is a candidate only; it must be watched/listened before any timeline decision changes.
+
+Truth boundary: candidate artifacts do not mutate timelines, media, transcripts, exports, publication state, or receipt truth.
+
+## 2026-07-02 - Semantic edit audition preview and index
+
+Added a versioned semantic edit audition tool and index. The tool turns one timestamped semantic edit candidate into a local audition packet, and can render a preview clip only when explicitly asked with `--render-preview`. The index keeps rendered auditions discoverable from the review runway.
+
+New commands:
+
+```bash
+script/agentctl.sh studio-shorts-semantic-edit-audition --short-id episode-2-short-01 --dry-run
+script/agentctl.sh studio-shorts-semantic-edit-audition --short-id episode-2-short-01 --render-preview
+script/agentctl.sh studio-shorts-semantic-edit-audition-index --all
+```
+
+Rendered audition proof:
+
+```json
+{
+  "shortId": "episode-2-short-01",
+  "candidateType": "test-stronger-in-point",
+  "preview": "/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/semantic-edit-auditions/episode-2-short-01/20260702T220901Z-test-stronger-in-point/episode-2-short-01-test-stronger-in-point-audition.mp4",
+  "durationSeconds": 3.533,
+  "resolution": "1080x1920",
+  "hasAudio": true,
+  "warning": "Candidate leaves under 5 seconds, so the source short likely needs a different excerpt rather than a simple trim."
+}
+```
+
+Start Here readback:
+
+```json
+{
+  "semanticEditAuditions": 1,
+  "semanticRenderedAuditions": 1,
+  "semanticWarningAuditions": 1,
+  "semanticEditAuditionIndexDoorReady": true
+}
+```
+
+Truth boundary: the audition preview is local review evidence only. It is not a canonical short export, timeline mutation, source-media mutation, transcript approval, publication, upload, schedule, or receipt truth.
+
+## 2026-07-02 - Shorts recipe repair queue
+
+Added a short recipe repair queue that turns failed semantic auditions and missing traceability into reviewable next actions. This keeps weak shorts from being polished blindly.
+
+New command:
+
+```bash
+script/agentctl.sh studio-shorts-recipe-repair-queue --all
+```
+
+Validation:
+
+```bash
+python3 -m py_compile script/studio_shorts_recipe_repair_queue.py script/studio_shorts_review_start_here.py
+script/agentctl.sh studio-shorts-recipe-repair-queue --all
+script/agentctl.sh studio-shorts-review-start-here --all
+```
+
+Readback:
+
+```json
+{
+  "recipeRepairItems": 12,
+  "recipeNeedsNewSourceSpan": 1,
+  "recipeNeedsAuditionPreview": 6,
+  "recipeMissingSourceRange": 12,
+  "recipeRepairQueueDoorReady": true
+}
+```
+
+Important product finding: every current recommended short lacks original source-range metadata in the review-theater artifact. Shorts are playable, but not traceable enough back to whole-source decisions. Future short exports should preserve episode sequence in/out, source lane/source in/out, and branch/recipe identity so repair can point to precise timeline ranges instead of only local short files.
+
+Current top repair item: `episode-2-short-01` should not be polished as-is. The rendered audition showed the stronger hook candidate leaves only about 3.5 seconds, so the next action is to choose/generate a better source span from the episode timeline.
+
+Truth boundary: repair queue artifacts do not mutate source media, edit metadata, canonical exports, transcript approval, publishing state, or receipt truth.
+
+## 2026-07-02 - Shorts lineage audit added
+
+Added a read-only shorts lineage audit so playable short exports are not mistaken for repairable Quipsly-native edit truth. The audit checks current recommended shorts for sequence/source range fields, source lane identity, recipe identity, manifest matches, and safe next actions without mutating timelines, media, exports, publication state, or receipt truth.
+
+Artifacts:
+- `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/lineage-audit/quipsly-studio-shorts-lineage-audit.json`
+- `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/lineage-audit/quipsly-studio-shorts-lineage-audit.html`
+- `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/start-here/quipsly-studio-shorts-review-start-here.json`
+
+Validation:
+- `python3 -m py_compile script/studio_shorts_lineage_audit.py script/studio_shorts_review_start_here.py`
+- `script/agentctl.sh studio-shorts-lineage-audit --all`
+- `script/agentctl.sh studio-shorts-review-start-here --all`
+- Start Here readback: 12 lineage items, 0 traceable shorts, 12 missing source range, 12 need backfill, lineage artifact door exists.
+
+Product finding:
+Playable is not the same as traceable. The current recommended shorts can be watched, and they match manifests, but they do not yet carry enough source-range/recipe metadata to be safely repaired as Quipsly-native shorts. Next durable step is backfilling lineage from session/timeline metadata or regenerating short recipes from whole synced source decisions.
+
+## 2026-07-02 - Shorts lineage backfill from saved sessions
+
+Added a read-only lineage backfill layer that reconnects current recommended short exports to saved Quipsly session `shortClipQueue` recipes when package manifests expose a `sessionHint`. This turns playable-but-detached shorts into reviewable sidecar records with sequence timing, recipe IDs, segment ranges, and source-lane completeness status.
+
+Artifacts:
+- `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/lineage-backfill/quipsly-studio-shorts-lineage-backfill.json`
+- `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/lineage-backfill/quipsly-studio-shorts-lineage-backfill.html`
+- `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/start-here/quipsly-studio-shorts-review-start-here.json`
+
+Validation:
+- `python3 -m py_compile script/studio_shorts_lineage_backfill.py script/studio_shorts_lineage_audit.py script/studio_shorts_review_start_here.py`
+- `script/agentctl.sh studio-shorts-lineage-backfill --all`
+- `script/agentctl.sh studio-shorts-review-start-here --all`
+- Start Here readback: 12 lineage backfill items, 12 partial backfills, 12 with sequence ranges, 0 with source lane identity, audit/backfill artifact doors both exist.
+
+Product finding:
+The current recommended shorts are no longer just detached playable MP4s: all 12 now have recovered sequence ranges and recipe identity from saved sessions. They remain partial because source lane IDs are missing in these saved short recipes. Next durable step is source-lane inference from overlapping session decisions or a future export-path fix that writes source lane/tag identity into manifests at export time.
+
+## 2026-07-02 - Shorts source-lane inference added
+
+Extended shorts lineage backfill with source-lane inference from saved session lane decisions. The inference converts lane tag ranges into episode sequence time by applying each source lane offset, then compares recovered short recipe ranges against overlapping SHOW/Active and SKIP/Cut decisions.
+
+Artifacts:
+- `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/lineage-backfill/quipsly-studio-shorts-lineage-backfill.json`
+- `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/lineage-backfill/quipsly-studio-shorts-lineage-backfill.html`
+- `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/start-here/quipsly-studio-shorts-review-start-here.json`
+
+Validation:
+- `python3 -m py_compile script/studio_shorts_lineage_backfill.py script/studio_shorts_review_start_here.py`
+- `script/agentctl.sh studio-shorts-lineage-backfill --all`
+- `script/agentctl.sh studio-shorts-review-start-here --all`
+
+Readback:
+
+```json
+{
+  "lineageBackfillItems": 12,
+  "explicitSourceLanes": 0,
+  "inferredSourceLanes": 12,
+  "highConfidenceInference": 2,
+  "mediumConfidenceInference": 10,
+  "partialBackfills": 0
+}
+```
+
+Truth boundary: inferred lane authorship is review evidence, not receipt-grade edit authorship. It is good enough to guide human/agent review and repair, but future short exports should still write explicit `sourceLaneId` and `sourceTagId` into short recipes and manifests at creation time.
+
+## 2026-07-02 - Selected-short export preserves sequence ranges and lineage truth
+
+Fixed the selected-short proxy export bridge so direct selected-short exports pass sequence-time ranges to the proxy renderer instead of cursor-relative `0..duration` ranges. The bridge now includes sequence start/end, source-local start/end, and authored `sourceLaneId` / `sourceTagId` when the selected short recipe provides them.
+
+Also updated `shorts_proxy_export.py` so export manifests preserve authored lineage separately from rendered fallback evidence. If a legacy short lacks `sourceLaneId`, the manifest now reports `sourceLineageStatus: rendered-video-lane-fallback` and stores the chosen render lane as `renderedVideoLaneId`; it does not pretend that fallback is explicit recipe authorship.
+
+Validation:
+- `python3 -m py_compile script/shorts_proxy_export.py script/studio_shorts_lineage_backfill.py script/studio_shorts_review_start_here.py`
+- `script/build_and_run.sh --verify`
+- Direct proxy-export smoke from `episode-2-native-proof.quipsly-session.json` into `/tmp/quipslystudio-short-export-lineage-smoke`
+
+Smoke readback:
+
+```json
+{
+  "status": "completed",
+  "completed": 1,
+  "failed": 0,
+  "sequenceStartTime": 504.4,
+  "sequenceEndTime": 526.96,
+  "explicitSourceLaneCount": 0,
+  "renderedVideoLaneFallbackCount": 1,
+  "sourceLineageStatus": "rendered-video-lane-fallback"
+}
+```
+
+Known validation gap: `script/agentctl.sh load-session-wait episode-2-native-proof` timed out while the running app was healthy but still on `episode-4-v001-rough-show-decisions`. This means the app HTTP load-session path needs follow-up hardening. The proxy export behavior itself was validated through a controlled request and derivative `/tmp` output only; no original media was mutated.
+
+## 2026-07-03 - Manual-publishing packet for short v002 candidates
+
+Added a local Tower-style manual-publishing packet that reads the latest short v002 human review packet pointer, resolves the versioned payload, and packages candidate media, exact-candidate transcript paths, draft SRT/VTT captions, platform copy blocks, watch/listen checklist, warnings, and approval/publication state into versioned JSON, Markdown, and HTML artifacts.
+
+Artifacts:
+- `/Volumes/My Passport/Episode_and_Shorts_Test/review-board/short-v002-manual-publish-packet/20260703T194011Z-short-v002-manual-publish-packet.json`
+- `/Volumes/My Passport/Episode_and_Shorts_Test/review-board/short-v002-manual-publish-packet/20260703T194011Z-short-v002-manual-publish-packet.md`
+- `/Volumes/My Passport/Episode_and_Shorts_Test/review-board/short-v002-manual-publish-packet/20260703T194011Z-short-v002-manual-publish-packet.html`
+- `/Volumes/My Passport/Episode_and_Shorts_Test/review-board/short-v002-manual-publish-packet/latest-short-v002-manual-publish-packet.json`
+
+Validation:
+- `python3 -m py_compile script/studio_short_v002_manual_publish_packet.py script/studio_short_v002_human_review_packet.py`
+- `./script/agentctl.sh studio-short-v002-human-review-packet --reviewer Codex --skip-transcript --verify-commands --all`
+- `./script/agentctl.sh studio-short-v002-manual-publish-packet --all`
+
+Readback:
+
+```json
+{
+  "status": "short-v002-manual-publish-packet-ready",
+  "items": 2,
+  "readyForManualReview": 2,
+  "needsAttention": 0,
+  "missingCandidateMedia": 0,
+  "missingCaptionDraft": 0,
+  "approvalRecorded": false,
+  "externalPublishing": false,
+  "receiptTruthCreated": false,
+  "sourceFilesMutated": false,
+  "versionsOverwritten": false
+}
+```
+
+Truth boundary: this is local manual-publishing preparation only. It is not approval, upload, scheduling, platform publication, external account mutation, or receipt truth.
+
+## 2026-07-03 - Manual-publishing readback for short v002 candidates
+
+Added an agent-facing readback command for the short v002 manual-publishing packet. The readback resolves the latest pointer, checks candidate media, draft SRT/VTT captions, candidate transcript evidence, required platform copy blocks, approval state, publication state, and false publication/receipt flags.
+
+Validation:
+- `python3 -m py_compile script/studio_short_v002_manual_publish_readback.py script/studio_short_v002_manual_publish_packet.py`
+- `./script/agentctl.sh studio-short-v002-manual-publish-readback --json`
+
+Readback:
+
+```json
+{
+  "status": "manual-publish-readback-ready",
+  "items": 2,
+  "readyForWatchListen": 2,
+  "needsAttention": 0,
+  "falsePublicationFlags": [],
+  "platforms": ["facebookReels", "instagramReels", "linkedin", "youtubeShorts"],
+  "publicationState": "not-uploaded-not-scheduled-not-published"
+}
+```
+
+Truth boundary: the readback is a verification surface over local manual-publishing prep. It does not approve, upload, schedule, publish, mutate source media, overwrite exports, mutate accounts, or create receipt truth.
+
+## 2026-07-03 - Long-form episode package readback
+
+Repaired the `agentctl.sh release-package-validation` route so it uses the live validator under `script/experimental/validate_release_packages.py`, then added `studio-episode-package-readback` as a concise cockpit over the current release review board and validation report.
+
+Validation:
+- `python3 -m py_compile script/studio_episode_package_readback.py script/experimental/validate_release_packages.py`
+- `./script/agentctl.sh release-package-validation`
+- `./script/agentctl.sh studio-episode-package-readback --json`
+
+Readback:
+
+```json
+{
+  "status": "episode-package-readback-ready",
+  "episodes": 6,
+  "readyForWatchListen": 4,
+  "readyForWatchListenWithWarnings": 2,
+  "needsAttention": 0,
+  "falsePublicationFlags": [],
+  "noReceiptsClaimed": true,
+  "warningEpisodes": [1, 4]
+}
+```
+
+Package interpretation:
+- Episodes 2, 3, 5, and 6 are current watch/listen candidates with no package blockers in the latest validation.
+- Episode 1 is current watch/listen with a documented long-form/audio duration spread warning.
+- Episode 4 is current watch/listen with a documented large podcast-audio duration spread warning while source-clip uncertainty remains outside this package readback.
+
+Truth boundary: readback and validation are local package evidence only. They do not approve, export, upload, schedule, publish, mutate source media, overwrite versions, mutate accounts, or create receipt truth.
+
+## 2026-07-03 - Duration-warning readback and sync route repair
+
+Added `studio-duration-warning-readback` as a concise front door over existing duration warning evidence. The readback does not create exports or publication truth; it classifies warning episodes and points to the safest current evidence.
+
+Also repaired duration/sync command drift in `script/agentctl.sh` by routing the duration-warning command cluster and `studio-sync-investigation` through `script_path`, so live builders under `script/experimental/` remain reachable from stable agent/human commands.
+
+Fixed the Episode 4 sync investigation builder to understand the current package manifest shape (`video[]` and `audio[]`) in addition to the older `artifacts.*` shape. Regenerated Episode 4 sync investigation evidence with 5 comparison points, 8 snippets, and 0 snippet errors.
+
+Validation:
+- `bash -n script/agentctl.sh`
+- `python3 -m py_compile script/studio_duration_warning_readback.py script/experimental/build_studio_sync_investigation_packet.py`
+- `python3 -m py_compile script/experimental/build_studio_duration_repair_workorders.py script/experimental/build_studio_duration_repair_queue.py script/experimental/build_studio_duration_decision_sheet.py script/experimental/build_duration_warning_review_packet.py script/experimental/build_studio_duration_candidate_review.py script/experimental/build_studio_duration_candidate_promotion_plan.py script/experimental/build_studio_duration_candidate_decision_rehearsal.py script/experimental/build_studio_sync_investigation_packet.py`
+- `./script/agentctl.sh studio-duration-repair-workorders`
+- `./script/agentctl.sh studio-sync-investigation 4`
+- `./script/agentctl.sh studio-duration-warning-readback --json --write`
+
+Current readback:
+- Status: `duration-warning-readback-ready`
+- Warning episodes: `2`
+- Evidence available: `2`
+- Evidence missing: `0`
+- Episode 1: `candidate-review-first`, spread `2:09`, current evidence is v004 duration candidate review.
+- Episode 4: `sync-investigation-first`, spread `33:44`, current evidence is regenerated sync investigation.
+- False safety flags: none.
+- Receipt truth created: false.
+- Source files mutated: false.
+- Versions overwritten: false.
+
+Latest readback packet:
+- JSON: `/Volumes/My Passport/Episode_and_Shorts_Test/review-board/duration-warning-readback/20260703-210215-duration-warning-readback/duration-warning-readback.json`
+- Markdown: `/Volumes/My Passport/Episode_and_Shorts_Test/review-board/duration-warning-readback/20260703-210215-duration-warning-readback/START-HERE-duration-warning-readback.md`
+
+Next safest action: review Episode 1 v004 duration candidate evidence first, then Episode 4 sync investigation snippets/worksheet before any promotion, rebuild, upload, schedule, publication, or receipt claim.
+
+## 2026-07-03 - Shorts refinement queue now carries edit-craft questions
+
+Strengthened `script/studio_shorts_cut_quality_refinement_queue.py` so ranked short candidates now include explicit edit-craft focus, craft stance, source-safe decision model, editor questions, and agent instructions. The queue now asks about hook, cadence, J/L cuts, jump-cut cover, reaction beats, caption/framing safety, and platform fit instead of only ranking files by readiness.
+
+Validation:
+- `python3 -m py_compile script/studio_shorts_cut_quality_refinement_queue.py`
+- `./script/agentctl.sh studio-shorts-cut-quality-refinement-queue --limit 5 --json`
+- `./script/agentctl.sh studio-shorts-cut-quality-polish-workorder --short-id episode-5-short-01 --json`
+
+Current refinement readback:
+- Status: queue generated successfully.
+- Items returned: `5`
+- Lanes: `1 polish-first`, `4 review-then-polish`
+- Top candidate: `episode-5-short-01`, Episode 5, `polish-first`
+- Craft focus: `caption-timing`, `platform-polish`
+- Top workorder generated: `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/cut-quality-polish-workorders/episode-5-short-01/20260703T211130Z-episode-5-short-01-polish-workorder/episode-5-short-01-polish-workorder.html`
+- Workorder tasks include hook, crop/framing, caption safe zone, cadence, audio feel, J/L cut context, and ending payoff review.
+
+Truth boundary: this is local review/refinement evidence only. It records no review decision, edits no timeline, exports no media, uploads nothing, publishes nothing, mutates no source media, overwrites no versions, and creates no approval or receipt truth.
+
+Next safest action: open the Episode 5 Short 01 review packet and polish workorder side by side, watch/listen once, then record only specific notes that remain true after review.
+
+## 2026-07-03 - Shorts refinement queue now links to review-note and evidence path
+
+Strengthened `script/studio_shorts_cut_quality_refinement_queue.py` so each ranked short now carries the safe command chain from recommendation to durable review intent:
+
+- open the review packet
+- generate a polish workorder
+- preview suggested polish notes
+- index worksheets
+- preview an evidence draft
+- record hook/cadence/caption note templates after watch/listen evidence exists
+
+This keeps the pipeline honest: recommendations become reviewable metadata, but the queue does not record notes or decisions by itself.
+
+Validation:
+- `python3 -m py_compile script/studio_shorts_cut_quality_refinement_queue.py`
+- `./script/agentctl.sh studio-shorts-cut-quality-refinement-queue --limit 3 --json`
+- `./script/agentctl.sh studio-shorts-cut-quality-polish-note-preview --short-id episode-5-short-01 --json`
+- `./script/agentctl.sh studio-shorts-cut-quality-evidence-preview --short-id episode-5-short-01 --outcome refine`
+
+Current readback:
+- Top candidate remains `episode-5-short-01`, Episode 5, lane `polish-first`, score `94`.
+- Safe commands are now present in the queue for polish workorder, polish note preview, worksheet indexing, evidence preview, and note templates.
+- Polish note preview generated `7` suggested note commands and recorded `0` notes / `0` decisions.
+- Evidence preview for `episode-5-short-01` is `ready-for-evidence-draft` with `5` existing review-evidence notes.
+
+Truth boundary: this is local review/evidence routing only. It records no new review decision, edits no timeline, exports no media, uploads nothing, publishes nothing, mutates no source media, overwrites no exports, and creates no approval or receipt truth.
+
+Next safest action: use the Episode 5 Short 01 evidence preview to draft or refine a local evidence packet, then decide whether the short should be kept, refined, held, or rejected before any manual platform publishing prep.
+
+## 2026-07-03 - Shorts refinement queue surfaced in the native workbench
+
+Added a visible Shorts workbench bridge from the local cut-quality refinement queue to the native app. The panel reads `/Volumes/My Passport/Episode_and_Shorts_Test/shorts-command-room/cut-quality-refinement-queue/quipsly-studio-shorts-cut-quality-refinement-queue.json`, shows the top refinement targets, exposes craft focus and editor questions, and gives safe copy/open actions for review packet, polish workorder, polish-note preview, evidence preview, and note-template commands.
+
+Also corrected `docs/coordination/active-source-map.md` so the validation ladder no longer advertises a nonexistent `apps/QuipslyStudio/Package.swift`. Current Studio build truth is the Xcode project plus `apps/QuipslyStudio/script/build_and_run.sh`.
+
+Validation:
+- `bash -n script/agentctl.sh`
+- `python3 -m py_compile script/studio_shorts_cut_quality_refinement_queue.py script/studio_duration_warning_readback.py`
+- `./script/build_and_run.sh --verify` reached app launch with existing Swift warnings, then correctly failed because macOS displayed a Quipsly folder permission prompt.
+- Accepted the macOS prompt.
+- `./script/build_and_run.sh --no-build` exited successfully.
+- `./script/agentctl.sh active-source-map --json` returned `status=ok`, `activeProductSurface=apps/QuipslyStudio`.
+- `./script/agentctl.sh state` returned a live AgentServer state for `episode-2-native-proof`.
+- `./script/agentctl.sh studio-shorts-cut-quality-refinement-queue --limit 3 --json` returned schema `quipsly.studio.shorts-cut-quality-refinement-queue.v1`, `3` items, top `episode-5-short-01`, focus `caption-timing,platform-polish`.
+
+Truth boundary: the new panel is evidence routing only. It does not mutate session recipes, media, timeline decisions, exports, approvals, uploads, publications, or receipt state. The active loaded session was `episode-2-native-proof` with no short queue at validation time, so session-specific short cards still depend on loading a working episode session.
+
+Next safest action: load an episode session with short recipes, visually confirm the new refinement panel sits calmly in the Shorts workbench, then decide whether to extract the large Shorts workbench into smaller files before adding more UI.
+
+## 2026-07-03 - Shorts refinement panel extracted from WorkspaceView
+
+Moved the Shorts refinement queue UI and local queue parsing model out of `WorkspaceView.swift` into `Sources/SharedUI/ShortsRefinementQueuePanel.swift`. `WorkspaceView` now composes the panel and passes the existing open/copy receipt closures, so side effects remain in the app shell while the refinement UI owns its display logic.
+
+Also added `ShortsRefinementQueuePanel.swift` to `docs/coordination/active-source-map.md` as an intentional live UI file. This is a deliberate extraction, not a new architecture branch.
+
+Validation:
+- `project.yml` confirms the `QuipslyMac` target includes `Sources/SharedUI` and targets macOS `26.0`.
+- `./script/build_and_run.sh --verify` compiled through the real Xcode project with existing Swift warnings, then correctly failed at launch because macOS showed a Quipsly permission prompt.
+- Accepted the macOS permission prompt.
+- `./script/build_and_run.sh --no-build` exited successfully.
+- `./script/agentctl.sh active-source-map --json` returned `status=ok`, `activeProductSurface=apps/QuipslyStudio`.
+- `./script/agentctl.sh state` returned live AgentServer state for `episode-2-native-proof` with `autosaveStatus=Autosave ready`.
+- `./script/agentctl.sh studio-shorts-cut-quality-refinement-queue --limit 3 --json` returned schema `quipsly.studio.shorts-cut-quality-refinement-queue.v1`, `3` items, top `episode-5-short-01`.
+
+Truth boundary: this refactor changes UI structure only. It does not change saved sessions, short recipes, timelines, exports, approvals, uploads, publications, receipts, or source media. The repeated macOS permission prompt remains an operational launch friction to handle through explicit media-root access, not a reason to weaken validation.
+
+Next safest action: continue extracting the Shorts workbench into named panels only when each extraction has a product reason, then load a session with real short recipes and visually verify the panel placement.
+
+## 2026-07-03 - Refinement queue made session-aware without hiding global work
+
+- Changed the native Shorts refinement queue panel to accept the active session name from `WorkspaceView`.
+- The panel now prefers current-episode queue targets when they exist and clearly labels when it is showing global next-best targets instead.
+- Product reason: global craft queues are useful, but an Episode 1 workbench silently showing Episode 5 targets creates false local context. This keeps the source map as a map, not a prison: context is explicit, and cross-episode work stays available.
+- Truth boundary: this is evidence-routing UI only. It does not edit, export, approve, upload, publish, or mutate source media.
+
+## 2026-07-03 - Selected-short review brief added for agent/human clarity
+
+- Added `script/shorts_review_brief.py` and wired `script/agentctl.sh shorts-review-brief`.
+- The command condenses live editor state, selected-short quality, review blockers, refinement-queue scope, and safe commands into JSON or Markdown.
+- Validated against the running Episode 1 session: selected short `Record From Anywhere`, 45.0s, exported, ready for human review, missing native platform variants, and global refinement queue scope clearly labeled.
+- Product reason: Codex and humans need a small truthful cockpit card before working a short. This avoids scraping giant queue summaries or trusting visual state alone.
+- Truth boundary: read-only current-short review brief. It does not edit, approve, export, upload, publish, or mutate source media.
+
+## 2026-07-03 - Selected-short platform packet generator added
+
+- Added `script/selected_short_platform_packet.py` and wired `script/agentctl.sh selected-short-platform-packet`.
+- The command creates a versioned, metadata-only platform packet for the selected short with drafts for YouTube Shorts, Instagram Reels, Facebook Reels, LinkedIn, Patreon teaser, HighGroundOdyssey.com, and podcast companion notes.
+- Validated against Episode 1 selected short `Record From Anywhere`; wrote 7 platform variants to `/Volumes/My Passport/Quipsly/QuipslyExports/PlatformPackets/episode-1-codex-real-edit-v1-youtube-wordtimed/20260703T234327Z-record-from-anywhere/`.
+- Product reason: selected shorts can have rendered proof while still lacking platform-native packet prep. The command fills that middle state without pretending anything is published.
+- Truth boundary: metadata-only local sidecar. It does not approve, schedule, upload, publish, create receipt truth, or mutate source media/session recipes.
+
+## 2026-07-03 - Selected-short brief rendered in the Shorts workbench
+
+- Added `Sources/SharedUI/ShortsReviewBriefPanel.swift` and mounted it above the refinement queue in `WorkspaceView`.
+- The panel reads the running editor's `/selected_short_quality` endpoint and displays selected short title, duration, review/export state, next review action, blockers, and safe commands.
+- Validated by building through `script/build_and_run.sh --verify`; Xcode accepted the panel, then macOS required the usual removable-media permission prompt. After granting, `script/build_and_run.sh --no-build` relaunched cleanly.
+- Live readback after loading Episode 1 confirmed selected short `Test Short - Wednesday Rule moment`, 8.13s, `needs-captions`, `exported`, and `Promising review candidate`.
+- Product reason: the same calm truth available to Codex via `shorts-review-brief` should be visible to humans in the editor. This reduces the terminal-only gap and helps reviewers know what to do next without NLE expertise.
+- Truth boundary: the panel reads state only. It does not edit, approve, export, upload, publish, create receipts, or mutate source media.
+
+## 2026-07-03 - Proof-based short selection command added
+
+- Added `script/shorts_select_wait.py` and wired `script/agentctl.sh shorts-select-wait`.
+- The command selects by id/title/index, then waits for `/selected_short_quality` to prove the selected short changed. This avoids treating a queued HTTP receipt or projection payload as final editor truth.
+- Validated against Episode 1 by selecting index 2, which proved `Farm Work Teaches Stewardship`, 22.64s, `ready-for-human-review`, `exported`, and `scheduled_for_editor_main_actor` receipt state.
+- Follow-up `script/agentctl.sh shorts-review-brief --json` then reported `Farm Work Teaches Stewardship`, proving the brief follows the selected quality endpoint when commands are sequenced.
+- Generated a metadata-only platform packet for `Farm Work Teaches Stewardship` at `/Volumes/My Passport/Quipsly/QuipslyExports/PlatformPackets/episode-1-codex-real-edit-v1-youtube-wordtimed/20260704T002021Z-farm-work-teaches-stewardship/`.
+- Product reason: Codex needs a reliable way to move through shorts as an editor, not just observe them. Selection proof is a control-plane primitive for human/agent editing loops.
+- Truth boundary: selecting and packet generation do not edit, approve, upload, publish, create receipts, or mutate source media.
+
+## 2026-07-03 - Batch platform packet prep added for active-session shorts
+
+- Added `script/shorts_platform_packet_batch.py` and wired `script/agentctl.sh shorts-platform-packet-batch`.
+- Initial design attempted repeated selected-short proof inside one batch loop, but the live UI command loop did not reliably switch from short 1 to short 2 in-process. The durable split is now explicit:
+  - `shorts-select-wait` is the proof-based interactive selection path.
+  - `shorts-platform-packet-batch` is a metadata sidecar batch path built from the running editor's `/shorts_queue` rows.
+- Validated dry-run on Episode 1 shorts 1-3: all 3 packet-ready, 0 blocked, 7 platform variants each.
+- Wrote a real metadata-only batch to `/Volumes/My Passport/Quipsly/QuipslyExports/PlatformPacketBatches/episode-1-codex-real-edit-v1-youtube-wordtimed/20260704T004809Z-platform-packet-batch/`.
+- Batch manifest: `/Volumes/My Passport/Quipsly/QuipslyExports/PlatformPacketBatches/episode-1-codex-real-edit-v1-youtube-wordtimed/20260704T004809Z-platform-packet-batch/platform-packet-batch-manifest.json`.
+- Product reason: platform prep needs a conveyor belt. Rendering/export proof, platform metadata prep, human approval, and publication receipts stay separate states.
+- Truth boundary: metadata-only queue sidecars. No edit, export approval, upload, publication, receipt, or source-media mutation.
+
+## 2026-07-03 - Queue-level shorts quality board added
+
+- Added `script/shorts_queue_quality_board.py` and wired `script/agentctl.sh shorts-queue-quality-board`.
+- Purpose: agents and humans need a calm queue-level read before selecting one short. The board ranks active `/shorts_queue` items using evidence already in the session: export proof, hook/caption metadata, platform variants, transcript context, cut-risk signals, duration, segment count, and review status.
+- Product reason: this avoids poking one selected-short card at a time and makes the next review/refinement move visible without inventing fake publication readiness.
+- Truth boundary: read-only queue projection. It does not select shorts, edit recipes, export, approve, upload, publish, create receipts, or mutate source media.
+
+## 2026-07-03 - Shorts review queue packet added
+
+- Added `script/shorts_review_queue_packet.py` and wired `script/agentctl.sh shorts-review-queue-packet`.
+- Purpose: the quality board is evidence; the review queue packet is an actionable handoff. It groups queue items into `watchFirst`, `refineNext`, `needsExportProof`, and `holdOrReject` lanes with exact proof commands.
+- Product reason: Mako, Charlie, and Codex should be able to open one stable packet and know what to watch first without needing NLE knowledge or fragile UI selection.
+- Truth boundary: local sidecar reviewer routing only. It does not select shorts, edit recipes, export, approve, upload, publish, create receipts, or mutate source media.
+
+## 2026-07-03 - Receipt-safe selected-short decision packet added
+
+- Added `script/shorts_review_decision_packet.py` and wired `script/agentctl.sh shorts-review-decision-packet`.
+- Purpose: before applying Keep/Refine/Reject/Hold, agents and humans can save the proposed decision, notes, selected-short evidence, checklist, cut-intelligence evidence, and the exact separate command that would apply the decision.
+- Product reason: review decisions should be inspectable and reversible as metadata, but they must not blur into export proof or publication receipts.
+- Truth boundary: packet-only by default. It does not apply the decision, edit recipes, export, approve, upload, publish, create receipts, or mutate source media.
+
+## 2026-07-03 - Transcript-aware queue review evidence added
+
+- Extended `script/shorts_queue_quality_board.py` and `script/shorts_review_queue_packet.py` to carry hook text, caption/overlay text, transcript excerpt, speakers, transcript segment count, platform variant count, export proof, and cut-risk signals into queue-level review outputs.
+- Purpose: reviewers should understand what a short is actually saying before opening the editor or applying Keep/Refine/Reject.
+- Product reason: transcript-visible evidence moves review toward meaning, speaker flow, and cadence instead of timestamp-only inspection.
+- Truth boundary: read-only projections from existing `/shorts_queue` evidence. No transcript source truth is rewritten, no short recipe is edited, no export or publication state changes.
+
+## 2026-07-03 - Shorts transcript confidence board added
+
+- Added `script/shorts_transcript_confidence_board.py` and wired `script/agentctl.sh shorts-transcript-confidence-board`.
+- Purpose: now that queue review surfaces show transcript excerpts, reviewers also need to know when those excerpts are too rough, duplicated, speaker-uncertain, or missing to support caption/quote/cadence confidence.
+- Product reason: transcript evidence should help us edit by meaning without turning ASR artifacts into fake certainty.
+- Truth boundary: read-only confidence layer over current `/shorts_queue` transcript context. It does not run ASR, normalize transcript text, approve captions, edit recipes, export, upload, publish, create receipts, or mutate source media.
+
+### 2026-07-03 - Native transcript confidence panel added
+
+Added a read-only Shorts sidebar panel that reads the local `/shorts_queue` endpoint and summarizes transcript evidence confidence: usable context, use-with-caution, needs transcript review, and missing transcript. The panel exposes safe CLI follow-ups for the transcript confidence board and transcript workorders, and repeats the product truth that transcript excerpts are evidence, not caption or quote truth until proof-listened.
+
+Validation: compile-only Xcode build passed with `DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -quiet -project apps/QuipslyStudio/QuipslyStudio.xcodeproj -scheme QuipslyMac -configuration Debug -derivedDataPath apps/QuipslyStudio/DerivedData build`. Full `script/build_and_run.sh --verify` reached app launch but was blocked by a macOS folder permission prompt, so this is compile proof, not launch proof.
+
+## Source-map discipline update
+
+Clarified the operating rule for Quipsly Studio structure: paths are allowed to evolve, but changes must be deliberate and evidence-backed. Added/updated `docs/quipsly/quipslystudio-source-map.md` so future agents know the active Studio surface, build path, agent-control path, UI folder, core edit folder, and stale-path protocol.
+
+Validation note: the earlier macOS permission-prompt failure was not reproduced on the follow-up canonical verify. `./script/build_and_run.sh --verify` passed after the transient/stale prompt cleared, so do not treat that prompt as a current blocker unless it appears again in a live verify.
+
+## Agent playhead truth upgrade
+
+Added playhead-level decision truth to each source lane inventory item and surfaced a new `programAtPlayhead` section through `/agent_playhead_context`. The goal is to make the current edit moment explainable without visually decoding the whole timeline: whether Program Output is showing a source, sitting in a SKIP gap, looking at ready-but-quiet sources, or blocked/out of range.
+
+Updated `script/agentctl.sh playhead-context-markdown` and `playhead-context-save` output so the readable playhead packet now includes viewer-facing Play Edit vs Play Through behavior. This preserves Quipsly Studio's core model: whole synced sources remain intact; SHOW/SKIP decisions are transparent metadata over the shared playhead.
+
+Files touched:
+- `Sources/SharedUI/WorkspaceView.swift`
+- `Sources/SharedUI/AgentServer.swift`
+- `script/agentctl.sh`
+
+Validation note: not built in this pass. This is an additive state/readback improvement and should be verified with the next app build or `./script/build_and_run.sh --verify` before calling it live-proven.
+
+## Agent playhead truth verification
+
+Canonical app verification passed after a transient/stale UserNotificationCenter permission prompt cleared on rerun:
+
+- `./script/build_and_run.sh --verify` passed.
+- Loaded `episode-1-codex-real-edit-v1-youtube-wordtimed` with `script/agentctl.sh load-session-wait`.
+- `script/agentctl.sh playhead-context` returned `programAtPlayhead.status = showing`.
+- At sequence time `0s`, the live readback reported Charlie Camera as `SHOW` and Homer Camera as `SKIP`, both proxy-ready, proving the new lane-level playhead decision truth is observable through the agent endpoint.
+- `script/agentctl.sh playhead-context-markdown` now prints the current decision label for each ready present source (`now SHOW`, `now SKIP`, etc.).
+
+This is still read-only review/control-plane truth. It does not mutate media, overwrite exports, or publish anything.
+
+## 2026-07-03 - Human playhead truth panel
+
+- Added a `programMomentTruthPanel` to the Program Hearth summary so humans can see the same playhead truth the agent state now reports: SHOW now, SKIP now, quiet-but-present sources, and blocked source decisions.
+- The panel is intentionally mounted beside `currentProgramState()` instead of creating a second model. One playhead truth should serve the app UI, agent driver, and review workflow.
+- Build status: not rebuilt after this UI-only patch in this pass. The prior agent playhead truth endpoint build had passed; this visual panel still needs the next normal app validation before calling it proven in the running app.
+
+## 2026-07-03 - Stable local signing and state playhead truth
+
+- Promoted the app from ad-hoc debug signing to stable Apple Development signing in `project.yml` using Team ID `585GUXMY5M` and the local `Apple Development: Charles Sparrow` identity.
+- Evidence: `codesign -dvvv DerivedData/Build/Products/Debug/QuipslyMac.app` now reports `Authority=Apple Development: Charles Sparrow (H43845JC67)` and `TeamIdentifier=585GUXMY5M` instead of `Signature=adhoc`.
+- Rebuilt twice through `./script/build_and_run.sh --verify`; after granting the first removable-volume prompt under the stable identity, the second verify passed without another removable-volume prompt.
+- Added `programAtPlayhead` and `sourceWall` to the main `/state` payload so agents do not need a special endpoint for basic SHOW/SKIP/playhead truth.
+- Episode 1 proof readback after reload: 5 lanes, 13 short recipes, Play Edit at 0.0s, Program is showing Charlie, Homer is SKIP, whole sources stay intact.
+
+## 2026-07-03 - Source Wall state naming and present-source truth
+
+- Fixed `/state.sourceWall.readyPresentSources` so source names are populated from the lane display-name fallback ladder instead of showing blank names.
+- Split present source truth from all source truth:
+  - `readyPresentSources` now excludes out-of-range source lanes.
+  - `allSourceSummaries` preserves out-of-range/recovery context for inspection without calling it present.
+  - Added `presentVideoSourceCount` and `readyPresentVideoSourceCount` to the Source Wall state mirror.
+- Verified through `./script/build_and_run.sh --verify`; stable Apple Development signing held and no removable-volume permission prompt reappeared.
+- Episode 1 proof readback after reload: `videoSourceCount=3`, `presentVideoSourceCount=2`, `readyPresentVideoSourceCount=2`, `showingSourceCount=1`, `skippedSourceCount=1`, `blockedPresentSourceCount=0`.
+- Readback names: Charlie Camera is SHOW, Homer Camera is SKIP, Reference Clip is OUT_OF_RANGE in `allSourceSummaries` only.
+
+## 2026-07-04 - Selected-decision state and guidance contract
+
+- Added a first-class `selectedDecision` payload to Quipsly Studio agent state so UI, CLI, and future training-data paths agree on the selected cut identity, lane, source/sequence boundaries, plain-English meaning, and safe commands.
+- Updated `selected_decision_state_contract_check.py` to recognize the live selected-decision schema (`selectedSequenceStart`, `selectedSequenceEnd`, `selectedTagType`) instead of reporting fake boundary uncertainty against current state.
+- Strengthened `selected_decision_human_cut_guidance.py` so it derives a useful human editing card from Cut Intelligence when the app-native guidance endpoint is thin. The card now reports cadence risk, do-not-cut signals, tighten-if guidance, and an agent rule instead of `no guidance reported`.
+- Proof: `./script/build_and_run.sh --verify` succeeded with only existing macOS `onChange` deprecation warnings. Episode 1 loaded through `./script/agentctl.sh load-session-wait episode-1-codex-real-edit-v1-youtube-wordtimed 45`. `selected-decision-state-contract-check --markdown` reported `contract-ok`, matching decision ID `8C722955-8FAD-4E5A-A0F3-D6356C114997` and boundary `0->42` across state, intent evidence, and Cut Intelligence. `selected-decision-human-cut-guidance --markdown` reported `ready` with cadence-sensitive guidance.
+- Product note: repo and schema maps are guides, not cages. When code paths drift, update the map or migrate the code intentionally; do not follow stale paths or preserve old dialects just because they exist.
+
+## 2026-07-04 - Agent select-decision now waits for state proof
+
+- Changed `script/agentctl.sh select-decision` from raw command acceptance to command-plus-proof: it now calls `/select_decision`, polls `/state`, and returns `selected_decision_ready` only after the selected decision identity is visible in state.
+- Added `script/agentctl.sh select-decision-nowait` for low-level endpoint debugging when raw command acceptance is intentionally needed.
+- Proof: `script/agentctl.sh select-decision at_playhead video` returned selected tag `8C722955-8FAD-4E5A-A0F3-D6356C114997`, lane `96C2D842-7E32-43B9-AB49-0D1185436E4D`, and `selectedDecision.plainEnglish` for the 0.00s -> 42.00s SHOW decision. Immediate `selected-decision-state-contract-check --markdown` reported `contract-ok`, and `selected-decision-human-cut-guidance --markdown` reported `ready` with cadence-sensitive guidance.
+- Product note: `/select_decision` returning `select_decision_commanded` is command acceptance, not state proof. Agent-facing commands should default to proof where practical; raw endpoint wrappers should be named as such.
+
+## 2026-07-04 - Selected-decision review commands return state proof
+
+- Changed `decision-intent-note`, `decision-intent-status`, and the shortcut review commands (`decision-listen`, `decision-refine`, `decision-keep`, `decision-hold`) from queue-receipt-only behavior to command-plus-proof behavior.
+- Added `wait_selected_decision_review_update`, which polls `/state` until the selected decision shows the expected review status and/or note evidence. This keeps agent editing steps from chaining off an HTTP acknowledgement that has not actually reached the mounted editor loop.
+- Proof: `decision-intent-note "Agent proof command now returns ledger evidence..." Codex agent-control 0.56` returned `selected_decision_review_update_ready` with `reviewLedgerCount: 4`. `decision-intent-status needs-listen Codex "Second proof check..."` returned `selected_decision_review_update_ready`, `matchedStatus: needs-listen`, `matchedNote: true`, and `reviewLedgerCount: 5`. `selected-decision-state-contract-check --markdown` still reported `contract-ok` with matching ID and boundary across state, intent evidence, and Cut Intelligence.
+- Product note: This is a production-editor control improvement, not just a CLI nicety. Codex can now mark a selected cut for listen/refine/hold/keep and get immediate state evidence that the review ledger captured the decision.
+
+### 2026-07-04 - Selected-short platform draft truth aligned across app, CLI, and markdown helpers
+
+- Repaired the selected-short platform packet path so `ShortClipCandidate.destinationPresets` is treated as the canonical in-session platform draft metadata for shorts.
+- Exposed those destination presets as `platformVariants` in `/state.selectedShortClip` and `/selected_short_quality` so older agent/report surfaces do not keep looking for a phantom parallel store.
+- Split `platformDraftSummary` from `platformTargetSummary`: draft readiness answers whether platform copy exists; target readiness remains a publication/Tower handoff state and can stay blocked while a short is still marked `refine`.
+- Updated `script/agentctl.sh shorts-quality-action draft-platform-pack` to wait for `/selected_short_quality.platformVariants`, `/selected_short_quality.platformDraftSummary`, and `/selected_short_production_brief.recommendedAction` proof instead of trusting the first HTTP receipt.
+- Updated `script/selected_short_production_brief.py` so the markdown brief agrees with the live app: `Don't Downplay Yourself` now reports platform drafts `7/7`, platform targets `0/8`, and next action `resolve-refinement`.
+- Validation: `./script/build_and_run.sh --verify` passed with existing macOS `onChange` warnings only; `script/agentctl.sh shorts-quality-action draft-platform-pack` returned `selected_short_platform_pack_ready` with `platformDraftReady: 7/7`, `platformHandoffReady: 0/8`, and no publication/upload/receipt side effects.
+
+### 2026-07-04 - Selected-short readback contract repaired after platform draft alignment
+
+- Tightened the selected-short agent flow so `/shorts_queue_select` updates the same agent-visible selected-short read model that `/selected_short_quality` reads. The command receipt is no longer the only place that knows the projected selection.
+- Changed selected-short cut-risk checklist language from `unknown` to `clear` when Cut Intelligence has no overlapping warnings. This preserves the safety review path without creating false anxiety.
+- Reconfirmed platform metadata boundaries: `platformDraftSummary` tracks drafted platform copy (`7/7` for the tested short), while `platformTargetSummary` tracks Tower/publication handoff readiness (`0/8` until human review and receipt work are done).
+- Validation:
+  - `./script/build_and_run.sh --verify` passed.
+  - `./script/agentctl.sh load-session-wait episode-1-codex-real-edit-v1-youtube-wordtimed 45` returned `active_session_ready`, `laneCount: 5`, `shortCount: 13`.
+  - `./script/agentctl.sh shorts-select id 50F4E987-F34E-4DBA-976A-42C80055DFB9` returned `selected_short_ready` with truth proved by `/selected_short_quality`.
+  - `/selected_short_quality` for `Don't Downplay Yourself` returned `reviewStatus: refine`, `platformDraftSummary: 7/7`, `platformTargetSummary: 0/8`, `recommended-review-mode: listen-through-pass`, and `cut-risk: clear`.
+  - `./script/agentctl.sh selected-short-human-review-guidance --markdown` returned `Review read: human-final-pass`.
+
+Implementation note: architecture/source-map docs are maps, not cages. Changing paths or models is allowed when product truth demands it, but the reason, blast radius, source of truth, and validation proof should be made explicit so future agents do not follow stale breadcrumbs or rabbit holes.
+
+### 2026-07-04 - Selected-short review packet made reviewer-safe after proof endpoint repair
+
+- Strengthened `script/selected_short_review_brief.py` so the selected-short brief composes `/selected_short_quality`, `/selected_short_production_brief`, and `/selected_short_human_review_guidance` instead of forcing reviewers or agents to jump between fragmented surfaces.
+- Added fallback selected-short fields from `/selected_short_quality` so the brief still works when the selected short is represented by the proof endpoint rather than a nested `selectedShort` object.
+- Fixed human guidance rendering by unwrapping the app-native `humanReviewGuidance` envelope.
+- Fixed boolean count display so platform handoff readiness renders as `0/8`, not `False/8`.
+- Fixed selected-short contract checking so it recognizes nested `selectedShort.id` and `recommendedAction.nextCommand`.
+- Updated the app safe-command copy to say `recommendedAction.nextCommand`, matching the current contract.
+- Validation:
+  - `python3 -m py_compile script/selected_short_review_brief.py script/selected_short_state_contract_check.py script/selected_short_production_brief.py` passed.
+  - `./script/build_and_run.sh --verify` passed after the Swift safe-command copy fix.
+  - `./script/agentctl.sh load-session-wait episode-1-codex-real-edit-v1-youtube-wordtimed 45` and `./script/agentctl.sh shorts-select id 50F4E987-F34E-4DBA-976A-42C80055DFB9` restored the proof lane after relaunch.
+  - `./script/agentctl.sh selected-short-state-contract-check --markdown` returned `contract-ok` across `/state`, `/selected_short_quality`, and `/selected_short_production_brief` for `Don't Downplay Yourself`.
+  - `./script/agentctl.sh selected-short-review-brief --markdown` now shows `Resolve refinement`, platform drafts `7/7`, handoff targets `0/8`, review read `human-final-pass`, recipe structure `single-continuous-pull`, and cut-risk `clear`.
+
+Product note: this is not publication approval. It is a calmer review runway that tells a human or agent what to watch, why the short is still marked Refine, and which proof/readback surface is authoritative.
+
+### 2026-07-04 - Episode 1 shorts priority board now routes review work to detailed packets
+
+- Strengthened `script/shorts_review_priority_board.py` so the queue-level board shows more than priority labels. Each short card now exposes story-contract readiness, cut-flow risk state, platform draft readiness, platform/Tower handoff readiness, and exact commands for the detailed selected-short review packet and selected-short contract check.
+- Kept the existing board as the queue-level source instead of adding a competing review brain. The selected-short review packet remains the detailed per-short surface.
+- Generated `docs/quipsly/current-state/episode-1-shorts-review-priority-board.md` from the running app queue/state. It now shows 13 Episode 1 shorts with review-class counts, blocker counts, and per-short commands.
+- Proved the top-priority card path by selecting `Episode 1 Review Candidate 03 - 26:13` (`D9526D0B-311E-46D4-B127-824D713EA2F2`), then running the selected-short contract check and review brief.
+- Validation:
+  - `python3 -m py_compile script/shorts_review_priority_board.py` passed.
+  - `./script/agentctl.sh shorts-review-priority-board docs/quipsly/current-state episode-1-shorts-review-priority-board --md` generated the board.
+  - Board content contains `Story contract:`, `Cut flow:`, `Platform drafts:`, `Platform handoff:`, and `selected-short-review-brief` commands.
+  - `./script/agentctl.sh selected-short-state-contract-check --markdown` returned `contract-ok` for the top-priority short.
+  - `./script/agentctl.sh selected-short-review-brief --markdown` for the top-priority short showed `Repair story contract`, `hook-pass`, story contract `1/6`, platform drafts `6/7`, handoff targets `0/7`, cut-risk `review`, and export proof present.
+
+Product note: the board is now a calmer episode-shorts triage runway. It tells a reviewer which short to inspect next, what kind of work it needs, and how to open the exact proof packet without understanding the internal NLE/editor model.
+
+### 2026-07-04 - Selected-short story repair suggestions added for weak shorts
+
+- Added `script/selected_short_story_repair_suggestions.py`, a read-only selected-short helper that turns weak hook-turn-payoff contracts into concrete proof-watch questions and metadata-only hook/caption/overlay suggestion commands.
+- Wired the helper into `script/agentctl.sh` as `selected-short-story-repair` / `short-story-repair`.
+- Added per-card story repair commands to `script/shorts_review_priority_board.py`, so queue-level short triage can route from a weak short directly to a detailed repair packet.
+- The helper is deliberately honest when transcript context is unavailable. For the current top-priority Episode 1 short, it marks `Transcript/context exposed: False` and `Generic title warning: True`, then offers proof-watch templates rather than pretending to know the spoken content.
+- Fixed the first validation bug where a summary-only story contract displayed `Missing checks: none`; the helper now derives a full contract when detailed checks are absent.
+- Validation:
+  - `python3 -m py_compile script/selected_short_story_repair_suggestions.py script/shorts_review_priority_board.py` passed.
+  - `./script/agentctl.sh selected-short-story-repair --markdown` for `Episode 1 Review Candidate 03 - 26:13` returned `story-contract-weak (1/6)` with missing checks `openingPromise, middleTurn, payoff, soundOffPlan, humanEditFlow`.
+  - The packet exposed proof-watch questions and suggestion commands such as `script/agentctl.sh shorts-update-selected hook '<chosen hook>'`, without applying them.
+  - Regenerated `docs/quipsly/current-state/episode-1-shorts-review-priority-board.md`; it now contains `selected-short-story-repair` commands.
+
+Product note: this helps humans and agents repair weak short recipes without requiring NLE knowledge. It does not approve, publish, export, overwrite, move timeline decisions, or mutate source media. Applying a suggested command changes selected-short metadata only.
+
+## 2026-07-04 - Transcript-aware selected-short story repair
+
+- Tightened `selected-short-story-repair` so it remains read-only but can now locate a sibling transcript session for the active episode and extract only the transcript segments overlapping the selected short's sequence-time range.
+- Validated on Episode 1 selected short `D9526D0B-311E-46D4-B127-824D713EA2F2`: the packet now reports transcript context from `/Users/wall-e/Library/Application Support/Quipsly/MediaVault/sessions/episode-1-codex-real-edit-v1-youtube-transcript.quipsly-session.json` instead of falling back to generic story templates.
+- Cleaned rolling-window transcript duplication into a readable rough excerpt. The helper still does not approve, publish, export, move timeline decisions, merge sessions, or mutate source media.
+- Product lesson: transcript sidecars are useful immediately, but the durable future is an explicit transcript-truth seam shared by UI, agent endpoints, and review packets.
+
+## 2026-07-04 - Grounded short story scaffolds
+
+- Improved `selected-short-story-repair` from raw transcript dumping to transcript-grounded editorial scaffolds: hook, middle turn, payoff, caption, and overlay options.
+- Validation on Episode 1 short `D9526D0B-311E-46D4-B127-824D713EA2F2` now produces a grounded candidate: `What if trying harder is not the thing that makes creative work happen?`, with turn/payoff/caption options tied to the transcript source.
+- The helper still separates transcript quote, editorial inference, and proof-watch-only suggestions so Quipsly can draft without black-box pretending.
+
+## 2026-07-04 - Queue-level transcript story repair board
+
+- Added `script/shorts_story_repair_board.py` and routed it through `script/agentctl.sh shorts-story-repair-board`.
+- The board works from saved session files, so it can run even when Quipsly Studio's local agent server is closed.
+- Generated `docs/quipsly/current-state/episode-1-shorts-story-repair-board.md` from the active Episode 1 saved edit and transcript sidecar.
+- Important finding: most Episode 1 short ranges currently show weak or mismatched transcript alignment. The board now marks those as `needs-transcript-alignment-review` or `weak-transcript-alignment` instead of falsely calling them review-ready.
+- Product lesson: transcript awareness needs alignment evidence. A transcript excerpt is not useful proof if it does not match the short's title/hook/caption metadata.
+
+## 2026-07-04 - Transcript alignment audit prevents global-offset mistake
+
+- Added `script/shorts_transcript_alignment_audit.py` and routed it through `script/agentctl.sh shorts-transcript-alignment-audit`.
+- Generated `docs/quipsly/current-state/episode-1-shorts-transcript-alignment-audit.md` from the Episode 1 saved edit and transcript sidecar.
+- Finding: Episode 1 shorts do not share one clean transcript offset. Confident offset evidence has a median of `-1460.025s`, but the spread is `3453.981s`, so the audit diagnoses `mixed-or-stale-short-recipes` and `globalOffsetLikely: false`.
+- Product lesson: do not apply a global transcript fix to Episode 1 shorts. Repair or regenerate short recipes individually against the whole synced source timeline, then use transcript-aware packaging once alignment is proven.

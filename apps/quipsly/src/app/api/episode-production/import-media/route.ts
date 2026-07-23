@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { uploadMediaBuffer } from "@/lib/server/gcs";
+import { MEDIA_VAULT_PREFIXES, buildMediaVaultObjectName } from "@/lib/server/media-vault";
 import { attachAssetToNest, createWorkflowJob } from "@/lib/server/quipsly-core";
 import { lookupStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
 import {
@@ -516,6 +517,20 @@ export async function POST(request: Request) {
     if (isJsonRequest && !rawSourceUrl) {
       return NextResponse.json({ ok: false, error: "No source URL provided." }, { status: 400 });
     }
+    if (isJsonRequest) {
+      let externalUrl: URL;
+      try {
+        externalUrl = new URL(rawSourceUrl);
+      } catch {
+        return NextResponse.json({ ok: false, error: "Source URL must be a valid HTTPS URL." }, { status: 400 });
+      }
+      if (externalUrl.protocol !== "https:" || externalUrl.username || externalUrl.password) {
+        return NextResponse.json({
+          ok: false,
+          error: "External source registration accepts credential-free HTTPS URLs only. Upload private media instead.",
+        }, { status: 400 });
+      }
+    }
 
     if (!isJsonRequest && !file) {
       return NextResponse.json({ ok: false, error: "No media file provided." }, { status: 400 });
@@ -708,7 +723,13 @@ export async function POST(request: Request) {
     const safeName = sanitizeSegment(originalName);
     const contentType = file.type || "application/octet-stream";
     const kind = inferKind(contentType, originalName);
-    const objectName = `episode-imports/${projectSlug}/${episodeSlug}/${importId}-${safeName}`;
+    const objectName = buildMediaVaultObjectName({
+      directory: MEDIA_VAULT_PREFIXES.raw,
+      projectSlug,
+      episodeSlug,
+      assetId: importId,
+      filename: safeName,
+    });
     const importedAt = new Date().toISOString();
 
     const bytes = Buffer.from(await file.arrayBuffer());

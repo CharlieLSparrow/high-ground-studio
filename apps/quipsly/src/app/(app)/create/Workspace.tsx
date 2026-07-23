@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import PublisherModePanel from "./PublisherModePanel";
 import Tagger from "./Tagger";
@@ -14,11 +14,11 @@ import { AssistantProvider } from "@/components/AssistantContext";
 import {
   WORKFLOW_SYSTEM_DESCRIPTIONS,
   WORKFLOW_SYSTEM_LABELS,
-  WORKFLOW_SYSTEM_SEQUENCE,
   normalizeNestKind,
   workflowSystemForNestKind,
 } from "@/lib/studio/project-registry";
 import { createHgoEpisodeDraftShellAction, type HgoSourceKey } from "../nests/[slug]/actions";
+import DocumentSafetyPanel from "./DocumentSafetyPanel";
 
 export const DEFAULT_VIEW: ViewDefinition = {
   id: "default",
@@ -190,7 +190,8 @@ export default function Workspace({
   persistenceMode = "database",
   linkedProjects = [],
   availableProjects = [],
-  isDefaultFallback = false
+  isDefaultFallback = false,
+  initialFocusBlockId,
 }: {
   initialBlocks: any[],
   initialViews: ViewDefinition[],
@@ -203,10 +204,11 @@ export default function Workspace({
   documentTitle?: string,
   notebookSectionLabel?: string,
   projectDocuments?: { id: string; title: string; sourceLabel: string | null; updatedAt: string | Date }[],
-  persistenceMode?: "database" | "offline",
+  persistenceMode?: "database" | "unavailable",
   linkedProjects?: WorkbenchScopeProjectSummary[],
   availableProjects?: { slug: string; name: string; nestKind?: string }[],
-  isDefaultFallback?: boolean
+  isDefaultFallback?: boolean,
+  initialFocusBlockId?: string,
 }) {
   const [activeView, setActiveView] = useState<ViewDefinition>(DEFAULT_VIEW);
   const [documentBlocks, setDocumentBlocks] = useState(initialBlocks);
@@ -250,14 +252,6 @@ export default function Workspace({
   const activeDocumentKind = documentKindFromSourceLabel(activeProjectDocument?.sourceLabel, documentTitle);
   const activeDocumentKindGuidance = documentKindGuidance(activeDocumentKind);
   const activeHgoSourceKey = hgoSourceKeyFromLabel(activeProjectDocument?.sourceLabel);
-  const notebookPageLinks = useMemo(
-    () => projectDocuments
-      .slice()
-      .sort((left, right) => new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime())
-      .slice(0, 10),
-    [projectDocuments]
-  );
-
   const handlePanicExport = async () => {
     setRecoveryExportState("exporting");
     const generatedAt = new Date().toISOString();
@@ -328,64 +322,10 @@ export default function Workspace({
     window.dispatchEvent(new CustomEvent("quipsly:show-recent-changes"));
   };
 
-  const handleDocumentBlocksChange = (blocks: any[]) => {
+  const handleDocumentBlocksChange = useCallback((blocks: any[]) => {
     setDocumentBlocks(blocks);
     setSaveState("unsaved");
-  };
-
-  const handleApplyAction = (action: any) => {
-    if (action.kind === "PROPOSE_REWRITE") {
-      const p = action.payload || {};
-      const targetId = p.targetBlockId;
-      const newText = p.rewriteText;
-      if (!targetId || !newText) return;
-
-      const updatedBlocks = documentBlocks.map((block) => {
-        if (block.id === targetId) {
-          return { ...block, text: newText };
-        }
-        return block;
-      });
-      handleDocumentBlocksChange(updatedBlocks);
-    } else if (action.kind === "PROPOSE_DRAFT") {
-      const p = action.payload || {};
-      const targetId = p.targetBlockId;
-      const newText = p.draftText;
-      if (!newText) return;
-
-      const newBlock = {
-        id: `block-${Date.now().toString(36)}`,
-        text: newText,
-        tags: [],
-        spans: []
-      };
-
-      if (targetId) {
-        const targetIndex = documentBlocks.findIndex((b) => b.id === targetId);
-        if (targetIndex !== -1) {
-          const updatedBlocks = [
-            ...documentBlocks.slice(0, targetIndex + 1),
-            newBlock,
-            ...documentBlocks.slice(targetIndex + 1)
-          ];
-          handleDocumentBlocksChange(updatedBlocks);
-          return;
-        }
-      }
-      
-      // Fallback: insert at the end of the active boundary, or at the end of the document
-      if (activeBoundary) {
-        const updatedBlocks = [
-          ...documentBlocks.slice(0, activeBoundary.endIndex + 1),
-          newBlock,
-          ...documentBlocks.slice(activeBoundary.endIndex + 1)
-        ];
-        handleDocumentBlocksChange(updatedBlocks);
-      } else {
-        handleDocumentBlocksChange([...documentBlocks, newBlock]);
-      }
-    }
-  };
+  }, []);
 
   const assistant = useQuipslyAssistant({
     projectSlug: activeProjectSlug,
@@ -395,11 +335,9 @@ export default function Workspace({
     activeBoundary,
     activeView,
     visibleBlocks: visibleAssistantBlocks,
-    onApplyAction: handleApplyAction,
   });
   const resolvedNestKind = normalizeNestKind(projectNestKind);
   const resolvedWorkflowSystem = workflowSystem ?? workflowSystemForNestKind(resolvedNestKind);
-  const activeWorkflowIndex = WORKFLOW_SYSTEM_SEQUENCE.indexOf(resolvedWorkflowSystem);
   const linkedProjectSlugs = linkedProjects.map((project) => project.projectSlug).filter(Boolean);
   const encodedScope = linkedProjectSlugs.length > 0 ? `&scope=${encodeURIComponent(linkedProjectSlugs.join(","))}` : "";
   const manuscriptHref = `/create?project=${encodeURIComponent(activeProjectSlug)}${publisherMode ? "&publisher=1" : ""}${encodedScope}`;
@@ -511,6 +449,40 @@ export default function Workspace({
     ? "Copies and downloads Markdown for the focused Chapter/Episode section."
     : "Copies and downloads Markdown for the current notebook page/document.";
 
+  if (persistenceMode === "unavailable") {
+    return (
+      <main className="min-h-[calc(100vh-4rem)] bg-[#fdfaf6] px-4 py-10 text-[#3d3122] md:px-8" aria-labelledby="writing-unavailable-title">
+        <section className="mx-auto max-w-2xl rounded-3xl border border-rose-300 bg-white p-6 shadow-sm md:p-10" role="alert">
+          <div className="text-xs font-black uppercase tracking-[0.22em] text-rose-700">Canonical database unavailable</div>
+          <h1 id="writing-unavailable-title" className="mt-3 text-3xl font-bold font-serif text-[#342618]">
+            Your writing was not loaded
+          </h1>
+          <p className="mt-4 text-sm leading-7 text-[#6b5b45]">
+            Quipsly could not open the persisted document for <strong>{projectName ?? activeProjectSlug}</strong>. No starter manuscript, episode text, or editable fallback has been substituted, because it could be mistaken for saved work.
+          </p>
+          <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900">
+            <strong>No document is open.</strong> Typing is disabled, nothing on this screen is saved locally, and this outage view is not evidence that the Nest is empty.
+          </div>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="rounded-full border border-[#3d3122] bg-[#3d3122] px-5 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-white hover:bg-[#59442d]"
+            >
+              Retry persisted document
+            </button>
+            <Link
+              href="/projects"
+              className="rounded-full border border-[#d9c7a5] bg-white px-5 py-2.5 text-xs font-black uppercase tracking-[0.12em] text-[#5e4b33] hover:bg-[#f8f3e6]"
+            >
+              Back to Nests
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-[#fdfaf6] text-[#3d3122]">
       {/* Left sidebar - ViewFilter */}
@@ -528,10 +500,10 @@ export default function Workspace({
          projectSlug={activeProjectSlug}
       />
       {/* Main editor area */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 md:p-8 relative">
-        <div className="max-w-4xl mx-auto">
-          <div className="mb-6 md:mb-8 rounded-2xl border border-[#e8dcc4] bg-white/80 p-4 md:p-5 shadow-sm">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 md:p-6 relative">
+        <div className="max-w-5xl mx-auto">
+          <div className="mb-3 rounded-2xl border border-[#e8dcc4] bg-white/80 p-3 md:p-4 shadow-sm">
+            <div className="mb-2 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <nav className="mb-3 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">
                   <Link href="/notebooks" className="rounded-full border border-[#eadfca] bg-[#fffaf3] px-2.5 py-1 transition hover:bg-[#fff4df]">
@@ -573,77 +545,16 @@ export default function Workspace({
                     {projectDocuments.length} Nest docs
                   </span>
                 </div>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6b5b45]">
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-[#6b5b45]">
                   {activeDocumentKindGuidance}
-                  <br />
-                  <span className="font-medium text-[#8c6b4a] opacity-90 mt-1 inline-block">💡 <strong>Pro tip:</strong> Press Enter to split blocks. Backspace at the start of a block merges it up.</span>
                 </p>
-                {notebookPageLinks.length > 1 ? (
-                  <div className="mt-4 rounded-2xl border border-[#eadfca] bg-[#fffdf9] p-3">
-                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-[10px] font-black uppercase tracking-[0.18em] text-[#a36f2e]">
-                        Notebook pages
-                      </div>
-                      <Link
-                        href={`/notebooks/${encodeURIComponent(activeProjectSlug)}`}
-                        className="text-[10px] font-black uppercase tracking-[0.14em] text-[#8c6b4a] hover:text-[#3d3122]"
-                      >
-                        Table of contents
-                      </Link>
-                    </div>
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                      {notebookPageLinks.map((page) => {
-                        const isActivePage = page.id === documentId;
-                        return (
-                          <Link
-                            key={page.id}
-                            href={`/create?project=${encodeURIComponent(activeProjectSlug)}&document=${encodeURIComponent(page.id)}`}
-                            className={`min-w-[180px] max-w-[240px] rounded-xl border px-3 py-2 text-left transition ${
-                              isActivePage
-                                ? "border-emerald-300 bg-emerald-50 text-emerald-950"
-                                : "border-[#eadfca] bg-white text-[#6b5b45] hover:border-[#d2b57e] hover:bg-[#fff8eb]"
-                            }`}
-                            title={page.title}
-                          >
-                            <span className="block truncate text-xs font-black">
-                              {page.title}
-                            </span>
-                            <span className="mt-1 block truncate text-[10px] font-bold uppercase tracking-[0.12em] opacity-70">
-                              {page.sourceLabel || "writing-page"}
-                            </span>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : null}
               </div>
-              <div className="rounded-xl border border-[#d9c7a5] bg-[#fff9ef] px-3 py-2 text-xs">
-                <div className="font-black uppercase tracking-[0.14em] text-[#8c6b4a]">Workflow Lens</div>
-                <div className="mt-2 flex flex-wrap gap-1">
-                  {WORKFLOW_SYSTEM_SEQUENCE.map((stage, stageIndex) => (
-                    <span
-                      key={stage}
-                      title={WORKFLOW_SYSTEM_DESCRIPTIONS[stage]}
-                      className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] ${
-                        stage === resolvedWorkflowSystem
-                          ? "border-amber-300 bg-amber-100 text-amber-900"
-                          : stageIndex <= activeWorkflowIndex
-                            ? "border-[#e1c8a2] bg-[#fff3dd] text-[#8a6943]"
-                            : "border-[#ece6df] bg-white text-[#8f7d63] opacity-70"
-                      }`}
-                    >
-                      {WORKFLOW_SYSTEM_LABELS[stage as keyof typeof WORKFLOW_SYSTEM_LABELS]}
-                    </span>
-                  ))}
-                </div>
-                <p className="mt-2 text-[11px] leading-5 text-[#6f5a3e] max-w-[250px]">
-                  {WORKFLOW_SYSTEM_DESCRIPTIONS[resolvedWorkflowSystem]}
-                </p>
-                <p className="mt-2 rounded-lg border border-[#e9dac0] bg-white px-2 py-1.5 text-[11px] text-[#7c654d]">
-                  Available lens is transparent: choose any stage view as needed; no stage is required for working in this document.
-                  </p>
-              </div>
+              <span
+                title={WORKFLOW_SYSTEM_DESCRIPTIONS[resolvedWorkflowSystem]}
+                className="rounded-full border border-amber-300 bg-amber-100 px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-amber-900"
+              >
+                {WORKFLOW_SYSTEM_LABELS[resolvedWorkflowSystem]}
+              </span>
               <div className="bg-amber-100 text-amber-800 px-3 py-1 rounded-full text-xs font-bold border border-amber-200 shadow-sm flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
                 View: {activeBoundary?.label ?? activeView.name}
@@ -683,51 +594,40 @@ export default function Workspace({
                 </button>
               ) : null}
             </div>
-            <div className="mb-4 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-[#fffaf3] to-amber-50 px-4 py-3 shadow-sm">
-              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-800">
-                    Daily Writing Safety
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-[#6b5b45]">
-                    Web is the canonical writing desk for now. Current document role: <strong>{activeDocumentKind}</strong>. {activeDocumentKindGuidance}
-                    If anything feels weird, export a local Markdown recovery packet before experimenting.
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] ${
-                    saveState === "saving"
-                      ? "border-blue-200 bg-blue-50 text-blue-800"
-                      : saveState === "unsaved"
-                        ? "border-orange-200 bg-orange-50 text-orange-800"
-                        : "border-emerald-200 bg-white text-emerald-800"
-                  }`}>
-                    {saveState === "saving" ? "Saving now" : saveState === "unsaved" ? "Unsaved edits" : "Saved"}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => void handlePanicExport()}
-                    title={recoveryExportScopeHelp}
-                    className="rounded-full border border-[#3d3122] bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#59442d]"
-                  >
-                    {recoveryExportState === "exporting"
-                      ? "Preparing..."
-                      : recoveryExportState === "copied"
-                        ? "Copied + Downloaded"
-                        : recoveryExportState === "failed"
-                          ? "Try Export Again"
-                          : recoveryExportLabel}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleShowRecentChanges}
-                    className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#5e4b33] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#f8f3e6]"
-                  >
-                    Recent Changes
-                  </button>
-                </div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2">
+              <p className="text-[11px] leading-5 text-[#526b43]">
+                Canonical page · source-safe history · no silent rewrite
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => void handlePanicExport()}
+                  title={recoveryExportScopeHelp}
+                  className="rounded-full border border-[#3d3122] bg-[#3d3122] px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-[#59442d]"
+                >
+                  {recoveryExportState === "exporting"
+                    ? "Preparing..."
+                    : recoveryExportState === "copied"
+                      ? "Copied + Downloaded"
+                      : recoveryExportState === "failed"
+                        ? "Try Export Again"
+                        : recoveryExportLabel}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleShowRecentChanges}
+                  className="rounded-full border border-[#d9c7a5] bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.12em] text-[#5e4b33] transition hover:bg-[#f8f3e6]"
+                >
+                  Recent Changes
+                </button>
               </div>
             </div>
+            <DocumentSafetyPanel
+              documentId={documentId}
+              documentTitle={documentTitle ?? "Quipsly Writing Draft"}
+              projectSlug={activeProjectSlug}
+              saveState={saveState}
+            />
             {activeHgoSourceKey ? (
               <div className="mb-4 rounded-2xl border border-cyan-200 bg-cyan-50/80 px-4 py-3 shadow-sm">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -754,25 +654,11 @@ export default function Workspace({
                 </div>
               </div>
             ) : null}
-            <div className="mb-4 grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl border border-[#e8dcc4] bg-white/80 px-4 py-3 shadow-sm">
-                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#a36f2e]">
-                  Living writing document
-                </div>
-                <p className="mt-1 text-xs leading-5 text-[#6b5b45]">
-                  Books, articles, scripts, and episode pages can be rewritten. Quipsly keeps structure tags, recent changes, snapshots, and recovery exports so changing the words does not mean losing the trail.
-                </p>
-              </div>
-              <div className="rounded-2xl border border-cyan-200 bg-cyan-50/70 px-4 py-3 shadow-sm">
-                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-800">
-                  Fixed study source
-                </div>
-                <p className="mt-1 text-xs leading-5 text-[#4f6470]">
-                  Imported books, PDFs, articles, and course pages should stay intact. Highlights, tags, notes, citations, and research packets live as overlays so the source remains trustworthy.
-                </p>
-              </div>
-            </div>
-            <div className="flex flex-nowrap overflow-x-auto hide-scrollbar items-center gap-2 pb-1">
+            <details className="mb-1 rounded-xl border border-[#eadfca] bg-[#fffaf3] px-3 py-2">
+              <summary className="cursor-pointer text-[10px] font-black uppercase tracking-[0.14em] text-[#6b5b45]">
+                Nest and production tools
+              </summary>
+              <div className="mt-3 flex flex-nowrap overflow-x-auto hide-scrollbar items-center gap-2 pb-1">
               <div className="mr-2 shrink-0 flex flex-nowrap items-center gap-1 rounded-full border border-[#e6d7bc] bg-[#f8f1e3] p-1">
                 <span className="pl-3 pr-1 text-[10px] font-bold uppercase tracking-wider text-[#a36f2e]">Nest:</span>
                 {(availableProjects || []).map((project) => (
@@ -894,17 +780,12 @@ export default function Workspace({
               >
                 Study Notes
               </Link>
-            </div>
+              </div>
+            </details>
           </div>
 
           {publisherMode ? (
             <PublisherModePanel activeView={activeView} documentTitle={documentTitle} projectSlug={activeProjectSlug} projectId={projectId} />
-          ) : null}
-
-          {persistenceMode === "offline" ? (
-            <div className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4 text-sm leading-6 text-amber-900 shadow-sm">
-              <strong className="font-bold">Offline browser lab:</strong> DATABASE_URL is not set, so this workbench is running from starter state. Text and tag clicks are safe to test, but they will not persist until the database environment is wired.
-            </div>
           ) : null}
 
           {isDefaultFallback ? (
@@ -919,7 +800,7 @@ export default function Workspace({
             </div>
           ) : null}
 
-          <div className="bg-white p-4 md:p-12 rounded-2xl shadow-sm border border-[#e8dcc4] min-h-[800px]">
+          <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-[#e8dcc4] min-h-[800px]">
             <AssistantProvider value={assistant}>
               <EditorExtensionProvider customCards={coreBlockCards}>
                 <Tagger
@@ -934,6 +815,7 @@ export default function Workspace({
                   scrollContainerRef={scrollContainerRef}
                   onBlocksChange={handleDocumentBlocksChange}
                   onActiveScrollBoundaryChange={setScrolledBoundaryId}
+                  initialFocusBlockId={initialFocusBlockId}
                 />
               </EditorExtensionProvider>
             </AssistantProvider>

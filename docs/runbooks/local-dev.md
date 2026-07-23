@@ -47,6 +47,7 @@ Derived from source usage:
 - `GOOGLE_CALENDAR_SYNC_CLIENT_ID`
 - `GOOGLE_CALENDAR_SYNC_CLIENT_SECRET`
 - `GOOGLE_CALENDAR_SEND_UPDATES`
+- `GOOGLE_CALENDAR_ALLOW_APPLICATION_DEFAULT`
 - `HGO_GA_MEASUREMENT_ID`
 - `GOOGLE_ANALYTICS_PROPERTY_ID`
 - `GOOGLE_ANALYTICS_SERVICE_ACCOUNT_JSON`
@@ -104,6 +105,11 @@ Notes:
 - `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are sign-in credentials.
   Calendar sync requires separate `GOOGLE_CALENDAR_*` credentials before the
   app should create or update calendar events server-side.
+- `GOOGLE_CALENDAR_ALLOW_APPLICATION_DEFAULT=true` lets local development use
+  Application Default Credentials from `gcloud auth application-default login`
+  for read-only verification and explicit operator sync tests. Re-auth ADC with
+  Calendar scopes if Google rejects calendar access. Keep this disabled unless
+  you are intentionally testing Calendar integration locally.
 - `GOOGLE_CALENDAR_SEND_UPDATES` may be `none`, `externalOnly`, or `all`; it
   defaults to `none` so early sync tests do not surprise clients with calendar
   email.
@@ -134,14 +140,14 @@ From repo root:
 
 ```bash
 pnpm db:generate
-pnpm db:push
+pnpm exec prisma migrate deploy
 ```
 
-If using migrations instead of direct push:
-
-```bash
-pnpm db:migrate
-```
+For a populated database created before migration tracking, do not run the
+baseline over existing tables. Follow
+`docs/runbooks/prisma-migration-baseline.md` to verify zero schema drift and
+adopt its existing state safely. `prisma db push` is reserved for disposable
+experiments and is not the normal Quipsly setup path.
 
 Open Prisma Studio:
 
@@ -181,11 +187,11 @@ development database:
 
 ```bash
 pnpm db:generate
-pnpm db:push
+pnpm exec prisma migrate deploy
 ```
 
-Do not run `pnpm db:push` against remote Neon or production data unless that
-target has been explicitly confirmed safe. The Studio seed helper only creates
+Do not run `pnpm db:push` against shared, staging, remote Neon, or production
+data. The Studio seed helper only creates
 development fixture rows when `DATABASE_URL` points at a local database and
 `NODE_ENV` is not `production`.
 
@@ -198,7 +204,7 @@ Local snapshot enablement sequence:
 
 1. Start a safe local Studio database.
 2. Run `pnpm db:generate`.
-3. Run `pnpm db:push` only against that safe local database.
+3. Run `pnpm exec prisma migrate deploy` against that safe local database.
 4. Start Studio with `DATABASE_URL` pointing at the local database.
 5. Save and load snapshots with synthetic manuscript data first.
 

@@ -53,3 +53,23 @@ Confirm:
 ## Rollback principle
 
 Promote traffic only after smoke succeeds. If post-promote smoke fails, use the release train rollback script rather than patching live by hand.
+
+## 2026-07-07 coaching public-loop deploy note
+
+Current live public-loop revisions:
+
+- Nest/Quipsly service `studio`: `studio-00355-joz` at 100% traffic.
+- HighGroundOdyssey service `web`: `web-00147-vix` at 100% traffic.
+
+Use these post-promote smokes for this lane:
+
+```bash
+node scripts/hgo-quipsly-public-route-matrix.mjs --json
+node scripts/hgo-quipsly-public-integration-smoke.mjs --json
+node scripts/hgo-quipsly-public-loop-status.mjs --json --warn-only
+node scripts/quipsly-coaching-payment-contract-smoke.mjs --static-only --json
+```
+
+Known deploy wrinkle: `cloudbuild.web.yaml` can push the HGO image successfully, then Cloud Build may still fail with `failed to find one or more images after execution of build steps`. If the image digest/tag is present, deploy that pushed image to `web-preview` with `gcloud run deploy --no-traffic --tag=web-preview`, smoke previews, then promote only after preview proof passes.
+
+Preview-smoke wrinkle: `quipsly.com/coaching` is a custom-domain proxy rewrite to `/public/coaching`. Tagged Cloud Run preview hosts do not have the `quipsly.com` host, so preview smoke should use the preview base URL plus `--quipsly-coaching-path=/public/coaching`; live smoke should keep the default `/coaching` path.

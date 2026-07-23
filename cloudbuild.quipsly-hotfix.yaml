@@ -12,6 +12,7 @@ substitutions:
   _NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "quipsly-reef.firebasestorage.app"
   _NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "249115653261"
   _NEXT_PUBLIC_FIREBASE_APP_ID: "1:249115653261:web:d49c566ebe99148cbddec4"
+  _NODE_OPTIONS: "--max-old-space-size=4096"
 
 steps:
   - id: build-quipsly-hotfix-image
@@ -29,4 +30,8 @@ steps:
       - --build-arg=NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
       - --build-arg=NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
       - --build-arg=NEXT_PUBLIC_FIREBASE_APP_ID=${_NEXT_PUBLIC_FIREBASE_APP_ID}
+      - --build-arg=NODE_OPTIONS=${_NODE_OPTIONS}
       - --dockerfile=apps/quipsly/Dockerfile
+
+options:
+  machineType: E2_HIGHCPU_32

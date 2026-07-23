@@ -176,6 +176,45 @@ def collect_manifest_artifacts(manifest: dict[str, Any], ffprobe_bin: str) -> li
             "manifestDurationSeconds": item.get("durationSeconds"),
             "summary": summary,
         })
+    if artifacts:
+        return artifacts
+    for item in manifest.get("video") if isinstance(manifest.get("video"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        path = artifact_path(item)
+        probe = ffprobe(path, ffprobe_bin)
+        summary = stream_summary(probe)
+        width = ((item.get("ffprobe") or {}).get("streams") or [{}])[-1].get("width") if isinstance(item.get("ffprobe"), dict) else None
+        height = ((item.get("ffprobe") or {}).get("streams") or [{}])[-1].get("height") if isinstance(item.get("ffprobe"), dict) else None
+        if not width or not height:
+            first_video = next((stream for stream in (probe.get("streams") or []) if stream.get("codec_type") == "video"), {})
+            width = first_video.get("width")
+            height = first_video.get("height")
+        key = "videoMaster9x16" if width and height and float(height) > float(width) else "videoMaster16x9"
+        artifacts.append({
+            "key": key,
+            "label": labels.get(key, key),
+            "path": str(path),
+            "exists": path.exists(),
+            "sizeBytes": path.stat().st_size if path.exists() else 0,
+            "manifestDurationSeconds": item.get("durationSeconds"),
+            "summary": summary,
+        })
+    for item in manifest.get("audio") if isinstance(manifest.get("audio"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        path = artifact_path(item)
+        probe = ffprobe(path, ffprobe_bin)
+        summary = stream_summary(probe)
+        artifacts.append({
+            "key": "audioOnlyPodcast",
+            "label": labels["audioOnlyPodcast"],
+            "path": str(path),
+            "exists": path.exists(),
+            "sizeBytes": path.stat().st_size if path.exists() else 0,
+            "manifestDurationSeconds": item.get("durationSeconds"),
+            "summary": summary,
+        })
     return artifacts
 
 

@@ -16,7 +16,7 @@ test("builds a Google Calendar event payload for a coaching appointment", () => 
     },
     scheduledStart: new Date("2026-05-25T15:00:00.000Z"),
     scheduledEnd: new Date("2026-05-25T16:00:00.000Z"),
-    timezone: "America/Denver",
+    timezone: "America/Los_Angeles",
     status: "SCHEDULED",
     locationType: "VIDEO",
     locationDetails: "Private video room",
@@ -26,7 +26,7 @@ test("builds a Google Calendar event payload for a coaching appointment", () => 
   assert.equal(event.summary, "High Ground coaching: Client One");
   assert.equal(event.location, "Private video room");
   assert.equal(event.start.dateTime, "2026-05-25T15:00:00.000Z");
-  assert.equal(event.start.timeZone, "America/Denver");
+  assert.equal(event.start.timeZone, "America/Los_Angeles");
   assert.deepEqual(event.attendees, [
     {
       email: "client@example.test",
@@ -52,7 +52,7 @@ test("omits attendees until calendar auth can safely invite them", () => {
     },
     scheduledStart: new Date("2026-05-25T15:00:00.000Z"),
     scheduledEnd: new Date("2026-05-25T16:00:00.000Z"),
-    timezone: "America/Denver",
+    timezone: "America/Los_Angeles",
     status: "SCHEDULED",
     locationType: "PHONE",
     includeAttendees: false,

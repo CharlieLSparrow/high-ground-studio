@@ -12,6 +12,8 @@ import {
   MessageCircle,
   PackageCheck,
   Plus,
+  RefreshCw,
+  ShieldCheck,
   Video,
   Users,
 } from "lucide-react";
@@ -238,6 +240,54 @@ function canManageRole(role: string | undefined) {
   return normalized.includes("ADMIN") || normalized.includes("OWNER");
 }
 
+export function NestRegistryUnavailableState() {
+  return (
+    <section
+      aria-labelledby="nest-registry-unavailable-title"
+      aria-live="polite"
+      className="rounded-3xl border border-amber-200 bg-amber-50/80 p-6 shadow-sm md:p-8"
+      role="status"
+    >
+      <div className="flex max-w-3xl flex-col gap-5 sm:flex-row sm:items-start">
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-amber-200 bg-white text-amber-800 shadow-sm">
+          <ShieldCheck aria-hidden="true" size={24} />
+        </div>
+        <div>
+          <div className="text-xs font-black uppercase tracking-[0.18em] text-amber-800">
+            Access check paused
+          </div>
+          <h2
+            className="mt-2 font-serif text-2xl font-black text-amber-950 md:text-3xl"
+            id="nest-registry-unavailable-title"
+          >
+            Your Nest list could not be loaded
+          </h2>
+          <p className="mt-3 text-sm leading-7 text-amber-950/85 md:text-base">
+            Quipsly cannot verify which Nests you own or share right now. To protect those access boundaries,
+            the list is hidden and creating or bootstrapping Nests is paused.
+          </p>
+          <p className="mt-3 text-sm leading-7 text-amber-900">
+            This is a connection problem, not an empty workspace. When the registry reconnects, this page will
+            show your Home Nest, owned Nests, and invited Nests according to your current access.
+          </p>
+          <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <a
+              className="inline-flex w-fit items-center justify-center gap-2 rounded-full bg-amber-950 px-5 py-3 text-xs font-black uppercase tracking-[0.14em] text-white shadow-sm transition hover:bg-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-2"
+              href="/projects"
+            >
+              <RefreshCw aria-hidden="true" size={15} />
+              Try again
+            </a>
+            <p className="text-xs leading-5 text-amber-900/80">
+              If it is still unavailable, wait a moment and retry. No substitute Nest list is being shown.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 async function createNest(formData: FormData) {
   "use server";
 
@@ -250,7 +300,7 @@ async function createNest(formData: FormData) {
   const session = await auth();
   const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
   if (!actorEmail) {
-    redirect("/api/auth/signin?callbackUrl=/projects");
+    redirect("/login?callbackUrl=/projects");
   }
 
   const hasBetaAccess = await hasQuipslyBetaAccess(actorEmail);
@@ -293,10 +343,9 @@ async function bootstrapLiveWorkNests() {
 export default async function ProjectsHub({
   searchParams,
 }: {
-  searchParams?: Promise<{ fallback?: string; missing?: string; liveNests?: string; adminAccessDenied?: string; betaAccessDenied?: string }>
-    | { fallback?: string; missing?: string; liveNests?: string; adminAccessDenied?: string; betaAccessDenied?: string };
-} = {}) {
-  const params = await searchParams;
+  searchParams?: Promise<{ fallback?: string; missing?: string; liveNests?: string; adminAccessDenied?: string; betaAccessDenied?: string }>;
+}) {
+  const params = searchParams ? await searchParams : {};
   const isFallback = params?.fallback === "true";
   const missingProjectSlug = typeof params?.missing === "string" ? params.missing : "";
   const liveNestsBootstrapped = typeof params?.liveNests === "string" ? params.liveNests : "";
@@ -305,18 +354,29 @@ export default async function ProjectsHub({
 
   const session = await auth();
   const actorEmail = session?.user?.primaryEmail || session?.user?.email;
-  const prisma = getPrismaClient();
+  let prisma: ReturnType<typeof getPrismaClient> | null = null;
   let projects: Awaited<ReturnType<typeof listStudioProjectOptions>> = [];
-  let projectLoadError = "";
+  let projectRegistryUnavailable = false;
   let canOpenPrivateFictionNest = false;
   let sharedProjects: Awaited<ReturnType<typeof listAccessibleStudioProjectSummariesForEmail>> = [];
+  let actorHomeNestId = "";
   const projectRoles = new Map<string, string>();
   const canManageLiveNests =
     process.env.QUIPSLY_OWNER_OVERRIDE === "true" || isUserManagementAdminEmail(actorEmail);
 
-  if (actorEmail) {
+  try {
+    prisma = getPrismaClient();
+  } catch (error) {
+    projectRegistryUnavailable = true;
+    console.error("[projects] Nest registry client could not be initialized.", {
+      errorType: error instanceof Error ? error.name : "UnknownError",
+    });
+  }
+
+  if (actorEmail && prisma) {
     try {
-      await ensureHomeNestForEmail(actorEmail, prisma);
+      const actorHomeNest = await ensureHomeNestForEmail(actorEmail, prisma);
+      actorHomeNestId = actorHomeNest.id;
       try {
         await ensureBetaStarterNestForEmail({ email: actorEmail, prisma });
       } catch {
@@ -327,39 +387,56 @@ export default async function ProjectsHub({
     }
   }
 
-  try {
-    if (canManageLiveNests) {
-      projects = await listStudioProjectOptions(prisma);
-      for (const project of projects) projectRoles.set(project.slug, "Admin");
-    } else if (actorEmail) {
-      const visibleProjects = await listProjectsVisibleToEmail(actorEmail, prisma);
-      projects = visibleProjects.map((project) => {
-        projectRoles.set(project.slug, project.role);
-        return {
-          id: project.id,
-          slug: project.slug,
-          name: project.name,
-          description: null,
-          documentTitle: null,
-          nestKind: nestKindFromSourceLabel(project.sourceLabel),
-          updatedAt: project.updatedAt,
-        };
+  if (prisma && !projectRegistryUnavailable) {
+    try {
+      if (canManageLiveNests) {
+        projects = await listStudioProjectOptions(prisma);
+        for (const project of projects) projectRoles.set(project.slug, "Admin");
+      } else if (actorEmail) {
+        const visibleProjects = await listProjectsVisibleToEmail(actorEmail, prisma);
+        projects = visibleProjects.map((project) => {
+          projectRoles.set(project.slug, project.role);
+          return {
+            id: project.id,
+            slug: project.slug,
+            name: project.name,
+            description: null,
+            documentTitle: null,
+            nestKind: nestKindFromSourceLabel(project.sourceLabel),
+            updatedAt: project.updatedAt,
+          };
+        });
+      }
+    } catch (error) {
+      projectRegistryUnavailable = true;
+      console.error("[projects] Nest registry ownership read failed.", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
       });
     }
-  } catch (error) {
-    projectLoadError = error instanceof Error ? error.message : "Could not reach the project registry.";
   }
 
-  try {
-    canOpenPrivateFictionNest = await canAccessPrivateFictionNest(actorEmail);
-  } catch {
-    canOpenPrivateFictionNest = false;
+  if (prisma && !projectRegistryUnavailable) {
+    try {
+      sharedProjects = await listAccessibleStudioProjectSummariesForEmail(actorEmail, prisma);
+    } catch (error) {
+      projectRegistryUnavailable = true;
+      console.error("[projects] Nest registry collaboration read failed.", {
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      });
+    }
   }
 
-  try {
-    sharedProjects = await listAccessibleStudioProjectSummariesForEmail(actorEmail, prisma);
-  } catch {
+  if (!projectRegistryUnavailable) {
+    try {
+      canOpenPrivateFictionNest = await canAccessPrivateFictionNest(actorEmail);
+    } catch {
+      canOpenPrivateFictionNest = false;
+    }
+  } else {
+    projects = [];
     sharedProjects = [];
+    actorHomeNestId = "";
+    projectRoles.clear();
   }
 
   const ownedProjectIds = new Set(projects.map((project) => project.id));
@@ -400,7 +477,9 @@ export default async function ProjectsHub({
     system,
     count: collaborationRows.filter((project) => project.workflowSystem === system).length,
   }));
-  const homeNestRow = collaborationRows.find(p => p.nestKind === 'home' && canManageRole(p.role));
+  const homeNestRow =
+    collaborationRows.find(p => p.id === actorHomeNestId)
+    ?? collaborationRows.find(p => p.nestKind === 'home' && canManageRole(p.role));
   const myNests = collaborationRows.filter(p => p.id !== homeNestRow?.id && canManageRole(p.role));
   const sharedNests = collaborationRows.filter(p => !canManageRole(p.role));
 
@@ -424,7 +503,7 @@ export default async function ProjectsHub({
                 Inside it, Quipsly can keep writing documents, study documents, media, publishing packets, and assistant context connected without turning them into five disconnected tools.
               </p>
             </div>
-            {canManageLiveNests ? (
+            {canManageLiveNests && !projectRegistryUnavailable ? (
               <div className="flex shrink-0 flex-wrap gap-2">
                 <form action={bootstrapLiveWorkNests}>
                   <button
@@ -447,7 +526,7 @@ export default async function ProjectsHub({
           </div>
         </header>
 
-        {isFallback && (
+        {isFallback && !projectRegistryUnavailable && (
           <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
             <h3 className="font-serif text-lg font-black text-rose-900">Wait, where is my document?</h3>
             <p className="mt-1 text-sm text-rose-800">
@@ -458,7 +537,7 @@ export default async function ProjectsHub({
           </div>
         )}
 
-        {betaAccessDenied && (
+        {betaAccessDenied && !projectRegistryUnavailable && (
           <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
             <h3 className="font-serif text-lg font-black text-rose-900">Beta Access Required</h3>
             <p className="mt-1 text-sm text-rose-800">
@@ -467,7 +546,7 @@ export default async function ProjectsHub({
           </div>
         )}
 
-        {liveNestsBootstrapped ? (
+        {liveNestsBootstrapped && !projectRegistryUnavailable ? (
           <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-900 shadow-sm">
             <h3 className="font-serif text-lg font-black">Live Nests are ready</h3>
             <p className="mt-1 text-sm leading-6">
@@ -476,7 +555,7 @@ export default async function ProjectsHub({
           </div>
         ) : null}
 
-        {adminAccessDenied ? (
+        {adminAccessDenied && !projectRegistryUnavailable ? (
           <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
             <h3 className="font-serif text-lg font-black">Admin action blocked</h3>
             <p className="mt-1 text-sm leading-6">
@@ -485,19 +564,10 @@ export default async function ProjectsHub({
           </div>
         ) : null}
 
-        {projectLoadError ? (
-          <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
-            <h3 className="font-serif text-lg font-black text-amber-950">Nest registry is temporarily unavailable</h3>
-            <p className="mt-1 text-sm leading-6 text-amber-900">
-              The project database could not be reached, so Quipsly is showing the beta onboarding shell instead of crashing. Existing Nests and new Nest creation will come back when the database connection is healthy.
-            </p>
-            <p className="mt-2 text-xs font-bold uppercase tracking-[0.14em] text-amber-800">
-              Diagnostic: {projectLoadError.slice(0, 160)}
-            </p>
-          </div>
-        ) : null}
-
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
+        {projectRegistryUnavailable ? (
+          <NestRegistryUnavailableState />
+        ) : (
+          <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_380px]">
           <div className="space-y-8">
             {homeNestRow && (
               <section>
@@ -657,7 +727,8 @@ export default async function ProjectsHub({
               </button>
             </form>
           </aside>
-        </div>
+          </div>
+        )}
       </div>
     </main>
   );

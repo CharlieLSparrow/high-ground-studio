@@ -1,6 +1,7 @@
 # dependencies
 node_modules/
 .pnpm-store/
+.venv-audio/
 .pnp.*
 .yarn/
 
@@ -41,6 +42,7 @@ artifacts/
 apps/QuipslyStudio/.quipsly/
 apps/QuipslyStudio/reports/*--proxy-recovery-*.json
 apps/QuipslyStudio/reports/*proxy-job-current.json
+apps/QuipslyStudio/reports/cache/
 apps/QuipslyStudio/tmp/*.png
 apps/quiplore/scripts/ingest-processed/
 dataconnect/.dataconnect/
@@ -124,4 +126,3 @@ docs/quipsly/current-state/*.json
 # Ignore all current state exports
 docs/quipsly/current-state/*
 apps/QuipslyStudio/docs/quipsly/current-state/*
-

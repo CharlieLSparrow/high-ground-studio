@@ -53,6 +53,7 @@ public class ExportEngine: ObservableObject {
         format: ExportFormat,
         allowExternalOriginalMedia: Bool = false,
         allowedOriginalMediaRootPath: String? = nil,
+        allowedProxyMediaRootPath: String? = nil,
         sequenceStartSeconds: Double? = nil,
         sequenceDurationSeconds: Double? = nil,
         sequenceRanges: [(start: Double, duration: Double)] = [],
@@ -80,6 +81,7 @@ public class ExportEngine: ObservableObject {
             format: format,
             allowExternalOriginalMedia: allowExternalOriginalMedia,
             allowedOriginalMediaRootPath: allowedOriginalMediaRootPath,
+            allowedProxyMediaRootPath: allowedProxyMediaRootPath,
             sequenceRangeOverride: explicitRanges.isEmpty ? nil : explicitRanges
         )
 
@@ -87,7 +89,25 @@ public class ExportEngine: ObservableObject {
             throw ExportError.invalidPlayerItem
         }
 
+        let assetDurationSeconds = CMTimeGetSeconds(asset.duration)
+        guard assetDurationSeconds.isFinite, assetDurationSeconds > 0 else {
+            throw ExportError.invalidExportRange(
+                "No authorized proxy or audio media entered the composition. Restore the Quipsly Media Vault grant and try again."
+            )
+        }
+
         let presetName = format == .horizontal16x9 ? AVAssetExportPreset1920x1080 : AVAssetExportPresetHighestQuality
+
+        let isCompatible = await AVAssetExportSession.compatibility(
+            ofExportPreset: presetName,
+            with: asset,
+            outputFileType: .mp4
+        )
+        guard isCompatible else {
+            throw ExportError.invalidExportRange(
+                "AVFoundation cannot export this composition with preset \(presetName) as MP4."
+            )
+        }
 
         guard let exportSession = AVAssetExportSession(asset: asset, presetName: presetName) else {
             throw ExportError.exportSessionCreationFailed
@@ -178,6 +198,13 @@ public class ExportEngine: ObservableObject {
             allowExternalOriginalMedia: allowExternalOriginalMedia,
             allowedOriginalMediaRootPath: allowedOriginalMediaRootPath
         )
+
+        let compositionDurationSeconds = CMTimeGetSeconds(composition.duration)
+        guard compositionDurationSeconds.isFinite, compositionDurationSeconds > 0 else {
+            throw ExportError.invalidExportRange(
+                "No authorized audio media entered the composition. Restore the Quipsly Media Vault grant and try again."
+            )
+        }
 
         guard let exportSession = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetAppleM4A) else {
             throw ExportError.exportSessionCreationFailed

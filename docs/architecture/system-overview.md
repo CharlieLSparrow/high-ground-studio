@@ -80,7 +80,7 @@ It is simple, explicit, and easy for agents to trace.
 
 The current coaching workflow is Prisma-backed and intentionally lightweight:
 - `/coaching` is the public front door and sign-in handoff, not a checkout route.
-- `/dashboard?intent=coaching` is the signed-in request form.
+- HGO `/coaching` routes operational coaching work into Quipsly Nest. `/dashboard?intent=coaching` is legacy background, not the active source of coaching truth.
 - `submitCoachingRequestAction()` creates/updates the client role/profile, creates a `CoachingRequest`, sends a best-effort internal Resend email after the transaction commits, revalidates team/dashboard routes, and redirects to the dashboard or public requested state.
 - `/dashboard` shows the latest coaching request, recent request history, assigned coach, converted appointment summaries, manual client-visible coaching tools, generated Google Calendar links, and donation CTAs when configured.
 - `/team/clients` can seed the coaching tool catalog and manually enable, pause, or disable specific coaching features for one client without changing subscription tiers.

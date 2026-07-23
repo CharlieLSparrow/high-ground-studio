@@ -14,17 +14,28 @@ import { generatedQuipslyArt } from "@high-ground/quipsly-domain/generated-art";
 import { QUIPSLY_OUTPUT_CATALOG } from "@high-ground/quipsly-domain/output-catalog";
 
 function statusClass(status: string) {
-  if (status === "ready") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "runtime-verified") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "configured") return "border-sky-200 bg-sky-50 text-sky-900";
   if (status === "degraded") return "border-amber-200 bg-amber-50 text-amber-900";
-  return "border-rose-200 bg-rose-50 text-rose-800";
+  if (status === "blocked") return "border-rose-200 bg-rose-50 text-rose-800";
+  if (status === "catalog-only") return "border-violet-200 bg-violet-50 text-violet-900";
+  return "border-[#dfcaa6] bg-[#fff8ec] text-[#7b512d]";
+}
+
+function statusLabel(status: string) {
+  return status.replaceAll("-", " ");
 }
 
 export default async function BetaReadinessPage() {
   const productionCore = await getProductionCoreReadinessSafe();
   const readiness = createBetaReadinessResponseBody({ productionCore });
   const operatorPlan = readiness.operatorPlan;
-  const liveOutputs = QUIPSLY_OUTPUT_CATALOG.filter((output) => output.status === "live").length;
-  const nowOutputs = QUIPSLY_OUTPUT_CATALOG.filter((output) => output.priority === "now").length;
+  const mappedOutputDefinitions = QUIPSLY_OUTPUT_CATALOG.filter(
+    (output) => output.catalogStage === "runway-mapped",
+  ).length;
+  const activeDesignOutputs = QUIPSLY_OUTPUT_CATALOG.filter(
+    (output) => output.roadmapHorizon === "active-design",
+  ).length;
 
   return (
     <main className="min-h-full bg-[#fdfaf6] px-4 py-6 text-[#3d3122] md:px-8 md:py-10">
@@ -40,16 +51,19 @@ export default async function BetaReadinessPage() {
                 Is Quipsly beta-shaped yet?
               </h1>
               <p className="mt-5 max-w-3xl text-base leading-8 text-[#6b5b45] md:text-lg">
-                This page turns the release checklist into something readable: access, Nests, editor persistence, recording spine, research assistants, publishing packets, outputs, and generated art.
+                This page separates source definitions, configured services, runtime/schema evidence, degraded paths, and blockers. A route or catalog existing in source is not treated as a live beta capability.
               </p>
             </div>
             <div className={`rounded-2xl border p-5 ${readiness.ready ? "border-emerald-200 bg-emerald-50 text-emerald-900" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
-              <div className="text-xs font-black uppercase tracking-[0.18em]">Current release status</div>
+              <div className="text-xs font-black uppercase tracking-[0.18em]">Current evidence status</div>
               <div className="mt-3 font-serif text-4xl font-black">
-                {readiness.ready ? "Ready" : "Needs config"}
+                {readiness.ready ? "Runtime verified" : statusLabel(readiness.readinessStatus)}
               </div>
               <p className="mt-3 text-sm font-bold leading-6">
-                API health is separate from beta readiness. The app can be up while one provider or secret still needs attention.
+                {readiness.summary.satisfiedRequiredChecks}/{readiness.summary.requiredChecks} required evidence gates pass. Public reachability is {readiness.evidence.publicReachability.claimed ? "verified by an attached smoke receipt" : "not claimed by this response"}.
+              </p>
+              <p className="mt-2 text-xs leading-5 opacity-80">
+                Scope: preview promotion routes, configuration, and schema. This contract does not claim a signed-in end-to-end journey, live provider completion, or customer-data mutation.
               </p>
             </div>
           </div>
@@ -58,8 +72,8 @@ export default async function BetaReadinessPage() {
         <section className="mt-8 grid gap-4 md:grid-cols-5">
           {[
             { label: "Checks", value: readiness.checks.length, icon: CheckCircle2 },
-            { label: "Outputs", value: QUIPSLY_OUTPUT_CATALOG.length, icon: Sparkles },
-            { label: "Now outputs", value: nowOutputs, icon: Clock },
+            { label: "Output definitions", value: QUIPSLY_OUTPUT_CATALOG.length, icon: Sparkles },
+            { label: "Active-design definitions", value: activeDesignOutputs, icon: Clock },
             { label: "Art assets", value: generatedQuipslyArt.length, icon: ImageIcon },
             { label: "Core DB", value: `${productionCore.presentTableCount}/${productionCore.requiredTableCount}`, icon: Database },
           ].map((item) => {
@@ -120,14 +134,14 @@ export default async function BetaReadinessPage() {
                 Release cockpit
               </div>
               <h2 className="mt-2 font-serif text-3xl font-black">
-                {operatorPlan.deployable ? "Deploy path is clear" : "Deploy path has gates"}
+                {operatorPlan.deployable ? "App config and schema gates pass" : "App config or schema has gates"}
               </h2>
               <p className="mt-3 max-w-4xl text-sm font-bold leading-6 text-[#6b5b45]">
-                This is the operator-facing path from this build to a safe beta release: refresh Cloud auth if needed, sync schema, deploy a no-traffic preview, smoke it, then promote only after the preview is green.
+                This is the operator-facing path from this build to a safe beta release. It does not inspect local gcloud auth or prove that a public host is reachable; run preflight, deploy a no-traffic preview, and attach a fresh revision-matched smoke receipt before promotion.
               </p>
             </div>
             <span className={`rounded-full border px-4 py-2 text-xs font-black uppercase tracking-[0.14em] ${operatorPlan.deployable ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>
-              {operatorPlan.deployable ? "No app blockers" : `${operatorPlan.blockers.length} gate${operatorPlan.blockers.length === 1 ? "" : "s"}`}
+              {operatorPlan.deployable ? "External preflight still required" : `${operatorPlan.blockers.length} app gate${operatorPlan.blockers.length === 1 ? "" : "s"}`}
             </span>
           </div>
 
@@ -220,7 +234,18 @@ export default async function BetaReadinessPage() {
                       <p className="mt-2 text-sm leading-6 text-[#6b5b45]">{check.detail}</p>
                     </div>
                     <span className={`rounded-full border px-3 py-1 text-xs font-black uppercase tracking-[0.12em] ${statusClass(check.status)}`}>
-                      {check.status}
+                      {statusLabel(check.status)}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#8c6b4a]">
+                    <span className="rounded-full border border-[#eadfca] bg-white px-2.5 py-1">
+                      {check.gate} gate
+                    </span>
+                    <span className="rounded-full border border-[#eadfca] bg-white px-2.5 py-1">
+                      {check.evidence.scope}
+                    </span>
+                    <span className="rounded-full border border-[#eadfca] bg-white px-2.5 py-1">
+                      {check.evidence.verifiedInThisResponse ? "evidence observed" : "not verified"}
                     </span>
                   </div>
                 </article>
@@ -231,12 +256,12 @@ export default async function BetaReadinessPage() {
           <aside className="space-y-4">
             {[
               { href: "/projects", label: "Open Nests", detail: "Create or open customer workspaces." },
-              { href: "/outputs", label: "Review Outputs", detail: `${liveOutputs} live output shape and ${nowOutputs} now-priority outputs.` },
-              { href: "/outputs/hgo-episode-page", label: "Inspect HGO Output", detail: "Representative public episode-page readiness contract." },
+              { href: "/outputs", label: "Review output capability map", detail: `${mappedOutputDefinitions} definition${mappedOutputDefinitions === 1 ? "" : "s"} with a mapped review runway and ${activeDesignOutputs} active-design definitions. These are not artifact or availability counts.` },
+              { href: "/outputs/hgo-episode-page", label: "Inspect HGO capability definition", detail: "Representative episode-page contract; not publication or service-health proof." },
               { href: "/art-foundry", label: "Open Art Foundry", detail: "Generate prompt briefs and review approved Quipsly art." },
               { href: "https://quipsly.com/quipslys", label: "Public Quipslys", detail: "Marketing field guide for visual companions." },
               { href: "/api/beta-readiness", label: "Read API JSON", detail: "Machine-readable release readiness payload." },
-              { href: "/api/production-core/readiness", label: "Core DB JSON", detail: "Checks the additive production-core tables required for Nests, assets, source units, and publishing." },
+              { href: "/api/production-core/readiness", label: "Core DB JSON", detail: "Checks additive production-core tables for Nests, assets, source units, goals, and publishing." },
               { href: "/api/output-catalog/nest-kind/writing", label: "Nest Output JSON", detail: "Machine-readable writing Nest output paths." },
             ].map((item) => (
               <Link key={item.href} href={item.href} className="block rounded-2xl border border-[#e8dcc4] bg-white p-5 shadow-sm transition hover:-translate-y-0.5 hover:border-[#d8bd8e] hover:bg-[#fff8ec]">

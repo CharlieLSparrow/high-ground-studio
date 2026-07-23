@@ -43,6 +43,12 @@ fi
 
 print_step "Cloud auth"
 
+if gcloud auth print-access-token >/dev/null 2>&1; then
+  pass "gcloud can mint an access token non-interactively."
+else
+  fail "gcloud cannot mint an access token. Run: gcloud auth login --update-adc"
+fi
+
 if [[ -n "${PROJECT_ID}" ]] && gcloud projects describe "${PROJECT_ID}" --format="value(projectId)" >/dev/null 2>&1; then
   pass "gcloud token can access project ${PROJECT_ID}."
 else
@@ -146,6 +152,60 @@ if [[ -n "${PROJECT_ID}" ]] && gcloud run services describe "${SERVICE_NAME}" --
   pass "Cloud Run service ${SERVICE_NAME} exists in ${REGION}."
 else
   fail "Could not describe Cloud Run service ${SERVICE_NAME} in ${REGION}."
+fi
+
+print_step "Firebase-first auth runtime"
+
+firebase_env_report="$(mktemp)"
+trap 'rm -f "${context_list}" "${firebase_env_report}"' EXIT
+
+if [[ -n "${PROJECT_ID}" ]] && gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --project="${PROJECT_ID}" --format=json >"${firebase_env_report}" 2>/dev/null; then
+  firebase_env_status="$(
+    node - "${firebase_env_report}" <<'NODE'
+const fs = require("fs");
+const service = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const env = service.spec?.template?.spec?.containers?.[0]?.env || [];
+const present = new Set(env.map((item) => item.name));
+const envValueByName = new Map(env.map((item) => [item.name, item.value]));
+const required = [
+  "FIREBASE_PROJECT_ID",
+  "NEXT_PUBLIC_FIREBASE_API_KEY",
+  "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+  "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+  "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+  "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+  "NEXT_PUBLIC_FIREBASE_APP_ID",
+  "DATABASE_URL",
+];
+const missing = required.filter((name) => !present.has(name));
+if (missing.length > 0) {
+  console.log(`missing:${missing.join(",")}`);
+  process.exit(1);
+}
+if (String(envValueByName.get("QUIPSLY_OWNER_OVERRIDE") || "").toLowerCase() === "true") {
+  console.log("forbidden:QUIPSLY_OWNER_OVERRIDE=true");
+  process.exit(1);
+}
+console.log("ok");
+NODE
+  )" || true
+
+  if [[ "${firebase_env_status}" == "ok" ]]; then
+    pass "Cloud Run has required Firebase-first auth env names and no production owner override."
+  else
+    fail "Cloud Run Firebase-first auth env is incomplete (${firebase_env_status})."
+  fi
+else
+  fail "Could not inspect Cloud Run Firebase-first auth env."
+fi
+
+if gcloud projects get-iam-policy quipsly-reef \
+  --flatten="bindings[].members" \
+  --filter="bindings.role:roles/firebaseauth.admin AND bindings.members:studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com" \
+  --format="value(bindings.role)" 2>/dev/null | grep -q "roles/firebaseauth.admin"; then
+  pass "Cloud Run runtime service account can administer Firebase Auth in quipsly-reef."
+else
+  warn "Could not verify roles/firebaseauth.admin for studio-cloud-run on quipsly-reef. If no Firebase private key secrets are mounted, live session-cookie minting may fail."
 fi
 
 print_step "Next release commands"

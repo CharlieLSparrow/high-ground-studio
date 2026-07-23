@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
 export default async function QuipLoreCollectionReviewPage({
   params,
 }: {
-  params: { collectionId: string };
+  params: Promise<{ collectionId: string }>;
 }) {
+  const { collectionId } = await params;
   const session = await auth();
   if (!session?.user) {
     return <div className="p-8 text-white">Access Denied. Beta authentication required.</div>;
@@ -20,7 +21,7 @@ export default async function QuipLoreCollectionReviewPage({
 
   // Fetch the QuipLoreCollection with heavily populated relations
   const collection = await prisma.quipLoreCollection.findUnique({
-    where: { id: params.collectionId },
+    where: { id: collectionId },
     include: {
       quotes: {
         include: {

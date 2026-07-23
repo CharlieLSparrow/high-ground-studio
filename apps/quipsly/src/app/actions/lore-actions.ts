@@ -4,6 +4,12 @@ import { getPrismaClient } from "@/lib/prisma";
 import { requireProjectAccess } from "../../lib/studio-authz";
 import { revalidatePath } from "next/cache";
 import { GoogleGenAI, Type } from "@google/genai";
+import {
+  prepareRetrievalDocument,
+  prepareRetrievalQuery,
+  QUIPSLY_EMBEDDING_DIMENSIONS,
+  QUIPSLY_EMBEDDING_MODEL,
+} from "@/lib/retrieval/embeddings";
 
 /**
  * Saves a new semantic quote directly into the QuipLore knowledge base.
@@ -132,12 +138,17 @@ async function simulateCloudTaskAutoCurate(projectId: string, quoteId: string, t
     try {
       console.log(`[ML-Task] Generating semantic embedding for quote ${quoteId}...`);
       const embedResponse = await ai.models.embedContent({
-        model: "text-embedding-004",
-        contents: text
+        model: QUIPSLY_EMBEDDING_MODEL,
+        contents: prepareRetrievalDocument(text, context || "Quipsly Lore quote"),
+        config: { outputDimensionality: QUIPSLY_EMBEDDING_DIMENSIONS },
       });
       
       const embedding = embedResponse.embeddings?.[0]?.values;
-      if (embedding && embedding.length > 0) {
+      if (
+        embedding?.length === QUIPSLY_EMBEDDING_DIMENSIONS
+        && embedding.every(Number.isFinite)
+        && embedding.some((value) => value !== 0)
+      ) {
         const embeddingString = `[${embedding.join(',')}]`;
         await prisma.$executeRaw`
           UPDATE "QuipLoreQuote" 
@@ -168,12 +179,17 @@ export async function searchSemanticQuotes(projectId: string, query: string, lim
   
   const ai = new GoogleGenAI({ apiKey });
   const embedResponse = await ai.models.embedContent({
-    model: "text-embedding-004",
-    contents: query
+    model: QUIPSLY_EMBEDDING_MODEL,
+    contents: prepareRetrievalQuery(query),
+    config: { outputDimensionality: QUIPSLY_EMBEDDING_DIMENSIONS },
   });
   
   const queryEmbedding = embedResponse.embeddings?.[0]?.values;
-  if (!queryEmbedding || queryEmbedding.length === 0) {
+  if (
+    queryEmbedding?.length !== QUIPSLY_EMBEDDING_DIMENSIONS
+    || queryEmbedding.some((value) => !Number.isFinite(value))
+    || queryEmbedding.every((value) => value === 0)
+  ) {
     throw new Error("Failed to generate embedding for query.");
   }
 
@@ -192,4 +208,3 @@ export async function searchSemanticQuotes(projectId: string, query: string, lim
 
   return quotes;
 }
-

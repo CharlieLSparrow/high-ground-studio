@@ -3,13 +3,14 @@
 # Uploads downloaded Insta360 footage from the external hard drive to Google Cloud Storage.
 
 EXT_DIR="/Volumes/My Passport/Insta360 Download"
-GCS_BUCKET="gs://high-ground-raw-footage"
+GCS_BUCKET="${QUIPSLY_MEDIA_BUCKET_URI:-gs://${QUIPSLY_MEDIA_BUCKET:-high-ground-odyssey-media}/media-vault/raw/legacy-insta360-sync}"
 KEY_FILE="/Users/wall-e/Dev/high-ground-studio/apps/local-engine/gcs-key.json"
 
 echo "🚀 Starting HighGroundOdyssey GCS Media Sync"
 echo "================================================="
 echo "Source: $EXT_DIR"
 echo "Destination: $GCS_BUCKET"
+echo "Policy: media-vault/raw keeps source bytes; Quipsly metadata owns Nest/editor meaning."
 echo "================================================="
 
 # 1. Ensure external drive is mounted

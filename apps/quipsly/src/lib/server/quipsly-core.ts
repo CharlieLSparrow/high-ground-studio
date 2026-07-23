@@ -24,6 +24,7 @@ import type {
 import { getPrismaClient } from "@/lib/prisma";
 import { createInviteLoginToken } from "@/lib/server/invite-login-token";
 import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { ensureQuipslyStarterStateForUser } from "@/lib/server/quipsly-onboarding";
 import {
   ensureStudioProjectOwnerGrant,
   resolveStudioProjectAccess,
@@ -44,6 +45,15 @@ import { LIVE_WORK_NESTS } from "@/lib/studio/live-work-nests";
 export type QuipslyCorePrisma = PrismaClient;
 
 export type NestAccessDecision = Awaited<ReturnType<typeof resolveStudioProjectAccess>>;
+
+export class QuipslyNestWriteAccessError extends Error {
+  readonly status = 403;
+
+  constructor(readonly nestSlug: string) {
+    super(`You do not have write access to ${nestSlug}.`);
+    this.name = "QuipslyNestWriteAccessError";
+  }
+}
 
 type ProjectLike = Pick<StudioProject, "id" | "slug" | "name" | "sourceLabel"> & {
   isPrivate?: boolean;
@@ -354,7 +364,40 @@ export async function attachAssetToNest(input: {
   prisma?: PrismaClient;
 }) {
   const prisma = db(input.prisma);
-  const project = await getNestBySlug({ nestSlug: input.nestSlug, prisma });
+  let authorizedProjectId: string | null = null;
+  if (input.actorEmail) {
+    const access = await resolveNestAccess({
+      nestSlug: input.nestSlug,
+      email: input.actorEmail,
+      action: "write",
+      prisma,
+    });
+    if (!access.allowed) {
+      throw new QuipslyNestWriteAccessError(input.nestSlug);
+    }
+    authorizedProjectId = access.projectId;
+  }
+  // A Nest slug is unique only inside its workspace. When authorization has
+  // already resolved the user's exact project, keep that ID authoritative for
+  // the write instead of looking the slug up again inside the legacy default
+  // workspace. This prevents an allowed project in another workspace from
+  // failing or, worse, attaching media to a same-slug project elsewhere.
+  const authorizedProject = authorizedProjectId
+    ? await prisma.studioProject.findUnique({
+        where: { id: authorizedProjectId },
+        include: {
+          documents: {
+            orderBy: { updatedAt: "desc" },
+            take: 1,
+          },
+        },
+      })
+    : null;
+  const project = authorizedProject
+    ? Object.assign(authorizedProject, { nest: toNestRef(authorizedProject) })
+    : authorizedProjectId
+      ? null
+      : await getNestBySlug({ nestSlug: input.nestSlug, prisma });
   if (!project) throw new Error(`Nest not found: ${input.nestSlug}`);
 
   const attachment = await prisma.studioAssetAttachment.upsert({
@@ -501,8 +544,13 @@ export async function grantNestAccess(input: {
   const email = input.email.toLowerCase().trim();
   const inviteLogin = createInviteLoginToken();
 
-  await ensureInvitedStudioUserByEmail({
+  const invitedUser = await ensureInvitedStudioUserByEmail({
     email,
+    prisma,
+  });
+  await ensureQuipslyStarterStateForUser({
+    userId: invitedUser.id,
+    email: invitedUser.primaryEmail,
     prisma,
   });
 

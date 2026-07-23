@@ -1,5 +1,5 @@
 import React, { Fragment, useRef, useState, memo, useLayoutEffect } from "react";
-import { Trash2, X, Tag, Sparkles } from "lucide-react";
+import { BookOpenCheck, Trash2, X, Tag, Sparkles } from "lucide-react";
 import { Block, uniqueTagIds, canonicalBoundarySuggestion } from "./Tagger";
 import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
 import CommandPalette from "./CommandPalette";
@@ -10,6 +10,7 @@ const STRUCTURE_TAG_IDS = new Set(["chapter", "episode"]);
 interface BlockItemProps {
   block: Block;
   blockIndex: number;
+  previousBlockIsImmutable: boolean;
   boundaryId?: string;
   isOutlineFocused: boolean;
   isSaving: boolean;
@@ -24,7 +25,7 @@ interface BlockItemProps {
   onClearTags: (block: Block) => void;
   onDeleteBlock: (block: Block) => void;
   onNormalizeHeading: (block: Block) => void;
-  onAddComment: (blockId: string, start: number, end: number, text: string, body: string) => void;
+  onAddComment: (blockId: string, start: number, end: number, text: string, body: string) => Promise<boolean>;
   onFindSupportingQuote: (blockId: string, text: string) => void;
   onSelectionChange: (id: string, el: HTMLTextAreaElement) => void;
   registerTextareaRef: (id: string, el: HTMLTextAreaElement | null) => void;
@@ -38,6 +39,7 @@ interface BlockItemProps {
 function BlockItemComponent({
   block,
   blockIndex,
+  previousBlockIsImmutable,
   boundaryId,
   isOutlineFocused,
   isSaving,
@@ -74,9 +76,35 @@ function BlockItemComponent({
   
   const isPlaceholder = block.id.startsWith("offline-");
   const isPending = block.id.startsWith("pending-");
+  const isImmutableSource = block.sourceEvidence?.immutable === true;
 
   const [selection, setSelection] = useState<{ start: number; end: number; text: string } | null>(null);
   const [draftComment, setDraftComment] = useState<string | null>(null);
+  const [isSavingComment, setIsSavingComment] = useState(false);
+  const [commentError, setCommentError] = useState<string | null>(null);
+
+  const submitDraftComment = async () => {
+    if (!selection || !draftComment?.trim() || isSavingComment) return;
+    setIsSavingComment(true);
+    setCommentError(null);
+    try {
+      const saved = await onAddComment(
+        block.id,
+        selection.start,
+        selection.end,
+        selection.text,
+        draftComment,
+      );
+      if (saved) {
+        setDraftComment(null);
+        setSelection(null);
+      } else {
+        setCommentError("Comment not saved. Your draft remains here so you can copy it.");
+      }
+    } finally {
+      setIsSavingComment(false);
+    }
+  };
 
   const applyTagOptions = tagDefinitions.filter(t => t.category === "structure");
 
@@ -113,7 +141,31 @@ function BlockItemComponent({
       className={`relative group px-4 py-3 -mx-4 rounded-lg hover:bg-[#fdfaf6] transition-colors ${blockAccent} ${structureGlow} ${outlineGlow}`}
     >
       {/* AI Assistant Margin */}
-      <EditorMargin blockId={block.id} blockText={block.text} onTextChange={(text) => onTextChange(block.id, text)} />
+      {!isImmutableSource ? (
+        <EditorMargin blockId={block.id} blockText={block.text} onTextChange={(text) => onTextChange(block.id, text)} />
+      ) : null}
+
+      {block.sourceEvidence ? (
+        <div className="mb-3 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-xs leading-5 text-cyan-950" aria-label="Source evidence provenance">
+          <div className="flex flex-wrap items-center gap-2">
+            <BookOpenCheck size={15} aria-hidden="true" />
+            <span className="font-black uppercase tracking-[0.1em]">{isImmutableSource ? "Pinned transcript evidence" : "Source-linked draft"}</span>
+            <span className="text-cyan-800">{isImmutableSource ? "Read-only source snapshot" : "Immutable source unchanged"}</span>
+          </div>
+          <p className="mt-1.5 font-semibold">{block.sourceEvidence.citationLabel}</p>
+          <div className="mt-1 flex flex-wrap gap-3">
+            <a href="/research" className="font-black underline decoration-cyan-300 underline-offset-4">Open Research</a>
+            {block.sourceEvidence.sourcePath ? (
+              <a
+                href={block.sourceEvidence.sourcePath}
+                target={block.sourceEvidence.sourcePath.startsWith("http") ? "_blank" : undefined}
+                rel={block.sourceEvidence.sourcePath.startsWith("http") ? "noreferrer" : undefined}
+                className="font-black underline decoration-cyan-300 underline-offset-4"
+              >Open exact source</a>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {/* Render applied tags above the block */}
       {(displayedBlockTagIds.length > 0 || displayedRangeSpans.length > 0) && (
@@ -169,21 +221,23 @@ function BlockItemComponent({
         </div>
       )}
 
-      {blockCards.map(card => {
+      {!isImmutableSource ? blockCards.map(card => {
         if (!card.shouldRender(block, blockTagIds)) return null;
         return (
           <Fragment key={card.id}>
             {card.render({ block, onTextChange, onTextCommit: onTextBlur })}
           </Fragment>
         );
-      })}
+      }) : null}
 
       <textarea
-        aria-label={`Editor block ${blockIndex + 1}`}
-        className="w-full resize-none overflow-hidden rounded-xl border border-transparent bg-transparent px-4 py-3 font-serif text-xl leading-relaxed text-[#3d3122] outline-none transition-colors hover:border-[#eadfca] hover:bg-white/55 focus:border-[#d8b777] focus:bg-white focus:shadow-inner focus:ring-2 focus:ring-amber-100 placeholder:text-[#d3c2a8] placeholder:opacity-70"
+        aria-label={isImmutableSource ? `Source evidence block ${blockIndex + 1}` : `Editor block ${blockIndex + 1}`}
+        readOnly={isImmutableSource}
+        className={`w-full resize-none overflow-hidden rounded-xl px-4 py-3 font-serif text-xl leading-relaxed text-[#3d3122] outline-none transition-colors placeholder:text-[#d3c2a8] placeholder:opacity-70 ${isImmutableSource ? "cursor-text border border-cyan-200 bg-cyan-50/60" : "border border-transparent bg-transparent hover:border-[#eadfca] hover:bg-white/55 focus:border-[#d8b777] focus:bg-white focus:shadow-inner focus:ring-2 focus:ring-amber-100"}`}
         value={block.text}
         placeholder="Type # for Chapter, Ep for Episode, or just write..."
         onChange={(e) => {
+          if (isImmutableSource) return;
           let nextValue = e.target.value;
           const trimmed = nextValue.toLowerCase();
           
@@ -204,10 +258,17 @@ function BlockItemComponent({
           
           onTextChange(block.id, nextValue);
         }}
-        onBlur={(e) => onTextBlur(block.id, e.target.value)}
+        onBlur={(e) => {
+          if (!isImmutableSource) onTextBlur(block.id, e.target.value);
+        }}
         onPaste={(e) => {
+          if (isImmutableSource) {
+            e.preventDefault();
+            return;
+          }
           const pastedText = e.clipboardData.getData('text/plain');
-          if (pastedText && pastedText.includes('\n')) {
+          const canSplitIntoCanonicalBlocks = !block.sourceEvidence && (block.spans?.length ?? 0) === 0;
+          if (canSplitIntoCanonicalBlocks && pastedText && pastedText.includes('\n')) {
             // Check if there are actual multiple non-empty lines
             const chunks = pastedText.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
             if (chunks.length > 1) {
@@ -217,6 +278,16 @@ function BlockItemComponent({
           }
         }}
         onKeyDown={(e) => {
+          if (isImmutableSource) {
+            if (e.key === "ArrowUp" && e.currentTarget.selectionStart === 0) {
+              e.preventDefault();
+              onNavigatePrevious?.(block.id);
+            } else if (e.key === "ArrowDown" && e.currentTarget.selectionEnd === block.text.length) {
+              e.preventDefault();
+              onNavigateNext?.(block.id);
+            }
+            return;
+          }
           if (e.key === "Backspace" && e.currentTarget.selectionStart === 0 && e.currentTarget.selectionEnd === 0) {
             e.preventDefault();
             onMergeWithPrevious(block.id);
@@ -258,7 +329,7 @@ function BlockItemComponent({
         }}
       />
       
-      {commandPaletteOpen && (
+      {commandPaletteOpen && !isImmutableSource && (
         <CommandPalette
           isOpen={true}
           position={{ top: 20, left: 16 }}
@@ -277,7 +348,7 @@ function BlockItemComponent({
         aria-label="Block controls" 
         className="mt-1 min-h-7 flex flex-wrap items-start justify-start gap-1.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 focus-within:opacity-100 sm:justify-end"
       >
-        {canonicalBoundarySuggestion(block.text) ? (
+        {!isImmutableSource && canonicalBoundarySuggestion(block.text) ? (
           <button
             type="button"
             onClick={() => onNormalizeHeading(block)}
@@ -298,7 +369,10 @@ function BlockItemComponent({
             </button>
             <button
               type="button"
-              onClick={() => setDraftComment("")}
+              onClick={() => {
+                setCommentError(null);
+                setDraftComment("");
+              }}
               className="inline-flex items-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-blue-900 transition-colors hover:bg-blue-100"
             >
               <Tag size={10} /> Add Note
@@ -306,7 +380,7 @@ function BlockItemComponent({
           </>
         )}
 
-        {applyTagOptions.map(tag => {
+        {!isImmutableSource ? applyTagOptions.map(tag => {
           const isSelected = activeStructureTag === tag.id;
           const Icon = tag.icon;
           return (
@@ -327,9 +401,9 @@ function BlockItemComponent({
               {isSelected ? `${tag.label} (In outline)` : `Make ${tag.label}`}
             </button>
           );
-        })}
+        }) : null}
 
-        {blockIndex > 0 ? (
+        {blockIndex > 0 && !isImmutableSource && !previousBlockIsImmutable ? (
           <button
             type="button"
             onClick={() => onMergeWithPrevious(block.id)}
@@ -353,7 +427,7 @@ function BlockItemComponent({
           </button>
         ) : null}
 
-        <button
+        {!isImmutableSource ? <button
           type="button"
           onClick={() => onDeleteBlock(block)}
           onMouseDown={(event) => event.preventDefault()}
@@ -363,7 +437,7 @@ function BlockItemComponent({
         >
           <Trash2 size={10} />
           Delete block
-        </button>
+        </button> : null}
       </div>
 
       {/* Margin Annotations / Right Column */}
@@ -383,31 +457,36 @@ function BlockItemComponent({
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   if (draftComment.trim()) {
-                    onAddComment(block.id, selection.start, selection.end, selection.text, draftComment);
-                    setDraftComment(null);
-                    setSelection(null);
+                    void submitDraftComment();
                   }
                 } else if (e.key === "Escape") {
                   setDraftComment(null);
+                  setCommentError(null);
                 }
               }}
             />
+            {commentError ? (
+              <p className="mt-1 text-[10px] font-bold leading-4 text-rose-700" role="alert">{commentError}</p>
+            ) : null}
             <div className="flex gap-2 mt-1">
               <button
-                className="text-[10px] font-bold bg-amber-600 text-white px-2 py-0.5 rounded hover:bg-amber-700"
+                className="text-[10px] font-bold bg-amber-600 text-white px-2 py-0.5 rounded hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={isSavingComment}
                 onClick={() => {
                   if (draftComment.trim()) {
-                    onAddComment(block.id, selection.start, selection.end, selection.text, draftComment);
-                    setDraftComment(null);
-                    setSelection(null);
+                    void submitDraftComment();
                   }
                 }}
               >
-                Save
+                {isSavingComment ? "Saving..." : "Save"}
               </button>
               <button
                 className="text-[10px] font-bold text-amber-600 hover:underline"
-                onClick={() => setDraftComment(null)}
+                disabled={isSavingComment}
+                onClick={() => {
+                  setDraftComment(null);
+                  setCommentError(null);
+                }}
               >
                 Cancel
               </button>

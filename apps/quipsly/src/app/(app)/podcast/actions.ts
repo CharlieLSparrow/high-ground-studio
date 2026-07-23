@@ -19,6 +19,13 @@ export type EpisodeData = {
   publishedAt?: string;
 };
 
+export type CloudRenderData = {
+  name: string;
+  url: string;
+  sizeBytes: number;
+  durationSeconds: number;
+};
+
 type PodcastEpisodeRecord = {
   id: string;
   slug: string;
@@ -38,12 +45,6 @@ async function checkAuth() {
   const session = await auth();
   const roles = Array.isArray(session?.user?.roles) ? session.user.roles : [];
   
-  // In development, if NextAuth is unconfigured, let's log a warning but allow bypass
-  if (process.env.NODE_ENV === "development" && (!session || !session.user)) {
-    console.warn("[Podcast Actions] Dev bypass active. Proceeding without active authentication.");
-    return { ok: true, actor: "dev-bypass@highground.com" };
-  }
-
   if (!session?.user?.id) {
     return { ok: false, error: "Sign in required." };
   }
@@ -86,40 +87,14 @@ export async function getEpisodesAction() {
         publishedAt: e.publishedAt.toISOString()
       })) 
     };
-  } catch (err: any) {
-    console.warn("[Podcast Actions] Failed to load from PostgreSQL. Using simulated fallbacks.", err);
-    
-    // In-memory local fallback seeder for offline or mock state
-    const fallbackEpisodes = [
-      {
-        id: "mock-1",
-        slug: "the-autonomy-paradox",
-        title: "Episode 1: The Autonomy Paradox",
-        description: "Malcolm Gladwell and Daniel Pink discuss the surprising science of motivation. Why standard corporate incentives fail, and why true creative momentum requires absolute self-direction.",
-        audioUrl: "https://storage.googleapis.com/high-ground-studio/episodes/take_1.mp3",
-        audioSizeBytes: 14500320,
-        durationSeconds: 1800,
-        episodeType: "full",
-        season: 1,
-        episodeNumber: 1,
-        publishedAt: new Date().toISOString()
-      },
-      {
-        id: "mock-2",
-        slug: "dopamine-timelines-spatial-engines",
-        title: "Episode 2: Dopamine Timelines & Spatial Task Engines",
-        description: "A deep dive into high-stimulus organization workflows built for neurodivergent minds. How to ditch linear task calendars for high-interest momentum.",
-        audioUrl: "https://storage.googleapis.com/high-ground-studio/episodes/take_2.mp3",
-        audioSizeBytes: 20120400,
-        durationSeconds: 2400,
-        episodeType: "full",
-        season: 1,
-        episodeNumber: 2,
-        publishedAt: new Date(Date.now() - 86400000).toISOString()
-      }
-    ];
-
-    return { success: true, isSimulated: true, episodes: fallbackEpisodes };
+  } catch (error: unknown) {
+    console.error("[Podcast Actions] PostgreSQL episode read failed.", error);
+    return {
+      success: false as const,
+      state: "unavailable" as const,
+      error: "Podcast records are unavailable. No episode list was loaded and no demo records were substituted.",
+      episodes: [],
+    };
   }
 }
 
@@ -200,12 +175,13 @@ export async function deleteEpisodeAction(id: string) {
   }
 }
 
-// Simulated final renders / stems selector from GCS asset buckets to bridge ComfyUI & editor processes
 export async function getCloudRendersAction() {
-  return [
-    { name: "Take 1: The Autonomy Paradox (Audio Master).mp3", url: "https://storage.googleapis.com/high-ground-studio/episodes/take_1.mp3", sizeBytes: 14500320, durationSeconds: 1800 },
-    { name: "Take 2: Dopamine Timelines (Audio Master).mp3", url: "https://storage.googleapis.com/high-ground-studio/episodes/take_2.mp3", sizeBytes: 20120400, durationSeconds: 2400 },
-    { name: "S1E03_Fumadocs_Integrations_V1.mp3", url: "https://storage.googleapis.com/high-ground-studio/episodes/take_3.mp3", sizeBytes: 18500200, durationSeconds: 2100 },
-    { name: "Interactive_Tonight_Show_Curated.mp3", url: "https://storage.googleapis.com/high-ground-studio/episodes/tonight_show.mp3", sizeBytes: 12500000, durationSeconds: 1500 }
-  ];
+  // This desk does not yet have a verified GCS inventory adapter. Returning
+  // hard-coded "masters" here made prototype data look like durable media truth.
+  return {
+    success: false as const,
+    state: "unavailable" as const,
+    error: "Cloud render inventory is not connected. Enter a verified audio URL manually.",
+    renders: [] as CloudRenderData[],
+  };
 }

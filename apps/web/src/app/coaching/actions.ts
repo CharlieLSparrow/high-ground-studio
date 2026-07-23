@@ -32,6 +32,16 @@ function parsePreferredContactMethod(value: string) {
     : null;
 }
 
+function parseSessionIntent(value: string) {
+  return ["COACHING", "PODCAST_CAPTURE", "RESEARCH_INTERVIEW"].includes(value)
+    ? value
+    : "COACHING";
+}
+
+function parseRecordingInterest(value: string) {
+  return ["YES", "NO", "NOT_SURE"].includes(value) ? value : "NOT_SURE";
+}
+
 function getSessionEmail(session: CoachingRequestSession) {
   return (
     session?.user?.primaryEmail?.trim().toLowerCase() ||
@@ -62,6 +72,9 @@ export async function submitCoachingRequestAction(formData: FormData) {
   const preferredContactMethod = parsePreferredContactMethod(
     String(formData.get("preferredContactMethod") ?? "").trim(),
   );
+  const availabilityNotes = String(formData.get("availabilityNotes") ?? "").trim();
+  const sessionIntent = parseSessionIntent(String(formData.get("sessionIntent") ?? "").trim());
+  const recordingInterest = parseRecordingInterest(String(formData.get("recordingInterest") ?? "").trim());
   const note = String(formData.get("note") ?? "").trim();
 
   if (!email) {
@@ -103,6 +116,16 @@ export async function submitCoachingRequestAction(formData: FormData) {
     );
   }
 
+  if (availabilityNotes.length > 1000) {
+    redirect(
+      (source === "dashboard" ? buildDashboardRedirect : buildCoachingRedirect)({
+        error:
+          "Those availability notes are a little long for the request form. Please trim them down and try again.",
+        ...(source === "dashboard" ? { intent: "coaching" } : {}),
+      }),
+    );
+  }
+
   let createdRequestDetails: {
     id: string;
     coachingGoals: string;
@@ -134,18 +157,36 @@ export async function submitCoachingRequestAction(formData: FormData) {
         },
       });
 
-      return tx.coachingRequest.create({
-        data: {
+      const requestData = {
           clientUserId: userId,
           preferredContactMethod,
           email,
           phone: phone || null,
-          availabilityNotes: null,
+          availabilityNotes: availabilityNotes || null,
           coachingGoals:
             note ||
             "Requested a coaching conversation from the simplified coaching call-to-action page.",
           contactConsent: true,
-        },
+          metadataJson: {
+            source: source || "coaching-page",
+            sessionIntent,
+            recordingInterest,
+            captureEligible: recordingInterest !== "NO",
+            nextSystemStep: "team-review-to-booking-hold-call-room",
+            appOwnedTruth: [
+              "coaching-request",
+              "booking",
+              "call-room",
+              "recording-consent",
+              "recording-asset",
+              "transcript-job",
+              "coaching-packet",
+            ],
+          },
+        } as any;
+
+      return tx.coachingRequest.create({
+        data: requestData,
         select: {
           id: true,
           coachingGoals: true,

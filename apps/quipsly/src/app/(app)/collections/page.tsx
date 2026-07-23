@@ -1,132 +1,252 @@
-"use client";
+import { auth } from "@/auth";
+import { getPrismaClient } from "@/lib/prisma";
+import {
+  getCurrentHomeNestActorEmail,
+  listProjectsVisibleToEmail,
+} from "@/lib/server/home-nest";
+import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
 
-import { useState } from "react";
-import { Folder, Bookmark, Quote, Search, Plus, MoreVertical } from "lucide-react";
+import { CollectionsClient } from "./collections-client";
+import {
+  sourceLabelForUrl,
+  type CollectionItem,
+  type CollectionsSnapshot,
+} from "./collections-model";
 
-export default function CollectionsDashboard() {
-  const [activeCollection, setActiveCollection] = useState<string>("all");
+export const dynamic = "force-dynamic";
 
-  return (
-    <div className="flex h-screen bg-zinc-950 text-white overflow-hidden">
-      
-      {/* Sidebar: Collections */}
-      <div className="w-64 border-r border-zinc-800 bg-zinc-900/50 flex flex-col">
-        <div className="p-4 border-b border-zinc-800 flex justify-between items-center">
-          <h2 className="font-black text-sm uppercase tracking-widest text-zinc-400">Collections</h2>
-          <button className="text-zinc-500 hover:text-white transition-colors">
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
-        
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
-          <button 
-            onClick={() => setActiveCollection("all")}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-all ${activeCollection === "all" ? "bg-pink-600/20 text-pink-500" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
-          >
-            <Bookmark className="w-4 h-4" />
-            All Clippings
-          </button>
-          <button 
-            onClick={() => setActiveCollection("leadership")}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-all ${activeCollection === "leadership" ? "bg-pink-600/20 text-pink-500" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
-          >
-            <Folder className="w-4 h-4" />
-            Leadership Hub
-          </button>
-          <button 
-            onClick={() => setActiveCollection("adhd")}
-            className={`w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-bold transition-all ${activeCollection === "adhd" ? "bg-pink-600/20 text-pink-500" : "text-zinc-400 hover:bg-zinc-800 hover:text-white"}`}
-          >
-            <Folder className="w-4 h-4" />
-            ADHD Systems
-          </button>
-        </div>
-      </div>
+function safeDatabaseMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const code = typeof error === "object" && error && "code" in error
+    ? String((error as { code?: unknown }).code ?? "")
+    : "";
+  if (code === "ECONNREFUSED" || message.includes("ECONNREFUSED")) {
+    return "The workspace database connection is unavailable.";
+  }
+  return "Quipsly could not read your saved collections.";
+}
 
-      {/* Main Area: Masonry Grid of Snippets */}
-      <div className="flex-1 flex flex-col">
-        <header className="p-6 border-b border-zinc-800 flex justify-between items-center">
-          <div>
-            <h1 className="text-2xl font-black uppercase tracking-widest text-white">Inbox</h1>
-            <p className="text-sm text-zinc-500">Unsorted clippings from the Web Clipper</p>
-          </div>
-          
-          <div className="relative">
-             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
-             <input 
-               type="text" 
-               placeholder="Search snippets..." 
-               className="bg-zinc-900 border border-zinc-800 rounded-full pl-10 pr-4 py-2 text-sm text-white focus:outline-none focus:border-pink-500 transition-colors w-64"
-             />
-          </div>
-        </header>
+function bookmarkExcerpt(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "Saved bookmark";
+  const metadata = value as Record<string, unknown>;
+  for (const candidate of [metadata.description, metadata.excerpt, metadata.note]) {
+    if (typeof candidate === "string" && candidate.trim()) return candidate.trim();
+  }
+  return "Saved bookmark";
+}
 
-        <div className="flex-1 overflow-y-auto p-8 bg-zinc-950">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            
-            {/* Snippet Card 1 */}
-            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-5 shadow-lg flex flex-col gap-4 hover:border-zinc-700 transition-all group cursor-pointer relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-pink-500"></div>
-              <div className="flex justify-between items-start">
-                <Quote className="w-5 h-5 text-zinc-600" />
-                <button className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-white">
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-              </div>
-              <p className="text-sm leading-relaxed text-zinc-300 font-serif">
-                "The most important thing in communication is hearing what isn't said."
-              </p>
-              <div className="pt-4 border-t border-zinc-800/50 mt-auto">
-                <p className="text-xs font-bold text-zinc-500 truncate hover:text-pink-400">
-                  Peter Drucker • Management
-                </p>
-              </div>
-            </div>
+function captureReceiptTitle(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const title = (value as Record<string, unknown>).title;
+  return typeof title === "string" && title.trim() ? title.trim() : null;
+}
 
-            {/* Snippet Card 2 */}
-            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-5 shadow-lg flex flex-col gap-4 hover:border-zinc-700 transition-all group cursor-pointer relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-blue-500"></div>
-              <div className="flex justify-between items-start">
-                <Quote className="w-5 h-5 text-zinc-600" />
-                <button className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-white">
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-              </div>
-              <p className="text-sm leading-relaxed text-zinc-300 font-serif">
-                "We are kept from our goal not by obstacles but by a clear path to a lesser goal."
-              </p>
-              <div className="pt-4 border-t border-zinc-800/50 mt-auto">
-                <p className="text-xs font-bold text-zinc-500 truncate hover:text-blue-400">
-                  Robert Brault • Focus
-                </p>
-              </div>
-            </div>
-
-            {/* Snippet Card 3 */}
-            <div className="bg-zinc-900 rounded-xl border border-zinc-800 p-5 shadow-lg flex flex-col gap-4 hover:border-zinc-700 transition-all group cursor-pointer relative overflow-hidden">
-              <div className="absolute top-0 left-0 w-1 h-full bg-emerald-500"></div>
-              <div className="flex justify-between items-start">
-                <Bookmark className="w-5 h-5 text-zinc-600" />
-                <button className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity hover:text-white">
-                  <MoreVertical className="w-4 h-4" />
-                </button>
-              </div>
-              <p className="text-sm font-bold text-white mb-1">
-                How to build a Second Brain
-              </p>
-              <p className="text-xs leading-relaxed text-zinc-400">
-                A great methodology for capturing knowledge and organizing it in a way that is actionable...
-              </p>
-              <div className="pt-4 border-t border-zinc-800/50 mt-auto">
-                <p className="text-xs font-bold text-zinc-500 truncate hover:text-emerald-400">
-                  fortelabs.co
-                </p>
-              </div>
-            </div>
-
-          </div>
-        </div>
-      </div>
-    </div>
+async function loadCollections(): Promise<CollectionsSnapshot> {
+  const session = await auth();
+  const signedInEmail = normalizeAccessEmail(
+    session?.user?.primaryEmail || session?.user?.email,
   );
+  const actorEmail = signedInEmail || await getCurrentHomeNestActorEmail();
+  if (!actorEmail) {
+    return {
+      state: "signed-out",
+      message: "Sign in to read your private snippets and bookmarks.",
+    };
+  }
+
+  const prisma = getPrismaClient();
+  try {
+    const actor = session?.user?.id
+      ? { id: session.user.id }
+      : await prisma.user.findFirst({
+          where: {
+            OR: [
+              { primaryEmail: actorEmail },
+              { aliases: { some: { email: actorEmail } } },
+            ],
+          },
+          select: { id: true },
+        });
+
+    if (!actor) {
+      return {
+        state: "ready",
+        authState: signedInEmail ? "signed-in" : "local-operator",
+        collections: [],
+        items: [],
+        writableResearchProjects: [],
+      };
+    }
+
+    const visibleProjects = await listProjectsVisibleToEmail(actorEmail, prisma);
+    const writableResearchProjects = signedInEmail
+      ? visibleProjects
+          .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
+          .map((project) => ({ id: project.id, name: project.name, slug: project.slug }))
+      : [];
+
+    const [collectionRows, snippetRows, bookmarkRows] = await Promise.all([
+      prisma.collection.findMany({
+        where: { userId: actor.id },
+        orderBy: { updatedAt: "desc" },
+        select: {
+          id: true,
+          slug: true,
+          name: true,
+          description: true,
+          _count: { select: { snippets: true, bookmarks: true } },
+        },
+      }),
+      prisma.snippet.findMany({
+        where: { userId: actor.id },
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+        select: {
+          id: true,
+          collectionId: true,
+          sourceUrl: true,
+          sourceTitle: true,
+          highlightedText: true,
+          note: true,
+          updatedAt: true,
+          collection: { select: { name: true } },
+          researchFilings: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              sourceUnitId: true,
+              projectId: true,
+              createdAt: true,
+              project: { select: { name: true, slug: true } },
+            },
+          },
+          _count: { select: { captureReceipts: true } },
+          captureReceipts: {
+            orderBy: { capturedAt: "desc" },
+            take: 10,
+            select: { id: true, capturedAt: true, captureSnapshotJson: true },
+          },
+        },
+      }),
+      prisma.bookmark.findMany({
+        where: { userId: actor.id },
+        orderBy: { updatedAt: "desc" },
+        take: 200,
+        select: {
+          id: true,
+          collectionId: true,
+          url: true,
+          title: true,
+          metadataJson: true,
+          updatedAt: true,
+          collection: { select: { name: true } },
+          researchFilings: {
+            orderBy: { createdAt: "desc" },
+            select: {
+              id: true,
+              sourceUnitId: true,
+              projectId: true,
+              createdAt: true,
+              project: { select: { name: true, slug: true } },
+            },
+          },
+          _count: { select: { captureReceipts: true } },
+          captureReceipts: {
+            orderBy: { capturedAt: "desc" },
+            take: 10,
+            select: { id: true, capturedAt: true, captureSnapshotJson: true },
+          },
+        },
+      }),
+    ]);
+
+    const items: CollectionItem[] = [
+      ...snippetRows.map((snippet) => ({
+        id: snippet.id,
+        itemType: "snippet" as const,
+        collectionId: snippet.collectionId,
+        collectionName: snippet.collection?.name ?? null,
+        title: snippet.sourceTitle || "Saved quote",
+        excerpt: snippet.highlightedText,
+        note: snippet.note,
+        sourceUrl: snippet.sourceUrl,
+        sourceLabel: sourceLabelForUrl(snippet.sourceUrl),
+        updatedAt: snippet.updatedAt.toISOString(),
+        lastCapturedAt: (snippet.captureReceipts[0]?.capturedAt || snippet.updatedAt).toISOString(),
+        captureCount: snippet._count.captureReceipts || 1,
+        captureHistory: snippet.captureReceipts.map((receipt) => ({
+          id: receipt.id,
+          capturedAt: receipt.capturedAt.toISOString(),
+          title: captureReceiptTitle(receipt.captureSnapshotJson),
+        })),
+        researchFilings: snippet.researchFilings.map((filing) => ({
+          id: filing.id,
+          sourceUnitId: filing.sourceUnitId,
+          projectId: filing.projectId,
+          projectName: filing.project.name,
+          projectSlug: filing.project.slug,
+          createdAt: filing.createdAt.toISOString(),
+        })),
+      })),
+      ...bookmarkRows.map((bookmark) => ({
+        id: bookmark.id,
+        itemType: "bookmark" as const,
+        collectionId: bookmark.collectionId,
+        collectionName: bookmark.collection?.name ?? null,
+        title: bookmark.title,
+        excerpt: bookmarkExcerpt(bookmark.metadataJson),
+        note: null,
+        sourceUrl: bookmark.url,
+        sourceLabel: sourceLabelForUrl(bookmark.url),
+        updatedAt: bookmark.updatedAt.toISOString(),
+        lastCapturedAt: (bookmark.captureReceipts[0]?.capturedAt || bookmark.updatedAt).toISOString(),
+        captureCount: bookmark._count.captureReceipts || 1,
+        captureHistory: bookmark.captureReceipts.map((receipt) => ({
+          id: receipt.id,
+          capturedAt: receipt.capturedAt.toISOString(),
+          title: captureReceiptTitle(receipt.captureSnapshotJson),
+        })),
+        researchFilings: bookmark.researchFilings.map((filing) => ({
+          id: filing.id,
+          sourceUnitId: filing.sourceUnitId,
+          projectId: filing.projectId,
+          projectName: filing.project.name,
+          projectSlug: filing.project.slug,
+          createdAt: filing.createdAt.toISOString(),
+        })),
+      })),
+    ].sort((left, right) => right.lastCapturedAt.localeCompare(left.lastCapturedAt));
+
+    return {
+      state: "ready",
+      authState: signedInEmail ? "signed-in" : "local-operator",
+      collections: collectionRows.map((collection) => ({
+        id: collection.id,
+        slug: collection.slug,
+        name: collection.name,
+        description: collection.description,
+        snippetCount: collection._count.snippets,
+        bookmarkCount: collection._count.bookmarks,
+      })),
+      items,
+      writableResearchProjects,
+    };
+  } catch (error) {
+    console.error("[collections] Failed to load saved sources", error);
+    return {
+      state: "unavailable",
+      authState: signedInEmail ? "signed-in" : "local-operator",
+      message: safeDatabaseMessage(error),
+    };
+  }
+}
+
+export default async function CollectionsPage({ searchParams }: { searchParams?: Promise<{ capture?: string | string[] }> } = {}) {
+  const snapshot = await loadCollections();
+  const params = await (searchParams ?? Promise.resolve<{ capture?: string | string[] }>({}));
+  const requestedCaptureId = typeof params.capture === "string" ? params.capture.trim().slice(0, 200) : "";
+  const initialCaptureId = snapshot.state === "ready" && snapshot.items.some((item) => item.id === requestedCaptureId)
+    ? requestedCaptureId
+    : null;
+  return <CollectionsClient snapshot={snapshot} initialCaptureId={initialCaptureId} />;
 }

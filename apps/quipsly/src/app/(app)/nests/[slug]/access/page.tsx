@@ -99,7 +99,7 @@ export default async function NestAccessPage({ params, searchParams }: NestAcces
   const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
 
   if (!actorEmail) {
-    redirect(`/api/auth/signin?callbackUrl=/nests/${encodeURIComponent(slug)}/access`);
+    redirect(`/login?callbackUrl=/nests/${encodeURIComponent(slug)}/access`);
   }
 
   const access = await resolveStudioProjectAccess({
@@ -160,7 +160,9 @@ export default async function NestAccessPage({ params, searchParams }: NestAcces
                 {canManageSharing ? "You can manage" : "You have access"}
               </div>
               <p className="mt-2 text-sm leading-6 text-emerald-900">
-                Your access source: {access.source}. Role: {access.role}.
+                {access.source === "operator-override"
+                  ? `Local operator override is active. Effective role: ${access.role}.`
+                  : `Your access source: ${access.source}. Role: ${access.role}.`}
               </p>
             </div>
           </div>

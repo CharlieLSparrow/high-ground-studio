@@ -1,144 +1,105 @@
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, Feather, Library, Sparkles, Wand2 } from "lucide-react";
-import {
-  generatedQuipslyArt,
-  getGeneratedQuipslyArtByRole,
-} from "@high-ground/quipsly-domain/generated-art";
+import { ArrowLeft, BookOpen, Feather, Library, Mic2, Palette, Search, Sparkles } from "lucide-react";
 
-const roleNotes = [
+const roles = [
   {
-    role: "hero",
-    title: "Librarians",
-    body: "They help you find the right example, remember where it came from, and keep your sources from wandering off into the shrubbery.",
+    title: "Research Quipslys",
+    Icon: Search,
+    image: "/images/quipsly-generated/scholarly_quipsly_verifying_sources.png",
+    copy: "They fetch sources, compare evidence, build packets, track citations, and keep the provenance trail close to the work.",
   },
   {
-    role: "writing",
-    title: "Scribes",
-    body: "They organize manuscript structure, headings, notes, and drafts while keeping the actual authorship in your hands.",
+    title: "Writing Quipslys",
+    Icon: Feather,
+    image: "/images/quipsly-generated/curious_quipsly_writing_wisdom_notes.png",
+    copy: "They outline, summarize, draft, rewrite, annotate, and suggest structure. They can write with you, but they do not hide what changed.",
   },
   {
-    role: "quote",
-    title: "Curators",
-    body: "They turn quote chaos into quote cards, attribution trails, collections, and shareable wisdom feeds.",
+    title: "Producer Quipslys",
+    Icon: Mic2,
+    image: "/images/quipsly-generated/adorable_quipsly_podcast_planning.png",
+    copy: "They wrangle episodes, clips, transcripts, show notes, media packets, platform copy, and review tasks.",
   },
   {
-    role: "podcast",
-    title: "Producers",
-    body: "They keep show notes, clip cues, media assets, and publishing packets close to the episode you are actually making.",
+    title: "Teaching Quipslys",
+    Icon: BookOpen,
+    image: "/images/quipsly-generated/quipsly_teaching_nature_exploration.png",
+    copy: "They turn hard-won knowledge into lessons, exercises, quizzes, flashcards, coaching prompts, and course outlines.",
+  },
+  {
+    title: "Art Foundry Quipslys",
+    Icon: Palette,
+    image: "/images/quipsly-generated/cute_quipsly_inventor_drawing_machine.png",
+    copy: "They help make images, cards, storyboards, visual systems, and brand assets without scattering prompts and source files everywhere.",
+  },
+  {
+    title: "Tower Quipslys",
+    Icon: Library,
+    image: "/images/quipsly-generated/quipsly_photographer_navigator_adventure.png",
+    copy: "They prepare publishing queues, metadata, receipts, analytics views, social packets, and platform checklists.",
   },
 ];
 
 export default function QuipslysPage() {
-  const hero = generatedQuipslyArt[0]!;
-  const writing = getGeneratedQuipslyArtByRole("writing").slice(0, 2);
-  const quote = getGeneratedQuipslyArtByRole("quote").slice(0, 1);
-  const podcast = getGeneratedQuipslyArtByRole("podcast").slice(0, 1);
-  const gallery = [...writing, ...quote, ...podcast, ...getGeneratedQuipslyArtByRole("generator").slice(0, 8)];
-
   return (
-    <main className="min-h-screen bg-[#f6efe6] px-6 py-8 text-[#3d2618]">
+    <main className="min-h-screen bg-[#f8efe0] px-5 py-8 text-[#342315] md:px-8">
       <section className="mx-auto max-w-7xl">
         <nav className="mb-8 flex items-center justify-between font-sans">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-[#a96735]">
+          <Link href="/" className="inline-flex items-center gap-2 text-sm font-black uppercase tracking-[0.14em] text-[#6d4b22]">
             <ArrowLeft className="h-4 w-4" />
             Back to Quipsly
           </Link>
-          <Link
-            href="https://nest.quipsly.com/art-foundry"
-            className="hidden rounded-full border border-[#d8b98e] bg-white/80 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#a96735] shadow-sm md:inline-flex"
-          >
+          <Link href="https://nest.quipsly.com/art-foundry" className="hidden rounded-full border border-[#d8b98e] bg-white/80 px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#6d4b22] shadow-sm md:inline-flex">
             Operator Art Foundry
           </Link>
         </nav>
 
-        <header className="overflow-hidden rounded-[2.5rem] border border-[#e8d0b5] bg-white shadow-sm">
-          <div className="grid gap-10 p-7 md:grid-cols-[1fr_420px] md:p-12">
+        <header className="overflow-hidden rounded-[3rem] border border-[#dbc295] bg-[#fffaf1] shadow-sm">
+          <div className="grid gap-10 p-7 md:p-12 lg:grid-cols-[1fr_420px]">
             <div className="flex flex-col justify-center">
-              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#e8d0b5] bg-[#fff8ec] px-4 py-1.5 font-sans text-xs font-black uppercase tracking-[0.18em] text-[#a96735]">
-                <span className="h-4 w-4 overflow-hidden rounded border border-[#e8d0b5] bg-white shadow-sm inline-block">
-                  <img src="/quipsly-app-icon.png" alt="Quipsly" className="h-full w-full object-cover" />
-                </span>
+              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-[#d8b98e] bg-white/80 px-4 py-2 font-sans text-xs font-black uppercase tracking-[0.18em] text-[#6d4b22]">
+                <Sparkles className="h-4 w-4 text-[#315d4f]" />
                 Meet the Quipslys
               </div>
               <h1 className="mt-6 max-w-4xl font-serif text-5xl font-black leading-[0.95] tracking-tight md:text-7xl">
                 Helpful little minds for the margins.
               </h1>
-              <p className="mt-6 max-w-3xl font-sans text-lg leading-8 text-[#8c552e]">
-                Quipslys are not replacement writers. They are enthusiastic research assistants, librarians, producers, curators, and tiny keepers of context. Their job is to collect, organize, compare, retrieve, cite, and prepare so humans can do the meaning-making.
+              <p className="mt-6 max-w-3xl font-sans text-lg leading-8 text-[#745b3c]">
+                Quipslys are enthusiastic research assistants, librarians, producers, curators, writing partners, and tiny keepers of context. They collect, organize, compare, retrieve, cite, draft, prepare, and package so creative people can see the work clearly and decide what comes next.
+              </p>
+              <p className="mt-4 max-w-3xl font-sans text-base leading-7 text-[#745b3c]">
+                They are allowed to help write. The Quipsly promise is not silence or scolding. The promise is that sources, drafts, edits, and approvals stay visible.
               </p>
               <div className="mt-8 flex flex-col gap-3 font-sans sm:flex-row">
-                <Link
-                  href="https://patreon.com/HighGroundOdyssey"
-                  className="inline-flex items-center justify-center rounded-xl bg-[#a96735] px-6 py-3 text-sm font-black uppercase tracking-[0.12em] text-[#fdf5eb] shadow-sm"
-                >
+                <Link href="https://patreon.com/HighGroundOdyssey" className="inline-flex items-center justify-center rounded-2xl bg-[#315d4f] px-6 py-3 text-sm font-black uppercase tracking-[0.12em] text-[#fff8ec] shadow-sm">
                   Support beta access
                 </Link>
-                <Link
-                  href="https://nest.quipsly.com"
-                  className="inline-flex items-center justify-center rounded-xl border border-[#a96735] bg-transparent px-6 py-3 text-sm font-black uppercase tracking-[0.12em] text-[#a96735]"
-                >
+                <Link href="https://nest.quipsly.com/projects" className="inline-flex items-center justify-center rounded-2xl border border-[#b99052] bg-transparent px-6 py-3 text-sm font-black uppercase tracking-[0.12em] text-[#6d4b22]">
                   Visit the Nest
                 </Link>
               </div>
             </div>
             <div className="relative">
-              <div className="absolute inset-0 rotate-3 rounded-[2rem] bg-[#f4dab0]/60 blur-2xl" />
-              <div className="relative overflow-hidden rounded-[2rem] border border-[#e8d0b5] bg-[#fffaf1] p-3 shadow-xl">
-                <Image
-                  src={hero.src}
-                  alt={hero.alt}
-                  width={720}
-                  height={720}
-                  priority
-                  className="aspect-square w-full rounded-[1.5rem] object-cover"
-                />
+              <div className="absolute inset-0 rotate-3 rounded-[2.5rem] bg-[#315d4f]/18 blur-2xl" />
+              <div className="relative overflow-hidden rounded-[2.5rem] border border-[#dbc295] bg-white p-3 shadow-xl">
+                <Image src="/images/quipsly-generated/curious_quipsly_holding_magnifier.png" alt="A curious Quipsly holding a magnifier" width={720} height={720} priority className="aspect-square w-full rounded-[2rem] object-cover" />
               </div>
             </div>
           </div>
         </header>
 
-        <section className="mt-8 grid gap-4 md:grid-cols-4">
-          {roleNotes.map((note) => (
-            <article key={note.role} className="rounded-[1.5rem] border border-[#e8d0b5] bg-white/85 p-5 shadow-sm">
-              <div className="mb-4 inline-flex rounded-full bg-[#fff8ec] p-3 text-[#a96735]">
-                {note.role === "podcast" ? <Sparkles className="h-5 w-5" /> : note.role === "quote" ? <Library className="h-5 w-5" /> : <Wand2 className="h-5 w-5" />}
+        <section className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {roles.map((role) => (
+            <article key={role.title} className="overflow-hidden rounded-[2rem] border border-[#dbc295] bg-[#fffaf1] shadow-sm">
+              <Image src={role.image} alt={role.title} width={720} height={720} className="aspect-[4/3] w-full object-cover" />
+              <div className="p-6">
+                <div className="mb-4 inline-flex rounded-2xl bg-[#315d4f] p-3 text-[#fff8ec]"><role.Icon className="h-5 w-5" /></div>
+                <h2 className="font-serif text-3xl font-black">{role.title}</h2>
+                <p className="mt-3 font-sans text-sm leading-7 text-[#745b3c]">{role.copy}</p>
               </div>
-              <h2 className="font-serif text-2xl font-black">{note.title}</h2>
-              <p className="mt-3 font-sans text-sm leading-6 text-[#8c552e]">{note.body}</p>
             </article>
           ))}
-        </section>
-
-        <section className="mt-10 rounded-[2rem] border border-[#e8d0b5] bg-[#fffaf1] p-5 shadow-sm md:p-8">
-          <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <div className="font-sans text-xs font-black uppercase tracking-[0.18em] text-[#a96735]">
-                Visual field guide
-              </div>
-              <h2 className="mt-2 font-serif text-4xl font-black">A growing Marginalia of helpers</h2>
-            </div>
-            <p className="max-w-xl font-sans text-sm leading-6 text-[#8c552e]">
-              These are early approved and candidate images. The private Art Foundry turns useful ideas into reusable prompts and manifest entries.
-            </p>
-          </div>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {gallery.map((item) => (
-              <article key={item.id} className="overflow-hidden rounded-[1.5rem] border border-[#e8d0b5] bg-white shadow-sm">
-                <Image
-                  src={item.src}
-                  alt={item.alt}
-                  width={420}
-                  height={420}
-                  className="aspect-square w-full object-cover"
-                />
-                <div className="p-4">
-                  <div className="font-sans text-[10px] font-black uppercase tracking-[0.16em] text-[#a96735]">{item.role}</div>
-                  <h3 className="mt-1 truncate font-serif text-xl font-black">{item.title}</h3>
-                </div>
-              </article>
-            ))}
-          </div>
         </section>
       </section>
     </main>
