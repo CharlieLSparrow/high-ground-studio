@@ -4,6 +4,11 @@ import { randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
 import { researchSha256, stableResearchJson, type ValidatedResearchBundle } from "@/lib/research-portability";
+import {
+  extractImportedKeywords,
+  recordImportedTagCandidatesInTransaction,
+} from "@/lib/server/work-tag-candidates";
+import { workTagSlug } from "@/lib/server/work-tags";
 
 type RestoreClient = PrismaClient | Prisma.TransactionClient;
 
@@ -16,6 +21,9 @@ export type ResearchRestorePlan = {
   tagCount: number;
   tagCreates: number;
   tagReuses: number;
+  importedKeywordCount: number;
+  keywordCandidateCreates: number;
+  keywordCandidateReuses: number;
   annotationCount: number;
   annotationCreates: number;
   annotationReuses: number;
@@ -131,6 +139,17 @@ export async function buildResearchRestorePlan(
       })
     : [];
   const existingTagSlugs = new Set(existingTags.map((tag) => tag.slug));
+  const importedKeywordSlugs = new Set(
+    input.bundle.sources.flatMap((source) => extractImportedKeywords(source.metadataJson))
+      .map(workTagSlug),
+  );
+  const existingCandidates = importedKeywordSlugs.size > 0
+    ? await prisma.studioTagCandidate.findMany({
+        where: { projectId: input.projectId, slug: { in: [...importedKeywordSlugs] } },
+        select: { slug: true },
+      })
+    : [];
+  const existingCandidateSlugs = new Set(existingCandidates.map((candidate) => candidate.slug));
   const requestIds = input.bundle.annotations.map((annotation) => annotationRequestId(input.bundle.project.id, annotation.id));
   const existingAnnotations = requestIds.length > 0
     ? await prisma.$queryRaw<Array<{ clientRequestId: string | null; provenanceJson: Record<string, unknown> }>>(Prisma.sql`
@@ -203,6 +222,12 @@ export async function buildResearchRestorePlan(
     tagCount: input.bundle.tags.length,
     tagCreates: input.bundle.tags.filter((tag) => !existingTagSlugs.has(tag.slug)).length,
     tagReuses: input.bundle.tags.filter((tag) => existingTagSlugs.has(tag.slug)).length,
+    importedKeywordCount: input.bundle.sources.reduce(
+      (count, source) => count + extractImportedKeywords(source.metadataJson).length,
+      0,
+    ),
+    keywordCandidateCreates: [...importedKeywordSlugs].filter((slug) => !existingCandidateSlugs.has(slug)).length,
+    keywordCandidateReuses: [...importedKeywordSlugs].filter((slug) => existingCandidateSlugs.has(slug)).length,
     annotationCount: input.bundle.annotations.length,
     annotationCreates: input.bundle.annotations.filter((annotation, index) => !annotationExists(annotation, requestIds[index])).length,
     annotationReuses: input.bundle.annotations.filter((annotation, index) => annotationExists(annotation, requestIds[index])).length,
@@ -262,6 +287,20 @@ export async function applyResearchRestore(
         select: { id: true },
       });
       sourceIds.set(source.id, restored.id);
+      await recordImportedTagCandidatesInTransaction(tx, {
+        projectId: input.projectId,
+        sourceKind: "research-source-metadata",
+        sourceIdentity: `${input.bundle.manifestSha256}:${source.id}`,
+        labels: extractImportedKeywords(source.metadataJson),
+        provenanceJson: {
+          manifestSha256: input.bundle.manifestSha256,
+          originalProjectId: input.bundle.project.id,
+          originalSourceUnitId: source.id,
+          restoredSourceUnitId: restored.id,
+          metadataField: "keywords",
+          sourceMutated: false,
+        },
+      });
     }
 
     const tagIds = new Map<string, string>();

@@ -9,6 +9,7 @@ import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-dom
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { applyWorkTagMerge, previewWorkTagMerge, type WorkTagMergePreview } from "@/lib/server/work-tag-merge";
 import { applyWorkTagMergeRollback, previewWorkTagMergeRollback, type WorkTagMergeRollbackPreview } from "@/lib/server/work-tag-merge-rollback";
+import { mutateWorkTagCandidate, type WorkTagCandidateOperation } from "@/lib/server/work-tag-candidates";
 import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags, type WorkTagEntityKind, type WorkTagTaxonomyOperation } from "@/lib/server/work-tags";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import {
@@ -70,6 +71,26 @@ export type MutateWorkTagTaxonomyActionResult =
       receiptId: string;
     }
   | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ALREADY_ACTIVE" | "ALREADY_ARCHIVED" | "MERGED" | "UNAVAILABLE"; error: string };
+
+export type MutateWorkTagCandidateActionResult =
+  | {
+      ok: true;
+      operation: WorkTagCandidateOperation;
+      projectId: string;
+      candidate: {
+        id: string;
+        label: string;
+        slug: string;
+        status: "PENDING" | "PROMOTED" | "REJECTED";
+        promotedTagId: string | null;
+        reviewedAt: string | null;
+        updatedAt: string;
+      };
+      tag: { id: string; label: string; slug: string; isActive: boolean } | null;
+      revision: number;
+      receiptId: string;
+    }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "INVALID_STATE" | "SLUG_CONFLICT" | "ARCHIVED" | "UNAVAILABLE"; error: string };
 
 export type SerializedWorkTagMergePreview = Omit<WorkTagMergePreview, "source" | "target"> & {
   source: Omit<WorkTagMergePreview["source"], "updatedAt"> & { updatedAt: string };
@@ -941,6 +962,47 @@ export async function changeWorkTagTaxonomy(input: {
   } catch (error) {
     console.error("[work] failed to change Nest vocabulary", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not change this vocabulary. Existing tags and records stayed preserved." };
+  }
+}
+
+export async function reviewImportedWorkTag(input: {
+  candidateId: string;
+  operation: WorkTagCandidateOperation;
+  expectedUpdatedAt: string;
+}): Promise<MutateWorkTagCandidateActionResult> {
+  const session = await getQuipslySession();
+  const actorEmail = cleanText(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+  if (!session?.user?.id || !actorEmail) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before reviewing imported keywords." };
+  const expectedUpdatedAt = expectedRevision(input?.expectedUpdatedAt);
+  if (!expectedUpdatedAt || !["PROMOTE", "REJECT", "REOPEN"].includes(input?.operation)) {
+    return { ok: false, code: "INVALID_INPUT", error: "The imported-keyword decision is incomplete or invalid." };
+  }
+  try {
+    const result = await mutateWorkTagCandidate({
+      prisma: getPrismaClient(),
+      actorUserId: session.user.id,
+      actorEmail,
+      candidateId: input.candidateId,
+      operation: input.operation,
+      expectedUpdatedAt,
+    });
+    if (!result.ok) return result;
+    revalidatePath("/work");
+    revalidatePath("/today");
+    revalidatePath("/find");
+    revalidatePath("/research");
+    revalidatePath("/create");
+    return {
+      ...result,
+      candidate: {
+        ...result.candidate,
+        reviewedAt: result.candidate.reviewedAt?.toISOString() ?? null,
+        updatedAt: result.candidate.updatedAt.toISOString(),
+      },
+    };
+  } catch (error) {
+    console.error("[work] failed to review imported keyword", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not save this review. Canonical vocabulary and imported evidence stayed unchanged." };
   }
 }
 

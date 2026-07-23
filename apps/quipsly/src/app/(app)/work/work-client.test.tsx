@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, previewTagMerge, previewTagMergeRollback, replaceWorkTags, saveWeeklyCommitment, updateWorkTaskStatus } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, updateWorkTaskStatus } from "./actions";
 import { WorkClient } from "./work-client";
 import type { WorkSnapshot } from "./work-model";
 
@@ -21,6 +21,7 @@ jest.mock("./actions", () => ({
   previewTagMergeRollback: jest.fn(),
   recordWorkGoalProgress: jest.fn(),
   replaceWorkTags: jest.fn(),
+  reviewImportedWorkTag: jest.fn(),
   saveWeeklyCommitment: jest.fn(),
   unlinkWorkGoalTask: jest.fn(),
   updateWorkGoalStatus: jest.fn(),
@@ -153,6 +154,76 @@ describe("Work Queue interactions", () => {
       expectedUpdatedAt: "2026-07-18T18:00:00.000Z",
     });
     expect(await screen.findByRole("status")).toHaveTextContent("former name remains a reusable alias");
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("keeps imported keywords out of canonical choices until explicit promotion", async () => {
+    const user = userEvent.setup();
+    const project = {
+      id: "project-1",
+      name: "High Ground Odyssey",
+      slug: "high-ground",
+      role: "EDITOR",
+      canWrite: true,
+      tags: [],
+      tagCandidates: [{
+        id: "candidate-narrative",
+        label: "Narrative evidence",
+        slug: "narrative-evidence",
+        status: "PENDING" as const,
+        promotedTag: null,
+        evidenceCount: 1,
+        evidence: [{
+          id: "evidence-1",
+          sourceKind: "research-source-metadata",
+          sourceIdentity: "manifest-1:source-1",
+          labelSnapshot: "Narrative evidence",
+          importedAt: "2026-07-23T16:00:00.000Z",
+        }],
+        reviewedAt: null,
+        updatedAt: "2026-07-23T16:00:00.000Z",
+      }],
+    };
+    const projectTaskSnapshot: WorkSnapshot = {
+      ...snapshot,
+      tasks: [{ ...snapshot.tasks[0], project, tags: [], canManageTags: true }],
+    };
+    jest.mocked(reviewImportedWorkTag).mockResolvedValue({
+      ok: true,
+      operation: "PROMOTE",
+      projectId: "project-1",
+      candidate: {
+        id: "candidate-narrative",
+        label: "Narrative evidence",
+        slug: "narrative-evidence",
+        status: "PROMOTED",
+        promotedTagId: "tag-narrative",
+        reviewedAt: "2026-07-23T16:01:00.000Z",
+        updatedAt: "2026-07-23T16:01:00.000Z",
+      },
+      tag: { id: "tag-narrative", label: "Narrative evidence", slug: "narrative-evidence", isActive: true },
+      revision: 1,
+      receiptId: "candidate-receipt",
+    });
+    render(<WorkClient initialSnapshot={projectTaskSnapshot} projectOptions={[project]} />);
+
+    await user.click(screen.getByText("Edit High Ground Odyssey tags"));
+    expect(screen.queryByRole("checkbox", { name: "Narrative evidence" })).not.toBeInTheDocument();
+    expect(screen.getByText("This Nest has no active tags yet. Create the first reusable tag below.")).toBeInTheDocument();
+
+    await user.click(screen.getByText("Manage vocabulary · 0 active across 1 Nest"));
+    expect(screen.getByText("Suggestion only")).toBeInTheDocument();
+    const promoteButton = screen.getByRole("button", { name: "Promote to #Narrative evidence" });
+    expect(promoteButton).toBeDisabled();
+    await user.click(screen.getByRole("checkbox", { name: "Add #Narrative evidence to intentional shared vocabulary." }));
+    expect(promoteButton).toBeEnabled();
+    await user.click(promoteButton);
+    expect(reviewImportedWorkTag).toHaveBeenCalledWith({
+      candidateId: "candidate-narrative",
+      operation: "PROMOTE",
+      expectedUpdatedAt: "2026-07-23T16:00:00.000Z",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("intentional shared vocabulary");
     expect(refresh).toHaveBeenCalled();
   });
 

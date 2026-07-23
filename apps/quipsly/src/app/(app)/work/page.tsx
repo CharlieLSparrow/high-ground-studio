@@ -132,15 +132,32 @@ async function loadProjectOptions(actorEmail: string): Promise<WorkProjectOption
   const prisma = getPrismaClient();
   const projects = await listProjectsVisibleToEmail(actorEmail, prisma);
   if (!projects.length) return [];
-  const tags = await prisma.studioTag.findMany({
-    where: { projectId: { in: projects.map((project) => project.id) } },
-    orderBy: [{ isActive: "desc" }, { category: "asc" }, { label: "asc" }],
-    select: {
-      id: true, label: true, slug: true, category: true, projectId: true, isActive: true, archivedAt: true, updatedAt: true,
-      aliases: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, slug: true } },
-      mergedInto: { select: { id: true, label: true } },
-    },
-  });
+  const projectIds = projects.map((project) => project.id);
+  const [tags, tagCandidates] = await Promise.all([
+    prisma.studioTag.findMany({
+      where: { projectId: { in: projectIds } },
+      orderBy: [{ isActive: "desc" }, { category: "asc" }, { label: "asc" }],
+      select: {
+        id: true, label: true, slug: true, category: true, projectId: true, isActive: true, archivedAt: true, updatedAt: true,
+        aliases: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, slug: true } },
+        mergedInto: { select: { id: true, label: true } },
+      },
+    }),
+    prisma.studioTagCandidate.findMany({
+      where: { projectId: { in: projectIds } },
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
+      select: {
+        id: true, projectId: true, label: true, slug: true, status: true, reviewedAt: true, updatedAt: true,
+        promotedTag: { select: { id: true, label: true, slug: true } },
+        evidence: {
+          orderBy: { importedAt: "desc" },
+          take: 3,
+          select: { id: true, sourceKind: true, sourceIdentity: true, labelSnapshot: true, importedAt: true },
+        },
+        _count: { select: { evidence: true } },
+      },
+    }),
+  ]);
   return projects.map((project) => ({
     id: project.id,
     name: project.name,
@@ -153,6 +170,20 @@ async function loadProjectOptions(actorEmail: string): Promise<WorkProjectOption
       archivedAt: tag.archivedAt?.toISOString() ?? null,
       updatedAt: tag.updatedAt.toISOString(),
     })).filter((tag) => tag.projectId === project.id),
+    tagCandidates: tagCandidates.filter((candidate) => candidate.projectId === project.id).map((candidate) => ({
+      id: candidate.id,
+      label: candidate.label,
+      slug: candidate.slug,
+      status: candidate.status,
+      promotedTag: candidate.promotedTag,
+      evidenceCount: candidate._count.evidence,
+      evidence: candidate.evidence.map((evidence) => ({
+        ...evidence,
+        importedAt: evidence.importedAt.toISOString(),
+      })),
+      reviewedAt: candidate.reviewedAt?.toISOString() ?? null,
+      updatedAt: candidate.updatedAt.toISOString(),
+    })),
   }));
 }
 

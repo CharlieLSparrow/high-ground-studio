@@ -6,8 +6,8 @@ import { useRouter } from "next/navigation";
 import { Archive, BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, ListChecks, Pencil, Play, Repeat2, RotateCcw, Tags, Target, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, saveWeeklyCommitment, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
-import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTask, WorkTaskStatus } from "./work-model";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
+import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTagCandidate, WorkTask, WorkTaskStatus } from "./work-model";
 
 export type TaskFilter = "ATTENTION" | "OPEN" | "DONE" | "ALL";
 
@@ -259,6 +259,59 @@ function TagMergeRollbackControl({ source, project, onRefresh }: { source: WorkT
   </details>;
 }
 
+function ImportedKeywordReview({ project, onRefresh }: { project: WorkProjectOption; onRefresh: () => void }) {
+  const candidates = project.tagCandidates ?? [];
+  const pendingCandidates = candidates.filter((candidate) => candidate.status === "PENDING");
+  const rejectedCandidates = candidates.filter((candidate) => candidate.status === "REJECTED");
+  const promotedCandidates = candidates.filter((candidate) => candidate.status === "PROMOTED");
+  const [confirmedCandidateId, setConfirmedCandidateId] = useState<string | null>(null);
+  const [saving, startSaving] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  if (!candidates.length) return null;
+
+  function review(candidate: WorkTagCandidate, operation: "PROMOTE" | "REJECT" | "REOPEN") {
+    setMessage(null);
+    startSaving(async () => {
+      const result = await reviewImportedWorkTag({
+        candidateId: candidate.id,
+        operation,
+        expectedUpdatedAt: candidate.updatedAt,
+      });
+      if (!result.ok) {
+        setMessage(result.error);
+        if (result.code === "CONFLICT" || result.code === "INVALID_STATE") onRefresh();
+        return;
+      }
+      setConfirmedCandidateId(null);
+      setMessage(operation === "PROMOTE"
+        ? `#${result.tag?.label ?? candidate.label} is now intentional shared vocabulary. Imported evidence remains attached to receipt ${result.receiptId}.`
+        : operation === "REJECT"
+          ? `“${candidate.label}” stays preserved as imported evidence but is not available as a tag.`
+          : `“${candidate.label}” is back in review. It is still not available as a tag.`);
+      onRefresh();
+    });
+  }
+
+  return <section aria-label={`Imported keyword review for ${project.name}`} className="mt-4 rounded-2xl border border-violet-200 bg-violet-50/60 p-3">
+    <div className="flex flex-wrap items-start justify-between gap-2">
+      <div><p className="text-[10px] font-black uppercase tracking-wide text-violet-800">Imported keyword review</p><p className="mt-1 text-xs font-semibold leading-5 text-violet-950">Suggestions remain separate from shared tags until you deliberately promote them.</p></div>
+      <span className="rounded-full bg-violet-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-violet-900">{pendingCandidates.length} pending</span>
+    </div>
+    {pendingCandidates.length > 0 && <ul className="mt-3 space-y-3">{pendingCandidates.map((candidate) => <li key={candidate.id} className="rounded-xl border border-violet-200 bg-white p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-sm font-black">{candidate.label}</p><p className="mt-1 text-[11px] font-semibold text-violet-900">{candidate.evidenceCount} imported source {candidate.evidenceCount === 1 ? "receipt" : "receipts"} · not yet a tag</p></div><span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-amber-900">Suggestion only</span></div>
+      <details className="mt-2 text-[11px] font-semibold text-violet-900"><summary className="cursor-pointer font-black">Inspect source evidence</summary><ul className="mt-2 space-y-1 pl-4">{candidate.evidence.map((evidence) => <li key={evidence.id} className="list-disc break-all">{evidence.sourceKind}: {evidence.sourceIdentity}</li>)}</ul>{candidate.evidenceCount > candidate.evidence.length && <p className="mt-2">Showing {candidate.evidence.length} of {candidate.evidenceCount} receipts.</p>}</details>
+      <label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-xs font-bold leading-5 text-violet-950"><input type="checkbox" checked={confirmedCandidateId === candidate.id} onChange={(event) => setConfirmedCandidateId(event.target.checked ? candidate.id : null)} className="mt-1" />Add #{candidate.label} to intentional shared vocabulary.</label>
+      <div className="mt-3 flex flex-wrap gap-2"><button type="button" disabled={saving || confirmedCandidateId !== candidate.id} onClick={() => review(candidate, "PROMOTE")} className="min-h-11 rounded-full bg-violet-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Promote to #{candidate.label}</button><button type="button" disabled={saving} onClick={() => review(candidate, "REJECT")} className="min-h-11 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50">Reject suggestion</button></div>
+    </li>)}</ul>}
+    {pendingCandidates.length === 0 && <p className="mt-3 rounded-xl border border-dashed border-violet-200 bg-white/70 p-3 text-xs font-semibold text-violet-900">No imported keywords need a decision.</p>}
+    {(rejectedCandidates.length > 0 || promotedCandidates.length > 0) && <details className="mt-3 rounded-xl border border-violet-100 bg-white/70 p-3"><summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-violet-800">Reviewed · {promotedCandidates.length} promoted · {rejectedCandidates.length} rejected</summary>
+      {promotedCandidates.length > 0 && <ul className="mt-3 space-y-2">{promotedCandidates.map((candidate) => <li key={candidate.id} className="text-xs font-semibold text-emerald-900">#{candidate.label} → {candidate.promotedTag ? `#${candidate.promotedTag.label}` : "preserved promotion receipt"}</li>)}</ul>}
+      {rejectedCandidates.length > 0 && <ul className="mt-3 space-y-2">{rejectedCandidates.map((candidate) => <li key={candidate.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3"><span className="text-xs font-semibold text-slate-800">{candidate.label} · evidence preserved, not a tag</span><button type="button" disabled={saving} onClick={() => review(candidate, "REOPEN")} className="min-h-11 rounded-full border border-slate-300 bg-white px-3 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50">Reopen review</button></li>)}</ul>}
+    </details>}
+    {message && <p role="status" className="mt-3 rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-bold leading-5 text-violet-950">{message}</p>}
+  </section>;
+}
+
 function TagVocabulary({ projects, onRefresh }: { projects: WorkProjectOption[]; onRefresh: () => void }) {
   const writableProjects = projects.filter((project) => project.canWrite);
   const [pending, startTransition] = useTransition();
@@ -294,6 +347,7 @@ function TagVocabulary({ projects, onRefresh }: { projects: WorkProjectOption[];
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
       {writableProjects.map((project) => <article key={project.id} className="rounded-2xl border border-sky-100 bg-white p-4">
         <div className="flex items-center justify-between gap-3"><div><h3 className="font-serif text-xl font-black">{project.name}</h3><p className="text-[10px] font-black uppercase tracking-wide text-sky-800">{project.tags.filter((tag) => tag.isActive !== false).length} active · {project.tags.filter((tag) => tag.isActive === false).length} archived</p></div><Link href={`/nests/${encodeURIComponent(project.slug)}`} className="text-[10px] font-black uppercase tracking-wide text-sky-800 hover:underline">Open Nest</Link></div>
+        <ImportedKeywordReview project={project} onRefresh={onRefresh} />
         {project.tags.length ? <ul className="mt-4 space-y-3">{project.tags.map((tag) => <li key={tag.id} className={`rounded-xl border p-3 ${tag.isActive === false ? "border-slate-200 bg-slate-50" : "border-sky-100 bg-sky-50/40"}`}>
           <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-black">#{tag.label}</p><p className="mt-1 text-[11px] font-semibold text-sky-900">{tag.aliases?.length ? `Also matches ${tag.aliases.map((alias) => `#${alias.label}`).join(", ")}` : "No former names"}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tag.isActive === false ? "bg-slate-200 text-slate-700" : "bg-emerald-100 text-emerald-800"}`}>{tag.isActive === false ? "Archived" : "Active"}</span></div>
           {tag.mergedInto ? <><p className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs font-bold text-fuchsia-950">Merged into #{tag.mergedInto.label}. Older captures using this name resolve to the canonical tag.</p><TagMergeRollbackControl source={tag} project={project} onRefresh={onRefresh} /></> : tag.isActive === false ? <button type="button" disabled={pending} onClick={() => change(tag, "RESTORE")} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-800 disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Restore</button> : <div className="mt-3 flex flex-col gap-2 sm:flex-row">

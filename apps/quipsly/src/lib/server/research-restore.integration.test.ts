@@ -7,6 +7,8 @@ import { getPrismaClient } from "@/lib/prisma";
 import { applyResearchRestore, buildResearchRestorePlan } from "./research-restore";
 import { researchWritingUseVisibilitySql } from "./research-writing-privacy";
 
+jest.mock("@/auth", () => ({ auth: jest.fn() }));
+
 const runLocalDatabaseSmoke = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
 if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {
   if (!process.env.QUIPSLY_LOCAL_DATABASE_URL) throw new Error("QUIPSLY_LOCAL_DATABASE_URL is required for the local restore smoke.");
@@ -107,7 +109,8 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
       sources: [{
         id: "portable-source-1", slug: "portable-source", kind: "article", title: "Portable source",
         sourceUrl: null, sourcePath: null, author: "Quipsly", capturedAt: null,
-        immutableText: "Evidence", immutableTextSha256: researchSha256("Evidence"), editableNotes: null, metadataJson: {},
+        immutableText: "Evidence", immutableTextSha256: researchSha256("Evidence"), editableNotes: null,
+        metadataJson: { keywords: ["Narrative evidence", "Interview research"] },
       }],
       tags: [{ id: "portable-tag-1", slug: "portable", label: "Portable", description: null, category: "source", isPrivate: true }],
       annotations: [{
@@ -137,6 +140,9 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
     const firstPlan = await buildResearchRestorePlan(prisma, { projectId, actorUserId, bundle: validation.bundle });
     expect(firstPlan).toMatchObject({
       sourceCreates: 1,
+      importedKeywordCount: 2,
+      keywordCandidateCreates: 2,
+      keywordCandidateReuses: 0,
       annotationCreates: 1,
       writingTargetDocumentCreates: 1,
       writingTargetBlockCreates: 1,
@@ -159,14 +165,22 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
       writingUsesDeferred: 0,
     });
 
-    const [document, restoredUse, source] = await Promise.all([
+    const [document, restoredUse, source, importedCandidates] = await Promise.all([
       prisma.studioDocument.findUnique({ where: { id: restoredDocumentId }, include: { blocks: true } }),
       prisma.studioSourceAnnotationUse.findUnique({ where: { id: restoredUseId }, include: { annotation: true, block: true } }),
       prisma.studioSourceUnit.findFirst({ where: { projectId } }),
+      prisma.studioTagCandidate.findMany({ where: { projectId }, include: { evidence: true }, orderBy: { slug: "asc" } }),
     ]);
     expect(document).toMatchObject({ isPrivate: true, projectionStatus: "private", blocks: [{ body: writingTargets[0].block.body, isPrivate: true, projectionStatus: "private" }] });
     expect(restoredUse).toMatchObject({ quoteSnapshot: "Evidence", createdByUserId: actorUserId, block: { body: writingTargets[0].block.body }, annotation: { visibility: "private" } });
     expect(source?.immutableText).toBe("Evidence");
+    expect(importedCandidates).toMatchObject([
+      { label: "Interview research", status: "PENDING", evidence: [{ sourceKind: "research-source-metadata" }] },
+      { label: "Narrative evidence", status: "PENDING", evidence: [{ sourceKind: "research-source-metadata" }] },
+    ]);
+    await expect(prisma.studioTag.count({
+      where: { projectId, slug: { in: ["interview-research", "narrative-evidence"] } },
+    })).resolves.toBe(0);
     const visibleWritingUseIds = async (viewerUserId: string | null) => prisma.$queryRaw<Array<{ id: string }>>(Prisma.sql`
       SELECT annotation_use."id"
       FROM "StudioSourceAnnotationUse" annotation_use
@@ -182,6 +196,9 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
     const secondPlan = await buildResearchRestorePlan(prisma, { projectId, actorUserId, bundle: validation.bundle });
     expect(secondPlan).toMatchObject({
       sourceReuses: 1,
+      importedKeywordCount: 2,
+      keywordCandidateCreates: 0,
+      keywordCandidateReuses: 2,
       annotationReuses: 1,
       writingTargetDocumentReuses: 1,
       writingTargetBlockReuses: 1,
@@ -192,6 +209,9 @@ runLocalDatabaseSmoke("research writing-target restore local database smoke", ()
     const second = await applyResearchRestore(prisma, { projectId, actorUserId, actorEmail, bundle: validation.bundle });
     expect(second.restoredWritingTargetDocumentIds).toEqual(first.restoredWritingTargetDocumentIds);
     expect(second.restoredWritingUseIds).toEqual(first.restoredWritingUseIds);
+    await expect(prisma.studioTagCandidateEvidence.count({
+      where: { candidate: { projectId } },
+    })).resolves.toBe(2);
 
     const changedTargets = [{
       ...writingTargets[0],

@@ -19,7 +19,23 @@ export type WorkTag = {
   aliases?: Array<{ id: string; label: string; slug: string }>;
   mergedInto?: { id: string; label: string } | null;
 };
-export type WorkProjectOption = WorkProject & { role: string; canWrite: boolean; tags: WorkTag[] };
+export type WorkTagCandidate = {
+  id: string;
+  label: string;
+  slug: string;
+  status: "PENDING" | "PROMOTED" | "REJECTED";
+  promotedTag: { id: string; label: string; slug: string } | null;
+  evidenceCount: number;
+  evidence: Array<{ id: string; sourceKind: string; sourceIdentity: string; labelSnapshot: string; importedAt: string }>;
+  reviewedAt: string | null;
+  updatedAt: string;
+};
+export type WorkProjectOption = WorkProject & {
+  role: string;
+  canWrite: boolean;
+  tags: WorkTag[];
+  tagCandidates?: WorkTagCandidate[];
+};
 
 export type RawWorkTask = {
   id: string;

@@ -332,6 +332,12 @@ enum StudioTagCategory {
   production_breakdown
 }
 
+enum StudioTagCandidateStatus {
+  PENDING
+  PROMOTED
+  REJECTED
+}
+
 enum StudioKnowledgeNodeType {
   principle
   story
@@ -2057,6 +2063,7 @@ model StudioProject {
   documents             StudioDocument[]
   tags                  StudioTag[]
   tagAliases            StudioTagAlias[]
+  tagCandidates         StudioTagCandidate[]
   tagMergeReceipts      StudioTagMergeReceipt[]
   viewDefinitions       StudioViewDefinition[]
   knowledgeNodes        StudioKnowledgeNode[]
@@ -2917,11 +2924,69 @@ model StudioTag {
   mergedTags            StudioTag[]                 @relation("StudioTagMergeRedirect")
   mergeReceiptsAsSource StudioTagMergeReceipt[]     @relation("StudioTagMergeSource")
   mergeReceiptsAsTarget StudioTagMergeReceipt[]     @relation("StudioTagMergeTarget")
+  promotedCandidates    StudioTagCandidate[]        @relation("StudioTagCandidatePromotion")
 
   @@unique([projectId, slug])
   @@index([projectId, category])
   @@index([projectId, isActive])
   @@index([mergedIntoTagId])
+}
+
+// Imported keywords remain review candidates with exact source evidence until
+// a Nest editor deliberately promotes one into canonical human vocabulary.
+model StudioTagCandidate {
+  id               String                   @id @default(cuid())
+  projectId        String
+  slug             String
+  label            String
+  status           StudioTagCandidateStatus @default(PENDING)
+  promotedTagId    String?
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  project     StudioProject                @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  promotedTag StudioTag?                   @relation("StudioTagCandidatePromotion", fields: [promotedTagId], references: [id], onDelete: SetNull)
+  evidence    StudioTagCandidateEvidence[]
+  revisions   StudioTagCandidateRevision[]
+
+  @@unique([projectId, slug])
+  @@index([projectId, status, updatedAt])
+  @@index([promotedTagId])
+}
+
+model StudioTagCandidateEvidence {
+  id             String   @id @default(cuid())
+  candidateId    String
+  fingerprint    String
+  sourceKind     String
+  sourceIdentity String
+  labelSnapshot  String
+  provenanceJson Json     @default("{}")
+  importedAt     DateTime @default(now())
+
+  candidate StudioTagCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, fingerprint])
+  @@index([sourceKind, importedAt])
+}
+
+// Review decisions are append-only even though the candidate row remains the
+// fast current-state projection.
+model StudioTagCandidateRevision {
+  id           String   @id @default(cuid())
+  candidateId  String
+  revision     Int
+  operation    String
+  actorUserId  String?
+  snapshotJson Json
+  createdAt    DateTime @default(now())
+
+  candidate StudioTagCandidate @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, revision])
+  @@index([actorUserId, createdAt])
 }
 
 // Human vocabulary can change without breaking older Capture input, saved
