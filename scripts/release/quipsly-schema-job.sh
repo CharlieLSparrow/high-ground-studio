@@ -26,6 +26,9 @@ case "${MODE}" in
   baseline-audit)
     job_command="node scripts/quipsly-foundation-baseline-audit.mjs"
     ;;
+  foundation-repair)
+    job_command="pnpm prisma db execute --file ops/quipsly-foundation-baseline-repair.sql"
+    ;;
   resolve-foundation)
     job_command="pnpm prisma migrate resolve --applied 20260607000000_baseline_existing_schema && pnpm prisma migrate resolve --applied 20260608000000_add_vector_embedding && pnpm prisma migrate resolve --applied 20260703000000_add_coaching_capture_core && pnpm prisma migrate resolve --applied 20260704000000_add_coaching_request_metadata"
     ;;
@@ -45,13 +48,18 @@ case "${MODE}" in
     job_command="node scripts/quipsly-nest-chat-schema-push.mjs && node scripts/quipsly-production-core-schema-sync.mjs && node scripts/quipsly-coaching-capture-schema-sync.mjs"
     ;;
   *)
-    echo "Unknown MODE '${MODE}'. Expected status, diff, baseline-audit, resolve-foundation, migrate, coaching-capture, production-core, nest-chat, or targeted." >&2
+    echo "Unknown MODE '${MODE}'. Expected status, diff, baseline-audit, foundation-repair, resolve-foundation, migrate, coaching-capture, production-core, nest-chat, or targeted." >&2
     exit 2
     ;;
 esac
 
 if [[ "${MODE}" == "resolve-foundation" && "${ALLOW_BASELINE_RESOLUTION:-0}" != "1" ]]; then
   echo "Refusing to resolve foundation migrations without ALLOW_BASELINE_RESOLUTION=1." >&2
+  exit 2
+fi
+
+if [[ "${MODE}" == "foundation-repair" && "${ALLOW_FOUNDATION_REPAIR:-0}" != "1" ]]; then
+  echo "Refusing to repair the foundation schema without ALLOW_FOUNDATION_REPAIR=1." >&2
   exit 2
 fi
 

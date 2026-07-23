@@ -15,8 +15,17 @@ const baselineMigrations = [
 
 function addMatches(target, sql, expression, valueIndex = 1) {
   for (const match of sql.matchAll(expression)) {
-    target.add(match[valueIndex]);
+    target.add(postgresIdentifier(match[valueIndex]));
   }
+}
+
+function postgresIdentifier(identifier) {
+  const bytes = Buffer.from(identifier, "utf8");
+  if (bytes.length <= 63) return identifier;
+
+  let end = 63;
+  while (end > 0 && (bytes[end] & 0xc0) === 0x80) end -= 1;
+  return bytes.subarray(0, end).toString("utf8");
 }
 
 export function collectExpectedSchema(sqlSources) {
@@ -37,13 +46,13 @@ export function collectExpectedSchema(sqlSources) {
     addMatches(
       expected.extensions,
       sql,
-      /CREATE\s+EXTENSION(?:\s+IF\s+NOT\s+EXISTS)?\s+"?([A-Za-z0-9_]+)"?/gi,
+      /^\s*CREATE\s+EXTENSION(?:\s+IF\s+NOT\s+EXISTS)?\s+"?([A-Za-z0-9_]+)"?/gim,
     );
-    addMatches(expected.types, sql, /CREATE\s+TYPE\s+"([^"]+)"/gi);
+    addMatches(expected.types, sql, /^\s*CREATE\s+TYPE\s+"([^"]+)"/gim);
     addMatches(
       expected.indexes,
       sql,
-      /CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+IF\s+NOT\s+EXISTS)?\s+"([^"]+)"/gi,
+      /^\s*CREATE\s+(?:UNIQUE\s+)?INDEX(?:\s+IF\s+NOT\s+EXISTS)?\s+"([^"]+)"/gim,
     );
     addMatches(expected.constraints, sql, /\bCONSTRAINT\s+"([^"]+)"/gi);
 
@@ -51,17 +60,24 @@ export function collectExpectedSchema(sqlSources) {
       /CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?\s+"([^"]+)"\s*\(([\s\S]*?)\);/gi,
     )) {
       const [, tableName, body] = match;
-      expected.tables.add(tableName);
+      const normalizedTableName = postgresIdentifier(tableName);
+      expected.tables.add(normalizedTableName);
       for (const line of body.split("\n")) {
         const columnMatch = /^\s*"([^"]+)"\s+/.exec(line);
-        if (columnMatch) expected.columns.add(`${tableName}.${columnMatch[1]}`);
+        if (columnMatch) {
+          expected.columns.add(
+            `${normalizedTableName}.${postgresIdentifier(columnMatch[1])}`,
+          );
+        }
       }
     }
 
     for (const match of sql.matchAll(
       /ALTER\s+TABLE\s+"([^"]+)"\s+ADD\s+COLUMN(?:\s+IF\s+NOT\s+EXISTS)?\s+"([^"]+)"/gi,
     )) {
-      expected.columns.add(`${match[1]}.${match[2]}`);
+      expected.columns.add(
+        `${postgresIdentifier(match[1])}.${postgresIdentifier(match[2])}`,
+      );
     }
   }
 

@@ -22,6 +22,7 @@ COPY prisma/migrations ./prisma/migrations
 
 COPY ops/episode-production-db-push.sql ./ops/episode-production-db-push.sql
 COPY ops/quipsly-foundation-additive.sql ./ops/quipsly-foundation-additive.sql
+COPY ops/quipsly-foundation-baseline-repair.sql ./ops/quipsly-foundation-baseline-repair.sql
 COPY ops/quipsly-production-core-additive.sql ./ops/quipsly-production-core-additive.sql
 COPY ops/quipsly-coaching-capture-additive.sql ./ops/quipsly-coaching-capture-additive.sql
 

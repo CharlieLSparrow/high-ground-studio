@@ -44,4 +44,21 @@ fi
 
 grep -Fq "Refusing to resolve foundation migrations" "${output_file}"
 
+set +e
+MODE=foundation-repair \
+  PROJECT_ID=quipsly-schema-job-test \
+  ALLOW_FOUNDATION_REPAIR=0 \
+  bash "${repo_root}/scripts/release/quipsly-schema-job.sh" \
+  >"${output_file}" 2>&1
+status=$?
+set -e
+
+if [[ "${status}" -ne 2 ]]; then
+  cat "${output_file}" >&2
+  echo "Expected an unapproved foundation repair to exit 2; received ${status}." >&2
+  exit 1
+fi
+
+grep -Fq "Refusing to repair the foundation schema" "${output_file}"
+
 echo "PASS schema job rejects unknown modes before external work."

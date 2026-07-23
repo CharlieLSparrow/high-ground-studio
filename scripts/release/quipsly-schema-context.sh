@@ -35,6 +35,7 @@ required_paths=(
   ops/quipsly-schema.Dockerfile
   ops/episode-production-db-push.sql
   ops/quipsly-foundation-additive.sql
+  ops/quipsly-foundation-baseline-repair.sql
   ops/quipsly-production-core-additive.sql
   ops/quipsly-coaching-capture-additive.sql
   scripts/quipsly-nest-chat-schema-push.mjs

@@ -27,6 +27,7 @@ materialized="$(
 [[ -f "${context_dir}/quipsly-schema-source.json" ]]
 [[ -f "${context_dir}/ops/quipsly-schema.Dockerfile" ]]
 [[ -f "${context_dir}/scripts/quipsly-coaching-capture-schema-sync.mjs" ]]
+[[ -f "${context_dir}/ops/quipsly-foundation-baseline-repair.sql" ]]
 
 node - "${context_dir}/quipsly-schema-source.json" "${source_sha}" <<'NODE'
 const fs = require("node:fs");
