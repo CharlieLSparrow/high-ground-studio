@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { ensureStudioWorkspace } from "@/lib/studio/project-registry";
+import { loadLibrary } from "@/app/(app)/library/page";
 
 import { POST } from "./route";
 
@@ -99,6 +100,16 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
     expect(taskTags).toHaveLength(1);
     expect(goalTags).toHaveLength(1);
     expect([noteTags[0]?.tagId, taskTags[0]?.tagId, goalTags[0]?.tagId]).toEqual([tagId, tagId, tagId]);
+
+    const library = await loadLibrary(actorUserId, actorEmail, false);
+    expect(library.entries.find((entry) => entry.id === `note:${note.id}`)).toMatchObject({
+      kind: "NOTE",
+      href: `/sessions/${roomId}#quick-entry-${note.id}`,
+      projectName: "Quick capture Nest",
+      stateLabel: "iPhone capture",
+      badges: expect.arrayContaining(["#Follow through", "Offline retry safe"]),
+    });
+    expect(library.counts.notes).toBe(1);
 
     signedInAs(outsiderUserId, outsiderEmail);
     const denied = await post("NOTE", requestIds[3], null, "This must not cross accounts.");

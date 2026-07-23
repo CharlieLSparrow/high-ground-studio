@@ -29,6 +29,8 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
   let documentId = "";
   let promotedMediaId = "";
   let standaloneMediaId = "";
+  let actorNoteId = "";
+  let otherNoteId = "";
 
   beforeAll(async () => {
     const [actor, other] = await Promise.all([
@@ -57,6 +59,24 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     ]);
     actorRoomId = actorRoom.id;
     otherRoomId = otherRoom.id;
+
+    const tag = await prisma.studioTag.create({ data: { projectId, slug: `opening-${nonce}`, label: "Opening thought", category: "meaning", nodeType: "source_note" } });
+    const [actorNote, otherNote] = await Promise.all([
+      prisma.coachingNote.create({
+        data: {
+          roomId: actorRoomId,
+          authorUserId: actorUserId,
+          kind: "SESSION_NOTE",
+          title: "Let the opening breathe",
+          body: "Pause before the first edit point.",
+          sourceJson: { schema: "quipsly-mobile-quick-entry-v1", surface: "ios-capture" },
+        },
+      }),
+      prisma.coachingNote.create({ data: { roomId: otherRoomId, authorUserId: otherUserId, kind: "SESSION_NOTE", title: "Other private note", body: "Must remain private." } }),
+    ]);
+    actorNoteId = actorNote.id;
+    otherNoteId = otherNote.id;
+    await prisma.coachingNoteTagLink.create({ data: { noteId: actorNoteId, tagId: tag.id, createdByUserId: actorUserId } });
 
     const actorAsset = await prisma.recordingAsset.create({
       data: {
@@ -127,10 +147,17 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
       href: `/research?source=${sourceId}`,
       detail: "2 anchored annotations; preserved source text remains unchanged.",
     });
+    expect(library.entries.find((entry) => entry.id === `note:${actorNoteId}`)).toMatchObject({
+      kind: "NOTE",
+      href: `/sessions/${actorRoomId}#quick-entry-${actorNoteId}`,
+      projectName: "High Ground Library smoke",
+      stateLabel: "iPhone capture",
+      badges: expect.arrayContaining(["#Opening thought", "Offline retry safe"]),
+    });
     expect(library.entries.find((entry) => entry.id === `document:${documentId}`)?.href).toContain(`/read?projectSlug=library-${nonce}&episodeSlug=episode-7-${nonce}`);
     expect(library.entries.find((entry) => entry.id === `media:${standaloneMediaId}`)).toMatchObject({ title: "reusable-cold-open.mov" });
     expect(library.entries.some((entry) => entry.id === `media:${promotedMediaId}`)).toBe(false);
-    expect(library.counts).toMatchObject({ sessions: 1, sources: 1, documents: 1, media: 1, saved: 1 });
+    expect(library.counts).toMatchObject({ sessions: 1, notes: 1, sources: 1, documents: 1, media: 1, saved: 1 });
     expect(library.boundaries).toEqual({
       permissionFilteredBeforeProjection: true,
       immutableSourcesPreserved: true,
@@ -141,11 +168,13 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     expect(serialized).not.toContain("Other person's private coaching");
     expect(serialized).not.toContain("Other person's private interpretation");
     expect(serialized).not.toContain("Other private bookmark");
+    expect(serialized).not.toContain("Other private note");
   });
 
   it("leaves the other owner's records stored while keeping them out of the actor projection", async () => {
     await expect(prisma.callRoom.findUnique({ where: { id: otherRoomId }, select: { title: true } })).resolves.toEqual({ title: "Other person's private coaching" });
     await expect(prisma.studioSourceAnnotation.count({ where: { sourceUnitId: sourceId, createdByUserId: otherUserId } })).resolves.toBe(2);
     await expect(prisma.bookmark.count({ where: { userId: otherUserId } })).resolves.toBe(1);
+    await expect(prisma.coachingNote.count({ where: { id: otherNoteId, authorUserId: otherUserId } })).resolves.toBe(1);
   });
 });

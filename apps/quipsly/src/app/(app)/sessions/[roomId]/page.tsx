@@ -126,26 +126,39 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
         where: { roomId: room.id, authorUserId: session.user.id },
         orderBy: { createdAt: "desc" },
         take: 50,
-        select: { id: true, title: true, body: true, sourceJson: true, createdAt: true },
+        select: {
+          id: true, title: true, body: true, sourceJson: true, createdAt: true,
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+        },
       }),
       prisma.actionItem.findMany({
         where: { roomId: room.id, assignedUserId: session.user.id },
         orderBy: { createdAt: "desc" },
         take: 50,
-        select: { id: true, title: true, detail: true, status: true, sourceJson: true, createdAt: true },
+        select: {
+          id: true, title: true, detail: true, status: true, sourceJson: true, createdAt: true,
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+        },
       }),
       prisma.goal.findMany({
         where: { roomId: room.id, ownerUserId: session.user.id },
         orderBy: { createdAt: "desc" },
         take: 50,
-        select: { id: true, title: true, description: true, status: true, sourceJson: true, createdAt: true },
+        select: {
+          id: true, title: true, description: true, status: true, sourceJson: true, createdAt: true,
+          tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+        },
       }),
     ]);
     const isQuickEntry = (value: unknown) => jsonObject(value).schema === MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA;
+    const quickEntryTags = (row: any) => (row.tagLinks || [])
+      .map((link: any) => link.tag)
+      .filter((tag: any) => tag.isActive && visibleProject && tag.projectId === visibleProject.id)
+      .map(({ id, label, slug }: any) => ({ id, label, slug }));
     const sessionQuickEntries = [
-      ...quickNoteRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "NOTE" as const, title: row.title, body: row.body, status: "CAPTURED", createdAt: row.createdAt.toISOString() })),
-      ...quickTaskRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "TASK" as const, title: row.title, body: row.detail, status: String(row.status), createdAt: row.createdAt.toISOString() })),
-      ...quickGoalRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "GOAL" as const, title: row.title, body: row.description, status: String(row.status), createdAt: row.createdAt.toISOString() })),
+      ...quickNoteRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "NOTE" as const, title: row.title, body: row.body, status: "CAPTURED", createdAt: row.createdAt.toISOString(), tags: quickEntryTags(row) })),
+      ...quickTaskRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "TASK" as const, title: row.title, body: row.detail, status: String(row.status), createdAt: row.createdAt.toISOString(), tags: quickEntryTags(row) })),
+      ...quickGoalRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "GOAL" as const, title: row.title, body: row.description, status: String(row.status), createdAt: row.createdAt.toISOString(), tags: quickEntryTags(row) })),
     ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
     const sessionTaxonomy = room.project && visibleProject ? {
       project: room.project,

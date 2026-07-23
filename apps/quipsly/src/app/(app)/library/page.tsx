@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpenText, CircleAlert, FileAudio, FileText, Film, Highlighter, Library, Search } from "lucide-react";
+import { BookOpenText, CircleAlert, FileAudio, FileText, Film, Highlighter, Library, MessageSquareText, Search } from "lucide-react";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
@@ -32,7 +32,7 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
   const projectIds = projects.map((project) => project.id);
   const visibleProjectIds = new Set(projectIds);
 
-  const [sessions, sources, documents, media, savedCounts, latestSnippet, latestBookmark] = await Promise.all([
+  const [sessions, notes, sources, documents, media, savedCounts, latestSnippet, latestBookmark] = await Promise.all([
     prisma.callRoom.findMany({
       where: {
         AND: [
@@ -58,6 +58,34 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
           orderBy: [{ createdAt: "desc" }, { updatedAt: "desc" }],
           take: 5,
           select: { id: true, status: true, provider: true, updatedAt: true, _count: { select: { segments: true } } },
+        },
+      },
+    }),
+    prisma.coachingNote.findMany({
+      where: {
+        authorUserId: userId,
+        kind: "SESSION_NOTE",
+        room: roomAccess(userId, isStaff),
+      },
+      orderBy: { updatedAt: "desc" },
+      take: 300,
+      select: {
+        id: true,
+        title: true,
+        body: true,
+        sourceJson: true,
+        createdAt: true,
+        updatedAt: true,
+        room: {
+          select: {
+            id: true,
+            title: true,
+            project: { select: { id: true, name: true, slug: true } },
+          },
+        },
+        tagLinks: {
+          orderBy: { createdAt: "asc" },
+          select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } },
         },
       },
     }),
@@ -132,6 +160,16 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
       ...session,
       project: session.project && visibleProjectIds.has(session.project.id) ? session.project : null,
     })),
+    notes: notes.map((note: any) => ({
+      ...note,
+      room: {
+        ...note.room,
+        project: note.room.project && visibleProjectIds.has(note.room.project.id) ? note.room.project : null,
+      },
+      tags: (note.tagLinks || [])
+        .map((link: any) => link.tag)
+        .filter((tag: any) => tag.isActive && visibleProjectIds.has(tag.projectId)),
+    })),
     sources,
     documents,
     media,
@@ -147,6 +185,7 @@ function formatDate(value: string) {
 
 const kindDetails: Record<LibraryKind, { label: string; icon: typeof Library; tone: string }> = {
   SESSION: { label: "Session source", icon: FileAudio, tone: "border-sky-200 bg-sky-50 text-sky-800" },
+  NOTE: { label: "Note", icon: MessageSquareText, tone: "border-teal-200 bg-teal-50 text-teal-800" },
   SOURCE: { label: "Research source", icon: Highlighter, tone: "border-amber-200 bg-amber-50 text-amber-800" },
   DOCUMENT: { label: "Document", icon: BookOpenText, tone: "border-emerald-200 bg-emerald-50 text-emerald-800" },
   MEDIA: { label: "Studio media", icon: Film, tone: "border-violet-200 bg-violet-50 text-violet-800" },
@@ -180,7 +219,7 @@ export default async function LibraryPage({ searchParams }: { searchParams?: Pro
   const params = await (searchParams ?? Promise.resolve<{ q?: string | string[]; kind?: string | string[] }>({}));
   const query = typeof params.q === "string" ? params.q.trim().slice(0, 200) : "";
   const requestedKind = typeof params.kind === "string" ? params.kind.trim().toUpperCase() : "ALL";
-  const kind = (["ALL", "SESSION", "SOURCE", "DOCUMENT", "MEDIA", "SAVED"] as const).includes(requestedKind as any) ? requestedKind : "ALL";
+  const kind = (["ALL", "SESSION", "NOTE", "SOURCE", "DOCUMENT", "MEDIA", "SAVED"] as const).includes(requestedKind as any) ? requestedKind : "ALL";
 
   try {
     const actorEmail = (session.user.primaryEmail || session.user.email || "").trim().toLowerCase();
@@ -191,14 +230,14 @@ export default async function LibraryPage({ searchParams }: { searchParams?: Pro
         <p className="text-xs font-black uppercase tracking-[0.22em] text-[#76522c]">Library</p>
         <h1 className="mt-2 max-w-4xl font-serif text-4xl font-black tracking-tight md:text-5xl">Every source keeps its identity. One place to continue.</h1>
         <p className="mt-3 max-w-4xl text-sm font-semibold leading-6 text-[#715a3e]">Library indexes canonical records without flattening them: Session owns capture evidence, Research owns immutable text and annotation anchors, Documents own writing revisions, and Studio owns reusable media references. The iPhone keeps unsynced originals locally until verified upload.</p>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" aria-label="Library counts">{[
-          ["Sessions", library.counts.sessions], ["Sources", library.counts.sources], ["Documents", library.counts.documents], ["Media", library.counts.media], ["Saved", library.counts.saved],
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-6" aria-label="Library counts">{[
+          ["Sessions", library.counts.sessions], ["Notes", library.counts.notes], ["Sources", library.counts.sources], ["Documents", library.counts.documents], ["Media", library.counts.media], ["Saved", library.counts.saved],
         ].map(([label, value]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-4"><p className="text-3xl font-black">{value}</p><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{label}</p></div>)}</div>
       </header>
 
       <section aria-label="Library filters" className="rounded-3xl border border-[#e5d5b7] bg-white p-4 shadow-sm md:p-5">
         <form method="GET" action="/library" className="flex flex-col gap-3 md:flex-row md:items-center"><label className="relative flex-1"><span className="sr-only">Search Library</span><Search className="absolute left-3 top-3 h-5 w-5 text-[#927b5b]" aria-hidden="true" /><input name="q" defaultValue={query} maxLength={200} placeholder="Search titles, transcript filenames, annotations, manuscripts…" className="w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf8] py-2.5 pl-10 pr-3 text-sm font-semibold" /></label>{kind !== "ALL" && <input type="hidden" name="kind" value={kind} />}<button type="submit" className="rounded-xl bg-[#3e2f21] px-5 py-3 text-xs font-black uppercase tracking-wide text-white">Search</button></form>
-        <nav aria-label="Library kinds" className="mt-4 flex flex-wrap gap-2">{(["ALL", "SESSION", "SOURCE", "DOCUMENT", "MEDIA", "SAVED"] as const).map((value) => <Link key={value} href={filterHref(value, query)} aria-current={kind === value ? "page" : undefined} className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wide ${kind === value ? "border-[#3e2f21] bg-[#3e2f21] text-white" : "border-[#d9c7a5] bg-[#fffaf3] text-[#765f40]"}`}>{value === "ALL" ? "Everything" : value.toLowerCase()}</Link>)}</nav>
+        <nav aria-label="Library kinds" className="mt-4 flex flex-wrap gap-2">{(["ALL", "SESSION", "NOTE", "SOURCE", "DOCUMENT", "MEDIA", "SAVED"] as const).map((value) => <Link key={value} href={filterHref(value, query)} aria-current={kind === value ? "page" : undefined} className={`rounded-full border px-3 py-2 text-[10px] font-black uppercase tracking-wide ${kind === value ? "border-[#3e2f21] bg-[#3e2f21] text-white" : "border-[#d9c7a5] bg-[#fffaf3] text-[#765f40]"}`}>{value === "ALL" ? "Everything" : value.toLowerCase()}</Link>)}</nav>
       </section>
 
       <section aria-labelledby="library-results"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Permission-filtered continuation</p><h2 id="library-results" className="mt-1 font-serif text-3xl font-black">{entries.length} source{entries.length === 1 ? "" : "s"}</h2></div><div className="flex flex-wrap gap-2"><Link href="/research" className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f]">Research workbench</Link><Link href="/media" className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f]">Media Vault</Link></div></div>

@@ -107,6 +107,7 @@ export type SessionQuickEntry = {
   body: string | null;
   status: string;
   createdAt: string;
+  tags: Array<{ id: string; label: string; slug: string }>;
 };
 
 export type SessionCaptureReceipts = {
@@ -186,8 +187,9 @@ function SessionQuickEntryCard({ entries }: { entries: SessionQuickEntry[] }) {
     {entries.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2">{entries.map((entry) => {
       const Icon = icon(entry.kind);
       const href = entry.kind === "TASK" ? `/work?task=${encodeURIComponent(entry.id)}` : entry.kind === "GOAL" ? `/work?goal=${encodeURIComponent(entry.id)}` : null;
-      return <article key={entry.id} className="rounded-xl border border-emerald-200 bg-white p-4">
+      return <article id={`quick-entry-${entry.id}`} key={entry.id} tabIndex={-1} className="scroll-mt-24 rounded-xl border border-emerald-200 bg-white p-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-700">
         <div className="flex items-start gap-3"><span className="rounded-lg bg-emerald-50 p-2 text-emerald-700"><Icon className="h-4 w-4" aria-hidden="true" /></span><div className="min-w-0 flex-1"><div className="flex flex-wrap items-start justify-between gap-2"><p className="font-black text-[#3d3122]">{entry.title || (entry.kind === "NOTE" ? "Quick note" : `Untitled ${entry.kind.toLowerCase()}`)}</p><span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusTone(entry.status)}`}>{humanize(entry.status)}</span></div>{entry.body && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#765f40]">{entry.body}</p>}<p className="mt-3 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">{humanize(entry.kind)} · {new Date(entry.createdAt).toLocaleString()}</p>{href && <Link href={href} className="mt-3 inline-flex min-h-11 items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-black text-emerald-900">Open same {entry.kind.toLowerCase()} in Work</Link>}</div></div>
+        {entry.tags.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5" aria-label={`${entry.title || entry.kind} tags`}>{entry.tags.map((tag) => <span key={tag.id} className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-1 text-[10px] font-black text-sky-900">#{tag.label}</span>)}</div>}
       </article>;
     })}</div> : <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-900">No iPhone quick captures have synced to this Session yet. Quipsly does not invent an Inbox count.</div>}
   </section>;

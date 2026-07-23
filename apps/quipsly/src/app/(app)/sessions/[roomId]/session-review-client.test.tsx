@@ -242,13 +242,15 @@ describe("Session review goal candidates", () => {
       roomId="room-1"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
       sessionQuickEntries={[
-        { id: "mobile-note-1", kind: "NOTE", title: "Quick note", body: "Let the opening breathe.", status: "CAPTURED", createdAt: "2026-07-19T09:00:00.000Z" },
-        { id: "mobile-task-1", kind: "TASK", title: "Proof-listen act one", body: "Use the room mix.", status: "OPEN", createdAt: "2026-07-19T09:01:00.000Z" },
-        { id: "mobile-goal-1", kind: "GOAL", title: "Make coaching follow-through obvious", body: null, status: "ACTIVE", createdAt: "2026-07-19T09:02:00.000Z" },
+        { id: "mobile-note-1", kind: "NOTE", title: "Quick note", body: "Let the opening breathe.", status: "CAPTURED", createdAt: "2026-07-19T09:00:00.000Z", tags: [{ id: "tag-1", label: "Opening", slug: "opening" }] },
+        { id: "mobile-task-1", kind: "TASK", title: "Proof-listen act one", body: "Use the room mix.", status: "OPEN", createdAt: "2026-07-19T09:01:00.000Z", tags: [] },
+        { id: "mobile-goal-1", kind: "GOAL", title: "Make coaching follow-through obvious", body: null, status: "ACTIVE", createdAt: "2026-07-19T09:02:00.000Z", tags: [] },
       ]}
     />);
     expect(await screen.findByRole("heading", { name: "3 Session notes, tasks, or goals" })).toBeInTheDocument();
     expect(screen.getByText("Let the opening breathe.")).toBeInTheDocument();
+    expect(screen.getByText("#Opening")).toBeInTheDocument();
+    expect(screen.getByText("Quick note").closest("article")).toHaveAttribute("id", "quick-entry-mobile-note-1");
     expect(screen.getByRole("link", { name: "Open same task in Work" })).toHaveAttribute("href", "/work?task=mobile-task-1");
     expect(screen.getByRole("link", { name: "Open same goal in Work" })).toHaveAttribute("href", "/work?goal=mobile-goal-1");
     expect(screen.getByText(/not AI candidates or copied phone drafts/i)).toBeInTheDocument();

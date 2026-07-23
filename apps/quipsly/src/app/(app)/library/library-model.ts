@@ -1,4 +1,4 @@
-export type LibraryKind = "SESSION" | "SOURCE" | "DOCUMENT" | "MEDIA" | "SAVED";
+export type LibraryKind = "SESSION" | "NOTE" | "SOURCE" | "DOCUMENT" | "MEDIA" | "SAVED";
 
 export type LibraryEntry = {
   id: string;
@@ -47,6 +47,20 @@ export function buildLibraryEntries(input: {
     project?: { name: string; slug: string } | null;
     recordingAssets: Array<{ id: string; fileName?: string | null; kind: string; status: string; durationSeconds?: number | null; localManifestJson?: unknown }>;
     transcriptJobs: Array<{ id: string; status: string; provider: string; updatedAt: Date | string; _count?: { segments: number } }>;
+  }>;
+  notes?: Array<{
+    id: string;
+    title?: string | null;
+    body: string;
+    sourceJson?: unknown;
+    createdAt: Date | string;
+    updatedAt: Date | string;
+    room: {
+      id: string;
+      title?: string | null;
+      project?: { name: string; slug: string } | null;
+    };
+    tags: Array<{ id: string; label: string; slug: string }>;
   }>;
   sources: Array<{
     id: string;
@@ -107,6 +121,33 @@ export function buildLibraryEntries(input: {
         latestTranscript ? `${segmentCount} segments` : "No transcript",
       ],
       searchText: [title, session.purpose, session.status, session.project?.name, ...recordingNames, latestTranscript?.provider].map(clean).join(" "),
+    });
+  }
+
+  for (const note of input.notes ?? []) {
+    const title = clean(note.title) || "Quick note";
+    const body = clean(note.body);
+    const source = typeof note.sourceJson === "object" && note.sourceJson !== null && !Array.isArray(note.sourceJson)
+      ? note.sourceJson as Record<string, unknown>
+      : {};
+    const capturedOnPhone = source.schema === "quipsly-mobile-quick-entry-v1" && source.surface === "ios-capture";
+    const tagBadges = note.tags.map((tag) => `#${clean(tag.label)}`).filter((tag) => tag !== "#");
+    entries.push({
+      id: `note:${note.id}`,
+      kind: "NOTE",
+      title,
+      detail: body.length > 220 ? `${body.slice(0, 217)}…` : body,
+      projectName: note.room.project?.name ?? null,
+      projectSlug: note.room.project?.slug ?? null,
+      href: `/sessions/${encode(note.room.id)}#quick-entry-${encode(note.id)}`,
+      updatedAt: iso(note.updatedAt),
+      stateLabel: capturedOnPhone ? "iPhone capture" : "Session note",
+      badges: [
+        clean(note.room.title) || "Capture session",
+        ...tagBadges,
+        capturedOnPhone ? "Offline retry safe" : "Actor-authored",
+      ],
+      searchText: [title, body, note.room.title, note.room.project?.name, ...note.tags.flatMap((tag) => [tag.label, tag.slug])].map(clean).join(" "),
     });
   }
 
@@ -193,6 +234,7 @@ export function buildLibraryEntries(input: {
     promotedMediaIds: [...promotedMediaIds].sort(),
     counts: {
       sessions: entries.filter((entry) => entry.kind === "SESSION").length,
+      notes: entries.filter((entry) => entry.kind === "NOTE").length,
       sources: entries.filter((entry) => entry.kind === "SOURCE").length,
       documents: entries.filter((entry) => entry.kind === "DOCUMENT").length,
       media: entries.filter((entry) => entry.kind === "MEDIA").length,
