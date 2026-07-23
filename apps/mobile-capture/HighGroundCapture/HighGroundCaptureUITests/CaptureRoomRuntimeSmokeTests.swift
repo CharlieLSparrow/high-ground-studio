@@ -852,8 +852,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let crashOfflineIdentifier = crashIdentifier.replacingOccurrences(of: "LocalRecordingRow_", with: "CaptureOfflineRecording_")
         let safeOfflineRow = app.descendants(matching: .any)[safeOfflineIdentifier].firstMatch
         let crashOfflineRow = app.descendants(matching: .any)[crashOfflineIdentifier].firstMatch
-        XCTAssertTrue(safeOfflineRow.waitForExistence(timeout: 8), "The finalized take must survive an offline process relaunch with the same source ID.")
-        XCTAssertTrue(crashOfflineRow.waitForExistence(timeout: 12), "The crash-open take must survive launch reconciliation with the same source ID.")
+        XCTAssertTrue(
+            waitForRuntimeElement(safeOfflineRow, in: app, timeout: 16, swipeAttempts: 10),
+            "The finalized take must survive an offline process relaunch with the same source ID."
+        )
+        XCTAssertTrue(
+            waitForRuntimeElement(crashOfflineRow, in: app, timeout: 16, swipeAttempts: 10),
+            "The crash-open take must survive launch reconciliation with the same source ID."
+        )
         XCTAssertFalse(app.buttons["CaptureStartButton"].exists, "Offline cached consent must never allow a new recording.")
 
         let playOffline = safeOfflineRow.buttons["Play local source"].firstMatch
