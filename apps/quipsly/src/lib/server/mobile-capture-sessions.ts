@@ -725,6 +725,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       consentGrantedParticipantCount: participantConsent.grantedCount,
       allRegisteredParticipantConsentGranted: participantConsent.allGranted,
       captureReadiness,
+      contentReadiness,
       journeySummary,
       lifecycle,
       actionPacket,

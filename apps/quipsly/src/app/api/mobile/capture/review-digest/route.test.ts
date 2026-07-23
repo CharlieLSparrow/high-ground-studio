@@ -73,4 +73,47 @@ describe("mobile Capture review digest", () => {
       boundaries: { sideEffectFree: true },
     });
   });
+
+  it("preserves substantial recording evidence in the iPhone digest", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: {
+        id: "user-1",
+        primaryEmail: "producer@example.com",
+        name: "Producer",
+        isStaff: false,
+      },
+    } as any);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      callRoom: { findMany: jest.fn().mockResolvedValue([]) },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
+    } as any);
+    jest.mocked(mapMobileCaptureSessionsForUser).mockReturnValue([{
+      id: "room-1",
+      callRoomId: "room-1",
+      title: "Episode review",
+      recordingCount: 1,
+      contentReadiness: {
+        status: "substantial",
+        captureAssetCount: 1,
+        substantialRecordingCount: 1,
+      },
+    }] as any);
+
+    const response = await GET(new Request("http://localhost/api/mobile/capture/review-digest"));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload.digest).toMatchObject({
+      sessionCount: 1,
+      capturePlumbingEvidence: 1,
+      substantialRecordingEvidence: 1,
+      sessions: [{
+        callRoomId: "room-1",
+        contentReadiness: {
+          status: "substantial",
+          substantialRecordingCount: 1,
+        },
+      }],
+    });
+  });
 });
