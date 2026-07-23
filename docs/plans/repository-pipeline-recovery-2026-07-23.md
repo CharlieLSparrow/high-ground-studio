@@ -146,11 +146,35 @@ One green stage cannot substitute for another.
 
 - Replace root-lockfile fan-out with dependency-aware affected-package
   calculation.
-- Create CODEOWNERS-style surface ownership and one release manifest per app.
+- Add product-specific collaborators to the checked-in CODEOWNERS surface map
+  as write access and durable review responsibility are granted.
+- Enable protected `main` merges and required checks in GitHub after the new
+  collaborator and affected-surface checks land on the default branch.
+- Create one release manifest per app.
 - Store generated proof artifacts outside source paths and expire them by
   policy.
 - Add a worktree-health check that reports, but does not delete, unexpected
   generated files and cross-surface dirty state.
+
+### Collaborator readiness
+
+The repository now treats onboarding and governance as tested interfaces:
+
+- the root README describes the real Capture → Nest → Studio → HGO product;
+- contribution, security, support, conduct, ownership, issue, and pull-request
+  contracts live at GitHub-recognized paths;
+- Node, pnpm, text, and binary file behavior are pinned;
+- architecture, development, testing, decision, release, and governance
+  entrypoints form one maintained documentation path;
+- Dependabot covers pnpm, GitHub Actions, Capture Ruby tooling, and the Nest
+  Dockerfile;
+- `scripts/ci/audit-repository-contract.mjs` validates required files, local
+  documentation links, ownership coverage, pull-request headings, and toolchain
+  pins on every pull request.
+
+Live GitHub settings remain a separate administrative gate. CODEOWNERS and
+workflow files do not themselves enable branch protection, required reviews,
+private vulnerability reporting, or automatic branch updates.
 
 ## Git recovery sequence
 
@@ -182,7 +206,10 @@ The repository is operationally recovered when:
 - every remaining local branch has an owner, purpose, and archive/delete
   decision;
 - clean clones can run the documented local and release paths without relying
-  on untracked source.
+  on untracked source;
+- a new collaborator can find the owning surface, start the local lane, select
+  the required proof, open a complete pull request, and report security issues
+  without private oral history.
 
 This is the point at which a repository split becomes an architectural choice
 instead of an emergency response to an unhealthy checkout.

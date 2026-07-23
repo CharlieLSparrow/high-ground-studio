@@ -16,6 +16,18 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Verify collaborator and documentation contract
+        run: |
+          node --test scripts/ci/audit-repository-contract.test.mjs
+          node scripts/ci/audit-repository-contract.mjs
+
+      - name: Reject added secret material
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node --test scripts/ci/audit-changed-secrets.test.mjs
+          node scripts/ci/audit-changed-secrets.mjs --base "${BASE_SHA}" --head HEAD
+
       - name: Enforce binary asset budgets
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

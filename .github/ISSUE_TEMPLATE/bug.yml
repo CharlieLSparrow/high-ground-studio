@@ -1,0 +1,53 @@
+name: Bug report
+description: Report a reproducible product or developer-workflow defect.
+title: "bug: "
+labels: []
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      options:
+        - Capture iPhone
+        - Nest web
+        - Quipsly contracts
+        - Quipsly Studio
+        - High Ground Odyssey web
+        - Prisma or data
+        - CI or deployment
+        - Documentation
+    validations:
+      required: true
+  - type: input
+    id: revision
+    attributes:
+      label: Commit or deployed revision
+      placeholder: Commit SHA, TestFlight build, or Cloud Run revision
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Use synthetic or approved data and list exact steps.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected result
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual result and safe evidence
+    validations:
+      required: true
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed credentials, auth tokens, personal data, recordings, transcripts, and private client or manuscript content.
+          required: true
+        - label: This is not a vulnerability report. I will use the private security channel for security issues.
+          required: true

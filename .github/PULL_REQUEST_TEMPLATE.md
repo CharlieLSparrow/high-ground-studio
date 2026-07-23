@@ -1,33 +1,46 @@
-## Product intent
+## Outcome
 
-- What user workflow does this prove or improve?
-- Which Nest/app/surface is affected?
+- User workflow:
+- Primary surface:
+- Why this is the smallest dependency-closed slice:
 
 ## Source truth
 
-- What is the source of truth for this change?
-- Does this preserve Quipsly source truth, decision layers, provenance, and rollback?
+- Canonical source or record:
+- Contract/schema/provenance impact:
+- Fixed source, editable draft, decision, and output boundaries preserved:
 
-## Proof path
+## Proof
 
-- Real app/route tested:
-- Save/reload or persistence check:
-- Known blockers:
+- Commands run:
+- Visible app, route, simulator, or native runtime:
+- Save/reload or persistence readback:
+- Physical device, TestFlight, Cloud Run revision, or delivery artifact:
+- Safe screenshots, logs, or receipts:
 
-## Risk check
+## Risk
 
-- Auth/session/access impact:
-- Media/proxy/storage impact:
-- Schema/data migration impact:
-- Publishing/public-site impact:
+- Auth, authorization, session, or identity:
+- Private data, recording, transcript, or media:
+- Schema or migration:
+- External message, calendar, payment, publishing, or deployment:
+- Rollback:
 
-## Documentation
+## Documentation and operations
 
-- Coordination docs updated:
-- Gospel/WIP/anti-gospel changed:
+- Durable docs/runbooks updated:
+- Environment or secret contract changed:
+- Follow-up explicitly outside this pull request:
 
 ## Reviewer focus
 
-- Architecture seams to inspect:
-- UX states to inspect:
-- Anything intentionally deferred:
+- Architecture seam:
+- UX states:
+- Known limitation:
+
+## Checklist
+
+- [ ] I used synthetic or approved data in shared proof.
+- [ ] I did not commit secrets, credentials, private exports, recordings, or generated build evidence.
+- [ ] I verified every affected surface at the level claimed above.
+- [ ] I inspected the exact staged diff.

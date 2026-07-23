@@ -1,0 +1,56 @@
+# Development
+
+This is the authoritative collaborator entrypoint for local engineering.
+
+## Toolchain
+
+| Tool | Version or policy |
+| --- | --- |
+| Node | `24.14.0` from `.node-version` |
+| pnpm | `10.30.3` from `package.json` |
+| Xcode | `26.2` for Capture CI parity |
+| iOS simulator | iOS `26.2`, iPhone 17 Pro in CI |
+| PostgreSQL | local Docker service for persistent Nest work |
+| Firebase Auth | local emulator for disposable identities |
+
+Install:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+```
+
+## Choose one surface
+
+| Goal | Start command | Primary guide |
+| --- | --- | --- |
+| Develop Nest | `pnpm quipsly:local:up` | [Nest local](../runbooks/quipsly-nest-local.md) |
+| Validate Nest | `pnpm --filter quipsly build` | [Testing](testing.md) |
+| Develop HGO web | `pnpm --filter web dev` | [Local dev](../runbooks/local-dev.md) |
+| Develop Capture | open the shared Xcode scheme | [Capture verification](../../apps/mobile-capture/HighGroundCapture/CAPTURE_VERIFICATION.md) |
+| Inspect releases | use the surface runbook | [Release index](../runbooks/release-index.md) |
+
+Do not start every runtime by default. Select the product surface and the
+declared dependencies it consumes.
+
+## Environment rules
+
+- Copy `.env.example`; never commit populated `.env` files.
+- Use emulator identities and a loopback database for ordinary Nest work.
+- Cloud credentials are needed only for explicit credentialed runtime or
+  deployment proof.
+- App Store Connect credentials and signing keys never belong in the repo.
+- Treat production recordings, transcripts, coaching notes, and manuscripts as
+  private data, not fixtures.
+
+## Change lifecycle
+
+1. Name the user workflow and source of truth.
+2. Use `scripts/ci/plan-changed-surfaces.mjs` to understand affected surfaces.
+3. Make one dependency-closed change.
+4. Run deterministic checks.
+5. Operate the visible app and prove persistence when applicable.
+6. Obtain credentialed runtime or delivery proof when the claim requires it.
+7. Update durable docs and open a pull request.
+
+The detailed proof levels are in [Testing and proof](testing.md).
