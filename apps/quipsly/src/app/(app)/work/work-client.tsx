@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Archive, BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, ListChecks, Pencil, Play, Repeat2, RotateCcw, Tags, Target, UsersRound } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import { changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, recordWorkGoalProgress, replaceWorkTags, saveWeeklyCommitment, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
+import { applyTagMerge, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, previewTagMerge, recordWorkGoalProgress, replaceWorkTags, saveWeeklyCommitment, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview } from "./actions";
 import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTask, WorkTaskStatus } from "./work-model";
 
 export type TaskFilter = "ATTENTION" | "OPEN" | "DONE" | "ALL";
@@ -120,6 +120,82 @@ function TagEditor({ entityKind, entityId, project, tags, updatedAt, canManage, 
   </div>;
 }
 
+function TagMergeControl({ source, project, onRefresh }: { source: WorkTag; project: WorkProjectOption; onRefresh: () => void }) {
+  const targets = project.tags.filter((tag) => tag.isActive !== false && !tag.mergedInto && tag.id !== source.id);
+  const [targetId, setTargetId] = useState("");
+  const [preview, setPreview] = useState<SerializedWorkTagMergePreview | null>(null);
+  const [confirmed, setConfirmed] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [previewing, startPreview] = useTransition();
+  const [merging, startMerge] = useTransition();
+  if (!targets.length || source.isActive === false || source.mergedInto) return null;
+
+  function previewMerge() {
+    setMessage(null);
+    setPreview(null);
+    setConfirmed(false);
+    startPreview(async () => {
+      const result = await previewTagMerge({ sourceTagId: source.id, targetTagId: targetId });
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
+      setPreview(result.preview);
+      setMessage(result.preview.canMerge
+        ? "Preview verified. Review the exact impact before confirming."
+        : "This merge is blocked until the listed evidence conflicts are resolved.");
+    });
+  }
+
+  function merge() {
+    if (!preview || !confirmed) return;
+    setMessage(null);
+    startMerge(async () => {
+      const result = await applyTagMerge({
+        sourceTagId: preview.source.id,
+        targetTagId: preview.target.id,
+        expectedImpactHash: preview.impactHash,
+        expectedSourceUpdatedAt: preview.source.updatedAt,
+        expectedTargetUpdatedAt: preview.target.updatedAt,
+      });
+      if (!result.ok) {
+        setMessage(result.error);
+        if (result.code === "CONFLICT") setPreview(null);
+        return;
+      }
+      setMessage(`#${result.sourceTag.label} now redirects to #${result.targetTag.label}. ${result.counts.totalUses} exact use${result.counts.totalUses === 1 ? " was" : "s were"} preserved.`);
+      onRefresh();
+    });
+  }
+
+  return <details className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50/50 p-3">
+    <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-fuchsia-900">Merge into another tag</summary>
+    <p className="mt-2 text-[11px] font-semibold leading-5 text-fuchsia-950">This is global inside {project.name}. Quipsly previews every supported relationship first, preserves #{source.label} as a redirect, and writes an exact rollback receipt.</p>
+    <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+      <label className="min-w-0 flex-1 text-[10px] font-black uppercase tracking-wide text-fuchsia-900">Canonical target
+        <select value={targetId} onChange={(event) => { setTargetId(event.target.value); setPreview(null); setConfirmed(false); setMessage(null); }} className="mt-1 min-h-11 w-full rounded-xl border border-fuchsia-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal">
+          <option value="">Choose the tag that should remain</option>
+          {targets.map((target) => <option key={target.id} value={target.id}>{target.label}</option>)}
+        </select>
+      </label>
+      <button type="button" disabled={!targetId || previewing || merging} onClick={previewMerge} className="min-h-11 self-end rounded-full border border-fuchsia-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-fuchsia-900 disabled:opacity-50">{previewing ? "Checking…" : "Preview merge"}</button>
+    </div>
+    {preview && <div className={`mt-3 rounded-xl border p-3 ${preview.canMerge ? "border-emerald-200 bg-emerald-50" : "border-rose-200 bg-rose-50"}`}>
+      <p className="text-xs font-black text-fuchsia-950">#{preview.source.label} → #{preview.target.label}</p>
+      <p className="mt-2 text-[11px] font-semibold leading-5 text-fuchsia-950">{preview.counts.totalUses} total uses: {preview.counts.tasks} tasks, {preview.counts.goals} goals, {preview.counts.sessions} Sessions, {preview.counts.coachingNotes} coaching notes, {preview.counts.annotations} annotations, {preview.counts.taggedSpans} anchored spans, {preview.counts.knowledgeNodes} knowledge nodes, and {preview.counts.mediaClips} media clips.</p>
+      {(Object.values(preview.deduplicated).reduce((sum, count) => sum + count, 0) > 0) && <p className="mt-2 text-[11px] font-bold text-fuchsia-900">{Object.values(preview.deduplicated).reduce((sum, count) => sum + count, 0)} already-shared relationship{Object.values(preview.deduplicated).reduce((sum, count) => sum + count, 0) === 1 ? " will" : "s will"} deduplicate without deleting either underlying record.</p>}
+      {!preview.canMerge && <ul className="mt-2 list-disc pl-5 text-[11px] font-bold text-rose-900">
+        {preview.blockingConflicts.anchoredSpanCollisions > 0 && <li>{preview.blockingConflicts.anchoredSpanCollisions} same-range writing anchor collision{preview.blockingConflicts.anchoredSpanCollisions === 1 ? "" : "s"} require human review.</li>}
+        {preview.blockingConflicts.aliasCollisions.map((collision) => <li key={`${collision.slug}-${collision.label}`}>“{collision.label}” conflicts with “{collision.conflictingLabel}”.</li>)}
+        {preview.blockingConflicts.relationLimitExceeded && <li>This tag exceeds the safe 5,000-row preview limit for at least one relationship type.</li>}
+      </ul>}
+      {preview.canMerge && <label className="mt-3 flex min-h-11 cursor-pointer items-start gap-3 rounded-xl border border-emerald-200 bg-white p-3 text-xs font-bold leading-5 text-emerald-950"><input type="checkbox" checked={confirmed} onChange={(event) => setConfirmed(event.target.checked)} className="mt-1" />I reviewed this exact impact. Keep #{preview.target.label} as canonical and preserve #{preview.source.label} as a redirect.</label>}
+      {preview.canMerge && <button type="button" disabled={!confirmed || merging} onClick={merge} className="mt-3 min-h-11 rounded-full bg-fuchsia-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">{merging ? "Merging…" : `Merge into #${preview.target.label}`}</button>}
+    </div>}
+    {message && <p role="status" className="mt-3 text-xs font-bold leading-5 text-fuchsia-950">{message}</p>}
+  </details>;
+}
+
 function TagVocabulary({ projects, onRefresh }: { projects: WorkProjectOption[]; onRefresh: () => void }) {
   const writableProjects = projects.filter((project) => project.canWrite);
   const [pending, startTransition] = useTransition();
@@ -157,10 +233,11 @@ function TagVocabulary({ projects, onRefresh }: { projects: WorkProjectOption[];
         <div className="flex items-center justify-between gap-3"><div><h3 className="font-serif text-xl font-black">{project.name}</h3><p className="text-[10px] font-black uppercase tracking-wide text-sky-800">{project.tags.filter((tag) => tag.isActive !== false).length} active · {project.tags.filter((tag) => tag.isActive === false).length} archived</p></div><Link href={`/nests/${encodeURIComponent(project.slug)}`} className="text-[10px] font-black uppercase tracking-wide text-sky-800 hover:underline">Open Nest</Link></div>
         {project.tags.length ? <ul className="mt-4 space-y-3">{project.tags.map((tag) => <li key={tag.id} className={`rounded-xl border p-3 ${tag.isActive === false ? "border-slate-200 bg-slate-50" : "border-sky-100 bg-sky-50/40"}`}>
           <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-black">#{tag.label}</p><p className="mt-1 text-[11px] font-semibold text-sky-900">{tag.aliases?.length ? `Also matches ${tag.aliases.map((alias) => `#${alias.label}`).join(", ")}` : "No former names"}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tag.isActive === false ? "bg-slate-200 text-slate-700" : "bg-emerald-100 text-emerald-800"}`}>{tag.isActive === false ? "Archived" : "Active"}</span></div>
-          {tag.isActive === false ? <button type="button" disabled={pending} onClick={() => change(tag, "RESTORE")} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-800 disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Restore</button> : <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          {tag.mergedInto ? <p className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs font-bold text-fuchsia-950">Merged into #{tag.mergedInto.label}. Older captures using this name resolve to the canonical tag.</p> : tag.isActive === false ? <button type="button" disabled={pending} onClick={() => change(tag, "RESTORE")} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-800 disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Restore</button> : <div className="mt-3 flex flex-col gap-2 sm:flex-row">
             <form action={(formData) => change(tag, "RENAME", String(formData.get("label") || ""))} className="flex min-w-0 flex-1 gap-2"><label htmlFor={`rename-tag-${tag.id}`} className="sr-only">Rename {tag.label}</label><input id={`rename-tag-${tag.id}`} name="label" required maxLength={80} defaultValue={tag.label} className="min-h-11 min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold" /><button type="submit" disabled={pending} className="min-h-11 rounded-full bg-sky-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Rename</button></form>
             <button type="button" disabled={pending} onClick={() => change(tag, "ARCHIVE")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50"><Archive size={14} aria-hidden="true" />Archive</button>
           </div>}
+          <TagMergeControl source={tag} project={project} onRefresh={onRefresh} />
         </li>)}</ul> : <p className="mt-4 rounded-xl border border-dashed border-sky-200 p-4 text-sm font-semibold text-sky-900">Create the first reusable tag from a task, goal, or iPhone quick entry.</p>}
       </article>)}
       </div>

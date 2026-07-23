@@ -138,6 +138,7 @@ async function loadProjectOptions(actorEmail: string): Promise<WorkProjectOption
     select: {
       id: true, label: true, slug: true, category: true, projectId: true, isActive: true, archivedAt: true, updatedAt: true,
       aliases: { orderBy: { createdAt: "asc" }, select: { id: true, label: true, slug: true } },
+      mergedInto: { select: { id: true, label: true } },
     },
   });
   return projects.map((project) => ({

@@ -2057,6 +2057,7 @@ model StudioProject {
   documents             StudioDocument[]
   tags                  StudioTag[]
   tagAliases            StudioTagAlias[]
+  tagMergeReceipts      StudioTagMergeReceipt[]
   viewDefinitions       StudioViewDefinition[]
   knowledgeNodes        StudioKnowledgeNode[]
   manuscript            StudioManuscript?            @relation(fields: [manuscriptId], references: [id], onDelete: SetNull)
@@ -2886,34 +2887,41 @@ model StudioViewDefinition {
 }
 
 model StudioTag {
-  id          String                  @id @default(cuid())
-  projectId   String
-  slug        String
-  label       String
-  description String?
-  category    StudioTagCategory       @default(meaning)
-  nodeType    StudioKnowledgeNodeType @default(source_note)
-  isPrivate   Boolean                 @default(true)
-  isActive    Boolean                 @default(true)
-  archivedAt  DateTime?
-  createdAt   DateTime                @default(now())
-  updatedAt   DateTime                @updatedAt
+  id              String                  @id @default(cuid())
+  projectId       String
+  slug            String
+  label           String
+  description     String?
+  category        StudioTagCategory       @default(meaning)
+  nodeType        StudioKnowledgeNodeType @default(source_note)
+  isPrivate       Boolean                 @default(true)
+  isActive        Boolean                 @default(true)
+  archivedAt      DateTime?
+  mergedIntoTagId String?
+  mergedAt        DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
 
-  project           StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  taggedSpans       StudioTaggedSpan[]
-  knowledgeNodes    StudioKnowledgeNode[]
-  mediaClips        MediaClip[]
-  sourceAnnotations StudioSourceAnnotationTag[]
-  coachingNotes     CoachingNoteTagLink[]
-  actionItems       ActionItemTagLink[]
-  goals             GoalTagLink[]
-  callRooms         CallRoomTagLink[]
-  aliases           StudioTagAlias[]
-  revisions         StudioTagRevision[]
+  project               StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  taggedSpans           StudioTaggedSpan[]
+  knowledgeNodes        StudioKnowledgeNode[]
+  mediaClips            MediaClip[]
+  sourceAnnotations     StudioSourceAnnotationTag[]
+  coachingNotes         CoachingNoteTagLink[]
+  actionItems           ActionItemTagLink[]
+  goals                 GoalTagLink[]
+  callRooms             CallRoomTagLink[]
+  aliases               StudioTagAlias[]
+  revisions             StudioTagRevision[]
+  mergedInto            StudioTag?                  @relation("StudioTagMergeRedirect", fields: [mergedIntoTagId], references: [id], onDelete: SetNull)
+  mergedTags            StudioTag[]                 @relation("StudioTagMergeRedirect")
+  mergeReceiptsAsSource StudioTagMergeReceipt[]     @relation("StudioTagMergeSource")
+  mergeReceiptsAsTarget StudioTagMergeReceipt[]     @relation("StudioTagMergeTarget")
 
   @@unique([projectId, slug])
   @@index([projectId, category])
   @@index([projectId, isActive])
+  @@index([mergedIntoTagId])
 }
 
 // Human vocabulary can change without breaking older Capture input, saved
@@ -2951,6 +2959,27 @@ model StudioTagRevision {
 
   @@unique([tagId, revision])
   @@index([actorUserId, createdAt])
+}
+
+// Exact association snapshots make a global taxonomy merge inspectable and
+// technically reversible without deleting either tag identity.
+model StudioTagMergeReceipt {
+  id           String   @id @default(cuid())
+  projectId    String
+  sourceTagId  String
+  targetTagId  String
+  actorUserId  String?
+  impactHash   String
+  snapshotJson Json
+  createdAt    DateTime @default(now())
+
+  project   StudioProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceTag StudioTag     @relation("StudioTagMergeSource", fields: [sourceTagId], references: [id], onDelete: Restrict)
+  targetTag StudioTag     @relation("StudioTagMergeTarget", fields: [targetTagId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, createdAt])
+  @@index([sourceTagId, createdAt])
+  @@index([targetTagId, createdAt])
 }
 
 // Work and Session tags are explicit per-entity joins. The linked StudioTag

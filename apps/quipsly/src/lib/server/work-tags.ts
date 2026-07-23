@@ -35,7 +35,7 @@ export type MutateWorkTagTaxonomyResult =
       revision: number;
       receiptId: string;
     }
-  | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ALREADY_ACTIVE" | "ALREADY_ARCHIVED"; error: string };
+  | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ALREADY_ACTIVE" | "ALREADY_ARCHIVED" | "MERGED"; error: string };
 
 function cleanId(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 200) : "";
@@ -157,8 +157,16 @@ export async function createAndAssignWorkEntityTag(input: {
     });
     if (!currentEntity) return { kind: "conflict" as const };
 
-    let tag = await tx.studioTag.findUnique({ where: { projectId_slug: { projectId: entity.projectId, slug } } });
+    let tag = await tx.studioTag.findUnique({
+      where: { projectId_slug: { projectId: entity.projectId, slug } },
+      include: { mergedInto: true },
+    });
     let created = false;
+    let resolvedFormerName = false;
+    if (tag?.mergedInto) {
+      tag = tag.mergedInto;
+      resolvedFormerName = true;
+    }
     if (!tag) {
       const alias = await tx.studioTagAlias.findUnique({
         where: { projectId_slug: { projectId: entity.projectId, slug } },
@@ -169,6 +177,7 @@ export async function createAndAssignWorkEntityTag(input: {
           return { kind: "slug-conflict" as const, existingLabel: alias.label };
         }
         tag = alias.tag;
+        resolvedFormerName = true;
       }
     }
     if (tag) {
@@ -177,7 +186,7 @@ export async function createAndAssignWorkEntityTag(input: {
         where: { projectId: entity.projectId, tagId: tag.id, slug, label: { equals: label, mode: "insensitive" } },
         select: { id: true },
       });
-      if (canonicalTagLabel(tag.label) !== canonicalTagLabel(label) && !resolvesByAlias) {
+      if (canonicalTagLabel(tag.label) !== canonicalTagLabel(label) && !resolvesByAlias && !resolvedFormerName) {
         return { kind: "slug-conflict" as const, existingLabel: tag.label };
       }
     } else {
@@ -357,12 +366,13 @@ export async function mutateWorkTagTaxonomy(input: {
   const prisma = input.prisma as any;
   const current = await prisma.studioTag.findUnique({
     where: { id: tagId },
-    select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, updatedAt: true },
+    select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
   });
   if (!current) return { ok: false, code: "NOT_FOUND", error: "That tag no longer exists." };
   const writableProjects = await writableProjectIds(input.prisma, actorEmail);
   if (!writableProjects.has(current.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to manage its vocabulary." };
   if (current.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return { ok: false, code: "CONFLICT", error: "This tag changed elsewhere. Refresh before changing it." };
+  if (current.mergedIntoTagId) return { ok: false, code: "MERGED", error: "This tag is a preserved merge redirect and cannot be renamed or restored." };
   if (operation === "ARCHIVE" && !current.isActive) return { ok: false, code: "ALREADY_ARCHIVED", error: "This tag is already archived." };
   if (operation === "RESTORE" && current.isActive) return { ok: false, code: "ALREADY_ACTIVE", error: "This tag is already active." };
 
@@ -377,7 +387,7 @@ export async function mutateWorkTagTaxonomy(input: {
     if (!activeGrant) return { kind: "forbidden" as const };
     const fresh = await tx.studioTag.findFirst({
       where: { id: tagId, projectId: current.projectId, updatedAt: input.expectedUpdatedAt },
-      select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, updatedAt: true },
+      select: { id: true, projectId: true, label: true, slug: true, isActive: true, archivedAt: true, mergedIntoTagId: true, updatedAt: true },
     });
     if (!fresh) return { kind: "conflict" as const };
 

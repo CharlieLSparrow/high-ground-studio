@@ -7,6 +7,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { applyWorkTagMerge, previewWorkTagMerge, type WorkTagMergePreview } from "@/lib/server/work-tag-merge";
 import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags, type WorkTagEntityKind, type WorkTagTaxonomyOperation } from "@/lib/server/work-tags";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import {
@@ -67,7 +68,29 @@ export type MutateWorkTagTaxonomyActionResult =
       revision: number;
       receiptId: string;
     }
-  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ALREADY_ACTIVE" | "ALREADY_ARCHIVED" | "UNAVAILABLE"; error: string };
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ALREADY_ACTIVE" | "ALREADY_ARCHIVED" | "MERGED" | "UNAVAILABLE"; error: string };
+
+export type SerializedWorkTagMergePreview = Omit<WorkTagMergePreview, "source" | "target"> & {
+  source: Omit<WorkTagMergePreview["source"], "updatedAt"> & { updatedAt: string };
+  target: Omit<WorkTagMergePreview["target"], "updatedAt"> & { updatedAt: string };
+};
+
+export type PreviewWorkTagMergeActionResult =
+  | { ok: true; preview: SerializedWorkTagMergePreview }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "MERGED" | "UNAVAILABLE"; error: string };
+
+export type ApplyWorkTagMergeActionResult =
+  | {
+      ok: true;
+      projectId: string;
+      sourceTag: { id: string; label: string; slug: string; isActive: boolean; mergedIntoTagId: string; mergedAt: string; updatedAt: string };
+      targetTag: { id: string; label: string; slug: string; updatedAt: string };
+      receiptId: string;
+      impactHash: string;
+      counts: WorkTagMergePreview["counts"];
+      deduplicated: WorkTagMergePreview["deduplicated"];
+    }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT" | "MERGED" | "BLOCKED" | "UNAVAILABLE"; error: string; preview?: SerializedWorkTagMergePreview };
 
 export type UpdateTaskRecurrenceStatusResult =
   | { ok: true; seriesId: string; status: "ACTIVE" | "PAUSED" | "ENDED"; updatedAt: string; receiptId: string; materializedCount: number }
@@ -895,6 +918,80 @@ export async function changeWorkTagTaxonomy(input: {
   } catch (error) {
     console.error("[work] failed to change Nest vocabulary", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not change this vocabulary. Existing tags and records stayed preserved." };
+  }
+}
+
+function serializedMergePreview(preview: WorkTagMergePreview): SerializedWorkTagMergePreview {
+  return {
+    ...preview,
+    source: { ...preview.source, updatedAt: preview.source.updatedAt.toISOString() },
+    target: { ...preview.target, updatedAt: preview.target.updatedAt.toISOString() },
+  };
+}
+
+export async function previewTagMerge(input: {
+  sourceTagId: string;
+  targetTagId: string;
+}): Promise<PreviewWorkTagMergeActionResult> {
+  const session = await getQuipslySession();
+  const actorEmail = cleanText(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+  if (!session?.user?.id || !actorEmail) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before previewing private vocabulary." };
+  try {
+    const result = await previewWorkTagMerge({
+      prisma: getPrismaClient(),
+      actorEmail,
+      sourceTagId: input?.sourceTagId,
+      targetTagId: input?.targetTagId,
+    });
+    return result.ok ? { ok: true, preview: serializedMergePreview(result.preview) } : result;
+  } catch (error) {
+    console.error("[work] failed to preview tag merge", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not verify this merge impact. Nothing changed." };
+  }
+}
+
+export async function applyTagMerge(input: {
+  sourceTagId: string;
+  targetTagId: string;
+  expectedImpactHash: string;
+  expectedSourceUpdatedAt: string;
+  expectedTargetUpdatedAt: string;
+}): Promise<ApplyWorkTagMergeActionResult> {
+  const session = await getQuipslySession();
+  const actorEmail = cleanText(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+  if (!session?.user?.id || !actorEmail) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before merging private vocabulary." };
+  const expectedSourceUpdatedAt = expectedRevision(input?.expectedSourceUpdatedAt);
+  const expectedTargetUpdatedAt = expectedRevision(input?.expectedTargetUpdatedAt);
+  if (!expectedSourceUpdatedAt || !expectedTargetUpdatedAt) return { ok: false, code: "INVALID_INPUT", error: "Preview this merge again before applying it." };
+  try {
+    const result = await applyWorkTagMerge({
+      prisma: getPrismaClient(),
+      actorUserId: session.user.id,
+      actorEmail,
+      sourceTagId: input.sourceTagId,
+      targetTagId: input.targetTagId,
+      expectedImpactHash: input.expectedImpactHash,
+      expectedSourceUpdatedAt,
+      expectedTargetUpdatedAt,
+    });
+    if (!result.ok) return { ...result, preview: result.preview ? serializedMergePreview(result.preview) : undefined };
+    revalidatePath("/work");
+    revalidatePath("/today");
+    revalidatePath("/find");
+    revalidatePath("/research");
+    revalidatePath("/create");
+    return {
+      ...result,
+      sourceTag: {
+        ...result.sourceTag,
+        mergedAt: result.sourceTag.mergedAt.toISOString(),
+        updatedAt: result.sourceTag.updatedAt.toISOString(),
+      },
+      targetTag: { ...result.targetTag, updatedAt: result.targetTag.updatedAt.toISOString() },
+    };
+  } catch (error) {
+    console.error("[work] failed to apply tag merge", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not apply this merge. The transaction rolled back and nothing external changed." };
   }
 }
 

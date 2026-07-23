@@ -17,6 +17,7 @@ export type WorkTag = {
   archivedAt?: string | null;
   updatedAt?: string;
   aliases?: Array<{ id: string; label: string; slug: string }>;
+  mergedInto?: { id: string; label: string } | null;
 };
 export type WorkProjectOption = WorkProject & { role: string; canWrite: boolean; tags: WorkTag[] };
 
