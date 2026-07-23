@@ -18,13 +18,27 @@ continue using the common port `3000`.
 From the repository root:
 
 ```bash
-bash scripts/dev/quipsly-local-doctor.sh
+pnpm quipsly:local:up
+pnpm quipsly:local:doctor
 ```
 
-The doctor verifies Nest, the Firebase Auth emulator, and PostgreSQL without
-reading or printing credentials. It also summarizes changed paths by product
+The launcher starts or safely reuses PostgreSQL, the loopback-only Firebase Auth
+emulator, and Nest. It keeps logs and process ownership receipts under
+`.tmp/quipsly-local/`. The doctor verifies those services without reading or
+printing credentials and confirms the retired localhost owner override cannot
+re-enter runtime authorization. It also summarizes changed paths by product
 surface so a Nest change is not accidentally committed with unrelated Studio,
 media, iPhone, or HGO work.
+
+Stop only the app processes started by the launcher:
+
+```bash
+pnpm quipsly:local:down
+```
+
+The stop command validates each recorded process and working directory before
+sending a signal. It deliberately leaves PostgreSQL running so local notes,
+tasks, goals, tags, and test accounts are preserved.
 
 This repository is preservation-sensitive. When the doctor reports a dirty
 worktree:
@@ -79,8 +93,13 @@ FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
 NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 \
 GCLOUD_PROJECT=quipsly-reef \
 GOOGLE_CLOUD_PROJECT=quipsly-reef \
-pnpm --filter quipsly dev
+pnpm dev
 ```
+
+Run the final command from `apps/quipsly`. Starting Next through the root
+workspace filter can bind a development server that returns 404 for every app
+route with the current Next.js toolchain; the launcher always enters the app
+directory first.
 
 Open [http://127.0.0.1:3012](http://127.0.0.1:3012). Both `localhost` and
 `127.0.0.1` are allowed development origins so the Next.js client and hot reload
@@ -102,7 +121,7 @@ NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 \
 QUIPSLY_ALLOWED_DEV_ORIGINS="$QUIPSLY_LAN_HOST" \
 GCLOUD_PROJECT=quipsly-reef \
 GOOGLE_CLOUD_PROJECT=quipsly-reef \
-pnpm --filter quipsly dev
+pnpm dev
 ```
 
 Then open `http://<the-lan-address>:3012`. `QUIPSLY_ALLOWED_DEV_ORIGINS` accepts

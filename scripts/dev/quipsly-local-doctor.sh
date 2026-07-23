@@ -61,6 +61,13 @@ else
   failed=1
 fi
 
+if rg -n "QUIPSLY_OWNER_OVERRIDE" apps/quipsly/src --glob '!**/*.test.*' >/dev/null 2>&1; then
+  printf "FAIL  %-24s runtime reference remains\n" "Retired owner override"
+  failed=1
+else
+  printf "PASS  %-24s no runtime authorization bypass\n" "Retired owner override"
+fi
+
 echo
 echo "Git development lane"
 printf "Branch: %s\n" "$(git branch --show-current)"

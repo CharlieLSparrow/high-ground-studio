@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REGION="${REGION:-us-central1}"
-PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
+PROJECT_ID="${PROJECT_ID:-high-ground-odyssey}"
 SERVICE_NAME="${SERVICE_NAME:-studio}"
 HOST_HEADER="${HOST_HEADER:-nest.quipsly.com}"
 CONTEXT_WARN_MIB="${CONTEXT_WARN_MIB:-150}"
@@ -146,6 +146,18 @@ if [[ -n "${PROJECT_ID}" ]] && gcloud run services describe "${SERVICE_NAME}" --
   pass "Cloud Run service ${SERVICE_NAME} exists in ${REGION}."
 else
   fail "Could not describe Cloud Run service ${SERVICE_NAME} in ${REGION}."
+fi
+
+print_step "Production recovery gate"
+
+if PROJECT_ID="${PROJECT_ID}" \
+  REGION="${REGION}" \
+  SERVICE_NAME="${SERVICE_NAME}" \
+  PRODUCTION_DOMAIN="${HOST_HEADER}" \
+  bash scripts/release/quipsly-production-status.sh; then
+  pass "Production infrastructure and public routes agree."
+else
+  fail "Production recovery gate failed. Do not deploy or promote."
 fi
 
 print_step "Next release commands"

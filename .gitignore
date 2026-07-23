@@ -39,6 +39,7 @@ artifacts/playwright/
 # Quipsly generated local/evidence artifacts
 artifacts/
 apps/QuipslyStudio/.quipsly/
+apps/QuipslyStudio/.transcript-smoke/
 apps/QuipslyStudio/reports/*--proxy-recovery-*.json
 apps/QuipslyStudio/reports/*proxy-job-current.json
 apps/QuipslyStudio/tmp/*.png
