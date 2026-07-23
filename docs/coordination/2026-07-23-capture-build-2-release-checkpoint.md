@@ -1,7 +1,7 @@
 # Capture build 2 release checkpoint
 
 **Date:** 2026-07-23
-**Status:** Exact-commit App Store candidate ready; physical iPhone, signed-in Nest dogfood, and upload remain open
+**Status:** Exact-commit App Store candidate and production signed-in smoke ready; physical iPhone and upload remain open
 
 ## Current distribution truth
 
@@ -81,6 +81,21 @@ session note was entered, tagged with the canonical `Coaching` tag, and saved.
 Preview mode correctly returned “Preview only — no note, task, goal, or source
 was saved” instead of inventing a sync receipt.
 
+The read-only production runtime smoke now also passes through the native app:
+
+- Firebase accepted the Keychain-backed reviewer credentials;
+- Firebase account lookup proved the mailbox is verified;
+- Quipsly verified the bearer token and returned the matching Home Nest;
+- the app reached the protected Today surface and navigated the signed-in
+  workflow in 21.656 seconds;
+- the reviewer can see four production capture sessions.
+
+This gate initially failed honestly because `codex@dev.test` had valid password
+credentials but `emailVerified: false` in Firebase. The reviewer account was
+repaired to `emailVerified: true`; Capture's protected-session rule was not
+weakened. The live reviewer proof now checks the Firebase account record, so a
+password-only success cannot be reported as native-ready again.
+
 ## Nest dependency
 
 Production billing/auth are no longer the immediate blocker:
@@ -88,9 +103,15 @@ Production billing/auth are no longer the immediate blocker:
 - `https://nest.quipsly.com/api/health` returns `ok: true`;
 - local `http://127.0.0.1:3012/api/health` returns `ok: true`.
 
-That is only service reachability. The credentialed release gate still needs
-to create/read back real private notes, tasks, goals, tags, sessions, and
-recording/transcript state through the reviewer identity.
+The production reviewer proof is read-only and now passes account, Home Nest,
+session visibility, participant, consent, lifecycle, and safe-next-action
+checks. It does not prove private note/task/goal/tag writes or
+recording/upload/transcript recovery. Those remain physical-device dogfood
+gates.
+
+Local ADC also now carries quota project `quipsly-reef`. The Cloud preflight
+must call Firebase Admin—not merely mint a token or describe the project—before
+claiming local auth is ready.
 
 ## Physical-device gate
 
@@ -123,10 +144,30 @@ It requires `APP_STORE_CONNECT_API_KEY_PATH` to point to a Fastlane-compatible
 App Store Connect API key JSON. Do not create or commit that credential in this
 repository.
 
-Before upload, complete the real signed-in Nest smoke and physical development
-install. After upload, inspect App Store Connect processing, resolve any new
-Apple warning or rejection, install build 2 from TestFlight, and repeat the
-physical smoke from the TestFlight-installed binary.
+No `AuthKey_*.p8` file was found through Spotlight and
+`APP_STORE_CONNECT_API_KEY_PATH` is currently unset. Before upload, provide or
+create the App Store Connect API credential and complete the physical
+development install. After upload, inspect App Store Connect processing,
+resolve any new Apple warning or rejection, install build 2 from TestFlight,
+and repeat the physical smoke from the TestFlight-installed binary.
+
+## Repository and pipeline boundary
+
+This release does not require an emergency repository split. The working
+boundary is now explicit:
+
+- Capture source, tests, export configuration, verifier, and release receipt
+  form one path-scoped release slice;
+- artifacts are generated only from an exact clean Capture commit;
+- deterministic simulator tests, credentialed production runtime checks,
+  physical-device checks, and TestFlight-installed checks are separate gates;
+- Nest deploy context and reviewer tooling are a separate slice and must not be
+  swept into a broad monorepo commit.
+
+The larger checkout remains preservation-sensitive and dirty. A repo split
+should happen only after the Capture↔Nest API/auth/tagging contracts are
+versioned and a clean extraction can preserve history. Splitting first would
+copy the current uncommitted boundary confusion into multiple repositories.
 
 ## Platform-target decision
 
