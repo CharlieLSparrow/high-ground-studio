@@ -3,7 +3,9 @@
 import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { searchWorkspace } from "@/lib/server/workspace-search";
 import { ensureStudioWorkspace } from "@/lib/studio/project-registry";
 import { loadLibrary } from "@/app/(app)/library/page";
 
@@ -25,9 +27,10 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
   let actorUserId = "";
   let outsiderUserId = "";
   let projectId = "";
+  let homeProjectId = "";
   let tagId = "";
   let roomId = "";
-  const requestIds = Array.from({ length: 10 }, () => randomUUID());
+  const requestIds = Array.from({ length: 11 }, () => randomUUID());
 
   beforeAll(async () => {
     const [actor, outsider] = await Promise.all([
@@ -50,9 +53,11 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
     try {
       await prisma.goal.deleteMany({ where: { id: { in: requestIds.map((id) => `mobile-goal-${id}`) } } });
       await prisma.taskRecurrenceSeries.deleteMany({ where: { id: { in: requestIds.map((id) => `mobile-task-series-${id}`) } } });
+      await prisma.studioDocument.deleteMany({ where: { id: { in: requestIds.map((id) => `mobile-note-${id}`) } } });
       if (actorUserId) await prisma.actionItem.deleteMany({ where: { assignedUserId: actorUserId, projectId } });
       if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
       if (projectId) await prisma.studioProject.deleteMany({ where: { id: projectId } });
+      if (homeProjectId) await prisma.studioProject.deleteMany({ where: { id: homeProjectId } });
       if (actorUserId || outsiderUserId) await prisma.user.deleteMany({ where: { id: { in: [actorUserId, outsiderUserId].filter(Boolean) } } });
     } finally {
       await prisma.$disconnect();
@@ -68,6 +73,22 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ clientRequestId: requestId, callRoomId: kind === "SOURCE" ? null : roomId, kind, title, body, sourceUrl, capturedAt, tagIds, dueAt, reminderAt }),
+    }));
+  }
+
+  function postPersonalNote(requestId: string, title: string, body: string, newTagLabels: string[]) {
+    return POST(new Request("http://localhost/api/mobile/capture/quick-entry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientRequestId: requestId,
+        callRoomId: null,
+        kind: "NOTE",
+        title,
+        body,
+        capturedAt: "2026-07-23T09:00:00.000Z",
+        newTagLabels,
+      }),
     }));
   }
 
@@ -161,6 +182,105 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
     const denied = await post("NOTE", requestIds[3], null, "This must not cross accounts.");
     expect(denied.status).toBe(404);
     await expect(prisma.coachingNote.count({ where: { id: `mobile-note-${requestIds[3]}` } })).resolves.toBe(0);
+  });
+
+  it("commits one tagged personal note to the Home Nest document kernel and reads it back from Library and Search", async () => {
+    signedInAs(actorUserId, actorEmail);
+    const title = `Private planning note ${nonce}`;
+    const body = `Shape the Odyssey opening around the quiet question ${nonce}.`;
+    const tagLabel = `Odyssey idea ${nonce}`;
+    const first = await postPersonalNote(requestIds[10], title, body, [tagLabel]);
+    const replay = await postPersonalNote(requestIds[10], title, body, [tagLabel]);
+    const [firstPayload, replayPayload] = await Promise.all([first.json(), replay.json()]);
+
+    expect(firstPayload).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      entry: {
+        id: `mobile-note-${requestIds[10]}`,
+        kind: "NOTE",
+        title,
+        body,
+        callRoomId: null,
+        destination: "HOME_NEST",
+        tags: [{ label: tagLabel }],
+      },
+      tagVocabulary: { requestedNewLabels: [tagLabel], createdCount: 1, reusedCount: 0 },
+      boundaries: { canonicalRecordCommitted: true, externalCalendarMutated: false, messageSent: false, published: false },
+    });
+    expect(replayPayload).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      entry: { id: `mobile-note-${requestIds[10]}`, destination: "HOME_NEST" },
+      tagVocabulary: { requestedNewLabels: [tagLabel], createdCount: 0, reusedCount: 1 },
+    });
+
+    homeProjectId = firstPayload.entry.projectId;
+    const document = await prisma.studioDocument.findUniqueOrThrow({
+      where: { id: `mobile-note-${requestIds[10]}` },
+      include: {
+        blocks: { orderBy: { order: "asc" } },
+        taggedSpans: { include: { tag: true } },
+        documentOperations: true,
+      },
+    });
+    expect(document).toMatchObject({
+      projectId: homeProjectId,
+      title,
+      sourceLabel: "document-kind:note;origin:ios-capture",
+      blocks: [
+        { id: `mobile-note-${requestIds[10]}-title`, body: title },
+        { id: `mobile-note-${requestIds[10]}-body`, body },
+      ],
+      taggedSpans: [{
+        blockId: `mobile-note-${requestIds[10]}-body`,
+        selectedText: body,
+        startOffset: 0,
+        endOffset: body.length,
+        tag: { label: tagLabel },
+      }],
+      documentOperations: [{
+        id: `mobile-note-operation-${requestIds[10]}`,
+        origin: "ios-capture",
+        operationType: "personal-note-create",
+        status: "applied",
+        payloadJson: { schema: "quipsly-mobile-quick-entry-v1", humanCommitted: true, externalSideEffects: false },
+      }],
+    });
+
+    const library = await loadLibrary(actorUserId, actorEmail, false);
+    expect(library.entries.find((entry) => entry.id === `document:${document.id}`)).toMatchObject({
+      kind: "NOTE",
+      title,
+      detail: body,
+      projectName: expect.stringContaining("Home Nest"),
+      href: expect.stringContaining(`document=${encodeURIComponent(document.id)}`),
+      stateLabel: "Writing note",
+      badges: expect.arrayContaining(["Document-kernel note", "Stable document identity"]),
+    });
+    expect(library.homeNest).toMatchObject({ id: homeProjectId });
+
+    const visibleProjects = await listProjectsVisibleToEmail(actorEmail, prisma);
+    const search = await searchWorkspace(prisma, {
+      actorUserId,
+      query: nonce,
+      visibleProjects: visibleProjects.map(({ id, slug, name }) => ({ id, slug, name })),
+    });
+    expect(search.documents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: document.id,
+        title,
+        blocks: expect.arrayContaining([
+          expect.objectContaining({ body: expect.stringContaining(nonce) }),
+        ]),
+      }),
+    ]));
+    expect(search.tags).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        label: tagLabel,
+        project: expect.objectContaining({ slug: library.homeNest?.slug }),
+      }),
+    ]));
   });
 
   it("deduplicates personal source identities while preserving every distinct capture receipt", async () => {

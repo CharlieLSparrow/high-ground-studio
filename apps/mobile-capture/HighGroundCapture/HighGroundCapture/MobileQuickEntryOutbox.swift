@@ -107,7 +107,8 @@ enum MobileQuickEntryStoreError: LocalizedError {
     }
 }
 
-/// Protected actor-partitioned outbox for small, explicit Session entries.
+/// Protected actor-partitioned outbox for small, explicit Session entries,
+/// personal Home Nest notes, and private source captures.
 ///
 /// Saving to this ledger is the iPhone success boundary. Nest delivery can be
 /// retried with the same UUID, so a timeout or process death never requires a
@@ -198,7 +199,7 @@ final class MobileQuickEntryOutbox: ObservableObject {
                 : !(cleanTitle ?? "").isEmpty else {
             throw MobileQuickEntryStoreError.emptyContent
         }
-        guard kind == .source || session != nil else {
+        guard kind == .source || kind == .note || session != nil else {
             throw MobileQuickEntryStoreError.emptyContent
         }
         guard recurrence == nil || kind == .task else {

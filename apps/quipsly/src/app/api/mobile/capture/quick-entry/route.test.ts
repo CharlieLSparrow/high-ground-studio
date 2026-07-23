@@ -1,11 +1,13 @@
 /** @jest-environment node */
 
 import { getPrismaClient } from "@/lib/prisma";
+import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/home-nest", () => ({ ensureHomeNestForEmail: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
 const requestId = "018f4f2a-7b61-7d3c-8a55-90d799e0d5f4";
@@ -35,6 +37,7 @@ function harness(existing: any = null) {
   const capturedAt = new Date("2026-07-19T09:00:00.000Z");
   const room = { id: "room-1", title: "Episode 4", projectId: "project-1" };
   const createdTasks = new Map<string, any>();
+  const personalDocuments = new Map<string, any>();
   const tagsBySlug = new Map<string, any>();
   const tx = {
     $queryRaw: jest.fn().mockResolvedValue([{ lockAcquired: false }]),
@@ -49,6 +52,21 @@ function harness(existing: any = null) {
       }),
     },
     studioProjectAccessGrant: { findFirst: jest.fn().mockResolvedValue({ id: "grant-1" }) },
+    studioTaggedSpan: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
+    studioDocument: {
+      findUnique: jest.fn(async ({ where }: any) => personalDocuments.get(where.id) || null),
+      create: jest.fn(async ({ data }: any) => {
+        const blocks = data.blocks.create.map((block: any) => ({ ...block, documentId: data.id, archivedAt: null, createdAt, updatedAt: createdAt }));
+        const documentOperations = [{
+          ...data.documentOperations.create,
+          documentId: data.id,
+          createdAt,
+        }];
+        const row = { ...data, blocks, documentOperations, createdAt, updatedAt: createdAt };
+        personalDocuments.set(data.id, row);
+        return row;
+      }),
+    },
     coachingNoteTagLink: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
     actionItemTagLink: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
     goalTagLink: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
@@ -101,7 +119,15 @@ function harness(existing: any = null) {
 }
 
 describe("mobile Capture quick-entry route", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(ensureHomeNestForEmail).mockResolvedValue({
+      id: "project-home",
+      slug: "home-person-at-example-com",
+      name: "Person Home Nest",
+      sourceLabel: "nest-kind:home",
+    });
+  });
 
   it("authenticates before reading private Session data", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
@@ -142,6 +168,107 @@ describe("mobile Capture quick-entry route", () => {
         }),
       }),
     }));
+  });
+
+  it("commits and exactly replays a personal iPhone note as one tagged Home Nest document", async () => {
+    signedIn();
+    const tx = harness();
+    const personalRequest = () => request("NOTE", {
+      callRoomId: null,
+      title: "Field thought",
+      body: "Keep one honest observation in the document kernel.",
+      newTagLabels: ["Field note"],
+    });
+
+    const first = await POST(personalRequest());
+    const firstPayload = await first.json();
+    const replay = await POST(personalRequest());
+    const replayPayload = await replay.json();
+
+    expect(first.status).toBe(200);
+    expect(firstPayload).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      entry: {
+        id: `mobile-note-${requestId}`,
+        kind: "NOTE",
+        title: "Field thought",
+        body: "Keep one honest observation in the document kernel.",
+        callRoomId: null,
+        projectId: "project-home",
+        destination: "HOME_NEST",
+        tags: [{ label: "Field note" }],
+      },
+      boundaries: {
+        explicitHumanCapture: true,
+        canonicalRecordCommitted: true,
+        messageSent: false,
+        published: false,
+      },
+      nextAction: expect.stringContaining("Home Nest"),
+    });
+    expect(replayPayload).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      entry: { id: `mobile-note-${requestId}`, destination: "HOME_NEST" },
+    });
+    expect(ensureHomeNestForEmail).toHaveBeenCalledWith("person@example.com", expect.anything());
+    expect(tx.callRoom.findFirst).not.toHaveBeenCalled();
+    expect(tx.studioDocument.create).toHaveBeenCalledTimes(1);
+    expect(tx.studioDocument.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        id: `mobile-note-${requestId}`,
+        projectId: "project-home",
+        stableId: `mobile-document-note-${requestId}`,
+        title: "Field thought",
+        sourceLabel: "document-kind:note;origin:ios-capture",
+        documentOperations: {
+          create: expect.objectContaining({
+            id: `mobile-note-operation-${requestId}`,
+            operationType: "personal-note-create",
+            origin: "ios-capture",
+            payloadJson: expect.objectContaining({
+              clientRequestId: requestId,
+              callRoomId: null,
+              projectId: "project-home",
+              actorUserId: "user-1",
+              newTagLabels: ["Field note"],
+              offlineRetrySafe: true,
+            }),
+          }),
+        },
+      }),
+    }));
+    expect(tx.studioTaggedSpan.createMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: [expect.objectContaining({
+        documentId: `mobile-note-${requestId}`,
+        blockId: `mobile-note-${requestId}-body`,
+        selectedText: "Keep one honest observation in the document kernel.",
+        startOffset: 0,
+        endOffset: 51,
+      })],
+      skipDuplicates: true,
+    }));
+  });
+
+  it("retains a personal note on the phone when the signed-in account has no verified email identity", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: null, email: null, isStaff: false },
+    } as any);
+    const response = await POST(request("NOTE", {
+      callRoomId: null,
+      title: "Private thought",
+      body: "Do not invent a Home Nest owner.",
+    }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      code: "QUICK_ENTRY_ACCOUNT_EMAIL_REQUIRED",
+      localOutboxRetained: true,
+    });
+    expect(ensureHomeNestForEmail).not.toHaveBeenCalled();
+    expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
   it("creates a fixed iPhone recurrence through the canonical series and occurrence engine", async () => {

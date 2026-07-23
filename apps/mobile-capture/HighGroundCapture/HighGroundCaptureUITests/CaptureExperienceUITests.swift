@@ -71,6 +71,32 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists, "Preview must not invent a pending durable outbox record.")
     }
 
+    func testQuickNoteCanExplicitlyTargetPrivateHomeNestEvenWhenASessionIsSelected() {
+        app.tabBars.buttons["Record"].tap()
+        let noteButton = app.buttons["CaptureQuickEntry_NOTE_preview-coaching-ready"]
+        reveal(noteButton)
+        XCTAssertTrue(noteButton.isHittable)
+        noteButton.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].waitForExistence(timeout: 5))
+        let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
+        XCTAssertTrue(destination.exists)
+        destination.buttons["Home Nest"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Private Home Nest")
+        ).firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Session, None")
+        ).firstMatch.exists)
+        XCTAssertTrue(app.textFields["CaptureQuickEntryTitle"].exists)
+        let newTagField = app.textFields["CaptureQuickEntryNewTagField"]
+        reveal(newTagField)
+        XCTAssertTrue(newTagField.exists)
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "does not invent a Session")
+        ).firstMatch.exists)
+    }
+
     func testRecordSourceCaptureTargetsPrivateInboxBeforeAnyResearchNest() {
         app.tabBars.buttons["Record"].tap()
         let sourceButton = app.buttons["CaptureQuickEntry_SOURCE_preview-coaching-ready"]

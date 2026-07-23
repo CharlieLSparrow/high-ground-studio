@@ -282,15 +282,16 @@ final class CaptureExperienceModel: ObservableObject {
         kind: MobileQuickEntryKind,
         title: String?,
         body: String,
+        saveNoteToHomeNest: Bool = false,
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
         dueAt: Date? = nil,
         reminderAt: Date? = nil,
         recurrence: MobileQuickEntryRecurrence? = nil
     ) -> Bool {
-        let session = selectedSession
-        guard kind == .source || session != nil else {
-            errorMessage = "Choose a Session before saving a note, task, or goal."
+        let session = kind == .note && saveNoteToHomeNest ? nil : selectedSession
+        guard kind == .source || kind == .note || session != nil else {
+            errorMessage = "Choose a Session before saving a task or goal."
             return false
         }
         if usesPreviewData && !CaptureLaunchConfiguration.usesReminderSystemUITest {
@@ -312,6 +313,8 @@ final class CaptureExperienceModel: ObservableObject {
             )
             quickEntrySyncMessage = kind == .source
                 ? "Source saved on this iPhone. Nest sync will place the same private ID in Inbox."
+                : kind == .note && session == nil
+                    ? "Note saved on this iPhone. Nest sync will create the same private Home Nest document."
                 : !newTagLabels.isEmpty
                     ? "\(kind.title) and \(newTagLabels.count) new tag name\(newTagLabels.count == 1 ? "" : "s") saved on this iPhone. Nest will create or reuse the same private vocabulary on sync."
                 : "\(kind.title) saved on this iPhone. Nest sync uses the same retry-safe ID."

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import { captureRoomAccessWhere } from "@/lib/server/mobile-capture-room-join-diagnostics";
 import {
   isMobileCaptureQuickEntrySource,
@@ -30,20 +31,20 @@ async function requestBody(request: Request) {
   try { return record(await request.json()); } catch { return {}; }
 }
 
-type SavedModel = "note" | "task" | "goal" | "snippet" | "bookmark";
+type SavedModel = "note" | "document-note" | "task" | "goal" | "snippet" | "bookmark";
 
 function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room: any, model: SavedModel, tags: any[], recurrenceSeries?: any, reminder?: any) {
   return {
     id: row.id,
     kind,
     title: model === "snippet" ? row.sourceTitle : row.title,
-    body: model === "note" ? row.body : model === "task" ? row.detail : model === "goal" ? row.description : model === "snippet" ? row.highlightedText : row.url,
+    body: model === "note" || model === "document-note" ? row.body : model === "task" ? row.detail : model === "goal" ? row.description : model === "snippet" ? row.highlightedText : row.url,
     status: model === "task" || model === "goal" ? row.status : "CAPTURED",
     callRoomId: room?.id || null,
     sessionTitle: room?.title || null,
     projectId: room?.projectId || null,
     dueAt: model === "task" ? row.dueAt?.toISOString?.() || null : null,
-    destination: kind === "SOURCE" ? "INBOX" : "SESSION",
+    destination: kind === "SOURCE" ? "INBOX" : model === "document-note" ? "HOME_NEST" : "SESSION",
     sourceType: model === "bookmark" ? "BOOKMARK" : model === "snippet" ? "SNIPPET" : null,
     sourceUrl: model === "bookmark" ? row.url : model === "snippet" ? row.sourceUrl : null,
     tags: tags.map((tag) => ({ id: tag.id, slug: tag.slug, label: tag.label })),
@@ -71,7 +72,22 @@ function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room:
 
 async function existingEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUserId: string): Promise<{ row: any; model: SavedModel; captureReceipt?: any; recurrenceSeries?: any; reminder?: any } | null> {
   const id = mobileCaptureQuickEntryId(input.kind, input.clientRequestId);
-  if (input.kind === "NOTE") return tx.coachingNote.findUnique({ where: { id } }).then((row: any) => row ? ({ row, model: "note" as const }) : null);
+  if (input.kind === "NOTE" && input.callRoomId) return tx.coachingNote.findUnique({ where: { id } }).then((row: any) => row ? ({ row, model: "note" as const }) : null);
+  if (input.kind === "NOTE") {
+    const document = await tx.studioDocument.findUnique({
+      where: { id },
+      include: {
+        blocks: { where: { archivedAt: null }, orderBy: { order: "asc" } },
+        documentOperations: { where: { id: `mobile-note-operation-${input.clientRequestId}` }, take: 1 },
+      },
+    });
+    if (!document) return null;
+    const bodyBlock = document.blocks.find((block: any) => block.id === `${id}-body`) || document.blocks[1];
+    return {
+      row: { ...document, body: bodyBlock?.body || "" },
+      model: "document-note",
+    };
+  }
   if (input.kind === "TASK" && input.recurrence) {
     const recurrenceSeries = await tx.taskRecurrenceSeries.findUnique({
       where: { id: mobileCaptureQuickEntrySeriesId(input.clientRequestId) },
@@ -197,10 +213,85 @@ async function resolveQuickEntryTags(
   };
 }
 
-async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUserId: string, room: any, tags: any[]): Promise<{ row: any; model: SavedModel; sourceIdentityReused?: boolean; recurrenceSeries?: any; reminder?: any }> {
+async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUserId: string, actorEmail: string, room: any, tags: any[]): Promise<{ row: any; model: SavedModel; sourceIdentityReused?: boolean; recurrenceSeries?: any; reminder?: any }> {
   const id = mobileCaptureQuickEntryId(input.kind, input.clientRequestId);
   const sourceJson = mobileCaptureQuickEntrySource(input, actorUserId, room.projectId || null);
   const linkSource = tagLinkSource(input);
+  if (input.kind === "NOTE" && !input.callRoomId) {
+    const title = input.title || "Quick note";
+    const stableId = `mobile-document-note-${input.clientRequestId}`;
+    const titleBlockId = `${id}-title`;
+    const bodyBlockId = `${id}-body`;
+    const document = await tx.studioDocument.create({
+      data: {
+        id,
+        projectId: room.projectId,
+        stableId,
+        title,
+        sourceLabel: "document-kind:note;origin:ios-capture",
+        blocks: {
+          create: [
+            {
+              id: titleBlockId,
+              stableId: `${stableId}-title`,
+              order: 0,
+              title: "Note Title",
+              body: title,
+              sourceLabel: "document-kind:note;origin:ios-capture",
+            },
+            {
+              id: bodyBlockId,
+              stableId: `${stableId}-body`,
+              order: 1,
+              body: input.body,
+              sourceLabel: "document-kind:note;origin:ios-capture",
+            },
+          ],
+        },
+        documentOperations: {
+          create: {
+            id: `mobile-note-operation-${input.clientRequestId}`,
+            projectId: room.projectId,
+            actorEmail,
+            origin: "ios-capture",
+            operationType: "personal-note-create",
+            status: "applied",
+            beforeJson: null,
+            afterJson: { title, body: input.body },
+            payloadJson: sourceJson,
+            reversible: true,
+          },
+        },
+      },
+      include: {
+        blocks: { orderBy: { order: "asc" } },
+        documentOperations: { where: { id: `mobile-note-operation-${input.clientRequestId}` }, take: 1 },
+      },
+    });
+    if (tags.length) {
+      await tx.studioTaggedSpan.createMany({
+        data: tags.map((tag) => ({
+          id: `${bodyBlockId}-${tag.id}`,
+          documentId: document.id,
+          blockId: bodyBlockId,
+          tagId: tag.id,
+          startOffset: 0,
+          endOffset: input.body.length,
+          selectedText: input.body,
+          documentStableId: stableId,
+          documentTitleSnapshot: title,
+          blockStableId: `${stableId}-body`,
+          blockTitleSnapshot: null,
+          sourceLabel: "document-kind:note;origin:ios-capture",
+          projectionStatus: "private",
+          isPrivate: true,
+          createdByLabel: actorEmail,
+        })),
+        skipDuplicates: true,
+      });
+    }
+    return { row: { ...document, body: input.body }, model: "document-note" };
+  }
   if (input.kind === "NOTE") {
     const row = await tx.coachingNote.upsert({
       where: { id },
@@ -424,6 +515,17 @@ function entryMatches(input: MobileCaptureQuickEntryInput, saved: { row: any; mo
       && isMobileCaptureQuickEntrySource(seriesSource, input, actorUserId);
   }
   if (input.kind === "NOTE") {
+    if (!input.callRoomId) {
+      const operation = saved.row.documentOperations?.[0];
+      return saved.model === "document-note"
+        && saved.row.projectId !== null
+        && saved.row.title === (input.title || "Quick note")
+        && saved.row.body === input.body
+        && operation?.projectId === saved.row.projectId
+        && operation?.documentId === saved.row.id
+        && operation?.operationType === "personal-note-create"
+        && isMobileCaptureQuickEntrySource(operation?.payloadJson, input, actorUserId);
+    }
     return saved.model === "note"
       && saved.row.authorUserId === actorUserId
       && saved.row.roomId === input.callRoomId
@@ -482,9 +584,23 @@ export async function POST(request: Request) {
   }
 
   const input = validation.value;
+  const actorEmail = (session.user.primaryEmail || session.user.email || "").trim().toLowerCase();
+  if (input.kind === "NOTE" && !input.callRoomId && !actorEmail) {
+    return NextResponse.json(
+      { ok: false, code: "QUICK_ENTRY_ACCOUNT_EMAIL_REQUIRED", error: "Verify this Quipsly account before syncing a private Home Nest note. The phone copy remains protected.", localOutboxRetained: true },
+      { status: 403 },
+    );
+  }
   const prisma = getPrismaClient() as any;
+  const personalNoteHome = input.kind === "NOTE" && !input.callRoomId
+    ? await ensureHomeNestForEmail(actorEmail, prisma)
+    : null;
   const commit = () => prisma.$transaction(async (tx: any) => {
-    const room = input.kind === "SOURCE" ? null : await tx.callRoom.findFirst({
+    const room = input.kind === "SOURCE"
+      ? null
+      : personalNoteHome
+        ? { id: null, title: personalNoteHome.name, projectId: personalNoteHome.id }
+        : await tx.callRoom.findFirst({
       where: captureRoomAccessWhere(input.callRoomId!, session.user),
       select: { id: true, title: true, projectId: true },
     });
@@ -495,7 +611,7 @@ export async function POST(request: Request) {
           tx,
           input,
           room,
-          (session.user.primaryEmail || session.user.email || "").trim().toLowerCase(),
+          actorEmail,
         );
     if (tagResolution.kind !== "resolved") return tagResolution;
     const { tags } = tagResolution;
@@ -520,7 +636,7 @@ export async function POST(request: Request) {
       };
     }
 
-    const saved = await createEntry(tx, input, session.user.id, room || { id: null, projectId: null }, tags);
+    const saved = await createEntry(tx, input, session.user.id, actorEmail, room || { id: null, projectId: null }, tags);
     if (!entryMatches(input, saved, session.user.id)) {
       return { kind: "identity-conflict" as const };
     }
@@ -564,13 +680,13 @@ export async function POST(request: Request) {
   }
   if (result.kind === "invalid-tags") {
     return NextResponse.json(
-      { ok: false, code: "QUICK_ENTRY_TAGS_UNAVAILABLE", error: "One or more selected tags no longer belong to this Session's Nest. The phone copy remains available for review.", localOutboxRetained: true },
+      { ok: false, code: "QUICK_ENTRY_TAGS_UNAVAILABLE", error: "One or more selected tags no longer belong to the destination Nest. The phone copy remains available for review.", localOutboxRetained: true },
       { status: 409 },
     );
   }
   if (result.kind === "tag-creation-forbidden") {
     return NextResponse.json(
-      { ok: false, code: "QUICK_ENTRY_TAG_CREATE_FORBIDDEN", error: "Editor access to this Session's Nest is required to create a reusable tag. The phone copy remains available for review.", localOutboxRetained: true },
+      { ok: false, code: "QUICK_ENTRY_TAG_CREATE_FORBIDDEN", error: "Editor access to the destination Nest is required to create a reusable tag. The phone copy remains available for review.", localOutboxRetained: true },
       { status: 403 },
     );
   }
@@ -621,7 +737,9 @@ export async function POST(request: Request) {
     nextAction: input.kind === "SOURCE"
       ? "The private source is in Nest Inbox. Review it there before deliberately filing it into Research."
       : input.kind === "NOTE"
-      ? "The private Session note is saved. Review or expand it from the Session workspace."
+      ? input.callRoomId
+        ? "The private Session note is saved. Review or expand it from the Session workspace."
+        : "The private note is saved in your Home Nest document kernel. Continue it from Library or Search."
       : input.kind === "TASK"
         ? input.recurrence
           ? "The repeating task is saved in Quipsly. Today and Work now share its exact occurrences; no reminder or provider event was scheduled."

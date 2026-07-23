@@ -178,7 +178,10 @@ export function buildLibraryEntries(input: {
     const writingNote = clean(document.sourceLabel).toLowerCase().includes("document-kind:note");
     const previewBlock = (document.blocks ?? []).find((block) => {
       const body = clean(block.body);
-      return body && body.toLowerCase() !== "note title" && body !== clean(block.title);
+      return body
+        && body.toLowerCase() !== "note title"
+        && body !== clean(block.title)
+        && (!writingNote || body !== clean(document.title));
     }) ?? document.blocks?.[0] ?? null;
     const preview = clean(previewBlock?.body);
     entries.push({

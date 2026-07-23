@@ -62,7 +62,7 @@ describe("source-first Library model", () => {
         updatedAt: "2026-07-19T13:00:00Z",
         project: { name: "Home Nest", slug: "home-person" },
         blocks: [
-          { id: "block-title", title: "Note Title", body: "Note Title" },
+          { id: "block-title", title: "Note Title", body: "Coaching reflection" },
           { id: "block-insight", body: "Protect one honest editing block before Thursday." },
         ],
         episodeProductions: [],

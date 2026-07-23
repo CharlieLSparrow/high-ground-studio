@@ -402,6 +402,56 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    func testPersonalHomeNestNoteSyncsToDocumentKernel() throws {
+        let credentials = try runtimeSmokeCredentials()
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: app)
+
+        let noteButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureQuickEntry_NOTE_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(noteButton, in: app, timeout: 20, swipeAttempts: 8),
+            "Record should expose Quick Note even when the next Session is selected."
+        )
+        noteButton.tap()
+        let sheet = app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 6))
+        let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
+        XCTAssertTrue(destination.waitForExistence(timeout: 4))
+        destination.buttons["Home Nest"].tap()
+
+        let environment = ProcessInfo.processInfo.environment
+        let titleText = environment["QUIPSLY_CAPTURE_UI_TEST_PERSONAL_NOTE_TITLE"]
+            ?? "Native Home Nest note \(credentials.email)"
+        let bodyText = "This signed iPhone note must converge through the protected outbox into one private document-kernel identity."
+        let tagText = environment["QUIPSLY_CAPTURE_UI_TEST_PERSONAL_NOTE_TAG"]
+            ?? "Native note proof"
+        let title = app.textFields["CaptureQuickEntryTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 4))
+        title.tap()
+        title.typeText(titleText)
+        let body = app.textFields["CaptureQuickEntryBody"].firstMatch
+        body.tap()
+        body.typeText(bodyText)
+        let tag = app.textFields["CaptureQuickEntryNewTagField"].firstMatch
+        for _ in 0..<10 where !tag.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(tag.isHittable)
+        tag.tap()
+        tag.typeText(tagText)
+        app.buttons["CaptureQuickEntryNewTagAdd"].tap()
+        app.buttons["CaptureQuickEntrySave"].tap()
+
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 6))
+        XCTAssertTrue(
+            app.staticTexts["The private note is saved in your Home Nest document kernel. Continue it from Library or Search."].waitForExistence(timeout: 20)
+        )
+        XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
+        attachRecordingIdentity(titleText, name: "Personal Home Nest note title")
+    }
+
     func testCoachingQuickEntriesSyncToCanonicalNest() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty else {

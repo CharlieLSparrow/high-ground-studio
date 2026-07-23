@@ -94,8 +94,8 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   if (!UUID_PATTERN.test(clientRequestId)) {
     return { ok: false, code: "QUICK_ENTRY_REQUEST_ID_INVALID", error: "Quick capture requires one stable UUID so an offline retry cannot create a duplicate." };
   }
-  if (kind !== "SOURCE" && !callRoomId) {
-    return { ok: false, code: "QUICK_ENTRY_SESSION_REQUIRED", error: "Choose a Session before saving a quick note, task, or goal." };
+  if ((kind === "TASK" || kind === "GOAL") && !callRoomId) {
+    return { ok: false, code: "QUICK_ENTRY_SESSION_REQUIRED", error: "Choose a Session before saving a task or goal." };
   }
   if (!MOBILE_CAPTURE_QUICK_ENTRY_KINDS.includes(kind)) {
     return { ok: false, code: "QUICK_ENTRY_KIND_INVALID", error: "Quick capture kind must be Note, Task, Goal, or Source." };
