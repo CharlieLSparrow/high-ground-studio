@@ -270,6 +270,140 @@ export function isUnreviewedTranscriptActionItemSource(value: unknown): boolean 
     && source.reviewDecision !== "ACCEPT";
 }
 
+type TranscriptPacketNote = {
+  id?: string;
+  kind?: string;
+  sourceJson?: unknown;
+  createdAt?: Date | string | number;
+  updatedAt?: Date | string | number;
+};
+
+function packetText(value: unknown) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
+function packetTime(value: unknown) {
+  if (value instanceof Date) return value.getTime();
+  if (typeof value !== "string" && typeof value !== "number") return 0;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** Select one summary and only highlights correlated to that packet build. */
+export function selectLatestCorrelatedTranscriptPacketNotes<T extends TranscriptPacketNote>(notes: T[]) {
+  const summaries = notes
+    .filter((note) => note.kind === "SUMMARY")
+    .sort((left, right) => {
+      const createdDelta = packetTime(right.createdAt) - packetTime(left.createdAt);
+      if (createdDelta !== 0) return createdDelta;
+      const updatedDelta = packetTime(right.updatedAt) - packetTime(left.updatedAt);
+      return updatedDelta !== 0
+        ? updatedDelta
+        : packetText(right.id).localeCompare(packetText(left.id));
+    });
+  const summary = summaries[0] ?? null;
+  const packetBuildId = packetText(object(summary?.sourceJson).packetBuildId);
+  const allHighlights = notes.filter((note) => note.kind === "HIGHLIGHT");
+  const highlights = packetBuildId
+    ? allHighlights.filter(
+        (note) => packetText(object(note.sourceJson).packetBuildId) === packetBuildId,
+      )
+    : allHighlights;
+
+  return {
+    summary,
+    highlights,
+    packetBuildId: packetBuildId || null,
+    correlationMode: packetBuildId
+      ? "PACKET_BUILD_ID" as const
+      : "LEGACY_TRANSCRIPT_FALLBACK" as const,
+  };
+}
+
+export function readTranscriptActionCandidates(value: unknown): TranscriptActionCandidate[] {
+  const source = object(value);
+  if (!Array.isArray(source.actionCandidates)) return [];
+
+  return source.actionCandidates.flatMap((candidate) => {
+    if (isTranscriptActionCandidate(candidate)) return [candidate];
+    const legacy = object(candidate);
+    if (
+      legacy.kind !== TRANSCRIPT_ACTION_CANDIDATE_KIND
+      || !packetText(legacy.id)
+      || !packetText(legacy.title)
+      || !packetText(legacy.segmentId)
+    ) return [];
+
+    return [{
+      id: packetText(legacy.id),
+      kind: TRANSCRIPT_ACTION_CANDIDATE_KIND,
+      reviewStatus: isTranscriptActionReviewStatus(legacy.reviewStatus)
+        ? legacy.reviewStatus
+        : "READY_FOR_HUMAN_REVIEW",
+      title: packetText(legacy.title),
+      detail: packetText(legacy.detail),
+      transcriptJobId: packetText(legacy.transcriptJobId) || packetText(source.transcriptJobId),
+      recordingAssetId: packetText(legacy.recordingAssetId) || packetText(source.recordingAssetId),
+      roomId: packetText(legacy.roomId) || packetText(source.roomId),
+      packetBuildId: packetText(legacy.packetBuildId) || packetText(source.packetBuildId),
+      segmentId: packetText(legacy.segmentId),
+      speakerLabel: packetText(legacy.speakerLabel) || null,
+      startSeconds: typeof legacy.startSeconds === "number" ? legacy.startSeconds : 0,
+      endSeconds: typeof legacy.endSeconds === "number" ? legacy.endSeconds : 0,
+      humanApprovalRequired: typeof legacy.humanApprovalRequired === "boolean"
+        ? legacy.humanApprovalRequired
+        : true,
+      committedActionItemId: packetText(legacy.committedActionItemId) || null,
+    } satisfies TranscriptActionCandidate];
+  });
+}
+
+type LegacyTranscriptActionItem = {
+  id: string;
+  roomId?: string | null;
+  title?: string | null;
+  detail?: string | null;
+  sourceJson?: unknown;
+};
+
+function legacyTranscriptActionCandidate(item: LegacyTranscriptActionItem): TranscriptActionCandidate | null {
+  if (!isUnreviewedTranscriptActionItemSource(item.sourceJson)) return null;
+  const source = object(item.sourceJson);
+  const transcriptJobId = packetText(source.transcriptJobId);
+  const segmentId = packetText(source.segmentId) || String(item.id);
+  return {
+    id: `${TRANSCRIPT_ACTION_CANDIDATE_KIND}:${transcriptJobId || "legacy"}:${segmentId}`,
+    kind: TRANSCRIPT_ACTION_CANDIDATE_KIND,
+    reviewStatus: "READY_FOR_HUMAN_REVIEW",
+    title: packetText(item.title) || "Review this follow-up",
+    detail: packetText(item.detail),
+    transcriptJobId,
+    recordingAssetId: packetText(source.recordingAssetId),
+    roomId: packetText(source.roomId) || packetText(item.roomId),
+    packetBuildId: packetText(source.packetBuildId),
+    segmentId,
+    speakerLabel: packetText(source.speakerLabel) || null,
+    startSeconds: typeof source.startSeconds === "number" ? source.startSeconds : 0,
+    endSeconds: typeof source.endSeconds === "number" ? source.endSeconds : 0,
+    humanApprovalRequired: true,
+    committedActionItemId: null,
+  };
+}
+
+/** Merge current packet candidates with quarantined legacy ActionItem rows. */
+export function mergeTranscriptActionCandidates(input: {
+  sourceJson: unknown;
+  legacyActionItems?: LegacyTranscriptActionItem[];
+}) {
+  const candidates = readTranscriptActionCandidates(input.sourceJson);
+  const byId = new Map(candidates.map((candidate) => [candidate.id, candidate]));
+  for (const item of input.legacyActionItems ?? []) {
+    const candidate = legacyTranscriptActionCandidate(item);
+    if (candidate && !byId.has(candidate.id)) byId.set(candidate.id, candidate);
+  }
+  return Array.from(byId.values());
+}
+
 export type TranscriptReleaseGateReceiptInput = {
   processingDisposition: string | null;
   transcriptDisposition: string | null;

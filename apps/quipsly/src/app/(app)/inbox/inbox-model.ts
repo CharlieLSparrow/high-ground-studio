@@ -1,7 +1,7 @@
 import {
-  mergePacketActionCandidates,
-  selectLatestCorrelatedPacketNotes,
-} from "@/lib/server/coaching-packets";
+  mergeTranscriptActionCandidates,
+  selectLatestCorrelatedTranscriptPacketNotes,
+} from "@high-ground/quipsly-domain/coaching-packet";
 
 export type InboxRoom = {
   id: string;
@@ -112,13 +112,13 @@ export function buildInboxSnapshot(rooms: InboxRoom[], personalCaptures: InboxPe
   }
 
   for (const room of rooms) {
-    const packet = selectLatestCorrelatedPacketNotes(room.notes);
+    const packet = selectLatestCorrelatedTranscriptPacketNotes(room.notes);
     if (!packet.summary) continue;
     const source = record(packet.summary.sourceJson);
     const roomTitle = text(room.title) || "Capture session";
     const updatedAt = iso(packet.summary.updatedAt);
 
-    for (const candidate of mergePacketActionCandidates({
+    for (const candidate of mergeTranscriptActionCandidates({
       sourceJson: packet.summary.sourceJson,
       legacyActionItems: room.actionItems ?? [],
     })) {
