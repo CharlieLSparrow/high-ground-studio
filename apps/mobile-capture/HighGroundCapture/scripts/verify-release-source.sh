@@ -75,6 +75,8 @@ require_text "$export_options" "<key>manageAppVersionAndBuildNumber</key>" "Expo
 require_text "$fastfile" "project: PROJECT_PATH" "Fastlane builds the real Xcode project"
 require_absent_text "$fastfile" "HighGroundCapture.xcworkspace" "Fastlane no longer references a nonexistent workspace"
 require_absent_text "$fastfile" "increment_build_number" "Fastlane does not silently mutate the committed build number"
+require_text "$fastfile" "only_testing: DETERMINISTIC_UI_TESTS" "TestFlight runs the deterministic Capture UI scope"
+require_text "$fastfile" "parallel_testing: false" "Capture UI tests run serially to avoid cloned Simulator launch noise"
 
 app_settings="$(
   xcodebuild \

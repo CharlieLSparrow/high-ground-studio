@@ -757,6 +757,28 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(loadedAddress.waitForExistence(timeout: 12), safari.debugDescription)
     }
 
+    private func openSafariShareSheet(_ safari: XCUIApplication) {
+        let share = safari.buttons.matching(
+            NSPredicate(format: "label ==[c] %@ OR identifier == %@", "Share", "ShareButton")
+        ).firstMatch
+        if !share.waitForExistence(timeout: 3) {
+            let more = safari.buttons["More"].firstMatch
+            XCTAssertTrue(more.waitForExistence(timeout: 5), safari.debugDescription)
+
+            // On the lowered iOS 26 Safari toolbar, XCUI occasionally finds
+            // More but computes an invalid auto-scroll hit point for tap().
+            // A coordinate on the already-visible control avoids that false
+            // miss; one retry covers the toolbar animation settling.
+            more.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            if !share.waitForExistence(timeout: 3) {
+                safari.activate()
+                more.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            }
+        }
+        XCTAssertTrue(share.waitForExistence(timeout: 10), safari.debugDescription)
+        share.tap()
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = false
 
@@ -792,17 +814,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         safari.activate()
         navigateSafari(safari, to: "https://www.iana.org/", expectedHost: "iana.org")
-
-        let share = safari.buttons.matching(
-            NSPredicate(format: "label ==[c] %@ OR identifier == %@", "Share", "ShareButton")
-        ).firstMatch
-        if !share.waitForExistence(timeout: 3) {
-            let more = safari.buttons["More"]
-            XCTAssertTrue(more.waitForExistence(timeout: 5), safari.debugDescription)
-            more.tap()
-        }
-        XCTAssertTrue(share.waitForExistence(timeout: 10), safari.debugDescription)
-        share.tap()
+        openSafariShareSheet(safari)
 
         let quipslyActivity = safari.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS[c] %@", "Quipsly")
@@ -840,17 +852,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         safari.activate()
         navigateSafari(safari, to: "https://www.iana.org/", expectedHost: "iana.org")
-
-        let share = safari.buttons.matching(
-            NSPredicate(format: "label ==[c] %@ OR identifier == %@", "Share", "ShareButton")
-        ).firstMatch
-        if !share.waitForExistence(timeout: 3) {
-            let more = safari.buttons["More"]
-            XCTAssertTrue(more.waitForExistence(timeout: 5), safari.debugDescription)
-            more.tap()
-        }
-        XCTAssertTrue(share.waitForExistence(timeout: 10), safari.debugDescription)
-        share.tap()
+        openSafariShareSheet(safari)
 
         let quipslyActivity = safari.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS[c] %@", "Quipsly")
@@ -946,14 +948,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         // Safari's contextual Share action exports only public.plain-text. Use
         // the page Share control while the selection remains active so Safari
         // also runs the extension's documented webpage preprocessor.
-        let more = safari.buttons["More"].firstMatch
-        XCTAssertTrue(more.waitForExistence(timeout: 5), safari.debugDescription)
-        more.tap()
-        let pageShare = safari.buttons.matching(
-            NSPredicate(format: "label ==[c] %@ OR identifier == %@", "Share", "ShareButton")
-        ).firstMatch
-        XCTAssertTrue(pageShare.waitForExistence(timeout: 8), safari.debugDescription)
-        pageShare.tap()
+        openSafariShareSheet(safari)
 
         let quipslyActivity = safari.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS[c] %@", "Quipsly")

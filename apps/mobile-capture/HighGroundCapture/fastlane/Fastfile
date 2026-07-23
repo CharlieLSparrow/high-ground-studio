@@ -13,6 +13,11 @@ ARTIFACT_VERIFIER = File.join(CAPTURE_ROOT, "scripts", "verify-release-artifact.
 SOURCE_VERIFIER = File.join(CAPTURE_ROOT, "scripts", "verify-release-source.sh")
 APPLE_APP_ID = "6780995957"
 APP_IDENTIFIER = "com.highgroundodyssey.HighGroundCapture"
+DETERMINISTIC_UI_TESTS = [
+  "HighGroundCaptureUITests/CaptureExperienceUITests",
+  "HighGroundCaptureUITests/CaptureLoginExperienceUITests",
+  "HighGroundCaptureUITests/ShareCaptureExtensionUITests",
+].freeze
 
 def release_paths(options)
   version = get_version_number(xcodeproj: PROJECT_PATH, target: SCHEME)
@@ -41,6 +46,28 @@ platform :ios do
   desc "Validate source-level privacy and Capture release invariants"
   lane :verify do
     sh(SOURCE_VERIFIER)
+  end
+
+  desc "Run the deterministic iPhone UX and Share Capture suite serially"
+  lane :ui_test do |options|
+    source_revision = sh("git", "-C", REPO_ROOT, "rev-parse", "HEAD", log: false).strip
+    output_root = File.expand_path(
+      options[:output_directory] ||
+        ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DIR", "/tmp/quipsly-capture-ui-tests/#{source_revision[0, 12]}"),
+    )
+    FileUtils.mkdir_p(output_root)
+
+    run_tests(
+      project: PROJECT_PATH,
+      scheme: SCHEME,
+      devices: [options[:device] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DEVICE", "iPhone 17 Pro")],
+      only_testing: DETERMINISTIC_UI_TESTS,
+      parallel_testing: false,
+      result_bundle: true,
+      output_directory: output_root,
+      buildlog_path: output_root,
+      fail_build: true,
+    )
   end
 
   desc "Build, export, and inspect the exact committed Capture version"
@@ -118,6 +145,7 @@ platform :ios do
     api_key_path = options[:api_key_path] || ENV["APP_STORE_CONNECT_API_KEY_PATH"]
     UI.user_error!("Set APP_STORE_CONNECT_API_KEY_PATH to a Fastlane App Store Connect API key JSON file.") if api_key_path.to_s.empty?
 
+    ui_test(device: options[:device])
     release(options)
     paths = release_paths(options)
     upload_to_testflight(
