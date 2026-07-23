@@ -32,6 +32,22 @@
       "types": "./src/recording.ts",
       "import": "./src/recording.ts"
     },
+    "./coaching-public": {
+      "types": "./src/coaching-public.ts",
+      "import": "./src/coaching-public.ts"
+    },
+    "./coaching-lifecycle": {
+      "types": "./src/coaching-lifecycle.ts",
+      "import": "./src/coaching-lifecycle.ts"
+    },
+    "./coaching-meeting-spine": {
+      "types": "./src/coaching-meeting-spine.ts",
+      "import": "./src/coaching-meeting-spine.ts"
+    },
+    "./mobile-capture-upload": {
+      "types": "./src/mobile-capture-upload.ts",
+      "import": "./src/mobile-capture-upload.ts"
+    },
     "./nests": {
       "types": "./src/nests.ts",
       "import": "./src/nests.ts"
@@ -47,6 +63,14 @@
     "./output-catalog": {
       "types": "./src/output-catalog.ts",
       "import": "./src/output-catalog.ts"
+    },
+    "./coaching-packet": {
+      "types": "./src/coaching-packet.ts",
+      "import": "./src/coaching-packet.ts"
+    },
+    "./transcript-derived-task": {
+      "types": "./src/transcript-derived-task.ts",
+      "import": "./src/transcript-derived-task.ts"
     },
     "./core": {
       "types": "./src/core.ts",

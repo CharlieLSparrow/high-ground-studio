@@ -3,10 +3,16 @@ export type QuipslyId = string;
 export * from "./publishing";
 export * from "./source-aware";
 export * from "./recording";
+export * from "./coaching-public";
+export * from "./coaching-lifecycle";
+export * from "./coaching-meeting-spine";
+export * from "./mobile-capture-upload";
 export * from "./nests";
 export * from "./generated-art";
 export * from "./art-recipes";
 export * from "./output-catalog";
+export * from "./coaching-packet";
+export * from "./transcript-derived-task";
 
 export type VerificationStatus =
   | "verified"
