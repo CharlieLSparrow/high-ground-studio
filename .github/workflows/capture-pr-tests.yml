@@ -1,0 +1,70 @@
+name: Capture iPhone Tests
+
+on:
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - apps/mobile-capture/HighGroundCapture/**
+      - .github/workflows/capture-pr-tests.yml
+  workflow_dispatch:
+
+concurrency:
+  group: capture-iphone-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deterministic-ui:
+    name: Deterministic iPhone UX
+    runs-on: macos-26
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+      CAPTURE_PROJECT: apps/mobile-capture/HighGroundCapture/HighGroundCapture.xcodeproj
+      CAPTURE_SCHEME: HighGroundCapture
+      CAPTURE_DESTINATION: platform=iOS Simulator,name=iPhone 17 Pro,OS=26.2
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prove pinned Apple toolchain
+        run: |
+          set -euo pipefail
+          test -d "${DEVELOPER_DIR}"
+          xcodebuild -version
+          xcrun simctl list devices available
+
+      - name: Validate Capture release source
+        run: bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
+
+      - name: Run deterministic Capture UI suite serially
+        run: |
+          set -euo pipefail
+          result_bundle="${RUNNER_TEMP}/capture-ui-tests.xcresult"
+          build_log="${RUNNER_TEMP}/capture-ui-tests.log"
+
+          xcodebuild \
+            -project "${CAPTURE_PROJECT}" \
+            -scheme "${CAPTURE_SCHEME}" \
+            -destination "${CAPTURE_DESTINATION}" \
+            -parallel-testing-enabled NO \
+            -resultBundlePath "${result_bundle}" \
+            -only-testing:HighGroundCaptureUITests/CaptureExperienceUITests \
+            -only-testing:HighGroundCaptureUITests/CaptureLoginExperienceUITests \
+            -only-testing:HighGroundCaptureUITests/ShareCaptureExtensionUITests \
+            test | tee "${build_log}"
+
+      - name: Preserve native test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: capture-iphone-test-evidence-${{ github.run_attempt }}
+          path: |
+            ${{ runner.temp }}/capture-ui-tests.xcresult
+            ${{ runner.temp }}/capture-ui-tests.log
+          if-no-files-found: warn
+          retention-days: 14

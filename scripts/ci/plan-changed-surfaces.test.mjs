@@ -18,6 +18,17 @@ test("Capture changes do not build or deploy web apps", () => {
   assert.deepEqual(plan.changedSurfaces, ["capture"]);
 });
 
+test("Capture workflow changes remain inside the Capture surface", () => {
+  const plan = planChangedSurfaces([
+    ".github/workflows/capture-pr-tests.yml",
+  ]);
+
+  assert.equal(plan.capture, true);
+  assert.equal(plan.web, false);
+  assert.equal(plan.studio, false);
+  assert.equal(plan.quipsly, false);
+});
+
 test("Nest app changes validate and deploy only Nest", () => {
   const plan = planChangedSurfaces([
     "apps/quipsly/src/app/api/mobile/capture/sessions/route.ts",

@@ -124,6 +124,10 @@ One green stage cannot substitute for another.
   source SHA before building the Nest production image. The Docker build now
   consumes that source-labeled context instead of the checkout root and embeds
   the GitHub SHA as `QUIPSLY_BUILD_ID`.
+- Run Capture's 24-scenario deterministic UX suite only for Capture pull
+  requests on GitHub's `macos-26` runner, with Xcode 26.2 and the iOS 26.2
+  iPhone 17 Pro simulator pinned explicitly. Preserve the `.xcresult` and build
+  log for 14 days even when the test fails.
 - Make the old GHCR image workflow manual-only; Cloud Run
   `deploy-cloud-run.yml` remains the automatic production path.
 - Keep deterministic Capture UI tests separate from reviewer credentials,
@@ -133,8 +137,6 @@ One green stage cannot substitute for another.
 
 ### Next corrections
 
-- Add a macOS Capture CI lane pinned to the supported Xcode/iOS image; do not
-  pretend Linux source checks are native release proof.
 - Replace root-lockfile fan-out with dependency-aware affected-package
   calculation.
 - Create CODEOWNERS-style surface ownership and one release manifest per app.

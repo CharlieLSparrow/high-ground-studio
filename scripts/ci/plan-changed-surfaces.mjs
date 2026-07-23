@@ -51,6 +51,7 @@ const SCHEMA_PATHS = [
 
 const CAPTURE_PATHS = [
   /^apps\/mobile-capture\/HighGroundCapture\//,
+  /^\.github\/workflows\/capture-pr-tests\.yml$/,
 ];
 
 const NATIVE_STUDIO_PATHS = [
