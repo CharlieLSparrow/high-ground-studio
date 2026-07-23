@@ -45,7 +45,7 @@ Passing an earlier gate does not imply a later gate.
 | CallKit activation failure could leave a connected silent LiveKit room | Room join waits for CallKit audio activation; failure disconnects media, ends CallKit, releases the audio lease, and clears UI truth. |
 | Disk-space preflight used a required-reason API without declaring it | Privacy manifest declares `NSPrivacyAccessedAPICategoryDiskSpace` reason `E174.1`. |
 | VoiceOver exposed a nine-point microphone meter element | The slim visual meter now occupies a 44-point semantic inspection region. |
-| Camera permission was declared without a shipping camera feature | Audio-first target has no camera usage description or camera request. |
+| Linked session code caused App Store validation to require a camera purpose string | The host bundle declares the dependency-required purpose string while the audio-first app keeps video disabled and never requests camera access without an explicit future video choice. |
 
 ## Automated evidence
 

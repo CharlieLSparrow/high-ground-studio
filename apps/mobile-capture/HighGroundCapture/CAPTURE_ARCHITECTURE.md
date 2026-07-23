@@ -199,7 +199,7 @@ Every capture mutation validates the authenticated actor and the requested objec
 
 ## Privacy, security, and App Store rules
 
-- The microphone purpose string is specific and localized. Audio-first v1 does not declare or request camera permission; a future video feature must add it only with real user-facing camera behavior.
+- The microphone purpose string is specific and localized. Audio-first v1 does not request camera permission, but the app declares a precise camera purpose string because the linked LiveKit session SDK references camera APIs and App Store validation requires the host bundle disclosure. Any future video control must remain an explicit user action; audio recording does not use the camera.
 - Audio/video permission is requested only when the relevant user action needs it.
 - Local-only capture does not request Photos access. “Save to Photos” would request add-only access at that moment.
 - Recording requires explicit consent and a persistent visible and accessible indication.
