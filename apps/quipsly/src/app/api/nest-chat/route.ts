@@ -36,21 +36,6 @@ function normalizeProjectSlug(input: string | null) {
   return String(input ?? "").trim().toLowerCase();
 }
 
-function firstConfiguredOwnerEmail() {
-  const raw = [
-    process.env.QUIPSLY_OWNER_EMAIL,
-    process.env.HGO_OWNER_EMAIL,
-    process.env.OWNER_EMAIL,
-    process.env.QUIPSLY_ADMIN_EMAILS,
-    process.env.HGO_ADMIN_EMAILS,
-    process.env.ADMIN_EMAILS,
-  ]
-    .filter(Boolean)
-    .join(",");
-
-  return normalizeAccessEmail(raw.split(",").find((entry) => entry.trim().includes("@")));
-}
-
 function normalizeGifUrl(input: unknown) {
   const raw = String(input ?? "").trim();
   if (!raw) return null;
@@ -114,13 +99,9 @@ function cleanString(value: unknown, fallback = "") {
 
 async function resolveActor(_request: NextRequest) {
   const session = await auth();
-  const overrideEmail = process.env.QUIPSLY_OWNER_OVERRIDE === "true"
-    ? firstConfiguredOwnerEmail() || "owner-override@quipsly.local"
-    : "";
   const email = normalizeAccessEmail(
     session?.user?.primaryEmail
-      || session?.user?.email
-      || overrideEmail,
+      || session?.user?.email,
   );
   return {
     id: cleanString(session?.user?.id),
@@ -249,7 +230,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "projectSlug is required." }, { status: 400 });
   }
 
-  if (!actor.email && process.env.QUIPSLY_OWNER_OVERRIDE !== "true") {
+  if (!actor.email) {
     return NextResponse.json({ ok: false, error: "Sign in to read Nest chat." }, { status: 401 });
   }
 
@@ -307,7 +288,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "Message or GIF URL is required." }, { status: 400 });
   }
 
-  if (!actor.email && process.env.QUIPSLY_OWNER_OVERRIDE !== "true") {
+  if (!actor.email) {
     return NextResponse.json({ ok: false, error: "Sign in to send Nest chat messages." }, { status: 401 });
   }
 
@@ -322,7 +303,7 @@ export async function POST(request: NextRequest) {
       data: {
         projectId: loaded.project.id,
         threadId: loaded.thread.id,
-        authorEmail: actor.email || "owner-override@quipsly.local",
+        authorEmail: actor.email,
         authorName: actor.name,
         body: message || gifUrl || "",
         gifUrl,

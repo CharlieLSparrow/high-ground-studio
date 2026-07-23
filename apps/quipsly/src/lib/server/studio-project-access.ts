@@ -114,10 +114,6 @@ export async function resolveStudioProjectAccess({
     return { allowed: false, role: null, source: "none", projectId: project?.id ?? null, projectSlug };
   }
 
-  if (process.env.QUIPSLY_OWNER_OVERRIDE === "true") {
-    return { allowed: true, role: "OWNER", source: "staff", projectId: project.id, projectSlug };
-  }
-
   if (workspaceOwnerLabelAllows(project, normalizedEmail)) {
     return { allowed: true, role: "OWNER", source: "workspace-owner-label", projectId: project.id, projectSlug };
   }

@@ -43,8 +43,7 @@ export default async function CreatePage({
   const projectSlug = params.project!;
   const session = await auth();
   const actorEmail = session?.user?.primaryEmail || session?.user?.email;
-  const isAdminActor =
-    process.env.QUIPSLY_OWNER_OVERRIDE === "true" || isUserManagementAdminEmail(actorEmail);
+  const isAdminActor = isUserManagementAdminEmail(actorEmail);
 
   try {
     await ensureKnownLiveNestsForAdmin({

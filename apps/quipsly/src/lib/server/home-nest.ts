@@ -23,36 +23,13 @@ type HomeNestProject = {
   sourceLabel: string | null;
 };
 
-function parseEmailList(value?: string | null) {
-  return (value ?? "")
-    .split(",")
-    .map((entry) => normalizeAccessEmail(entry))
-    .filter(Boolean);
-}
-
-function fallbackActorEmail() {
-  const configured = [
-    ...parseEmailList(process.env.QUIPSLY_ADMIN_EMAILS),
-    ...parseEmailList(process.env.HGO_OWNER_EMAILS),
-  ];
-
-  if (configured[0]) return configured[0];
-  if (process.env.NODE_ENV === "development") return "dev@quipsly.com";
-  return "";
-}
-
 export async function getCurrentHomeNestActorEmail() {
   const session = await auth();
   const sessionEmail = normalizeAccessEmail(
     session?.user?.primaryEmail || session?.user?.email,
   );
 
-  if (sessionEmail) return sessionEmail;
-  if (process.env.QUIPSLY_OWNER_OVERRIDE === "true" || process.env.NODE_ENV === "development") {
-    return fallbackActorEmail();
-  }
-
-  return "";
+  return sessionEmail;
 }
 
 function slugifyEmailForHomeNest(email: string) {

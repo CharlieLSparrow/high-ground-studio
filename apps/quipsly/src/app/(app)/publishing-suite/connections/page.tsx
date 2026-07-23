@@ -4,9 +4,8 @@ import { connectTwitterAction, connectYouTubeAction } from "./actions";
 
 export default async function ConnectionsPage() {
   const session = await auth();
-  const ownerOverride = process.env.QUIPSLY_OWNER_OVERRIDE === "true";
   
-  if (!session?.user?.id && !ownerOverride) {
+  if (!session?.user?.id) {
     return (
       <div className="p-8 max-w-3xl mx-auto text-center">
         <p className="text-xl text-[#8c6b4a]">Please log in to manage your connections.</p>
@@ -14,7 +13,7 @@ export default async function ConnectionsPage() {
     );
   }
 
-  const userId = session?.user?.id || "local-dev-user";
+  const userId = session.user.id;
   const prisma = getPrismaClient();
   const accounts = await prisma.socialAccount.findMany({
     where: { userId },

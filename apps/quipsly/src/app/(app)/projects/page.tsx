@@ -311,8 +311,7 @@ export default async function ProjectsHub({
   let canOpenPrivateFictionNest = false;
   let sharedProjects: Awaited<ReturnType<typeof listAccessibleStudioProjectSummariesForEmail>> = [];
   const projectRoles = new Map<string, string>();
-  const canManageLiveNests =
-    process.env.QUIPSLY_OWNER_OVERRIDE === "true" || isUserManagementAdminEmail(actorEmail);
+  const canManageLiveNests = isUserManagementAdminEmail(actorEmail);
 
   if (actorEmail) {
     try {

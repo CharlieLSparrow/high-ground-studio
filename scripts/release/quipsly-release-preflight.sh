@@ -71,6 +71,12 @@ fi
 
 print_step "Release scripts"
 
+if node --test scripts/quipsly-owner-override-retirement.test.mjs; then
+  pass "Retired owner override is absent from Nest runtime authorization."
+else
+  fail "Retired owner override is still reachable from Nest runtime source."
+fi
+
 for script in \
   scripts/release/quipsly-schema-sync.sh \
   scripts/release/quipsly-deploy-preview.sh \

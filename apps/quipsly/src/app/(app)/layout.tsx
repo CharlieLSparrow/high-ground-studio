@@ -83,7 +83,6 @@ export default async function RootLayout({
 }>) {
   const session = await getQuipslySession();
   const cookieStore = await cookies();
-  const ownerOverride = process.env.QUIPSLY_OWNER_OVERRIDE === "true";
   const actorEmail =
     session?.user?.primaryEmail
     || session?.user?.email
@@ -92,14 +91,13 @@ export default async function RootLayout({
   const isAdminBypass = isUserManagementAdminEmail(actorEmail);
   const hasProjectAccessGrant = await hasAnyActiveStudioProjectAccessGrantForEmail(actorEmail);
   const hasAccess =
-    ownerOverride
-    || isAdminBypass
+    isAdminBypass
     || Boolean(session?.user && (session.user as any).hasBetaAccess)
     || Boolean(session?.user && canAccessStudio(actorRoles as any))
     || hasProjectAccessGrant;
 
   // If they aren't logged in, redirect to the marketing/login page
-  if (!session?.user && !ownerOverride) {
+  if (!session?.user) {
     return (
       <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#fdfaf6] antialiased">

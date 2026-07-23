@@ -201,7 +201,7 @@ export default async function NotebookNestPage({
   }
 
   const prisma = getPrismaClient();
-  const isAdminActor = process.env.QUIPSLY_OWNER_OVERRIDE === "true" || isUserManagementAdminEmail(actorEmail);
+  const isAdminActor = isUserManagementAdminEmail(actorEmail);
   const readAccess = await resolveStudioProjectAccess({
     projectSlug,
     email: actorEmail,

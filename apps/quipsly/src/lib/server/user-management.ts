@@ -124,13 +124,6 @@ export async function getQuipslyAdminActor(): Promise<QuipslyAdminActor | null> 
     session?.user?.primaryEmail || session?.user?.email,
   );
 
-  if (process.env.QUIPSLY_OWNER_OVERRIDE === "true") {
-    return {
-      email: actorEmail || listConfiguredUserManagementEmails()[0],
-      userId: session?.user?.id ?? null,
-    };
-  }
-
   if (!session?.user?.id || !isUserManagementAdminEmail(actorEmail)) {
     return null;
   }

@@ -305,7 +305,7 @@ export default async function NotebooksPage({
   let loadError = "";
 
   try {
-    if (process.env.QUIPSLY_OWNER_OVERRIDE === "true" || isUserManagementAdminEmail(actorEmail)) {
+    if (isUserManagementAdminEmail(actorEmail)) {
       const projects = await listStudioProjectOptions(prisma);
       ownedNests = projects
         .filter((project) => isWritingKind(project.nestKind))
