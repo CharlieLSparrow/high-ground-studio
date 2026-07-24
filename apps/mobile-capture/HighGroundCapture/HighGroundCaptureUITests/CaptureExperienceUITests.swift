@@ -419,14 +419,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(sourceLink.isHittable)
         sourceLink.tap()
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
-        XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_preview-segment"]
-                .waitForExistence(timeout: 5)
-        )
-        XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"]
-                .waitForExistence(timeout: 5)
-        )
+        assertFocusedTranscriptSegment("preview-segment")
     }
 
     func testTodayShowsCanonicalRecurrenceWithoutEnablingPreviewMutation() {
@@ -532,14 +525,7 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(sourceLink.isHittable, "A transcript-derived goal should keep a one-action route back to its exact segment.")
         sourceLink.tap()
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
-        XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_preview-segment"]
-                .waitForExistence(timeout: 5)
-        )
-        XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"]
-                .waitForExistence(timeout: 5)
-        )
+        assertFocusedTranscriptSegment("preview-segment")
     }
 
     func testTodayGoalCheckInRecordsEvidenceWithoutImplyingCompletion() {
@@ -708,6 +694,26 @@ final class CaptureExperienceUITests: XCTestCase {
             NSPredicate(format: "label CONTAINS %@", "Reopen Account to follow progress")
         ).firstMatch.exists)
         XCTAssertFalse(app.buttons["Submit"].isEnabled, "Preview mode must explain deletion without submitting a real request.")
+    }
+
+    private func assertFocusedTranscriptSegment(
+        _ segmentID: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let segment = app.descendants(matching: .any)["CaptureTranscriptSegment_\(segmentID)"]
+        XCTAssertTrue(
+            segment.waitForExistence(timeout: 10),
+            "The source link must resolve to transcript segment \(segmentID).",
+            file: file,
+            line: line
+        )
+        XCTAssertTrue(
+            segment.isHittable,
+            "The linked transcript segment must be the focused, visible review context.",
+            file: file,
+            line: line
+        )
     }
 
     private func reveal(_ element: XCUIElement) {

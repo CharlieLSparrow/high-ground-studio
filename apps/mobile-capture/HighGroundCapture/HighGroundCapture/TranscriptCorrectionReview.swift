@@ -999,6 +999,7 @@ struct CaptureTranscriptReviewView: View {
     @StateObject private var client = CaptureTranscriptCorrectionClient()
     @StateObject private var playback = CaptureTranscriptPlaybackController()
     @StateObject private var library = LocalRecordingLibrary.shared
+    @State private var scrollTargetSegmentID: String?
     @AccessibilityFocusState private var accessibilityFocusedSegmentID: String?
 
     init(
@@ -1016,7 +1017,7 @@ struct CaptureTranscriptReviewView: View {
     }
 
     var body: some View {
-        ScrollViewReader { scrollProxy in
+        ScrollViewReader { _ in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     header
@@ -1073,7 +1074,7 @@ struct CaptureTranscriptReviewView: View {
                         if !client.packetActionCandidates.isEmpty {
                             packetTaskReviewSection { segmentID in
                                 withAnimation(.easeOut(duration: 0.3)) {
-                                    scrollProxy.scrollTo(segmentID, anchor: .center)
+                                    scrollTargetSegmentID = segmentID
                                 }
                                 accessibilityFocusedSegmentID = segmentID
                             }
@@ -1081,7 +1082,7 @@ struct CaptureTranscriptReviewView: View {
                         if !client.packetGoalCandidates.isEmpty {
                             packetGoalReviewSection { segmentID in
                                 withAnimation(.easeOut(duration: 0.3)) {
-                                    scrollProxy.scrollTo(segmentID, anchor: .center)
+                                    scrollTargetSegmentID = segmentID
                                 }
                                 accessibilityFocusedSegmentID = segmentID
                             }
@@ -1120,10 +1121,12 @@ struct CaptureTranscriptReviewView: View {
                         ContentUnavailableView("Transcript unavailable", systemImage: "text.magnifyingglass")
                     }
                 }
+                .scrollTargetLayout()
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
                 .padding(.bottom, 72)
             }
+            .scrollPosition(id: $scrollTargetSegmentID, anchor: .center)
             .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle("Transcript review")
             .navigationBarTitleDisplayMode(.inline)
@@ -1142,9 +1145,8 @@ struct CaptureTranscriptReviewView: View {
                 await client.load(roomID: roomID, previewOnly: previewOnly)
                 guard let focusSegmentID,
                       client.desk?.segments.contains(where: { $0.id == focusSegmentID }) == true else { return }
-                await Task.yield()
                 withAnimation(.easeOut(duration: 0.3)) {
-                    scrollProxy.scrollTo(focusSegmentID, anchor: .center)
+                    scrollTargetSegmentID = focusSegmentID
                 }
                 accessibilityFocusedSegmentID = focusSegmentID
             }
