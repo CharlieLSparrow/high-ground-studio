@@ -31,7 +31,7 @@ class StoryBibleErrorBoundary extends Component<{ children: React.ReactNode }, {
           </div>
           <h2 className="text-lg font-bold text-gray-900 mb-2">Something went wrong</h2>
           <p className="text-sm text-gray-500 mb-6">The Story Bible encountered an unexpected error.</p>
-          <button 
+          <button
             onClick={() => this.setState({ hasError: false, error: null })}
             className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
           >
@@ -139,7 +139,7 @@ const StoryBibleSidebarContent: React.FC = React.memo(() => {
 
       {/* Main Content Area */}
       <div className="flex-1 overflow-hidden relative">
-        <div 
+        <div
           role="tabpanel"
           id="panel-story-bible"
           aria-labelledby="tab-story-bible"
@@ -149,8 +149,8 @@ const StoryBibleSidebarContent: React.FC = React.memo(() => {
         >
           {activeView === 'DIRECTORY' && <EntityDirectory />}
         </div>
-        
-        <div 
+
+        <div
           className={`absolute inset-0 transition-transform duration-300 transform bg-white shadow-[-10px_0_15px_-10px_rgba(0,0,0,0.1)] ${
             activeView === 'DETAIL' ? 'translate-x-0 z-20 pointer-events-auto' : 'translate-x-full z-0 pointer-events-none'
           }`}
@@ -158,7 +158,7 @@ const StoryBibleSidebarContent: React.FC = React.memo(() => {
           {activeView === 'DETAIL' && <EntityDetailCard />}
         </div>
 
-        <div 
+        <div
           role="tabpanel"
           id="panel-inbox"
           aria-labelledby="tab-inbox"

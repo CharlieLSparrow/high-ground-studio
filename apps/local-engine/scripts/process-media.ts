@@ -3,10 +3,15 @@ import ffmpegInstaller from "@ffmpeg-installer/ffmpeg";
 import { Storage } from "@google-cloud/storage";
 import path from "node:path";
 import fs from "node:fs/promises";
+import {
+  configuredMediaBucketName,
+  mediaVaultObjectPath,
+  sanitizeMediaVaultPathPart,
+} from "../src/MediaVaultConfig";
 
 ffmpeg.setFfmpegPath(ffmpegInstaller.path);
 
-const BUCKET_NAME = "high-ground-raw-footage";
+const BUCKET_NAME = configuredMediaBucketName();
 
 // Use the local GCS key from the engine
 const storage = new Storage({
@@ -63,6 +68,9 @@ async function main() {
 
   const basename = path.basename(inputPath);
   const ext = path.extname(inputPath);
+  const projectSlug = sanitizeMediaVaultPathPart(process.env.QUIPSLY_PROJECT_SLUG || "local-engine", "local-engine");
+  const episodeSlug = sanitizeMediaVaultPathPart(process.env.QUIPSLY_EPISODE_SLUG || "unassigned", "unassigned");
+  const assetId = sanitizeMediaVaultPathPart(process.env.QUIPSLY_ASSET_ID || `${Date.now()}-${basename}`, "asset");
 
   if (ext.toLowerCase() !== ".insv") {
     console.warn(`[Warning] Provided file is not an .insv (${basename}). Processing anyway.`);
@@ -70,16 +78,18 @@ async function main() {
 
   const proxyFileName = basename.replace(new RegExp(`${ext}$`, 'i'), '_proxy.mp4');
   const proxyPath = path.join(path.dirname(inputPath), proxyFileName);
+  const rawObjectName = mediaVaultObjectPath("raw", projectSlug, episodeSlug, assetId, basename);
+  const proxyObjectName = mediaVaultObjectPath("proxy", projectSlug, episodeSlug, assetId, proxyFileName);
 
   try {
     // 1. Generate the 1080p Web Proxy locally
     await generateProxy(inputPath, proxyPath);
 
     // 2. Upload the original RAW .insv
-    await uploadToGcs(inputPath, basename);
+    await uploadToGcs(inputPath, rawObjectName);
 
     // 3. Upload the proxy MP4
-    await uploadToGcs(proxyPath, `proxies/${proxyFileName}`);
+    await uploadToGcs(proxyPath, proxyObjectName);
 
     console.log(`[Success] Finished processing ${basename}`);
 

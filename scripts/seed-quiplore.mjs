@@ -148,7 +148,7 @@ async function main() {
 
     console.log(`Successfully seeded QuipLore into Project: ${project.slug}`);
     console.log(`Created Quote: "${quoteText.substring(0, 30)}..."`);
-    
+
   } finally {
     await prisma.$disconnect();
   }

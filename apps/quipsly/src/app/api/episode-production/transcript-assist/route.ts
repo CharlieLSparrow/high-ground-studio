@@ -1,8 +1,16 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
+import { promises as fs } from "node:fs";
+import { Readable } from "node:stream";
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { getPrismaClient } from "@/lib/prisma";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
+import { getMediaBucket } from "@/lib/server/gcs";
+import { authorizeStudioMediaSource } from "@/lib/server/studio-media-source-access";
+import {
+  authorizeConfiguredMediaVaultLocation,
+  resolveAllowedLocalStudioMediaPath,
+} from "@/lib/server/studio-media-location-security";
 import { lookupStudioProjectDocument, projectConfig } from "../../../(app)/create/projectConfig";
 
 const MAX_INLINE_MEDIA_BYTES = 18 * 1024 * 1024;
@@ -134,33 +142,98 @@ async function ensureProjectAndProduction(prisma: ReturnType<typeof getPrismaCli
   return { project, production };
 }
 
-async function loadInlineMedia(asset: Record<string, unknown>) {
-  const sourceUrl = String(asset.playbackUrl ?? asset.gcsUri ?? "").trim();
+function overLimitWarning(size: number) {
+  return `Raw media is ${Math.round(size / 1024 / 1024)} MB, above the inline analysis limit. Use the bounded transcript worker instead.`;
+}
+
+async function readStreamWithLimit(stream: Readable) {
+  const chunks: Buffer[] = [];
+  let total = 0;
+  try {
+    for await (const chunk of stream) {
+      const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as any);
+      total += bytes.byteLength;
+      if (total > MAX_INLINE_MEDIA_BYTES) {
+        stream.destroy?.();
+        throw new Error(overLimitWarning(total));
+      }
+      chunks.push(bytes);
+    }
+  } finally {
+    stream.destroy?.();
+  }
+  return Buffer.concat(chunks, total);
+}
+
+async function loadInlineMedia(
+  asset: Record<string, unknown>,
+  source: { providerSourceId: string | null },
+) {
+  const providerSourceId = String(source.providerSourceId ?? "").trim();
   const contentType = String(asset.contentType ?? "application/octet-stream");
-  if (!sourceUrl || !/^https?:\/\//i.test(sourceUrl)) {
-    return { part: null, warning: "Raw media is not available at an HTTP playback URL, so metadata fallback was used." };
+  if (!providerSourceId) {
+    return { part: null, warning: "This authorized source has no stored media location, so metadata fallback was used." };
   }
 
-  const head = await fetch(sourceUrl, { method: "HEAD" }).catch(() => null);
-  const contentLength = Number(head?.headers.get("content-length") ?? asset.size ?? 0);
-  const headType = head?.headers.get("content-type") || contentType;
-  if (contentLength > MAX_INLINE_MEDIA_BYTES) {
-    return { part: null, warning: `Raw media is ${Math.round(contentLength / 1024 / 1024)} MB, above the inline analysis limit. Upload/File API transcription can be added next.` };
+  const gcsLocation = authorizeConfiguredMediaVaultLocation(providerSourceId);
+  let bytes: Buffer;
+  let verifiedContentType = contentType;
+  if (gcsLocation.kind === "rejected-gcs") {
+    return { part: null, warning: gcsLocation.error };
+  }
+  if (gcsLocation.kind === "gcs") {
+    const file = getMediaBucket(gcsLocation.bucketName).file(
+      gcsLocation.objectName,
+      gcsLocation.generation ? { generation: gcsLocation.generation as any } : undefined,
+    );
+    const [metadata] = await file.getMetadata();
+    const size = Number(metadata.size ?? 0);
+    if (!Number.isSafeInteger(size) || size <= 0) {
+      return { part: null, warning: "The private-vault source is empty or its size evidence is invalid." };
+    }
+    if (size > MAX_INLINE_MEDIA_BYTES) {
+      return { part: null, warning: overLimitWarning(size) };
+    }
+    verifiedContentType = metadata.contentType || contentType;
+    bytes = await readStreamWithLimit(file.createReadStream({ start: 0, end: MAX_INLINE_MEDIA_BYTES }));
+  } else {
+    const localPath = await resolveAllowedLocalStudioMediaPath(
+      providerSourceId,
+      ["QUIPSLY_TRANSCRIPT_ASSIST_LOCAL_ROOTS"],
+    );
+    if (!localPath) {
+      return {
+        part: null,
+        warning: "Transcript assist will not server-fetch external or unconfined media URLs. Upload the source to the private media vault first.",
+      };
+    }
+    const file = await fs.open(localPath, "r");
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || stat.size <= 0) {
+        return { part: null, warning: "The confined local source is empty or is not a regular file." };
+      }
+      if (stat.size > MAX_INLINE_MEDIA_BYTES) {
+        return { part: null, warning: overLimitWarning(stat.size) };
+      }
+      bytes = Buffer.alloc(stat.size);
+      let offset = 0;
+      while (offset < bytes.length) {
+        const { bytesRead } = await file.read(bytes, offset, bytes.length - offset, offset);
+        if (bytesRead === 0) break;
+        offset += bytesRead;
+      }
+      if (offset !== bytes.length) bytes = bytes.subarray(0, offset);
+    } finally {
+      await file.close();
+    }
   }
 
-  const response = await fetch(sourceUrl);
-  if (!response.ok) {
-    return { part: null, warning: `Could not fetch media for transcription: HTTP ${response.status}.` };
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  if (arrayBuffer.byteLength > MAX_INLINE_MEDIA_BYTES) {
-    return { part: null, warning: `Raw media is ${Math.round(arrayBuffer.byteLength / 1024 / 1024)} MB, above the inline analysis limit. Upload/File API transcription can be added next.` };
-  }
-  const base64 = Buffer.from(arrayBuffer).toString("base64");
+  const base64 = bytes.toString("base64");
   return {
     part: {
       inlineData: {
-        mimeType: headType || contentType,
+        mimeType: verifiedContentType,
         data: base64,
       },
     },
@@ -209,15 +282,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Imported asset not found." }, { status: 404 });
     }
 
+    const sourceId = String(asset.sourceId ?? "").trim();
+    const sourceAuthorization = sourceId
+      ? await authorizeStudioMediaSource({
+          prisma,
+          actor: {
+            id: access.actor.id,
+            email: access.actor.email,
+            // Episode production actors still pass project authorization;
+            // do not add a staff scope bypass at this derived-byte boundary.
+            isStaff: false,
+          },
+          sourceId,
+        })
+      : null;
+
     let report;
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       report = localFallbackReport(asset, "GEMINI_API_KEY is not configured on this server; saved metadata-only transcript assist.");
     } else {
-      const { part, warning } = await loadInlineMedia(asset).catch((error) => ({
-        part: null,
-        warning: error instanceof Error ? error.message : "Could not load raw media for Gemini.",
-      }));
+      const { part, warning } = sourceAuthorization?.allowed
+        ? await loadInlineMedia(asset, sourceAuthorization.source).catch((error) => ({
+            part: null,
+            warning: error instanceof Error ? error.message : "Could not load authorized raw media for Gemini.",
+          }))
+        : {
+            part: null,
+            warning: sourceAuthorization && !sourceAuthorization.allowed
+              ? sourceAuthorization.error
+              : "This imported item has no authorized Studio source binding; metadata fallback was used.",
+          };
 
       if (!part) {
         report = localFallbackReport(asset, warning || "Raw media was not loaded; saved metadata-only transcript assist.");

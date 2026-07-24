@@ -1,0 +1,150 @@
+import { NextResponse } from "next/server";
+
+import { getPrismaClient } from "@/lib/prisma";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import {
+  createTranscriptCorrection,
+  readTranscriptCorrectionDesk,
+  reviewTranscriptCorrectionProposal,
+  TranscriptCorrectionError,
+} from "@/lib/server/transcript-corrections";
+
+export const dynamic = "force-dynamic";
+
+function object(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function text(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function nullableText(value: unknown) {
+  const valueText = text(value);
+  return valueText || null;
+}
+
+function number(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+async function body(request: Request) {
+  try {
+    return object(await request.json());
+  } catch {
+    return {};
+  }
+}
+
+function responseBody(error: unknown) {
+  if (error instanceof TranscriptCorrectionError) {
+    return NextResponse.json(
+      { ok: false, error: error.message, errorCode: error.code },
+      { status: error.status, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+  console.error("[transcript-corrections] request failed", error);
+  return NextResponse.json(
+    { ok: false, error: "Quipsly could not update transcript review state." },
+    { status: 500, headers: { "Cache-Control": "private, no-store" } },
+  );
+}
+
+function actorFromSession(session: NonNullable<Awaited<ReturnType<typeof getQuipslySessionFromRequest>>>) {
+  return {
+    id: session.user.id,
+    email: session.user.primaryEmail,
+    isStaff: session.user.isStaff,
+  };
+}
+
+export async function GET(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user) {
+    return NextResponse.json(
+      { ok: false, error: "Sign in to review transcript corrections." },
+      { status: 401, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+  const roomId = text(new URL(request.url).searchParams.get("callRoomId"));
+  if (!roomId) {
+    return NextResponse.json(
+      { ok: false, error: "callRoomId is required." },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+  try {
+    const result = await readTranscriptCorrectionDesk({
+      prisma: getPrismaClient() as any,
+      roomId,
+      actor: actorFromSession(session),
+    });
+    return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
+  } catch (error) {
+    return responseBody(error);
+  }
+}
+
+export async function POST(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  if (!session?.user) {
+    return NextResponse.json(
+      { ok: false, error: "Sign in to correct a transcript." },
+      { status: 401, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
+  const input = await body(request);
+  const operation = text(input.operation) || "accept-human-correction";
+  const prisma = getPrismaClient() as any;
+  const actor = actorFromSession(session);
+  try {
+    if (operation === "accept-human-correction") {
+      const result = await createTranscriptCorrection({
+        prisma,
+        actor,
+        roomId: text(input.roomId),
+        segmentId: text(input.segmentId),
+        clientRequestId: text(input.clientRequestId),
+        origin: "human",
+        expectedText: typeof input.expectedText === "string" ? input.expectedText : "",
+        expectedSpeakerLabel: nullableText(input.expectedSpeakerLabel),
+        expectedAcceptedCorrectionId: nullableText(input.expectedAcceptedCorrectionId),
+        correctedText: nullableText(input.correctedText),
+        correctedSpeakerLabel: nullableText(input.correctedSpeakerLabel),
+        reason: nullableText(input.reason),
+        confirmedAgainstPlayback: input.confirmedAgainstPlayback === true,
+        playbackPositionSeconds: number(input.playbackPositionSeconds),
+      });
+      return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    if (operation === "review-ai-proposal") {
+      const decision = text(input.decision);
+      if (decision !== "accept" && decision !== "reject") {
+        return NextResponse.json(
+          { ok: false, error: "AI proposal decision must be accept or reject." },
+          { status: 400, headers: { "Cache-Control": "private, no-store" } },
+        );
+      }
+      const result = await reviewTranscriptCorrectionProposal({
+        prisma,
+        actor,
+        roomId: text(input.roomId),
+        correctionId: text(input.correctionId),
+        decision,
+        expectedAcceptedCorrectionId: nullableText(input.expectedAcceptedCorrectionId),
+        confirmedAgainstPlayback: input.confirmedAgainstPlayback === true,
+        playbackPositionSeconds: number(input.playbackPositionSeconds),
+        reviewNote: nullableText(input.reviewNote),
+      });
+      return NextResponse.json(result, { headers: { "Cache-Control": "private, no-store" } });
+    }
+    return NextResponse.json(
+      { ok: false, error: "Unknown transcript correction operation." },
+      { status: 400, headers: { "Cache-Control": "private, no-store" } },
+    );
+  } catch (error) {
+    return responseBody(error);
+  }
+}

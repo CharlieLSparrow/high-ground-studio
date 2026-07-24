@@ -10,19 +10,20 @@ public enum AVCompositionError: Error {
 
 public actor AVCompositionBuilder {
     public init() {}
-    
+
     public func buildPlayerItem(
         for sequence: MediaSequence,
         mode: PlaybackMode = .playEdit,
         format: ExportFormat = .horizontal16x9,
         allowExternalOriginalMedia: Bool = false,
-        allowedOriginalMediaRootPath: String? = nil
+        allowedOriginalMediaRootPath: String? = nil,
+        sequenceRangeOverride: [ClosedRange<Double>]? = nil
     ) async throws -> AVPlayerItem {
         let composition = AVMutableComposition()
-        
+
         var layerInstructions: [AVMutableVideoCompositionLayerInstruction] = []
         var compositionVideoTracks: [AVMutableCompositionTrack] = []
-        
+
         let targetRenderSize: CGSize
         switch format {
         case .horizontal16x9:
@@ -30,26 +31,40 @@ public actor AVCompositionBuilder {
         case .vertical9x16:
             targetRenderSize = CGSize(width: 1080, height: 1920)
         }
-        
+
         // Ensure track order: V1 Base is at the bottom (rendered first), V2 Overlay on top
         // In the UI they might be ordered [V2, V1]. We reverse it here so V1 is processed first,
         // but AVVideoComposition processes instructions in the order they are added to the array.
         // The first instruction in the array is the TOP-MOST layer.
         // So we want V2's instruction first, then V1's instruction.
-        
-        let sequenceHasActiveTags = sequence.lanes.contains { lane in lane.tags.contains { $0.type == .active } }
-        
+
+        let sequenceHasActiveTags = sequence.lanes.contains { lane in
+            lane.metadata?.ignoreForProduction != true && lane.tags.contains { $0.type == .active }
+        }
+
         var validRanges: [ClosedRange<Double>] = []
-        if mode == .playThrough {
+        let minimumRenderableSegmentDuration = 1.0 / 30.0
+        if let sequenceRangeOverride {
+            validRanges = Self.normalizedRenderableRanges(
+                sequenceRangeOverride,
+                minimumDuration: minimumRenderableSegmentDuration
+            )
+        } else if mode == .playThrough {
             validRanges = [0...max(sequence.duration, 0)]
         } else {
-            validRanges = PlaybackEngine.computeValidRanges(for: sequence)
+            validRanges = Self.normalizedRenderableRanges(
+                PlaybackEngine.computeValidRanges(for: sequence),
+                minimumDuration: minimumRenderableSegmentDuration
+            )
         }
         let compositionDuration = mode == .playThrough
             ? max(sequence.duration, 0)
             : validRanges.reduce(0) { total, range in total + max(0, range.upperBound - range.lowerBound) }
-        
+
         for lane in sequence.lanes {
+            if lane.metadata?.ignoreForProduction == true {
+                continue
+            }
             if let sourceVideo = lane.sourceVideo {
                 let urlToUse: URL
                 let rawPath = sourceVideo.mediaURL.path
@@ -78,42 +93,66 @@ public actor AVCompositionBuilder {
                 }
                 let options: [String: Any]? = urlToUse.pathExtension.lowercased() == "insv" ? ["AVURLAssetOutOfBandMIMETypeKey": "video/mp4"] : nil
                 let asset = AVURLAsset(url: urlToUse, options: options)
-                
+
                 do {
                     let sourceVideoTracks = try await asset.loadTracks(withMediaType: .video)
                     let sourceAudioTracks = try await asset.loadTracks(withMediaType: .audio)
-                    
+
                     var currentMediaTime = 0.0
                     var currentTimelineTime = sourceVideo.offset
                     let totalDuration = sourceVideo.duration
-                    
+
+                    var segmentSequenceRanges = validRanges
+                    if sequenceHasActiveTags && !isAudioOnly {
+                        segmentSequenceRanges = lane.tags
+                            .filter { $0.type == .active }
+                            .flatMap { tag -> [ClosedRange<Double>] in
+                                let tagSeqStart = tag.startTime + sourceVideo.offset
+                                let tagSeqEnd = tagSeqStart + max(0, tag.duration)
+                                guard tagSeqStart < tagSeqEnd else { return [] }
+                                return validRanges.compactMap { validRange in
+                                    let start = max(tagSeqStart, validRange.lowerBound)
+                                    let end = min(tagSeqEnd, validRange.upperBound)
+                                    return start < end ? start...end : nil
+                                }
+                            }
+                    }
+                    segmentSequenceRanges = Self.normalizedRenderableRanges(
+                        segmentSequenceRanges,
+                        minimumDuration: minimumRenderableSegmentDuration
+                    )
+
                     var segments: [(CMTimeRange, CMTime)] = []
-                    
-                    for validRange in validRanges {
-                        let mediaStart = max(0, validRange.lowerBound - sourceVideo.offset)
-                        let mediaEnd = min(sourceVideo.duration, validRange.upperBound - sourceVideo.offset)
-                        
-                        if mediaStart < mediaEnd {
+
+                    for sequenceRange in segmentSequenceRanges {
+                        let mediaStart = max(0, sequenceRange.lowerBound - sourceVideo.offset)
+                        let mediaEnd = min(sourceVideo.duration, sequenceRange.upperBound - sourceVideo.offset)
+
+                        if mediaEnd - mediaStart >= minimumRenderableSegmentDuration {
                             let duration = mediaEnd - mediaStart
                             let mediaTimeRange = CMTimeRange(
                                 start: CMTime(seconds: mediaStart, preferredTimescale: 600),
                                 duration: CMTime(seconds: duration, preferredTimescale: 600)
                             )
-                            
+
                             let sequenceStart = mediaStart + sourceVideo.offset
                             let programStart = Self.programTime(for: sequenceStart, in: validRanges)
-                            
+
                             segments.append((mediaTimeRange, CMTime(seconds: programStart, preferredTimescale: 600)))
                         }
                     }
-                    
+
+                    if segments.isEmpty {
+                        continue
+                    }
+
                     if let svTrack = sourceVideoTracks.first {
                         if let compVideoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
                             for segment in segments {
                                 try compVideoTrack.insertTimeRange(segment.0, of: svTrack, at: segment.1)
                             }
                             compositionVideoTracks.append(compVideoTrack)
-                            
+
                             let layerInstruction = AVMutableVideoCompositionLayerInstruction(assetTrack: compVideoTrack)
                             let naturalSize = try await svTrack.load(.naturalSize)
                             let preferredTransform = try await svTrack.load(.preferredTransform)
@@ -123,7 +162,7 @@ public actor AVCompositionBuilder {
                                 renderSize: targetRenderSize
                             )
                             layerInstruction.setTransform(renderTransform, at: .zero)
-                            
+
                             if sequenceHasActiveTags {
                                 layerInstruction.setOpacity(0.0, at: .zero)
                                 let activeTags = lane.tags.filter { $0.type == .active }
@@ -142,7 +181,7 @@ public actor AVCompositionBuilder {
                                     )
                                     let pStart = Self.programTime(for: tagSeqStart, in: validRanges)
                                     let pEnd = Self.programTime(for: tagSeqEnd, in: validRanges)
-                                    
+
                                     if pStart < pEnd {
                                         let start = CMTime(seconds: pStart, preferredTimescale: 600)
                                         let end = CMTime(seconds: pEnd, preferredTimescale: 600)
@@ -170,44 +209,50 @@ public actor AVCompositionBuilder {
                                     }
                                 }
                             }
-                            
+
                             layerInstructions.append(layerInstruction)
                         }
                     }
-                    
-                    if let saTrack = sourceAudioTracks.first {
+
+                    if isAudioOnly, let saTrack = sourceAudioTracks.first {
                         if let compAudioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
                             for segment in segments {
                                 try compAudioTrack.insertTimeRange(segment.0, of: saTrack, at: segment.1)
                             }
                         }
                     }
-                    
+
                 } catch {
                     print("Failed to load asset for lane: \(lane.id), error: \(error)")
                 }
             }
         }
-        
+
         let playerItem = AVPlayerItem(asset: composition)
-        
+
         if !compositionVideoTracks.isEmpty {
             let videoComposition = AVMutableVideoComposition()
             videoComposition.renderSize = targetRenderSize
             videoComposition.frameDuration = CMTime(value: 1, timescale: 30) // 30 FPS
-            
+
             let instruction: AVVideoCompositionInstructionProtocol
-            
+
             let activeTrack = format == .vertical9x16 ? sequence.verticalOrientationTrack : sequence.orientationTrack
-            
-            if !activeTrack.keyframes.isEmpty, let baseTrack = compositionVideoTracks.first {
-                let is360 = sequence.lanes.first?.sourceVideo?.is360 ?? false
+
+            let shouldUseReframingCompositor = sequence.lanes.contains { lane in
+                guard lane.metadata?.ignoreForProduction != true else { return false }
+                return lane.sourceVideo?.is360 == true
+            }
+
+            if shouldUseReframingCompositor,
+               !activeTrack.keyframes.isEmpty,
+               let baseTrack = compositionVideoTracks.first {
                 videoComposition.customVideoCompositorClass = ReframingCompositor.self
                 let reframingInstruction = ReframingCompositionInstruction(
                     timeRange: CMTimeRange(start: .zero, duration: CMTime(seconds: compositionDuration, preferredTimescale: 600)),
                     sourceTrackID: baseTrack.trackID,
                     keyframes: activeTrack.keyframes,
-                    is360: is360
+                    is360: true
                 )
                 instruction = reframingInstruction
             } else {
@@ -216,11 +261,11 @@ public actor AVCompositionBuilder {
                 standardInstruction.layerInstructions = layerInstructions
                 instruction = standardInstruction
             }
-            
+
             videoComposition.instructions = [instruction]
             playerItem.videoComposition = videoComposition
         }
-        
+
         return playerItem
     }
 
@@ -243,6 +288,7 @@ public actor AVCompositionBuilder {
         }
 
         let audioLanes = sequence.lanes.filter { lane in
+            guard lane.metadata?.ignoreForProduction != true else { return false }
             guard let sourceVideo = lane.sourceVideo else { return false }
             return Self.isAudioOnlyLane(lane, sourceVideo: sourceVideo)
         }
@@ -342,7 +388,7 @@ public actor AVCompositionBuilder {
         let original = URL(fileURLWithPath: path).standardizedFileURL.path
         return original == root || original.hasPrefix(root + "/")
     }
-    
+
     private static func programTime(for sequenceTime: Double, in validRanges: [ClosedRange<Double>]) -> Double {
         var pTime: Double = 0
         for range in validRanges {
@@ -358,11 +404,42 @@ public actor AVCompositionBuilder {
         return pTime
     }
 
+    private static func normalizedRenderableRanges(
+        _ ranges: [ClosedRange<Double>],
+        minimumDuration: Double
+    ) -> [ClosedRange<Double>] {
+        let sorted = ranges
+            .filter {
+                $0.lowerBound.isFinite
+                && $0.upperBound.isFinite
+                && $0.upperBound - $0.lowerBound >= minimumDuration
+            }
+            .sorted { $0.lowerBound < $1.lowerBound }
+
+        guard !sorted.isEmpty else { return [] }
+
+        var merged: [ClosedRange<Double>] = []
+        for range in sorted {
+            guard let last = merged.last else {
+                merged.append(range)
+                continue
+            }
+
+            if range.lowerBound - last.upperBound < minimumDuration {
+                merged[merged.count - 1] = last.lowerBound...max(last.upperBound, range.upperBound)
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
+    }
+
     private static func activeVisualLaneIDs(at sequenceTime: Double, in sequence: MediaSequence) -> [UUID] {
         sequence.lanes
             .filter { lane in
+                guard lane.metadata?.ignoreForProduction != true else { return false }
                 guard let sourceVideo = lane.sourceVideo else { return false }
-                guard !isAudioOnlyLane(lane, sourceVideo: sourceVideo) else { return false }
+                guard isPlayableVisualLane(lane, sourceVideo: sourceVideo) else { return false }
                 let localTime = sequenceTime - sourceVideo.offset
                 return lane.tags.contains { tag in
                     tag.type == .active &&
@@ -374,6 +451,22 @@ public actor AVCompositionBuilder {
                 programLaneSortKey(lhs) < programLaneSortKey(rhs)
             }
             .map(\.id)
+    }
+
+    private static func isPlayableVisualLane(_ lane: VideoLane, sourceVideo: SourceVideo) -> Bool {
+        guard lane.metadata?.ignoreForProduction != true else { return false }
+        guard !isAudioOnlyLane(lane, sourceVideo: sourceVideo) else { return false }
+        let rawPath = sourceVideo.mediaURL.path
+        if rawPath.contains("__quipsly_missing_media__") || lane.metadata?.declaredExists == false {
+            return false
+        }
+        guard let proxyURL = sourceVideo.proxyURL else {
+            return false
+        }
+        if isProtectedOriginalPath(proxyURL.path) {
+            return false
+        }
+        return FileManager.default.fileExists(atPath: proxyURL.path)
     }
 
     private static func programLaneSortKey(_ lane: VideoLane) -> String {

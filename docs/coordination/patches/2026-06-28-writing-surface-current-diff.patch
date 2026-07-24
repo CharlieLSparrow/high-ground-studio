@@ -1,0 +1,1676 @@
+diff --git a/apps/quipsly/src/app/(app)/create/ViewFilter.tsx b/apps/quipsly/src/app/(app)/create/ViewFilter.tsx
+index 4cf0e1d..9da3f21 100644
+--- a/apps/quipsly/src/app/(app)/create/ViewFilter.tsx
++++ b/apps/quipsly/src/app/(app)/create/ViewFilter.tsx
+@@ -1,7 +1,8 @@
+ "use client";
+ 
+-import { useEffect, useMemo, useState, useTransition } from "react";
+-import { BookOpen, FilePlus2, Filter, Layers, LayoutTemplate, NotebookPen, Search, X } from "lucide-react";
++import { useEffect, useMemo, useRef, useState, useTransition } from "react";
++import { useRouter } from "next/navigation";
++import { BookOpen, CopyPlus, FilePlus2, Filter, Layers, LayoutTemplate, NotebookPen, PenLine, Search, X } from "lucide-react";
+ import { DocumentBoundary, ViewDefinition, WorkbenchProjectDocumentSummary } from "./types";
+ import { DEFAULT_VIEW } from "./Workspace";
+ import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from "@dnd-kit/core";
+@@ -12,7 +13,7 @@ import {
+   WORKFLOW_SYSTEM_LABELS,
+   WORKFLOW_SYSTEM_SEQUENCE,
+ } from "@/lib/studio/project-registry";
+-import { createDocumentAction } from "../nests/[slug]/actions";
++import { createDocumentAction, duplicateDocumentAsDraftAction, promoteNoteToWritingPageAction, renameDocumentAction } from "../nests/[slug]/actions";
+ 
+ function SortableOutlineItem({ boundary, isActive, isScrolled, isNested, onClick }: { boundary: DocumentBoundary, isActive: boolean, isScrolled: boolean, isNested: boolean, onClick: () => void }) {
+   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: boundary.id });
+@@ -73,6 +74,32 @@ function documentKindClasses(kind: string, isActive: boolean) {
+   return "bg-stone-100 text-stone-700";
+ }
+ 
++function formatNotebookUpdatedAt(value: string | Date) {
++  const updatedAt = value instanceof Date ? value : new Date(value);
++  if (Number.isNaN(updatedAt.getTime())) return "Updated recently";
++
++  const now = new Date();
++  const diffMs = now.getTime() - updatedAt.getTime();
++  const diffMinutes = Math.floor(diffMs / 60000);
++
++  if (diffMinutes < 1) return "Just now";
++  if (diffMinutes < 60) return `${diffMinutes}m ago`;
++
++  const diffHours = Math.floor(diffMinutes / 60);
++  if (diffHours < 24) return `${diffHours}h ago`;
++
++  const diffDays = Math.floor(diffHours / 24);
++  if (diffDays < 7) return `${diffDays}d ago`;
++
++  return updatedAt.toLocaleDateString(undefined, {
++    month: "short",
++    day: "numeric",
++    year: updatedAt.getFullYear() === now.getFullYear() ? undefined : "numeric"
++  });
++}
++
++type NotebookPageFilter = "all" | "writing" | "notes" | "sources";
++
+ export default function ViewFilter({
+   activeView,
+   setActiveView,
+@@ -98,9 +125,21 @@ export default function ViewFilter({
+   activeDocumentId?: string;
+   projectSlug?: string;
+ }) {
++  const router = useRouter();
+   const [isOpen, setIsOpen] = useState(false);
+   const [isCreatingDocument, startCreateDocumentTransition] = useTransition();
++  const [isRenamingDocument, startRenameDocumentTransition] = useTransition();
++  const [isDuplicatingDocument, startDuplicateDocumentTransition] = useTransition();
++  const [isPromotingNote, startPromoteNoteTransition] = useTransition();
+   const [notebookQuery, setNotebookQuery] = useState("");
++  const [notebookPanel, setNotebookPanel] = useState<"pages" | "structure" | "tools">("pages");
++  const [recentDocumentIds, setRecentDocumentIds] = useState<string[]>([]);
++  const [pageFilter, setPageFilter] = useState<NotebookPageFilter>("all");
++  const [pageTitleDraft, setPageTitleDraft] = useState("");
++  const [pageRenameError, setPageRenameError] = useState<string | null>(null);
++  const [pageDuplicateError, setPageDuplicateError] = useState<string | null>(null);
++  const [pagePromoteError, setPagePromoteError] = useState<string | null>(null);
++  const notebookSearchRef = useRef<HTMLInputElement | null>(null);
+   const activeBoundary = documentBoundaries.find((boundary) => boundary.id === activeBoundaryId) ?? null;
+   const chapterCount = documentBoundaries.filter((boundary) => boundary.kind === "chapter").length;
+   const episodeCount = documentBoundaries.filter((boundary) => boundary.kind === "episode").length;
+@@ -123,20 +162,41 @@ export default function ViewFilter({
+     if (!normalizedNotebookQuery) return true;
+     return String(value ?? "").toLowerCase().includes(normalizedNotebookQuery);
+   };
++  const matchesPageFilter = (doc: WorkbenchProjectDocumentSummary) => {
++    if (pageFilter === "all") return true;
++
++    const kind = documentKind(doc);
++    if (pageFilter === "sources") return kind === "Study Source";
++    if (pageFilter === "notes") return kind === "Note";
++    if (pageFilter === "writing") return kind !== "Study Source" && kind !== "Note";
++    return true;
++  };
+   const filteredDraftDocs = draftDocs.filter((doc) => (
+-    matchesNotebookQuery(doc.title)
++    matchesPageFilter(doc) && (
++      matchesNotebookQuery(doc.title)
+       || matchesNotebookQuery(doc.sourceLabel)
+       || matchesNotebookQuery(documentKind(doc))
++    )
+   ));
+   const filteredLibraryDocs = libraryDocs.filter((doc) => (
+-    matchesNotebookQuery(doc.title)
++    matchesPageFilter(doc) && (
++      matchesNotebookQuery(doc.title)
+       || matchesNotebookQuery(doc.sourceLabel)
+       || matchesNotebookQuery(documentKind(doc))
++    )
+   ));
+   const activeDocument = (projectDocuments || []).find((doc) => doc.id === activeDocumentId) ?? null;
+   const activeDocumentKind = activeDocument ? documentKind(activeDocument) : "Document";
+   const totalDocumentCount = projectDocuments?.length ?? 0;
+   const visibleDocumentCount = filteredDraftDocs.length + filteredLibraryDocs.length;
++  const sourceDocumentCount = libraryDocs.length;
++  const noteDocumentCount = (projectDocuments || []).filter((doc) => documentKind(doc) === "Note").length;
++  const writingDocumentCount = Math.max(0, totalDocumentCount - sourceDocumentCount - noteDocumentCount);
++  const recentDocuments = recentDocumentIds
++    .map((documentId) => (projectDocuments || []).find((doc) => doc.id === documentId) ?? null)
++    .filter((doc): doc is WorkbenchProjectDocumentSummary => Boolean(doc))
++    .filter((doc) => doc.id !== activeDocumentId)
++    .slice(0, 4);
+ 
+   const [localBoundaries, setLocalBoundaries] = useState(documentBoundaries);
+ 
+@@ -145,6 +205,173 @@ export default function ViewFilter({
+     setLocalBoundaries(documentBoundaries);
+   }, [documentBoundaries]);
+ 
++  useEffect(() => {
++    if (!projectSlug) return;
++
++    const storedPanel = window.localStorage.getItem(`quipsly.notebookPanel.${projectSlug}`);
++    if (storedPanel === "pages" || storedPanel === "structure" || storedPanel === "tools") {
++      setNotebookPanel(storedPanel);
++    }
++
++    const storedPageFilter = window.localStorage.getItem(`quipsly.pageShelf.${projectSlug}`);
++    if (storedPageFilter === "all" || storedPageFilter === "writing" || storedPageFilter === "notes" || storedPageFilter === "sources") {
++      setPageFilter(storedPageFilter);
++    }
++
++    const rawRecentDocuments = window.localStorage.getItem(`quipsly.recentDocuments.${projectSlug}`);
++    if (!rawRecentDocuments) return;
++
++    try {
++      const parsed = JSON.parse(rawRecentDocuments);
++      if (Array.isArray(parsed)) {
++        setRecentDocumentIds(parsed.filter((value): value is string => typeof value === "string").slice(0, 8));
++      }
++    } catch {
++      window.localStorage.removeItem(`quipsly.recentDocuments.${projectSlug}`);
++    }
++  }, [projectSlug]);
++
++  useEffect(() => {
++    if (!projectSlug) return;
++    window.localStorage.setItem(`quipsly.notebookPanel.${projectSlug}`, notebookPanel);
++  }, [notebookPanel, projectSlug]);
++
++  useEffect(() => {
++    if (!projectSlug) return;
++    window.localStorage.setItem(`quipsly.pageShelf.${projectSlug}`, pageFilter);
++  }, [pageFilter, projectSlug]);
++
++  useEffect(() => {
++    if (!projectSlug || !activeDocumentId) return;
++
++    setRecentDocumentIds((current) => {
++      const next = [activeDocumentId, ...current.filter((documentId) => documentId !== activeDocumentId)].slice(0, 8);
++      window.localStorage.setItem(`quipsly.recentDocuments.${projectSlug}`, JSON.stringify(next));
++      return next;
++    });
++  }, [activeDocumentId, projectSlug]);
++
++  useEffect(() => {
++    setPageTitleDraft(activeDocument?.title ?? "");
++  }, [activeDocument?.title]);
++
++  const submitPageRename = () => {
++    if (!projectSlug || !activeDocumentId) return;
++    const nextTitle = pageTitleDraft.trim().replace(/\s+/g, " ");
++    if (!nextTitle || nextTitle === activeDocument?.title) return;
++
++    setPageRenameError(null);
++    startRenameDocumentTransition(() => {
++      void renameDocumentAction(projectSlug, activeDocumentId, nextTitle)
++        .then(() => router.refresh())
++        .catch((error) => {
++          const message = error instanceof Error ? error.message : "Rename failed. Try again.";
++          setPageRenameError(message);
++        });
++    });
++  };
++
++  const duplicatePageAsDraft = () => {
++    if (!projectSlug || !activeDocumentId) return;
++
++    setPageDuplicateError(null);
++    startDuplicateDocumentTransition(() => {
++      void duplicateDocumentAsDraftAction(projectSlug, activeDocumentId)
++        .then((result) => {
++          if (result?.href) {
++            router.push(result.href);
++            router.refresh();
++          }
++        })
++        .catch((error) => {
++          const message = error instanceof Error ? error.message : "Duplicate failed. Try again.";
++          setPageDuplicateError(message);
++        });
++    });
++  };
++
++  const promoteNoteToWritingPage = () => {
++    if (!projectSlug || !activeDocumentId) return;
++
++    setPagePromoteError(null);
++    startPromoteNoteTransition(() => {
++      void promoteNoteToWritingPageAction(projectSlug, activeDocumentId)
++        .then((result) => {
++          if (result?.href) {
++            router.push(result.href);
++            router.refresh();
++          }
++        })
++        .catch((error) => {
++          const message = error instanceof Error ? error.message : "Promote note failed. Try again.";
++          setPagePromoteError(message);
++        });
++    });
++  };
++
++  useEffect(() => {
++    const isTypingTarget = (target: EventTarget | null) => {
++      return target instanceof HTMLInputElement
++        || target instanceof HTMLTextAreaElement
++        || (target instanceof HTMLElement && target.isContentEditable);
++    };
++
++    const handleNotebookShortcut = (event: KeyboardEvent) => {
++      if (isTypingTarget(event.target)) return;
++
++      const key = event.key.toLowerCase();
++
++      if ((event.metaKey || event.ctrlKey) && key === "k") {
++        event.preventDefault();
++        setNotebookPanel("pages");
++        window.setTimeout(() => notebookSearchRef.current?.focus(), 0);
++        return;
++      }
++
++      if (event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
++        if (projectSlug && key === "p" && !isCreatingDocument) {
++          event.preventDefault();
++          setNotebookPanel("pages");
++          setPageFilter("writing");
++          startCreateDocumentTransition(() => createDocumentAction(projectSlug, "draft"));
++          return;
++        }
++
++        if (projectSlug && key === "q" && !isCreatingDocument) {
++          event.preventDefault();
++          setNotebookPanel("pages");
++          setPageFilter("notes");
++          startCreateDocumentTransition(() => createDocumentAction(projectSlug, "note"));
++          return;
++        }
++
++        if (projectSlug && key === "r" && !isCreatingDocument) {
++          event.preventDefault();
++          setNotebookPanel("pages");
++          setPageFilter("sources");
++          startCreateDocumentTransition(() => createDocumentAction(projectSlug, "study-source"));
++          return;
++        }
++
++        const nextShelf: Record<string, NotebookPageFilter> = {
++          a: "all",
++          w: "writing",
++          n: "notes",
++          s: "sources"
++        };
++        const shelf = nextShelf[key];
++        if (!shelf) return;
++
++        event.preventDefault();
++        setNotebookPanel("pages");
++        setPageFilter(shelf);
++      }
++    };
++
++    window.addEventListener("keydown", handleNotebookShortcut);
++    return () => window.removeEventListener("keydown", handleNotebookShortcut);
++  }, [isCreatingDocument, projectSlug, startCreateDocumentTransition]);
++
+   const sensors = useSensors(
+     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+@@ -205,6 +432,63 @@ export default function ViewFilter({
+     matchesNotebookQuery(boundary.label)
+       || matchesNotebookQuery(boundary.kind)
+   ));
++  const notebookPanelItems: Array<{
++    id: "pages" | "structure" | "tools";
++    label: string;
++    hint: string;
++  }> = [
++    {
++      id: "pages",
++      label: "Pages",
++      hint: `${visibleDocumentCount} visible`
++    },
++    {
++      id: "structure",
++      label: "Structure",
++      hint: `${chapterCount} chapters / ${episodeCount} episodes`
++    },
++    {
++      id: "tools",
++      label: "Tools",
++      hint: "lenses + lanes"
++    }
++  ];
++  const pageFilterItems: Array<{
++    id: NotebookPageFilter;
++    label: string;
++    count: number;
++    description: string;
++    shortcut: string;
++  }> = [
++    {
++      id: "all",
++      label: "All",
++      count: totalDocumentCount,
++      description: "Everything in this Nest",
++      shortcut: "Alt+A"
++    },
++    {
++      id: "writing",
++      label: "Writing",
++      count: writingDocumentCount,
++      description: "Manuscripts, drafts, and pages",
++      shortcut: "Alt+W"
++    },
++    {
++      id: "notes",
++      label: "Notes",
++      count: noteDocumentCount,
++      description: "Quick captures and scraps",
++      shortcut: "Alt+N"
++    },
++    {
++      id: "sources",
++      label: "Sources",
++      count: sourceDocumentCount,
++      description: "Fixed study/reference material",
++      shortcut: "Alt+S"
++    }
++  ];
+ 
+   return (
+     <>
+@@ -263,6 +547,93 @@ export default function ViewFilter({
+                 </span>
+               ) : null}
+             </div>
++            {activeDocument ? (
++              <div>
++                <span className="font-black text-[#3d3122]">Touched</span>
++                <span className="mx-1 text-[#b69b73]">-&gt;</span>
++                <span>{formatNotebookUpdatedAt(activeDocument.updatedAt)}</span>
++              </div>
++            ) : null}
++            {activeDocument ? (
++              <div className="rounded-xl border border-[#eadfca] bg-white px-3 py-3">
++                <label className="block text-[9px] font-black uppercase tracking-[0.14em] text-[#8c6b4a]" htmlFor="notebook-page-title">
++                  Page title
++                </label>
++                <div className="mt-2 flex items-center gap-2">
++                  <input
++                    id="notebook-page-title"
++                    type="text"
++                    value={pageTitleDraft}
++                    onChange={(event) => setPageTitleDraft(event.target.value)}
++                    onKeyDown={(event) => {
++                      if (event.key === "Enter") {
++                        event.preventDefault();
++                        submitPageRename();
++                      }
++                    }}
++                    className="min-w-0 flex-1 rounded-lg border border-[#e1d1b4] bg-[#fffaf3] px-2 py-1.5 text-xs font-semibold text-[#3d3122] outline-none transition focus:border-[#8c6b4a] focus:bg-white"
++                    placeholder="Name this page"
++                    maxLength={160}
++                  />
++                  <button
++                    type="button"
++                    disabled={isRenamingDocument || !pageTitleDraft.trim() || pageTitleDraft.trim() === activeDocument.title}
++                    onClick={submitPageRename}
++                    className="rounded-lg border border-[#d4c1a0] bg-[#3d3122] px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[0.12em] text-white transition hover:bg-[#59442d] disabled:cursor-not-allowed disabled:bg-[#d8c9ae] disabled:text-white/80"
++                  >
++                    {isRenamingDocument ? "Saving" : "Rename"}
++                  </button>
++                </div>
++                <p className="mt-2 text-[10px] leading-4 text-[#8c6b4a]">
++                  Renames the notebook page. It does not rewrite the body or fixed source text.
++                </p>
++                {pageRenameError ? (
++                  <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] leading-4 text-rose-800">
++                    {pageRenameError}
++                  </p>
++                ) : null}
++                <div className="mt-3 border-t border-[#eadfca] pt-3">
++                  {activeDocumentKind === "Note" ? (
++                    <>
++                      <button
++                        type="button"
++                        disabled={isPromotingNote}
++                        onClick={promoteNoteToWritingPage}
++                        className="mb-2 flex w-full items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.12em] text-emerald-900 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
++                      >
++                        <PenLine size={14} />
++                        {isPromotingNote ? "Creating writing page..." : "Promote note to writing page"}
++                      </button>
++                      <p className="mb-2 text-[10px] leading-4 text-[#61806d]">
++                        Keeps this note intact and opens a new draft page seeded from it.
++                      </p>
++                      {pagePromoteError ? (
++                        <p className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] leading-4 text-rose-800">
++                          {pagePromoteError}
++                        </p>
++                      ) : null}
++                    </>
++                  ) : null}
++                  <button
++                    type="button"
++                    disabled={isDuplicatingDocument}
++                    onClick={duplicatePageAsDraft}
++                    className="flex w-full items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.12em] text-amber-900 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
++                  >
++                    <CopyPlus size={14} />
++                    {isDuplicatingDocument ? "Branching draft..." : "Duplicate as draft"}
++                  </button>
++                  <p className="mt-2 text-[10px] leading-4 text-[#8c6b4a]">
++                    Makes a safe editable copy. The original page or fixed source stays untouched.
++                  </p>
++                  {pageDuplicateError ? (
++                    <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1.5 text-[10px] leading-4 text-rose-800">
++                      {pageDuplicateError}
++                    </p>
++                  ) : null}
++                </div>
++              </div>
++            ) : null}
+             <div>
+               <span className="font-black text-[#3d3122]">Section</span>
+               <span className="mx-1 text-[#b69b73]">-&gt;</span>
+@@ -300,6 +671,7 @@ export default function ViewFilter({
+           <div className="flex items-center gap-2 rounded-2xl border border-[#eadfca] bg-[#fffaf3] px-3 py-2 shadow-inner">
+             <Search size={14} className="shrink-0 text-[#8c6b4a]" />
+             <input
++              ref={notebookSearchRef}
+               id="notebook-search"
+               type="search"
+               value={notebookQuery}
+@@ -320,6 +692,110 @@ export default function ViewFilter({
+           </div>
+         </div>
+ 
++        <div className="mb-6 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-2">
++          <div className="grid grid-cols-3 gap-1">
++            {notebookPanelItems.map((item) => {
++              const isSelected = notebookPanel === item.id;
++              return (
++                <button
++                  key={item.id}
++                  type="button"
++                  onClick={() => setNotebookPanel(item.id)}
++                  className={`rounded-xl px-2 py-2 text-left transition ${
++                    isSelected
++                      ? "bg-[#3d3122] text-white shadow-sm"
++                      : "text-[#6b5b45] hover:bg-white"
++                  }`}
++                >
++                  <span className="block text-[11px] font-black uppercase tracking-[0.14em]">
++                    {item.label}
++                  </span>
++                  <span className={`mt-1 block truncate text-[9px] font-bold ${isSelected ? "text-white/70" : "text-[#9a815f]"}`}>
++                    {item.hint}
++                  </span>
++                </button>
++              );
++            })}
++          </div>
++          <p className="mt-2 px-1 text-[10px] leading-4 text-[#8c6b4a]">
++            Pages first keeps the desk calm. Structure and tools stay one click away instead of crowding the writing room.
++          </p>
++        </div>
++
++        {notebookPanel === "pages" ? (
++          <>
++        <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
++          <h3 className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
++            <BookOpen size={12} />
++            Page Shelf
++          </h3>
++          <p className="mb-3 text-[10px] leading-4 text-[#8c6b4a]">
++            Filter the notebook by purpose. This changes the shelf view only; it does not move or rewrite anything.
++          </p>
++          <div className="grid grid-cols-2 gap-2">
++            {pageFilterItems.map((item) => {
++              const isSelected = pageFilter === item.id;
++              return (
++                <button
++                  key={item.id}
++                  type="button"
++                  onClick={() => setPageFilter(item.id)}
++                  title={`${item.description} - ${item.shortcut}`}
++                  className={`rounded-xl border px-3 py-2 text-left transition ${
++                    isSelected
++                      ? "border-[#3d3122] bg-[#3d3122] text-white shadow-sm"
++                      : "border-[#eadfca] bg-white text-[#5e4b33] hover:bg-amber-50"
++                  }`}
++                >
++                  <span className="flex items-center justify-between gap-2">
++                    <span className="text-[10px] font-black uppercase tracking-[0.14em]">{item.label}</span>
++                    <span className={`rounded-full px-1.5 py-0.5 text-[9px] font-black ${isSelected ? "bg-white/15 text-white" : "bg-[#fff1d8] text-[#8c6b4a]"}`}>
++                      {item.count}
++                    </span>
++                  </span>
++                  <span className={`mt-1 block text-[9px] leading-3 ${isSelected ? "text-white/70" : "text-[#9a815f]"}`}>
++                    {item.description}
++                  </span>
++                  <span className={`mt-2 inline-flex rounded px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] ${isSelected ? "bg-white/15 text-white/80" : "bg-[#f8f1e3] text-[#9a815f]"}`}>
++                    {item.shortcut}
++                  </span>
++                </button>
++              );
++            })}
++          </div>
++        </div>
++
++        {recentDocuments.length > 0 ? (
++          <div className="mb-7 rounded-2xl border border-[#eadfca] bg-white p-3 shadow-sm">
++            <h3 className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
++              <BookOpen size={12} />
++              Recent Pages
++            </h3>
++            <p className="mb-3 text-[10px] leading-4 text-[#8c6b4a]">
++              Fast context recovery for the spots you were just working in.
++            </p>
++            <div className="space-y-1">
++              {recentDocuments.map((doc) => (
++                <a
++                  key={doc.id}
++                  href={`/create?project=${encodeURIComponent(projectSlug || "")}&document=${encodeURIComponent(doc.id)}`}
++                  className="block rounded-lg border border-transparent px-3 py-2 text-sm font-medium text-[#5e4b33] transition hover:border-[#eadfca] hover:bg-amber-50"
++                >
++                  <span className="block truncate">{doc.title}</span>
++                  <span className="mt-1 flex items-center justify-between gap-2">
++                    <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), false)}`}>
++                      {documentKind(doc)}
++                    </span>
++                    <span className="truncate text-[9px] font-bold uppercase tracking-[0.12em] text-[#a58a69]">
++                      {formatNotebookUpdatedAt(doc.updatedAt)}
++                    </span>
++                  </span>
++                </a>
++              ))}
++            </div>
++          </div>
++        ) : null}
++
+         {projectSlug ? (
+           <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
+             <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+@@ -334,11 +810,13 @@ export default function ViewFilter({
+                 type="button"
+                 disabled={isCreatingDocument}
+                 onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "draft"))}
++                title="Create a new writing page - Alt+P"
+                 className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-50 disabled:cursor-not-allowed disabled:opacity-50"
+               >
+                 <span className="flex items-center gap-2 text-xs font-black text-[#3d3122]">
+                   <FilePlus2 size={14} />
+                   {isCreatingDocument ? "Creating..." : "New writing page"}
++                  <span className="ml-auto rounded bg-amber-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-amber-800">Alt+P</span>
+                 </span>
+                 <span className="mt-1 block text-[10px] leading-4 text-[#8c6b4a]">
+                   Draft, article pass, chapter fragment, or episode page.
+@@ -348,11 +826,13 @@ export default function ViewFilter({
+                 type="button"
+                 disabled={isCreatingDocument}
+                 onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "note"))}
++                title="Create a quick note - Alt+Q"
+                 className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
+               >
+                 <span className="flex items-center gap-2 text-xs font-black text-[#244536]">
+                   <FilePlus2 size={14} />
+                   {isCreatingDocument ? "Creating..." : "Quick note"}
++                  <span className="ml-auto rounded bg-emerald-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-emerald-800">Alt+Q</span>
+                 </span>
+                 <span className="mt-1 block text-[10px] leading-4 text-[#61806d]">
+                   Idea capture, research hunch, meeting note, or connective tissue.
+@@ -362,11 +842,13 @@ export default function ViewFilter({
+                 type="button"
+                 disabled={isCreatingDocument}
+                 onClick={() => startCreateDocumentTransition(() => createDocumentAction(projectSlug, "study-source"))}
++                title="Create a fixed study source - Alt+R"
+                 className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-left shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-50 disabled:cursor-not-allowed disabled:opacity-50"
+               >
+                 <span className="flex items-center gap-2 text-xs font-black text-cyan-900">
+                   <FilePlus2 size={14} />
+                   {isCreatingDocument ? "Creating..." : "New study source"}
++                  <span className="ml-auto rounded bg-cyan-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-cyan-800">Alt+R</span>
+                 </span>
+                 <span className="mt-1 block text-[10px] leading-4 text-cyan-800">
+                   Fixed reference text for annotation, tagging, citation, and research.
+@@ -398,7 +880,7 @@ export default function ViewFilter({
+             </div>
+             {notebookQuery && visibleDocumentCount < totalDocumentCount ? (
+               <p className="mb-3 rounded-xl border border-[#eadfca] bg-white px-3 py-2 text-[10px] leading-4 text-[#8c6b4a]">
+-                Showing {visibleDocumentCount} of {totalDocumentCount} documents for "{notebookQuery}". Search only changes what is visible here.
++                Showing {visibleDocumentCount} of {totalDocumentCount} documents for "{notebookQuery}" in the {pageFilter} shelf. Search and shelf filters only change what is visible here.
+               </p>
+             ) : null}
+             <div className="space-y-4">
+@@ -416,8 +898,13 @@ export default function ViewFilter({
+                         className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${activeDocumentId === doc.id ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5e4b33] hover:bg-amber-50"}`}
+                       >
+                         <span className="block truncate">{doc.title}</span>
+-                        <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
+-                          {documentKind(doc)}
++                        <span className="mt-1 flex items-center justify-between gap-2">
++                          <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
++                            {documentKind(doc)}
++                          </span>
++                          <span className={`truncate text-[9px] font-bold uppercase tracking-[0.12em] ${activeDocumentId === doc.id ? "text-white/65" : "text-[#a58a69]"}`}>
++                            {formatNotebookUpdatedAt(doc.updatedAt)}
++                          </span>
+                         </span>
+                       </a>
+                     ))}
+@@ -444,8 +931,13 @@ export default function ViewFilter({
+                         className={`block w-full rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${activeDocumentId === doc.id ? "bg-[#3d3122] text-white shadow-sm" : "text-[#5e4b33] hover:bg-amber-50"}`}
+                       >
+                         <span className="block truncate">{doc.title}</span>
+-                        <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
+-                          {documentKind(doc)}
++                        <span className="mt-1 flex items-center justify-between gap-2">
++                          <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
++                            {documentKind(doc)}
++                          </span>
++                          <span className={`truncate text-[9px] font-bold uppercase tracking-[0.12em] ${activeDocumentId === doc.id ? "text-white/65" : "text-[#a58a69]"}`}>
++                            {formatNotebookUpdatedAt(doc.updatedAt)}
++                          </span>
+                         </span>
+                       </a>
+                     ))}
+@@ -460,7 +952,11 @@ export default function ViewFilter({
+             </div>
+           </div>
+         )}
++          </>
++        ) : null}
+ 
++        {notebookPanel === "tools" ? (
++          <>
+         <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
+           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+             <Layers size={12} />
+@@ -494,7 +990,11 @@ export default function ViewFilter({
+             ))}
+           </div>
+         </div>
++          </>
++        ) : null}
+ 
++        {notebookPanel === "structure" ? (
++          <>
+         <div className="mb-7 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">
+           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+             <BookOpen size={12} />
+@@ -550,6 +1050,11 @@ export default function ViewFilter({
+           ) : null}
+         </div>
+ 
++          </>
++        ) : null}
++
++        {notebookPanel === "tools" ? (
++          <>
+         <div className="mb-8">
+           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+             <LayoutTemplate size={12} />
+@@ -575,7 +1080,11 @@ export default function ViewFilter({
+             ))}
+           </div>
+         </div>
++          </>
++        ) : null}
+ 
++        {notebookPanel === "structure" ? (
++          <>
+         <div className="mb-8">
+           <h3 className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-[#8c6b4a]">
+             <Layers size={12} />
+@@ -620,6 +1129,8 @@ export default function ViewFilter({
+             </div>
+           )}
+         </div>
++          </>
++        ) : null}
+       </aside>
+     </>
+   );
+diff --git a/apps/quipsly/src/app/(app)/create/Workspace.tsx b/apps/quipsly/src/app/(app)/create/Workspace.tsx
+index d9ae85f..e0b5fb8 100644
+--- a/apps/quipsly/src/app/(app)/create/Workspace.tsx
++++ b/apps/quipsly/src/app/(app)/create/Workspace.tsx
+@@ -1,6 +1,6 @@
+ "use client";
+ 
+-import { useEffect, useMemo, useRef, useState } from "react";
++import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+ import Link from "next/link";
+ import PublisherModePanel from "./PublisherModePanel";
+ import Tagger from "./Tagger";
+@@ -18,6 +18,7 @@ import {
+   normalizeNestKind,
+   workflowSystemForNestKind,
+ } from "@/lib/studio/project-registry";
++import { createHgoEpisodeDraftShellAction, type HgoSourceKey } from "../nests/[slug]/actions";
+ 
+ export const DEFAULT_VIEW: ViewDefinition = {
+   id: "default",
+@@ -117,6 +118,63 @@ function deriveDocumentBoundaries(blocks: Array<{ id: string; text: string; tags
+   }));
+ }
+ 
++function documentKindFromSourceLabel(sourceLabel?: string | null, title?: string | null) {
++  const normalizedSource = String(sourceLabel ?? "").toLowerCase();
++  const normalizedTitle = String(title ?? "").toLowerCase();
++
++  if (normalizedSource.includes("document-kind:fixed-source")) return "Study Source";
++  if (normalizedSource.includes("document-kind:note")) return "Note";
++  if (normalizedSource.includes("document-kind:draft")) return "Draft";
++  if (normalizedSource.includes("document-kind:manuscript")) return "Manuscript";
++  if (normalizedTitle.includes("manuscript") || normalizedTitle.includes("book")) return "Manuscript";
++  return "Document";
++}
++
++function documentKindBadgeClasses(kind: string) {
++  if (kind === "Study Source") return "border-cyan-200 bg-cyan-50 text-cyan-800";
++  if (kind === "Note") return "border-emerald-200 bg-emerald-50 text-emerald-800";
++  if (kind === "Draft") return "border-amber-200 bg-amber-50 text-amber-800";
++  if (kind === "Manuscript") return "border-rose-200 bg-rose-50 text-rose-800";
++  return "border-stone-200 bg-stone-50 text-stone-700";
++}
++
++function documentKindGuidance(kind: string) {
++  if (kind === "Study Source") {
++    return "This is a fixed source surface. Tag, highlight, annotate, and cite over it; do not silently rewrite the original text.";
++  }
++  if (kind === "Note") {
++    return "This is a quick capture surface. Use it for ideas, research hunches, reminders, connective tissue, and rough thinking.";
++  }
++  if (kind === "Draft") {
++    return "This is a working draft. Experiment freely, branch ideas, and promote the good parts when they become manuscript material.";
++  }
++  if (kind === "Manuscript") {
++    return "This is the living manuscript spine. Rewrite intentionally; structure tags, snapshots, and recovery exports keep the trail visible.";
++  }
++  return "This document is editable. If the role is unclear, use notes or drafts for experiments and keep the manuscript spine deliberate.";
++}
++
++const HGO_SOURCE_KEYS: HgoSourceKey[] = [
++  "episode-1",
++  "episode-2",
++  "episode-3",
++  "episode-4",
++  "episode-5",
++  "episode-6",
++  "episode-7",
++  "episode-8",
++  "episode-9",
++];
++
++function hgoSourceKeyFromLabel(sourceLabel?: string | null): HgoSourceKey | null {
++  const normalized = String(sourceLabel ?? "").toLowerCase();
++  return HGO_SOURCE_KEYS.find((key) => normalized.includes(`hgo-source:${key}`)) ?? null;
++}
++
++function hgoEpisodeLabel(sourceKey: HgoSourceKey) {
++  return sourceKey.replace("episode-", "Episode ");
++}
++
+ export default function Workspace({
+   initialBlocks,
+   initialViews,
+@@ -181,6 +239,85 @@ export default function Workspace({
+   const [views, setViews] = useState<ViewDefinition[]>(initialViews);
+   const scrollContainerRef = useRef<HTMLDivElement>(null);
+   const activeProjectSlug = projectSlug ?? "";
++  const [recoveryExportState, setRecoveryExportState] = useState<"idle" | "exporting" | "copied" | "failed">("idle");
++  const [isDraftShellPending, startDraftShellTransition] = useTransition();
++  const activeProjectDocument = useMemo(
++    () => projectDocuments.find((doc) => doc.id === documentId) ?? null,
++    [documentId, projectDocuments]
++  );
++  const activeDocumentKind = documentKindFromSourceLabel(activeProjectDocument?.sourceLabel, documentTitle);
++  const activeDocumentKindGuidance = documentKindGuidance(activeDocumentKind);
++  const activeHgoSourceKey = hgoSourceKeyFromLabel(activeProjectDocument?.sourceLabel);
++
++  const handlePanicExport = async () => {
++    setRecoveryExportState("exporting");
++    const generatedAt = new Date().toISOString();
++    const safeSlug = (activeProjectSlug || "quipsly-draft").replace(/[^a-z0-9-]+/gi, "-").replace(/^-|-$/g, "").toLowerCase();
++    const activeScope = activeBoundary
++      ? `${activeBoundary.kind}: ${activeBoundary.label}`
++      : activeView.name;
++    const exportScopeLabel = activeBoundary
++      ? `Current ${activeBoundary.kind} section`
++      : "Current notebook page / document";
++    const exportBlocks = activeBoundary
++      ? documentBlocks.slice(activeBoundary.startIndex, activeBoundary.endIndex + 1)
++      : documentBlocks;
++    const markdownBlocks = exportBlocks.map((block) => {
++      const tags = Array.from(new Set([
++        ...(block.tags ?? []),
++        ...((block.spans ?? []).map((span: { tagSlug: string }) => span.tagSlug))
++      ]));
++      const text = String(block.text ?? "").trimEnd();
++      const headingPrefix = tags.includes("chapter")
++        ? "## "
++        : tags.includes("episode")
++          ? "### "
++          : "";
++      const tagComment = tags.length > 0 ? `\n\n<!-- quipsly-tags: ${tags.join(", ")} -->` : "";
++      return `${headingPrefix}${text}${tagComment}`.trim();
++    }).filter(Boolean);
++    const markdown = [
++      `# ${documentTitle ?? projectName ?? "Quipsly Writing Draft"}`,
++      "",
++      "> Recovery export from Quipsly Nest.",
++      `> Nest: ${projectName ?? activeProjectSlug}`,
++      `> Document: ${documentTitle ?? documentId}`,
++      `> View: ${activeScope}`,
++      `> Export scope: ${exportScopeLabel}`,
++      `> Blocks exported: ${exportBlocks.length} of ${documentBlocks.length}`,
++      `> Save state when exported: ${saveState}`,
++      `> Generated: ${generatedAt}`,
++      "",
++      "---",
++      "",
++      ...markdownBlocks,
++      ""
++    ].join("\n\n");
++
++    try {
++      if (navigator.clipboard?.writeText) {
++        await navigator.clipboard.writeText(markdown);
++      }
++      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
++      const url = window.URL.createObjectURL(blob);
++      const anchor = document.createElement("a");
++      anchor.href = url;
++      anchor.download = `${safeSlug}-${generatedAt.slice(0, 10)}-recovery-draft.md`;
++      document.body.appendChild(anchor);
++      anchor.click();
++      anchor.remove();
++      window.URL.revokeObjectURL(url);
++      setRecoveryExportState("copied");
++      window.setTimeout(() => setRecoveryExportState("idle"), 2400);
++    } catch (error) {
++      console.error("Panic export failed.", error);
++      setRecoveryExportState("failed");
++    }
++  };
++
++  const handleShowRecentChanges = () => {
++    window.dispatchEvent(new CustomEvent("quipsly:show-recent-changes"));
++  };
+ 
+   const handleDocumentBlocksChange = (blocks: any[]) => {
+     setDocumentBlocks(blocks);
+@@ -360,6 +497,11 @@ export default function Workspace({
+     }
+   };
+ 
++  const recoveryExportLabel = activeBoundary ? "Copy/export section" : "Copy/export page";
++  const recoveryExportScopeHelp = activeBoundary
++    ? "Copies and downloads Markdown for the focused Chapter/Episode section."
++    : "Copies and downloads Markdown for the current notebook page/document.";
++
+   return (
+     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-[#fdfaf6] text-[#3d3122]">
+       {/* Left sidebar - ViewFilter */}
+@@ -390,8 +532,16 @@ export default function Workspace({
+                 <h1 className="mt-1 text-2xl md:text-3xl font-bold font-serif text-[#342618]">
+                   {documentTitle ?? "High Ground Odyssey Tonight Pack"}
+                 </h1>
++                <div className="mt-2 flex flex-wrap items-center gap-2">
++                  <span className={`rounded-full border px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] ${documentKindBadgeClasses(activeDocumentKind)}`}>
++                    {activeDocumentKind}
++                  </span>
++                  <span className="rounded-full border border-[#e8dcc4] bg-[#fffaf3] px-3 py-1 text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">
++                    {projectDocuments.length} Nest docs
++                  </span>
++                </div>
+                 <p className="mt-2 max-w-2xl text-sm leading-6 text-[#6b5b45]">
+-                Write in one continuous original content document. Make a heading block, tag it Chapter or Episode, and the outline becomes your navigation from that point until the next heading.
++                  {activeDocumentKindGuidance}
+                   <br />
+                   <span className="font-medium text-[#8c6b4a] opacity-90 mt-1 inline-block">💡 <strong>Pro tip:</strong> Press Enter to split blocks. Backspace at the start of a block merges it up.</span>
+                 </p>
+@@ -461,6 +611,95 @@ export default function Workspace({
+                 </button>
+               ) : null}
+             </div>
++            <div className="mb-4 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 via-[#fffaf3] to-amber-50 px-4 py-3 shadow-sm">
++              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
++                <div>
++                  <div className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-800">
++                    Daily Writing Safety
++                  </div>
++                  <p className="mt-1 text-xs leading-5 text-[#6b5b45]">
++                    Web is the canonical writing desk for now. Current document role: <strong>{activeDocumentKind}</strong>. {activeDocumentKindGuidance}
++                    If anything feels weird, export a local Markdown recovery packet before experimenting.
++                  </p>
++                </div>
++                <div className="flex flex-wrap items-center gap-2">
++                  <span className={`rounded-full border px-3 py-1.5 text-[11px] font-black uppercase tracking-[0.14em] ${
++                    saveState === "saving"
++                      ? "border-blue-200 bg-blue-50 text-blue-800"
++                      : saveState === "unsaved"
++                        ? "border-orange-200 bg-orange-50 text-orange-800"
++                        : "border-emerald-200 bg-white text-emerald-800"
++                  }`}>
++                    {saveState === "saving" ? "Saving now" : saveState === "unsaved" ? "Unsaved edits" : "Saved"}
++                  </span>
++                  <button
++                    type="button"
++                    onClick={() => void handlePanicExport()}
++                    title={recoveryExportScopeHelp}
++                    className="rounded-full border border-[#3d3122] bg-[#3d3122] px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-[#59442d]"
++                  >
++                    {recoveryExportState === "exporting"
++                      ? "Preparing..."
++                      : recoveryExportState === "copied"
++                        ? "Copied + Downloaded"
++                        : recoveryExportState === "failed"
++                          ? "Try Export Again"
++                          : recoveryExportLabel}
++                  </button>
++                  <button
++                    type="button"
++                    onClick={handleShowRecentChanges}
++                    className="rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-[#5e4b33] shadow-sm transition hover:-translate-y-0.5 hover:bg-[#f8f3e6]"
++                  >
++                    Recent Changes
++                  </button>
++                </div>
++              </div>
++            </div>
++            {activeHgoSourceKey ? (
++              <div className="mb-4 rounded-2xl border border-cyan-200 bg-cyan-50/80 px-4 py-3 shadow-sm">
++                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
++                  <div>
++                    <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-800">
++                      HGO source document
++                    </div>
++                    <p className="mt-1 text-xs leading-5 text-[#4f6470]">
++                      This is preserved source material for <strong>{hgoEpisodeLabel(activeHgoSourceKey)}</strong>. Tag and annotate here, then draft in a separate source-linked episode page so the source stays trustworthy.
++                    </p>
++                  </div>
++                  <button
++                    type="button"
++                    onClick={() => {
++                      startDraftShellTransition(() => {
++                        createHgoEpisodeDraftShellAction(activeProjectSlug, activeHgoSourceKey);
++                      });
++                    }}
++                    className="rounded-full border border-cyan-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-[0.14em] text-cyan-800 shadow-sm transition hover:-translate-y-0.5 hover:bg-cyan-100 disabled:opacity-50"
++                    disabled={isDraftShellPending}
++                  >
++                    {isDraftShellPending ? "Opening Draft..." : `Open ${hgoEpisodeLabel(activeHgoSourceKey)} Draft`}
++                  </button>
++                </div>
++              </div>
++            ) : null}
++            <div className="mb-4 grid gap-3 md:grid-cols-2">
++              <div className="rounded-2xl border border-[#e8dcc4] bg-white/80 px-4 py-3 shadow-sm">
++                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-[#a36f2e]">
++                  Living writing document
++                </div>
++                <p className="mt-1 text-xs leading-5 text-[#6b5b45]">
++                  Books, articles, scripts, and episode pages can be rewritten. Quipsly keeps structure tags, recent changes, snapshots, and recovery exports so changing the words does not mean losing the trail.
++                </p>
++              </div>
++              <div className="rounded-2xl border border-cyan-200 bg-cyan-50/70 px-4 py-3 shadow-sm">
++                <div className="text-[10px] font-black uppercase tracking-[0.22em] text-cyan-800">
++                  Fixed study source
++                </div>
++                <p className="mt-1 text-xs leading-5 text-[#4f6470]">
++                  Imported books, PDFs, articles, and course pages should stay intact. Highlights, tags, notes, citations, and research packets live as overlays so the source remains trustworthy.
++                </p>
++              </div>
++            </div>
+             <div className="flex flex-nowrap overflow-x-auto hide-scrollbar items-center gap-2 pb-1">
+               <div className="mr-2 shrink-0 flex flex-nowrap items-center gap-1 rounded-full border border-[#e6d7bc] bg-[#f8f1e3] p-1">
+                 <span className="pl-3 pr-1 text-[10px] font-bold uppercase tracking-wider text-[#a36f2e]">Nest:</span>
+diff --git a/apps/quipsly/src/app/(app)/nests/[slug]/actions.ts b/apps/quipsly/src/app/(app)/nests/[slug]/actions.ts
+index 6139319..52fd438 100644
+--- a/apps/quipsly/src/app/(app)/nests/[slug]/actions.ts
++++ b/apps/quipsly/src/app/(app)/nests/[slug]/actions.ts
+@@ -3,13 +3,116 @@
+ import { revalidatePath } from "next/cache";
+ import { redirect } from "next/navigation";
+ import { randomUUID } from "crypto";
++import { existsSync } from "node:fs";
++import { readFile } from "node:fs/promises";
++import path from "node:path";
+ import { getPrismaClient } from "@/lib/prisma";
+ import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
+ import { auth } from "@/auth";
+ 
+-export async function createDocumentAction(projectSlug: string) {
++type CreateNestDocumentKind = "draft" | "note" | "study-source";
++
++const DOCUMENT_PRESETS: Record<CreateNestDocumentKind, {
++  title: string;
++  sourceLabel: string;
++  blocks: string[];
++}> = {
++  draft: {
++    title: "New Draft",
++    sourceLabel: "document-kind:draft",
++    blocks: [
++      "Draft Title",
++      "Start drafting here. This is a side draft inside the Nest, not the canonical manuscript until you intentionally promote or copy it.",
++    ],
++  },
++  note: {
++    title: "New Note",
++    sourceLabel: "document-kind:note",
++    blocks: [
++      "Note Title",
++      "Capture the thought here. Notes can be tagged, linked, summarized, or pulled into drafts later without pretending they are manuscript truth.",
++    ],
++  },
++  "study-source": {
++    title: "New Study Source",
++    sourceLabel: "document-kind:fixed-source",
++    blocks: [
++      "Source Title",
++      "Paste or import source text here. Treat this as fixed source material: annotate over it, cite it, and keep provenance visible before using it in your own writing.",
++    ],
++  },
++};
++
++const HGO_PODCAST_YEAR_ONE_BASE = "apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1";
++
++const HGO_SOURCE_CATALOG = [
++  { key: "episode-1", label: "Episode 1 Source", relativePath: "1 - March 25 - Pilot/1.md" },
++  { key: "episode-2", label: "Episode 2 Source", relativePath: "2 - April 1 - It's a Metaphor!/2.md" },
++  { key: "episode-3", label: "Episode 3 Source", relativePath: "3 - April 8 - Chub and Jack/3.md" },
++  { key: "episode-4", label: "Episode 4 Source", relativePath: "4 - April 15 - Early Life Lessons/4.md" },
++  { key: "episode-5", label: "Episode 5 Source", relativePath: "5 - April 22 - Values/5.md" },
++  { key: "episode-6", label: "Episode 6 Source", relativePath: "6 - New - Values 2/6.md" },
++  { key: "episode-7", label: "Episode 7 Source", relativePath: "7 - In The Army Now/7.md" },
++  { key: "episode-8", label: "Episode 8 Source", relativePath: "8 - Don't Shush the Shusher/8.md" },
++  { key: "episode-9", label: "Episode 9 Source", relativePath: "9 - I wasn't born a leader/9.md" },
++] as const;
++
++export type HgoSourceKey = typeof HGO_SOURCE_CATALOG[number]["key"];
++
++function repoRootCandidate() {
++  const candidates = [
++    process.env.QUIPSLY_REPO_ROOT,
++    process.cwd(),
++    path.resolve(process.cwd(), ".."),
++    path.resolve(process.cwd(), "../.."),
++    path.resolve(process.cwd(), "../../.."),
++  ].filter(Boolean) as string[];
++
++  return candidates.find((candidate) => existsSync(path.join(candidate, "apps/web/content/_inbox"))) ?? process.cwd();
++}
++
++function resolveHgoSource(sourceKey: HgoSourceKey) {
++  const source = HGO_SOURCE_CATALOG.find((item) => item.key === sourceKey);
++  if (!source) {
++    throw new Error("Unknown HGO source.");
++  }
++
++  const repoRoot = repoRootCandidate();
++  const sourceRoot = path.resolve(repoRoot, HGO_PODCAST_YEAR_ONE_BASE);
++  const sourcePath = path.resolve(sourceRoot, source.relativePath);
++
++  if (!sourcePath.startsWith(sourceRoot)) {
++    throw new Error("Refusing to import a source outside the approved HGO source root.");
++  }
++
++  return { ...source, sourcePath };
++}
++
++function chunkSourceText(text: string, maxChars = 3600) {
++  const paragraphs = text
++    .replace(/\r\n/g, "\n")
++    .split(/\n{2,}/)
++    .map((part) => part.trim())
++    .filter(Boolean);
++
++  const chunks: string[] = [];
++  for (const paragraph of paragraphs) {
++    if (paragraph.length <= maxChars) {
++      chunks.push(paragraph);
++      continue;
++    }
++
++    for (let index = 0; index < paragraph.length; index += maxChars) {
++      chunks.push(paragraph.slice(index, index + maxChars).trim());
++    }
++  }
++
++  return chunks;
++}
++
++export async function createDocumentAction(projectSlug: string, kind: CreateNestDocumentKind = "note") {
+   const session = await auth();
+-  const actorEmail = session?.user?.email;
++  const actorEmail = session?.user?.primaryEmail || session?.user?.email;
+ 
+   if (!actorEmail) {
+     throw new Error("UNAUTHORIZED: Must be logged in to create a document.");
+@@ -34,12 +137,446 @@ export async function createDocumentAction(projectSlug: string) {
+     throw new Error("Project not found");
+   }
+ 
++  const preset = DOCUMENT_PRESETS[kind] ?? DOCUMENT_PRESETS.note;
++  const stableDocumentId = randomUUID();
++  const document = await prisma.studioDocument.create({
++    data: {
++      projectId: project.id,
++      stableId: stableDocumentId,
++      title: preset.title,
++      sourceLabel: preset.sourceLabel,
++      blocks: {
++        create: preset.blocks.map((body, index) => ({
++          stableId: `${stableDocumentId}-block-${index + 1}`,
++          order: index,
++          title: index === 0 ? body : null,
++          body,
++          sourceLabel: preset.sourceLabel,
++        })),
++      },
++    },
++  });
++
++  revalidatePath(`/nests/${projectSlug}`);
++  revalidatePath(`/create`);
++  redirect(`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(document.id)}`);
++}
++
++export async function renameDocumentAction(projectSlug: string, documentId: string, nextTitle: string) {
++  const session = await auth();
++  const actorEmail = session?.user?.primaryEmail || session?.user?.email;
++
++  if (!actorEmail) {
++    throw new Error("UNAUTHORIZED: Must be logged in to rename a document.");
++  }
++
++  const trimmedTitle = nextTitle.trim().replace(/\s+/g, " ");
++  if (!trimmedTitle) {
++    throw new Error("A page needs a title.");
++  }
++
++  if (trimmedTitle.length > 160) {
++    throw new Error("Keep page titles under 160 characters.");
++  }
++
++  const access = await resolveStudioProjectAccess({
++    projectSlug,
++    email: actorEmail,
++    action: "write",
++  });
++
++  if (!access.allowed) {
++    throw new Error("UNAUTHORIZED: You do not have write access to this Nest.");
++  }
++
++  const prisma = getPrismaClient();
++  const project = await prisma.studioProject.findFirst({
++    where: { slug: projectSlug },
++    select: { id: true, slug: true },
++  });
++
++  if (!project) {
++    throw new Error("Project not found");
++  }
++
++  const document = await prisma.studioDocument.findFirst({
++    where: {
++      id: documentId,
++      projectId: project.id,
++    },
++    select: {
++      id: true,
++      title: true,
++    },
++  });
++
++  if (!document) {
++    throw new Error("Document not found in this Nest.");
++  }
++
++  if (document.title === trimmedTitle) {
++    revalidatePath(`/create`);
++    return { ok: true, title: trimmedTitle };
++  }
++
++  await prisma.studioDocument.update({
++    where: { id: document.id },
++    data: { title: trimmedTitle },
++  });
++
++  revalidatePath(`/nests/${projectSlug}`);
++  revalidatePath(`/create`);
++  return { ok: true, title: trimmedTitle };
++}
++
++export async function duplicateDocumentAsDraftAction(projectSlug: string, documentId: string) {
++  const session = await auth();
++  const actorEmail = session?.user?.primaryEmail || session?.user?.email;
++
++  if (!actorEmail) {
++    throw new Error("UNAUTHORIZED: Must be logged in to duplicate a document.");
++  }
++
++  const access = await resolveStudioProjectAccess({
++    projectSlug,
++    email: actorEmail,
++    action: "write",
++  });
++
++  if (!access.allowed) {
++    throw new Error("UNAUTHORIZED: You do not have write access to this Nest.");
++  }
++
++  const prisma = getPrismaClient();
++  const project = await prisma.studioProject.findFirst({
++    where: { slug: projectSlug },
++    select: { id: true, slug: true },
++  });
++
++  if (!project) {
++    throw new Error("Project not found");
++  }
++
++  const sourceDocument = await prisma.studioDocument.findFirst({
++    where: {
++      id: documentId,
++      projectId: project.id,
++    },
++    include: {
++      blocks: {
++        orderBy: { order: "asc" },
++      },
++    },
++  });
++
++  if (!sourceDocument) {
++    throw new Error("Document not found in this Nest.");
++  }
++
++  const stableDocumentId = randomUUID();
++  const sourceLabel = [
++    "document-kind:draft",
++    "draft-kind:branch",
++    `branched-from-document:${sourceDocument.id}`,
++    sourceDocument.sourceLabel ? `branched-from-label:${sourceDocument.sourceLabel}` : null,
++  ].filter(Boolean).join(";");
++
++  const duplicate = await prisma.studioDocument.create({
++    data: {
++      projectId: project.id,
++      stableId: stableDocumentId,
++      title: `${sourceDocument.title} - Draft Copy`,
++      sourceLabel,
++      blocks: {
++        create: sourceDocument.blocks.map((block, index) => ({
++          stableId: `${stableDocumentId}-block-${index + 1}`,
++          order: index,
++          title: block.title,
++          body: block.body,
++          sourceLabel,
++        })),
++      },
++    },
++    select: { id: true },
++  });
++
++  revalidatePath(`/nests/${projectSlug}`);
++  revalidatePath(`/create`);
++  return {
++    ok: true,
++    documentId: duplicate.id,
++    href: `/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(duplicate.id)}`,
++  };
++}
++
++export async function promoteNoteToWritingPageAction(projectSlug: string, documentId: string) {
++  const session = await auth();
++  const actorEmail = session?.user?.primaryEmail || session?.user?.email;
++
++  if (!actorEmail) {
++    throw new Error("UNAUTHORIZED: Must be logged in to promote a note.");
++  }
++
++  const access = await resolveStudioProjectAccess({
++    projectSlug,
++    email: actorEmail,
++    action: "write",
++  });
++
++  if (!access.allowed) {
++    throw new Error("UNAUTHORIZED: You do not have write access to this Nest.");
++  }
++
++  const prisma = getPrismaClient();
++  const project = await prisma.studioProject.findFirst({
++    where: { slug: projectSlug },
++    select: { id: true, slug: true },
++  });
++
++  if (!project) {
++    throw new Error("Project not found");
++  }
++
++  const sourceDocument = await prisma.studioDocument.findFirst({
++    where: {
++      id: documentId,
++      projectId: project.id,
++    },
++    include: {
++      blocks: {
++        orderBy: { order: "asc" },
++      },
++    },
++  });
++
++  if (!sourceDocument) {
++    throw new Error("Document not found in this Nest.");
++  }
++
++  if (!String(sourceDocument.sourceLabel ?? "").toLowerCase().includes("document-kind:note")) {
++    throw new Error("Only quick notes can be promoted into writing pages.");
++  }
++
++  const stableDocumentId = randomUUID();
++  const sourceLabel = [
++    "document-kind:draft",
++    "draft-kind:promoted-note",
++    `promoted-from-document:${sourceDocument.id}`,
++    sourceDocument.sourceLabel ? `promoted-from-label:${sourceDocument.sourceLabel}` : null,
++  ].filter(Boolean).join(";");
++
++  const title = sourceDocument.title.toLowerCase().includes("note")
++    ? sourceDocument.title.replace(/\bnote\b/gi, "Draft").trim()
++    : `${sourceDocument.title} - Writing Draft`;
++
++  const promoted = await prisma.studioDocument.create({
++    data: {
++      projectId: project.id,
++      stableId: stableDocumentId,
++      title: title || `${sourceDocument.title} - Writing Draft`,
++      sourceLabel,
++      blocks: {
++        create: sourceDocument.blocks.map((block, index) => ({
++          stableId: `${stableDocumentId}-block-${index + 1}`,
++          order: index,
++          title: block.title,
++          body: block.body,
++          sourceLabel,
++        })),
++      },
++    },
++    select: { id: true },
++  });
++
++  revalidatePath(`/nests/${projectSlug}`);
++  revalidatePath(`/create`);
++  return {
++    ok: true,
++    documentId: promoted.id,
++    href: `/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(promoted.id)}`,
++  };
++}
++
++export async function importHgoEpisodeSourceAction(projectSlug: string, sourceKey: HgoSourceKey) {
++  const session = await auth();
++  const actorEmail = session?.user?.primaryEmail || session?.user?.email;
++
++  if (!actorEmail) {
++    throw new Error("UNAUTHORIZED: Must be logged in to import a source document.");
++  }
++
++  const access = await resolveStudioProjectAccess({
++    projectSlug,
++    email: actorEmail,
++    action: "write",
++  });
++
++  if (!access.allowed) {
++    throw new Error("UNAUTHORIZED: You do not have write access to this Nest.");
++  }
++
++  if (projectSlug !== "high-ground-odyssey-manuscript") {
++    throw new Error("HGO episode source import is only available inside the High Ground Odyssey Nest.");
++  }
++
++  const prisma = getPrismaClient();
++  const project = await prisma.studioProject.findFirst({
++    where: { slug: projectSlug },
++  });
++
++  if (!project) {
++    throw new Error("Project not found");
++  }
++
++  const source = resolveHgoSource(sourceKey);
++  const sourceLabel = [
++    "document-kind:fixed-source",
++    "hgo-source-family:podcast-year-1",
++    `hgo-source:${source.key}`,
++    `source-path:${source.relativePath}`,
++  ].join(";");
++
++  const existing = await prisma.studioDocument.findFirst({
++    where: {
++      projectId: project.id,
++      sourceLabel: { contains: `hgo-source:${source.key}` },
++    },
++    select: { id: true },
++  });
++
++  if (existing) {
++    redirect(`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(existing.id)}`);
++  }
++
++  if (!existsSync(source.sourcePath)) {
++    throw new Error(`HGO source file is missing: ${source.sourcePath}`);
++  }
++
++  const rawText = await readFile(source.sourcePath, "utf-8");
++  const stableDocumentId = randomUUID();
++  const provenanceBlock = [
++    `${source.label}`,
++    "",
++    "Quipsly imported this as a fixed Study Source document.",
++    `Source family: Podcast Year 1`,
++    `Source path: ${source.sourcePath}`,
++    `Relative path: ${source.relativePath}`,
++    "Safety rule: tag, annotate, cite, and draft from this source; do not silently replace the living manuscript with it.",
++  ].join("\n");
++  const sourceBlocks = [
++    source.label,
++    provenanceBlock,
++    ...chunkSourceText(rawText),
++  ];
++
++  const document = await prisma.studioDocument.create({
++    data: {
++      projectId: project.id,
++      stableId: stableDocumentId,
++      title: source.label,
++      sourceLabel,
++      blocks: {
++        create: sourceBlocks.map((body, index) => ({
++          stableId: `${stableDocumentId}-block-${index + 1}`,
++          order: index,
++          title: index === 0 ? source.label : null,
++          body,
++          sourceLabel,
++        })),
++      },
++    },
++  });
++
++  revalidatePath(`/nests/${projectSlug}`);
++  revalidatePath(`/create`);
++  redirect(`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(document.id)}`);
++}
++
++export async function createHgoEpisodeDraftShellAction(projectSlug: string, sourceKey: HgoSourceKey) {
++  const session = await auth();
++  const actorEmail = session?.user?.primaryEmail || session?.user?.email;
++
++  if (!actorEmail) {
++    throw new Error("UNAUTHORIZED: Must be logged in to create an episode draft.");
++  }
++
++  const access = await resolveStudioProjectAccess({
++    projectSlug,
++    email: actorEmail,
++    action: "write",
++  });
++
++  if (!access.allowed) {
++    throw new Error("UNAUTHORIZED: You do not have write access to this Nest.");
++  }
++
++  if (projectSlug !== "high-ground-odyssey-manuscript") {
++    throw new Error("HGO episode draft shells are only available inside the High Ground Odyssey Nest.");
++  }
++
++  const prisma = getPrismaClient();
++  const project = await prisma.studioProject.findFirst({
++    where: { slug: projectSlug },
++  });
++
++  if (!project) {
++    throw new Error("Project not found");
++  }
++
++  const source = resolveHgoSource(sourceKey);
++  const episodeNumber = source.key.replace("episode-", "");
++  const sourceLabel = [
++    "document-kind:draft",
++    "hgo-draft-kind:episode-page",
++    `hgo-source:${source.key}`,
++    "source-family:podcast-year-1",
++  ].join(";");
++
++  const existing = await prisma.studioDocument.findFirst({
++    where: {
++      projectId: project.id,
++      sourceLabel: { contains: `hgo-draft-kind:episode-page;hgo-source:${source.key}` },
++    },
++    select: { id: true },
++  });
++
++  if (existing) {
++    redirect(`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(existing.id)}`);
++  }
++
++  const stableDocumentId = randomUUID();
++  const title = `Episode ${episodeNumber} Draft / Episode Page`;
++  const blocks = [
++    title,
++    [
++      `Source-linked draft shell for ${source.label}.`,
++      `Source family: Podcast Year 1`,
++      `Source path: ${source.sourcePath}`,
++      "",
++      "Use this document for episode-page copy, article drafts, manuscript connective tissue, social descriptions, and human/AI co-writing.",
++      "Drafting is allowed here. Promotion into the living manuscript or public publishing remains a separate reviewed action.",
++    ].join("\n"),
++    "Working thesis / hook\n\nWhat is the useful promise of this episode for a reader, listener, or viewer?",
++    "Episode page draft\n\nStart with a human-useful summary, then add sections, quotes, links, and source-backed notes.",
++    "Book/manuscript candidate notes\n\nIf this episode reveals a stronger chapter idea, capture it here before promoting anything.",
++    "Platform copy seeds\n\nYouTube description:\n\nPodcast/RSS summary:\n\nPatreon/support note:\n\nShorts/social hooks:",
++  ];
++
+   const document = await prisma.studioDocument.create({
+     data: {
+       projectId: project.id,
+-      stableId: randomUUID(),
+-      title: "New Document",
+-      sourceLabel: "nest-kind:study", // By default, new side documents are study/research docs
++      stableId: stableDocumentId,
++      title,
++      sourceLabel,
++      blocks: {
++        create: blocks.map((body, index) => ({
++          stableId: `${stableDocumentId}-block-${index + 1}`,
++          order: index,
++          title: index === 0 ? title : null,
++          body,
++          sourceLabel,
++        })),
++      },
+     },
+   });
+ 
+diff --git a/docs/quipsly/writing-surface-history-and-consolidation-plan.md b/docs/quipsly/writing-surface-history-and-consolidation-plan.md
+index 8b6b651..732bafa 100644
+--- a/docs/quipsly/writing-surface-history-and-consolidation-plan.md
++++ b/docs/quipsly/writing-surface-history-and-consolidation-plan.md
+@@ -2,6 +2,83 @@
+ 
+ Last updated: 2026-06-28
+ 
++Latest validation checkpoint:
++
++- `./node_modules/.bin/tsc -p apps/quipsly/tsconfig.json --noEmit` passed on 2026-06-28 after the notebook rail, page shelf, shortcuts, quick-create, page rename, last-touched rows, draft branching, and note promotion changes.
++
++## Current implementation checkpoint
++
++The `/create` sidebar now treats notebook navigation as the primary interaction instead of showing every Quipsly concept at once.
++
++The left rail is organized into three author-facing modes:
++
++- Pages: quick capture, writing pages, drafts, notes, and fixed sources.
++- Structure: Chapter/Episode heading creation and the document outline.
++- Tools: workflow lenses and advanced Quipsly context.
++
++The rail also preserves lightweight local continuity:
++
++- The last selected notebook mode is remembered per Nest.
++- The last selected Page Shelf filter is remembered per Nest.
++- Recently opened pages are shown in Pages mode.
++- This is local UX memory only; it does not create another manuscript truth.
++
++Pages mode now includes a Page Shelf filter:
++
++- All: everything in the Nest.
++- Writing: manuscripts, drafts, and editable pages.
++- Notes: quick captures and scraps.
++- Sources: fixed study/reference material.
++
++The shelf filter changes navigation only. It does not move documents, change document truth, or create a second manuscript.
++
++Keyboard navigation checkpoint:
++
++- `Cmd/Ctrl+K` opens Pages mode and focuses notebook search.
++- `Alt+A` switches to the All shelf.
++- `Alt+W` switches to the Writing shelf.
++- `Alt+N` switches to the Notes shelf.
++- `Alt+S` switches to the Sources shelf.
++- `Alt+P` creates a new writing page.
++- `Alt+Q` creates a quick note.
++- `Alt+R` creates a fixed study source.
++- Quick-create shortcuts also switch Pages mode to the matching shelf: Writing, Notes, or Sources.
++- The shortcut does not fire while typing inside an input, textarea, or contenteditable area.
++- This is part of the OneNote-floor goal: fast retrieval must become muscle memory.
++
++Page management checkpoint:
++
++- The active page can be renamed from the notebook rail.
++- Rename updates document metadata only.
++- Rename does not rewrite the body, first block, manuscript text, or fixed source text.
++- Successful rename refreshes the route so the visible notebook state comes back from canonical server data.
++- Failed rename shows an inline error in the notebook rail instead of failing silently.
++- This preserves the distinction between notebook organization and writing/source truth.
++
++Draft branching checkpoint:
++
++- The active page can be duplicated as a draft from the notebook rail.
++- Branching creates a new editable draft document.
++- Branching preserves lineage with `branched-from-document` and `branched-from-label` metadata.
++- Branching does not mutate the original page, fixed source, manuscript text, or external publication state.
++
++Note promotion checkpoint:
++
++- Quick notes can be promoted into writing pages from the notebook rail.
++- Promotion creates a new editable draft document seeded from the note.
++- Promotion preserves lineage with `promoted-from-document` and `promoted-from-label` metadata.
++- Promotion does not mutate or delete the original note.
++
++Recovery export checkpoint:
++
++- Markdown recovery/export uses calm scope-aware labels: `Copy/export page` or `Copy/export section`.
++- Markdown recovery/export includes explicit export-scope metadata.
++- If a Chapter/Episode section is focused, the export contains that focused section.
++- If no section is focused, the export contains the current notebook page/document.
++- The export records how many blocks were exported out of the page total.
++
++This is intentionally a UX floor, not the final architecture. The point is to make the daily writing room feel navigable before assistant, publishing, research, and production intelligence become prominent.
++
+ ## Product decision
+ 
+ Quipsly writing must become at least as easy to organize and navigate as OneNote before advanced Quipsly intelligence is allowed to dominate the experience.
+@@ -326,4 +403,3 @@ Avoid `git add .` until generated files, old prototypes, and external-output art
+ If a writing feature does not make it easier to capture, organize, navigate, write, revise, retrieve, or safely publish, it is not part of the writing MVP.
+ 
+ Quipsly can become a research and production operating system. But the writing room must first feel like a room.
+-

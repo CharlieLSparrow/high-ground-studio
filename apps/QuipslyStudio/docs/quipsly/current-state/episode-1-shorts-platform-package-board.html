@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quipsly shorts platform package board</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101610;
+      --panel: #18241a;
+      --ink: #f8efd5;
+      --muted: #baaf96;
+      --gold: #f2ca4d;
+      --moss: #8fc974;
+      --blue: #5abfd3;
+      --line: rgba(248,239,213,.16);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 8% 0%, rgba(143,201,116,.2), transparent 25rem),
+        radial-gradient(circle at 90% 8%, rgba(242,202,77,.14), transparent 24rem),
+        var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1240px; margin: 0 auto; padding: 42px 24px 70px; }
+    .hero, .card { border: 1px solid var(--line); background: rgba(24,36,26,.88); border-radius: 28px; box-shadow: 0 28px 90px rgba(0,0,0,.28); }
+    .hero { padding: 32px; margin-bottom: 18px; }
+    .eyebrow { margin: 0 0 8px; color: var(--gold); text-transform: uppercase; letter-spacing: .22em; font-size: .72rem; font-weight: 900; }
+    h1 { margin: 0; font-size: clamp(2.4rem, 6vw, 4.9rem); line-height: .93; letter-spacing: -.07em; }
+    h2, h3 { margin: 0 0 8px; }
+    p, li { color: var(--muted); }
+    .episode-coverage { margin-top: 18px; }
+    .episode-coverage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+    .episode-coverage article { border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(143,201,116,.07); }
+    .episode-coverage strong { display: block; color: var(--moss); text-transform: uppercase; letter-spacing: .08em; }
+    .episode-coverage span, .episode-coverage small { display: block; color: var(--muted); }
+    .coverage-warning { color: var(--gold); margin: 8px 0 0; }
+    .platform-readiness-coverage { margin-top: 18px; }
+    .platform-readiness-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+    .platform-readiness-coverage article { border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(90,191,211,.07); }
+    .platform-readiness-coverage strong { display: block; color: var(--blue); letter-spacing: .03em; }
+    .platform-readiness-coverage span, .platform-readiness-coverage small { display: block; color: var(--muted); }
+    .card { padding: 20px; margin-top: 16px; }
+    header { display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: center; }
+    .score { display: grid; place-items: center; padding: 12px; min-height: 88px; border-radius: 22px; background: rgba(242,202,77,.1); border: 1px solid rgba(242,202,77,.24); text-align: center; }
+    .score strong { color: var(--gold); font-size: 2.4rem; line-height: 1; }
+    .score span { color: var(--muted); font-size: .74rem; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+    article { border: 1px solid var(--line); border-radius: 20px; padding: 14px; background: rgba(255,255,255,.035); }
+    small { display: block; color: var(--moss); margin-top: 3px; }
+    .tags { color: var(--blue); font-weight: 700; }
+    code { display: block; white-space: pre-wrap; word-break: break-word; padding: 10px 12px; border-radius: 12px; background: rgba(0,0,0,.32); color: #fff6bd; border: 1px solid rgba(242,202,77,.18); font-size: .8rem; }
+    @media (max-width: 860px) { .grid, header { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Quipsly Studio - platform package board</p>
+      <h1>Make the short feel native before it ships.</h1>
+      <p>Draft hooks, captions, titles, descriptions, hashtags, and platform notes for the best candidates. The top current candidate is <strong>Episode 2 Review Candidate 01 - 08:24</strong>.</p>
+      
+    <section class="episode-coverage">
+      <p class="eyebrow">Episode coverage</p>
+      <div class="episode-coverage-grid">
+        <article>
+          <strong>episode-2</strong>
+          <span>5 shorts</span>
+          <small>5 exported / 5 reviewable</small>
+        </article>
+        
+        <article>
+          <strong>unknown-episode</strong>
+          <span>4 shorts</span>
+          <small>0 exported / 0 reviewable</small>
+        </article>
+        </div>
+      <p class="coverage-warning">4 shorts need episode provenance triage.</p>
+    </section>
+    
+      
+    <section class="platform-readiness-coverage">
+      <p class="eyebrow">Platform readiness</p>
+      <div class="platform-readiness-grid">
+        <article>
+          <strong>facebookReels</strong>
+          <span>0 ready</span>
+          <small>5 review / 4 blocked</small>
+        </article>
+        
+        <article>
+          <strong>highGroundOdysseyEmbed</strong>
+          <span>0 ready</span>
+          <small>5 review / 4 blocked</small>
+        </article>
+        
+        <article>
+          <strong>instagramReels</strong>
+          <span>0 ready</span>
+          <small>5 review / 4 blocked</small>
+        </article>
+        
+        <article>
+          <strong>linkedin</strong>
+          <span>0 ready</span>
+          <small>5 review / 4 blocked</small>
+        </article>
+        
+        <article>
+          <strong>patreonTeaser</strong>
+          <span>0 ready</span>
+          <small>5 review / 4 blocked</small>
+        </article>
+        
+        <article>
+          <strong>tiktokStyle</strong>
+          <span>0 ready</span>
+          <small>5 review / 4 blocked</small>
+        </article>
+        
+        <article>
+          <strong>youtubeShorts</strong>
+          <span>0 ready</span>
+          <small>5 review / 4 blocked</small>
+        </article>
+        </div>
+    </section>
+    
+    </section>
+    
+            <section class="card">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 01 - 08:24</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 7 needs review / 0 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Episode Review Candidate</p>
+                  <p>Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Episode Review Candidate
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;episode-2-review-candidate-01-08-24&#x27; id &#x27;471E4086-8367-4E7C-8C5D-BB7132DF3524&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 02 - 11:29</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 7 needs review / 0 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Episode Review Candidate</p>
+                  <p>Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Episode Review Candidate
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;episode-2-review-candidate-02-11-29&#x27; id &#x27;48355445-FB52-4FD4-A805-8DD91AE57F70&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 03 - 16:00</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 7 needs review / 0 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Episode Review Candidate</p>
+                  <p>Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Episode Review Candidate
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;episode-2-review-candidate-03-16-00&#x27; id &#x27;B3454844-F98C-4EAC-B2BC-CE31C5036F4E&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 04 - 20:59</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 7 needs review / 0 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Episode Review Candidate</p>
+                  <p>Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Episode Review Candidate
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;episode-2-review-candidate-04-20-59&#x27; id &#x27;1A679D84-1478-4E68-8744-910A49795A15&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 05 - 24:29</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 7 needs review / 0 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: Episode Review Candidate<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Episode Review Candidate<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Episode Review Candidate<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Episode Review Candidate<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> Episode Review Candidate</p>
+                  <p>Episode Review Candidate
+
+A short moment from High Ground Odyssey about episode, review, candidate.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>Episode Review Candidate
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Episode #Review #Candidate #Write #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Write a sharper first-line hook before exporting or posting.</li><li>Create a caption/overlay plan that does not cover faces.</li><li>Listen through once for clipping, sudden loudness, or awkward cut points.</li></ul>
+                  <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;episode-2-review-candidate-05-24-29&#x27; id &#x27;3AB6C255-E701-4316-9011-6CB8839B6243&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>67.0</strong><span>needs-sharper-hook-or-proof</span></div>
+                <div>
+                <p class="eyebrow">missing-export</p>
+                <h2>Script Cursor Proof Short</h2>
+                <p>Export locally first so the decision is based on a real file.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 0 needs review / 7 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: This is the transcript spine one timed line that can become captions...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Script Cursor Proof Short<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Script Cursor Proof Short<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Script Cursor Proof Short<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> This is the transcript spine one timed line that can become...</p>
+                  <p>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+
+A short moment from High Ground Odyssey about script, cursor, proof.</p>
+                  <p class="tags">#Script #Cursor #Proof #Short #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Script #Cursor #Proof #Short #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Export locally before making a posting decision.</li><li>Make sure the clip has enough context to stand alone.</li></ul>
+                  <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;script-cursor-proof-short&#x27; id &#x27;B5C93EC4-0CA6-4CE7-91BE-592D658659B8&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>67.0</strong><span>needs-sharper-hook-or-proof</span></div>
+                <div>
+                <p class="eyebrow">missing-export</p>
+                <h2>Script Ledger Proof Short</h2>
+                <p>Export locally first so the decision is based on a real file.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 0 needs review / 7 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: This is the transcript spine one timed line that can become captions...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Script Ledger Proof Short<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Script Ledger Proof Short<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Script Ledger Proof Short<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> This is the transcript spine one timed line that can become...</p>
+                  <p>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+
+A short moment from High Ground Odyssey about script, ledger, proof.</p>
+                  <p class="tags">#Script #Ledger #Proof #Short #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Script #Ledger #Proof #Short #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Export locally before making a posting decision.</li><li>Make sure the clip has enough context to stand alone.</li></ul>
+                  <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;script-ledger-proof-short&#x27; id &#x27;456EB86F-9F84-4102-85B6-E6B7C0595681&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>67.0</strong><span>needs-sharper-hook-or-proof</span></div>
+                <div>
+                <p class="eyebrow">missing-export</p>
+                <h2>Agentctl Port Discovery Proof Short</h2>
+                <p>Export locally first so the decision is based on a real file.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 0 needs review / 7 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: This is the transcript spine one timed line that can become captions...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Agentctl Port Discovery Proof Short<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Agentctl Port Discovery Proof Short<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Agentctl Port Discovery Proof Short<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> This is the transcript spine one timed line that can become...</p>
+                  <p>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+
+A short moment from High Ground Odyssey about agentctl, port, discovery.</p>
+                  <p class="tags">#Agentctl #Port #Discovery #Proof #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Agentctl #Port #Discovery #Proof #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Export locally before making a posting decision.</li><li>Make sure the clip has enough context to stand alone.</li></ul>
+                  <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;agentctl-port-discovery-proof-short&#x27; id &#x27;677FAA5B-B163-4314-BF00-C2357F734E37&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+            <section class="card">
+              <header>
+                <div class="score"><strong>67.0</strong><span>needs-sharper-hook-or-proof</span></div>
+                <div>
+                <p class="eyebrow">missing-export</p>
+                <h2>Search Captions Proof Short</h2>
+                <p>Export locally first so the decision is based on a real file.</p>
+                <p><strong>Platform readiness:</strong> 0 ready / 0 needs review / 7 blocked</p>
+              </div>
+              </header>
+              <div class="grid">
+                <article>
+                  <h3>Hook tests</h3>
+                  <ul><li><strong>direct</strong>: This is the transcript spine one timed line that can become captions...<small>Fastest to understand in the feed.</small></li><li><strong>curiosity</strong>: The part nobody tells you about Search Captions Proof Short<small>Creates an information gap without lying.</small></li><li><strong>teaching</strong>: One useful way to think about Search Captions Proof Short<small>Frames the clip as immediately useful.</small></li><li><strong>conversation</strong>: We had to talk through Search Captions Proof Short<small>Preserves the podcast&#x27;s human conversation feel.</small></li></ul>
+                </article>
+                <article>
+                  <h3>YouTube Shorts</h3>
+                  <p><strong>Title:</strong> This is the transcript spine one timed line that can become...</p>
+                  <p>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+
+A short moment from High Ground Odyssey about search, captions, proof.</p>
+                  <p class="tags">#Search #Captions #Proof #Short #HighGroundOdyssey #PodcastClips #Wisdom #Storytelling</p>
+                </article>
+                <article>
+                  <h3>Instagram / Facebook</h3>
+                  <p>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...
+
+Save this if it helps you think about the work differently.</p>
+                  <p class="tags">#Search #Captions #Proof #Short #HighGroundOdyssey #Reels #PodcastMoment #CreativeLife #GrowthMindset</p>
+                </article>
+                <article>
+                  <h3>Improve before posting</h3>
+                  <ul><li>Create a caption/overlay plan that does not cover faces.</li><li>Export locally before making a posting decision.</li><li>Make sure the clip has enough context to stand alone.</li></ul>
+                  <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;search-captions-proof-short&#x27; id &#x27;85F95E60-56E9-4603-8961-B01CF8E84754&#x27;</code>
+                </article>
+              </div>
+            </section>
+            
+  </main>
+</body>
+</html>

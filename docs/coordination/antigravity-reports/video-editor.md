@@ -571,7 +571,7 @@ I explicitly integrated the new `packages/quipsly-domain/src/recording.ts` found
 2. **Safe Block Deletion:** Upgraded the block deletion UX. Previously, an accidental click anywhere on a transcript block would toggle it off/on (cutting it from the active edit). Now, deletion requires a deliberate `Shift+Click` on the block, bringing it inline with professional NLE paradigms and preventing accidental timeline destruction while trying to navigate text.
 
 **Validation run:**
-- Event delegation tested visually: word clicks `stopPropagation()` to seek the playhead. `Shift+Click` events bubble up to the block container to toggle deletion safely. 
+- Event delegation tested visually: word clicks `stopPropagation()` to seek the playhead. `Shift+Click` events bubble up to the block container to toggle deletion safely.
 
 **Risks:**
 - The transcript container in `page.tsx` is becoming quite dense. If we add more features (like right-click context menus for speaker assignment), we will absolutely need to extract `TranscriptView.tsx`.

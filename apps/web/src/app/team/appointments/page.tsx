@@ -215,7 +215,7 @@ export default async function TeamAppointmentsPage({
                 id="timezone"
                 name="timezone"
                 type="text"
-                defaultValue="America/Denver"
+                defaultValue="America/Los_Angeles"
                 className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none"
               />
             </div>

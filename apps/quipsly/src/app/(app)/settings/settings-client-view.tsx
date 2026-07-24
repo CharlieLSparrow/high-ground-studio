@@ -8,14 +8,10 @@ import {
   Plus, 
   Trash2, 
   ShieldAlert,
-  CheckCircle,
   Building,
-  ArrowRight,
-  Loader2,
   FileText,
   Activity,
   X,
-  Lock,
   ChevronRight,
   Edit,
   Eye,
@@ -24,10 +20,8 @@ import {
 } from "lucide-react";
 import { 
   updateOrgDetailsAction, 
-  inviteTeamMemberAction, 
   removeTeamMemberAction, 
-  updateMemberRoleAction, 
-  updateSubscriptionAction 
+  updateMemberRoleAction
 } from "./actions";
 import { 
   createCategoryAction, 
@@ -74,12 +68,21 @@ interface Member {
 interface LogEvent {
   id: string;
   eventName: string;
-  payloadJson: string;
+  payloadJson: unknown;
   createdAt: Date;
   user: {
     name: string | null;
     primaryEmail: string;
   };
+}
+
+function readableEventPayload(payload: unknown) {
+  if (typeof payload !== "string") return payload;
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return payload;
+  }
 }
 
 export function SettingsClientView({
@@ -110,26 +113,16 @@ export function SettingsClientView({
   const [orgSaving, setOrgSaving] = useState(false);
   const [orgMessage, setOrgMessage] = useState("");
 
-  // Roster states
+  // Roster state
   const [members, setMembers] = useState<Member[]>(initialMembers);
-  const [isInviteOpen, setIsInviteOpen] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState("");
-  const [inviteRole, setInviteRole] = useState<OrganizationRole>(OrganizationRole.VIEWER);
-  const [inviteLoading, setInviteLoading] = useState(false);
-  const [inviteError, setInviteError] = useState("");
 
-  // Subscriptions & simulated checkout states
-  const [activePlan, setActivePlan] = useState<SubscriptionPlan>(initialOrg.subscription?.plan || plans[0]);
-  const [activeSubStatus, setActiveSubStatus] = useState<SubscriptionStatus>(initialOrg.subscription?.status || SubscriptionStatus.TRIALING);
-  const [selectedPlanForUpgrade, setSelectedPlanForUpgrade] = useState<SubscriptionPlan | null>(null);
-  const [checkoutStep, setCheckoutStep] = useState<"idle" | "details" | "processing" | "success">("idle");
-  const [cardNumber, setCardNumber] = useState("4242 •••• •••• 4242");
-  const [cardExpiry, setCardExpiry] = useState("12/29");
-  const [cardCVC, setCardCVC] = useState("314");
-  const [checkoutLoadingText, setCheckoutLoadingText] = useState("");
+  // Subscription records are displayed as persisted data only. Quipsly does
+  // not currently expose a provider-backed checkout from this surface.
+  const activePlan = (initialOrg.subscription?.plan || null) as SubscriptionPlan | null;
+  const activeSubStatus = (initialOrg.subscription?.status || null) as SubscriptionStatus | null;
 
   // Audit state
-  const [events, setEvents] = useState<LogEvent[]>(initialEvents);
+  const events = initialEvents as LogEvent[];
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
 
   // Knowledge Base management state
@@ -150,7 +143,6 @@ export function SettingsClientView({
 
   // Can execute mutations
   const isOwnerOrAdmin = currentUserRole === OrganizationRole.OWNER || currentUserRole === OrganizationRole.ADMIN;
-  const isOwner = currentUserRole === OrganizationRole.OWNER;
 
   const handleUpdateOrg = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -166,35 +158,6 @@ export function SettingsClientView({
       setOrgMessage(res.error || "Failed to update organization details.");
     }
     setOrgSaving(false);
-  };
-
-  const handleInvite = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!inviteEmail) return;
-    setInviteLoading(true);
-    setInviteError("");
-
-    const res = await inviteTeamMemberAction(org.id, inviteEmail, inviteRole);
-    if (res.ok) {
-      const emailLower = inviteEmail.toLowerCase();
-      const mockNewMember: Member = {
-        id: `mock-id-${Date.now()}`,
-        userId: `user-id-${Date.now()}`,
-        role: inviteRole,
-        user: {
-          id: `user-id-${Date.now()}`,
-          name: emailLower.split("@")[0],
-          primaryEmail: emailLower,
-          image: null,
-        }
-      };
-      setMembers([...members, mockNewMember]);
-      setInviteEmail("");
-      setIsInviteOpen(false);
-    } else {
-      setInviteError(res.error || "Failed to invite member.");
-    }
-    setInviteLoading(false);
   };
 
   const handleRemoveMember = async (memberId: string) => {
@@ -213,51 +176,6 @@ export function SettingsClientView({
       setMembers(members.map(m => m.id === memberId ? { ...m, role: newRole } : m));
     } else {
       alert(res.error || "Failed to update role.");
-    }
-  };
-
-  const startCheckout = (plan: SubscriptionPlan) => {
-    if (!isOwner) {
-      alert("Only the organization Owner can manage subscriptions and billing.");
-      return;
-    }
-    setSelectedPlanForUpgrade(plan);
-    setCheckoutStep("details");
-  };
-
-  const processSimulatedCheckout = async () => {
-    if (!selectedPlanForUpgrade) return;
-    setCheckoutStep("processing");
-    
-    const steps = [
-      "Contacting secure Stripe card gateway...",
-      "Validating credit card credentials...",
-      "Authorizing subscription transaction...",
-      "Finalizing SaaS activation parameters..."
-    ];
-
-    for (let i = 0; i < steps.length; i++) {
-      setCheckoutLoadingText(steps[i]);
-      await new Promise(resolve => setTimeout(resolve, 800));
-    }
-
-    const res = await updateSubscriptionAction(org.id, selectedPlanForUpgrade.id, SubscriptionStatus.ACTIVE);
-    if (res.ok) {
-      setActivePlan(selectedPlanForUpgrade);
-      setActiveSubStatus(SubscriptionStatus.ACTIVE);
-      setCheckoutStep("success");
-      
-      const newMockEvent: LogEvent = {
-        id: `mock-event-${Date.now()}`,
-        eventName: "Subscription Modified",
-        payloadJson: JSON.stringify({ newPlan: selectedPlanForUpgrade.name, status: "ACTIVE" }),
-        createdAt: new Date(),
-        user: { name: "You", primaryEmail: "owner@quipsly.com" }
-      };
-      setEvents([newMockEvent, ...events]);
-    } else {
-      alert(res.error || "Billing transaction rejected by server.");
-      setCheckoutStep("idle");
     }
   };
 
@@ -526,16 +444,15 @@ export function SettingsClientView({
               <div className="flex justify-between items-center mb-6">
                 <div>
                   <h3 className="text-lg font-bold text-studio-ink">Collaborators</h3>
-                  <p className="text-xs text-studio-muted mt-0.5">Manage permissions and team roles for your creators.</p>
+                  <p className="text-xs text-studio-muted mt-0.5">Review existing access and manage roles for current members.</p>
                 </div>
-                {isOwnerOrAdmin && (
-                  <button
-                    onClick={() => setIsInviteOpen(true)}
-                    className="flex items-center gap-1.5 px-4 py-2 bg-studio-tag text-[#032321] hover:bg-studio-tag/90 font-black text-xs rounded-xl transition-all"
-                  >
-                    <Plus size={14} /> Invite Member
-                  </button>
-                )}
+                <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-amber-200">
+                  Existing access only
+                </span>
+              </div>
+
+              <div role="status" className="mb-5 rounded-xl border border-amber-300/30 bg-amber-300/10 p-4 text-xs leading-5 text-amber-100">
+                New invitations are unavailable until Quipsly can issue an expiring invite, deliver it, and record acceptance. This page will not create an account or grant membership from an email address.
               </div>
 
               <div className="overflow-x-auto rounded-xl border border-studio-line">
@@ -607,36 +524,47 @@ export function SettingsClientView({
         {/* TAB 2: BILLING & PLANS */}
         {activeTab === "billing" && (
           <div className="flex flex-col gap-6 animate-in fade-in duration-200">
+            <div role="status" className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-5 text-sm leading-6 text-amber-100">
+              <p className="font-black text-amber-200">Billing changes are not connected.</p>
+              <p className="mt-1 text-xs">
+                Quipsly is showing persisted subscription and plan-catalog records only. Prices, renewals, and entitlements are not verified checkout offers, and this page cannot charge a card or activate a plan.
+              </p>
+            </div>
+
             <div className="bg-[#032321]/90 border border-studio-line rounded-2xl p-6 shadow-studio-panel flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
               <div className="flex gap-4 items-center">
                 <div className="w-12 h-12 rounded-xl bg-studio-tag/10 border border-studio-tag/30 flex items-center justify-center text-studio-tag">
                   <CreditCard size={24} />
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-xs text-studio-dim uppercase font-bold tracking-widest">Active Plan</span>
-                  <h3 className="text-xl font-black text-studio-ink mt-0.5">{activePlan.name}</h3>
+                  <span className="text-xs text-studio-dim uppercase font-bold tracking-widest">Persisted subscription record</span>
+                  <h3 className="text-xl font-black text-studio-ink mt-0.5">{activePlan?.name || "No plan recorded"}</h3>
                   <p className="text-xs text-studio-muted mt-1">
-                    Status: <span className="font-bold text-emerald-400">{activeSubStatus}</span>
+                    Status: <span className="font-bold text-studio-ink">{activeSubStatus || "No status recorded"}</span>
                   </p>
                 </div>
               </div>
 
               <div className="flex flex-col md:items-end gap-1 font-mono">
                 <span className="text-2xl font-black text-studio-ink">
-                  ${(activePlan.price / 100).toFixed(2)}
-                  <span className="text-xs font-normal text-studio-dim"> / {activePlan.interval}</span>
+                  {activePlan ? `$${(activePlan.price / 100).toFixed(2)}` : "—"}
+                  {activePlan && <span className="text-xs font-normal text-studio-dim"> / {activePlan.interval}</span>}
                 </span>
-                <span className="text-xs text-studio-muted">Next renew: {new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toLocaleDateString()}</span>
+                <span className="text-xs text-studio-muted">
+                  {org.subscription?.currentPeriodEnd
+                    ? `Recorded period end: ${new Date(org.subscription.currentPeriodEnd).toLocaleDateString()}`
+                    : "No renewal or period-end receipt recorded"}
+                </span>
               </div>
             </div>
 
             <div className="bg-[#032321]/90 border border-studio-line rounded-2xl p-6 shadow-studio-panel">
-              <h3 className="text-lg font-bold text-studio-ink mb-2">Upgrade SaaS Experience</h3>
-              <p className="text-xs text-studio-muted mb-6">Explore professional features built specifically for scaling digital content production empires.</p>
+              <h3 className="text-lg font-bold text-studio-ink mb-2">Internal plan catalog</h3>
+              <p className="text-xs text-studio-muted mb-6">Reference records only. Checkout, provider verification, and entitlement changes are intentionally disabled.</p>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {plans.map((p) => {
-                  const isCurrent = p.id === activePlan.id;
+                  const isCurrent = p.id === activePlan?.id;
                   return (
                     <div key={p.id} className={`flex flex-col justify-between border rounded-2xl p-5 bg-[#062d2a]/40 ${
                       isCurrent ? "border-studio-tag" : "border-studio-line"
@@ -655,43 +583,28 @@ export function SettingsClientView({
                           <span className="text-xs text-studio-dim">/{p.interval}</span>
                         </div>
                         
-                        <ul className="text-xs text-studio-muted flex flex-col gap-2 mt-4">
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-studio-tag rounded-full"></span> Shared Workspace access
-                          </li>
-                          <li className="flex items-center gap-2">
-                            <span className="w-1.5 h-1.5 bg-studio-tag rounded-full"></span> Internal support tickets
-                          </li>
-                          {p.price > 0 && (
-                            <li className="flex items-center gap-2">
-                              <span className="w-1.5 h-1.5 bg-studio-tag rounded-full"></span> Unlimited Video Assets
-                            </li>
-                          )}
-                          {p.price > 3000 && (
-                            <li className="flex items-center gap-2 font-bold text-[#f0b765]">
-                              <span className="w-1.5 h-1.5 bg-[#f0b765] rounded-full"></span> Custom BI event pipelines
-                            </li>
-                          )}
-                        </ul>
+                        <p className="mt-4 text-xs leading-5 text-studio-muted">
+                          No provider product, feature entitlement, or purchasable offer is asserted by this catalog row.
+                        </p>
                       </div>
 
                       <button
-                        onClick={() => startCheckout(p)}
-                        disabled={isCurrent || !isOwner}
-                        className={`w-full py-2.5 rounded-xl font-bold text-xs mt-6 transition-all ${
-                          isCurrent 
-                            ? "bg-[#062d2a] text-studio-dim border border-studio-line" 
-                            : !isOwner 
-                              ? "bg-[#062d2a] text-studio-dim border border-studio-line opacity-50 cursor-not-allowed"
-                              : "bg-studio-tag hover:bg-studio-tag/90 text-[#032321]"
-                        }`}
+                        type="button"
+                        disabled
+                        className="mt-6 w-full cursor-not-allowed rounded-xl border border-studio-line bg-[#062d2a] py-2.5 text-xs font-bold text-studio-dim opacity-75"
                       >
-                        {isCurrent ? "Current Plan" : "Upgrade Plan"}
+                        {isCurrent ? "Current database record" : "Checkout unavailable"}
                       </button>
                     </div>
                   );
                 })}
               </div>
+
+              {plans.length === 0 && (
+                <div className="rounded-xl border border-studio-line bg-[#062d2a]/30 p-5 text-sm text-studio-muted">
+                  No plan catalog records are available.
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -854,7 +767,7 @@ export function SettingsClientView({
                       <div className="p-4 bg-[#032321] border-t border-studio-line font-mono text-xs flex flex-col gap-2">
                         <span className="text-studio-dim uppercase font-bold text-[10px] tracking-wider">Payload JSON:</span>
                         <pre className="p-3 bg-black/35 text-studio-muted rounded-lg overflow-x-auto whitespace-pre-wrap">
-                          {JSON.stringify(JSON.parse(e.payloadJson), null, 2)}
+                          {JSON.stringify(readableEventPayload(e.payloadJson), null, 2)}
                         </pre>
                       </div>
                     )}
@@ -873,226 +786,7 @@ export function SettingsClientView({
 
       </section>
 
-      {/* MODAL 1: INVITE MEMBER DIALOG */}
-      {isInviteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
-          <div 
-            className="bg-[#032321] border border-studio-line rounded-2xl w-full max-w-md p-6 relative shadow-studio-panel animate-in zoom-in duration-200"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="invite-modal-title"
-          >
-            <button
-              onClick={() => setIsInviteOpen(false)}
-              className="absolute top-4 right-4 text-studio-muted hover:text-studio-ink p-1 rounded-lg hover:bg-[#062d2a]"
-              aria-label="Close modal"
-            >
-              <X size={18} />
-            </button>
-
-            <h3 id="invite-modal-title" className="text-lg font-bold text-studio-ink mb-2">Invite Collaborator</h3>
-            <p className="text-xs text-studio-muted mb-6">Provide user credentials to share access to this organization.</p>
-
-            {inviteError && (
-              <div className="mb-4 p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs font-semibold">
-                {inviteError}
-              </div>
-            )}
-
-            <form onSubmit={handleInvite} className="flex flex-col gap-4">
-              <div className="flex flex-col gap-2">
-                <label htmlFor="invite-email" className="text-xs font-bold uppercase tracking-wider text-studio-dim">
-                  Email Address
-                </label>
-                <input
-                  id="invite-email"
-                  type="email"
-                  required
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  placeholder="e.g. editor@quipsly.com"
-                  className="bg-[#062d2a] border border-studio-line rounded-xl px-4 py-3 text-studio-ink focus:outline-none focus:ring-2 focus:ring-studio-tag/20 transition-all text-sm"
-                />
-              </div>
-
-              <div className="flex flex-col gap-2">
-                <label htmlFor="invite-role" className="text-xs font-bold uppercase tracking-wider text-studio-dim">
-                  Privilege Role
-                </label>
-                <select
-                  id="invite-role"
-                  value={inviteRole}
-                  onChange={(e) => setInviteRole(e.target.value as OrganizationRole)}
-                  className="bg-[#062d2a] border border-studio-line rounded-xl px-4 py-3 text-studio-ink focus:outline-none focus:ring-2 focus:ring-studio-tag/20 transition-all font-medium text-sm"
-                >
-                  <option value="VIEWER">Viewer (Read-only)</option>
-                  <option value="EDITOR">Editor (Edit assets)</option>
-                  <option value="ADMIN">Admin (Manage members & billing)</option>
-                </select>
-              </div>
-
-              <div className="flex justify-end gap-3 mt-4">
-                <button
-                  type="button"
-                  onClick={() => setIsInviteOpen(false)}
-                  className="px-4 py-2 border border-studio-line rounded-xl text-studio-dim hover:text-studio-ink font-bold text-xs transition-all"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={inviteLoading}
-                  className="px-6 py-2 bg-studio-tag hover:bg-studio-tag/90 text-[#032321] font-black rounded-xl text-xs transition-all disabled:opacity-50"
-                >
-                  {inviteLoading ? "Sending..." : "Send Invitation"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 2: SIMULATED STRIPE CHECKOUT DRAWER */}
-      {selectedPlanForUpgrade && checkoutStep !== "idle" && (
-        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div 
-            className="bg-[#032321] border-l border-studio-line w-full max-w-lg h-full p-8 flex flex-col justify-between relative shadow-studio-panel animate-in slide-in-from-right duration-300"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="checkout-modal-title"
-          >
-            <div>
-              <div className="flex justify-between items-center mb-6">
-                <span className="flex items-center gap-1 text-[10px] uppercase font-bold tracking-widest text-[#f0b765]">
-                  <Lock size={12} /> Stripe Sandbox checkout
-                </span>
-                <button
-                  onClick={() => setCheckoutStep("idle")}
-                  className="text-studio-muted hover:text-studio-ink p-1.5 rounded-lg hover:bg-[#062d2a]"
-                  aria-label="Close checkout"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-
-              <h3 id="checkout-modal-title" className="text-2xl font-black text-studio-ink mb-1">
-                Checkout Details
-              </h3>
-              <p className="text-xs text-studio-muted">Confirm billing details to activate your premium subscription tier.</p>
-            </div>
-
-            <div className="flex-1 my-10 flex flex-col justify-center">
-              {checkoutStep === "details" && (
-                <div className="flex flex-col gap-6">
-                  <div className="p-4 bg-[#062d2a]/50 border border-studio-line rounded-xl flex justify-between items-center">
-                    <div>
-                      <p className="text-xs font-bold text-studio-dim uppercase">Plan selection</p>
-                      <p className="font-bold text-sm text-studio-ink mt-0.5">{selectedPlanForUpgrade.name}</p>
-                    </div>
-                    <span className="font-mono font-black text-lg text-studio-ink">
-                      ${(selectedPlanForUpgrade.price / 100).toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div className="flex flex-col gap-4 text-left">
-                    <div className="flex flex-col gap-2">
-                      <label htmlFor="card-num" className="text-xs font-bold uppercase tracking-wider text-studio-dim">
-                        Card Number
-                      </label>
-                      <input
-                        id="card-num"
-                        type="text"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(e.target.value)}
-                        className="bg-[#062d2a] border border-studio-line rounded-xl px-4 py-3 text-studio-ink focus:outline-none text-sm font-mono"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex flex-col gap-2">
-                        <label htmlFor="card-exp" className="text-xs font-bold uppercase tracking-wider text-studio-dim">
-                          Expiry
-                        </label>
-                        <input
-                          id="card-exp"
-                          type="text"
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(e.target.value)}
-                          className="bg-[#062d2a] border border-studio-line rounded-xl px-4 py-3 text-studio-ink focus:outline-none text-sm font-mono"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <label htmlFor="card-cvc" className="text-xs font-bold uppercase tracking-wider text-studio-dim">
-                          CVC
-                        </label>
-                        <input
-                          id="card-cvc"
-                          type="text"
-                          value={cardCVC}
-                          onChange={(e) => setCardCVC(e.target.value)}
-                          className="bg-[#062d2a] border border-studio-line rounded-xl px-4 py-3 text-studio-ink focus:outline-none text-sm font-mono"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {checkoutStep === "processing" && (
-                <div className="flex flex-col items-center justify-center gap-4 text-center animate-in fade-in duration-200">
-                  <Loader2 className="w-10 h-10 text-studio-tag animate-spin" />
-                  <p className="text-sm font-bold text-studio-ink">Executing Transaction</p>
-                  <p className="text-xs text-studio-dim font-mono tracking-wide animate-pulse">
-                    {checkoutLoadingText}
-                  </p>
-                </div>
-              )}
-
-              {checkoutStep === "success" && (
-                <div className="flex flex-col items-center justify-center gap-4 text-center animate-in zoom-in duration-300">
-                  <div className="w-16 h-16 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                    <CheckCircle size={32} />
-                  </div>
-                  <h4 className="text-lg font-black text-studio-ink">Activation Complete!</h4>
-                  <p className="text-xs text-studio-muted max-w-xs leading-relaxed">
-                    Subscription successfully updated in standard database ledger. You now carry premium tier privileges.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="border-t border-studio-line pt-6 flex justify-end gap-3">
-              {checkoutStep === "details" && (
-                <>
-                  <button
-                    onClick={() => setCheckoutStep("idle")}
-                    className="px-5 py-2.5 border border-studio-line rounded-xl text-studio-dim hover:text-studio-ink font-bold text-xs transition-all"
-                  >
-                    Discard Upgrade
-                  </button>
-                  <button
-                    onClick={processSimulatedCheckout}
-                    className="px-6 py-2.5 bg-studio-tag hover:bg-studio-tag/90 text-[#032321] font-black rounded-xl text-xs transition-all flex items-center gap-1.5"
-                  >
-                    Confirm & Upgrade
-                  </button>
-                </>
-              )}
-
-              {checkoutStep === "success" && (
-                <button
-                  onClick={() => setCheckoutStep("idle")}
-                  className="w-full py-3 bg-studio-tag hover:bg-studio-tag/90 text-[#032321] font-black rounded-xl text-xs transition-all"
-                >
-                  Acknowledge & Continue
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL 3: NEW KB CATEGORY DIALOG */}
+      {/* NEW KB CATEGORY DIALOG */}
       {isCatModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="bg-[#032321] border border-studio-line rounded-2xl w-full max-w-md p-6 relative shadow-studio-panel">

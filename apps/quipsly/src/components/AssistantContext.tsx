@@ -6,8 +6,8 @@ import { AssistantAction, AssistantActionStatus, AssistantPreviewCard } from "./
 export interface AssistantContextValue {
   actions: AssistantAction[];
   approveAction: (action: AssistantAction) => Promise<void>;
-  rejectAction: (action: AssistantAction) => void;
-  undoAction: (action: AssistantAction) => void;
+  rejectAction: (action: AssistantAction) => Promise<void>;
+  undoAction: (action: AssistantAction) => Promise<void>;
   saveAction: (action: AssistantAction) => Promise<void>;
   undoSaveAction: (action: AssistantAction) => Promise<void>;
 }
@@ -31,16 +31,7 @@ export function AssistantProvider({
 export function useAssistant() {
   const context = useContext(AssistantContext);
   if (!context) {
-    // If not wrapped in provider (e.g., in some isolated views), provide a safe fallback or throw.
-    // For now we'll return a stub to avoid breaking anything not wrapped yet.
-    return {
-      actions: [],
-      approveAction: async () => {},
-      rejectAction: () => {},
-      undoAction: () => {},
-      saveAction: async () => {},
-      undoSaveAction: async () => {},
-    };
+    throw new Error("useAssistant must be rendered inside AssistantProvider; silent review actions are not allowed.");
   }
   return context;
 }

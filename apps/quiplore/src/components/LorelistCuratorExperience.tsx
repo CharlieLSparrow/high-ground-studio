@@ -26,7 +26,7 @@ export function LorelistCuratorExperience() {
 
   // Items State
   const [items, setItems] = useState<SelectedItem[]>([]);
-  
+
   // Drawer State
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
 
@@ -58,7 +58,7 @@ export function LorelistCuratorExperience() {
 
   const handlePublish = () => {
     setIsPublishing(true);
-    
+
     // Simulate API payload
     const payload = {
       title,
@@ -71,7 +71,7 @@ export function LorelistCuratorExperience() {
         curatorNote: item.curatorNote
       }))
     };
-    
+
     console.log("Mock Publishing Lorelist payload:", JSON.stringify(payload, null, 2));
 
     setTimeout(() => {
@@ -86,8 +86,8 @@ export function LorelistCuratorExperience() {
         <CheckCircle2 size={48} className="text-emerald-600 mx-auto" />
         <h2 className="panel-title" style={{ marginTop: "1rem" }}>Lorelist Published</h2>
         <p className="panel-copy">Your collection is now live and waiting for readers.</p>
-        <button 
-          className="button primary" 
+        <button
+          className="button primary"
           onClick={() => window.location.href = "/hub"}
           style={{ marginTop: "2rem" }}
         >
@@ -104,16 +104,16 @@ export function LorelistCuratorExperience() {
         <div className="panel">
           <span className="section-label">Lorelist Details</span>
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem", marginTop: "1rem" }}>
-            <input 
-              type="text" 
-              placeholder="Collection Title" 
+            <input
+              type="text"
+              placeholder="Collection Title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="text-input"
               style={inputStyle}
             />
-            <textarea 
-              placeholder="What ties these quotes together? (Description)" 
+            <textarea
+              placeholder="What ties these quotes together? (Description)"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="text-input"
@@ -122,9 +122,9 @@ export function LorelistCuratorExperience() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }}>
               <div>
                 <label style={labelStyle}>Arc Label</label>
-                <input 
-                  type="text" 
-                  placeholder="e.g. Early Work" 
+                <input
+                  type="text"
+                  placeholder="e.g. Early Work"
                   value={arcLabel}
                   onChange={(e) => setArcLabel(e.target.value)}
                   style={inputStyle}
@@ -132,8 +132,8 @@ export function LorelistCuratorExperience() {
               </div>
               <div>
                 <label style={labelStyle}>Visibility</label>
-                <select 
-                  value={visibility} 
+                <select
+                  value={visibility}
                   onChange={(e) => setVisibility(e.target.value as any)}
                   style={inputStyle}
                 >
@@ -163,8 +163,8 @@ export function LorelistCuratorExperience() {
             ) : (
               items.map((item, index) => (
                 <div key={item.id} className="panel" style={{ display: "flex", gap: "1rem", alignItems: "flex-start" }}>
-                  <div style={{ 
-                    width: "24px", height: "24px", borderRadius: "12px", 
+                  <div style={{
+                    width: "24px", height: "24px", borderRadius: "12px",
                     backgroundColor: "#f8d9b0", color: "#ad6b35",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontWeight: "bold", fontSize: "12px", flexShrink: 0
@@ -176,9 +176,9 @@ export function LorelistCuratorExperience() {
                       "{item.card.quote.text.slice(0, 100)}{item.card.quote.text.length > 100 ? '...' : ''}"
                     </blockquote>
                     <p style={{ fontSize: "12px", opacity: 0.7, marginBottom: "1rem" }}>— {item.card.person.displayName}</p>
-                    
-                    <textarea 
-                      placeholder="Curator's note for this quote (Optional)" 
+
+                    <textarea
+                      placeholder="Curator's note for this quote (Optional)"
                       value={item.curatorNote}
                       onChange={(e) => handleUpdateNote(item.id, e.target.value)}
                       style={{ ...inputStyle, minHeight: "60px", fontSize: "13px" }}
@@ -202,8 +202,8 @@ export function LorelistCuratorExperience() {
           <p className="panel-copy">
             When you publish this Lorelist, it will become accessible based on your visibility settings.
           </p>
-          <button 
-            className="button primary" 
+          <button
+            className="button primary"
             style={{ width: "100%", justifyContent: "center", marginTop: "1rem" }}
             onClick={handlePublish}
             disabled={items.length === 0 || !title || isPublishing}
@@ -226,7 +226,7 @@ export function LorelistCuratorExperience() {
               <h2 className="panel-title">Your Nest</h2>
               <button className="button-icon" onClick={() => setIsDrawerOpen(false)}><X size={20} /></button>
             </div>
-            
+
             <div style={{ overflowY: "auto", display: "flex", flexDirection: "column", gap: "1rem" }}>
               {availableCards.map(card => (
                 <div key={card.quote.id} className="panel" style={{ cursor: "pointer" }} onClick={() => {

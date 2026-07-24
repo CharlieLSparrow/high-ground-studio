@@ -1,10 +1,162 @@
+require "fileutils"
+require "digest"
+require "json"
+
 default_platform(:ios)
 
+CAPTURE_ROOT = File.expand_path("..", __dir__)
+REPO_ROOT = File.expand_path("../../..", CAPTURE_ROOT)
+PROJECT_PATH = File.join(CAPTURE_ROOT, "HighGroundCapture.xcodeproj")
+SCHEME = "HighGroundCapture"
+EXPORT_OPTIONS = File.join(CAPTURE_ROOT, "fastlane", "ExportOptions.plist")
+ARTIFACT_VERIFIER = File.join(CAPTURE_ROOT, "scripts", "verify-release-artifact.sh")
+SOURCE_VERIFIER = File.join(CAPTURE_ROOT, "scripts", "verify-release-source.sh")
+APPLE_APP_ID = "6780995957"
+APP_IDENTIFIER = "com.highgroundodyssey.HighGroundCapture"
+DETERMINISTIC_UI_TESTS = [
+  "HighGroundCaptureUITests/CaptureExperienceUITests",
+  "HighGroundCaptureUITests/CaptureLoginExperienceUITests",
+  "HighGroundCaptureUITests/ShareCaptureExtensionUITests",
+].freeze
+
+def release_paths(options)
+  version = get_version_number(xcodeproj: PROJECT_PATH, target: SCHEME)
+  build = get_build_number(xcodeproj: PROJECT_PATH)
+  base_root = File.expand_path(options[:output_directory] || ENV.fetch("QUIPSLY_CAPTURE_RELEASE_DIR", "/tmp/quipsly-capture-release"))
+  source_revision = ENV["QUIPSLY_CAPTURE_SOURCE_REVISION"].to_s
+  root = source_revision.empty? ? base_root : File.join(base_root, source_revision[0, 12])
+  stem = "QuipslyCapture-#{version}.#{build}"
+
+  {
+    version: version,
+    build: build,
+    output_directory: root,
+    archive_path: File.join(root, "#{stem}.xcarchive"),
+    export_directory: File.join(root, "app-store-export"),
+    output_name: "#{stem}.ipa",
+    ipa_path: File.join(root, "#{stem}.ipa"),
+  }
+end
+
 platform :ios do
-  desc "Push a new beta build to TestFlight"
-  lane :beta do
-    increment_build_number(xcodeproj: "HighGroundCapture.xcodeproj")
-    build_app(workspace: "HighGroundCapture.xcworkspace", scheme: "HighGroundCapture")
-    upload_to_testflight
+  before_all do
+    ENV["DEVELOPER_DIR"] ||= "/Applications/Xcode.app/Contents/Developer"
+  end
+
+  desc "Validate source-level privacy and Capture release invariants"
+  lane :verify do
+    sh(SOURCE_VERIFIER)
+  end
+
+  desc "Run the deterministic iPhone UX and Share Capture suite serially"
+  lane :ui_test do |options|
+    source_revision = sh("git", "-C", REPO_ROOT, "rev-parse", "HEAD", log: false).strip
+    output_root = File.expand_path(
+      options[:output_directory] ||
+        ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DIR", "/tmp/quipsly-capture-ui-tests/#{source_revision[0, 12]}"),
+    )
+    FileUtils.mkdir_p(output_root)
+
+    run_tests(
+      project: PROJECT_PATH,
+      scheme: SCHEME,
+      devices: [options[:device] || ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DEVICE", "iPhone 17 Pro")],
+      only_testing: DETERMINISTIC_UI_TESTS,
+      parallel_testing: false,
+      result_bundle: true,
+      output_directory: output_root,
+      buildlog_path: output_root,
+      fail_build: true,
+    )
+  end
+
+  desc "Build, export, and inspect the exact committed Capture version"
+  lane :release do |options|
+    verify
+    capture_status = sh(
+      "git",
+      "-C",
+      REPO_ROOT,
+      "status",
+      "--porcelain",
+      "--",
+      "apps/mobile-capture/HighGroundCapture",
+      log: false,
+    ).strip
+    UI.user_error!("Commit the Capture release slice before archiving:\n#{capture_status}") unless capture_status.empty?
+
+    source_revision = sh("git", "-C", REPO_ROOT, "rev-parse", "HEAD", log: false).strip
+    ENV["QUIPSLY_CAPTURE_SOURCE_REVISION"] = source_revision
+    paths = release_paths(options)
+    FileUtils.mkdir_p(paths[:output_directory])
+
+    build_app(
+      project: PROJECT_PATH,
+      scheme: SCHEME,
+      configuration: "Release",
+      clean: true,
+      archive_path: paths[:archive_path],
+      output_directory: paths[:output_directory],
+      output_name: paths[:output_name],
+      xcargs: "-allowProvisioningUpdates",
+      skip_package_ipa: true,
+    )
+
+    FileUtils.mkdir_p(paths[:export_directory])
+    sh(
+      "xcodebuild",
+      "-exportArchive",
+      "-archivePath",
+      paths[:archive_path],
+      "-exportPath",
+      paths[:export_directory],
+      "-exportOptionsPlist",
+      EXPORT_OPTIONS,
+      "-allowProvisioningUpdates",
+    )
+    exported_ipa = Dir[File.join(paths[:export_directory], "*.ipa")].first
+    UI.user_error!("Xcode export did not produce an IPA in #{paths[:export_directory]}") if exported_ipa.to_s.empty?
+    FileUtils.mv(exported_ipa, paths[:ipa_path])
+
+    sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])
+    receipt_path = File.join(paths[:output_directory], "QuipslyCapture-#{paths[:version]}.#{paths[:build]}-release-receipt.json")
+    File.write(
+      receipt_path,
+      JSON.pretty_generate(
+        {
+          schema: "quipsly-capture-release-receipt-v1",
+          sourceRevision: source_revision,
+          version: paths[:version],
+          build: paths[:build],
+          archivePath: paths[:archive_path],
+          ipaPath: paths[:ipa_path],
+          ipaBytes: File.size(paths[:ipa_path]),
+          ipaSHA256: Digest::SHA256.file(paths[:ipa_path]).hexdigest,
+          uploadPerformed: false,
+        },
+      ) + "\n",
+    )
+    UI.success("Verified Quipsly Capture #{paths[:version]} (#{paths[:build]}) at #{paths[:ipa_path]}")
+    UI.success("Release receipt: #{receipt_path}")
+  end
+
+  desc "Build and upload to TestFlight without silently changing the committed build number"
+  lane :beta do |options|
+    api_key_path = options[:api_key_path] || ENV["APP_STORE_CONNECT_API_KEY_PATH"]
+    UI.user_error!("Set APP_STORE_CONNECT_API_KEY_PATH to a Fastlane App Store Connect API key JSON file.") if api_key_path.to_s.empty?
+
+    ui_test(device: options[:device])
+    release(options)
+    paths = release_paths(options)
+    upload_to_testflight(
+      api_key_path: File.expand_path(api_key_path),
+      ipa: paths[:ipa_path],
+      apple_id: APPLE_APP_ID,
+      app_identifier: APP_IDENTIFIER,
+      changelog: options[:changelog] || ENV["QUIPSLY_CAPTURE_WHAT_TO_TEST"],
+      skip_waiting_for_build_processing: false,
+      distribute_external: false,
+      notify_external_testers: false,
+    )
   end
 end

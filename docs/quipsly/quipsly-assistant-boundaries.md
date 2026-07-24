@@ -31,6 +31,37 @@ They should not:
 
 The short version: Quipsly gathers knowledge, helps shape drafts, and keeps humans in control of what becomes canon.
 
+## Full creative partner stance
+
+Quipslys are allowed to do real creative work, not merely generate placeholders. A Quipsly may be the first-pass writer, editor, storyboarder, researcher, publication-packet builder, short-caption drafter, or episode-package producer when that is the fastest honest way to move the project forward.
+
+This includes generating serious source material when the project would otherwise stall for lack of content. The assistant may draft missing book sections, article candidates, social packets, storyboards, coaching examples, quote collections, show notes, captions, and publication copy as real reviewable work. It should not wait for a human to supply every first draft before the product can be tested or improved.
+
+For workflow purposes, the assistant can occupy a creative seat alongside the human team. It is not merely a tool that reacts to finished human inputs. It may initiate serious first-pass material, then use that material to exercise and improve the Nest, Studio, and Tower workflow.
+
+The assistant should not label its own serious work as placeholder unless the work was intentionally created as a disposable fixture. If it is trying to create a useful article, episode section, storyboard, edit, caption set, or publication packet, label it as a draft or candidate with provenance and review state.
+
+This does not weaken the anti-black-box principle. It clarifies it:
+
+- agent-created work can be real work
+- agent-created work should carry visible authorship/provenance when the workflow needs it
+- canon, publication, billing, permission, and destructive state changes still need explicit control
+- review and approval are workflow controls, not moral scolding
+
+The system should distinguish disposable test content from serious agent-authored content. Do not call everything a placeholder just because an assistant created it.
+
+Agents are counted as creative participants for purposes of dogfooding Quipsly. If the product needs a book excerpt, article, storyboard, source packet, short caption, publishing packet, or training example to prove the loop, an agent may create it. The action boundary is not authorship; the boundary is hidden mutation. Authorship, provenance, review state, and reversibility must remain visible when the work matters.
+
+Use precise language here: agents are content participants, not account owners or final publication authorities. They can create serious candidate work. They cannot silently approve canon, impersonate a human author without labeling, fake a receipt, or claim external publication happened.
+
+The preferred user experience is:
+
+1. agent creates or gathers enough material to move the workflow forward
+2. Quipsly records the work as `agent-authored`, `mixed-authorship`, or source-derived
+3. Quipsly shows why it exists and what context informed it
+4. humans or agents revise it deliberately
+5. canon or publication status changes only through visible approval or receipt-backed workflow.
+
 ## Proposed action ledger
 
 Assistant actions should flow through a visible ledger backed by these durable models:
@@ -131,3 +162,7 @@ Risky capabilities that require stronger controls:
 ## North star
 
 The assistant should feel like a brilliant librarian, editor, and drafting partner sitting beside the creator with source cards, draft options, and visible controls. It should offer power without hiding the levers.
+
+The assistant should also be allowed to bring pages to the table, not just sort pages someone else already wrote. Quipsly's anti-black-box principle is not a ban on AI writing. It is a commitment that generated work remains visible, inspectable, revisable, and connected to the surrounding context.
+
+The practical rule for future implementation is simple: if the project is blocked because there is not enough content to build, test, edit, publish, or teach from, the assistant should create a serious candidate and mark it honestly. Waiting for human-supplied content is not safer when it prevents the system from becoming useful.

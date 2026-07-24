@@ -3,7 +3,15 @@ import path from "node:path";
 import { Readable } from "node:stream";
 import { NextRequest, NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
-import { getMediaBucket, parseGcsUri } from "@/lib/server/gcs";
+import { getMediaBucket } from "@/lib/server/gcs";
+import { authorizeIngestMediaSource } from "@/lib/server/mobile-capture-security";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { authorizeStudioMediaSource } from "@/lib/server/studio-media-source-access";
+import {
+  authorizeConfiguredMediaVaultLocation,
+  resolveAllowedLocalStudioMediaPath,
+} from "@/lib/server/studio-media-location-security";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 type VideoSourceRecord = {
   id: string;
@@ -16,6 +24,22 @@ type VideoSourcePrismaClient = ReturnType<typeof getPrismaClient> & {
       where: { id: string };
       select: { id: true; providerSourceId: true; url: true };
     }) => Promise<VideoSourceRecord | null>;
+  };
+  studioMediaAsset: {
+    findMany: (input: {
+      where: {
+        OR: Array<{ rawAssetId: string } | { url: string }>;
+      };
+      select: {
+        isGlobal: true;
+        projects: { select: { slug: true } };
+        assetAttachments: { select: { project: { select: { slug: true } } } };
+      };
+    }) => Promise<Array<{
+      isGlobal: boolean;
+      projects: Array<{ slug: string }>;
+      assetAttachments: Array<{ project: { slug: string } }>;
+    }>>;
   };
 };
 
@@ -56,16 +80,16 @@ function parseRangeHeader(rangeHeader: string | null, size: number) {
   };
 }
 
-async function readFileRange(filePath: string, start: number, end: number) {
+async function readFileRange(file: Awaited<ReturnType<typeof fs.open>>, start: number, end: number) {
   const length = end - start + 1;
-  const file = await fs.open(filePath, "r");
-  try {
-    const buffer = Buffer.alloc(length);
-    await file.read(buffer, 0, length, start);
-    return buffer;
-  } finally {
-    await file.close();
+  const buffer = Buffer.alloc(length);
+  let offset = 0;
+  while (offset < length) {
+    const { bytesRead } = await file.read(buffer, offset, length - offset, start + offset);
+    if (bytesRead === 0) break;
+    offset += bytesRead;
   }
+  return offset === length ? buffer : buffer.subarray(0, offset);
 }
 
 function createMediaHeaders(args: {
@@ -80,14 +104,24 @@ function createMediaHeaders(args: {
     "Content-Length": String(args.contentLength),
     ...(args.contentRange ? { "Content-Range": args.contentRange } : {}),
     "Content-Type": args.contentType,
+    Vary: "Authorization, Cookie",
   };
 }
 
 async function createGcsMediaResponse(request: NextRequest, providerSourceId: string) {
-  const parsed = parseGcsUri(providerSourceId);
-  if (!parsed) return null;
+  const location = authorizeConfiguredMediaVaultLocation(providerSourceId);
+  if (location.kind === "not-gcs") return null;
+  if (location.kind === "rejected-gcs") {
+    return NextResponse.json(
+      { error: location.error },
+      { status: 409, headers: { "Cache-Control": "private, no-store" } },
+    );
+  }
 
-  const file = getMediaBucket(parsed.bucketName).file(parsed.objectName);
+  const file = getMediaBucket(location.bucketName).file(
+    location.objectName,
+    location.generation ? { generation: location.generation as any } : undefined,
+  );
   const [metadata] = await file.getMetadata();
   const size = Number(metadata.size ?? 0);
 
@@ -95,7 +129,7 @@ async function createGcsMediaResponse(request: NextRequest, providerSourceId: st
     return NextResponse.json({ error: "GCS media is empty or unavailable" }, { status: 404 });
   }
 
-  const contentType = metadata.contentType || inferContentType(parsed.objectName);
+  const contentType = metadata.contentType || inferContentType(location.objectName);
   const range = parseRangeHeader(request.headers.get("range"), size);
   const stream = file.createReadStream(range ? { start: range.start, end: range.end } : undefined);
   const body = Readable.toWeb(stream as Readable) as ReadableStream;
@@ -104,7 +138,7 @@ async function createGcsMediaResponse(request: NextRequest, providerSourceId: st
     return new Response(body, {
       status: 206,
       headers: createMediaHeaders({
-        cacheControl: String(metadata.cacheControl ?? "private, max-age=120"),
+        cacheControl: "private, max-age=120",
         contentLength: range.end - range.start + 1,
         contentRange: `bytes ${range.start}-${range.end}/${size}`,
         contentType,
@@ -115,7 +149,7 @@ async function createGcsMediaResponse(request: NextRequest, providerSourceId: st
   return new Response(body, {
     status: 200,
     headers: createMediaHeaders({
-      cacheControl: String(metadata.cacheControl ?? "private, max-age=120"),
+      cacheControl: "private, max-age=120",
       contentLength: size,
       contentType,
     }),
@@ -126,17 +160,101 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sou
   const { sourceId } = await context.params;
 
   const prisma = getPrismaClient() as VideoSourcePrismaClient;
-  const source = await prisma.studioVideoSource.findUnique({
-    where: { id: sourceId },
-    select: { id: true, providerSourceId: true, url: true },
+  const session = await getQuipslySessionFromRequest(request);
+  const authorization = await authorizeIngestMediaSource({
+    actor: session?.user
+      ? {
+          id: session.user.id,
+          email: session.user.primaryEmail,
+          isStaff: session.user.isStaff,
+        }
+      : null,
+    sourceId,
+    loadSource: (id) => prisma.studioVideoSource.findUnique({
+      where: { id },
+      select: { id: true, providerSourceId: true, url: true },
+    }),
+    loadScopes: async (id) => {
+      const assets = await prisma.studioMediaAsset.findMany({
+        where: {
+          OR: [
+            { rawAssetId: id },
+            { url: `/api/ingest/media/${id}` },
+          ],
+        },
+        select: {
+          isGlobal: true,
+          projects: { select: { slug: true } },
+          assetAttachments: { select: { project: { select: { slug: true } } } },
+        },
+      });
+      return assets.map((asset) => ({
+        isGlobal: asset.isGlobal,
+        projectSlugs: [
+          ...asset.projects.map((project) => project.slug),
+          ...asset.assetAttachments.map((attachment) => attachment.project.slug),
+        ],
+      }));
+    },
+    canReadProject: async (projectSlug, actorEmail) => {
+      const access = await resolveStudioProjectAccess({
+        projectSlug,
+        email: actorEmail,
+        action: "read",
+        prisma: prisma as any,
+      });
+      return access.allowed;
+    },
   });
 
-  if (!source) {
-    return NextResponse.json({ error: "Source not found" }, { status: 404 });
+  if (!authorization.allowed) {
+    return NextResponse.json(
+      { error: authorization.error },
+      {
+        status: authorization.status,
+        headers: {
+          "Cache-Control": "private, no-store",
+          Vary: "Authorization, Cookie",
+        },
+      },
+    );
   }
+  // Project access and Capture processing release are independent gates. A
+  // historically attached source can remain visible as preservation evidence
+  // without being legal to play, extract, proxy, or edit.
+  const releasedSource = await authorizeStudioMediaSource({
+    prisma,
+    actor: session?.user
+      ? {
+          id: session.user.id,
+          email: session.user.primaryEmail,
+          isStaff: session.user.isStaff,
+        }
+      : null,
+    sourceId,
+  });
+  if (!releasedSource.allowed) {
+    return NextResponse.json(
+      {
+        error: releasedSource.error,
+        errorCode: releasedSource.errorCode,
+      },
+      {
+        status: releasedSource.status,
+        headers: {
+          "Cache-Control": "private, no-store",
+          Vary: "Authorization, Cookie",
+        },
+      },
+    );
+  }
+  const source = releasedSource.source;
 
   if (isHttpUrl(source.url)) {
-    return NextResponse.redirect(source.url, { status: 307 });
+    const response = NextResponse.redirect(source.url, { status: 307 });
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Vary", "Authorization, Cookie");
+    return response;
   }
 
   const localPath = source.providerSourceId;
@@ -148,30 +266,46 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sou
     const gcsResponse = await createGcsMediaResponse(request, localPath);
     if (gcsResponse) return gcsResponse;
 
-    const stat = await fs.stat(localPath);
-    const contentType = inferContentType(localPath);
-    const range = parseRangeHeader(request.headers.get("range"), stat.size);
+    const allowedLocalPath = await resolveAllowedLocalStudioMediaPath(localPath);
+    if (!allowedLocalPath) {
+      return NextResponse.json(
+        { error: "This source is outside Quipsly's configured local ingest roots." },
+        { status: 409, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
 
-    if (range) {
-      const data = await readFileRange(localPath, range.start, range.end);
+    const file = await fs.open(allowedLocalPath, "r");
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || stat.size <= 0) {
+        return NextResponse.json({ error: "Source media is empty or is not a regular file." }, { status: 404 });
+      }
+      const contentType = inferContentType(allowedLocalPath);
+      const range = parseRangeHeader(request.headers.get("range"), stat.size);
+
+      if (range) {
+        const data = await readFileRange(file, range.start, range.end);
+        return new Response(data, {
+          status: 206,
+          headers: createMediaHeaders({
+            contentLength: data.length,
+            contentRange: `bytes ${range.start}-${range.end}/${stat.size}`,
+            contentType,
+          }),
+        });
+      }
+
+      const data = await readFileRange(file, 0, stat.size - 1);
       return new Response(data, {
-        status: 206,
+        status: 200,
         headers: createMediaHeaders({
           contentLength: data.length,
-          contentRange: `bytes ${range.start}-${range.end}/${stat.size}`,
           contentType,
         }),
       });
+    } finally {
+      await file.close();
     }
-
-    const data = await fs.readFile(localPath);
-    return new Response(data, {
-      status: 200,
-      headers: createMediaHeaders({
-        contentLength: data.length,
-        contentType,
-      }),
-    });
   } catch (error: unknown) {
     console.error("[ingest media] failed", error);
     return NextResponse.json({ error: "Unable to read source media" }, { status: 404 });

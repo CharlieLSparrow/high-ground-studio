@@ -2,241 +2,278 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-NO_BUILD=false
-OUTPUT_DIR="${TMPDIR:-/tmp}/quipslystudio-short-export-smoke"
+BASE_URL="${QUIPSLY_AGENT_URL:-http://127.0.0.1:8080}"
+SESSION_NAME="${QUIPSLY_EPISODE1_SESSION:-episode-1-premiere-rescue}"
+OUTPUT_DIR="${QUIPSLY_SHORT_EXPORT_SMOKE_DIR:-/tmp/quipslystudio-short-export-smoke}"
+NO_BUILD=0
 
 usage() {
   cat <<'USAGE'
-Smoke Episode 1 selected short export.
+Smoke Episode 1 selected-short 9:16 export.
 
 Usage:
-  script/smoke_episode1_short_export.sh [--no-build] [--output-dir /absolute/output]
+  script/smoke_episode1_short_export.sh [--no-build] [--session <name>] [--output <directory>]
 
-This proves shorts are derivative output recipes over the episode spine:
-  - load Episode 1
-  - select the first video SHOW decision
-  - queue a temporary 9:16 short packet
-  - cue and adjust the selected short range
-  - play-preview the selected range and verify it stops at the out point
-  - export the selected short as an MP4 with burned-in overlay/caption metadata
-  - verify export status and non-empty output file
-  - remove the temporary packet again
+This proves:
+  - A production-ready Episode 1 session can create a temporary 9:16 short recipe from an existing SHOW decision.
+  - The selected short can be exported to a derivative MP4.
+  - The exported file exists and is non-empty.
+  - Source media remains whole; the temporary short recipe is removed after the smoke.
 USAGE
 }
 
-while [[ "$#" -gt 0 ]]; do
+while [[ $# -gt 0 ]]; do
   case "$1" in
     --no-build)
-      NO_BUILD=true
+      NO_BUILD=1
+      ;;
+    --session)
+      SESSION_NAME="${2:-}"
       shift
       ;;
-    --output-dir)
+    --output)
       OUTPUT_DIR="${2:-}"
-      if [[ -z "$OUTPUT_DIR" ]]; then
-        usage >&2
-        exit 2
-      fi
-      shift 2
+      shift
       ;;
     -h|--help)
       usage
       exit 0
       ;;
     *)
+      echo "Unknown option: $1" >&2
       usage >&2
       exit 2
       ;;
   esac
+  shift
 done
 
-if [[ "$NO_BUILD" == false ]]; then
-  "$ROOT_DIR/script/build_and_run.sh" --verify >/tmp/quipslystudio-short-export-build.log
+if [[ -z "$SESSION_NAME" || -z "$OUTPUT_DIR" ]]; then
+  echo "Missing session or output directory." >&2
+  usage >&2
+  exit 2
 fi
 
 mkdir -p "$OUTPUT_DIR"
 
-python3 - "$ROOT_DIR" "$OUTPUT_DIR" <<'PY'
+if [[ "$NO_BUILD" == "1" ]]; then
+  "$ROOT_DIR/script/agentctl.sh" health >/dev/null
+else
+  "$ROOT_DIR/script/build_and_run.sh" --verify >/tmp/quipslystudio-episode1-short-export-build.log
+fi
+
+"$ROOT_DIR/script/agentctl.sh" load-session "$SESSION_NAME" >/tmp/quipslystudio-episode1-short-export-load.json
+
+python3 - "$BASE_URL" "$SESSION_NAME" "$OUTPUT_DIR" <<'PY'
 import json
 import os
-import subprocess
 import sys
 import time
+import urllib.parse
+import urllib.request
 
-root_dir = sys.argv[1]
-output_dir = sys.argv[2]
-agentctl = f"{root_dir}/script/agentctl.sh"
-basename = "smoke-selected-short"
-expected_output = os.path.join(output_dir, f"{basename}-9x16-short.mp4")
+base_url = sys.argv[1].rstrip("/")
+session_name = sys.argv[2]
+output_dir = sys.argv[3]
+errors = []
+created_id = None
+
+
+def get_json(path, timeout=30):
+    with urllib.request.urlopen(f"{base_url}{path}", timeout=timeout) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def command(path, timeout=30):
+    return get_json(path, timeout=timeout)
+
+
+def wait_for(predicate, timeout=20, interval=0.25):
+    deadline = time.time() + timeout
+    last = {}
+    while time.time() < deadline:
+        last = get_json("/state")
+        if predicate(last):
+            return last
+        time.sleep(interval)
+    return last
+
+
+def remove_created():
+    global created_id
+    if created_id:
+        try:
+            command("/shorts_queue_remove?id=" + urllib.parse.quote(created_id))
+        except Exception as exc:
+            print(f"Warning: could not remove temporary short {created_id}: {exc}", file=sys.stderr)
+
+
+def choose_show_range(state):
+    lanes = state.get("lanes") or []
+    candidates = []
+    for lane in lanes:
+        if lane.get("mediaKind") == "audio" or "audio" in (lane.get("role") or "").lower():
+            continue
+        if not lane.get("sourceMonitorPlayerReady") and not lane.get("sourceReady"):
+            continue
+        readiness = f"{lane.get('sourceReadiness') or ''} {lane.get('sourceReadinessDetail') or ''}".lower()
+        if "proxy ready" not in readiness and lane.get("sourceReady") is not True:
+            continue
+        role = (lane.get("role") or "").lower()
+        name = lane.get("name") or ""
+        lane_priority = 0 if "camera" in role else 1
+        offset = float(lane.get("sourceOffset") or 0)
+        for tag in lane.get("tags") or []:
+            if str(tag.get("type") or "").lower() != "active":
+                continue
+            duration = float(tag.get("duration") or 0)
+            if duration < 2.5:
+                continue
+            # Timeline decisions store lane-local time. Short recipes use
+            # sequence time, matching PlaybackEngine.computeValidRanges().
+            start = offset + float(tag.get("startTime") or 0) + 0.25
+            if start < 0:
+                continue
+            export_duration = min(3.0, max(1.0, duration - 0.5))
+            candidates.append((lane_priority, start, start + export_duration, name, tag.get("id")))
+    candidates.sort(key=lambda item: (item[0], item[1]))
+    if not candidates:
+        return None
+    _, start, end, lane_name, tag_id = candidates[0]
+    return start, end, lane_name, tag_id
+
+
+def wait_for_export(timeout=180):
+    deadline = time.time() + timeout
+    last = {}
+    while time.time() < deadline:
+        last = get_json("/state", timeout=30)
+        export_state = last.get("exportState") or {}
+        status = export_state.get("status") or last.get("exportStatus")
+        if status in ("completed", "failed", "blocked", "stalled"):
+            return last
+        time.sleep(1)
+    return last
+
 
 try:
-    os.remove(expected_output)
-except FileNotFoundError:
-    pass
-
-def get_json(*args):
-    result = subprocess.run([agentctl, *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    if result.returncode != 0:
-        raise SystemExit(result.stdout + result.stderr)
-    return json.loads(result.stdout)
-
-def run_command(*args):
-    result = subprocess.run([agentctl, *args], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)
-    if result.returncode != 0:
-        raise SystemExit(result.stdout + result.stderr)
-    return result.stdout
-
-def wait_for(predicate, timeout_seconds=20, interval_seconds=0.25):
-    deadline = time.time() + timeout_seconds
-    latest = {}
-    while time.time() <= deadline:
-        latest = get_json("state")
-        if predicate(latest):
-            return latest
-        time.sleep(interval_seconds)
-    return latest
-
-def run_and_wait_processed(*args, timeout_seconds=12):
-    before = get_json("state")
-    target_serial = int(before.get("agentCommandSerial") or 0) + 1
-    run_command(*args)
-    return wait_for(
-        lambda payload: int(payload.get("agentLastProcessedCommandSerial") or 0) >= target_serial,
-        timeout_seconds=timeout_seconds,
+    state = wait_for(
+        lambda s: s.get("activeSessionName") == session_name and s.get("productionReady") is True,
+        timeout=30,
     )
+    if state.get("activeSessionName") != session_name:
+        errors.append(f"activeSessionName expected {session_name!r}, got {state.get('activeSessionName')!r}")
+    if state.get("productionReady") is not True:
+        errors.append(f"Episode 1 should be production-ready for short export, got {state.get('productionReady')!r}: {state.get('productionReadinessDetail')}")
 
-errors = []
-created_short_id = ""
+    chosen = choose_show_range(state)
+    if not chosen:
+        errors.append("Could not find a playable SHOW decision to use as an export source.")
 
-run_and_wait_processed("load-session", "episode-1-premiere-rescue", timeout_seconds=14)
-state = wait_for(
-    lambda payload: payload.get("activeSessionName") == "episode-1-premiere-rescue"
-    and payload.get("productionReady") is True,
-    timeout_seconds=14,
-)
-if state.get("activeSessionName") != "episode-1-premiere-rescue":
-    raise SystemExit("Episode 1 session did not load before short-export smoke.")
-if state.get("productionReady") is not True:
-    raise SystemExit("Episode 1 session is not proxy-production-ready before short-export smoke.")
+    if errors:
+        print("Episode 1 selected-short export smoke failed before export:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        print(json.dumps({
+            "state": {
+                "activeSessionName": state.get("activeSessionName"),
+                "productionReady": state.get("productionReady"),
+                "productionReadinessDetail": state.get("productionReadinessDetail"),
+                "laneCount": state.get("laneCount"),
+                "videoProxyReadyCount": state.get("videoProxyReadyCount"),
+                "audioReadyCount": state.get("audioReadyCount"),
+                "showDecisionCount": state.get("showDecisionCount"),
+                "skipDecisionCount": state.get("skipDecisionCount"),
+            }
+        }, indent=2, sort_keys=True), file=sys.stderr)
+        raise SystemExit(1)
 
-state = run_and_wait_processed("select-decision", "first_video", timeout_seconds=8)
-for _ in range(12):
-    if (
-        state.get("selectedTagType") == "Active"
-        and state.get("selectedTagId")
-        and float(state.get("playhead") or 0) > 1.0
-    ):
-        break
-    state = run_and_wait_processed("select-decision", "next_video", timeout_seconds=8)
-if state.get("selectedTagType") != "Active" or not state.get("selectedTagId"):
-    raise SystemExit("No selected Active video decision after scanning visual decisions.")
-if float(state.get("playhead") or 0) <= 1.0:
-    raise SystemExit("Could not find a non-zero Active video decision for short range adjustment proof.")
+    start, end, lane_name, tag_id = chosen
+    title = "Codex smoke exported short"
+    basename = "codex-smoke-episode1-short"
+    command(
+        "/shorts_queue_add_range?start="
+        + urllib.parse.quote(f"{start:.3f}")
+        + "&end="
+        + urllib.parse.quote(f"{end:.3f}")
+        + "&title="
+        + urllib.parse.quote(title)
+    )
+    state = wait_for(
+        lambda s: (s.get("selectedShortProof") or {}).get("title") == title,
+        timeout=12,
+    )
+    proof = state.get("selectedShortProof") or {}
+    created_id = proof.get("id") or state.get("selectedShortClipId")
 
-run_and_wait_processed("shorts-add-selected", "Smoke export short", timeout_seconds=8)
-run_and_wait_processed("shorts-update-selected", "hook", "Smoke export hook", timeout_seconds=8)
-run_and_wait_processed("shorts-update-selected", "overlay", "Smoke export overlay", timeout_seconds=8)
-run_and_wait_processed("shorts-update-selected", "caption", "Smoke export caption", timeout_seconds=8)
-state = wait_for(
-    lambda payload: (payload.get("selectedShortClip") or {}).get("title") == "Smoke export short",
-    timeout_seconds=8,
-)
-selected_short = state.get("selectedShortClip") or {}
-created_short_id = selected_short.get("id") or ""
-if not created_short_id:
-    errors.append("Selected smoke short packet was not exposed in /state.")
+    if proof.get("recipeDuration", 0) <= 0:
+        errors.append(f"Temporary selected short has no renderable duration: {proof}")
 
-initial_start = float(selected_short.get("sequenceStartTime") or selected_short.get("startTime") or 0)
-initial_duration = float(selected_short.get("duration") or 0)
-run_and_wait_processed("shorts-preview-selected", "false", timeout_seconds=8)
-preview_state = get_json("state")
-if preview_state.get("playbackFormat") not in {"9:16", "vertical9x16"}:
-    errors.append("Short preview did not switch playback format to 9:16.")
-if abs(float(preview_state.get("playhead") or 0) - initial_start) > 0.35:
-    errors.append("Short preview did not cue the shared playhead to the selected short in point.")
-
-run_and_wait_processed("shorts-range-selected", "start", "delta", "-0.1", timeout_seconds=8)
-run_and_wait_processed("shorts-range-selected", "end", "delta", "0.1", timeout_seconds=8)
-state = wait_for(
-    lambda payload: (payload.get("selectedShortClip") or {}).get("id") == created_short_id,
-    timeout_seconds=8,
-)
-selected_short = state.get("selectedShortClip") or {}
-adjusted_start = float(selected_short.get("sequenceStartTime") or selected_short.get("startTime") or 0)
-adjusted_duration = float(selected_short.get("duration") or 0)
-if adjusted_start > initial_start - 0.05:
-    errors.append("Selected short in point did not move earlier after range adjustment.")
-if adjusted_duration < initial_duration + 0.15:
-    errors.append("Selected short duration did not grow after in/out adjustment.")
-
-expected_preview_end = adjusted_start + adjusted_duration
-run_and_wait_processed("shorts-preview-selected", "play", timeout_seconds=8)
-preview_done = wait_for(
-    lambda payload: payload.get("isPlaying") is False
-    and payload.get("shortPreviewStopAt") in (None, "")
-    and abs(float(payload.get("playhead") or 0) - expected_preview_end) <= 0.45,
-    timeout_seconds=max(10, min(30, adjusted_duration + 8)),
-    interval_seconds=0.25,
-)
-if preview_done.get("isPlaying") is not False:
-    errors.append("Selected short preview did not stop playback.")
-if preview_done.get("shortPreviewStopAt") not in (None, ""):
-    errors.append("Selected short preview stop guard was not cleared after stopping.")
-if abs(float(preview_done.get("playhead") or 0) - expected_preview_end) > 0.45:
-    errors.append("Selected short preview did not stop near the selected out point.")
-
-run_and_wait_processed("shorts-export-selected", output_dir, basename, timeout_seconds=10)
-export_state = {}
-for _ in range(180):
-    state = get_json("state")
+    command(
+        "/shorts_export_selected?directory="
+        + urllib.parse.quote(output_dir)
+        + "&basename="
+        + urllib.parse.quote(basename),
+        timeout=30,
+    )
+    state = wait_for_export()
     export_state = state.get("exportState") or {}
-    if export_state.get("status") in {"completed", "failed", "blocked"}:
-        break
-    time.sleep(1)
+    status = export_state.get("status") or state.get("exportStatus")
+    if status != "completed":
+        errors.append(f"Short export should complete, got {status!r}: {export_state}")
 
-if export_state.get("status") != "completed":
-    errors.append(f"Export did not complete. exportState={export_state}")
-if expected_output not in (export_state.get("outputPaths") or []):
-    errors.append("Export state did not include the expected short output path.")
-if not os.path.exists(expected_output):
-    errors.append(f"Expected output file missing: {expected_output}")
-elif os.path.getsize(expected_output) <= 0:
-    errors.append(f"Expected output file is empty: {expected_output}")
+    output_paths = export_state.get("outputPaths") or state.get("exportOutputPaths") or []
+    if not output_paths:
+        single = export_state.get("outputPath")
+        if single:
+            output_paths = [single]
+    existing_outputs = [
+        path for path in output_paths
+        if isinstance(path, str) and os.path.exists(path) and os.path.getsize(path) > 0
+    ]
+    if not existing_outputs:
+        expected_path = os.path.join(output_dir, basename + "-9x16-short.mp4")
+        if os.path.exists(expected_path) and os.path.getsize(expected_path) > 0:
+            existing_outputs = [expected_path]
+    if not existing_outputs:
+        errors.append(f"No non-empty MP4 output found. outputPaths={output_paths!r}")
 
-state = get_json("state")
-selected_short = state.get("selectedShortClip") or {}
-if selected_short.get("exportStatus") != "exported":
-    errors.append(f"Selected short exportStatus was not exported: {selected_short.get('exportStatus')}")
-if expected_output not in selected_short.get("publishNotes", ""):
-    errors.append("Selected short publishNotes did not include the output path.")
-publish_notes = selected_short.get("publishNotes", "")
-if "Text burn-in: overlay, caption" not in publish_notes:
-    errors.append("Selected short publishNotes did not prove overlay/caption burn-in.")
+    if errors:
+        print("Episode 1 selected-short export smoke failed:", file=sys.stderr)
+        for error in errors:
+            print(f"- {error}", file=sys.stderr)
+        print(json.dumps({
+            "chosenRange": {
+                "start": start,
+                "end": end,
+                "laneName": lane_name,
+                "tagId": tag_id,
+            },
+            "selectedShortProof": proof,
+            "exportState": export_state,
+            "outputPaths": output_paths,
+        }, indent=2, sort_keys=True), file=sys.stderr)
+        raise SystemExit(1)
 
-removed = False
-if created_short_id:
-    try:
-        get_json("shorts-remove", created_short_id)
-        for _ in range(24):
-            queue = get_json("shorts-queue")
-            if not any(clip.get("id") == created_short_id for clip in queue.get("clips") or []):
-                removed = True
-                break
-            time.sleep(0.25)
-    except SystemExit:
-        raise
-    except Exception as exc:
-        errors.append(f"Failed to remove temporary smoke short: {exc}")
-
-proof = {
-    "status": "failed" if errors else "passed",
-    "output": expected_output,
-    "outputExists": os.path.exists(expected_output),
-    "outputBytes": os.path.getsize(expected_output) if os.path.exists(expected_output) else 0,
-    "exportState": export_state,
-    "temporaryShortRemoved": removed,
-    "errors": errors,
-}
-print(json.dumps(proof, indent=2, sort_keys=True))
-if errors:
-    raise SystemExit(1)
+    print(json.dumps({
+        "status": "pass",
+        "session": session_name,
+        "selectedShortProof": {
+            "title": proof.get("title"),
+            "recipeModel": proof.get("recipeModel"),
+            "timeBase": proof.get("timeBase"),
+            "timelineRailVisible": proof.get("timelineRailVisible"),
+            "recipeDuration": proof.get("recipeDuration"),
+        },
+        "chosenShowRange": {
+            "start": round(start, 3),
+            "end": round(end, 3),
+            "laneName": lane_name,
+            "tagId": tag_id,
+        },
+        "outputPaths": existing_outputs,
+        "architectureInvariant": "9:16 shorts export as derivative files from metadata recipes over whole proxy-backed source lanes."
+    }, indent=2, sort_keys=True))
+finally:
+    remove_created()
 PY

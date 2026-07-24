@@ -3,8 +3,13 @@ import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/server/access";
 import {
+  prepareRetrievalQuery,
+  QUIPSLY_EMBEDDING_DIMENSIONS,
+  QUIPSLY_EMBEDDING_MODEL,
+} from "@/lib/retrieval/embeddings";
+import {
+  createOutputCapabilityPlan,
   createOutputPacketSkeleton,
-  createOutputReadinessPlan,
   getOutputDefinition,
   listOutputsForNestKind,
 } from "@high-ground/quipsly-domain/output-catalog";
@@ -100,6 +105,8 @@ const SAFE_TOOL_KINDS = new Set([
   "create-research-packet-note",
   "summarize-selected-block",
   "propose-output-plan",
+  "find-examples",
+  "search-quotes",
   "PROPOSE_ENTITY",
   "PROPOSE_ENTITY_UPDATE",
   "PROPOSE_DRAFT",
@@ -236,11 +243,12 @@ function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "me
     ].filter(Boolean),
     toolIntents: [
       {
-        kind: "find-related-blocks",
+        kind: "find-examples",
         label: boundaryLabel ? `Find related material for ${boundaryLabel}` : "Find related manuscript material",
         explanation: "Why this suggestion? Searching the visible manuscript context for blocks that appear related to the current writing focus helps build consistent lore.",
         riskLevel: "low",
         payload: {
+          query: context.message,
           projectSlug: context.projectSlug,
           documentTitle: context.documentTitle,
           activeBoundary: context.activeBoundary,
@@ -259,14 +267,14 @@ function localAssistantFallback(context: Required<Pick<AssistantRequestBody, "me
       ...(primaryOutput ? [
         {
           kind: "propose-output-plan",
-          label: `Review output plan: ${primaryOutput.title}`,
-          explanation: "Why this suggestion? Output plans help turn the current writing context into a public-safe packet without copying the work into a separate tool.",
+          label: `Review capability definition: ${primaryOutput.title}`,
+          explanation: "Why this suggestion? Capability definitions map how the current writing context could become a reviewed packet without claiming that the packet or publication already exists.",
           riskLevel: "low" as const,
           payload: {
             outputId: primaryOutput.id,
             title: primaryOutput.title,
             href: `/outputs/${primaryOutput.id}`,
-            readinessPlan: createOutputReadinessPlan(primaryOutput),
+            capabilityPlan: createOutputCapabilityPlan(primaryOutput),
             packetSkeleton: createOutputPacketSkeleton(primaryOutput),
           },
         },
@@ -308,7 +316,7 @@ function normalizeAssistantPayload(raw: unknown) {
             outputId: output.id,
             title: output.title,
             href: `/outputs/${output.id}`,
-            readinessPlan: createOutputReadinessPlan(output),
+            capabilityPlan: createOutputCapabilityPlan(output),
             packetSkeleton: createOutputPacketSkeleton(output),
           };
         }
@@ -324,6 +332,78 @@ function normalizeAssistantPayload(raw: unknown) {
   };
 }
 
+async function persistAssistantToolIntents(
+  prisma: ReturnType<typeof getPrismaClient>,
+  sessionId: string,
+  toolIntents: NormalizedToolIntent[],
+) {
+  if (toolIntents.length === 0) return toolIntents;
+  const savedActions = await prisma.$transaction(async (tx) => {
+    const saved: Array<{ id: string; sourceIndex: number }> = [];
+    for (const [sourceIndex, intent] of toolIntents.entries()) {
+      const action = await tx.studioAssistantAction.create({
+        data: {
+          sessionId,
+          kind: intent.kind,
+          label: intent.label,
+          explanation: intent.explanation,
+          riskLevel: intent.riskLevel.toUpperCase(),
+          payloadJson: intent.payload as any,
+          status: "proposed",
+        },
+        select: { id: true },
+      });
+      await tx.studioAssistantLedger.create({
+        data: {
+          actionId: action.id,
+          previousStatus: null,
+          newStatus: "proposed",
+          notes: JSON.stringify({
+            kind: "quipsly-assistant-proposal-created-v1",
+            proposalKind: intent.kind,
+          }),
+        },
+      });
+      saved.push({ id: action.id, sourceIndex });
+    }
+    return saved;
+  });
+  const persistedIds = new Map(savedActions.map((saved) => [saved.sourceIndex, saved.id]));
+  return toolIntents.map((intent, sourceIndex) => ({
+    ...intent,
+    id: persistedIds.get(sourceIndex),
+  }));
+}
+
+function anchorEntityProposalSources(
+  toolIntents: NormalizedToolIntent[],
+  documentId: string,
+  visibleBlocks: AssistantBlockContext[],
+) {
+  return toolIntents.map((intent) => {
+    if (intent.kind !== "PROPOSE_ENTITY" && intent.kind !== "PROPOSE_ENTITY_UPDATE") return intent;
+    const attributes = asRecord(intent.payload.attributes);
+    const sourceExcerpt = typeof attributes.sourceExcerpt === "string" ? attributes.sourceExcerpt.trim() : "";
+    if (!sourceExcerpt) return intent;
+    const matches = visibleBlocks.filter((block) => block.id && typeof block.text === "string" && block.text.includes(sourceExcerpt));
+    if (matches.length !== 1) return intent;
+    return {
+      ...intent,
+      payload: {
+        ...intent.payload,
+        sourceDocumentId: documentId,
+        sourceBlockId: matches[0].id,
+        attributes: {
+          ...attributes,
+          sourceExcerpt,
+          sourceDocumentId: documentId,
+          sourceBlockId: matches[0].id,
+        },
+      },
+    };
+  });
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -335,7 +415,7 @@ export async function GET(request: Request) {
     }
 
     if (!process.env.DATABASE_URL) {
-      return NextResponse.json({ ok: true, fallback: true });
+      return NextResponse.json({ ok: false, error: "Quipsly cannot verify Nest access while its database is unavailable." }, { status: 503 });
     }
 
     const prisma = getPrismaClient();
@@ -394,14 +474,14 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     console.error("[quipsly-assistant-get] failed", error);
-    return NextResponse.json({ ok: true, fallback: true, error: "Failed to retrieve session from database." });
+    return NextResponse.json({ ok: false, error: "Failed to retrieve the assistant session safely." }, { status: 503 });
   }
 }
 
 export async function POST(request: Request) {
   try {
     const body = await request.json() as AssistantRequestBody;
-    const context = {
+    let context = {
       sessionId: body.sessionId,
       message: cleanText(body.message, 1600),
       projectSlug: cleanText(body.projectSlug, 120) || "unknown-project",
@@ -418,84 +498,158 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Message is required." }, { status: 400 });
     }
 
-    let sessionId = context.sessionId;
-
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
+    if (!process.env.DATABASE_URL) {
       return NextResponse.json({
-        ok: true,
-        sessionId,
-        ...localAssistantFallback(context),
-        warning: "GEMINI_API_KEY is not configured, so Quipsly used local fallback guidance.",
+        ok: false,
+        error: "Quipsly cannot verify Nest access while its database is unavailable. No provider request was sent.",
+      }, { status: 503 });
+    }
+
+    const prisma = getPrismaClient();
+    const project = await prisma.studioProject.findFirst({
+      where: { slug: context.projectSlug },
+      select: { id: true, slug: true },
+    });
+    if (!project) {
+      return NextResponse.json({ ok: false, error: "Nest not found. No provider request was sent." }, { status: 404 });
+    }
+    try {
+      await requireProjectAccess(project.slug, "read");
+    } catch (accessErr) {
+      const message = accessErr instanceof Error ? accessErr.message : "Forbidden";
+      return NextResponse.json({ ok: false, error: message }, { status: message.startsWith("UNAUTHORIZED") ? 401 : 403 });
+    }
+
+    const projectDocuments = await prisma.studioDocument.findMany({
+      where: { projectId: project.id },
+      select: { id: true, title: true, sourceLabel: true },
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+    });
+    if (context.documentId) {
+      const document = await prisma.studioDocument.findFirst({
+        where: { id: context.documentId, projectId: project.id },
+        select: {
+          id: true,
+          title: true,
+          blocks: {
+            where: { archivedAt: null },
+            select: { id: true, body: true },
+            orderBy: { order: "asc" },
+          },
+        },
       });
+      if (!document) {
+        return NextResponse.json({ ok: false, error: "The selected document is not available in this Nest. No provider request was sent." }, { status: 404 });
+      }
+      const canonicalBlocks = new Map(document.blocks.map((block) => [block.id, block.body]));
+      context = {
+        ...context,
+        documentTitle: document.title,
+        visibleBlocks: context.visibleBlocks.flatMap((block) => {
+          const id = block.id || "";
+          const canonicalText = canonicalBlocks.get(id);
+          return canonicalText === undefined ? [] : [{ ...block, id, text: canonicalText.slice(0, 900) }];
+        }),
+        projectDocuments,
+      };
+    } else {
+      context = { ...context, visibleBlocks: [], projectDocuments };
+    }
+
+    let sessionId = context.sessionId;
+    if (sessionId) {
+      const requestedSession = await prisma.studioAssistantSession.findFirst({
+        where: {
+          id: sessionId,
+          projectId: project.id,
+          documentId: context.documentId || null,
+          status: "ACTIVE",
+        },
+        select: { id: true },
+      });
+      if (!requestedSession) {
+        return NextResponse.json({ ok: false, error: "That assistant session does not belong to this Nest and document. No provider request was sent." }, { status: 409 });
+      }
+    } else {
+      const activeSession = await prisma.studioAssistantSession.findFirst({
+        where: { projectId: project.id, documentId: context.documentId || null, status: "ACTIVE" },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+      if (activeSession) {
+        sessionId = activeSession.id;
+      } else {
+        const newSession = await prisma.studioAssistantSession.create({
+          data: { projectId: project.id, documentId: context.documentId || null, status: "ACTIVE" },
+          select: { id: true },
+        });
+        sessionId = newSession.id;
+      }
+    }
+
+    const providerDisabled = process.env.QUIPSLY_DISABLE_AI_PROVIDER === "true";
+    const apiKey = providerDisabled ? undefined : process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      try {
+        const fallback = localAssistantFallback(context);
+        const normalizedFallback = normalizeAssistantPayload(fallback);
+        const toolIntents = await persistAssistantToolIntents(prisma, sessionId!, normalizedFallback.toolIntents);
+        return NextResponse.json({
+          ok: true,
+          sessionId,
+          ...normalizedFallback,
+          source: "local-fallback",
+          toolIntents,
+          warning: providerDisabled
+            ? "AI provider access is disabled for this environment, so Quipsly used local fallback guidance. Its review actions still have durable ledger receipts."
+            : "GEMINI_API_KEY is not configured, so Quipsly used local fallback guidance. Its review actions still have durable ledger receipts.",
+        });
+      } catch (dbError) {
+        console.error("[quipsly-assistant] Failed to persist local fallback actions:", dbError);
+        return NextResponse.json({
+          ok: false,
+          error: "Quipsly prepared local guidance but could not record its action and ledger receipts atomically. No actionable proposal was returned.",
+        }, { status: 503 });
+      }
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    let ragContextChunks: string[] = [];
+    let ragContextChunks: Array<{ sourceOrigin: string; sourceId: string; contentSnapshot: string }> = [];
+    let ragWarning: string | undefined;
+    try {
+      const embeddingResponse = await ai.models.embedContent({
+        model: QUIPSLY_EMBEDDING_MODEL,
+        contents: prepareRetrievalQuery(context.message),
+        config: { outputDimensionality: QUIPSLY_EMBEDDING_DIMENSIONS },
+      });
+      const embeddingVector = embeddingResponse.embeddings?.[0]?.values;
 
-    if (process.env.DATABASE_URL) {
-      try {
-        const prisma = getPrismaClient();
-        const project = await prisma.studioProject.findFirst({
-          where: { slug: context.projectSlug }
-        });
-
-        if (project) {
-          // Tenancy access check
-          try {
-            await requireProjectAccess(project.slug, "read");
-          } catch (accessErr: any) {
-            const message = accessErr.message || "Forbidden";
-            return NextResponse.json({ ok: false, error: message }, { status: message.startsWith("UNAUTHORIZED") ? 401 : 403 });
-          }
-
-          if (!sessionId) {
-            const activeSession = await (prisma as any).studioAssistantSession.findFirst({
-              where: { projectId: project.id, documentId: context.documentId || null, status: "ACTIVE" },
-              orderBy: { createdAt: "desc" }
-            });
-
-            if (activeSession) {
-              sessionId = activeSession.id;
-            } else {
-              const newSession = await (prisma as any).studioAssistantSession.create({
-                data: {
-                  projectId: project.id,
-                  documentId: context.documentId || null,
-                  status: "ACTIVE"
-                }
-              });
-              sessionId = newSession.id;
-            }
-          }
-
-          // --- RAG PIPELINE (Semantic Lore Retrieval) ---
-          try {
-            const embeddingResponse = await ai.models.embedContent({
-              model: "text-embedding-004",
-              contents: context.message,
-            });
-            const embeddingVector = embeddingResponse.embeddings?.[0]?.values;
-            
-            if (embeddingVector && embeddingVector.length > 0) {
-              const vectorString = `[${embeddingVector.join(",")}]`;
-              // We use <=> for Cosine Distance because text-embedding-004 produces normalized vectors
-              const relevantChunks = await prisma.$queryRaw<Array<{ id: string, contentSnapshot: string }>>`
-                SELECT id, "contentSnapshot" 
-                FROM "RetrievalEmbedding"
-                WHERE "projectId" = ${project.id}
-                ORDER BY embedding <=> ${vectorString}::vector
-                LIMIT 5;
-              `;
-              ragContextChunks = relevantChunks.map(chunk => chunk.contentSnapshot);
-            }
-          } catch (ragError) {
-            console.error("[quipsly-assistant] RAG pipeline error:", ragError);
-          }
+      if (
+        embeddingVector?.length === QUIPSLY_EMBEDDING_DIMENSIONS
+        && embeddingVector.every(Number.isFinite)
+        && embeddingVector.some((value) => value !== 0)
+      ) {
+        const vectorString = `[${embeddingVector.join(",")}]`;
+        const relevantChunks = await prisma.$queryRaw<Array<{ sourceOrigin: string; sourceId: string; contentSnapshot: string }>>`
+          SELECT "sourceOrigin", "sourceId", "contentSnapshot"
+          FROM "RetrievalEmbedding"
+          WHERE "projectId" = ${project.id}
+            AND "sourceOrigin" IN ('studio-document-block', 'quipsly-lore-quote')
+            AND embedding IS NOT NULL
+          ORDER BY embedding <=> ${vectorString}::vector
+          LIMIT 5;
+        `;
+        ragContextChunks = relevantChunks;
+        if (ragContextChunks.length === 0) {
+          ragWarning = "No semantic Nest matches were found. This response used only the authorized current document context.";
         }
-      } catch (error) {
-        console.error("[quipsly-assistant] DB error resolving session:", error);
+      } else {
+        ragWarning = "Semantic Nest retrieval returned an invalid vector. This response used only the authorized current document context.";
       }
+    } catch (ragError) {
+      console.error("[quipsly-assistant] RAG pipeline error:", ragError);
+      ragWarning = "Semantic Nest retrieval was unavailable. This response used only the authorized current document context.";
     }
 
     const isScanRequest = context.message.startsWith("SCAN_SECTION_FOR_ENTITIES:");
@@ -554,73 +708,40 @@ export async function POST(request: Request) {
     });
 
     if (!response.text) {
-      return NextResponse.json({
-        ok: true,
-        sessionId,
-        ...localAssistantFallback(context),
-        warning: "Gemini returned an empty response, so Quipsly used local fallback guidance.",
-      });
+      try {
+        const normalizedFallback = normalizeAssistantPayload(localAssistantFallback(context));
+        const toolIntents = await persistAssistantToolIntents(prisma, sessionId!, normalizedFallback.toolIntents);
+        return NextResponse.json({
+          ok: true,
+          sessionId,
+          ...normalizedFallback,
+          source: "local-fallback",
+          toolIntents,
+          warning: "Gemini returned an empty response, so Quipsly used local fallback guidance with durable review receipts.",
+        });
+      } catch (dbError) {
+        console.error("[quipsly-assistant] Failed to persist empty-provider fallback actions:", dbError);
+        return NextResponse.json({
+          ok: false,
+          error: "Quipsly prepared fallback guidance but could not record its action and ledger receipts atomically. No actionable proposal was returned.",
+        }, { status: 503 });
+      }
     }
 
     const payload = normalizeAssistantPayload(JSON.parse(response.text));
+    if (context.documentId) {
+      payload.toolIntents = anchorEntityProposalSources(payload.toolIntents, context.documentId, context.visibleBlocks);
+    }
 
-    if (process.env.DATABASE_URL && sessionId && payload.toolIntents.length > 0) {
+    if (sessionId && payload.toolIntents.length > 0) {
       try {
-        const prisma = getPrismaClient();
-        const actionsToSave = payload.toolIntents.filter(
-          (intent) =>
-            intent.kind === "PROPOSE_ENTITY" ||
-            intent.kind === "PROPOSE_ENTITY_UPDATE" ||
-            intent.kind === "PROPOSE_DRAFT" ||
-            intent.kind === "PROPOSE_REWRITE" ||
-            intent.kind === "CHECK_CONTINUITY" ||
-            intent.kind === "PROPOSE_CONTINUITY_FIX"
-        );
-
-        if (actionsToSave.length > 0) {
-          const savedActions = await Promise.all(
-            actionsToSave.map((action) =>
-              prisma.studioAssistantAction.create({
-                data: {
-                  sessionId: sessionId!,
-                  kind: action.kind,
-                  label: action.label,
-                  explanation: action.explanation,
-                  riskLevel: action.riskLevel.toUpperCase(),
-                  payloadJson: action.payload as any,
-                  status: "proposed",
-                },
-              })
-            )
-          );
-
-          // Log each created action in the assistant ledger
-          await Promise.all(
-            savedActions.map((action) =>
-              prisma.studioAssistantLedger.create({
-                data: {
-                  actionId: action.id,
-                  previousStatus: null,
-                  newStatus: "proposed",
-                  notes: "AI suggested entity scan action created",
-                },
-              })
-            )
-          );
-
-          // Update payload to use real DB ids for these intents
-          payload.toolIntents = payload.toolIntents.map((intent) => {
-            const savedMatch = savedActions.find(
-              (sa) => sa.kind === intent.kind && sa.label === intent.label
-            );
-            if (savedMatch) {
-              return { ...intent, id: savedMatch.id } as any;
-            }
-            return intent;
-          });
-        }
+        payload.toolIntents = await persistAssistantToolIntents(prisma, sessionId, payload.toolIntents);
       } catch (dbError) {
         console.error("[quipsly-assistant] Failed to persist proposed actions:", dbError);
+        return NextResponse.json({
+          ok: false,
+          error: "Quipsly generated a proposal but could not record its action and ledger receipt atomically. No actionable proposal was returned.",
+        }, { status: 503 });
       }
     }
 
@@ -629,6 +750,7 @@ export async function POST(request: Request) {
       sessionId,
       ...payload,
       actions: [],
+      warning: ragWarning,
     });
   } catch (error) {
     console.error("[quipsly-assistant] failed", error);

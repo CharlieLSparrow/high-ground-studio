@@ -1,4 +1,11 @@
 import { Storage } from "@google-cloud/storage";
+import {
+  buildMediaVaultObjectName,
+  chooseConfiguredMediaVaultBucket,
+  MEDIA_VAULT_BUCKET_ENV_NAMES,
+  MEDIA_VAULT_PREFIXES,
+  requireMediaVaultBucketName,
+} from "@/lib/server/media-vault";
 
 // In production, this uses default credentials (e.g. from GCP metadata server or key.json in env)
 // For local development, ensure GOOGLE_APPLICATION_CREDENTIALS is set in the environment.
@@ -7,42 +14,34 @@ const storage = new Storage();
 const MEDIA_UPLOAD_RESUMABLE_THRESHOLD_BYTES = 8 * 1024 * 1024;
 
 export const MEDIA_BUCKET_ENV_NAMES = [
-  "QUIPSLY_MEDIA_BUCKET",
-  "HIGH_GROUND_MEDIA_BUCKET",
-  "GCS_BUCKET_NAME",
-  "NEXT_PUBLIC_GCS_BUCKET",
+  ...MEDIA_VAULT_BUCKET_ENV_NAMES,
 ] as const;
 
-export const BUCKET_NAME =
-  process.env.QUIPSLY_MEDIA_BUCKET ||
-  process.env.HIGH_GROUND_MEDIA_BUCKET ||
-  process.env.GCS_BUCKET_NAME ||
-  process.env.NEXT_PUBLIC_GCS_BUCKET ||
-  "";
+export const BUCKET_NAME = chooseConfiguredMediaVaultBucket().bucketName;
 
-export function requireMediaBucketName() {
-  if (BUCKET_NAME) return BUCKET_NAME;
+export const requireMediaBucketName = requireMediaVaultBucketName;
 
-  throw new Error(
-    `Missing media bucket. Set one of: ${MEDIA_BUCKET_ENV_NAMES.join(", ")}.`,
-  );
+export function mockMediaUploadsAllowed() {
+  return process.env.QUIPSLY_ALLOW_MOCK_UPLOADS === "true" && process.env.NODE_ENV !== "production";
 }
 
 export function getMediaBucket(bucketName = requireMediaBucketName()) {
   return storage.bucket(bucketName);
 }
 
-export function toGcsUri(bucketName: string, objectName: string) {
-  return `gcs://${bucketName}/${objectName}`;
+export function toGcsUri(bucketName: string, objectName: string, generation?: string | null) {
+  const base = `gcs://${bucketName}/${objectName}`;
+  return generation ? `${base}?generation=${encodeURIComponent(generation)}` : base;
 }
 
 export function parseGcsUri(uri: string | null | undefined) {
   if (!uri) return null;
-  const match = /^gcs:\/\/([^/]+)\/(.+)$/.exec(uri);
+  const match = /^gcs:\/\/([^/]+)\/(.+?)(?:\?generation=([0-9]+))?$/.exec(uri);
   if (!match) return null;
   return {
     bucketName: match[1],
     objectName: match[2],
+    generation: match[3] || null,
   };
 }
 
@@ -83,7 +82,12 @@ export async function uploadMediaBuffer(args: {
 export async function generateUploadSignedUrl(fileName: string, contentType: string) {
   try {
     const bucket = getMediaBucket();
-    const file = bucket.file(`ingest/${Date.now()}-${fileName}`);
+    const file = bucket.file(buildMediaVaultObjectName({
+      directory: MEDIA_VAULT_PREFIXES.raw,
+      contextSlug: "direct-upload",
+      assetId: `${Date.now()}`,
+      filename: fileName,
+    }));
 
     // Generate a V4 signed URL that expires in 15 minutes
     const [url] = await file.getSignedUrl({
@@ -100,12 +104,20 @@ export async function generateUploadSignedUrl(fileName: string, contentType: str
     };
   } catch (error: any) {
     console.error("Error generating signed URL:", error);
-    // Return mock data if credentials aren't set during local development
+    if (!mockMediaUploadsAllowed()) {
+      throw error;
+    }
+
+    // Explicit local-only fallback. Production paths must fail loudly instead
+    // of returning a pretend upload URL that looks like durable storage.
     return {
       success: true,
       url: `/api/mock-upload?file=${encodeURIComponent(fileName)}`,
       destinationPath: `ingest/${Date.now()}-${fileName}`,
       mocked: true,
+      localOnly: true,
+      warning:
+        "Mock upload URL created because QUIPSLY_ALLOW_MOCK_UPLOADS=true outside production.",
     };
   }
 }

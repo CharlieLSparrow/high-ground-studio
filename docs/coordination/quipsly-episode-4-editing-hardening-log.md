@@ -163,3 +163,32 @@ Use this exact flow after the first hands-on edit:
 gcloud run services update-traffic studio --project=high-ground-odyssey --region=us-central1 --to-revisions=studio-00185-b8p=100
 ```
 
+## 2026-07-15 - Producer main v011
+
+Episode 4 now has a producer-owned, source-aware release candidate rather than
+an imported-track approximation.
+
+- Active Studio branch: `Episode 4 producer main cut v011`.
+- Runtime: `45:49.06` across 19 narrative keep ranges.
+- Edit model: whole synchronized source lanes plus metadata decisions; source
+  media and canonical stems remain intact.
+- Canonical audio truth: separate Charlie, Homer, and reference stems, each
+  `6799.943s`; measured duration spread is `0.0s`.
+- Final program: 1920x1080 H.264 at 30 fps with 48 kHz stereo AAC.
+- Audio: `-14.82 LUFS`, `-1.35 dBTP`, `8.40 LU` loudness range.
+- Validation: full decode passed, A/V duration match passed, no silence of
+  three seconds or longer below -50 dB, 597 caption cues with no overlaps, all
+  ten narrative transcript anchors found, and visual seam sheets inspected.
+- Upload packet: title, description, chapters, SRT/VTT, transcript, podcast
+  audio, three artwork candidates, six validated vertical shorts, checksums,
+  and explicit `not-published` receipt truth.
+- Source inventory: 14 raw source records and three canonical editorial stems
+  with paths, roles, durations, provenance, and SHA-256 checksums.
+
+Current front door:
+
+```text
+/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Full_Sync_Edits/20260715-episode4-producer-main-v011/producer-main-v011/delivery-v004/START_HERE_EPISODE_4_V011.md
+```
+
+No external upload or publication was performed.

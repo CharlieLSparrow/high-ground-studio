@@ -431,7 +431,7 @@ Validation run:
 - **Scroll Verification**: Verified that outline click navigation correctly uses `scrollIntoView` to snap active blocks to the top of the container while preserving the fixed headers. The `restoreScrollState` functions remain fully eradicated.
 
 Risks:
-- The fixed Undo widget might overlap with other floating elements (like chat bubbles) on smaller screens, though the bottom-right placement is standard. 
+- The fixed Undo widget might overlap with other floating elements (like chat bubbles) on smaller screens, though the bottom-right placement is standard.
 
 Recommended next handoff:
 - Codex / Author to try adding structure tags and verifying that the inline chips look calmer, and test the sticky undo widget when typing or modifying blocks.

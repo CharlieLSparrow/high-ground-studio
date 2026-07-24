@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 
 export type UploadState = "idle" | "requesting_url" | "uploading" | "success" | "error";
 
@@ -9,18 +9,31 @@ export interface UploadTask {
   error: string | null;
   publicUrl: string | null;
   bucketPath: string | null;
+  uploadCapability: string | null;
+  uploadRequestId: string | null;
+  uploadReservationId: string | null;
 }
+
+type CloudStorageUploadOptions = {
+  episodeId?: string;
+  directory?: string;
+  projectSlug?: string;
+  nestSlug?: string;
+  uploadRequestId?: string;
+};
 
 export interface CloudStorageUploadHook {
   tasks: Record<string, UploadTask>;
-  uploadFile: (taskId: string, file: File | Blob, fileName: string, fileType: string, options?: { episodeId?: string; directory?: string }) => Promise<string | null>;
+  uploadFile: (taskId: string, file: File | Blob, fileName: string, fileType: string, options?: CloudStorageUploadOptions) => Promise<string | null>;
   reset: (taskId: string) => void;
 }
 
 export function useCloudStorageUpload(): CloudStorageUploadHook {
   const [tasks, setTasks] = useState<Record<string, UploadTask>>({});
+  const uploadRequestIds = useRef<Record<string, string>>({});
 
   const reset = useCallback((taskId: string) => {
+    delete uploadRequestIds.current[taskId];
     setTasks((prev) => {
       const next = { ...prev };
       delete next[taskId];
@@ -39,6 +52,9 @@ export function useCloudStorageUpload(): CloudStorageUploadHook {
           error: null,
           publicUrl: null,
           bucketPath: null,
+          uploadCapability: null,
+          uploadRequestId: null,
+          uploadReservationId: null,
         }),
         ...updates,
       },
@@ -50,10 +66,19 @@ export function useCloudStorageUpload(): CloudStorageUploadHook {
     file: File | Blob,
     fileName: string,
     fileType: string,
-    options?: { episodeId?: string; directory?: string }
+    options?: CloudStorageUploadOptions
   ): Promise<string | null> => {
     try {
-      updateTask(taskId, { state: "requesting_url", progressPercent: 0, error: null });
+      const uploadRequestId = options?.uploadRequestId
+        || uploadRequestIds.current[taskId]
+        || globalThis.crypto.randomUUID();
+      uploadRequestIds.current[taskId] = uploadRequestId;
+      updateTask(taskId, {
+        state: "requesting_url",
+        progressPercent: 0,
+        error: null,
+        uploadRequestId,
+      });
       
       const presignResponse = await fetch("/api/upload/presigned", {
         method: "POST",
@@ -61,8 +86,12 @@ export function useCloudStorageUpload(): CloudStorageUploadHook {
         body: JSON.stringify({
           filename: fileName,
           contentType: fileType,
+          sizeBytes: file.size,
+          uploadRequestId,
           episodeId: options?.episodeId,
-          directory: options?.directory || "uploads",
+          directory: options?.directory,
+          projectSlug: options?.projectSlug,
+          nestSlug: options?.nestSlug,
         }),
       });
 
@@ -70,9 +99,21 @@ export function useCloudStorageUpload(): CloudStorageUploadHook {
         throw new Error("Failed to get upload signature from server.");
       }
 
-      const { url, publicUrl, bucketPath } = await presignResponse.json();
+      const {
+        url,
+        gcsUri,
+        bucketPath,
+        uploadCapability,
+        uploadReservation,
+        requiredUploadHeaders,
+      } = await presignResponse.json();
 
-      updateTask(taskId, { state: "uploading", bucketPath });
+      updateTask(taskId, {
+        state: "uploading",
+        bucketPath,
+        uploadCapability,
+        uploadReservationId: uploadReservation?.id ?? null,
+      });
 
       // Mock upload for local-dev fallback
       if (url.includes("X-Goog-Signature=mock")) {
@@ -81,8 +122,8 @@ export function useCloudStorageUpload(): CloudStorageUploadHook {
           updateTask(taskId, { progressPercent: i });
           await new Promise((resolve) => setTimeout(resolve, 200));
         }
-        updateTask(taskId, { state: "success", publicUrl, progressPercent: 100 });
-        return publicUrl;
+        updateTask(taskId, { state: "success", publicUrl: gcsUri, progressPercent: 100 });
+        return gcsUri;
       }
 
       // Client-Direct Upload using XMLHttpRequest for progress tracking
@@ -98,8 +139,8 @@ export function useCloudStorageUpload(): CloudStorageUploadHook {
 
         xhr.onload = () => {
           if (xhr.status >= 200 && xhr.status < 300) {
-            updateTask(taskId, { state: "success", publicUrl, progressPercent: 100 });
-            resolve(publicUrl);
+            updateTask(taskId, { state: "success", publicUrl: gcsUri, progressPercent: 100 });
+            resolve(gcsUri);
           } else {
             updateTask(taskId, { state: "error", error: `Upload failed with status: ${xhr.status}` });
             reject(new Error(`Upload failed with status: ${xhr.status}`));
@@ -113,6 +154,9 @@ export function useCloudStorageUpload(): CloudStorageUploadHook {
 
         xhr.open("PUT", url, true);
         xhr.setRequestHeader("Content-Type", fileType);
+        if (requiredUploadHeaders?.["X-Goog-If-Generation-Match"] === "0") {
+          xhr.setRequestHeader("X-Goog-If-Generation-Match", "0");
+        }
         xhr.send(file);
       });
 

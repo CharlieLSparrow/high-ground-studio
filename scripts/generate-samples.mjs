@@ -263,17 +263,17 @@ function generate() {
   }
 
   console.log(`Generating ${samples.length} sample packets...`);
-  
+
   for (const sample of samples) {
     const packetPath = path.join(tmpDir, `${sample.target}-${sample.slug}.json`);
     fs.writeFileSync(packetPath, JSON.stringify(sample, null, 2), "utf-8");
-    
+
     console.log(`Created temporary packet: ${packetPath}`);
-    
+
     // Invoke publish-packet.mjs
     const cmd = `node scripts/publish-packet.mjs scripts/_tmp_packets/${sample.target}-${sample.slug}.json`;
     console.log(`Executing: ${cmd}`);
-    
+
     try {
       const output = execSync(cmd, { cwd: monorepoRoot, encoding: "utf-8" });
       console.log(output);

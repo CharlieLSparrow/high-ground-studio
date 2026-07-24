@@ -1,6 +1,8 @@
 import {
+  OUTPUT_CATALOG_STAGE_LABELS,
   OUTPUT_FAMILY_LABELS,
-  OUTPUT_STATUS_LABELS,
+  OUTPUT_ROADMAP_HORIZON_LABELS,
+  QUIPSLY_OUTPUT_CATALOG_BOUNDARY,
   QUIPSLY_OUTPUT_CATALOG,
 } from "@high-ground/quipsly-domain/output-catalog";
 
@@ -9,9 +11,11 @@ export function GET() {
     {
       ok: true,
       generatedAt: new Date().toISOString(),
-      count: QUIPSLY_OUTPUT_CATALOG.length,
+      catalogBoundary: QUIPSLY_OUTPUT_CATALOG_BOUNDARY,
+      definitionCount: QUIPSLY_OUTPUT_CATALOG.length,
       families: OUTPUT_FAMILY_LABELS,
-      statuses: OUTPUT_STATUS_LABELS,
+      catalogStages: OUTPUT_CATALOG_STAGE_LABELS,
+      roadmapHorizons: OUTPUT_ROADMAP_HORIZON_LABELS,
       outputs: QUIPSLY_OUTPUT_CATALOG,
     },
     {

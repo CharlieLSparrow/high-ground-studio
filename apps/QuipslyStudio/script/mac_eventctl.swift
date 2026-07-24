@@ -31,6 +31,8 @@ func usage() -> Never {
       script/mac_eventctl.swift click <x> <y>
       script/mac_eventctl.swift drag <startX> <startY> <endX> <endY>
       script/mac_eventctl.swift scroll <x> <y> <deltaX> <deltaY> [repeatCount]
+      script/mac_eventctl.swift scroll-window <bundle-id> <xFraction> <yFraction> <deltaX> <deltaY> [repeatCount]
+      script/mac_eventctl.swift window-frame <bundle-id>
       script/mac_eventctl.swift key <virtual-key-code>
       script/mac_eventctl.swift check-access
       script/mac_eventctl.swift request-access
@@ -72,6 +74,72 @@ func runningApp(bundleId: String) throws -> NSRunningApplication {
         throw EventToolError.appNotFound(bundleId)
     }
     return app
+}
+
+func axWindowFrame(for app: NSRunningApplication) -> CGRect? {
+    let axApp = AXUIElementCreateApplication(app.processIdentifier)
+    var windowsValue: CFTypeRef?
+    guard AXUIElementCopyAttributeValue(axApp, kAXWindowsAttribute as CFString, &windowsValue) == .success,
+          let windows = windowsValue as? [AXUIElement]
+    else {
+        return nil
+    }
+
+    for window in windows {
+        var positionValue: CFTypeRef?
+        var sizeValue: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(window, kAXPositionAttribute as CFString, &positionValue) == .success,
+              AXUIElementCopyAttributeValue(window, kAXSizeAttribute as CFString, &sizeValue) == .success,
+              let positionAXValue = positionValue,
+              let sizeAXValue = sizeValue
+        else {
+            continue
+        }
+
+        var position = CGPoint.zero
+        var size = CGSize.zero
+        guard AXValueGetValue(positionAXValue as! AXValue, .cgPoint, &position),
+              AXValueGetValue(sizeAXValue as! AXValue, .cgSize, &size),
+              size.width > 100,
+              size.height > 100
+        else {
+            continue
+        }
+
+        return CGRect(origin: position, size: size)
+    }
+
+    return nil
+}
+
+func windowFrame(bundleId: String) throws -> CGRect {
+    let app = try runningApp(bundleId: bundleId)
+    if let axFrame = axWindowFrame(for: app) {
+        return axFrame
+    }
+
+    let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
+    let matches = windows.filter { info in
+        guard let ownerPid = info[kCGWindowOwnerPID as String] as? pid_t else { return false }
+        return ownerPid == app.processIdentifier
+    }
+
+    let candidate = matches.first { info in
+        let layer = info[kCGWindowLayer as String] as? Int ?? 0
+        return layer == 0
+    } ?? matches.first
+
+    guard
+        let bounds = candidate?[kCGWindowBounds as String] as? [String: Any],
+        let x = bounds["X"] as? Double,
+        let y = bounds["Y"] as? Double,
+        let width = bounds["Width"] as? Double,
+        let height = bounds["Height"] as? Double
+    else {
+        throw EventToolError.appNotFound("No visible window found for bundle id: \(bundleId)")
+    }
+
+    return CGRect(x: x, y: y, width: width, height: height)
 }
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -124,8 +192,16 @@ do {
         CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
         post(CGEvent(mouseEventSource: source, mouseType: .leftMouseDown, mouseCursorPosition: start, mouseButton: .left))
         usleep(40_000)
-        post(CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: end, mouseButton: .left))
-        usleep(40_000)
+        let steps = 18
+        for step in 1...steps {
+            let fraction = CGFloat(step) / CGFloat(steps)
+            let point = CGPoint(
+                x: start.x + ((end.x - start.x) * fraction),
+                y: start.y + ((end.y - start.y) * fraction)
+            )
+            post(CGEvent(mouseEventSource: source, mouseType: .leftMouseDragged, mouseCursorPosition: point, mouseButton: .left))
+            usleep(12_000)
+        }
         post(CGEvent(mouseEventSource: source, mouseType: .leftMouseUp, mouseCursorPosition: end, mouseButton: .left))
         print("dragged startX=\(Int(start.x)) startY=\(Int(start.y)) endX=\(Int(end.x)) endY=\(Int(end.y))")
 
@@ -152,6 +228,43 @@ do {
             usleep(40_000)
         }
         print("scrolled x=\(Int(p.x)) y=\(Int(p.y)) deltaX=\(deltaX) deltaY=\(deltaY) repeatCount=\(repeatCount)")
+
+    case "window-frame":
+        guard args.count >= 2 else { throw EventToolError.usage("Missing bundle id.") }
+        let bundleId = args[1]
+        let frame = try windowFrame(bundleId: bundleId)
+        print("windowFrame bundleId=\(bundleId) x=\(Int(frame.minX)) y=\(Int(frame.minY)) width=\(Int(frame.width)) height=\(Int(frame.height))")
+
+    case "scroll-window":
+        guard args.count >= 6 else { throw EventToolError.usage("Missing scroll-window args: <bundle-id> <xFraction> <yFraction> <deltaX> <deltaY> [repeatCount].") }
+        let bundleId = args[1]
+        let xFraction = min(1.0, max(0.0, try number(args[2])))
+        let yFraction = min(1.0, max(0.0, try number(args[3])))
+        let deltaX = try intNumber(args[4])
+        let deltaY = try intNumber(args[5])
+        let repeatCount = max(1, try (args.count >= 7 && !args[6].isEmpty) ? int(args[6]) : 1)
+        let frame = try windowFrame(bundleId: bundleId)
+        let p = CGPoint(
+            x: frame.minX + (frame.width * xFraction),
+            y: frame.minY + (frame.height * yFraction)
+        )
+        CGWarpMouseCursorPosition(p)
+        CGAssociateMouseAndMouseCursorPosition(boolean_t(1))
+        let source = CGEventSource(stateID: .hidSystemState)
+        for _ in 0..<repeatCount {
+            let event = CGEvent(
+                scrollWheelEvent2Source: source,
+                units: .pixel,
+                wheelCount: 2,
+                wheel1: deltaY,
+                wheel2: deltaX,
+                wheel3: 0
+            )
+            event?.location = p
+            post(event)
+            usleep(40_000)
+        }
+        print("scrolledWindow bundleId=\(bundleId) x=\(Int(p.x)) y=\(Int(p.y)) xFraction=\(xFraction) yFraction=\(yFraction) deltaX=\(deltaX) deltaY=\(deltaY) repeatCount=\(repeatCount)")
 
     case "key":
         guard args.count >= 2 else { throw EventToolError.usage("Missing virtual key code.") }

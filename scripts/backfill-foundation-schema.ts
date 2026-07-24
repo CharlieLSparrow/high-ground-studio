@@ -12,7 +12,7 @@ async function backfill() {
 
   if (workspaces.length > 0) {
     console.log(`Found ${workspaces.length} workspaces without an organization.`);
-    
+
     // Find or create a default organization for legacy workspaces
     let legacyOrg = await prisma.organization.findFirst({
       where: { slug: 'legacy-org' }
@@ -34,7 +34,7 @@ async function backfill() {
       where: { organizationId: null },
       data: { organizationId: legacyOrg.id }
     });
-    
+
     console.log(`Successfully backfilled ${updateCount.count} workspaces.`);
   } else {
     console.log("No workspaces found missing an organizationId.");

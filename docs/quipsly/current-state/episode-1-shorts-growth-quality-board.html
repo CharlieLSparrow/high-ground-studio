@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quipsly shorts growth quality board</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101711;
+      --panel: #18231a;
+      --ink: #f8f0d8;
+      --muted: #b9ae94;
+      --gold: #f4d35e;
+      --moss: #8cc56e;
+      --cyan: #5ec6d5;
+      --line: rgba(248, 240, 216, 0.16);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 12% 6%, rgba(140,197,110,.22), transparent 24rem),
+        radial-gradient(circle at 88% 0%, rgba(244,211,94,.14), transparent 28rem),
+        linear-gradient(180deg, #101711, #0b100c);
+      color: var(--ink);
+      font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1220px; margin: 0 auto; padding: 42px 24px 72px; }
+    .hero, .short {
+      border: 1px solid var(--line);
+      background: rgba(24,35,26,.86);
+      border-radius: 28px;
+      box-shadow: 0 28px 90px rgba(0,0,0,.28);
+    }
+    .hero { padding: 32px; }
+    .eyebrow { color: var(--gold); text-transform: uppercase; letter-spacing: .22em; font-size: .72rem; font-weight: 900; margin: 0 0 8px; }
+    h1 { font-size: clamp(2.4rem, 6vw, 5rem); line-height: .92; letter-spacing: -.07em; margin: 0; }
+    h2 { margin: 0 0 8px; }
+    p { color: var(--muted); max-width: 760px; }
+    .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 24px 0; }
+    .counts article { border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: rgba(255,255,255,.04); }
+    .counts strong { display: block; color: var(--gold); font-size: 2.1rem; }
+    .counts span { color: var(--muted); }
+    .shorts { display: grid; gap: 16px; margin-top: 22px; }
+    .short { display: grid; grid-template-columns: 100px minmax(0, 1fr) minmax(280px, .85fr); gap: 18px; padding: 18px; }
+    .score { display: grid; place-items: center; align-content: center; border-radius: 22px; background: rgba(244,211,94,.1); border: 1px solid rgba(244,211,94,.22); }
+    .score strong { font-size: 2.7rem; color: var(--gold); }
+    .score span { text-align: center; color: var(--muted); font-size: .75rem; }
+    .subs { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+    .subs span { padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); background: rgba(255,255,255,.04); }
+    .subs b { color: var(--cyan); margin-right: 6px; }
+    ul { margin: 10px 0 0; padding-left: 18px; color: var(--muted); }
+    .commands { display: grid; gap: 8px; align-content: start; }
+    label { color: var(--moss); font-size: .7rem; font-weight: 900; text-transform: uppercase; letter-spacing: .14em; }
+    code { display: block; white-space: pre-wrap; word-break: break-word; padding: 10px 12px; border-radius: 12px; background: rgba(0,0,0,.32); color: #fff6c2; border: 1px solid rgba(244,211,94,.18); font-size: .8rem; }
+    @media (max-width: 900px) { .short { grid-template-columns: 1fr; } .score { min-height: 90px; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Quipsly Studio - shorts growth board</p>
+      <h1>Pick clips for attention, not just completion.</h1>
+      <p>Score the queue for hook, pacing, vertical presentation, audio confidence, platform packaging, and standalone clarity. This is a compass, not a prophecy.</p>
+      <div class="counts"><article><strong>5</strong><span>promising-needs-polish</span></article><article><strong>7</strong><span>strong-post-candidate</span></article></div>
+      <p class="eyebrow">Top candidate</p>
+      <h2>Farm Work Teaches Stewardship</h2>
+      <p>Add or approve a readable caption/overlay plan.</p>
+      <code>script/agentctl.sh shorts-select id &#x27;18BC489A-7439-4DA5-B967-9726443A008D&#x27; &amp;&amp; script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state&#x27; &#x27;farm-work-teaches-stewardship&#x27;</code>
+    </section>
+    <section class="shorts">
+            <section class="short strong-post-candidate">
+              <div class="score">
+                <strong>95.2</strong>
+                <span>strong-post-candidate</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Farm Work Teaches Stewardship</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <div class="subs"><span><b>hook</b>80.0</span><span><b>duration</b>100.0</span><span><b>platform</b>100.0</span><span><b>visual</b>100.0</span><span><b>audio</b>100.0</span><span><b>standalone</b>100.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Hook text exists.</li><li>Contains high-signal hook language.</li><li>Strong vertical-short length.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Title length is usable for packaging.</li><li>Hook looks short enough to test as opening text.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Strong vertical-short length.</li><li>Single segment is easy for viewers to follow.</li><li>Hook can establish context quickly.</li><li>Duration gives enough room for setup and payoff.</li><li>Title suggests the clip can stand alone.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short strong-post-candidate">
+              <div class="score">
+                <strong>92.0</strong>
+                <span>strong-post-candidate</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-visual-review</p>
+                <h2>Learning Why, Not Just What</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <div class="subs"><span><b>hook</b>80.0</span><span><b>duration</b>100.0</span><span><b>platform</b>100.0</span><span><b>visual</b>82.0</span><span><b>audio</b>100.0</span><span><b>standalone</b>100.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Hook text exists.</li><li>Contains high-signal hook language.</li><li>Strong vertical-short length.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Title length is usable for packaging.</li><li>Hook looks short enough to test as opening text.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Strong vertical-short length.</li><li>Single segment is easy for viewers to follow.</li><li>Hook can establish context quickly.</li><li>Duration gives enough room for setup and payoff.</li><li>Title suggests the clip can stand alone.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short strong-post-candidate">
+              <div class="score">
+                <strong>89.6</strong>
+                <span>strong-post-candidate</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Test Short - Wednesday Rule moment</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <div class="subs"><span><b>hook</b>88.0</span><span><b>duration</b>78.0</span><span><b>platform</b>100.0</span><span><b>visual</b>100.0</span><span><b>audio</b>95.2</span><span><b>standalone</b>76.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Hook text exists.</li><li>Contains high-signal hook language.</li><li>Question framing can work well in a feed.</li><li>Punchy, but may need enough context.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Title length is usable for packaging.</li><li>Hook looks short enough to test as opening text.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Punchy, but may need enough context.</li><li>Single segment is easy for viewers to follow.</li><li>Hook can establish context quickly.</li><li>Title suggests the clip can stand alone.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short strong-post-candidate">
+              <div class="score">
+                <strong>86.4</strong>
+                <span>strong-post-candidate</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Write Things Worth Reading</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <div class="subs"><span><b>hook</b>64.0</span><span><b>duration</b>72.0</span><span><b>platform</b>100.0</span><span><b>visual</b>100.0</span><span><b>audio</b>93.8</span><span><b>standalone</b>100.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Hook text exists.</li><li>Usable, but needs pacing discipline.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Title length is usable for packaging.</li><li>Hook looks short enough to test as opening text.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Usable, but needs pacing discipline.</li><li>Single segment is easy for viewers to follow.</li><li>Hook can establish context quickly.</li><li>Duration gives enough room for setup and payoff.</li><li>Title suggests the clip can stand alone.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4&#x27;</code>
+                <label>Export file</label>
+                <code>/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short strong-post-candidate">
+              <div class="score">
+                <strong>86.2</strong>
+                <span>strong-post-candidate</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Mutual Mentorship</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <div class="subs"><span><b>hook</b>62.0</span><span><b>duration</b>100.0</span><span><b>platform</b>82.0</span><span><b>visual</b>100.0</span><span><b>audio</b>100.0</span><span><b>standalone</b>88.0</span></div>
+                <ul><li>Title is probably too generic.</li><li>Hook text exists.</li><li>Contains high-signal hook language.</li><li>Strong vertical-short length.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Hook looks short enough to test as opening text.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Strong vertical-short length.</li><li>Single segment is easy for viewers to follow.</li><li>Hook can establish context quickly.</li><li>Duration gives enough room for setup and payoff.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short strong-post-candidate">
+              <div class="score">
+                <strong>85.6</strong>
+                <span>strong-post-candidate</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Record From Anywhere</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <div class="subs"><span><b>hook</b>80.0</span><span><b>duration</b>72.0</span><span><b>platform</b>82.0</span><span><b>visual</b>100.0</span><span><b>audio</b>93.8</span><span><b>standalone</b>88.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Hook text exists.</li><li>Contains high-signal hook language.</li><li>Usable, but needs pacing discipline.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Hook looks short enough to test as opening text.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Usable, but needs pacing discipline.</li><li>Single segment is easy for viewers to follow.</li><li>Hook can establish context quickly.</li><li>Duration gives enough room for setup and payoff.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short strong-post-candidate">
+              <div class="score">
+                <strong>85.6</strong>
+                <span>strong-post-candidate</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Identity Changes Behavior</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <div class="subs"><span><b>hook</b>80.0</span><span><b>duration</b>72.0</span><span><b>platform</b>82.0</span><span><b>visual</b>100.0</span><span><b>audio</b>93.8</span><span><b>standalone</b>88.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Hook text exists.</li><li>Contains high-signal hook language.</li><li>Usable, but needs pacing discipline.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Hook looks short enough to test as opening text.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Usable, but needs pacing discipline.</li><li>Single segment is easy for viewers to follow.</li><li>Hook can establish context quickly.</li><li>Duration gives enough room for setup and payoff.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short promising-needs-polish">
+              <div class="score">
+                <strong>81.7</strong>
+                <span>promising-needs-polish</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Parkinson&#x27;s Awareness Goal</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <div class="subs"><span><b>hook</b>64.0</span><span><b>duration</b>72.0</span><span><b>platform</b>82.0</span><span><b>visual</b>100.0</span><span><b>audio</b>93.8</span><span><b>standalone</b>88.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Hook text exists.</li><li>Usable, but needs pacing discipline.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Hook looks short enough to test as opening text.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Usable, but needs pacing discipline.</li><li>Single segment is easy for viewers to follow.</li><li>Hook can establish context quickly.</li><li>Duration gives enough room for setup and payoff.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short promising-needs-polish">
+              <div class="score">
+                <strong>81.7</strong>
+                <span>promising-needs-polish</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Don&#x27;t Downplay Yourself</h2>
+                <p>Add or approve a readable caption/overlay plan.</p>
+                <div class="subs"><span><b>hook</b>64.0</span><span><b>duration</b>72.0</span><span><b>platform</b>82.0</span><span><b>visual</b>100.0</span><span><b>audio</b>93.8</span><span><b>standalone</b>88.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Hook text exists.</li><li>Usable, but needs pacing discipline.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Hook looks short enough to test as opening text.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Usable, but needs pacing discipline.</li><li>Single segment is easy for viewers to follow.</li><li>Hook can establish context quickly.</li><li>Duration gives enough room for setup and payoff.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short promising-needs-polish">
+              <div class="score">
+                <strong>79.6</strong>
+                <span>promising-needs-polish</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 1 Review Candidate 01 - 04:27</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <div class="subs"><span><b>hook</b>38.0</span><span><b>duration</b>100.0</span><span><b>platform</b>84.0</span><span><b>visual</b>100.0</span><span><b>audio</b>100.0</span><span><b>standalone</b>80.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Needs a clear opening hook.</li><li>Strong vertical-short length.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Title length is usable for packaging.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Strong vertical-short length.</li><li>Single segment is easy for viewers to follow.</li><li>Duration gives enough room for setup and payoff.</li><li>Title suggests the clip can stand alone.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-select id &#x27;0F028DF4-76EF-4245-9349-1EE266C1AAEB&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short promising-needs-polish">
+              <div class="score">
+                <strong>79.6</strong>
+                <span>promising-needs-polish</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 1 Review Candidate 03 - 26:13</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <div class="subs"><span><b>hook</b>38.0</span><span><b>duration</b>100.0</span><span><b>platform</b>84.0</span><span><b>visual</b>100.0</span><span><b>audio</b>100.0</span><span><b>standalone</b>80.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Needs a clear opening hook.</li><li>Strong vertical-short length.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Title length is usable for packaging.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Strong vertical-short length.</li><li>Single segment is easy for viewers to follow.</li><li>Duration gives enough room for setup and payoff.</li><li>Title suggests the clip can stand alone.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-select id &#x27;D9526D0B-311E-46D4-B127-824D713EA2F2&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4</code>
+              </div>
+            </section>
+            
+            <section class="short promising-needs-polish">
+              <div class="score">
+                <strong>74.6</strong>
+                <span>promising-needs-polish</span>
+              </div>
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 1 Review Candidate 02 - 08:19</h2>
+                <p>Write a sharper opening hook before packaging.</p>
+                <div class="subs"><span><b>hook</b>38.0</span><span><b>duration</b>72.0</span><span><b>platform</b>84.0</span><span><b>visual</b>100.0</span><span><b>audio</b>93.8</span><span><b>standalone</b>80.0</span></div>
+                <ul><li>Title has enough shape to be more than a label.</li><li>Needs a clear opening hook.</li><li>Usable, but needs pacing discipline.</li><li>Has an obvious vertical-social destination.</li><li>Has a reuse destination beyond pure shorts.</li><li>Title length is usable for packaging.</li><li>Local export exists for visual review.</li><li>Vertical format signal exists.</li><li>Text/caption surface exists.</li><li>Visual proof signal exists.</li><li>Exported file exists for audio sanity.</li><li>Audio/listen review signal exists.</li><li>Usable, but needs pacing discipline.</li><li>Single segment is easy for viewers to follow.</li><li>Duration gives enough room for setup and payoff.</li><li>Title suggests the clip can stand alone.</li></ul>
+              </div>
+              <div class="commands">
+                <label>Next command</label>
+                <code>script/agentctl.sh shorts-select id &#x27;33FDE8CC-9080-4EC1-9294-1F03D0EEF61F&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+                <label>Export file</label>
+                <code>/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4</code>
+              </div>
+            </section>
+            </section>
+  </main>
+</body>
+</html>

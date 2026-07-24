@@ -1,4 +1,4 @@
-import { QuipslyPublicPackage, MetricSnapshot } from "@/lib/publishing/DestinationAdapters";
+import type { QuipslyPublicPackage, MetricSnapshot } from "@/lib/publishing/DestinationAdapters";
 
 /**
  * Mock Data Store for the Publishing & Analytics Suite.

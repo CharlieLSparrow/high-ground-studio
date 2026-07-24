@@ -1,0 +1,43 @@
+type Quote @table {
+  id: String! @col(name: "id") @default(expr: "uuidV4()")
+  slug: String! @unique
+  text: String!
+  shortText: String
+  personId: String!
+  sourceWorkId: String!
+  verificationStatus: String!
+  confidence: Float!
+  reviewNote: String
+  contextNote: String
+  quipslyNote: String
+  storyHook: String
+  textEmbedding: Vector! @col(size: 768)
+}
+
+type QuoteVariant @table {
+  id: String! @col(name: "id") @default(expr: "uuidV4()")
+  quote: Quote!
+  text: String!
+  status: String!
+  note: String!
+}
+
+type StoryTrail @table {
+  id: String! @col(name: "id") @default(expr: "uuidV4()")
+  quote: Quote!
+  slug: String! @unique
+  title: String!
+  deck: String!
+  sourceCaution: String
+  videoSeed: String
+  recommendedRuntimeSeconds: Int
+}
+
+type StoryBeat @table {
+  id: String! @col(name: "id") @default(expr: "uuidV4()")
+  storyTrail: StoryTrail!
+  orderIndex: Int!
+  title: String!
+  body: String!
+  caution: String
+}

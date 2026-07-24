@@ -1,9 +1,6 @@
 name: Deploy Cloud Run
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
     inputs:
       target:
@@ -16,6 +13,11 @@ on:
           - web
           - studio
           - auto
+      apply_schema_changes:
+        description: Apply committed migrations and targeted additive schema syncs
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: cloud-run-deploy-${{ github.ref }}
@@ -44,7 +46,7 @@ jobs:
       summary: ${{ steps.plan.outputs.summary }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
@@ -84,27 +86,11 @@ jobs:
                 base="$(git rev-parse "${GITHUB_SHA}^")"
               fi
 
-              changed="$(git diff --name-only "$base" "$GITHUB_SHA")"
-              web_re='^(apps/web/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.web\.yaml$|scripts/web-cloud-run|\.dockerignore$)'
-              studio_re='^(apps/quipsly/|packages/|prisma/|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$|cloudbuild\.studio(\.deploy)?\.yaml$|scripts/studio-cloud-run|scripts/release/quipsly-|\.github/workflows/deploy-cloud-run\.yml$|\.dockerignore$)'
-              schema_re='^(prisma/|ops/|scripts/quipsly-nest-chat-schema-push\.mjs$|scripts/quipsly-production-core-schema-sync\.mjs$|scripts/release/quipsly-schema-sync\.sh$|scripts/release/quipsly-deploy-preview\.sh$|\.github/workflows/deploy-cloud-run\.yml$|cloudbuild\.prisma-migrate\.yaml$|package.json$|pnpm-lock.yaml$|pnpm-workspace.yaml$)'
-              schema=false
-
-              if grep -Eq "$schema_re" <<< "$changed"; then
-                schema=true
-              fi
-
-              if grep -Eq "$web_re" <<< "$changed"; then
-                web=true
-              fi
-
-              if grep -Eq "$studio_re" <<< "$changed"; then
-                studio=true
-              fi
-
-              if [[ "$web" == "true" || "$studio" == "true" ]]; then
-                summary="Auto deploy planned from changed app/runtime files."
-              fi
+              node scripts/ci/plan-changed-surfaces.mjs \
+                --base "$base" \
+                --head "$GITHUB_SHA" \
+                --github-output "$GITHUB_OUTPUT"
+              exit 0
               ;;
             *)
               echo "Unknown target: $TARGET" >&2
@@ -129,28 +115,28 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
@@ -178,21 +164,21 @@ jobs:
     timeout-minutes: 60
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .node-version
 
       - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
+        uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:
           workload_identity_provider: ${{ env.WIF_PROVIDER }}
           service_account: ${{ env.DEPLOYER_SERVICE_ACCOUNT }}
 
       - name: Set up gcloud
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/setup-gcloud@e427ad8a34f8676edf47cf7d7925499adf3eb74f # v2
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
@@ -203,42 +189,57 @@ jobs:
           REGION: ${{ env.GCP_REGION }}
         run: bash scripts/release/quipsly-release-preflight.sh
 
-      - name: Build Prisma Migration Image
-        if: needs.plan.outputs.schema == 'true'
-        env:
-          IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/prisma-migrate:${{ github.sha }}
-          LATEST_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/prisma-migrate:latest
+      - name: Materialize Exact Quipsly Release Context
         run: |
-          docker buildx build \
-            --file ops/prisma-migrate.Dockerfile \
-            --tag "$IMAGE_URI" \
-            --tag "$LATEST_URI" \
-            --push \
-            .
+          set -euo pipefail
+          release_context="$(bash scripts/release/quipsly-build-context.sh "${GITHUB_SHA}")"
+          echo "QUIPSLY_RELEASE_CONTEXT=${release_context}" >>"${GITHUB_ENV}"
 
-      - name: Run Schema Sync (DB Migrations)
-        if: needs.plan.outputs.schema == 'true'
+      - name: Refuse unapproved schema changes
+        if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes != true
+        run: |
+          echo "This release includes schema-owned changes." >&2
+          echo "Re-run manually with apply_schema_changes enabled after reviewing committed migrations and targeted syncs." >&2
+          exit 1
+
+      - name: Apply committed Prisma migrations
+        if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes == true
         env:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
+          MODE: migrate
           IMAGE_TAG: ${{ github.sha }}
+          SOURCE_REF: ${{ github.sha }}
+        run: bash scripts/release/quipsly-schema-job.sh
+
+      - name: Apply targeted additive schema syncs
+        if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes == true
+        env:
+          PROJECT_ID: ${{ env.GCP_PROJECT }}
+          REGION: ${{ env.GCP_REGION }}
+          MODE: targeted
+          IMAGE_TAG: ${{ github.sha }}
+          SOURCE_REF: ${{ github.sha }}
           SKIP_BUILD: "1"
-        run: bash scripts/release/quipsly-schema-sync.sh
+        run: bash scripts/release/quipsly-schema-job.sh
 
       - name: Build Studio Image
         env:
           IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/studio:${{ github.sha }}
           LATEST_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/studio:latest
         run: |
+          set -euo pipefail
+          test -f "${QUIPSLY_RELEASE_CONTEXT}/quipsly-release-source.json"
           docker buildx build \
-            --file apps/quipsly/Dockerfile \
+            --file "${QUIPSLY_RELEASE_CONTEXT}/apps/quipsly/Dockerfile" \
             --build-arg NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app \
             --build-arg STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app \
             --build-arg QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=0 \
+            --build-arg QUIPSLY_BUILD_ID="${GITHUB_SHA}" \
             --tag "$IMAGE_URI" \
             --tag "$LATEST_URI" \
             --push \
-            .
+            "${QUIPSLY_RELEASE_CONTEXT}"
 
       - name: Deploy Studio Preview Revision
         env:

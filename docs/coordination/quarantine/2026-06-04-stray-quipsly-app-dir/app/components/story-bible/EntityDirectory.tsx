@@ -11,12 +11,12 @@ const ENTITY_CATEGORIES: { label: string; type: EntityType }[] = [
   { label: 'Themes & Motifs', type: 'THEME_MOTIF' },
 ];
 
-const CategorySection = React.memo(({ 
-  category, 
+const CategorySection = React.memo(({
+  category,
   searchQuery,
   expandedCategory,
-  toggleCategory 
-}: { 
+  toggleCategory
+}: {
   category: { label: string; type: EntityType };
   searchQuery: string;
   expandedCategory: EntityType | null;
@@ -29,8 +29,8 @@ const CategorySection = React.memo(({
   let entities = rawEntities;
   if (searchQuery) {
     const lowerQuery = searchQuery.toLowerCase();
-    entities = entities.filter(e => 
-      e.name.toLowerCase().includes(lowerQuery) || 
+    entities = entities.filter(e =>
+      e.name.toLowerCase().includes(lowerQuery) ||
       e.aliases.some(a => a.toLowerCase().includes(lowerQuery))
     );
   }
@@ -40,7 +40,7 @@ const CategorySection = React.memo(({
   const renderEntityItem = (entity: StoryEntity) => {
     const isSelected = activeEntityId === entity.id;
     return (
-      <button 
+      <button
         key={entity.id}
         onClick={() => setActiveEntity(entity.id)}
         aria-selected={isSelected}
@@ -76,20 +76,20 @@ const CategorySection = React.memo(({
           {entities.length} {isExpanded ? '▼' : '▶'}
         </span>
       </button>
-      
+
       {isExpanded && entities.length > 0 && (
-        <div 
-          id={`panel-${category.type}`} 
-          role="tabpanel" 
-          aria-labelledby={`tab-${category.type}`} 
+        <div
+          id={`panel-${category.type}`}
+          role="tabpanel"
+          aria-labelledby={`tab-${category.type}`}
           className="mt-1 pl-4 pr-1 space-y-1"
         >
           {entities.map(renderEntityItem)}
         </div>
       )}
       {isExpanded && entities.length === 0 && !searchQuery && (
-        <div 
-          id={`panel-${category.type}-empty`} 
+        <div
+          id={`panel-${category.type}-empty`}
           className="mt-1 pl-4 pr-1 text-xs text-gray-400 italic py-2"
         >
           No {category.label.toLowerCase()} added yet.
@@ -120,7 +120,7 @@ export const EntityDirectory = React.memo(() => {
     <div className="flex flex-col h-full overflow-hidden">
       <div className="p-4 border-b border-gray-200 shrink-0">
         <h2 className="text-lg font-semibold text-gray-900 mb-2">Story Bible</h2>
-        <input 
+        <input
           type="search"
           placeholder="Search entities..."
           value={searchQuery}
@@ -132,7 +132,7 @@ export const EntityDirectory = React.memo(() => {
 
       <div className="flex-1 overflow-y-auto p-2" role="tablist" aria-label="Entity Categories">
         {ENTITY_CATEGORIES.map(category => (
-          <CategorySection 
+          <CategorySection
             key={category.type}
             category={category}
             searchQuery={debouncedSearch}

@@ -7,9 +7,9 @@
 This document serves as the formal handoff report for the HighGroundOdyssey (HGO) Phase 1 integration. The goal of this phase was to construct a perfectly isolated, public-safe perimeter between the Quipsly private infrastructure (manuscript drafts, backstage notes, PII) and the HGO public coaching/media site.
 
 ## 1. The Data Boundary (JSON Packets)
-We have implemented a **"File-as-Database" pattern**. 
+We have implemented a **"File-as-Database" pattern**.
 - When an episode is approved for publishing in Quipsly, the `executeHgoEpisodePublishCandidate` action maps the raw `StagedProjection` into a highly constrained `HgoPublicEpisodePacket`.
-- This packet is serialized to a physical JSON file in `content/publish/hgo-episodes/`. 
+- This packet is serialized to a physical JSON file in `content/publish/hgo-episodes/`.
 - **CRITICAL**: The public Next.js API routes (`GET /api/public/v1/hgo/episodes`) and page components (`apps/web/src/app/episodes/[[...slug]]/page.tsx`) *only* have access to these JSON packets. They can never accidentally query a raw `StoryEntity` or `LivingManuscriptSection`. This physical separation guarantees safety.
 
 ## 2. API Scalability (O(1) Reads)

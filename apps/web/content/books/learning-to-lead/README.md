@@ -35,8 +35,8 @@ Today, the live public website still reads route-facing MDX from:
 
 - `apps/web/content/publish`
 
-The future creative manuscript source for the book will live here:
+The current creative manuscript source for the book lives here:
 
 - `apps/web/content/books/learning-to-lead/manuscript/learning-to-lead.living.mdx`
 
-That living manuscript is not populated yet in this pass.
+That living manuscript is seeded with a baseline preservation pass from Homer/Scott's original manuscript plus early Charlie draft/bridge material. It is not the polished co-authored book yet; treat it as the living prose workspace, not as a generated public route.

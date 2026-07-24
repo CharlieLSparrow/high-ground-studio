@@ -31,13 +31,16 @@ Quipsly is a source-aware creative operating system: it helps people ingest mate
 5. `AI is allowed to draft`
    Quipslys can draft, rewrite, brainstorm, transform, compare, and generate. The safeguard is not "no AI writing." The safeguard is no silent mutation, no fake provenance, no hidden canon changes, and no irreversible confusion about what happened.
 
-6. `Transparency, not judgment`
+6. `Agents are content partners, not placeholder machines`
+   Codex and Quipslys may create serious publishable-intent writing, storyboards, articles, shorts packets, research packets, social copy, and production candidates when that moves the product loop forward. Agent-created content is only placeholder when it is explicitly labeled as disposable test material. Serious agent-created work must carry authorship, provenance, intent, review state, canon state, publication state, and a path to reject or supersede it.
+
+7. `Transparency, not judgment`
    The system should show what exists, what is linked, what is missing, and what changed. It should not make moralistic or bureaucratic "quality gate" judgments that create systems anxiety.
 
-7. `Local power plus cloud truth`
+8. `Local power plus cloud truth`
    Nest owns collaboration and project truth. The Mac app and local engine own heavy local files, proxies, uploads, sync prep, local media review, and future local ML workflows.
 
-8. `Production-grade defaults`
+9. `Production-grade defaults`
    No copied browser cookies, no durable bearer-token paste workflows, no route-level hardcoded project slugs, no destructive public publishing, no "db push as deploy plan" habit.
 
 ## The eventual platform primitives

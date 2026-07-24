@@ -11,7 +11,9 @@ import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { QUIPSLY_FREE_PLAN_SLUG } from "@/lib/server/quipsly-onboarding";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
+import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
 
 const DEFAULT_USER_MANAGEMENT_EMAILS = ["charlie@highgroundodyssey.com"];
 
@@ -27,6 +29,7 @@ type UserWithIdentity = Prisma.UserGetPayload<{
   include: {
     roles: { select: { role: true } };
     aliases: { select: { email: true } };
+    memberships: { select: { id: true } };
   };
 }>;
 
@@ -72,9 +75,12 @@ export type ManagedUserRecord = {
   primaryEmail: string;
   name: string | null;
   image: string | null;
+  firebaseUid: string | null;
   createdAt: Date;
   roles: AppRole[];
   aliases: string[];
+  hasFreeMembership: boolean;
+  homeNestSlug: string | null;
 };
 
 export type ManagedProjectRecord = {
@@ -118,21 +124,55 @@ export function isUserManagementAdminEmail(email?: string | null): boolean {
   return listConfiguredUserManagementEmails().includes(normalizeAccessEmail(email));
 }
 
+async function hasUserManagementAdminRole({
+  email,
+  userId,
+  prisma = getPrismaClient(),
+}: {
+  email?: string | null;
+  userId?: string | null;
+  prisma?: PrismaClient;
+}) {
+  const actorEmail = normalizeAccessEmail(email);
+  if (!userId && !actorEmail) return false;
+
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        ...(userId ? [{ id: userId }] : []),
+        ...(actorEmail
+          ? [
+            { primaryEmail: actorEmail },
+            { aliases: { some: { email: actorEmail } } },
+          ]
+        : []),
+      ],
+    },
+    select: {
+      roles: {
+        where: { role: "OWNER" },
+        select: { id: true },
+        take: 1,
+      },
+    },
+  });
+
+  return Boolean(user?.roles.length);
+}
+
 export async function getQuipslyAdminActor(): Promise<QuipslyAdminActor | null> {
   const session = await auth();
   const actorEmail = normalizeAccessEmail(
     session?.user?.primaryEmail || session?.user?.email,
   );
 
-  if (process.env.QUIPSLY_OWNER_OVERRIDE === "true") {
-    return {
-      email: actorEmail || listConfiguredUserManagementEmails()[0],
-      userId: session?.user?.id ?? null,
-    };
-  }
-
   if (!session?.user?.id || !isUserManagementAdminEmail(actorEmail)) {
-    return null;
+    if (!session?.user?.id || !(await hasUserManagementAdminRole({
+      email: actorEmail,
+      userId: session.user.id,
+    }))) {
+      return null;
+    }
   }
 
   return {
@@ -170,22 +210,57 @@ export function parseProjectAccessRole(roleInput: string): StudioProjectAccessRo
 export async function listManagedUsers(
   prisma: PrismaClient = getPrismaClient(),
 ): Promise<ManagedUserRecord[]> {
+  const now = new Date();
   const users = await prisma.user.findMany({
     include: {
       roles: { select: { role: true } },
       aliases: { select: { email: true } },
+      memberships: {
+        where: {
+          status: "ACTIVE",
+          OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+          plan: { slug: QUIPSLY_FREE_PLAN_SLUG },
+        },
+        select: {
+          id: true,
+        },
+      },
     },
     orderBy: { createdAt: "desc" },
   });
+
+  const userEmails = users.map((user) => normalizeAccessEmail(user.primaryEmail)).filter(Boolean);
+  const homeGrants = userEmails.length > 0
+    ? await prisma.studioProjectAccessGrant.findMany({
+        where: {
+          email: { in: userEmails },
+          status: "ACTIVE",
+          project: { sourceLabel: sourceLabelForNestKind("home") },
+        },
+        select: {
+          email: true,
+          project: { select: { slug: true } },
+        },
+      })
+    : [];
+  const homeSlugByEmail = new Map(
+    homeGrants.map((grant) => [
+      normalizeAccessEmail(grant.email),
+      grant.project.slug,
+    ]),
+  );
 
   return users.map((user: UserWithIdentity) => ({
     id: user.id,
     primaryEmail: user.primaryEmail,
     name: user.name,
     image: user.image,
+    firebaseUid: user.firebaseUid,
     createdAt: user.createdAt,
     roles: user.roles.map((entry: UserRolePayload) => entry.role),
     aliases: user.aliases.map((entry: UserEmailPayload) => entry.email),
+    hasFreeMembership: user.memberships.length > 0,
+    homeNestSlug: homeSlugByEmail.get(normalizeAccessEmail(user.primaryEmail)) ?? null,
   }));
 }
 

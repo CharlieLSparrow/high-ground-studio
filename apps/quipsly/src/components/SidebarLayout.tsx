@@ -6,21 +6,30 @@ import { usePathname, useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase/firebase";
 import { signOut as firebaseSignOut } from "firebase/auth";
 import {
+  CalendarCheck2,
+  Inbox,
   LayoutDashboard,
   Search,
+  ScanSearch,
   Rocket,
   Settings,
   Film,
-  Bell,
   BarChart2,
   ImageIcon,
   Share2,
   ShieldCheck,
+  ShieldAlert,
   UserCog,
   ChevronDown,
   LogOut,
   RefreshCcw,
   UserRound,
+  CalendarDays,
+  Library,
+  MoreHorizontal,
+  Podcast,
+  ListChecks,
+  BellRing,
   type LucideIcon
 } from "lucide-react";
 import { cn } from "@/app/(app)/studio-ui";
@@ -33,24 +42,40 @@ type NavItem = {
   activePrefixes?: string[];
 };
 
-const defaultNavItems: NavItem[] = [
-  { name: "The Nest", href: "/projects", icon: LayoutDashboard, activePrefixes: ["/projects", "/nests", "/create"] },
+const primaryNavItems: NavItem[] = [
+  { name: "Today", href: "/today", icon: CalendarCheck2 },
+  { name: "Inbox", href: "/inbox", icon: Inbox },
+  { name: "Work", href: "/work", icon: ListChecks },
+  { name: "Sessions", href: "/coaching/sessions", icon: Podcast, activePrefixes: ["/coaching", "/sessions"] },
+  { name: "Library", href: "/library", icon: Library, activePrefixes: ["/library", "/collections", "/notebooks", "/read", "/research", "/media"] },
+  { name: "Calendar", href: "/schedule", icon: CalendarDays },
+];
+
+const secondaryNavItems: NavItem[] = [
+  { name: "Search all", href: "/find", icon: ScanSearch },
+  { name: "Nests", href: "/projects", icon: LayoutDashboard, activePrefixes: ["/projects", "/nests", "/create"] },
   { name: "Research", href: "/research", icon: Search },
   { name: "Media", href: "/media", icon: Film, activePrefixes: ["/media"] },
+  { name: "Podcast desk", href: "/podcast", icon: Podcast },
+  { name: "Publishing", href: "/publishing", icon: Rocket },
   { name: "Art Foundry", href: "/art-foundry", icon: ImageIcon },
   { name: "Outputs", href: "/outputs", icon: Share2 },
-  { name: "Publishing", href: "/publishing", icon: Rocket },
   { name: "Analytics", href: "/analytics", icon: BarChart2 },
   { name: "Beta", href: "/beta-readiness", icon: ShieldCheck },
 ];
 
 const adminNavItems: NavItem[] = [
   { name: "Users", href: "/admin/users", icon: UserCog },
+  {
+    name: "Account deletion",
+    href: "/admin/account-deletion",
+    icon: ShieldAlert,
+  },
 ];
 
-function resolveNavItems(showAdminTools: boolean) {
-  if (!showAdminTools) return defaultNavItems;
-  return [...defaultNavItems, ...adminNavItems];
+function isNavItemActive(item: NavItem, pathname: string) {
+  const activePrefixes = item.activePrefixes ?? [item.href];
+  return activePrefixes.some((prefix) => pathname.startsWith(prefix));
 }
 
 export function SidebarLayout({
@@ -69,8 +94,11 @@ export function SidebarLayout({
   } | null;
 }) {
   const pathname = usePathname();
-  const navItems = resolveNavItems(showAdminTools);
-  const currentPath = pathname || "/projects";
+  const currentPath = pathname || "/today";
+  const moreNavItems = showAdminTools
+    ? [...secondaryNavItems, ...adminNavItems]
+    : secondaryNavItems;
+  const isMoreActive = moreNavItems.some((item) => isNavItemActive(item, currentPath));
 
   return (
     <div className="flex flex-col h-screen w-full bg-[#fdfaf6] overflow-hidden text-[#3d3122] font-sans">
@@ -84,16 +112,15 @@ export function SidebarLayout({
             <span className="font-bold text-lg tracking-wide text-[#3d3122]">Quipsly</span>
           </div>
 
-          <nav className="hidden md:flex items-center gap-2">
-            {navItems.map((item) => {
-              const activePrefixes = item.activePrefixes ?? [item.href];
-              const isActive = activePrefixes.some((prefix) => pathname.startsWith(prefix));
+          <nav className="hidden md:flex items-center gap-1" aria-label="Primary workspace">
+            {primaryNavItems.map((item) => {
+              const isActive = isNavItemActive(item, currentPath);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all text-sm font-semibold",
+                    "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all text-sm font-semibold",
                     isActive
                       ? "bg-[#8c6b4a] text-white shadow-sm"
                       : "text-[#5e4b33] hover:text-[#3d3122] hover:bg-[#ebdcc8]"
@@ -104,6 +131,31 @@ export function SidebarLayout({
                 </Link>
               );
             })}
+            <details className="group relative">
+              <summary
+                className={cn(
+                  "flex cursor-pointer list-none items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-semibold transition-all",
+                  isMoreActive
+                    ? "bg-[#8c6b4a] text-white shadow-sm"
+                    : "text-[#5e4b33] hover:bg-[#ebdcc8] hover:text-[#3d3122]",
+                )}
+              >
+                <MoreHorizontal className={cn("h-4 w-4", isMoreActive ? "text-amber-100" : "text-[#8c6b4a]")} />
+                More
+                <ChevronDown className="h-3.5 w-3.5 transition group-open:rotate-180" />
+              </summary>
+              <nav aria-label="More workspace tools" className="absolute left-0 top-11 z-50 grid w-64 gap-1 rounded-2xl border border-[#ead8ba] bg-white p-2 shadow-2xl shadow-amber-950/15">
+                {moreNavItems.map((item) => {
+                  const isActive = isNavItemActive(item, currentPath);
+                  return (
+                    <Link key={item.href} href={item.href} className={cn("flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold transition", isActive ? "bg-[#8c6b4a] text-white" : "text-[#5e4b33] hover:bg-[#fff8ec]")}>
+                      <item.icon className={cn("h-4 w-4", isActive ? "text-amber-100" : "text-[#8c6b4a]")} />
+                      {item.name}
+                    </Link>
+                  );
+                })}
+              </nav>
+            </details>
           </nav>
         </div>
 
@@ -114,24 +166,11 @@ export function SidebarLayout({
           >
             Support beta
           </a>
-          <button className="md:hidden relative p-2 rounded-full hover:bg-[#ebdcc8] text-[#8c6b4a] hover:text-[#3d3122] transition-colors" aria-label="Search">
-            <Search className="w-5 h-5" />
-          </button>
-          <div className="relative w-64 hidden md:block">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8c6b4a]" />
-            <input
-              type="text"
-              placeholder="Search assets..."
-              className="w-full bg-white border border-[#e8dcc4] rounded-full py-1.5 pl-9 pr-4 text-sm text-[#3d3122] placeholder:text-[#8c6b4a]/70 focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500/50 transition-all shadow-sm"
-            />
-          </div>
-          <button className="relative p-2 rounded-full hover:bg-[#ebdcc8] text-[#8c6b4a] hover:text-[#3d3122] transition-colors">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-amber-500 rounded-full border border-[#fdfaf6]" />
-          </button>
           <Link href="/settings" className="relative p-2 rounded-full hover:bg-[#ebdcc8] text-[#8c6b4a] hover:text-[#3d3122] transition-colors hidden md:block" aria-label="Settings">
             <Settings className="w-5 h-5" />
           </Link>
+          <Link href="/find" className="relative rounded-full p-2 text-[#8c6b4a] transition-colors hover:bg-[#ebdcc8] hover:text-[#3d3122]" aria-label="Search all Quipsly"><ScanSearch className="h-5 w-5" /></Link>
+          <Link href="/work?view=attention" className="relative rounded-full p-2 text-[#8c6b4a] transition-colors hover:bg-[#ebdcc8] hover:text-[#3d3122]" aria-label="Open attention queue"><BellRing className="h-5 w-5" /></Link>
           <AccountSwitcher currentUser={currentUser} currentPath={currentPath} />
         </div>
       </header>
@@ -149,9 +188,8 @@ export function SidebarLayout({
       {/* Mobile Bottom Navigation */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-[#fdfaf6]/95 backdrop-blur-md border-t border-[#e8dcc4] pb-safe">
         <div className="flex items-center justify-around h-16 px-2">
-          {navItems.map((item) => {
-            const activePrefixes = item.activePrefixes ?? [item.href];
-            const isActive = activePrefixes.some((prefix) => pathname.startsWith(prefix));
+          {primaryNavItems.slice(0, 4).map((item) => {
+            const isActive = isNavItemActive(item, currentPath);
             return (
               <Link
                 key={item.href}
@@ -168,6 +206,23 @@ export function SidebarLayout({
               </Link>
             );
           })}
+          <details className="group relative h-full w-full">
+            <summary className={cn("flex h-full w-full cursor-pointer list-none flex-col items-center justify-center gap-1 rounded-lg text-[10px] font-semibold transition", isMoreActive || isNavItemActive(primaryNavItems[4], currentPath) ? "text-[#8c6b4a]" : "text-[#8c6b4a]/60")}>
+              <MoreHorizontal className="h-5 w-5" />
+              More
+            </summary>
+            <nav aria-label="More mobile tools" className="absolute bottom-[4.5rem] right-0 grid w-[min(92vw,320px)] grid-cols-2 gap-1 rounded-2xl border border-[#ead8ba] bg-white p-2 shadow-2xl shadow-amber-950/20">
+              {[...primaryNavItems.slice(4), ...moreNavItems, { name: "Settings", href: "/settings", icon: Settings }].map((item) => {
+                const isActive = isNavItemActive(item, currentPath);
+                return (
+                  <Link key={item.href} href={item.href} className={cn("flex items-center gap-2 rounded-xl px-3 py-3 text-xs font-bold", isActive ? "bg-[#8c6b4a] text-white" : "text-[#5e4b33] hover:bg-[#fff8ec]")}>
+                    <item.icon className={cn("h-4 w-4", isActive ? "text-amber-100" : "text-[#8c6b4a]")} />
+                    {item.name}
+                  </Link>
+                );
+              })}
+            </nav>
+          </details>
         </div>
       </nav>
       <Suspense fallback={null}>
@@ -264,7 +319,7 @@ function AccountSwitcher({
             className="inline-flex w-full items-center justify-center gap-2 rounded-full bg-[#3d2a1e] px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-[#24180f]"
           >
             <RefreshCcw className="h-4 w-4" />
-            Switch Google account
+            Switch account
           </button>
           <Link
             href={`/account/switch?callbackUrl=${encodeURIComponent(currentPath || "/projects")}`}

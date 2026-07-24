@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "postinstall": "prisma generate",
+    "postinstall": "node scripts/prisma-generate-workspace-clients.mjs",
     "motion": "pnpm --filter @high-ground/motion-engine build && pnpm --filter motion-lab dev",
     "studio": "pnpm --filter studio dev",
     "dev:studio:all": "concurrently \"pnpm studio\" \"pnpm studio:collab\"",
@@ -50,7 +50,16 @@
     "quipsly:cloudrun:smoke-preview": "bash scripts/release/quipsly-smoke-preview.sh",
     "quipsly:cloudrun:traffic": "bash scripts/release/quipsly-traffic.sh",
     "quipsly:cloudrun:logs": "bash scripts/release/quipsly-logs.sh studio",
+    "quipsly:production:status": "bash scripts/release/quipsly-production-status.sh",
+    "quipsly:local:up": "bash scripts/dev/quipsly-local-up.sh",
+    "quipsly:local:down": "bash scripts/dev/quipsly-local-down.sh",
+    "quipsly:local:doctor": "bash scripts/dev/quipsly-local-doctor.sh",
     "quipsly:local:smoke": "bash scripts/dev/quipsly-local-smoke.sh",
+    "quipsly:release:local": "node scripts/hgo-quipsly-release-readiness.mjs --local-only",
+    "quipsly:release:local:json": "node scripts/hgo-quipsly-release-readiness.mjs --local-only --json",
+    "quipsly:release:readiness": "node scripts/hgo-quipsly-release-readiness.mjs",
+    "quipsly:release:readiness:json": "node scripts/hgo-quipsly-release-readiness.mjs --json",
+    "quipsly:contracts:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/public-route-failure-classification.test.mjs scripts/quipsly-*.test.mjs",
     "quipsly:hotfix:deploy": "bash scripts/release/quipsly-hotfix-deploy.sh",
     "quipsly:hotfix:deploy:live": "PROMOTE=1 bash scripts/release/quipsly-hotfix-deploy.sh",
     "web:cloudrun:logs": "bash scripts/release/quipsly-logs.sh web",
@@ -89,6 +98,7 @@
     "studio:collab:annotation-state:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/studio-collaboration-annotation-state.test.mjs",
     "studio:collab:room:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/studio-collaboration-room-identity.test.mjs",
     "studio:collab:agentic-smoke": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/agentic-studio-collab-lab-smoke.mjs",
+    "quipsly:transcript:dogfood": "node --env-file-if-exists=apps/quipsly/.env.local --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-transcript-correction-dogfood.mjs",
     "hgo:projection:browser-smoke": "node --experimental-strip-types scripts/agentic-hgo-projection-browser-smoke.mjs",
     "hgo:projection:visual-smoke": "node scripts/agentic-hgo-projection-visual-smoke.mjs",
     "hgo:artifact:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/hgo-staged-artifact.test.mjs",
@@ -110,7 +120,8 @@
     "db:push": "prisma db push",
     "db:seed:membership-plans": "node --env-file=apps/web/.env.local scripts/seed-membership-plans.mjs",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "quipsly:public-loop:preflight": "bash scripts/release/hgo-quipsly-public-loop-preflight.sh"
   },
   "dependencies": {
     "@prisma/client": "^7.7.0",

@@ -17,7 +17,21 @@ public enum ExportError: Error, LocalizedError {
         case .exportSessionCreationFailed:
             return "The editor could not create an AV export session."
         case .exportFailed(let error):
-            return error?.localizedDescription ?? "The export failed for an unknown reason."
+            guard let error else {
+                return "The export failed for an unknown reason."
+            }
+            let nsError = error as NSError
+            var parts = [error.localizedDescription, "\(nsError.domain) \(nsError.code)"]
+            if let failureReason = nsError.localizedFailureReason, !failureReason.isEmpty {
+                parts.append(failureReason)
+            }
+            if let recoverySuggestion = nsError.localizedRecoverySuggestion, !recoverySuggestion.isEmpty {
+                parts.append(recoverySuggestion)
+            }
+            if let underlying = nsError.userInfo[NSUnderlyingErrorKey] as? NSError {
+                parts.append("underlying: \(underlying.localizedDescription) (\(underlying.domain) \(underlying.code))")
+            }
+            return parts.joined(separator: " | ")
         }
     }
 }
@@ -25,14 +39,14 @@ public enum ExportError: Error, LocalizedError {
 @MainActor
 public class ExportEngine: ObservableObject {
     public static let shared = ExportEngine()
-    
+
     @Published public var isExporting = false
     @Published public var exportProgress: Float = 0.0
-    
+
     private var exportTimer: Timer?
-    
+
     private init() {}
-    
+
     public func export(
         sequence: MediaSequence,
         to outputURL: URL,
@@ -41,34 +55,40 @@ public class ExportEngine: ObservableObject {
         allowedOriginalMediaRootPath: String? = nil,
         sequenceStartSeconds: Double? = nil,
         sequenceDurationSeconds: Double? = nil,
+        sequenceRanges: [(start: Double, duration: Double)] = [],
         durationLimitSeconds: Double? = nil,
+        allowPixelTextOverlays: Bool = false,
         primaryOverlayText: String? = nil,
         captionText: String? = nil
     ) async throws {
         self.isExporting = true
         self.exportProgress = 0.0
-        
+
         defer {
             self.isExporting = false
             self.exportTimer?.invalidate()
             self.exportTimer = nil
         }
-        
+
         let builder = AVCompositionBuilder()
+        let explicitRanges = sequenceRanges
+            .filter { $0.start.isFinite && $0.duration.isFinite && $0.duration > 0 }
+            .map { $0.start...($0.start + $0.duration) }
         let playerItem = try await builder.buildPlayerItem(
             for: sequence,
             mode: .playEdit,
             format: format,
             allowExternalOriginalMedia: allowExternalOriginalMedia,
-            allowedOriginalMediaRootPath: allowedOriginalMediaRootPath
+            allowedOriginalMediaRootPath: allowedOriginalMediaRootPath,
+            sequenceRangeOverride: explicitRanges.isEmpty ? nil : explicitRanges
         )
-        
+
         guard let asset = playerItem.asset as? AVComposition else {
             throw ExportError.invalidPlayerItem
         }
-        
+
         let presetName = format == .horizontal16x9 ? AVAssetExportPreset1920x1080 : AVAssetExportPresetHighestQuality
-        
+
         guard let exportSession = AVAssetExportSession(asset: asset, presetName: presetName) else {
             throw ExportError.exportSessionCreationFailed
         }
@@ -80,18 +100,22 @@ public class ExportEngine: ObservableObject {
         if FileManager.default.fileExists(atPath: outputURL.path) {
             try FileManager.default.removeItem(at: outputURL)
         }
-        
+
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .mp4
         exportSession.videoComposition = Self.videoComposition(
             from: playerItem.videoComposition,
             format: format,
+            allowPixelTextOverlays: allowPixelTextOverlays,
             primaryOverlayText: primaryOverlayText,
             captionText: captionText
         )
+        exportSession.audioMix = Self.audioMix(from: asset)
         exportSession.shouldOptimizeForNetworkUse = true
 
-        if let sequenceStartSeconds,
+        if !explicitRanges.isEmpty {
+            // The composition was already collapsed to the requested recipe ranges.
+        } else if let sequenceStartSeconds,
            let sequenceDurationSeconds,
            sequenceStartSeconds.isFinite,
            sequenceDurationSeconds.isFinite,
@@ -111,16 +135,16 @@ public class ExportEngine: ObservableObject {
                 duration: CMTime(seconds: boundedSeconds, preferredTimescale: 600)
             )
         }
-        
+
         // Start polling progress
         exportTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.exportProgress = exportSession.progress
             }
         }
-        
+
         await exportSession.export()
-        
+
         switch exportSession.status {
         case .completed:
             return // Success
@@ -169,6 +193,7 @@ public class ExportEngine: ObservableObject {
 
         exportSession.outputURL = outputURL
         exportSession.outputFileType = .m4a
+        exportSession.audioMix = Self.audioMix(from: composition)
         exportSession.shouldOptimizeForNetworkUse = true
 
         if let durationLimitSeconds, durationLimitSeconds.isFinite, durationLimitSeconds > 0 {
@@ -257,9 +282,19 @@ public class ExportEngine: ObservableObject {
     private static func videoComposition(
         from source: AVVideoComposition?,
         format: ExportFormat,
+        allowPixelTextOverlays: Bool,
         primaryOverlayText: String?,
         captionText: String?
     ) -> AVVideoComposition? {
+        // Text burn-in is intentionally opt-in at the lowest export boundary.
+        // Short hooks, captions, and platform copy are valuable metadata, but
+        // accidental pixel text on faces is worse than a missing overlay. Until
+        // the editor has an explicit face-safe placement system, normal exports
+        // stay clean even if higher-level metadata contains text.
+        guard allowPixelTextOverlays else {
+            return source
+        }
+
         let overlay = normalizedText(primaryOverlayText)
         let caption = normalizedText(captionText)
         guard !overlay.isEmpty || !caption.isEmpty else {
@@ -290,7 +325,7 @@ public class ExportEngine: ObservableObject {
             parentLayer.addSublayer(
                 textPlateLayer(
                     text: overlay,
-                    frame: primaryOverlayFrame(for: renderSize),
+                    frame: primaryOverlayFrame(for: renderSize, format: format),
                     fontSize: format == .vertical9x16 ? 58 : 44,
                     backgroundAlpha: 0.58
                 )
@@ -301,7 +336,7 @@ public class ExportEngine: ObservableObject {
             parentLayer.addSublayer(
                 textPlateLayer(
                     text: caption,
-                    frame: captionFrame(for: renderSize),
+                    frame: captionFrame(for: renderSize, format: format),
                     fontSize: format == .vertical9x16 ? 42 : 32,
                     backgroundAlpha: 0.68
                 )
@@ -315,13 +350,44 @@ public class ExportEngine: ObservableObject {
         return mutableComposition
     }
 
+    private static func audioMix(from composition: AVComposition) -> AVAudioMix? {
+        let audioTracks = composition.tracks(withMediaType: .audio)
+        guard !audioTracks.isEmpty else {
+            return nil
+        }
+
+        let mix = AVMutableAudioMix()
+        mix.inputParameters = audioTracks.map { track in
+            let parameters = AVMutableAudioMixInputParameters(track: track)
+            parameters.setVolume(1.0, at: .zero)
+            return parameters
+        }
+        return mix
+    }
+
     private static func normalizedText(_ value: String?) -> String {
         (value ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
     }
 
-    private static func primaryOverlayFrame(for renderSize: CGSize) -> CGRect {
+    private static func primaryOverlayFrame(for renderSize: CGSize, format: ExportFormat) -> CGRect {
+        if format == .vertical9x16 {
+            let margin = renderSize.width * 0.08
+            let height = renderSize.height * 0.075
+            // Vertical shorts are usually close-up faces. If text is explicitly
+            // approved for pixel burn-in, keep the primary hook in the top
+            // canopy rail instead of the center/lower face band. Captions and
+            // drafts should normally stay sidecar/platform copy unless a human
+            // has made a separate face-safe decision.
+            return coreAnimationFrame(
+                renderSize: renderSize,
+                visualTop: renderSize.height * 0.055,
+                x: margin,
+                width: renderSize.width - (margin * 2),
+                height: height
+            )
+        }
         let margin = renderSize.width * 0.075
         let height = renderSize.height * 0.12
         return CGRect(
@@ -332,13 +398,39 @@ public class ExportEngine: ObservableObject {
         )
     }
 
-    private static func captionFrame(for renderSize: CGSize) -> CGRect {
+    private static func captionFrame(for renderSize: CGSize, format: ExportFormat) -> CGRect {
+        if format == .vertical9x16 {
+            let margin = renderSize.width * 0.10
+            let height = renderSize.height * 0.09
+            return coreAnimationFrame(
+                renderSize: renderSize,
+                visualTop: renderSize.height * 0.835,
+                x: margin,
+                width: renderSize.width - (margin * 2),
+                height: height
+            )
+        }
         let margin = renderSize.width * 0.065
         let height = renderSize.height * 0.16
         return CGRect(
             x: margin,
             y: renderSize.height * 0.08,
             width: renderSize.width - (margin * 2),
+            height: height
+        )
+    }
+
+    private static func coreAnimationFrame(
+        renderSize: CGSize,
+        visualTop: CGFloat,
+        x: CGFloat,
+        width: CGFloat,
+        height: CGFloat
+    ) -> CGRect {
+        CGRect(
+            x: x,
+            y: renderSize.height - visualTop - height,
+            width: width,
             height: height
         )
     }

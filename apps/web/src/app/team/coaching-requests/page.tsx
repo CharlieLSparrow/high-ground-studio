@@ -52,6 +52,25 @@ function formatLocationLabel(value: string) {
   return value === "IN_PERSON" ? "In person" : formatStatusLabel(value);
 }
 
+function readRequestMetadata(request: unknown) {
+  const metadata = (request as { metadataJson?: unknown }).metadataJson;
+
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return {
+      sessionIntent: "COACHING",
+      recordingInterest: "NOT_SURE",
+      captureEligible: true,
+    };
+  }
+
+  const record = metadata as Record<string, unknown>;
+  return {
+    sessionIntent: typeof record.sessionIntent === "string" ? record.sessionIntent : "COACHING",
+    recordingInterest: typeof record.recordingInterest === "string" ? record.recordingInterest : "NOT_SURE",
+    captureEligible: record.captureEligible !== false,
+  };
+}
+
 function formatLocalDateTime(value: Date) {
   const year = value.getFullYear();
   const month = String(value.getMonth() + 1).padStart(2, "0");
@@ -165,6 +184,7 @@ export default async function TeamCoachingRequestsPage({
       ) : (
         <div className="space-y-4">
           {requests.map((request) => {
+            const requestMetadata = readRequestMetadata(request);
             const clientDisplayName =
               request.clientUser.clientProfile?.displayName ||
               request.clientUser.name ||
@@ -218,6 +238,19 @@ export default async function TeamCoachingRequestsPage({
                       </span>
                       <span className="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-[rgba(245,239,230,0.9)]">
                         {formatStatusLabel(request.preferredContactMethod)}
+                      </span>
+                      <span className="rounded-full border border-sky-300/20 bg-sky-300/10 px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em] text-sky-50">
+                        {formatStatusLabel(requestMetadata.sessionIntent)}
+                      </span>
+                      <span
+                        className={[
+                          "rounded-full border px-3 py-1 text-[0.76rem] font-semibold uppercase tracking-[0.08em]",
+                          requestMetadata.captureEligible
+                            ? "border-emerald-300/20 bg-emerald-300/10 text-emerald-50"
+                            : "border-rose-300/20 bg-rose-300/10 text-rose-50",
+                        ].join(" ")}
+                      >
+                        Recording {formatStatusLabel(requestMetadata.recordingInterest)}
                       </span>
                     </div>
                     <p className="mb-0 mt-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
@@ -313,6 +346,22 @@ export default async function TeamCoachingRequestsPage({
                       </div>
                       <div className="whitespace-pre-wrap text-sm leading-7 text-[rgba(245,239,230,0.88)]">
                         {request.availabilityNotes || "No availability notes provided."}
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-sky-300/15 bg-sky-300/8 p-4">
+                      <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-sky-100/80">
+                        Session and capture intent
+                      </div>
+                      <div className="space-y-2 text-sm leading-6 text-sky-50/90">
+                        <div>Session type: {formatStatusLabel(requestMetadata.sessionIntent)}</div>
+                        <div>Recording/transcript preference: {formatStatusLabel(requestMetadata.recordingInterest)}</div>
+                        <div>
+                          Capture path:{" "}
+                          {requestMetadata.captureEligible
+                            ? "Can become a consent-aware call room."
+                            : "Do not plan recording unless the client changes consent preference."}
+                        </div>
                       </div>
                     </div>
 
@@ -477,7 +526,7 @@ export default async function TeamCoachingRequestsPage({
                             id={`schedule-timezone-${request.id}`}
                             name="timezone"
                             type="text"
-                            defaultValue="America/Denver"
+                            defaultValue="America/Los_Angeles"
                             className="w-full rounded-xl border border-white/12 bg-white/8 px-3 py-2 text-sm text-[var(--text-light)] outline-none"
                           />
                         </div>

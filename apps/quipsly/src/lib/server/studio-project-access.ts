@@ -3,6 +3,7 @@ import "server-only";
 import type { PrismaClient, StudioProjectAccessRole, StudioProjectAccessStatus } from "@prisma/client";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { ensureQuipslyStarterStateForUser } from "@/lib/server/quipsly-onboarding";
 import { ensureInvitedStudioUserByEmail } from "@/lib/server/studio-user-identity";
 
 export type StudioProjectAccessAction = "read" | "write" | "manage";
@@ -10,7 +11,7 @@ export type StudioProjectAccessAction = "read" | "write" | "manage";
 export type StudioProjectAccessResolution = {
   allowed: boolean;
   role: StudioProjectAccessRole | null;
-  source: "none" | "workspace-owner-label" | "grant" | "staff";
+  source: "none" | "workspace-owner-label" | "grant" | "staff" | "operator-override";
   projectId: string | null;
   projectSlug: string;
 };
@@ -112,10 +113,6 @@ export async function resolveStudioProjectAccess({
 
   if (!project || !normalizedEmail) {
     return { allowed: false, role: null, source: "none", projectId: project?.id ?? null, projectSlug };
-  }
-
-  if (process.env.QUIPSLY_OWNER_OVERRIDE === "true") {
-    return { allowed: true, role: "OWNER", source: "staff", projectId: project.id, projectSlug };
   }
 
   if (workspaceOwnerLabelAllows(project, normalizedEmail)) {
@@ -285,8 +282,13 @@ export async function grantStudioProjectAccessByEmail({
     throw new Error("You do not have permission to manage this Nest.");
   }
 
-  await ensureInvitedStudioUserByEmail({
+  const invitedUser = await ensureInvitedStudioUserByEmail({
     email: normalizedTargetEmail,
+    prisma,
+  });
+  await ensureQuipslyStarterStateForUser({
+    userId: invitedUser.id,
+    email: invitedUser.primaryEmail,
     prisma,
   });
 

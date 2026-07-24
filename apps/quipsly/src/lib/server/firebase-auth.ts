@@ -1,5 +1,5 @@
 import { adminAuth } from "@/lib/firebase/firebase-admin";
-import { getPrismaClient } from "@/lib/prisma";
+import { ensureStudioUserFromFirebaseIdentity } from "@/lib/server/studio-user-identity";
 
 export async function verifyBearerToken(req: Request) {
   const authHeader = req.headers.get("authorization");
@@ -10,18 +10,17 @@ export async function verifyBearerToken(req: Request) {
   const token = authHeader.split("Bearer ")[1];
   try {
     const decodedToken = await adminAuth.verifyIdToken(token);
-    const prisma = getPrismaClient();
-    
-    // We look up the User by firebaseUid
-    const user = await prisma.user.findUnique({
-      where: { firebaseUid: decodedToken.uid }
-    });
-
-    if (!user) {
-      throw new Error("User not found in Quipsly DB");
+    if (!decodedToken.email || decodedToken.email_verified !== true) {
+      throw new Error("Firebase token requires a verified email");
     }
 
-    return user;
+    return ensureStudioUserFromFirebaseIdentity({
+      firebaseUid: decodedToken.uid,
+      email: decodedToken.email,
+      emailVerified: decodedToken.email_verified,
+      name: decodedToken.name || null,
+      image: decodedToken.picture || null,
+    });
   } catch (error) {
     console.error("[verifyBearerToken] error:", error);
     throw new Error("Invalid token");

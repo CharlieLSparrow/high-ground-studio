@@ -61,6 +61,8 @@ The product promise is not "AI may not write." The product promise is that Quips
 - AI drafting is allowed.
 - Freeform drafting is allowed.
 - Black-box-ish drafting is not forbidden by product morality.
+- Codex and Quipslys may create serious publishable-intent work as content partners, not only placeholders.
+- Agent-created content is only placeholder when it is explicitly labeled as disposable test material.
 - Silent mutation of canon is not allowed.
 - Fake provenance is not allowed.
 - Hidden publishing is not allowed.

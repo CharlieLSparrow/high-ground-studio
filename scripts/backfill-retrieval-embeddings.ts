@@ -16,8 +16,8 @@ async function main() {
 
   // Since `embedding` is an Unsupported type in Prisma, we use raw SQL to find nulls.
   const rowsToBackfill = await prisma.$queryRaw<Array<{ id: string; contentSnapshot: string }>>`
-    SELECT id, "contentSnapshot" 
-    FROM "RetrievalEmbedding" 
+    SELECT id, "contentSnapshot"
+    FROM "RetrievalEmbedding"
     WHERE embedding IS NULL;
   `;
 
@@ -50,8 +50,8 @@ async function main() {
 
       // 3. Update the row using raw SQL
       await prisma.$executeRaw`
-        UPDATE "RetrievalEmbedding" 
-        SET embedding = ${vectorString}::vector 
+        UPDATE "RetrievalEmbedding"
+        SET embedding = ${vectorString}::vector
         WHERE id = ${row.id};
       `;
 

@@ -9,36 +9,76 @@ This is the working release discipline for Quipsly/Nest while the Cloud Run serv
 - Legacy/direct Cloud Run host: `studio-hm2odnvjga-uc.a.run.app`
 - Cloud Run service name: `studio`
 - Dockerfile: `apps/quipsly/Dockerfile`
-- Build config: `cloudbuild.studio.yaml`
+- Build config: `cloudbuild.quipsly-web.yaml`
 
 The service name can be renamed later. For beta, stability matters more than a cosmetic service rename.
 
 ## Release shape
 
-1. Build the Quipsly image.
-2. Deploy a no-traffic tagged preview revision.
-3. Smoke `/api/health`, `/api/healthz`, and `/create`.
-4. Promote traffic only after the preview behaves.
-5. Preserve rollback by keeping the previous revision traffic target visible.
+1. Choose a committed source SHA. The deploy script archives that commit into a
+   bounded release context; the dirty working tree is never build input.
+2. Run release preflight and build the exact-SHA image.
+3. Check production schema status. Back up and migrate in separate, explicit
+   jobs when needed; app deployment never silently changes schema.
+4. Deploy a tagged Cloud Run preview with zero traffic.
+5. Run anonymous-boundary, authenticated-workspace, schema, public-host, and
+   signed-receipt smoke against that exact revision.
+6. Inspect logs and traffic, then promote only with explicit authorization.
+7. Preserve rollback by keeping the previous production revision named and
+   visible.
 
 ## Scripts
 
 Preview deploy:
 
 ```bash
-scripts/release/quipsly-deploy-preview.sh
+PROJECT_ID=high-ground-odyssey \
+SOURCE_REF=<committed-sha> \
+IMAGE_TAG=preview-<short-sha>-<date> \
+bash scripts/release/quipsly-deploy-preview.sh
 ```
 
-Preview smoke:
+The deploy requires an enabled Secret Manager version named
+`quipsly-release-smoke-secret` by default. Cloud Run receives it as
+`QUIPSLY_RELEASE_SMOKE_SECRET`; it is never a `NEXT_PUBLIC_*` variable.
+
+Preview smoke with the existing reviewer credential stored in macOS Keychain:
 
 ```bash
-PREVIEW_URL=https://example-preview-url scripts/release/quipsly-smoke-preview.sh
+QUIPSLY_RELEASE_SMOKE_SECRET="$(
+  gcloud secrets versions access latest \
+    --secret=quipsly-release-smoke-secret \
+    --project=high-ground-odyssey
+)" \
+QUIPSLY_AUTH_SMOKE_EMAIL=codex@dev.test \
+QUIPSLY_AUTH_SMOKE_PASSWORD="$(
+  security find-generic-password \
+    -s quipsly-capture-reviewer \
+    -a codex@dev.test \
+    -w
+)" \
+PREVIEW_URL=https://quipsly-preview---studio-hm2odnvjga-uc.a.run.app \
+bash scripts/release/quipsly-smoke-preview.sh
 ```
 
-Smoke with a host header:
+Do not paste a reviewer password or signing secret directly into shell history.
+For a different secure credential store, supply the same environment variables
+without printing their values.
+
+The promotion receipt is accepted only when it is fresh, signed by the same
+managed secret as the runtime, bound to the serving revision, covers the exact
+configured public-host set, and includes every server-required route ID. The
+authenticated leg proves Firebase login, session-cookie creation, native bearer
+verification, Home Nest/free-tier state, Nest index, writing, editor, recorder,
+research, publishing, logout, and cookie clearing.
+
+Cloud Run tagged URLs ignore host-header overrides. A host header remains useful
+only for a non-Cloud-Run target:
 
 ```bash
-PREVIEW_URL=https://example-preview-url HOST_HEADER=nest.quipsly.com scripts/release/quipsly-smoke-preview.sh
+PREVIEW_URL=https://example-preview-url \
+HOST_HEADER=nest.quipsly.com \
+bash scripts/release/quipsly-smoke-preview.sh
 ```
 
 Inspect current traffic:
@@ -69,7 +109,16 @@ ROLLBACK_REVISION=studio-00042-abc scripts/release/quipsly-rollback.sh
 ## Deploy Captain rules
 
 - Do not deploy directly to live traffic unless Codex/user explicitly says to skip preview.
+- Do not build from a dirty checkout. Release only a committed SHA.
 - Do not run database pushes in the same mental step as app promotion.
+- Take a Cloud SQL backup before a production migration and verify migration
+  status afterward.
 - If `/api/healthz` reports missing required runtime config, stop and report.
 - If `nest.quipsly.com` serves marketing/article routes instead of the app shell, stop and report host routing drift.
 - If preview smoke fails, do not promote and do not retry blindly.
+- A signed-out shell is authentication-boundary evidence, not proof that the
+  protected workspace rendered. The signed-in smoke is mandatory for the
+  promotion receipt.
+- `ready: true` does not claim live-provider completion, App Store review,
+  TestFlight installation, or physical-iPhone behavior. Those gates retain
+  separate evidence.

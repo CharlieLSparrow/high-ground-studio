@@ -1,13 +1,22 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { syncBlocksToQuipslyNote } from "@/lib/server/bi-directional-sync";
 import {
+  QUIPSLY_EMBEDDING_MODEL,
+  syncProjectEmbeddings,
+} from "@/lib/retrieval/embeddings";
+import {
+  LEGACY_PUBLISHING_EXECUTION_ERROR,
+  LEGACY_PUBLISHING_EXECUTION_RETIRED,
+} from "@/lib/server/retired-publishing-execution";
+import {
   canAccessStudioProjectBySlug,
   type StudioProjectAccessAction,
 } from "@/lib/server/studio-project-access";
-import type { Prisma, StudioProjectionStatus } from "@prisma/client";
+import type { Prisma, StoryEntityType, StudioProjectionStatus } from "@prisma/client";
 import { ViewDefinition } from "./types";
 import type {
   WorkbenchBaseState,
@@ -31,9 +40,21 @@ import {
 } from "./projectConfig";
 import { createStarterBlocks } from "./starterDocuments";
 import { GoogleGenAI, Schema, Type } from "@google/genai";
+import {
+  DOCUMENT_EXPORT_SCHEMA_VERSION,
+  documentSha256,
+  stableDocumentJson,
+  validateDocumentBundle,
+  type PortableDocumentBundle,
+  type PortableDocumentSnapshot,
+} from "@/lib/document-portability";
+import {
+  assertMutableWritingBlock,
+  isImmutableTranscriptSourceExternalId,
+} from "@/lib/studio/immutable-source";
 
-const OFFLINE_PROJECT_ID = "offline-quipsly-live";
-const OFFLINE_DOCUMENT_ID = "offline-doc-live";
+const UNAVAILABLE_PROJECT_ID = "unavailable-quipsly";
+const UNAVAILABLE_DOCUMENT_ID = "unavailable-document";
 const STRUCTURE_TAG_SLUGS = ["chapter", "episode"];
 
 // Make sure these match AVAILABLE_TAGS in ViewFilter/Tagger
@@ -95,7 +116,7 @@ function buildUnavailableScopeSummary(slug: string, status: WorkbenchScopeProjec
     projectNestKind: "writing",
     workflowSystem: "content-creation",
     status,
-    persistenceMode: "offline",
+    persistenceMode: "unavailable",
     reason,
   };
 }
@@ -443,27 +464,20 @@ function createDefaultViews(idPrefix = "default-view") {
   })) as ViewDefinition[];
 }
 
-function createOfflineWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG): WorkbenchBaseState {
+function createUnavailableWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG): WorkbenchBaseState {
   const config = projectConfig(projectSlug);
-  const blocks = [
-    { id: "offline-preface", text: "Preface", tags: ["chapter"] },
-    { id: "offline-episode-4-heading", text: "Episode 4", tags: ["episode"] },
-    { id: "offline-episode-4", text: "Episode 4 scratchpad. Paste tonight's edit here and use Chapter/Episode heading blocks as the navigation spine.", tags: [] },
-    { id: "offline-episode-8-heading", text: "Episode 8", tags: ["episode"] },
-    { id: "offline-episode-8", text: "Episode 8 writing lane. This fallback proves the workbench can load without a database, but it will not persist changes.", tags: [] },
-    { id: "offline-episode-9-heading", text: "Episode 9", tags: ["episode"] },
-    { id: "offline-episode-9", text: "Episode 9 writing lane. In production this same screen should use StudioDocumentBlock and StudioTaggedSpan records.", tags: [] }
-  ];
 
   return {
-    blocks,
-    views: createDefaultViews("offline-view"),
-    projectId: OFFLINE_PROJECT_ID,
+    // Never substitute convincing manuscript content when canonical persistence
+    // is unavailable. The Workspace renders a non-editable outage surface.
+    blocks: [],
+    views: [],
+    projectId: UNAVAILABLE_PROJECT_ID,
     projectSlug: config.slug,
-    projectName: `${config.name} / Offline Browser Lab`,
-    documentId: OFFLINE_DOCUMENT_ID,
-    documentTitle: config.documentTitle,
-    persistenceMode: "offline" as const
+    projectName: config.name,
+    documentId: UNAVAILABLE_DOCUMENT_ID,
+    documentTitle: "Writing desk unavailable",
+    persistenceMode: "unavailable" as const
   };
 }
 
@@ -574,8 +588,13 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
   try {
     prisma = getPrismaClient();
   } catch (error) {
-    console.warn("DATABASE_URL is not set; skipping database seed and using offline workbench state.", error);
-    return { projectId: OFFLINE_PROJECT_ID, documentId: OFFLINE_DOCUMENT_ID };
+    console.warn("DATABASE_URL is not set; the writing desk will render unavailable.", error);
+    return {
+      ok: false as const,
+      state: "unavailable" as const,
+      code: "PERSISTENCE_UNAVAILABLE" as const,
+      error: "The writing database is unavailable, so no starter content was created.",
+    };
   }
 
   const { project, document } = await lookupStudioProjectDocument(prisma, config.slug);
@@ -671,7 +690,7 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
     }
   }
 
-  return { projectId: project.id, documentId: document.id };
+  return { ok: true as const, state: "persisted" as const, projectId: project.id, documentId: document.id };
 }
 
 export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, documentId?: string): Promise<WorkbenchBaseState | null> {
@@ -679,8 +698,8 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
   try {
     prisma = getPrismaClient();
   } catch (error) {
-    console.warn("DATABASE_URL is not set; loading offline Quipsly workbench state.", error);
-    return createOfflineWorkbenchState(projectSlug);
+    console.warn("DATABASE_URL is not set; refusing to substitute an editable manuscript.", error);
+    return createUnavailableWorkbenchState(projectSlug);
   }
 
   // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
@@ -694,6 +713,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
         viewDefinitions: true,
         documents: {
           where: documentId ? { id: documentId } : undefined,
+          orderBy: { updatedAt: "desc" },
           include: {
             blocks: {
               where: { archivedAt: null },
@@ -716,6 +736,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
         tags: true,
         documents: {
           where: documentId ? { id: documentId } : undefined,
+          orderBy: { updatedAt: "desc" },
           include: {
             blocks: {
               where: { archivedAt: null },
@@ -734,18 +755,40 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
 
   if (!project) return null;
 
+  const projectDocuments = await prisma.studioDocument.findMany({
+    where: { projectId: project.id },
+    select: {
+      id: true,
+      title: true,
+      sourceLabel: true,
+      updatedAt: true,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
   // Format into our UI shape
   const document = project.documents[0];
   if (!document) return null;
 
   if (await ensureDevLabShowTags(prisma, project, document)) {
-    return loadWorkbenchState(projectSlug);
+    return loadWorkbenchState(projectSlug, documentId);
   }
 
   const blocks = document.blocks.map((b) => ({
     id: b.id,
     text: b.body,
     tags: Array.from(new Set(b.taggedSpans.map((ts) => ts.tag.slug))),
+    ...(b.externalId?.startsWith("annotation:") ? { sourceEvidence: {
+      annotationId: b.externalId!.slice("annotation:".length),
+      citationLabel: b.sourceLabel || "Quipsly source evidence",
+      sourcePath: b.sourcePath || undefined,
+      immutable: false,
+    } } : isImmutableTranscriptSourceExternalId(b.externalId) ? { sourceEvidence: {
+      annotationId: b.externalId!,
+      citationLabel: b.sourceLabel || "Recording-backed transcript evidence",
+      sourcePath: b.sourcePath || undefined,
+      immutable: true,
+    } } : {}),
     spans: b.taggedSpans.map((ts) => ({
       id: ts.id,
       tagSlug: ts.tag.slug,
@@ -777,6 +820,7 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
     workflowSystem: workflowSystemForNestKind(project.sourceLabel),
     documentId: document.id,
     documentTitle: document.title,
+    projectDocuments,
     persistenceMode: "database" as const
   };
 }
@@ -801,7 +845,7 @@ async function loadLinkedScopeSummary(projectSlug: string): Promise<WorkbenchSco
         projectNestKind: config.nestKind,
         workflowSystem: workflowSystemForNestKind(config.nestKind),
         status: "denied",
-        persistenceMode: "offline",
+        persistenceMode: "unavailable",
         reason: "No read access for this Nest."
       };
     }
@@ -836,7 +880,7 @@ async function loadLinkedScopeSummary(projectSlug: string): Promise<WorkbenchSco
         projectNestKind: config.nestKind,
         workflowSystem: workflowSystemForNestKind(config.nestKind),
         status: "missing",
-        persistenceMode: "offline",
+        persistenceMode: "unavailable",
         reason: "This Nest does not exist in this workspace."
       };
     }
@@ -916,12 +960,14 @@ export async function saveBlockContent(blockId: string, newText: string) {
     where: { id: blockId },
     select: {
       body: true,
+      externalId: true,
       documentId: true,
       document: { select: { projectId: true } },
     },
   });
 
   if (!existingBlock) return;
+  assertMutableWritingBlock(existingBlock.externalId);
 
   await prisma.studioDocumentBlock.update({
     where: { id: blockId },
@@ -967,6 +1013,7 @@ export async function archiveBlock(blockId: string) {
     where: { id: blockId },
     select: {
       body: true,
+      externalId: true,
       archivedAt: true,
       archivedByLabel: true,
       documentId: true,
@@ -975,6 +1022,7 @@ export async function archiveBlock(blockId: string) {
   });
 
   if (!existingBlock) return;
+  assertMutableWritingBlock(existingBlock.externalId);
   const archivedAt = new Date();
 
   await prisma.studioDocumentBlock.update({
@@ -1094,6 +1142,7 @@ export async function restoreBlockState(
   });
 
   if (!block) return;
+  assertMutableWritingBlock(block.externalId);
 
   const text = typeof rawText === "string" ? rawText : "";
   const spans = Array.isArray(rawText === null ? [] : rawSpans) ? rawSpans : [];
@@ -1187,6 +1236,158 @@ export async function restoreBlockState(
   revalidatePath('/create');
 }
 
+export type PastePlainTextBlocksResult =
+  | {
+      ok: true;
+      state: "persisted";
+      operationId: string;
+      currentBlock: { id: string; text: string; tags: string[]; spans: [] };
+      newBlocks: Array<{ id: string; text: string; tags: string[]; spans: [] }>;
+    }
+  | {
+      ok: false;
+      state: "rejected" | "unavailable";
+      code: "AUTH_REQUIRED" | "ACCESS_NOT_VERIFIED" | "INVALID_PASTE" | "PROTECTED_BLOCK" | "PERSISTENCE_UNAVAILABLE";
+      error: string;
+    };
+
+export async function pastePlainTextBlocksAction(
+  blockId: string,
+  rawChunks: string[],
+  rawSelectionStart: number,
+  rawSelectionEnd: number,
+): Promise<PastePlainTextBlocksResult> {
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) {
+    return { ok: false, state: "rejected", code: "AUTH_REQUIRED", error: "Sign in before splitting pasted writing into blocks." };
+  }
+  const chunks = Array.isArray(rawChunks)
+    ? rawChunks.map((chunk) => typeof chunk === "string" ? chunk.trim() : "").filter(Boolean)
+    : [];
+  const totalLength = chunks.reduce((total, chunk) => total + chunk.length, 0);
+  if (chunks.length < 2 || chunks.length > 500 || totalLength > 2_000_000
+    || !Number.isSafeInteger(rawSelectionStart) || !Number.isSafeInteger(rawSelectionEnd)) {
+    return { ok: false, state: "rejected", code: "INVALID_PASTE", error: "That paste cannot be safely split into writing blocks." };
+  }
+
+  let prisma: ReturnType<typeof getPrismaClient>;
+  try {
+    prisma = getPrismaClient();
+    await requireProjectAccessByBlockId(prisma, blockId, "write");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message.includes("do not have") || message === "Block not found.") {
+      return { ok: false, state: "rejected", code: "ACCESS_NOT_VERIFIED", error: "Quipsly could not verify write access. Nothing was pasted." };
+    }
+    console.error("Paste could not verify document access.", error);
+    return { ok: false, state: "unavailable", code: "PERSISTENCE_UNAVAILABLE", error: "The writing database is unavailable. Nothing was pasted." };
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const block = await tx.studioDocumentBlock.findUnique({
+        where: { id: blockId },
+        select: {
+          id: true,
+          stableId: true,
+          documentId: true,
+          order: true,
+          body: true,
+          sourceLabel: true,
+          sourcePath: true,
+          externalId: true,
+          projectionStatus: true,
+          isPrivate: true,
+          document: { select: { projectId: true } },
+          taggedSpans: { select: { id: true }, take: 1 },
+          sourceAnnotationUses: { select: { id: true }, take: 1 },
+        },
+      });
+      if (!block) throw new DocumentReorderError("DOCUMENT_NOT_FOUND", "Block not found.");
+      await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtextextended(${block.documentId}, 0))`;
+      if (isImmutableTranscriptSourceExternalId(block.externalId)) {
+        throw new DocumentSafetyError("IDENTITY_MISMATCH", "Transcript source evidence is immutable. Paste into the linked draft block instead.");
+      }
+      if (block.taggedSpans.length > 0 || block.sourceAnnotationUses.length > 0 || block.externalId?.startsWith("annotation:")) {
+        throw new DocumentSafetyError("IDENTITY_MISMATCH", "Source-linked or tagged writing stays in one block so its anchors remain trustworthy.");
+      }
+
+      const selectionStart = Math.max(0, Math.min(rawSelectionStart, block.body.length));
+      const selectionEnd = Math.max(selectionStart, Math.min(rawSelectionEnd, block.body.length));
+      const beforeSelection = block.body.slice(0, selectionStart);
+      const afterSelection = block.body.slice(selectionEnd);
+      const currentText = `${beforeSelection}${chunks[0]}`;
+      const insertedBodies = chunks.slice(1).map((chunk, index, rest) => index === rest.length - 1 ? `${chunk}${afterSelection}` : chunk);
+      const following = await tx.studioDocumentBlock.findMany({
+        where: { documentId: block.documentId, order: { gt: block.order } },
+        orderBy: { order: "desc" },
+        select: { id: true, order: true },
+      });
+      for (const item of following) {
+        await tx.studioDocumentBlock.update({ where: { id: item.id }, data: { order: item.order + insertedBodies.length } });
+      }
+      await tx.studioDocumentBlock.update({ where: { id: block.id }, data: { body: currentText } });
+
+      const operationGroup = randomUUID();
+      const newBlocks = [] as Array<{ id: string; text: string; tags: string[]; spans: [] }>;
+      for (const [index, body] of insertedBodies.entries()) {
+        const created = await tx.studioDocumentBlock.create({
+          data: {
+            documentId: block.documentId,
+            stableId: `${block.stableId}-paste-${operationGroup}-${index + 1}`,
+            order: block.order + index + 1,
+            body,
+            sourceLabel: block.sourceLabel,
+            sourcePath: block.sourcePath,
+            projectionStatus: block.projectionStatus,
+            isPrivate: block.isPrivate,
+          },
+          select: { id: true, body: true },
+        });
+        newBlocks.push({ id: created.id, text: created.body, tags: [], spans: [] });
+      }
+      await tx.studioDocument.update({ where: { id: block.documentId }, data: { updatedAt: new Date() } });
+      const operation = await tx.studioDocumentOperation.create({
+        data: {
+          projectId: block.document.projectId,
+          documentId: block.documentId,
+          groupId: operationGroup,
+          actorEmail,
+          origin: "human",
+          operationType: "paste-split-blocks",
+          beforeJson: toPrismaJson({ blockId: block.id, body: block.body, order: block.order }),
+          afterJson: toPrismaJson({
+            currentBlock: { id: block.id, body: currentText, order: block.order },
+            newBlocks: newBlocks.map((item, index) => ({ id: item.id, body: item.text, order: block.order + index + 1 })),
+          }),
+          payloadJson: toPrismaJson({ chunkCount: chunks.length, selectionStart, selectionEnd }),
+          reversible: true,
+        },
+        select: { id: true },
+      });
+      return {
+        documentId: block.documentId,
+        operationId: operation.id,
+        currentBlock: { id: block.id, text: currentText, tags: [], spans: [] as [] },
+        newBlocks,
+      };
+    });
+    revalidatePath("/create");
+    void syncBlocksToQuipslyNote(result.documentId).catch((error) => console.error("Pasted blocks saved, but note projection sync failed.", error));
+    const { documentId: _documentId, ...receipt } = result;
+    return { ok: true, state: "persisted", ...receipt };
+  } catch (error) {
+    if (error instanceof DocumentSafetyError) {
+      return { ok: false, state: "rejected", code: "PROTECTED_BLOCK", error: error.message };
+    }
+    if (error instanceof DocumentReorderError) {
+      return { ok: false, state: "rejected", code: "INVALID_PASTE", error: error.message };
+    }
+    console.error("Atomic multi-block paste failed.", error);
+    return { ok: false, state: "unavailable", code: "PERSISTENCE_UNAVAILABLE", error: "The pasted blocks were not saved. Your canonical document was left unchanged." };
+  }
+}
+
 export async function splitBlockAtOffset(
   blockId: string,
   offset: number,
@@ -1214,6 +1415,7 @@ export async function splitBlockAtOffset(
     }
   });
   if (!block) return null;
+  assertMutableWritingBlock(block.externalId);
 
   const splitStart = Math.max(0, Math.min(offset, block.body.length));
   const splitEnd = Math.max(splitStart, Math.min(endOffset ?? offset, block.body.length));
@@ -1388,6 +1590,8 @@ export async function mergeBlockWithPrevious(blockId: string) {
     }
   });
   if (!previousBlock) return null;
+  assertMutableWritingBlock(block.externalId);
+  assertMutableWritingBlock(previousBlock.externalId);
 
   const mergedText = `${previousBlock.body}${block.body}`;
 
@@ -1486,8 +1690,8 @@ export async function toggleBlockTag(
   }
 
   if (
-    projectId === OFFLINE_PROJECT_ID ||
-    documentId === OFFLINE_DOCUMENT_ID ||
+    projectId === UNAVAILABLE_PROJECT_ID ||
+    documentId === UNAVAILABLE_DOCUMENT_ID ||
     blockId.startsWith("offline-")
   ) {
     return;
@@ -2260,104 +2464,12 @@ export async function getEpisodeCandidatesAction(projectId: string) {
 }
 
 export async function approveEpisodeCandidateAction(candidateId: string) {
-  try {
-    const prisma = getPrismaClient();
-    const session = await auth();
-    const ownerEmail = session?.user?.email || "quipsly-publisher@highgroundodyssey.com";
-
-    const candidate = await prisma.hgoEpisodePublishCandidate.findUnique({
-      where: { id: candidateId },
-      include: { sourceStagedArtifact: true }
-    });
-
-    if (!candidate) {
-      return { ok: false, error: "Candidate not found." };
-    }
-
-    const quipslyPkg = (candidate.draftPacketJson || candidate.packetJson) as any;
-    const projectId = typeof quipslyPkg?.projectId === "string" ? quipslyPkg.projectId : "";
-    if (!projectId) {
-      return { ok: false, error: "Candidate is missing its source Nest." };
-    }
-    await requireProjectAccessByProjectId(prisma, projectId, "manage");
-
-    const { mapQuipslyPackageToHgoPacket } = await import("@/lib/publishing/DestinationAdapters");
-    const hgoPublicPacket = mapQuipslyPackageToHgoPacket(
-      quipslyPkg,
-      candidate.projectionSlug,
-      "4",
-      candidate.sourceArtifactHash
-    );
-
-    // Write packet to apps/web filesystem so the web app can read it
-    const fs = await import("node:fs/promises");
-    const path = await import("node:path");
-    const contentDir = path.join(process.cwd(), "../web/content/publish/hgo-episodes");
-    const filePath = path.join(contentDir, `${candidate.projectionSlug}.json`);
-    const indexPath = path.join(contentDir, `episodes-index.json`);
-
-    try {
-      await fs.mkdir(contentDir, { recursive: true });
-      await fs.writeFile(filePath, JSON.stringify(hgoPublicPacket, null, 2), "utf8");
-
-      let index: Record<string, any> = {};
-      try {
-        const indexContent = await fs.readFile(indexPath, "utf8");
-        index = JSON.parse(indexContent);
-      } catch (e) {
-        // Ignore if file doesn't exist
-      }
-
-      index[hgoPublicPacket.slug] = {
-        id: hgoPublicPacket.id,
-        slug: hgoPublicPacket.slug,
-        title: hgoPublicPacket.title,
-        episodeNumber: hgoPublicPacket.episodeNumber,
-        summary: hgoPublicPacket.summary,
-        publishedAt: hgoPublicPacket.provenance.publishedAt,
-      };
-
-      await fs.writeFile(indexPath, JSON.stringify(index, null, 2), "utf8");
-    } catch (fsError) {
-      console.error("Failed to write package to disk during approval:", fsError);
-    }
-
-    await prisma.$transaction(async (tx) => {
-      await tx.hgoEpisodePublishCandidate.update({
-        where: { id: candidate.id },
-        data: {
-          candidateStatus: "published",
-          approvedAt: new Date(),
-          approvedByEmail: ownerEmail,
-          packetJson: hgoPublicPacket as any,
-          draftPacketJson: hgoPublicPacket as any,
-        }
-      });
-
-      if (candidate.sourceStagedArtifact) {
-        await tx.hgoStagedProjectionArtifact.update({
-          where: { id: candidate.sourceStagedArtifact.id },
-          data: {
-            projectionStatus: "published",
-            reviewStatus: "published",
-            promotionReadiness: "published",
-            artifactStatus: "published",
-            reviewedAt: new Date(),
-            reviewedByEmail: ownerEmail
-          }
-        });
-      }
-    });
-
-    revalidatePath("/publishing-suite");
-    revalidatePath("/publishing-suite/package-builder");
-    revalidatePath("/create");
-
-    return { ok: true, message: "Successfully published package to HighGroundOdyssey.com!" };
-  } catch (error: any) {
-    console.error("approveEpisodeCandidateAction failed", error);
-    return { ok: false, error: error.message || "Failed to publish package." };
-  }
+  void candidateId;
+  return {
+    ok: false,
+    errorCode: LEGACY_PUBLISHING_EXECUTION_RETIRED,
+    error: LEGACY_PUBLISHING_EXECUTION_ERROR,
+  };
 }
 
 export async function getEpisodeCandidatesBySlugAction(projectSlug: string) {
@@ -2407,188 +2519,1506 @@ export async function getPublishingSuiteStatsAction(projectSlug: string) {
   }
 }
 
-export async function saveAssistantAction(actionId: string, provenance: Record<string, any>) {
-  try {
-    if (!process.env.DATABASE_URL) return { ok: true, fallback: true };
-    const prisma = getPrismaClient();
-    await requireProjectAccessByAssistantActionId(prisma, actionId, "write");
+type AssistantMutationCode =
+  | "AUTH_REQUIRED"
+  | "ACCESS_NOT_VERIFIED"
+  | "ACTION_NOT_FOUND"
+  | "UNSUPPORTED_ACTION"
+  | "INVALID_PAYLOAD"
+  | "STALE_SOURCE"
+  | "PERSISTENCE_UNAVAILABLE";
 
-    await prisma.$transaction(async (tx) => {
-      const action = await tx.studioAssistantAction.findUnique({
-        where: { id: actionId },
-      });
-      if (!action) throw new Error("Action not found");
+export type AssistantDocumentApplyReceipt = {
+  actionId: string;
+  operationId: string;
+  projectId: string;
+  documentId: string;
+  blockId: string;
+  kind: "rewrite" | "draft";
+  text: string;
+  insertAfterBlockId: string | null;
+};
 
-      await tx.studioAssistantAction.update({
-        where: { id: actionId },
-        data: { status: "saved" },
-      });
+export type AssistantEntityCommitReceipt = {
+  actionId: string;
+  projectId: string;
+  entityId: string;
+  operation: "created" | "updated";
+};
 
-      // @ts-ignore
-      await tx.studioAssistantLedger.create({
-        data: {
-          actionId,
-          previousStatus: action.status,
-          newStatus: "saved",
-          notes: JSON.stringify(provenance),
-        },
-      });
-    });
+export type AssistantDecisionReceipt = {
+  actionId: string;
+  previousStatus: string;
+  status: "proposed" | "approved" | "rejected";
+};
 
-    return { ok: true, error: undefined };
-  } catch (error: any) {
-    console.error("saveAssistantAction failed", error);
-    return { ok: false, error: error.message };
+type AssistantMutationResult<T> =
+  | { ok: true; state: "persisted"; replay: boolean; receipt: T }
+  | { ok: false; state: "rejected" | "unavailable"; code: AssistantMutationCode; error: string };
+
+class AssistantMutationError extends Error {
+  constructor(readonly code: Exclude<AssistantMutationCode, "AUTH_REQUIRED" | "ACCESS_NOT_VERIFIED" | "PERSISTENCE_UNAVAILABLE">, message: string) {
+    super(message);
+    this.name = "AssistantMutationError";
   }
 }
 
-export async function undoSavedAssistantAction(actionId: string) {
+function assistantRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function assistantText(value: unknown, maximum: number) {
+  return typeof value === "string" ? value.trim().slice(0, maximum) : "";
+}
+
+function parseAssistantReceipt<T>(notes: string | null | undefined): T | null {
+  if (!notes) return null;
   try {
-    if (!process.env.DATABASE_URL) return { ok: true, fallback: true };
-    const prisma = getPrismaClient();
-    await requireProjectAccessByAssistantActionId(prisma, actionId, "write");
-
-    await prisma.$transaction(async (tx) => {
-      const action = await tx.studioAssistantAction.findUnique({
-        where: { id: actionId },
-      });
-      if (!action) throw new Error("Action not found");
-
-      await tx.studioAssistantAction.update({
-        where: { id: actionId },
-        data: { status: "undone" },
-      });
-
-      // @ts-ignore
-      await tx.studioAssistantLedger.create({
-        data: {
-          actionId,
-          previousStatus: action.status,
-          newStatus: "undone",
-          notes: "Archived/deleted saved note",
-        },
-      });
-    });
-
-    return { ok: true, error: undefined };
-  } catch (error: any) {
-    console.error("undoSavedAssistantAction failed", error);
-    return { ok: false, error: error.message };
+    const parsed = JSON.parse(notes) as { receipt?: T };
+    return parsed.receipt ?? null;
+  } catch {
+    return null;
   }
 }
 
-// Dummy exports to fix broken build from external edits
-export async function reorderDocumentBlocksAction(documentId: string, blocks: any[]): Promise<{ ok: boolean, error?: string }> { return { ok: true, error: undefined }; }
-export async function addBlockComment(blockId: string, start: number, end: number, text: string, comment: string): Promise<{ ok: boolean, error?: string }> { return { ok: true, error: undefined }; }
-export async function updateCandidatePacketAction(candidateId: string, packet: any): Promise<{ ok: boolean, error?: string }> {
-  try {
-    const prisma = getPrismaClient();
-    const candidate = await prisma.hgoEpisodePublishCandidate.findUnique({
-      where: { id: candidateId },
-    });
+async function lockAssistantAction(tx: Prisma.TransactionClient, actionId: string) {
+  await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtextextended(${actionId}, 0))`;
+}
 
-    if (!candidate) {
-      return { ok: false, error: "Candidate not found." };
-    }
-
-    const currentDraft = (candidate.draftPacketJson || candidate.packetJson || {}) as any;
-    const mergedDraft = {
-      ...currentDraft,
-      ...packet,
-      media: {
-        ...(currentDraft.media || {}),
-        ...(packet.media || {})
+async function prepareAssistantMutation(actionId: string) {
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) {
+    return {
+      error: {
+        ok: false as const,
+        state: "rejected" as const,
+        code: "AUTH_REQUIRED" as const,
+        error: "Sign in before deciding an assistant proposal.",
       },
-      overrides: {
-        ...(currentDraft.overrides || {}),
-        ...(packet.overrides || {})
+    };
+  }
+
+  try {
+    const prisma = getPrismaClient();
+    await requireProjectAccessByAssistantActionId(prisma, actionId, "write");
+    return { prisma, actorEmail };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (!message.includes("do not have write access") && message !== "Assistant action not found.") {
+      console.error("Assistant mutation could not verify write access.", error);
+    }
+    return {
+      error: {
+        ok: false as const,
+        state: "rejected" as const,
+        code: "ACCESS_NOT_VERIFIED" as const,
+        error: "Quipsly could not verify write access for this proposal. Nothing was changed.",
+      },
+    };
+  }
+}
+
+export async function applyAssistantDocumentEditAction(
+  actionId: string,
+): Promise<AssistantMutationResult<AssistantDocumentApplyReceipt>> {
+  const prepared = await prepareAssistantMutation(actionId);
+  if (prepared.error) return prepared.error;
+  const { prisma, actorEmail } = prepared;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await lockAssistantAction(tx, actionId);
+      const action = await tx.studioAssistantAction.findUnique({
+        where: { id: actionId },
+        include: {
+          session: true,
+          ledgers: {
+            where: { newStatus: "applied" },
+            orderBy: { createdAt: "desc" },
+            take: 1,
+          },
+        },
+      });
+      if (!action) throw new AssistantMutationError("ACTION_NOT_FOUND", "That assistant proposal no longer exists.");
+
+      const priorReceipt = parseAssistantReceipt<AssistantDocumentApplyReceipt>(action.ledgers[0]?.notes);
+      if (action.status === "applied" && priorReceipt) {
+        return { replay: true, receipt: priorReceipt };
       }
+      if (!["proposed", "approved"].includes(action.status)) {
+        throw new AssistantMutationError("STALE_SOURCE", "This proposal has already been decided. Reload before applying it again.");
+      }
+
+      const documentId = action.session.documentId;
+      if (!documentId) throw new AssistantMutationError("INVALID_PAYLOAD", "This proposal is not anchored to a document.");
+      const document = await tx.studioDocument.findFirst({
+        where: { id: documentId, projectId: action.session.projectId },
+        select: {
+          id: true,
+          projectId: true,
+          blocks: { select: { id: true, stableId: true, order: true, body: true }, orderBy: { order: "asc" } },
+        },
+      });
+      if (!document) throw new AssistantMutationError("ACTION_NOT_FOUND", "The proposal's document is unavailable.");
+
+      const payload = assistantRecord(action.payloadJson);
+      const isRewrite = ["PROPOSE_REWRITE", "PROPOSE_CONTINUITY_FIX"].includes(action.kind);
+      const isDraft = action.kind === "PROPOSE_DRAFT";
+      if (!isRewrite && !isDraft) {
+        throw new AssistantMutationError("UNSUPPORTED_ACTION", "Only reviewed draft and rewrite proposals can change manuscript blocks.");
+      }
+
+      let operationId = "";
+      let blockId = "";
+      let text = "";
+      let insertAfterBlockId: string | null = null;
+
+      if (isRewrite) {
+        blockId = assistantText(payload.blockId ?? payload.targetBlockId, 160);
+        const expectedText = typeof payload.originalText === "string" ? payload.originalText : "";
+        text = typeof payload.rewriteText === "string" ? payload.rewriteText.trim() : "";
+        if (!blockId || !expectedText || !text || text.length > 2_000_000) {
+          throw new AssistantMutationError("INVALID_PAYLOAD", "The rewrite is missing its exact source block, original text, or replacement text.");
+        }
+        const block = document.blocks.find((candidate) => candidate.id === blockId);
+        if (!block) throw new AssistantMutationError("ACTION_NOT_FOUND", "The rewrite's source block is unavailable.");
+        if (block.body !== expectedText) {
+          throw new AssistantMutationError("STALE_SOURCE", "The manuscript changed after this rewrite was proposed. Review a fresh diff; nothing was overwritten.");
+        }
+
+        await tx.studioDocumentBlock.update({ where: { id: block.id }, data: { body: text } });
+        const operation = await tx.studioDocumentOperation.create({
+          data: {
+            projectId: document.projectId,
+            documentId: document.id,
+            actorEmail,
+            origin: "assistant",
+            operationType: "assistant-rewrite-apply",
+            beforeJson: toPrismaJson({ blockId: block.id, stableId: block.stableId, body: block.body }),
+            afterJson: toPrismaJson({ blockId: block.id, stableId: block.stableId, body: text }),
+            payloadJson: toPrismaJson({ assistantActionId: action.id, proposalKind: action.kind }),
+            reversible: true,
+          },
+          select: { id: true },
+        });
+        operationId = operation.id;
+      } else {
+        text = typeof payload.draftText === "string" ? payload.draftText.trim() : "";
+        if (!text || text.length > 2_000_000) {
+          throw new AssistantMutationError("INVALID_PAYLOAD", "The draft proposal has no bounded draft text.");
+        }
+        const requestedTargetId = assistantText(payload.targetBlockId ?? payload.blockId, 160);
+        const target = requestedTargetId
+          ? document.blocks.find((candidate) => candidate.id === requestedTargetId)
+          : null;
+        if (requestedTargetId && !target) {
+          throw new AssistantMutationError("STALE_SOURCE", "The requested insertion point no longer exists. Nothing was inserted.");
+        }
+        insertAfterBlockId = target?.id ?? null;
+        const insertionOrder = target
+          ? target.order + 1
+          : (document.blocks.at(-1)?.order ?? -1) + 1;
+        for (const block of [...document.blocks].filter((candidate) => candidate.order >= insertionOrder).sort((a, b) => b.order - a.order)) {
+          await tx.studioDocumentBlock.update({ where: { id: block.id }, data: { order: block.order + 1 } });
+        }
+        blockId = `assistant-block-${action.id}`;
+        const stableId = `assistant-draft-${action.id}`;
+        await tx.studioDocumentBlock.create({
+          data: {
+            id: blockId,
+            documentId: document.id,
+            stableId,
+            order: insertionOrder,
+            body: text,
+            projectionStatus: "private",
+            isPrivate: true,
+          },
+        });
+        const operation = await tx.studioDocumentOperation.create({
+          data: {
+            projectId: document.projectId,
+            documentId: document.id,
+            actorEmail,
+            origin: "assistant",
+            operationType: "assistant-draft-insert",
+            beforeJson: toPrismaJson({ blockId: null, insertAfterBlockId }),
+            afterJson: toPrismaJson({ blockId, stableId, body: text, order: insertionOrder }),
+            payloadJson: toPrismaJson({ assistantActionId: action.id, proposalKind: action.kind }),
+            reversible: true,
+          },
+          select: { id: true },
+        });
+        operationId = operation.id;
+      }
+
+      const receipt: AssistantDocumentApplyReceipt = {
+        actionId: action.id,
+        operationId,
+        projectId: document.projectId,
+        documentId: document.id,
+        blockId,
+        kind: isRewrite ? "rewrite" : "draft",
+        text,
+        insertAfterBlockId,
+      };
+      await tx.studioAssistantAction.update({ where: { id: action.id }, data: { status: "applied" } });
+      await tx.studioAssistantLedger.create({
+        data: {
+          actionId: action.id,
+          previousStatus: action.status,
+          newStatus: "applied",
+          notes: JSON.stringify({ kind: "quipsly-assistant-document-apply-v1", actorEmail, receipt }),
+        },
+      });
+      await tx.studioDocument.update({ where: { id: document.id }, data: { updatedAt: new Date() } });
+      return { replay: false, receipt };
+    });
+
+    try {
+      revalidatePath("/create");
+    } catch (error) {
+      console.error("Assistant edit persisted, but the writing route cache could not refresh.", error);
+    }
+    void syncBlocksToQuipslyNote(result.receipt.documentId).catch((error) => {
+      console.error("Assistant edit persisted, but native-note projection sync failed.", error);
+    });
+    return { ok: true, state: "persisted", ...result };
+  } catch (error) {
+    if (error instanceof AssistantMutationError) {
+      return { ok: false, state: "rejected", code: error.code, error: error.message };
+    }
+    console.error("Assistant document apply failed.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The manuscript proposal could not be applied. No success was recorded; reload to verify the document before retrying.",
+    };
+  }
+}
+
+export async function undoAppliedAssistantDocumentEditAction(
+  actionId: string,
+): Promise<AssistantMutationResult<AssistantDocumentApplyReceipt>> {
+  const prepared = await prepareAssistantMutation(actionId);
+  if (prepared.error) return prepared.error;
+  const { prisma, actorEmail } = prepared;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await lockAssistantAction(tx, actionId);
+      const action = await tx.studioAssistantAction.findUnique({
+        where: { id: actionId },
+        include: {
+          session: true,
+          ledgers: {
+            where: { newStatus: { in: ["applied", "undone"] } },
+            orderBy: { createdAt: "desc" },
+          },
+        },
+      });
+      if (!action) throw new AssistantMutationError("ACTION_NOT_FOUND", "That assistant proposal no longer exists.");
+
+      const applyLedger = action.ledgers.find((ledger) => ledger.newStatus === "applied");
+      const receipt = parseAssistantReceipt<AssistantDocumentApplyReceipt>(applyLedger?.notes);
+      if (!receipt || receipt.actionId !== action.id || receipt.documentId !== action.session.documentId) {
+        throw new AssistantMutationError("INVALID_PAYLOAD", "The manuscript apply receipt is incomplete; nothing was changed.");
+      }
+      if (action.status === "undone" && action.ledgers.some((ledger) => ledger.newStatus === "undone")) {
+        return { replay: true, receipt };
+      }
+      if (action.status !== "applied") {
+        throw new AssistantMutationError("STALE_SOURCE", "This proposal has no applied manuscript change to undo.");
+      }
+
+      const operation = await tx.studioDocumentOperation.findFirst({
+        where: {
+          id: receipt.operationId,
+          projectId: receipt.projectId,
+          documentId: receipt.documentId,
+          origin: "assistant",
+          status: "applied",
+          reversible: true,
+          revertedAt: null,
+        },
+      });
+      const operationPayload = assistantRecord(operation?.payloadJson);
+      if (!operation || operationPayload.assistantActionId !== action.id) {
+        throw new AssistantMutationError("STALE_SOURCE", "The reversible operation no longer matches this proposal; nothing was changed.");
+      }
+
+      const before = assistantRecord(operation.beforeJson);
+      const after = assistantRecord(operation.afterJson);
+      if (receipt.kind === "rewrite") {
+        const priorBody = typeof before.body === "string" ? before.body : null;
+        const appliedBody = typeof after.body === "string" ? after.body : null;
+        const block = await tx.studioDocumentBlock.findFirst({
+          where: { id: receipt.blockId, documentId: receipt.documentId },
+          select: { id: true, body: true, stableId: true },
+        });
+        if (!block || priorBody === null || appliedBody === null || block.body !== appliedBody || block.stableId !== after.stableId) {
+          throw new AssistantMutationError("STALE_SOURCE", "The manuscript changed after this rewrite was applied. Undo refused to overwrite the newer work.");
+        }
+        await tx.studioDocumentBlock.update({ where: { id: block.id }, data: { body: priorBody } });
+      } else if (receipt.kind === "draft") {
+        const appliedBody = typeof after.body === "string" ? after.body : null;
+        const block = await tx.studioDocumentBlock.findFirst({
+          where: { id: receipt.blockId, documentId: receipt.documentId },
+          select: { id: true, body: true, stableId: true, order: true },
+        });
+        if (!block || appliedBody === null || block.body !== appliedBody || block.stableId !== after.stableId) {
+          throw new AssistantMutationError("STALE_SOURCE", "The inserted draft changed after it was applied. Undo refused to delete the newer work.");
+        }
+        await tx.studioDocumentBlock.delete({ where: { id: block.id } });
+        await tx.studioDocumentBlock.updateMany({
+          where: { documentId: receipt.documentId, order: { gt: block.order } },
+          data: { order: { decrement: 1 } },
+        });
+      } else {
+        throw new AssistantMutationError("INVALID_PAYLOAD", "The manuscript apply receipt has an unsupported operation.");
+      }
+
+      await tx.studioDocumentOperation.update({
+        where: { id: operation.id },
+        data: { status: "reverted", revertedAt: new Date(), actorEmail },
+      });
+      await tx.studioAssistantAction.update({ where: { id: action.id }, data: { status: "undone" } });
+      await tx.studioAssistantLedger.create({
+        data: {
+          actionId: action.id,
+          previousStatus: "applied",
+          newStatus: "undone",
+          notes: JSON.stringify({ kind: "quipsly-assistant-document-undo-v1", actorEmail, receipt }),
+        },
+      });
+      await tx.studioDocument.update({ where: { id: receipt.documentId }, data: { updatedAt: new Date() } });
+      return { replay: false, receipt };
+    });
+
+    try {
+      revalidatePath("/create");
+    } catch (error) {
+      console.error("Assistant edit undo persisted, but the writing route cache could not refresh.", error);
+    }
+    void syncBlocksToQuipslyNote(result.receipt.documentId).catch((error) => {
+      console.error("Assistant edit undo persisted, but native-note projection sync failed.", error);
+    });
+    return { ok: true, state: "persisted", ...result };
+  } catch (error) {
+    if (error instanceof AssistantMutationError) {
+      return { ok: false, state: "rejected", code: error.code, error: error.message };
+    }
+    console.error("Assistant document undo failed.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The manuscript edit could not be undone. No success was recorded; reload to verify the document before retrying.",
+    };
+  }
+}
+
+export async function recordAssistantProposalDecisionAction(
+  actionId: string,
+  decision: "proposed" | "approved" | "rejected",
+): Promise<AssistantMutationResult<AssistantDecisionReceipt>> {
+  const prepared = await prepareAssistantMutation(actionId);
+  if (prepared.error) return prepared.error;
+  const { prisma, actorEmail } = prepared;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await lockAssistantAction(tx, actionId);
+      const action = await tx.studioAssistantAction.findUnique({ where: { id: actionId } });
+      if (!action) throw new AssistantMutationError("ACTION_NOT_FOUND", "That assistant proposal no longer exists.");
+      const allowedFrom: Record<typeof decision, string[]> = {
+        approved: ["proposed"],
+        rejected: ["proposed", "approved"],
+        proposed: ["approved"],
+      };
+      if (action.status === decision) {
+        return {
+          replay: true,
+          receipt: { actionId: action.id, previousStatus: action.status, status: decision },
+        };
+      }
+      if (!allowedFrom[decision].includes(action.status)) {
+        throw new AssistantMutationError("STALE_SOURCE", `This proposal is already ${action.status}; the ${decision} decision was not recorded.`);
+      }
+
+      const receipt: AssistantDecisionReceipt = {
+        actionId: action.id,
+        previousStatus: action.status,
+        status: decision,
+      };
+      await tx.studioAssistantAction.update({ where: { id: action.id }, data: { status: decision } });
+      await tx.studioAssistantLedger.create({
+        data: {
+          actionId: action.id,
+          previousStatus: action.status,
+          newStatus: decision,
+          notes: JSON.stringify({ kind: "quipsly-assistant-human-decision-v1", actorEmail, receipt }),
+        },
+      });
+      return { replay: false, receipt };
+    });
+    return { ok: true, state: "persisted", ...result };
+  } catch (error) {
+    if (error instanceof AssistantMutationError) {
+      return { ok: false, state: "rejected", code: error.code, error: error.message };
+    }
+    console.error("Assistant proposal decision failed.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The review decision could not be recorded. The proposal remains unchanged.",
+    };
+  }
+}
+
+const ASSISTANT_ENTITY_TYPES = new Set(["CHARACTER", "SETTING", "SCENE", "RELATIONSHIP", "TIMELINE_EVENT", "THEME_MOTIF"]);
+
+export async function commitAssistantEntityAction(
+  actionId: string,
+): Promise<AssistantMutationResult<AssistantEntityCommitReceipt>> {
+  const prepared = await prepareAssistantMutation(actionId);
+  if (prepared.error) return prepared.error;
+  const { prisma, actorEmail } = prepared;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await lockAssistantAction(tx, actionId);
+      const action = await tx.studioAssistantAction.findUnique({
+        where: { id: actionId },
+        include: {
+          session: true,
+          ledgers: { where: { newStatus: "committed" }, orderBy: { createdAt: "desc" }, take: 1 },
+        },
+      });
+      if (!action) throw new AssistantMutationError("ACTION_NOT_FOUND", "That assistant proposal no longer exists.");
+      const priorReceipt = parseAssistantReceipt<AssistantEntityCommitReceipt>(action.ledgers[0]?.notes);
+      if (action.status === "committed" && priorReceipt) return { replay: true, receipt: priorReceipt };
+      if (!["proposed", "approved"].includes(action.status)) {
+        throw new AssistantMutationError("STALE_SOURCE", "This Story Bible proposal has already been decided.");
+      }
+
+      const payload = assistantRecord(action.payloadJson);
+      const name = assistantText(payload.name, 300);
+      const type = assistantText(payload.type, 80).toUpperCase();
+      const aliases = Array.isArray(payload.aliases)
+        ? payload.aliases.map((value) => assistantText(value, 160)).filter(Boolean).slice(0, 40)
+        : [];
+      const attributes = assistantRecord(payload.attributes);
+      const sourceExcerpt = assistantText(attributes.sourceExcerpt, 20_000);
+      if (!name || !ASSISTANT_ENTITY_TYPES.has(type) || !sourceExcerpt) {
+        throw new AssistantMutationError("INVALID_PAYLOAD", "A canonical Story Bible entity requires a supported type, name, and exact source excerpt.");
+      }
+      const sourceDocumentId = assistantText(payload.sourceDocumentId ?? attributes.sourceDocumentId, 160) || action.session.documentId || "";
+      if (!action.session.documentId || sourceDocumentId !== action.session.documentId) {
+        throw new AssistantMutationError("INVALID_PAYLOAD", "The entity proposal is not anchored to its authorized source document.");
+      }
+      const sourceDocument = await tx.studioDocument.findFirst({
+        where: { id: sourceDocumentId, projectId: action.session.projectId },
+        select: {
+          id: true,
+          blocks: {
+            where: { archivedAt: null },
+            select: { id: true, stableId: true, body: true },
+          },
+        },
+      });
+      if (!sourceDocument) {
+        throw new AssistantMutationError("ACTION_NOT_FOUND", "The entity proposal's source document is unavailable.");
+      }
+      const requestedSourceBlockId = assistantText(payload.sourceBlockId ?? attributes.sourceBlockId, 160);
+      const excerptMatches = sourceDocument.blocks.filter((block) => block.body.includes(sourceExcerpt));
+      const sourceBlock = requestedSourceBlockId
+        ? excerptMatches.find((block) => block.id === requestedSourceBlockId)
+        : excerptMatches.length === 1
+          ? excerptMatches[0]
+          : null;
+      if (!sourceBlock) {
+        throw new AssistantMutationError(
+          "STALE_SOURCE",
+          excerptMatches.length > 1
+            ? "That exact excerpt appears in more than one block. Review a proposal with one explicit source block before committing."
+            : "The exact source excerpt is no longer present in the proposed block. Nothing was committed.",
+        );
+      }
+      const canonicalAttributes = {
+        ...attributes,
+        sourceExcerpt,
+        sourceDocumentId: sourceDocument.id,
+        sourceBlockId: sourceBlock.id,
+        sourceStableBlockId: sourceBlock.stableId,
+        _source: "quipsly-assistant-reviewed",
+        _assistantActionId: action.id,
+        _assistantReviewedBy: actorEmail,
+      };
+
+      let entityId = "";
+      let operation: AssistantEntityCommitReceipt["operation"] = "created";
+      let before: Record<string, unknown> | null = null;
+      if (action.kind === "PROPOSE_ENTITY") {
+        const entity = await tx.storyEntity.create({
+          data: {
+            projectId: action.session.projectId,
+            type: type as StoryEntityType,
+            name,
+            aliases,
+            attributes: toPrismaJson(canonicalAttributes),
+          },
+          select: { id: true },
+        });
+        entityId = entity.id;
+      } else if (action.kind === "PROPOSE_ENTITY_UPDATE") {
+        entityId = assistantText(payload.entityId, 160);
+        const entity = entityId
+          ? await tx.storyEntity.findFirst({ where: { id: entityId, projectId: action.session.projectId } })
+          : null;
+        if (!entity) throw new AssistantMutationError("ACTION_NOT_FOUND", "The Story Bible entity to update is unavailable.");
+        before = { name: entity.name, type: entity.type, aliases: entity.aliases, attributes: entity.attributes };
+        operation = "updated";
+        await tx.storyEntity.update({
+          where: { id: entity.id },
+          data: {
+            name,
+            type: type as StoryEntityType,
+            aliases,
+            attributes: toPrismaJson({ ...assistantRecord(entity.attributes), ...canonicalAttributes }),
+          },
+        });
+      } else {
+        throw new AssistantMutationError("UNSUPPORTED_ACTION", "Only reviewed entity proposals can commit to the Story Bible.");
+      }
+
+      const receipt: AssistantEntityCommitReceipt = {
+        actionId: action.id,
+        projectId: action.session.projectId,
+        entityId,
+        operation,
+      };
+      await tx.studioAssistantAction.update({ where: { id: action.id }, data: { status: "committed" } });
+      await tx.studioAssistantLedger.create({
+        data: {
+          actionId: action.id,
+          previousStatus: action.status,
+          newStatus: "committed",
+          notes: JSON.stringify({ kind: "quipsly-assistant-entity-commit-v1", actorEmail, receipt, before }),
+        },
+      });
+      return { replay: false, receipt };
+    });
+    try {
+      revalidatePath("/create");
+    } catch (error) {
+      console.error("Story Bible entity committed, but the writing route cache could not refresh.", error);
+    }
+    return { ok: true, state: "persisted", ...result };
+  } catch (error) {
+    if (error instanceof AssistantMutationError) {
+      return { ok: false, state: "rejected", code: error.code, error: error.message };
+    }
+    console.error("Assistant Story Bible commit failed.", error);
+    return { ok: false, state: "unavailable", code: "PERSISTENCE_UNAVAILABLE", error: "The Story Bible proposal was not committed. No success was recorded." };
+  }
+}
+
+export async function undoCommittedAssistantEntityAction(
+  actionId: string,
+): Promise<AssistantMutationResult<AssistantEntityCommitReceipt>> {
+  const prepared = await prepareAssistantMutation(actionId);
+  if (prepared.error) return prepared.error;
+  const { prisma, actorEmail } = prepared;
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      await lockAssistantAction(tx, actionId);
+      const action = await tx.studioAssistantAction.findUnique({
+        where: { id: actionId },
+        include: {
+          session: true,
+          ledgers: { where: { newStatus: "committed" }, orderBy: { createdAt: "desc" }, take: 1 },
+        },
+      });
+      if (!action || action.status !== "committed") {
+        throw new AssistantMutationError("STALE_SOURCE", "This proposal has no committed Story Bible change to undo.");
+      }
+      const ledgerPayload = action.ledgers[0]?.notes ? assistantRecord(JSON.parse(action.ledgers[0].notes)) : {};
+      const receipt = assistantRecord(ledgerPayload.receipt) as AssistantEntityCommitReceipt;
+      if (!receipt.entityId || receipt.projectId !== action.session.projectId) {
+        throw new AssistantMutationError("INVALID_PAYLOAD", "The Story Bible commit receipt is incomplete; nothing was changed.");
+      }
+
+      if (receipt.operation === "created") {
+        const entity = await tx.storyEntity.findFirst({ where: { id: receipt.entityId, projectId: receipt.projectId } });
+        const attributes = assistantRecord(entity?.attributes);
+        if (!entity || attributes._assistantActionId !== action.id) {
+          throw new AssistantMutationError("STALE_SOURCE", "The committed entity changed ownership or provenance; it was not deleted.");
+        }
+        await tx.storyEntity.delete({ where: { id: entity.id } });
+      } else if (receipt.operation === "updated") {
+        const before = assistantRecord(ledgerPayload.before);
+        const entity = await tx.storyEntity.findFirst({ where: { id: receipt.entityId, projectId: receipt.projectId } });
+        const beforeType = assistantText(before.type, 80).toUpperCase();
+        if (!entity || !assistantText(before.name, 300) || !ASSISTANT_ENTITY_TYPES.has(beforeType)) {
+          throw new AssistantMutationError("STALE_SOURCE", "The prior Story Bible state cannot be restored safely; nothing was changed.");
+        }
+        await tx.storyEntity.update({
+          where: { id: entity.id },
+          data: {
+            name: String(before.name),
+            type: beforeType as StoryEntityType,
+            aliases: Array.isArray(before.aliases) ? before.aliases.map(String) : [],
+            attributes: toPrismaJson(assistantRecord(before.attributes)),
+          },
+        });
+      } else {
+        throw new AssistantMutationError("INVALID_PAYLOAD", "The Story Bible commit receipt has an unsupported operation.");
+      }
+
+      await tx.studioAssistantAction.update({ where: { id: action.id }, data: { status: "undone" } });
+      await tx.studioAssistantLedger.create({
+        data: {
+          actionId: action.id,
+          previousStatus: "committed",
+          newStatus: "undone",
+          notes: JSON.stringify({ kind: "quipsly-assistant-entity-undo-v1", actorEmail, receipt }),
+        },
+      });
+      return { replay: false, receipt };
+    });
+    try {
+      revalidatePath("/create");
+    } catch (error) {
+      console.error("Story Bible undo committed, but the writing route cache could not refresh.", error);
+    }
+    return { ok: true, state: "persisted", ...result };
+  } catch (error) {
+    if (error instanceof AssistantMutationError) {
+      return { ok: false, state: "rejected", code: error.code, error: error.message };
+    }
+    console.error("Assistant Story Bible undo failed.", error);
+    return { ok: false, state: "unavailable", code: "PERSISTENCE_UNAVAILABLE", error: "The Story Bible change could not be undone. No success was recorded." };
+  }
+}
+
+export type NamedDocumentCheckpoint = {
+  id: string;
+  name: string;
+  createdAt: string;
+  actorEmail: string | null;
+  snapshotSha256: string;
+  blockCount: number;
+  spanCount: number;
+  citationCount: number;
+};
+
+export type DocumentSafetyActionResult =
+  | {
+      ok: true;
+      state: "persisted";
+      checkpoint?: NamedDocumentCheckpoint;
+      checkpoints?: NamedDocumentCheckpoint[];
+      bundleJson?: string;
+      receipt?: {
+        operationId: string;
+        snapshotSha256: string;
+        blockCount: number;
+        spanCount: number;
+        citationCount: number;
+        restoredFrom: "checkpoint" | "portable-export";
+      };
+    }
+  | {
+      ok: false;
+      state: "rejected" | "unavailable";
+      code:
+        | "AUTH_REQUIRED"
+        | "ACCESS_NOT_VERIFIED"
+        | "DOCUMENT_NOT_FOUND"
+        | "INVALID_NAME"
+        | "INVALID_EXPORT"
+        | "IDENTITY_MISMATCH"
+        | "CITATION_MISMATCH"
+        | "STALE_CHECKPOINT"
+        | "PERSISTENCE_UNAVAILABLE";
+      error: string;
     };
 
-    await prisma.hgoEpisodePublishCandidate.update({
-      where: { id: candidateId },
-      data: {
-        draftPacketJson: mergedDraft as any,
-      }
-    });
-
-    revalidatePath("/publishing-suite");
-    revalidatePath("/publishing-suite/package-builder");
-    revalidatePath("/create");
-
-    return { ok: true };
-  } catch (error: any) {
-    console.error("updateCandidatePacketAction failed", error);
-    return { ok: false, error: error.message || "Failed to update package details." };
+class DocumentSafetyError extends Error {
+  constructor(
+    readonly code: "DOCUMENT_NOT_FOUND" | "INVALID_EXPORT" | "IDENTITY_MISMATCH" | "CITATION_MISMATCH" | "STALE_CHECKPOINT",
+    message: string,
+  ) {
+    super(message);
+    this.name = "DocumentSafetyError";
   }
 }
 
-export async function testPublishCandidateAction(candidateId: string): Promise<{ ok: boolean, validationResults?: any, payloads?: any, error?: string }> {
+function portableCheckpointSummary(operation: {
+  id: string;
+  actorEmail: string | null;
+  createdAt: Date;
+  payloadJson: unknown;
+}): NamedDocumentCheckpoint | null {
+  const payload = assistantRecord(operation.payloadJson);
+  const name = typeof payload.name === "string" ? payload.name.trim().slice(0, 120) : "";
+  const snapshotSha256 = typeof payload.snapshotSha256 === "string" ? payload.snapshotSha256 : "";
+  const blockCount = Number(payload.blockCount);
+  const spanCount = Number(payload.spanCount);
+  const citationCount = Number(payload.citationCount);
+  if (!name || !/^[a-f0-9]{64}$/.test(snapshotSha256)
+    || ![blockCount, spanCount, citationCount].every((value) => Number.isSafeInteger(value) && value >= 0)) {
+    return null;
+  }
+  return {
+    id: operation.id,
+    name,
+    createdAt: operation.createdAt.toISOString(),
+    actorEmail: operation.actorEmail,
+    snapshotSha256,
+    blockCount,
+    spanCount,
+    citationCount,
+  };
+}
+
+async function capturePortableDocumentSnapshot(tx: Prisma.TransactionClient, documentId: string): Promise<PortableDocumentSnapshot> {
+  const document = await tx.studioDocument.findUnique({
+    where: { id: documentId },
+    select: {
+      id: true,
+      stableId: true,
+      projectId: true,
+      title: true,
+      sourceLabel: true,
+      sourcePath: true,
+      projectionStatus: true,
+      isPrivate: true,
+      project: { select: { slug: true, name: true } },
+      blocks: {
+        where: { archivedAt: null },
+        orderBy: { order: "asc" },
+        select: {
+          id: true,
+          stableId: true,
+          order: true,
+          title: true,
+          body: true,
+          sourceLabel: true,
+          sourcePath: true,
+          externalId: true,
+          projectionStatus: true,
+          isPrivate: true,
+          taggedSpans: {
+            orderBy: [{ startOffset: "asc" }, { endOffset: "asc" }, { id: "asc" }],
+            select: {
+              id: true,
+              startOffset: true,
+              endOffset: true,
+              selectedText: true,
+              tag: { select: { slug: true, label: true, category: true } },
+            },
+          },
+          sourceAnnotationUses: {
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+            select: {
+              id: true,
+              annotationId: true,
+              useKind: true,
+              citationKey: true,
+              quoteSnapshot: true,
+              citationLabel: true,
+              sourceJson: true,
+              archivedAt: true,
+              createdAt: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!document) throw new DocumentSafetyError("DOCUMENT_NOT_FOUND", "Document not found.");
+
+  return {
+    document: {
+      id: document.id,
+      stableId: document.stableId,
+      projectId: document.projectId,
+      projectSlug: document.project.slug,
+      projectName: document.project.name,
+      title: document.title,
+      sourceLabel: document.sourceLabel,
+      sourcePath: document.sourcePath,
+      projectionStatus: document.projectionStatus,
+      isPrivate: document.isPrivate,
+    },
+    blocks: document.blocks.map((block) => ({
+      id: block.id,
+      stableId: block.stableId,
+      order: block.order,
+      title: block.title,
+      body: block.body,
+      sourceLabel: block.sourceLabel,
+      sourcePath: block.sourcePath,
+      externalId: block.externalId,
+      projectionStatus: block.projectionStatus,
+      isPrivate: block.isPrivate,
+      spans: block.taggedSpans.map((span) => ({
+        id: span.id,
+        tagSlug: span.tag.slug,
+        tagLabel: span.tag.label,
+        tagCategory: span.tag.category,
+        startOffset: span.startOffset,
+        endOffset: span.endOffset,
+        selectedText: span.selectedText,
+      })),
+      citations: block.sourceAnnotationUses.map((citation) => ({
+        id: citation.id,
+        annotationId: citation.annotationId,
+        useKind: citation.useKind,
+        citationKey: citation.citationKey,
+        quoteSnapshot: citation.quoteSnapshot,
+        citationLabel: citation.citationLabel,
+        sourceJson: assistantRecord(citation.sourceJson),
+        archivedAt: citation.archivedAt?.toISOString() ?? null,
+        createdAt: citation.createdAt.toISOString(),
+      })),
+    })),
+  };
+}
+
+function portableDocumentBundle(snapshot: PortableDocumentSnapshot, exportedAt = new Date()): PortableDocumentBundle {
+  const spanCount = snapshot.blocks.reduce((total, block) => total + block.spans.length, 0);
+  const citationCount = snapshot.blocks.reduce((total, block) => total + block.citations.length, 0);
+  return {
+    schemaVersion: DOCUMENT_EXPORT_SCHEMA_VERSION,
+    exportedAt: exportedAt.toISOString(),
+    snapshot,
+    integrity: {
+      algorithm: "sha256",
+      snapshotSha256: documentSha256(stableDocumentJson(snapshot)),
+      blockCount: snapshot.blocks.length,
+      spanCount,
+      citationCount,
+    },
+  };
+}
+
+function documentSafetyFailure(error: unknown, context: string): DocumentSafetyActionResult {
+  if (error instanceof DocumentSafetyError) {
+    return { ok: false, state: "rejected", code: error.code, error: error.message };
+  }
+  const message = error instanceof Error ? error.message : "";
+  if (message.includes("do not have") || message === "Document not found.") {
+    return { ok: false, state: "rejected", code: "ACCESS_NOT_VERIFIED", error: "Quipsly could not verify access to this document. Nothing was changed." };
+  }
+  console.error(context, error);
+  return { ok: false, state: "unavailable", code: "PERSISTENCE_UNAVAILABLE", error: "The writing database is unavailable. Nothing was changed." };
+}
+
+export async function listNamedDocumentCheckpointsAction(documentId: string): Promise<DocumentSafetyActionResult> {
+  if (!await getActorEmail()) return { ok: false, state: "rejected", code: "AUTH_REQUIRED", error: "Sign in to view document checkpoints." };
   try {
     const prisma = getPrismaClient();
-    const candidate = await prisma.hgoEpisodePublishCandidate.findUnique({
-      where: { id: candidateId },
+    await requireProjectAccessByDocumentId(prisma, documentId, "read");
+    const operations = await prisma.studioDocumentOperation.findMany({
+      where: { documentId, operationType: "document-named-checkpoint" },
+      orderBy: { createdAt: "desc" },
+      take: 40,
+      select: { id: true, actorEmail: true, createdAt: true, payloadJson: true },
     });
-    if (!candidate) return { ok: false, error: "Candidate not found." };
+    return { ok: true, state: "persisted", checkpoints: operations.map(portableCheckpointSummary).filter((item): item is NamedDocumentCheckpoint => Boolean(item)) };
+  } catch (error) {
+    return documentSafetyFailure(error, "Document checkpoints could not be listed.");
+  }
+}
 
-    const quipslyPkg = (candidate.draftPacketJson || candidate.packetJson) as any;
-    const { PublishingDispatcher } = await import("@/lib/publishing/DestinationAdapters");
-    const dispatcher = new PublishingDispatcher();
+export async function createNamedDocumentCheckpointAction(documentId: string, rawName: string): Promise<DocumentSafetyActionResult> {
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) return { ok: false, state: "rejected", code: "AUTH_REQUIRED", error: "Sign in before saving a named checkpoint." };
+  const name = String(rawName ?? "").trim().replace(/\s+/g, " ");
+  if (!name || name.length > 120) {
+    return { ok: false, state: "rejected", code: "INVALID_NAME", error: "Give this checkpoint a name between 1 and 120 characters." };
+  }
+  try {
+    const prisma = getPrismaClient();
+    await requireProjectAccessByDocumentId(prisma, documentId, "write");
+    const operation = await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtextextended(${documentId}, 0))`;
+      const bundle = portableDocumentBundle(await capturePortableDocumentSnapshot(tx, documentId));
+      const created = await tx.studioDocumentOperation.create({
+        data: {
+          projectId: bundle.snapshot.document.projectId,
+          documentId,
+          actorEmail,
+          origin: "human",
+          operationType: "document-named-checkpoint",
+          afterJson: toPrismaJson(bundle),
+          payloadJson: toPrismaJson({
+            name,
+            schemaVersion: bundle.schemaVersion,
+            snapshotSha256: bundle.integrity.snapshotSha256,
+            blockCount: bundle.integrity.blockCount,
+            spanCount: bundle.integrity.spanCount,
+            citationCount: bundle.integrity.citationCount,
+          }),
+          reversible: false,
+        },
+        select: { id: true, actorEmail: true, createdAt: true, payloadJson: true },
+      });
+      return created;
+    });
+    const checkpoint = portableCheckpointSummary(operation);
+    if (!checkpoint) throw new Error("Checkpoint receipt could not be read back.");
+    revalidatePath("/create");
+    return { ok: true, state: "persisted", checkpoint };
+  } catch (error) {
+    return documentSafetyFailure(error, "Named document checkpoint failed.");
+  }
+}
 
-    const targets = ["podcast_rss", "youtube_v3", "patreon_v2", "quiplore"];
-    const validationResults = await dispatcher.validateForDestinations(quipslyPkg, targets);
-    const payloads: Record<string, any> = {};
+export async function exportPortableDocumentAction(documentId: string): Promise<DocumentSafetyActionResult> {
+  if (!await getActorEmail()) return { ok: false, state: "rejected", code: "AUTH_REQUIRED", error: "Sign in before exporting this document." };
+  try {
+    const prisma = getPrismaClient();
+    await requireProjectAccessByDocumentId(prisma, documentId, "read");
+    const bundle = await prisma.$transaction(async (tx) => portableDocumentBundle(await capturePortableDocumentSnapshot(tx, documentId)));
+    return { ok: true, state: "persisted", bundleJson: JSON.stringify(bundle, null, 2) };
+  } catch (error) {
+    return documentSafetyFailure(error, "Portable document export failed.");
+  }
+}
 
-    for (const target of targets) {
-      const adapter = (dispatcher as any).adapters.get(target);
-      if (adapter) {
-        try {
-          payloads[target] = await adapter.prepare(quipslyPkg);
-        } catch (e: any) {
-          payloads[target] = { error: e.message };
+async function restorePortableDocument(
+  documentId: string,
+  bundle: PortableDocumentBundle,
+  actorEmail: string,
+  restoredFrom: "checkpoint" | "portable-export",
+  checkpointId?: string,
+) {
+  const prisma = getPrismaClient();
+  await requireProjectAccessByDocumentId(prisma, documentId, "write");
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtextextended(${documentId}, 0))`;
+    const current = await capturePortableDocumentSnapshot(tx, documentId);
+    const target = bundle.snapshot;
+    if (target.document.id !== current.document.id || target.document.stableId !== current.document.stableId
+      || target.document.projectId !== current.document.projectId || target.document.projectSlug !== current.document.projectSlug) {
+      throw new DocumentSafetyError("IDENTITY_MISMATCH", "This export belongs to a different canonical document. Nothing was restored.");
+    }
+
+    const currentBundle = portableDocumentBundle(current);
+    const allBlocks = await tx.studioDocumentBlock.findMany({
+      where: { documentId },
+      orderBy: { order: "asc" },
+      select: { id: true, stableId: true, order: true },
+    });
+    const existingById = new Map(allBlocks.map((block) => [block.id, block]));
+    const existingByStableId = new Map(allBlocks.map((block) => [block.stableId, block]));
+    for (const block of target.blocks) {
+      const stableCollision = existingByStableId.get(block.stableId);
+      if (stableCollision && stableCollision.id !== block.id) {
+        throw new DocumentSafetyError("IDENTITY_MISMATCH", `Stable block ${block.stableId} is attached to a different record. Nothing was restored.`);
+      }
+    }
+
+    const targetCitationIds = target.blocks.flatMap((block) => block.citations.map((citation) => citation.id));
+    if (targetCitationIds.length > 0) {
+      const citations = await tx.studioSourceAnnotationUse.findMany({
+        where: { id: { in: targetCitationIds } },
+        select: { id: true, annotationId: true, documentId: true, blockId: true },
+      });
+      const citationById = new Map(citations.map((citation) => [citation.id, citation]));
+      for (const block of target.blocks) {
+        for (const expected of block.citations) {
+          const actual = citationById.get(expected.id);
+          if (!actual || actual.annotationId !== expected.annotationId || actual.documentId !== documentId || actual.blockId !== block.id) {
+            throw new DocumentSafetyError("CITATION_MISMATCH", `Citation ${expected.citationLabel || expected.citationKey} is no longer anchored to its source and block. Nothing was restored.`);
+          }
         }
       }
     }
 
+    const tagSlugs = Array.from(new Set(target.blocks.flatMap((block) => block.spans.map((span) => span.tagSlug))));
+    const tags = tagSlugs.length > 0
+      ? await tx.studioTag.findMany({ where: { projectId: current.document.projectId, slug: { in: tagSlugs } }, select: { id: true, slug: true } })
+      : [];
+    const tagBySlug = new Map(tags.map((tag) => [tag.slug, tag.id]));
+    const missingTag = tagSlugs.find((slug) => !tagBySlug.has(slug));
+    if (missingTag) throw new DocumentSafetyError("IDENTITY_MISMATCH", `Tag ${missingTag} is unavailable in this Nest. Nothing was restored.`);
+
+    const maximumOrder = Math.max(0, ...allBlocks.map((block) => block.order), ...target.blocks.map((block) => block.order));
+    const temporaryBase = maximumOrder + allBlocks.length + target.blocks.length + 10;
+    for (const [index, block] of allBlocks.entries()) {
+      await tx.studioDocumentBlock.update({ where: { id: block.id }, data: { order: temporaryBase + index } });
+    }
+
+    const targetIds = new Set(target.blocks.map((block) => block.id));
+    for (const [index, block] of target.blocks.entries()) {
+      if (existingById.has(block.id)) {
+        await tx.studioDocumentBlock.update({
+          where: { id: block.id },
+          data: {
+            title: block.title,
+            body: block.body,
+            sourceLabel: block.sourceLabel,
+            sourcePath: block.sourcePath,
+            externalId: block.externalId,
+            projectionStatus: block.projectionStatus as StudioProjectionStatus,
+            isPrivate: block.isPrivate,
+            archivedAt: null,
+            archivedByLabel: null,
+          },
+        });
+      } else {
+        await tx.studioDocumentBlock.create({
+          data: {
+            id: block.id,
+            documentId,
+            stableId: block.stableId,
+            order: temporaryBase + allBlocks.length + index,
+            title: block.title,
+            body: block.body,
+            sourceLabel: block.sourceLabel,
+            sourcePath: block.sourcePath,
+            externalId: block.externalId,
+            projectionStatus: block.projectionStatus as StudioProjectionStatus,
+            isPrivate: block.isPrivate,
+          },
+        });
+      }
+      await tx.studioTaggedSpan.deleteMany({ where: { blockId: block.id } });
+      if (block.spans.length > 0) {
+        await tx.studioTaggedSpan.createMany({
+          data: block.spans.map((span) => ({
+            id: span.id,
+            documentId,
+            blockId: block.id,
+            tagId: tagBySlug.get(span.tagSlug)!,
+            startOffset: span.startOffset,
+            endOffset: span.endOffset,
+            selectedText: span.selectedText,
+            documentStableId: target.document.stableId,
+            documentTitleSnapshot: target.document.title,
+            blockStableId: block.stableId,
+            blockTitleSnapshot: block.title,
+            sourceLabel: block.sourceLabel,
+            sourcePath: block.sourcePath,
+            sourceExternalId: block.externalId,
+            projectionStatus: block.projectionStatus as StudioProjectionStatus,
+            isPrivate: block.isPrivate,
+            createdByLabel: actorEmail,
+          })),
+        });
+      }
+    }
+
+    for (const block of allBlocks) {
+      if (!targetIds.has(block.id)) {
+        await tx.studioDocumentBlock.update({
+          where: { id: block.id },
+          data: { archivedAt: new Date(), archivedByLabel: `restore:${restoredFrom}` },
+        });
+      }
+    }
+    for (const block of target.blocks) {
+      await tx.studioDocumentBlock.update({ where: { id: block.id }, data: { order: block.order } });
+    }
+    await tx.studioDocument.update({
+      where: { id: documentId },
+      data: {
+        title: target.document.title,
+        sourceLabel: target.document.sourceLabel,
+        sourcePath: target.document.sourcePath,
+        projectionStatus: target.document.projectionStatus as StudioProjectionStatus,
+        isPrivate: target.document.isPrivate,
+        updatedAt: new Date(),
+      },
+    });
+    const operation = await tx.studioDocumentOperation.create({
+      data: {
+        projectId: target.document.projectId,
+        documentId,
+        groupId: checkpointId ?? null,
+        actorEmail,
+        origin: restoredFrom === "portable-export" ? "import" : "human",
+        operationType: restoredFrom === "portable-export" ? "document-portable-restore" : "document-checkpoint-restore",
+        beforeJson: toPrismaJson(currentBundle),
+        afterJson: toPrismaJson(bundle),
+        payloadJson: toPrismaJson({
+          restoredFrom,
+          checkpointId: checkpointId ?? null,
+          snapshotSha256: bundle.integrity.snapshotSha256,
+          blockCount: bundle.integrity.blockCount,
+          spanCount: bundle.integrity.spanCount,
+          citationCount: bundle.integrity.citationCount,
+        }),
+        reversible: true,
+      },
+      select: { id: true },
+    });
     return {
-      ok: true,
-      validationResults,
-      payloads
-    };
-  } catch (e: any) {
-    console.error(e);
-    return { ok: false, error: e.message };
+      operationId: operation.id,
+      snapshotSha256: bundle.integrity.snapshotSha256,
+      blockCount: bundle.integrity.blockCount,
+      spanCount: bundle.integrity.spanCount,
+      citationCount: bundle.integrity.citationCount,
+      restoredFrom,
+    } as const;
+  });
+}
+
+export async function restoreNamedDocumentCheckpointAction(documentId: string, checkpointId: string): Promise<DocumentSafetyActionResult> {
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) return { ok: false, state: "rejected", code: "AUTH_REQUIRED", error: "Sign in before restoring a checkpoint." };
+  try {
+    const prisma = getPrismaClient();
+    await requireProjectAccessByDocumentId(prisma, documentId, "write");
+    const checkpoint = await prisma.studioDocumentOperation.findFirst({
+      where: { id: checkpointId, documentId, operationType: "document-named-checkpoint" },
+      select: { afterJson: true },
+    });
+    if (!checkpoint) throw new DocumentSafetyError("STALE_CHECKPOINT", "That checkpoint is unavailable. Nothing was restored.");
+    const validated = validateDocumentBundle(checkpoint.afterJson);
+    if (!validated.ok) throw new DocumentSafetyError("INVALID_EXPORT", validated.error);
+    const receipt = await restorePortableDocument(documentId, validated.bundle, actorEmail, "checkpoint", checkpointId);
+    revalidatePath("/create");
+    void syncBlocksToQuipslyNote(documentId).catch((error) => console.error("Checkpoint restored, but native-note projection sync failed.", error));
+    return { ok: true, state: "persisted", receipt };
+  } catch (error) {
+    return documentSafetyFailure(error, "Named document checkpoint restore failed.");
   }
+}
+
+export async function restorePortableDocumentAction(documentId: string, rawBundleJson: string): Promise<DocumentSafetyActionResult> {
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) return { ok: false, state: "rejected", code: "AUTH_REQUIRED", error: "Sign in before restoring an export." };
+  if (typeof rawBundleJson !== "string" || Buffer.byteLength(rawBundleJson, "utf8") > 60 * 1024 * 1024) {
+    return { ok: false, state: "rejected", code: "INVALID_EXPORT", error: "That writing export is too large or unreadable. Nothing was restored." };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBundleJson);
+  } catch {
+    return { ok: false, state: "rejected", code: "INVALID_EXPORT", error: "Choose an intact Quipsly writing JSON export. Nothing was restored." };
+  }
+  const validated = validateDocumentBundle(parsed);
+  if (!validated.ok) return { ok: false, state: "rejected", code: "INVALID_EXPORT", error: validated.error };
+  try {
+    const receipt = await restorePortableDocument(documentId, validated.bundle, actorEmail, "portable-export");
+    revalidatePath("/create");
+    void syncBlocksToQuipslyNote(documentId).catch((error) => console.error("Portable restore persisted, but native-note projection sync failed.", error));
+    return { ok: true, state: "persisted", receipt };
+  } catch (error) {
+    return documentSafetyFailure(error, "Portable document restore failed.");
+  }
+}
+
+export type DocumentReorderActionResult =
+  | {
+      ok: true;
+      state: "persisted";
+      operationId: string;
+      blockCount: number;
+    }
+  | {
+      ok: false;
+      state: "unavailable" | "rejected";
+      code: "AUTH_REQUIRED" | "ACCESS_NOT_VERIFIED" | "INVALID_REORDER" | "DOCUMENT_NOT_FOUND" | "PERSISTENCE_UNAVAILABLE";
+      error: string;
+    };
+
+export type BlockCommentActionResult =
+  | {
+      ok: true;
+      state: "persisted";
+      commentId: string;
+    }
+  | {
+      ok: false;
+      state: "unavailable";
+      code: "COMMENT_STORE_UNAVAILABLE";
+      error: string;
+    };
+
+class DocumentReorderError extends Error {
+  constructor(
+    readonly code: "INVALID_REORDER" | "DOCUMENT_NOT_FOUND",
+    message: string,
+  ) {
+    super(message);
+    this.name = "DocumentReorderError";
+  }
+}
+
+export async function reorderDocumentBlocksAction(
+  documentId: string,
+  blockIds: string[],
+): Promise<DocumentReorderActionResult> {
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) {
+    return {
+      ok: false,
+      state: "rejected",
+      code: "AUTH_REQUIRED",
+      error: "Sign in before reordering this document.",
+    };
+  }
+
+  let prisma: ReturnType<typeof getPrismaClient>;
+  try {
+    prisma = getPrismaClient();
+  } catch (error) {
+    console.error("Document reorder could not open persistence.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The document database is unavailable. No block order was changed.",
+    };
+  }
+
+  try {
+    await requireProjectAccessByDocumentId(prisma, documentId, "write");
+  } catch (error) {
+    console.error("Document reorder could not verify write access.", error);
+    const accessError = error instanceof Error ? error.message : "";
+    const accessDenied = accessError.includes("do not have write access") || accessError === "Document not found.";
+    return {
+      ok: false,
+      state: accessDenied ? "rejected" : "unavailable",
+      code: "ACCESS_NOT_VERIFIED",
+      error: accessDenied
+        ? "Write access is required to reorder this document. No block order was changed."
+        : "Quipsly could not verify write access. No block order was changed.",
+    };
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const document = await tx.studioDocument.findUnique({
+        where: { id: documentId },
+        select: {
+          id: true,
+          projectId: true,
+          blocks: {
+            select: { id: true, order: true, archivedAt: true, externalId: true },
+            orderBy: { order: "asc" },
+          },
+        },
+      });
+
+      if (!document) {
+        throw new DocumentReorderError("DOCUMENT_NOT_FOUND", "Document not found.");
+      }
+
+      const requestedIds = blockIds.map((id) => String(id).trim()).filter(Boolean);
+      const requestedIdSet = new Set(requestedIds);
+      const activeBlocks = document.blocks.filter((block) => block.archivedAt === null);
+      const activeIdSet = new Set(activeBlocks.map((block) => block.id));
+
+      if (
+        requestedIds.length > 10_000
+        || requestedIdSet.size !== requestedIds.length
+        || requestedIds.length !== activeBlocks.length
+        || requestedIds.some((id) => !activeIdSet.has(id))
+      ) {
+        throw new DocumentReorderError(
+          "INVALID_REORDER",
+          "The reorder payload does not exactly match the document's active blocks.",
+        );
+      }
+
+      for (const [index, block] of activeBlocks.entries()) {
+        if (isImmutableTranscriptSourceExternalId(block.externalId) && requestedIds[index] !== block.id) {
+          throw new DocumentReorderError(
+            "INVALID_REORDER",
+            "Transcript source evidence stays pinned in its canonical position.",
+          );
+        }
+      }
+
+      let requestedIndex = 0;
+      const finalIds = document.blocks.map((block) => {
+        if (block.archivedAt !== null) return block.id;
+        const nextId = requestedIds[requestedIndex];
+        requestedIndex += 1;
+        return nextId;
+      });
+
+      const beforeOrder = document.blocks.map((block) => ({ id: block.id, order: block.order }));
+      const afterOrder = finalIds.map((id, order) => ({ id, order }));
+      const maximumOrder = document.blocks.reduce((maximum, block) => Math.max(maximum, block.order), 0);
+      const temporaryBase = maximumOrder + document.blocks.length + 1;
+
+      // The unique (documentId, order) constraint requires a collision-free
+      // temporary range before assigning the final contiguous sequence.
+      for (const [index, block] of document.blocks.entries()) {
+        await tx.studioDocumentBlock.update({
+          where: { id: block.id },
+          data: { order: temporaryBase + index },
+        });
+      }
+
+      for (const item of afterOrder) {
+        await tx.studioDocumentBlock.update({
+          where: { id: item.id },
+          data: { order: item.order },
+        });
+      }
+
+      await tx.studioDocument.update({
+        where: { id: document.id },
+        data: { updatedAt: new Date() },
+      });
+
+      const operation = await tx.studioDocumentOperation.create({
+        data: {
+          projectId: document.projectId,
+          documentId: document.id,
+          actorEmail,
+          origin: "human",
+          operationType: "reorder_blocks",
+          beforeJson: toPrismaJson({ blocks: beforeOrder }),
+          afterJson: toPrismaJson({ blocks: afterOrder }),
+          payloadJson: toPrismaJson({ requestedBlockIds: requestedIds }),
+          reversible: true,
+        },
+        select: { id: true },
+      });
+
+      return { operationId: operation.id, blockCount: activeBlocks.length };
+    });
+
+    revalidatePath("/create");
+    void syncBlocksToQuipslyNote(documentId).catch((error) => {
+      console.error("Document reorder persisted, but note projection sync failed.", error);
+    });
+
+    return { ok: true, state: "persisted", ...result };
+  } catch (error) {
+    if (error instanceof DocumentReorderError) {
+      return {
+        ok: false,
+        state: "rejected",
+        code: error.code,
+        error: error.message,
+      };
+    }
+
+    console.error("Document reorder transaction failed.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The block order could not be persisted. The editor restored the previous order.",
+    };
+  }
+}
+
+export async function addBlockComment(
+  blockId: string,
+  start: number,
+  end: number,
+  text: string,
+  comment: string,
+): Promise<BlockCommentActionResult> {
+  void blockId;
+  void start;
+  void end;
+  void text;
+  void comment;
+
+  return {
+    ok: false,
+    state: "unavailable",
+    code: "COMMENT_STORE_UNAVAILABLE",
+    error: "Comments are not available yet because Quipsly has no canonical persisted comment store. Nothing was saved.",
+  };
+}
+export async function updateCandidatePacketAction(candidateId: string, packet: any): Promise<{ ok: boolean, error?: string }> {
+  void candidateId;
+  void packet;
+  return { ok: false, error: LEGACY_PUBLISHING_EXECUTION_ERROR };
+}
+
+export async function testPublishCandidateAction(candidateId: string): Promise<{ ok: boolean, validationResults?: any, payloads?: any, error?: string }> {
+  void candidateId;
+  return { ok: false, error: LEGACY_PUBLISHING_EXECUTION_ERROR };
 }
 
 export async function retractEpisodeCandidateAction(candidateId: string, destinations: string[]): Promise<{ ok: boolean, message?: string, error?: string }> {
-  try {
-    const prisma = getPrismaClient();
-    const session = await auth();
-    const ownerEmail = session?.user?.email || "quipsly-publisher@highgroundodyssey.com";
-
-    const candidate = await prisma.hgoEpisodePublishCandidate.findUnique({
-      where: { id: candidateId },
-    });
-
-    if (!candidate) {
-      return { ok: false, error: "Candidate not found." };
-    }
-
-    const quipslyPkg = (candidate.draftPacketJson || candidate.packetJson) as any;
-    const projectId = typeof quipslyPkg?.projectId === "string" ? quipslyPkg.projectId : "";
-    if (projectId) {
-      await requireProjectAccessByProjectId(prisma, projectId, "manage");
-    }
-
-    const { enqueueRollbackJobs } = await import("@/lib/publishing/JobRunner");
-    await enqueueRollbackJobs(candidateId, destinations, ownerEmail);
-
-    return { ok: true, message: "Successfully enqueued retraction jobs!" };
-  } catch (error: any) {
-    console.error("retractEpisodeCandidateAction failed", error);
-    return { ok: false, error: error.message || "Failed to retract package." };
-  }
+  void candidateId;
+  void destinations;
+  return { ok: false, error: LEGACY_PUBLISHING_EXECUTION_ERROR };
 }
 
-export async function syncEmbeddingsAction(projectId: string): Promise<{ success: boolean, result?: any, error?: string }> { return { success: true, result: { syncedBlocks: 0, syncedQuotes: 0 } }; }
+export type ResearchIndexRefreshResult =
+  | {
+      success: true;
+      state: "persisted";
+      result: { syncedBlocks: number; syncedQuotes: number; model: string };
+    }
+  | {
+      success: false;
+      state: "rejected" | "unavailable";
+      code: "AUTH_REQUIRED" | "ACCESS_NOT_VERIFIED" | "PROVIDER_UNAVAILABLE" | "INDEX_REFRESH_FAILED";
+      error: string;
+    };
+
+export async function syncEmbeddingsAction(projectId: string): Promise<ResearchIndexRefreshResult> {
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) {
+    return {
+      success: false,
+      state: "rejected",
+      code: "AUTH_REQUIRED",
+      error: "Sign in before refreshing this Nest's AI research index.",
+    };
+  }
+
+  let prisma: ReturnType<typeof getPrismaClient>;
+  try {
+    prisma = getPrismaClient();
+    await requireProjectAccessByProjectId(prisma, projectId, "write");
+  } catch (error) {
+    console.error("Research index refresh could not verify write access.", error);
+    return {
+      success: false,
+      state: "rejected",
+      code: "ACCESS_NOT_VERIFIED",
+      error: "Write access to this Nest is required. The existing research index was not changed.",
+    };
+  }
+
+  if (!process.env.GEMINI_API_KEY) {
+    return {
+      success: false,
+      state: "unavailable",
+      code: "PROVIDER_UNAVAILABLE",
+      error: "AI research indexing is not configured. The existing index was not changed.",
+    };
+  }
+
+  try {
+    const result = await syncProjectEmbeddings(projectId);
+    return {
+      success: true,
+      state: "persisted",
+      result: { ...result, model: QUIPSLY_EMBEDDING_MODEL },
+    };
+  } catch (error) {
+    console.error("Research index refresh failed.", error);
+    return {
+      success: false,
+      state: "unavailable",
+      code: "INDEX_REFRESH_FAILED",
+      error: "The AI research index could not be refreshed. The previous index remains available.",
+    };
+  }
+}

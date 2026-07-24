@@ -2,35 +2,36 @@ import Foundation
 import Combine
 
 public class ProjectStore: ObservableObject {
-    @Published public var project: VideoProject
-    @Published public var activeSequenceId: UUID?
-    
+    public let objectWillChange = ObservableObjectPublisher()
+    public var project: VideoProject
+    public var activeSequenceId: UUID?
+
     public init(project: VideoProject) {
         self.project = project
         self.activeSequenceId = project.sequences.first?.id
     }
-    
+
     /// Returns the active sequence
     public var activeSequence: MediaSequence? {
         guard let id = activeSequenceId else { return nil }
         return project.sequences.first { $0.id == id }
     }
-    
+
     /// Updates the project state and registers the inverse operation with the undo manager
     public func updateProject(_ newProject: VideoProject, undoManager: UndoManager?, actionName: String) {
         let oldProject = project
         let oldSequenceId = activeSequenceId
-        
+
         undoManager?.registerUndo(withTarget: self) { store in
-            store.updateProject(oldProject, undoManager: undoManager, actionName: actionName)
-            store.activeSequenceId = oldSequenceId
+            store.replaceProject(oldProject, activeSequenceId: oldSequenceId, publish: true)
         }
-        
+
         undoManager?.setActionName(actionName)
-        
+
         self.project = newProject
+        objectWillChange.send()
     }
-    
+
     /// Helper to update a single sequence and automatically re-compose the project
     public func updateSequence(_ newSequence: MediaSequence, undoManager: UndoManager?, actionName: String) {
         var modifiedProject = project
@@ -50,15 +51,29 @@ public class ProjectStore: ObservableObject {
         return (session, LocalMediaVault.shared.sessionURL(named: name))
     }
 
-    @MainActor
-    public func applyNativeSession(_ session: NativeEditorSession) {
-        project = session.project
-        activeSequenceId = session.activeSequenceId ?? session.project.sequences.first?.id
+    public func applyNativeSession(_ session: NativeEditorSession, publish: Bool = true) {
+        replaceProject(
+            session.project,
+            activeSequenceId: session.activeSequenceId ?? session.project.sequences.first?.id,
+            publish: publish
+        )
+    }
+
+    public func replaceProject(_ newProject: VideoProject, activeSequenceId newActiveSequenceId: UUID? = nil, publish: Bool = true) {
+        activeSequenceId = newActiveSequenceId ?? activeSequenceId ?? newProject.sequences.first?.id
+        project = newProject
+        if publish {
+            objectWillChange.send()
+        }
+    }
+
+    public func publishChanges() {
+        objectWillChange.send()
     }
 
     public func loadNativeSession(named name: String) async throws -> URL {
         let loaded = try await readNativeSession(named: name)
-        await applyNativeSession(loaded.session)
+        applyNativeSession(loaded.session)
         return loaded.url
     }
 }

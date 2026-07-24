@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { DocumentBoundary, ViewDefinition } from "@/app/(app)/create/types";
-import { searchExamplesAction, searchQuotesAction, saveAssistantAction, undoSavedAssistantAction } from "@/app/(app)/create/actions";
+import {
+  applyAssistantDocumentEditAction,
+  commitAssistantEntityAction,
+  recordAssistantProposalDecisionAction,
+  searchExamplesAction,
+  searchQuotesAction,
+  undoAppliedAssistantDocumentEditAction,
+  undoCommittedAssistantEntityAction,
+} from "@/app/(app)/create/actions";
 import { AssistantAction, AssistantActionStatus, AssistantPreviewCard, AssistantChange, AssistantResponse, AssistantSuggestion, AssistantBlockContext } from "./assistant-types";
 
 function uniqueTags(blocks: AssistantBlockContext[]) {
@@ -31,6 +39,31 @@ function summarizeText(value: string) {
   return sentences.slice(0, 2).join(" ").trim().slice(0, 520);
 }
 
+function researchPreviewItem(result: any, projectSlug: string) {
+  const provenance = result?.provenance && typeof result.provenance === "object" ? result.provenance : {};
+  let source = String(result?.citation || provenance.origin || "Source identity unavailable");
+  let href: string | undefined;
+  if (provenance.origin === "studio-span" && provenance.documentId) {
+    source = `${String(provenance.documentTitle || result.title || "Writing document")} · block ${String(provenance.blockStableId || provenance.blockId || "unknown")}`;
+    href = `/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(String(provenance.documentId))}&block=${encodeURIComponent(String(provenance.blockId))}`;
+  } else if (provenance.origin === "source-aware" && provenance.sourceDocumentId) {
+    source = `${String(result?.citation || "Research source")} · ${String(provenance.sourceDocumentId)}`;
+    href = `/research?source=${encodeURIComponent(String(provenance.sourceDocumentId))}`;
+  } else if (provenance.origin === "semantic-lore" && provenance.quoteId) {
+    source = `Story Bible quote · ${String(provenance.quoteId)}`;
+  } else if (provenance.origin === "studio-knowledge" && provenance.blockStableId) {
+    source = `${String(provenance.documentTitle || "Writing evidence")} · block ${String(provenance.blockStableId)}`;
+  } else if (provenance.origin === "quipsly-lore" && provenance.nodeSlug) {
+    source = `Lore node · ${String(provenance.nodeSlug)}`;
+  }
+  return {
+    label: `${String(result?.title || "Untitled source")} / ${String(result?.citation || "Unknown source")}`,
+    detail: String(result?.content || ""),
+    source,
+    href,
+  };
+}
+
 export function useQuipslyAssistant({
   projectSlug,
   documentId,
@@ -39,7 +72,6 @@ export function useQuipslyAssistant({
   activeBoundary,
   activeView,
   visibleBlocks,
-  onApplyAction,
 }: {
   projectSlug: string;
   documentId: string;
@@ -48,7 +80,6 @@ export function useQuipslyAssistant({
   activeBoundary?: DocumentBoundary | null;
   activeView: ViewDefinition;
   visibleBlocks: AssistantBlockContext[];
-  onApplyAction?: (action: AssistantAction) => void;
 }) {
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("What should I notice in this section?");
@@ -135,7 +166,7 @@ export function useQuipslyAssistant({
 
     if (action.kind === "suggest-tags") {
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: "Tag suggestions",
         kind: action.kind,
@@ -151,7 +182,7 @@ export function useQuipslyAssistant({
     if (action.kind === "summarize-selected-block") {
       const target = firstBlock ?? visibleBlocks[0];
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: target ? "Local summary preview" : "Summary preview",
         kind: action.kind,
@@ -178,7 +209,7 @@ export function useQuipslyAssistant({
         .slice(0, 6);
 
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: "Related blocks preview",
         kind: action.kind,
@@ -197,7 +228,7 @@ export function useQuipslyAssistant({
 
     if (action.kind === "create-research-packet-note") {
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: "Research packet note preview",
         kind: action.kind,
@@ -217,24 +248,24 @@ export function useQuipslyAssistant({
 
     if (action.kind === "propose-output-plan") {
       const payload = action.payload ?? {};
-      const readinessPlan = payload.readinessPlan as any;
+      const capabilityPlan = payload.capabilityPlan as any;
       const packetSkeleton = payload.packetSkeleton as any;
-      const requiredInputs = Array.isArray(readinessPlan?.requiredInputs) ? readinessPlan.requiredInputs : [];
+      const requiredInputs = Array.isArray(capabilityPlan?.requiredInputs) ? capabilityPlan.requiredInputs : [];
       const fields = packetSkeleton?.fields && typeof packetSkeleton.fields === "object"
         ? Object.keys(packetSkeleton.fields)
         : [];
 
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
-        title: `Output plan: ${String(payload.title || "Untitled output")}`,
+        title: `Capability definition: ${String(payload.title || "Untitled output")}`,
         kind: action.kind,
-        detail: String(readinessPlan?.readinessSummary || "Review this output plan before creating or publishing a packet."),
+        detail: String(capabilityPlan?.definitionSummary || "Review this capability definition before creating a real packet."),
         items: [
-          { label: "Output plan route", detail: String(payload.href || "No route provided.") },
+          { label: "Capability definition route", detail: String(payload.href || "No route provided.") },
           ...requiredInputs.slice(0, 5).map((input: any) => ({
             label: String(input.label || "Required input"),
-            detail: `${String(input.status || "needs-review")}: ${String(input.note || "Review before publishing.")}`,
+            detail: `${String(input.evidenceState || "not-checked")}: ${String(input.note || "Verify this input before creating a real packet.")}`,
           })),
           ...(fields.length ? [{ label: "Packet fields", detail: fields.join(", ") }] : []),
         ],
@@ -253,7 +284,7 @@ export function useQuipslyAssistant({
         .map(([k, v]) => ({ label: k, detail: String(v) }));
 
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: action.kind === "PROPOSE_ENTITY" ? `Proposed Entity: ${entityName}` : `Proposed Entity Update: ${entityName}`,
         kind: action.kind,
@@ -269,7 +300,7 @@ export function useQuipslyAssistant({
     if (action.kind === "CHECK_CONTINUITY") {
       const p = action.payload || {};
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: "Continuity Warning",
         kind: action.kind,
@@ -290,7 +321,7 @@ export function useQuipslyAssistant({
       items.push({ label: isRewrite ? "Proposed Rewrite" : "Proposed Draft", detail: String(p.draftText || p.rewriteText || "No text provided.") });
 
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: action.kind === "PROPOSE_CONTINUITY_FIX" ? "Proposed Continuity Fix" : isRewrite ? "Suggested Rewrite" : "Suggested Draft",
         kind: action.kind,
@@ -306,7 +337,7 @@ export function useQuipslyAssistant({
       const documentTitle = String(p.documentTitle || "Unknown Document");
 
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: `Suggested Document: ${documentTitle}`,
         kind: action.kind,
@@ -322,7 +353,7 @@ export function useQuipslyAssistant({
     if (action.kind === "find-examples" || action.kind === "search-quotes") {
       const query = String(action.payload?.query || "");
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: action.kind === "find-examples" ? "Research: Manuscript examples" : "Research: Verified quotes",
         kind: action.kind,
@@ -385,7 +416,7 @@ export function useQuipslyAssistant({
       }
 
       return {
-        id: `preview-${Date.now().toString(36)}`,
+        id: `preview-${action.id}`,
         actionId: action.id,
         title: "Outline Hygiene Audit",
         kind: action.kind,
@@ -398,7 +429,7 @@ export function useQuipslyAssistant({
     }
 
     return {
-      id: `preview-${Date.now().toString(36)}`,
+      id: `preview-${action.id}`,
       actionId: action.id,
       title: "Unknown action preview",
       kind: action.kind,
@@ -453,10 +484,7 @@ export function useQuipslyAssistant({
                       return {
                         ...p,
                         detail: `Read-only Research Results for: "${query}". Found ${results.length} evidence matches in library "${res.packet.librarySlug}".`,
-                        items: results.map((r: any) => ({
-                          label: `${r.title} / ${r.citation || 'Unknown Source'}`,
-                          detail: r.content,
-                        })),
+                        items: results.map((result: any) => researchPreviewItem(result, projectSlug)),
                       };
                     }
                     return p;
@@ -495,12 +523,18 @@ export function useQuipslyAssistant({
             let note = "";
             if (action.status === "approved") {
               note = action.kind === "find-examples" || action.kind === "search-quotes"
-                ? "Approved research retrieval. Querying database..."
-                : "Approved locally and generated a non-destructive preview. No manuscript write occurred.";
+                ? "Recorded research approval. The retrieval result remains read-only."
+                : "Recorded review approval and generated a non-destructive preview. No manuscript write occurred.";
+            } else if (action.status === "applied") {
+              note = "The reviewed manuscript edit has a persisted operation receipt.";
+            } else if (action.status === "committed") {
+              note = "The reviewed proposal has a canonical Story Bible commit receipt.";
+            } else if (action.status === "saved") {
+              note = "Legacy assistant reference. This is not a canonical Story Bible entity.";
             } else if (action.status === "rejected") {
               note = "Rejected proposal. No manuscript write occurred.";
             } else if (action.status === "undone") {
-              note = "Removed local approval preview. No persisted state was changed.";
+              note = "A persisted assistant operation or commit was reversed with a ledger receipt.";
             }
             return {
               id: `log-${action.id}`,
@@ -525,40 +559,53 @@ export function useQuipslyAssistant({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectSlug, documentId]);
 
-  const syncLedger = (actionId: string, newStatus: AssistantActionStatus, note?: string) => {
-    fetch("/api/quipsly-assistant/ledger", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ actionId, newStatus, note }),
-    }).catch(console.error);
-  };
-
   const approveAction = async (action: AssistantAction) => {
+    const isResearch = action.kind === "find-examples" || action.kind === "search-quotes";
+    const isDocumentEdit = action.kind === "PROPOSE_DRAFT" || action.kind === "PROPOSE_REWRITE" || action.kind === "PROPOSE_CONTINUITY_FIX";
+    const isEntityProposal = action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE";
+
+    if (isDocumentEdit) {
+      updateActionStatus(action.id, "applying");
+      setWarning(null);
+      const result = await applyAssistantDocumentEditAction(action.id);
+      if (!result.ok) {
+        updateActionStatus(action.id, "proposed");
+        setWarning(result.error);
+        return;
+      }
+
+      updateActionStatus(action.id, "applied");
+      setPreviews((current) => current.filter((preview) => preview.actionId !== action.id));
+      logChange(
+        action,
+        "applied",
+        `${result.replay ? "Verified existing" : "Persisted"} manuscript ${result.receipt.kind} · operation ${result.receipt.operationId}.`,
+      );
+      window.dispatchEvent(new CustomEvent("quipsly:assistant-edit-applied", { detail: result.receipt }));
+      return;
+    }
+
+    updateActionStatus(action.id, "deciding");
+    const decision = await recordAssistantProposalDecisionAction(action.id, "approved");
+    if (!decision.ok) {
+      updateActionStatus(action.id, "proposed");
+      setWarning(decision.error);
+      return;
+    }
+
     updateActionStatus(action.id, "approved");
     const preview = buildPreviewForAction(action);
     setPreviews((current) => [preview, ...current].slice(0, 12));
-
-    const isResearch = action.kind === "find-examples" || action.kind === "search-quotes";
-    const isEdit = action.kind === "PROPOSE_DRAFT" || action.kind === "PROPOSE_REWRITE" || action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE" || action.kind === "PROPOSE_CONTINUITY_FIX";
 
     logChange(
       action,
       "approved",
       isResearch
         ? "Approved research retrieval. Querying database..."
-        : isEdit
-          ? "Applied to manuscript."
-          : "Approved locally and generated a non-destructive preview. No manuscript write occurred."
+        : isEntityProposal
+          ? "Reviewed and approved as a proposal. No Story Bible entity exists until Commit succeeds."
+          : "Recorded approval and generated a non-destructive preview. No manuscript write occurred."
     );
-    syncLedger(
-      action.id,
-      "approved",
-      isResearch ? "Approved research retrieval" : (isEdit ? "Applied to manuscript" : "Approved locally and generated preview")
-    );
-
-    if (isEdit && onApplyAction) {
-      onApplyAction(action);
-    }
 
     if (action.kind === "open-document") {
       const documentId = String(action.payload?.documentId || "");
@@ -582,10 +629,7 @@ export function useQuipslyAssistant({
               return {
                 ...p,
                 detail: `Read-only Research Results for: "${query}". Found ${results.length} evidence matches in library "${res.packet.librarySlug}".`,
-                items: results.map((r: any) => ({
-                  label: `${r.title} / ${r.citation || 'Unknown Source'}`,
-                  detail: r.content,
-                })),
+                items: results.map((result: any) => researchPreviewItem(result, projectSlug)),
               };
             }
             return p;
@@ -615,68 +659,92 @@ export function useQuipslyAssistant({
           return p;
         }));
       }
-    } else if (action.kind === "PROPOSE_DRAFT" || action.kind === "PROPOSE_REWRITE" || action.kind === "PROPOSE_CONTINUITY_FIX") {
-      window.dispatchEvent(new CustomEvent("quipsly:apply-assistant-draft", {
-        detail: {
-          kind: action.kind,
-          payload: action.payload
-        }
-      }));
     }
   };
 
-  const rejectAction = (action: AssistantAction) => {
+  const rejectAction = async (action: AssistantAction) => {
+    updateActionStatus(action.id, "deciding");
+    setWarning(null);
+    const decision = await recordAssistantProposalDecisionAction(action.id, "rejected");
+    if (!decision.ok) {
+      updateActionStatus(action.id, action.status);
+      setWarning(decision.error);
+      return;
+    }
     updateActionStatus(action.id, "rejected");
-    logChange(action, "rejected", "Rejected proposal. No manuscript write occurred.");
-    syncLedger(action.id, "rejected", "Rejected proposal");
+    setPreviews((current) => current.filter((preview) => preview.actionId !== action.id));
+    logChange(action, "rejected", `${decision.replay ? "Verified" : "Recorded"} rejection in the assistant ledger. No manuscript write occurred.`);
   };
 
-  const undoAction = (action: AssistantAction) => {
-    updateActionStatus(action.id, "undone");
+  const undoAction = async (action: AssistantAction) => {
+    if (action.status === "applied") {
+      updateActionStatus(action.id, "applying");
+      setWarning(null);
+      const result = await undoAppliedAssistantDocumentEditAction(action.id);
+      if (!result.ok) {
+        updateActionStatus(action.id, "applied");
+        setWarning(result.error);
+        return;
+      }
+      updateActionStatus(action.id, "undone");
+      setPreviews((current) => current.filter((preview) => preview.actionId !== action.id));
+      logChange(action, "undone", `${result.replay ? "Verified existing" : "Persisted"} manuscript rollback · operation ${result.receipt.operationId}.`);
+      window.dispatchEvent(new CustomEvent("quipsly:assistant-edit-undone", {
+        detail: {
+          ...result.receipt,
+          restoredText: typeof action.payload.originalText === "string" ? action.payload.originalText : null,
+        },
+      }));
+      return;
+    }
+
+    updateActionStatus(action.id, "deciding");
+    setWarning(null);
+    const decision = await recordAssistantProposalDecisionAction(action.id, "proposed");
+    if (!decision.ok) {
+      updateActionStatus(action.id, action.status);
+      setWarning(decision.error);
+      return;
+    }
+    updateActionStatus(action.id, "proposed");
     setPreviews((current) => current.filter((preview) => preview.actionId !== action.id));
-    logChange(action, "undone", "Removed local approval preview. No persisted state was changed.");
-    syncLedger(action.id, "undone", "Undid approval");
+    logChange(action, "proposed", `${decision.replay ? "Verified" : "Recorded"} approval reversal in the assistant ledger. No manuscript write occurred.`);
   };
 
   const saveAction = async (action: AssistantAction) => {
-    updateActionStatus(action.id, "saved");
-    logChange(action, "saved", "Saved as persistent knowledge in QuipLore.");
-    syncLedger(action.id, "saved", "Saved to QuipLore");
-
-    const p = action.payload || {};
-    const exactText = (p as any).attributes?.sourceExcerpt || null;
-
-    const provenance = {
-      id: `overlay-${action.id}`,
-      kind: "note",
-      selector: {
-        kind: exactText ? "text-quote" : "block",
-        sourceDocumentId: documentId,
-        blockId: visibleBlocks[0]?.id || undefined,
-        exactText: exactText || undefined,
-      },
-      label: action.label,
-      note: JSON.stringify(p),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      createdByUserId: "quipsly-assistant",
-      projectSlug,
-      documentTitle,
-      assistantActionId: action.id,
-    };
-    await saveAssistantAction(action.id, provenance);
-    
-    // Notify Story Bible to refresh its entities to pick up the new virtual QuipLore note
+    if (action.kind !== "PROPOSE_ENTITY" && action.kind !== "PROPOSE_ENTITY_UPDATE") {
+      setWarning("Only an exact-source entity proposal can commit to the canonical Story Bible.");
+      return;
+    }
+    updateActionStatus(action.id, "committing");
+    setWarning(null);
+    const result = await commitAssistantEntityAction(action.id);
+    if (!result.ok) {
+      updateActionStatus(action.id, "approved");
+      setWarning(result.error);
+      return;
+    }
+    updateActionStatus(action.id, "committed");
+    setPreviews((current) => current.filter((preview) => preview.actionId !== action.id));
+    logChange(
+      action,
+      "committed",
+      `${result.replay ? "Verified existing" : "Committed"} canonical Story Bible entity ${result.receipt.entityId}.`,
+    );
     window.dispatchEvent(new CustomEvent("quipsly:refresh-story-bible"));
   };
 
   const undoSaveAction = async (action: AssistantAction) => {
+    updateActionStatus(action.id, "committing");
+    setWarning(null);
+    const result = await undoCommittedAssistantEntityAction(action.id);
+    if (!result.ok) {
+      updateActionStatus(action.id, "committed");
+      setWarning(result.error);
+      return;
+    }
     updateActionStatus(action.id, "undone");
-    logChange(action, "undone", "Archived saved note from QuipLore ledger.");
-    syncLedger(action.id, "undone", "Undid save to QuipLore");
-    await undoSavedAssistantAction(action.id);
-
-    // Notify Story Bible to refresh its entities to remove the virtual QuipLore note
+    logChange(action, "undone", `Reversed canonical Story Bible ${result.receipt.operation} receipt for ${result.receipt.entityId}.`);
     window.dispatchEvent(new CustomEvent("quipsly:refresh-story-bible"));
   };
 

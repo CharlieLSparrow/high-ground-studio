@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
 
-echo "Deploying HighGroundCapture to TestFlight..."
-cd apps/mobile-capture/HighGroundCapture
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+capture_runner="${repo_root}/apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh"
 
-if ! command -v bundle &> /dev/null; then
-  echo "Error: Ruby bundler is not installed. Please install it with 'gem install bundler'."
+if [[ ! -x "${capture_runner}" ]]; then
+  echo "FAIL Capture release runner is unavailable at ${capture_runner}" >&2
   exit 1
 fi
 
-echo "Installing Fastlane..."
-bundle install
-
-echo "Building and Uploading to TestFlight..."
-bundle exec fastlane beta
+exec "${capture_runner}" beta "$@"

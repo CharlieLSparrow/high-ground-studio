@@ -1,0 +1,496 @@
+{
+  "counts": {
+    "candidateLanes": 11,
+    "heldLanes": 8,
+    "lanes": 19,
+    "mediaItems": 19,
+    "needsProxyLanes": 0,
+    "proxyReadyLanes": 11
+  },
+  "createdAt": "2026-06-26T16:17:40Z",
+  "heldReason": "Tiny tests, duplicate media, or unclear fit are retained as visible held lanes instead of deleted or forced into the program edit.",
+  "lanes": [
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Spine audio. Sequence truth starts here.",
+      "mediaKind": "audio",
+      "name": "Charlie Audio Spine - Charlie Ep4.wav",
+      "offset": 0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/a63a90f32008dede/Charlie_Ep4_proxy.m4a",
+      "role": "spine_audio",
+      "trackIds": [
+        "A1"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked TX audio chunk. Needs ear/sync review against spine.",
+      "mediaKind": "audio",
+      "name": "Homer/TX Audio Take 1 - TX00_MIC005_20260226_070456_orig.wav",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/feafc286660d9330/TX00_MIC005_20260226_070456_orig_proxy.m4a",
+      "role": "homer_audio_take",
+      "trackIds": [
+        "A2"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked TX audio chunk. Needs ear/sync review against spine.",
+      "mediaKind": "audio",
+      "name": "Homer/TX Audio Take 2 - TX00_MIC006_20260226_073457_orig.wav",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/41dd2472a4e4b937/TX00_MIC006_20260226_073457_orig_proxy.m4a",
+      "role": "homer_audio_take",
+      "trackIds": [
+        "A3"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked TX audio chunk. Needs ear/sync review against spine.",
+      "mediaKind": "audio",
+      "name": "Homer/TX Audio Take 3 - TX00_MIC007_20260226_080457_orig.wav",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/e7aee27e67b53694/TX00_MIC007_20260226_080457_orig_proxy.m4a",
+      "role": "homer_audio_take",
+      "trackIds": [
+        "A4"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked TX audio chunk. Needs ear/sync review against spine.",
+      "mediaKind": "audio",
+      "name": "Homer/TX Audio Take 4 - TX00_MIC008_20260226_083457_orig.wav",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/4e180ce570e6b93e/TX00_MIC008_20260226_083457_orig_proxy.m4a",
+      "role": "homer_audio_take",
+      "trackIds": [
+        "A5"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": true,
+      "label": "Held aside: tiny test, duplicate, or unclear episode fit.",
+      "mediaKind": "audio",
+      "name": "HELD audio review - TX00_MIC001_20260226_070412_orig.wav",
+      "offset": 0,
+      "proxyURL": "",
+      "role": "held_questionable_audio",
+      "trackIds": [
+        "A20"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": true,
+      "label": "Held aside: tiny test, duplicate, or unclear episode fit.",
+      "mediaKind": "audio",
+      "name": "HELD audio review - TX00_MIC002_20260226_070427_orig.wav",
+      "offset": 0,
+      "proxyURL": "",
+      "role": "held_questionable_audio",
+      "trackIds": [
+        "A21"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": true,
+      "label": "Held aside: tiny test, duplicate, or unclear episode fit.",
+      "mediaKind": "audio",
+      "name": "HELD audio review - TX00_MIC003_20260226_070436_orig.wav",
+      "offset": 0,
+      "proxyURL": "",
+      "role": "held_questionable_audio",
+      "trackIds": [
+        "A22"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": true,
+      "label": "Held aside: tiny test, duplicate, or unclear episode fit.",
+      "mediaKind": "audio",
+      "name": "HELD audio review - TX00_MIC004_20260226_070441_orig.wav",
+      "offset": 0,
+      "proxyURL": "",
+      "role": "held_questionable_audio",
+      "trackIds": [
+        "A23"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": true,
+      "label": "Held aside: tiny test, duplicate, or unclear episode fit.",
+      "mediaKind": "audio",
+      "name": "HELD audio review - TX00_MIC006_20260226_073457_orig (1).wav",
+      "offset": 0,
+      "proxyURL": "",
+      "role": "held_questionable_audio",
+      "trackIds": [
+        "A24"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked phone camera chunk. Use Source Grove to review and promote to SHOW decisions.",
+      "mediaKind": "video",
+      "name": "Charlie Phone Camera 1 - IMG_3746.MOV",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/90d9424fcb1f9381/IMG_3746_proxy.mp4",
+      "role": "charlie_phone_camera",
+      "trackIds": [
+        "V1"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked phone camera chunk. Use Source Grove to review and promote to SHOW decisions.",
+      "mediaKind": "video",
+      "name": "Charlie Phone Camera 2 - IMG_3749.MOV",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/7fb7495c2d34d034/IMG_3749_proxy.mp4",
+      "role": "charlie_phone_camera",
+      "trackIds": [
+        "V2"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked phone camera chunk. Use Source Grove to review and promote to SHOW decisions.",
+      "mediaKind": "video",
+      "name": "Charlie Phone Camera 3 - IMG_3751.MOV",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/efb5024a372e5ab1/IMG_3751_proxy.mp4",
+      "role": "charlie_phone_camera",
+      "trackIds": [
+        "V3"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": true,
+      "label": "Held aside: duplicate or very short false-start candidate.",
+      "mediaKind": "video",
+      "name": "HELD phone review - IMG_3746 2.MOV",
+      "offset": 0,
+      "proxyURL": "",
+      "role": "held_questionable_video",
+      "trackIds": [
+        "V20"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": true,
+      "label": "Held aside: duplicate or very short false-start candidate.",
+      "mediaKind": "video",
+      "name": "HELD phone review - IMG_3747.MOV",
+      "offset": 0,
+      "proxyURL": "",
+      "role": "held_questionable_video",
+      "trackIds": [
+        "V21"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": true,
+      "label": "Held aside: duplicate or very short false-start candidate.",
+      "mediaKind": "video",
+      "name": "HELD phone review - IMG_3748.MOV",
+      "offset": 0,
+      "proxyURL": "",
+      "role": "held_questionable_video",
+      "trackIds": [
+        "V22"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked Insta360 source. LRV sidecar is preserved as a review clue; Quipsly MP4 proxy is required for production readiness.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Camera 1 - VID_20260225_163604_00_005.insv",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/81acbbcf459c1c9c/VID_20260225_163604_00_005_proxy.mp4",
+      "role": "homer_360_camera",
+      "trackIds": [
+        "V10"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked Insta360 source. LRV sidecar is preserved as a review clue; Quipsly MP4 proxy is required for production readiness.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Camera 2 - VID_20260225_163604_00_006.insv",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/27abcabc6941e333/VID_20260225_163604_00_006_proxy.mp4",
+      "role": "homer_360_camera",
+      "trackIds": [
+        "V11"
+      ]
+    },
+    {
+      "duration": 0.0,
+      "ignoreForProduction": false,
+      "label": "Stacked Insta360 source. LRV sidecar is preserved as a review clue; Quipsly MP4 proxy is required for production readiness.",
+      "mediaKind": "video",
+      "name": "Homer Insta360 Camera 3 - VID_20260225_163604_00_007.insv",
+      "offset": 0.0,
+      "proxyURL": "file:///Users/wall-e/Library/Application%20Support/Quipsly/MediaVault/proxy/0e8eecaa7b97781e/VID_20260225_163604_00_007_proxy.mp4",
+      "role": "homer_360_camera",
+      "trackIds": [
+        "V12"
+      ]
+    }
+  ],
+  "model": "episode-4-sync-stack-builder",
+  "probes": {
+    "Charlie Ep4.wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "Charlie Ep4.wav",
+      "path": "/Volumes/My Passport/Episode 4/Charlie Ep4.wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "IMG_3746 2.MOV": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "IMG_3746 2.MOV",
+      "path": "/Volumes/My Passport/Episode 4/IMG_3746 2.MOV",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "IMG_3746.MOV": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "IMG_3746.MOV",
+      "path": "/Volumes/My Passport/Episode 4/IMG_3746.MOV",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "IMG_3747.MOV": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "IMG_3747.MOV",
+      "path": "/Volumes/My Passport/Episode 4/IMG_3747.MOV",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "IMG_3748.MOV": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "IMG_3748.MOV",
+      "path": "/Volumes/My Passport/Episode 4/IMG_3748.MOV",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "IMG_3749.MOV": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "IMG_3749.MOV",
+      "path": "/Volumes/My Passport/Episode 4/IMG_3749.MOV",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "IMG_3751.MOV": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "IMG_3751.MOV",
+      "path": "/Volumes/My Passport/Episode 4/IMG_3751.MOV",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "LRV_20260225_163604_01_005.lrv": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "LRV_20260225_163604_01_005.lrv",
+      "path": "/Volumes/My Passport/Episode 4/LRV_20260225_163604_01_005.lrv",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "LRV_20260225_163604_01_006.lrv": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "LRV_20260225_163604_01_006.lrv",
+      "path": "/Volumes/My Passport/Episode 4/LRV_20260225_163604_01_006.lrv",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "LRV_20260225_163604_01_007.lrv": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "LRV_20260225_163604_01_007.lrv",
+      "path": "/Volumes/My Passport/Episode 4/LRV_20260225_163604_01_007.lrv",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "TX00_MIC001_20260226_070412_orig.wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "TX00_MIC001_20260226_070412_orig.wav",
+      "path": "/Volumes/My Passport/Episode 4/TX00_MIC001_20260226_070412_orig.wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "TX00_MIC002_20260226_070427_orig.wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "TX00_MIC002_20260226_070427_orig.wav",
+      "path": "/Volumes/My Passport/Episode 4/TX00_MIC002_20260226_070427_orig.wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "TX00_MIC003_20260226_070436_orig.wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "TX00_MIC003_20260226_070436_orig.wav",
+      "path": "/Volumes/My Passport/Episode 4/TX00_MIC003_20260226_070436_orig.wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "TX00_MIC004_20260226_070441_orig.wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "TX00_MIC004_20260226_070441_orig.wav",
+      "path": "/Volumes/My Passport/Episode 4/TX00_MIC004_20260226_070441_orig.wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "TX00_MIC005_20260226_070456_orig.wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "TX00_MIC005_20260226_070456_orig.wav",
+      "path": "/Volumes/My Passport/Episode 4/TX00_MIC005_20260226_070456_orig.wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "TX00_MIC006_20260226_073457_orig (1).wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "TX00_MIC006_20260226_073457_orig (1).wav",
+      "path": "/Volumes/My Passport/Episode 4/TX00_MIC006_20260226_073457_orig (1).wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "TX00_MIC006_20260226_073457_orig.wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "TX00_MIC006_20260226_073457_orig.wav",
+      "path": "/Volumes/My Passport/Episode 4/TX00_MIC006_20260226_073457_orig.wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "TX00_MIC007_20260226_080457_orig.wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "TX00_MIC007_20260226_080457_orig.wav",
+      "path": "/Volumes/My Passport/Episode 4/TX00_MIC007_20260226_080457_orig.wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "TX00_MIC008_20260226_083457_orig.wav": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "TX00_MIC008_20260226_083457_orig.wav",
+      "path": "/Volumes/My Passport/Episode 4/TX00_MIC008_20260226_083457_orig.wav",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "VID_20260225_163604_00_005.insv": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "VID_20260225_163604_00_005.insv",
+      "path": "/Volumes/My Passport/Episode 4/VID_20260225_163604_00_005.insv",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "VID_20260225_163604_00_006.insv": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "VID_20260225_163604_00_006.insv",
+      "path": "/Volumes/My Passport/Episode 4/VID_20260225_163604_00_006.insv",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    },
+    "VID_20260225_163604_00_007.insv": {
+      "audioStreams": 0,
+      "creationTime": "",
+      "duration": 0.0,
+      "exists": true,
+      "file": "VID_20260225_163604_00_007.insv",
+      "path": "/Volumes/My Passport/Episode 4/VID_20260225_163604_00_007.insv",
+      "probeError": "[Errno 2] No such file or directory: 'ffprobe'",
+      "videoStreams": 0
+    }
+  },
+  "sessionName": "episode-4-sync-stack-v1",
+  "sessionPath": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/sessions/episode-4-sync-stack-v1.quipsly-session.json",
+  "sourceRoot": "/Volumes/My Passport/Episode 4",
+  "syncAssumptions": [
+    "Charlie Ep4.wav is the initial sequence spine.",
+    "TX MIC005-008 are stacked end-to-end as separate whole audio takes.",
+    "Charlie phone chunks are stacked by filename/duration; duplicate/tiny starts are held.",
+    "Insta360 chunks are stacked by segment order and paired with matching LRV sidecar proxies.",
+    "This is a sync stack, not a final edit. SHOW/SKIP decisions should be created after review."
+  ],
+  "truth": "Whole sources are intact. This builder writes native Quipsly session metadata only and does not mutate original media.",
+  "version": "2026-06-23.v1"
+}

@@ -67,7 +67,7 @@ struct IPadQuipslyStudioView: View {
         .safeAreaInset(edge: .bottom) {
             MobileTransportDock(contextLabel: selectedSection.title)
         }
-        .onChange(of: audioCapture.isRecording) { isRecording in
+        .onChange(of: audioCapture.isRecording) { _, isRecording in
             if isRecording {
                 withAnimation {
                     showFocusMode = true
@@ -87,9 +87,12 @@ struct IPadQuipslyStudioView: View {
                     MobileHeroCard(
                         eyebrow: "iPad Studio",
                         title: "Write, cue, record, and edit from one living document.",
-                        description: "The iPad version keeps the manuscript in the middle, clip cues inline, and precision tools one panel away."
+                        description: "The iPad version keeps the manuscript in the middle, capture readiness visible, clip cues inline, and precision tools one panel away."
                     )
 
+                    MobileCaptureRunwayPanel(selectedSection: $selectedSection)
+                    MobileCaptureReviewDigestPanel()
+                    AppReviewProofPanel()
                     ManuscriptReaderPanel(blocks: blocks, selectedBlockID: $selectedBlockID)
                     QuickActionRail(actions: MobileQuickAction.iPadActions)
                 }
@@ -115,6 +118,10 @@ struct IPadQuipslyStudioView: View {
 
         case .publish:
             NativePublishingView()
+                .background(MobileStudioBackground())
+
+        case .account:
+            AccountSafetyPanel()
                 .background(MobileStudioBackground())
         }
     }

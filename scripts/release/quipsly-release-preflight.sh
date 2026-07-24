@@ -2,10 +2,15 @@
 set -euo pipefail
 
 REGION="${REGION:-us-central1}"
-PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
+PROJECT_ID="${PROJECT_ID:-high-ground-odyssey}"
 SERVICE_NAME="${SERVICE_NAME:-studio}"
 HOST_HEADER="${HOST_HEADER:-nest.quipsly.com}"
+FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-quipsly-reef}"
+RUNTIME_SERVICE_ACCOUNT="${RUNTIME_SERVICE_ACCOUNT:-studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com}"
 CONTEXT_WARN_MIB="${CONTEXT_WARN_MIB:-150}"
+CONTEXT_MAX_MIB="${CONTEXT_MAX_MIB:-300}"
+ALLOW_DIRTY_RELEASE="${ALLOW_DIRTY_RELEASE:-0}"
+RELEASE_CONTEXT_DIR="${RELEASE_CONTEXT_DIR:-}"
 
 failures=0
 
@@ -43,6 +48,12 @@ fi
 
 print_step "Cloud auth"
 
+if gcloud auth print-access-token >/dev/null 2>&1; then
+  pass "gcloud can mint an access token non-interactively."
+else
+  fail "gcloud cannot mint an access token. Run: gcloud auth login --update-adc"
+fi
+
 if [[ -n "${PROJECT_ID}" ]] && gcloud projects describe "${PROJECT_ID}" --format="value(projectId)" >/dev/null 2>&1; then
   pass "gcloud token can access project ${PROJECT_ID}."
 else
@@ -53,8 +64,13 @@ print_step "Local git state"
 
 if git diff --quiet && git diff --cached --quiet; then
   pass "Working tree has no uncommitted changes."
+elif [[ -n "${RELEASE_CONTEXT_DIR}" ]]; then
+  warn "Working tree is dirty, but release input was materialized from committed source ${SOURCE_REF:-HEAD}."
+elif [[ "${ALLOW_DIRTY_RELEASE}" == "1" ]]; then
+  warn "Working tree has uncommitted changes, explicitly allowed by ALLOW_DIRTY_RELEASE=1:"
+  git status --short >&2 || true
 else
-  warn "Working tree has uncommitted changes. Review before release:"
+  fail "Working tree has uncommitted changes. Release from a clean, reviewable source snapshot."
   git status --short >&2 || true
 fi
 
@@ -71,6 +87,17 @@ fi
 
 print_step "Release scripts"
 
+release_source_root="${RELEASE_CONTEXT_DIR:-.}"
+
+if (
+  cd "${release_source_root}"
+  node --test scripts/quipsly-owner-override-retirement.test.mjs
+); then
+  pass "Retired owner override is absent from Nest runtime authorization."
+else
+  fail "Retired owner override is still reachable from Nest runtime source."
+fi
+
 for script in \
   scripts/release/quipsly-schema-sync.sh \
   scripts/release/quipsly-deploy-preview.sh \
@@ -79,8 +106,9 @@ for script in \
   scripts/release/quipsly-rollback.sh \
   scripts/release/quipsly-traffic.sh
 do
-  if [[ -f "${script}" ]]; then
-    bash -n "${script}"
+  release_script="${release_source_root}/${script}"
+  if [[ -f "${release_script}" ]]; then
+    bash -n "${release_script}"
     pass "${script} parses."
   else
     fail "Missing release script: ${script}"
@@ -92,22 +120,25 @@ print_step "Cloud Build context"
 context_list="$(mktemp)"
 trap 'rm -f "${context_list}"' EXIT
 
-if gcloud meta list-files-for-upload . >"${context_list}" 2>/dev/null; then
+context_root="${RELEASE_CONTEXT_DIR:-.}"
+if (cd "${context_root}" && gcloud meta list-files-for-upload .) >"${context_list}" 2>/dev/null; then
   context_summary="$(
-    python3 - "${context_list}" <<'PY'
+    python3 - "${context_list}" "${context_root}" <<'PY'
 import os
 import sys
 
 count = 0
 total = 0
 largest = []
+root = os.path.abspath(sys.argv[2])
 
 with open(sys.argv[1], "r", encoding="utf-8") as handle:
     for raw in handle:
         path = raw.strip()
-        if not path or not os.path.isfile(path):
+        full_path = os.path.join(root, path)
+        if not path or not os.path.isfile(full_path):
             continue
-        size = os.path.getsize(path)
+        size = os.path.getsize(full_path)
         count += 1
         total += size
         largest.append((size, path))
@@ -136,6 +167,18 @@ PY
     warn "Upload context is larger than ${CONTEXT_WARN_MIB} MiB. Largest included files:"
     printf "%s\n" "${context_summary}" | sed -n '2,9p' >&2
   fi
+
+  if python3 - "${context_bytes}" "${CONTEXT_MAX_MIB}" <<'PY'
+import sys
+total = int(sys.argv[1])
+maximum_mib = float(sys.argv[2])
+sys.exit(0 if total <= maximum_mib * 1024 * 1024 else 1)
+PY
+  then
+    pass "Upload context is within the ${CONTEXT_MAX_MIB} MiB hard limit."
+  else
+    fail "Upload context exceeds the ${CONTEXT_MAX_MIB} MiB hard limit. Refine .gcloudignore before release."
+  fi
 else
   warn "Could not measure Cloud Build upload context with gcloud meta list-files-for-upload."
 fi
@@ -146,6 +189,72 @@ if [[ -n "${PROJECT_ID}" ]] && gcloud run services describe "${SERVICE_NAME}" --
   pass "Cloud Run service ${SERVICE_NAME} exists in ${REGION}."
 else
   fail "Could not describe Cloud Run service ${SERVICE_NAME} in ${REGION}."
+fi
+
+print_step "Production recovery gate"
+
+if PROJECT_ID="${PROJECT_ID}" \
+  REGION="${REGION}" \
+  SERVICE_NAME="${SERVICE_NAME}" \
+  PRODUCTION_DOMAIN="${HOST_HEADER}" \
+  bash scripts/release/quipsly-production-status.sh; then
+  pass "Production infrastructure and public routes agree."
+else
+  fail "Production recovery gate failed. Do not deploy or promote."
+fi
+
+print_step "Firebase-first auth runtime"
+
+firebase_env_report="$(mktemp)"
+trap 'rm -f "${context_list}" "${firebase_env_report}"' EXIT
+
+if [[ -n "${PROJECT_ID}" ]] && gcloud run services describe "${SERVICE_NAME}" --region="${REGION}" --project="${PROJECT_ID}" --format=json >"${firebase_env_report}" 2>/dev/null; then
+  firebase_env_status="$(
+    node - "${firebase_env_report}" <<'NODE'
+const fs = require("fs");
+const service = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const env = service.spec?.template?.spec?.containers?.[0]?.env || [];
+const present = new Set(env.map((item) => item.name));
+const envValueByName = new Map(env.map((item) => [item.name, item.value]));
+const required = [
+  "FIREBASE_PROJECT_ID",
+  "NEXT_PUBLIC_FIREBASE_API_KEY",
+  "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+  "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+  "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+  "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+  "NEXT_PUBLIC_FIREBASE_APP_ID",
+  "DATABASE_URL",
+];
+const missing = required.filter((name) => !present.has(name));
+if (missing.length > 0) {
+  console.log(`missing:${missing.join(",")}`);
+  process.exit(1);
+}
+if (String(envValueByName.get("QUIPSLY_OWNER_OVERRIDE") || "").toLowerCase() === "true") {
+  console.log("forbidden:QUIPSLY_OWNER_OVERRIDE=true");
+  process.exit(1);
+}
+console.log("ok");
+NODE
+  )" || true
+
+  if [[ "${firebase_env_status}" == "ok" ]]; then
+    pass "Cloud Run has required Firebase-first auth env names and no production owner override."
+  else
+    fail "Cloud Run Firebase-first auth env is incomplete (${firebase_env_status})."
+  fi
+else
+  fail "Could not inspect Cloud Run Firebase-first auth env."
+fi
+
+if gcloud projects get-iam-policy "${FIREBASE_PROJECT_ID}" \
+  --flatten="bindings[].members" \
+  --filter="bindings.role:roles/firebaseauth.admin AND bindings.members:${RUNTIME_SERVICE_ACCOUNT}" \
+  --format="value(bindings.role)" 2>/dev/null | grep -q "roles/firebaseauth.admin"; then
+  pass "Cloud Run runtime service account can administer Firebase Auth in ${FIREBASE_PROJECT_ID}."
+else
+  warn "Could not verify roles/firebaseauth.admin for ${RUNTIME_SERVICE_ACCOUNT} on ${FIREBASE_PROJECT_ID}. If no Firebase private key secrets are mounted, live session-cookie minting may fail."
 fi
 
 print_step "Next release commands"

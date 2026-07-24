@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 type CallRole = "host" | "guest";
 type ConnectionStatus = "idle" | "joining" | "calling" | "connected" | "ended" | "error";
-type RecordingStatus = "idle" | "recording" | "uploading" | "uploaded" | "error";
+type RecordingStatus = "unavailable";
 
 type SignalMessage = {
   id: string;
@@ -69,12 +69,7 @@ type RoomPayload = {
 
 const DEFAULT_EPISODE_SLUG = "episode-8";
 const SIGNAL_POLL_MS = 1200;
-const MIME_CANDIDATES = [
-  "audio/webm;codecs=opus",
-  "audio/webm",
-  "audio/mp4",
-  "audio/aac",
-];
+const LEGACY_CALL_SIGNALING_RETIRED = true;
 const DEFAULT_ICE_SERVERS: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
@@ -94,25 +89,6 @@ function asArray<T>(value: unknown) {
 
 function safeString(value: unknown, fallback = "") {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
-}
-
-function formatClock(ms: number) {
-  const safe = Math.max(0, Math.floor(ms / 1000));
-  const minutes = Math.floor(safe / 60);
-  const seconds = safe % 60;
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
-}
-
-function pickMimeType() {
-  if (typeof MediaRecorder === "undefined") return "";
-  return MIME_CANDIDATES.find((type) => MediaRecorder.isTypeSupported(type)) ?? "";
-}
-
-function inferFileExt(mimeType: string) {
-  if (mimeType.includes("mp4")) return "m4a";
-  if (mimeType.includes("aac")) return "aac";
-  if (mimeType.includes("ogg")) return "ogg";
-  return "webm";
 }
 
 function getIceServers() {
@@ -161,38 +137,6 @@ async function postJson<T>(url: string, payload: Record<string, unknown>, signal
   return data as T;
 }
 
-async function uploadCallRecording(blob: Blob, args: {
-  projectSlug: string;
-  episodeSlug: string;
-  trackId: string;
-  name: string;
-}) {
-  const extension = inferFileExt(blob.type);
-  const formData = new FormData();
-  const fileName = `${args.projectSlug}-${args.episodeSlug}-${args.trackId}-call.${extension}`;
-  formData.append("file", new File([blob], fileName, { type: blob.type || "audio/webm" }));
-  formData.append("projectSlug", args.projectSlug);
-  formData.append("episodeSlug", args.episodeSlug);
-  formData.append("type", "audio");
-  formData.append("trackId", args.trackId);
-
-  const response = await fetch("/api/ingest/mobile", {
-    method: "POST",
-    body: formData,
-  });
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || payload?.success !== true) {
-    throw new Error(payload?.details || payload?.error || "Audio upload failed.");
-  }
-
-  return {
-    fileName,
-    sourceId: safeString(payload.sourceId),
-    sourceUrl: safeString(payload.url),
-    message: safeString(payload.message, "Uploaded"),
-  };
-}
-
 function normalizeRoomPayload(value: unknown) {
   const record = asRecord(value);
   return {
@@ -206,48 +150,6 @@ function normalizeRoomPayload(value: unknown) {
   } satisfies RoomPayload;
 }
 
-async function attachTrackToEpisode(track: PersistedTrack, args: {
-  projectSlug: string;
-  episodeSlug: string;
-}) {
-  const state = await postJson<EpisodeProductionState>("/api/episode-production", {
-    action: "ensure",
-    projectSlug: args.projectSlug,
-    episodeSlug: args.episodeSlug,
-  });
-  const room = normalizeRoomPayload(state.recordingRoomJson);
-  const packageJson = {
-    payloadVersion: 2,
-    version: "quipsly-recording-room.v2",
-    exportedAt: new Date().toISOString(),
-    projectSlug: args.projectSlug,
-    episodeSlug: args.episodeSlug,
-    roomName: room.roomName,
-    script: room.script,
-    producerNotes: room.producerNotes,
-    clips: room.clips,
-    events: [
-      {
-        id: makeId("call-event"),
-        kind: "session",
-        label: `Call recording uploaded: ${track.name}`,
-        atMs: track.recordedSessionStartMs ?? 0,
-        note: track.uploadMessage,
-        createdAt: new Date().toISOString(),
-      },
-      ...room.events,
-    ],
-    tracks: [track, ...room.tracks.filter((existing) => existing.id !== track.id)],
-  };
-
-  return postJson<EpisodeProductionState>("/api/episode-production", {
-    action: "save-recording-room",
-    projectSlug: args.projectSlug,
-    episodeSlug: args.episodeSlug,
-    packageJson,
-  });
-}
-
 export default function CallRoomPage() {
   const route = useMemo(() => getRouteParams(), []);
   const [projectSlug] = useState(route.projectSlug);
@@ -257,34 +159,28 @@ export default function CallRoomPage() {
   const [name, setName] = useState(route.name);
   const [peerId, setPeerId] = useState("");
   const [status, setStatus] = useState<ConnectionStatus>("idle");
-  const [recordingStatus, setRecordingStatus] = useState<RecordingStatus>("idle");
+  const [recordingStatus] = useState<RecordingStatus>("unavailable");
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [logs, setLogs] = useState<string[]>([]);
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [elapsedMs, setElapsedMs] = useState(0);
-  const [recordingStartedAt, setRecordingStartedAt] = useState<string | null>(null);
-  const [recordingMessage, setRecordingMessage] = useState<string | null>(null);
+  const [recordingMessage] = useState(
+    "Web recording and upload are temporarily unavailable while this room moves to consent-bound resumable-v2. Live WebRTC audio still goes to call participants, but this page creates no recording file or recording upload.",
+  );
   const [roomPayload, setRoomPayload] = useState<RoomPayload>(() => normalizeRoomPayload(null));
   const [roomMessage, setRoomMessage] = useState<string | null>(null);
   const [connectionDetails, setConnectionDetails] = useState("Not connected yet.");
   const [deviceMessage, setDeviceMessage] = useState("Mic not started yet.");
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
-  const recorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
   const signalSinceRef = useRef<string>("");
   const pendingIceRef = useRef<RTCIceCandidateInit[]>([]);
-  const recordingStartMsRef = useRef<number>(0);
-  const timerRef = useRef<number | null>(null);
   const handledSignalIdsRef = useRef<Set<string>>(new Set());
   const stopRequestedRef = useRef(false);
-  const uploadInFlightRef = useRef(false);
   const wakeLockRef = useRef<{ release: () => Promise<void> } | null>(null);
   const statusRef = useRef<ConnectionStatus>("idle");
-  const recordingStatusRef = useRef<RecordingStatus>("idle");
   const latestRoomRef = useRef({
     projectSlug,
     episodeSlug,
@@ -295,7 +191,6 @@ export default function CallRoomPage() {
   });
 
   const displayName = name.trim() || (role === "host" ? "Charlie" : "Homer");
-  const trackId = role === "host" ? "A1" : "A2";
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   const callUrl = `${origin}/call?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}&room=${encodeURIComponent(roomId)}&role=guest`;
 
@@ -308,7 +203,7 @@ export default function CallRoomPage() {
     if (!wakeLock || document.visibilityState !== "visible") return;
     try {
       wakeLockRef.current = await wakeLock.request("screen");
-      setDeviceMessage("Screen wake lock active. Keep this tab visible while recording.");
+      setDeviceMessage("Screen wake lock active. Keep this tab visible during the call.");
       addLog("Screen wake lock active.");
     } catch {
       setDeviceMessage("Could not hold a screen wake lock. Keep the device awake manually.");
@@ -337,6 +232,7 @@ export default function CallRoomPage() {
   }, [episodeSlug, projectSlug]);
 
   useEffect(() => {
+    if (LEGACY_CALL_SIGNALING_RETIRED) return;
     const stored = window.localStorage.getItem("quipsly-call-peer-id");
     const nextPeerId = stored || makeId("peer");
     window.localStorage.setItem("quipsly-call-peer-id", nextPeerId);
@@ -344,6 +240,7 @@ export default function CallRoomPage() {
   }, []);
 
   useEffect(() => {
+    if (LEGACY_CALL_SIGNALING_RETIRED) return;
     void refreshEpisodeRoom();
   }, [refreshEpisodeRoom]);
 
@@ -354,10 +251,6 @@ export default function CallRoomPage() {
   useEffect(() => {
     statusRef.current = status;
   }, [status]);
-
-  useEffect(() => {
-    recordingStatusRef.current = recordingStatus;
-  }, [recordingStatus]);
 
   useEffect(() => {
     latestRoomRef.current = {
@@ -371,12 +264,6 @@ export default function CallRoomPage() {
   }, [displayName, episodeSlug, peerId, projectSlug, role, roomId]);
 
   useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      if (recordingStatusRef.current === "recording" || recordingStatusRef.current === "uploading") {
-        event.preventDefault();
-        event.returnValue = "";
-      }
-    };
     const handlePageHide = () => {
       const snapshot = latestRoomRef.current;
       if (snapshot.peerId) {
@@ -398,17 +285,15 @@ export default function CallRoomPage() {
       if (
         document.visibilityState === "visible"
         && !wakeLockRef.current
-        && (statusRef.current === "calling" || statusRef.current === "connected" || recordingStatusRef.current === "recording")
+        && (statusRef.current === "calling" || statusRef.current === "connected")
       ) {
         void requestWakeLock();
       }
     };
 
-    window.addEventListener("beforeunload", handleBeforeUnload);
     window.addEventListener("pagehide", handlePageHide);
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
       window.removeEventListener("pagehide", handlePageHide);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
@@ -497,87 +382,6 @@ export default function CallRoomPage() {
     return pc;
   }, [addLog, sendSignal]);
 
-  const startLocalRecording = useCallback((stream: MediaStream) => {
-    if (recorderRef.current?.state === "recording") return;
-    const mimeType = pickMimeType();
-    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
-    chunksRef.current = [];
-    uploadInFlightRef.current = false;
-    stopRequestedRef.current = false;
-    const startedAt = new Date();
-    recordingStartMsRef.current = startedAt.getTime();
-    setRecordingStartedAt(startedAt.toISOString());
-    setElapsedMs(0);
-    setRecordingStatus("recording");
-    setRecordingMessage("Recording your local mic. This is the production source.");
-    timerRef.current = window.setInterval(() => {
-      setElapsedMs(Date.now() - recordingStartMsRef.current);
-    }, 250);
-
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) chunksRef.current.push(event.data);
-    };
-    recorder.onstop = async () => {
-      if (uploadInFlightRef.current) return;
-      uploadInFlightRef.current = true;
-      if (timerRef.current) window.clearInterval(timerRef.current);
-      timerRef.current = null;
-      const stoppedAt = new Date();
-      const durationMs = Math.max(0, stoppedAt.getTime() - recordingStartMsRef.current);
-      const blob = new Blob(chunksRef.current, { type: mimeType || "audio/webm" });
-      if (!blob.size) {
-        setRecordingStatus("error");
-        setRecordingMessage("No audio data was captured. Check mic permission and try again.");
-        addLog("Recording stopped with no audio data.");
-        uploadInFlightRef.current = false;
-        return;
-      }
-      setRecordingStatus("uploading");
-      setRecordingMessage(`Uploading ${formatClock(durationMs)} local take to the vault...`);
-
-      try {
-        const upload = await uploadCallRecording(blob, {
-          projectSlug,
-          episodeSlug,
-          trackId,
-          name: displayName,
-        });
-        const track: PersistedTrack = {
-          id: makeId("call-track"),
-          name: `${displayName} call recording`,
-          size: blob.size,
-          type: blob.type || mimeType || "audio/webm",
-          kind: "audio",
-          trackId,
-          createdAt: new Date().toISOString(),
-          sourceId: upload.sourceId,
-          sourceUrl: upload.sourceUrl,
-          durationMs,
-          uploadState: "uploaded",
-          uploadMessage: upload.message,
-          fileName: upload.fileName,
-          recordedStartAt: recordingStartedAt ?? new Date(recordingStartMsRef.current).toISOString(),
-          recordedEndAt: stoppedAt.toISOString(),
-          recordedSessionStartMs: 0,
-          recordedSessionEndMs: durationMs,
-        };
-        await attachTrackToEpisode(track, { projectSlug, episodeSlug });
-        await refreshEpisodeRoom();
-        setRecordingStatus("uploaded");
-        setRecordingMessage("Uploaded and attached to the episode timeline source room.");
-        addLog("Local call recording uploaded and attached.");
-      } catch (error) {
-        setRecordingStatus("error");
-        setRecordingMessage(error instanceof Error ? error.message : "Upload failed.");
-        addLog("Recording upload failed.");
-      }
-    };
-
-    recorderRef.current = recorder;
-    recorder.start(1000);
-    addLog("Local production recording started.");
-  }, [addLog, displayName, episodeSlug, projectSlug, recordingStartedAt, refreshEpisodeRoom, trackId]);
-
   const handleSignalMessages = useCallback(async (messages: SignalMessage[]) => {
     const pc = pcRef.current;
     if (!pc) return;
@@ -640,10 +444,9 @@ export default function CallRoomPage() {
 
   const startCall = async () => {
     if (!peerId) return;
+    stopRequestedRef.current = false;
     setStatus("joining");
     setConnectionDetails("Requesting microphone permission...");
-    setRecordingStatus("idle");
-    setRecordingMessage(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -652,7 +455,7 @@ export default function CallRoomPage() {
           autoGainControl: true,
         },
       });
-      setDeviceMessage("Microphone active. Local production recording will upload when you stop.");
+      setDeviceMessage("Microphone active for the live call only. This page is not recording or uploading it.");
       await requestWakeLock();
       setLocalStream(stream);
       const pc = ensurePeerConnection(stream);
@@ -663,7 +466,6 @@ export default function CallRoomPage() {
       }
       signalSinceRef.current = joinState?.serverTime ?? "";
       setStatus("calling");
-      startLocalRecording(stream);
 
       if (role === "host") {
         const offer = await pc.createOffer({ offerToReceiveAudio: true });
@@ -677,8 +479,6 @@ export default function CallRoomPage() {
       }
     } catch (error) {
       setStatus("error");
-      setRecordingStatus("error");
-      setRecordingMessage(error instanceof Error ? error.message : "Could not start call.");
       setDeviceMessage("Could not start the microphone/call. Check browser mic permission.");
       addLog("Could not start call.");
     }
@@ -706,15 +506,14 @@ export default function CallRoomPage() {
   const stopCall = async () => {
     if (stopRequestedRef.current) return;
     stopRequestedRef.current = true;
-    recorderRef.current?.state === "recording" ? recorderRef.current.stop() : undefined;
     pcRef.current?.close();
     pcRef.current = null;
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
     setLocalStream(null);
     setRemoteStream(null);
     setStatus("ended");
-    setConnectionDetails("Call ended. Upload continues if a recording was active.");
-    setDeviceMessage("Call ended. You can start another take if needed.");
+    setConnectionDetails("Call ended. No recording file was created or uploaded by this page.");
+    setDeviceMessage("Call ended. Use iPhone Capture for a consent-bound production recording.");
     await releaseWakeLock();
     await signal("leave").catch(() => null);
     addLog("Call ended.");
@@ -725,6 +524,36 @@ export default function CallRoomPage() {
     .map((participant) => participant.name)
     .join(", ");
 
+  if (LEGACY_CALL_SIGNALING_RETIRED) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#17120d] px-4 py-10 text-[#fff4db] md:px-8">
+        <section className="w-full max-w-3xl rounded-[2rem] border border-[#d7c3a1]/30 bg-[#241a10] p-7 shadow-xl md:p-10" role="status">
+          <div className="text-xs font-black uppercase tracking-[0.25em] text-[#e7b15f]">Live room migration</div>
+          <h1 className="mt-3 text-4xl font-black">This prototype call room is retired.</h1>
+          <p className="mt-5 text-base font-semibold leading-8 text-[#d8c6a6]">
+            Quipsly did not join a room, request microphone access, create a guest link, start recording, or send signaling. Live podcast and coaching rooms must use the canonical Session, consent, participant, and recording evidence before this surface returns.
+          </p>
+          <div className="mt-7 rounded-2xl border border-[#f2b35b]/30 bg-[#17120d] p-4 text-sm leading-6 text-[#ffe2a8]">
+            Use Sessions to prepare the people, goal, consent, and follow-through. Use iPhone Capture for a retained local recording source. Recorder remains available only after Nest access is verified.
+          </div>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <Link href="/coaching/sessions" className="rounded-full bg-[#f2b35b] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[#17120d]">
+              Open Sessions
+            </Link>
+            {projectSlug ? (
+              <Link href={`/recorder?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="rounded-full border border-[#f2b35b]/40 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[#ffe2a8]">
+                Open protected Recorder
+              </Link>
+            ) : null}
+            <Link href="/projects" className="rounded-full border border-white/15 px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[#fff4db]">
+              Choose a Nest
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-[#17120d] px-4 py-6 text-[#fff4db] md:px-8">
       <div className="mx-auto max-w-6xl">
@@ -732,9 +561,9 @@ export default function CallRoomPage() {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="text-xs font-black uppercase tracking-[0.25em] text-[#e7b15f]">Quipsly Live Call</div>
-              <h1 className="mt-2 text-4xl font-black">Call, read, record locally, upload clean takes</h1>
+              <h1 className="mt-2 text-4xl font-black">Call and read together</h1>
               <p className="mt-3 max-w-3xl text-sm leading-6 text-[#d8c6a6]">
-                WebRTC carries the live conversation. Your local microphone recording is the production source and uploads to the same episode media pipeline.
+                WebRTC carries the live conversation. Web recording and cloud upload are paused until this room has the same explicit consent and resumable-v2 evidence as iPhone Capture.
               </p>
             </div>
             <div className="flex flex-wrap gap-2 text-xs font-black">
@@ -751,7 +580,7 @@ export default function CallRoomPage() {
         {!projectSlug ? (
           <div className="mt-5 rounded-[1.5rem] border border-amber-400/40 bg-amber-200/10 p-5 text-sm leading-6 text-[#ffe2a8]">
             <strong className="block text-xs font-black uppercase tracking-[0.18em] text-[#f2b35b]">Choose a Nest first</strong>
-            This call room needs an explicit project in the URL so recordings, signaling, and uploads attach to the right workspace.
+            This call room needs an explicit project in the URL so signaling and session context attach to the right workspace.
             <Link className="ml-2 font-black underline decoration-[#f2b35b]/60 underline-offset-4" href="/projects">
               Open Nests
             </Link>
@@ -784,7 +613,7 @@ export default function CallRoomPage() {
               </label>
               <div className="rounded-2xl border border-[#d8bf94] bg-white px-3 py-2">
                 <div className="text-xs font-black uppercase tracking-[0.18em] text-[#8a5c1d]">Recording</div>
-                <div className="mt-1 font-mono text-xl font-black">{recordingStatus === "recording" ? formatClock(elapsedMs) : recordingStatus}</div>
+                <div className="mt-1 font-mono text-xl font-black">{recordingStatus}</div>
               </div>
             </div>
 
@@ -795,8 +624,8 @@ export default function CallRoomPage() {
                 disabled={status === "joining" || status === "calling" || status === "connected"}
                 className="rounded-3xl bg-[#2d2216] px-5 py-4 text-left text-lg font-black text-white shadow-lg disabled:cursor-not-allowed disabled:opacity-45"
               >
-                Start live call + local recording
-                <span className="mt-1 block text-xs font-bold text-[#e6c58b]">Mic permission required. Headphones recommended.</span>
+                Start live call
+                <span className="mt-1 block text-xs font-bold text-[#e6c58b]">Mic permission required. No recording is created.</span>
               </button>
               <button
                 type="button"
@@ -804,8 +633,8 @@ export default function CallRoomPage() {
                 disabled={status === "idle" || status === "ended"}
                 className="rounded-3xl border border-[#b04b31] bg-[#fff7ed] px-5 py-4 text-left text-lg font-black text-[#7a2418] disabled:cursor-not-allowed disabled:opacity-45"
               >
-                Stop call and upload take
-                <span className="mt-1 block text-xs font-bold text-[#8a5c1d]">Upload starts after the recorder stops.</span>
+                End live call
+                <span className="mt-1 block text-xs font-bold text-[#8a5c1d]">No recording or upload is created.</span>
               </button>
             </div>
 
@@ -896,8 +725,8 @@ export default function CallRoomPage() {
               <div className="mt-4 space-y-3 text-sm leading-6 text-[#d8c6a6]">
                 <p><strong>Use headphones.</strong> Echo cancellation helps, but headphones make this much less haunted.</p>
                 <p><strong>Keep the tab foregrounded.</strong> Mobile browsers can get weird when backgrounded.</p>
-                <p><strong>Stop cleanly.</strong> The local production take uploads after stop.</p>
-                <p><strong>If the call glitches, keep going.</strong> The local recording is the source of truth.</p>
+                <p><strong>Record in iPhone Capture.</strong> This web room does not create or upload a production take.</p>
+                <p><strong>Wait for resumable-v2 here.</strong> Web recording stays fail-closed until explicit consent and durable upload receipts are wired.</p>
               </div>
             </section>
 

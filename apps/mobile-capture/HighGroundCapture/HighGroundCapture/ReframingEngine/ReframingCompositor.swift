@@ -5,12 +5,12 @@ import simd
 
 class ReframingCompositor: NSObject, AVVideoCompositing {
 
-    var sourcePixelBufferAttributes: [String : Any]? = [
+    var sourcePixelBufferAttributes: [String : any Sendable]? = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
         kCVPixelBufferMetalCompatibilityKey as String: true
     ]
 
-    var requiredPixelBufferAttributesForRenderContext: [String : Any] = [
+    var requiredPixelBufferAttributesForRenderContext: [String : any Sendable] = [
         kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA,
         kCVPixelBufferMetalCompatibilityKey as String: true
     ]
@@ -111,8 +111,7 @@ class ReframingCompositor: NSObject, AVVideoCompositing {
     }
 
     private func render(request: AVAsynchronousVideoCompositionRequest, sourceBuffer: CVPixelBuffer, destinationBuffer: CVPixelBuffer, fov: Float, rotationMatrix: simd_float3x3) {
-        guard let device = device,
-              let commandQueue = commandQueue,
+        guard let commandQueue = commandQueue,
               let computePipelineState = computePipelineState,
               let textureCache = textureCache else {
             request.finish(with: NSError(domain: "com.highgroundcapture", code: -2, userInfo: nil))

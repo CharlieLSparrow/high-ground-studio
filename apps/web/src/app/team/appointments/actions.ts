@@ -45,7 +45,7 @@ export async function createAppointmentAction(formData: FormData) {
   const coachUserIdRaw = String(formData.get("coachUserId") ?? "").trim();
   const scheduledStartRaw = String(formData.get("scheduledStart") ?? "").trim();
   const scheduledEndRaw = String(formData.get("scheduledEnd") ?? "").trim();
-  const timezone = String(formData.get("timezone") ?? "").trim() || "America/Denver";
+  const timezone = String(formData.get("timezone") ?? "").trim() || "America/Los_Angeles";
   const locationType = parseLocationType(
     String(formData.get("locationType") ?? "").trim(),
   );
@@ -112,7 +112,7 @@ export async function updateAppointmentAction(formData: FormData) {
   const coachUserIdRaw = String(formData.get("coachUserId") ?? "").trim();
   const scheduledStartRaw = String(formData.get("scheduledStart") ?? "").trim();
   const scheduledEndRaw = String(formData.get("scheduledEnd") ?? "").trim();
-  const timezone = String(formData.get("timezone") ?? "").trim() || "America/Denver";
+  const timezone = String(formData.get("timezone") ?? "").trim() || "America/Los_Angeles";
   const locationType = parseLocationType(
     String(formData.get("locationType") ?? "").trim(),
   );

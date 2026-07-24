@@ -12,6 +12,10 @@ struct HighGroundCaptureApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var audioCapture = AudioCaptureController()
 
+    init() {
+        AuthManager.configureShareExtensionUITestOwnerIfRequested()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()

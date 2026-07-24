@@ -131,7 +131,7 @@ class TimelineViewModel: ObservableObject {
             }
 
             if !inserted {
-                try? videoTrack.insertEmptyTimeRange(timeRange)
+                videoTrack.insertEmptyTimeRange(timeRange)
             }
 
             let instruction = ReframingCompositionInstruction(timeRange: timeRange, sourceTrackID: videoTrack.trackID, keyframes: clip.transforms ?? [])
@@ -426,12 +426,12 @@ struct NativeEditorView: View {
             // Export
             Button("Export") { exportManager.exportTimeline(viewModel.timelineState) }
                 .accessibilityIdentifier("Export")
-                .onChange(of: exportManager.exportSuccess) { success in
+                .onChange(of: exportManager.exportSuccess) { _, success in
                     if success {
                         showExportAlert = true
                     }
                 }
-                .onChange(of: exportManager.exportError) { error in
+                .onChange(of: exportManager.exportError) { _, error in
                     if error != nil {
                         showExportAlert = true
                     }

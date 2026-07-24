@@ -4,6 +4,12 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 
 ## Read First
 
+- `../README.md`
+- `../CONTRIBUTING.md`
+- `development/README.md`
+- `architecture/product-and-repository-map.md`
+- `decisions/README.md`
+- `runbooks/release-index.md`
 - `vision/quipsly-creative-os-north-star.md`
 - `architecture/quipsly-document-kernel.md`
 - `plans/quipsly-kernel-now-next-later.md`
@@ -18,6 +24,9 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 
 - `analysis/`: repo audits and grounded assessments
 - `architecture/`: system shape, boundaries, and domain model
+- `decisions/`: accepted and proposed architecture decisions
+- `development/`: collaborator setup, toolchain, testing, and proof
+- `maintainers/`: ownership, governance, and repository operations
 - `project-context/`: current product and repo reality
 - `plans/`: prioritized planning docs
 - `public/`: public-facing documentation drafts not yet wired into the website

@@ -43,35 +43,7 @@ export async function GET(req: Request) {
       orderBy: { updatedAt: "desc" },
     });
 
-    // BIG SWING: Map "saved" Assistant Actions into virtual QuipLore entities
-    // This allows them to show up in the Story Bible without requiring a Prisma schema migration!
-    const savedActions = await prisma.studioAssistantAction.findMany({
-      where: {
-        session: { projectId },
-        status: "saved"
-      },
-      orderBy: { updatedAt: "desc" },
-    });
-
-    const mappedNotes = savedActions.map(action => {
-      // Look up the ledger note if we need the provenance, but the action payload usually suffices
-      return {
-        id: `virtual-note-${action.id}`,
-        projectId: projectId,
-        type: "RESEARCH_NOTE",
-        name: action.label || "Saved Research Note",
-        aliases: [],
-        attributes: {
-          ...((action.payloadJson as any) || {}),
-          _source: "quipsly-assistant",
-          _actionKind: action.kind,
-        },
-        createdAt: action.createdAt,
-        updatedAt: action.updatedAt,
-      };
-    });
-
-    return NextResponse.json({ entities: [...entities, ...mappedNotes] });
+    return NextResponse.json({ entities });
   } catch (error: any) {
     console.error("GET /api/story-bible/entities error:", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
@@ -131,4 +103,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }
-

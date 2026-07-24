@@ -1,0 +1,30 @@
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.pbxproj text eol=lf
+*.swift text eol=lf
+
+*.7z binary
+*.aiff binary
+*.avif binary
+*.dmg binary
+*.gif binary
+*.heic binary
+*.ico binary
+*.insv binary
+*.ipa binary
+*.jpeg binary
+*.jpg binary
+*.m4a binary
+*.mov binary
+*.mp3 binary
+*.mp4 binary
+*.pdf binary
+*.png binary
+*.psd binary
+*.wav binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.zip binary

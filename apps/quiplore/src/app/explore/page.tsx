@@ -21,7 +21,7 @@ export default function ExplorePage() {
       </div>
 
       <div className="stack" style={{ gap: "3rem", marginTop: "2rem" }}>
-        
+
         {/* Featured Lorelists */}
         <section>
           <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
@@ -33,9 +33,9 @@ export default function ExplorePage() {
               const coverTheme = themes.find(t => t.id === list.coverThemeId) || themes[0];
               return (
                 <Link key={list.id} href={`/lorelists/${list.slug}`} className="meta-item hover-card" style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-                  <div style={{ 
-                    height: "80px", 
-                    backgroundColor: coverTheme.color || "#e2b17b", 
+                  <div style={{
+                    height: "80px",
+                    backgroundColor: coverTheme.color || "#e2b17b",
                     borderRadius: "8px 8px 0 0",
                     opacity: 0.8,
                     marginBottom: "-10px"
@@ -62,12 +62,12 @@ export default function ExplorePage() {
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: "1rem" }}>
             {themes.map(theme => (
-              <Link 
-                key={theme.id} 
+              <Link
+                key={theme.id}
                 href={`/stream?mode=by-theme&theme=${theme.slug}`}
                 className="panel"
-                style={{ 
-                  display: "flex", alignItems: "center", justifyContent: "center", 
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "center",
                   height: "100px", borderLeft: `6px solid ${theme.color || "#ad6b35"}`,
                   textDecoration: "none", transition: "transform 0.2s, box-shadow 0.2s"
                 }}
@@ -88,16 +88,16 @@ export default function ExplorePage() {
             {people.slice(0, 9).map(person => (
               <Link key={person.id} href={`/people/${person.slug}`} className="panel hover-card" style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
                 {person.imageUrl ? (
-                  <Image 
-                    src={person.imageUrl} 
+                  <Image
+                    src={person.imageUrl}
                     alt={person.displayName}
                     width={60}
                     height={60}
                     style={{ borderRadius: "50%", objectFit: "cover", border: "2px solid #e2b17b" }}
                   />
                 ) : (
-                  <div style={{ 
-                    width: "60px", height: "60px", borderRadius: "50%", 
+                  <div style={{
+                    width: "60px", height: "60px", borderRadius: "50%",
                     backgroundColor: "#fdf1dc", border: "2px solid #e2b17b",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontWeight: "bold", color: "#ad6b35", fontSize: "1.2rem"

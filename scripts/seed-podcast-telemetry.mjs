@@ -60,7 +60,7 @@ async function main() {
 
   // 2. Seed Podcast Download Logs (Demographics & Analytics)
   console.log("📊 Seeding Podcast Download Logs (Analytics Engine)...");
-  
+
   const userAgents = [
     "ApplePodcasts/4024.310.4.1 CFNetwork/1494.0.7 Darwin/23.4.0",
     "Spotify/8.9.22.454 iOS/17.4.1 CFNetwork/1494.0.7",
@@ -91,7 +91,7 @@ async function main() {
     const region = regions[Math.floor(Math.random() * regions.length)];
     const rawIp = `192.168.1.${Math.floor(Math.random() * 255)}`;
     const ipHash = crypto.createHash("sha256").update(rawIp).digest("hex");
-    
+
     // Distribute timestamps over past 30 days
     const timestamp = new Date(Date.now() - Math.floor(Math.random() * 30) * 86400000 - Math.random() * 86400000);
 
@@ -120,7 +120,7 @@ async function main() {
   for (const videoId of videoIds) {
     for (let segmentIndex = 0; segmentIndex < 40; segmentIndex++) {
       let retention = 100 - (segmentIndex * 0.7); // Natural decay curve
-      
+
       // Introduce sharp dramatic drops for structural alerts
       if (videoId === "AI-Revolution-01" && segmentIndex >= 15) {
         retention -= 24; // 24% drop at segment 15

@@ -2,10 +2,10 @@
 
 /**
  * High Ground Studio Content Pipeline - CLI Publishing Runner
- * 
+ *
  * Usage:
  *   node scripts/publish-packet.mjs <path-to-packet.json> [options]
- * 
+ *
  * Options:
  *   --target=<app-override>     Force target app (e.g. ai-hub, photography-hub, video-hub, hgo, quiplore)
  *   --status=<draft|published>  Force output status (draft goes to staging/draft folders, published goes to live/public folders)
@@ -163,7 +163,7 @@ function buildMdxFromHgoProjection(projection, frontmatter) {
 function buildMdxFromStandardArticle(article) {
   const dateStr = article.publishedAt || article.date || new Date().toISOString().split("T")[0];
   const tagsList = Array.isArray(article.tags) ? article.tags : [];
-  
+
   const frontmatterText = [
     "---",
     `title: ${yamlScalar(article.title)}`,
@@ -310,7 +310,7 @@ Options:
     } else {
       destinationPath = path.join(monorepoRoot, "apps/web/content/publish", `${slug}.mdx`);
     }
-  } 
+  }
   else if (["ai-hub", "photography-hub", "video-hub"].includes(targetSite)) {
     // Niche Portal MDX compilation
     const article = packet.article || packet;
@@ -320,12 +320,12 @@ Options:
 
     fileContent = buildMdxFromStandardArticle(article);
     destinationPath = path.join(monorepoRoot, `apps/${targetSite}/src/content`, `${slug}.mdx`);
-  } 
+  }
   else if (targetSite === "quiplore") {
     // QuipLore Data packet
     destinationPath = path.join(monorepoRoot, "apps/quiplore/src/data", `${slug}.json`);
     fileContent = JSON.stringify(packet, null, 2);
-  } 
+  }
   else {
     logger.error(`Unsupported target site: '${targetSite}'`);
     process.exit(1);

@@ -1,0 +1,54 @@
+{
+  "packetType": "quipsly-writing-current-candidate",
+  "projectSlug": "high-ground-odyssey-manuscript",
+  "episodeSlug": "episode-1",
+  "title": "The Wednesday Rule",
+  "currentCandidateId": "episode-1-agent-second-pass-draft",
+  "currentCandidatePath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md",
+  "recommendedBy": "Codex",
+  "recommendationStatus": "agent-reviewed-working-draft",
+  "recommendedReviewOutcome": "mixed-authorship-ready",
+  "authorship": "agent-authored",
+  "intent": "serious-second-pass",
+  "reviewStatus": "mixed-authorship-ready",
+  "canonStatus": "not-canon-approved",
+  "publicationStatus": "not-published",
+  "receiptStatus": "no-external-receipts",
+  "whyThisCandidate": [
+    "Stronger public-facing opening than the first pass.",
+    "Clearer emotional arc around shame, dented weeks, and the next faithful action.",
+    "Cleaner Nest / Studio / Tower explanation that supports the product loop without overwhelming the episode copy.",
+    "Better candidate for High Ground Odyssey public page and Tower copy after human voice/source review."
+  ],
+  "supportingArtifacts": {
+    "firstPassDraft": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-first-pass.md",
+    "secondPassDraft": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md",
+    "comparison": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-packets/episode-1-writing-v1-v2-comparison.md",
+    "provenance": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/provenance-packets/episode-1-writing-provenance.json",
+    "towerPacketV1": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-writing-publication-packet.md",
+    "towerPacketV2": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-writing-publication-packet-v2.md",
+    "reviewLedger": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-ledgers/episode-1-writing-review-ledger.jsonl"
+  },
+  "nextActions": [
+    "Human review should compare v2 against actual Episode 1 audio/video once Studio edit context is active.",
+    "Charlie/Homer should decide whether the voice and lived examples are accurate enough for canon approval.",
+    "If voice/source grounding is sufficient later, record `canon-approved` before treating it as manuscript or public-page canon.",
+    "If publication copy is approved later, record `publication-ready`, then Tower must capture external receipts after actual posting."
+  ],
+  "blockedClaims": [
+    "Do not call this canon-approved yet.",
+    "Do not call this published yet.",
+    "Do not hide that it is agent-authored.",
+    "Do not replace human review with this recommendation."
+  ],
+  "truth": "This manifest tells humans and agents which Episode 1 writing artifact to open next. Codex has recorded an agent review recommending v2 as mixed-authorship-ready, but this does not canonize, publish, schedule, or receipt-confirm anything.",
+  "humanReviewStatus": "still-required-before-canon-approval",
+  "latestReviewReceipt": {
+    "ledgerPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-ledgers/episode-1-writing-review-ledger.jsonl",
+    "outcome": "mixed-authorship-ready",
+    "actor": "Codex",
+    "actorType": "agent",
+    "recordedAt": "2026-06-20T00:00:00-06:00",
+    "truth": "This is an agent review receipt. It recommends v2 as mixed-authorship-ready but does not canonize, publish, schedule, or capture external receipts."
+  }
+}

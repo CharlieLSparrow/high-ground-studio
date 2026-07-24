@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { canManageAppointments } from "@/lib/authz";
 import { prisma } from "@/lib/prisma";
+import { createCoachingBookingDraft } from "@/lib/server/coaching/bookings";
 import { syncAppointmentToGoogleCalendar } from "@/lib/server/google-calendar-sync";
 
 function buildRedirect(params: Record<string, string>) {
@@ -212,7 +213,7 @@ export async function convertCoachingRequestToAppointmentAction(formData: FormDa
   const coachingRequestId = String(formData.get("coachingRequestId") ?? "").trim();
   const scheduledStartRaw = String(formData.get("scheduledStart") ?? "").trim();
   const scheduledEndRaw = String(formData.get("scheduledEnd") ?? "").trim();
-  const timezone = String(formData.get("timezone") ?? "").trim() || "America/Denver";
+  const timezone = String(formData.get("timezone") ?? "").trim() || "America/Los_Angeles";
   const coachUserId = String(formData.get("coachUserId") ?? "").trim();
   const locationType = parseLocationType(
     String(formData.get("locationType") ?? "").trim(),
@@ -250,7 +251,7 @@ export async function convertCoachingRequestToAppointmentAction(formData: FormDa
   try {
     const nextCoachUserId = await loadCoachUserIdOrThrow(coachUserId);
 
-    const newlyCreatedAppointmentId = await prisma.$transaction(async (tx) => {
+    const newlyCreatedAppointment = await prisma.$transaction(async (tx) => {
       const request = await tx.coachingRequest.findUnique({
         where: {
           id: coachingRequestId,
@@ -306,23 +307,54 @@ export async function convertCoachingRequestToAppointmentAction(formData: FormDa
         },
       });
       
-      return appointment.id;
+      return {
+        appointmentId: appointment.id,
+        clientUserId: request.clientUserId,
+      };
     });
 
     try {
       await syncAppointmentToGoogleCalendar({
-        appointmentId: newlyCreatedAppointmentId,
+        appointmentId: newlyCreatedAppointment.appointmentId,
         requestedByEmail: session.user.primaryEmail,
       });
     } catch (e) {
       // Ignore background sync errors, the job is queued and can be retried manually or by cron
     }
 
+    let bridgeWarning = "";
+
+    try {
+      await createCoachingBookingDraft({
+        clientUserId: newlyCreatedAppointment.clientUserId,
+        requestId: coachingRequestId,
+        appointmentId: newlyCreatedAppointment.appointmentId,
+        coachUserId: nextCoachUserId,
+        scheduledStart: scheduledStart.toISOString(),
+        scheduledEnd: scheduledEnd.toISOString(),
+        timezone,
+        paymentPolicy: "DONATION_SUPPORTED",
+        notes: internalNotes,
+        metadataJson: {
+          source: "coaching-request-conversion",
+          locationType,
+          locationDetails: locationDetails || null,
+        },
+      });
+
+      revalidatePath("/team/coaching-capture");
+    } catch (bridgeError) {
+      bridgeWarning =
+        bridgeError instanceof Error
+          ? ` Appointment was scheduled, but the Quipsly capture booking bridge is held: ${bridgeError.message}`
+          : " Appointment was scheduled, but the Quipsly capture booking bridge is held.";
+    }
+
     revalidatePath("/team/coaching-requests");
     revalidatePath("/team/appointments");
     revalidatePath("/dashboard");
 
-    redirect(buildRedirect({ success: "Appointment scheduled from coaching request." }));
+    redirect(buildRedirect({ success: `Appointment scheduled from coaching request.${bridgeWarning}` }));
   } catch (error) {
     const message =
       error instanceof Error

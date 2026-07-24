@@ -11,7 +11,7 @@ export const metadata = {
 export default function HubPage() {
   const allCards = getAllQuipCards();
   const savedCards = allCards.filter(card => starterNest.savedQuoteIds.includes(card.quote.id));
-  
+
   return (
     <AppShell>
       <div className="page-head">

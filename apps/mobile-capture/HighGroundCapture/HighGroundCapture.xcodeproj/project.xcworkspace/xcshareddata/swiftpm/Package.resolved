@@ -1,0 +1,15 @@
+{
+  "originHash" : "8f5ec091fe9e2e61431470d46ba64c893141febab3dae36b02e42707d05213d9",
+  "pins" : [
+    {
+      "identity" : "client-sdk-swift-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/livekit/client-sdk-swift-xcframework.git",
+      "state" : {
+        "revision" : "1eecf330f0eb4e5276ca1cd35624d79f9b63db58",
+        "version" : "2.15.1"
+      }
+    }
+  ],
+  "version" : 3
+}

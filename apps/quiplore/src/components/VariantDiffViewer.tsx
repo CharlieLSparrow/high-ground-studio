@@ -14,13 +14,13 @@ interface DiffToken {
 function computeWordDiff(original: string, variant: string): DiffToken[] {
   // Split by whitespace but keep the whitespace as separate tokens so we can reconstruct exactly
   const tokenize = (text: string) => text.split(/(\s+)/).filter(t => t.length > 0);
-  
+
   const origTokens = tokenize(original);
   const varTokens = tokenize(variant);
-  
+
   // Create DP matrix
   const dp: number[][] = Array(origTokens.length + 1).fill(0).map(() => Array(varTokens.length + 1).fill(0));
-  
+
   for (let i = 1; i <= origTokens.length; i++) {
     for (let j = 1; j <= varTokens.length; j++) {
       if (origTokens[i - 1].toLowerCase() === varTokens[j - 1].toLowerCase()) {
@@ -30,12 +30,12 @@ function computeWordDiff(original: string, variant: string): DiffToken[] {
       }
     }
   }
-  
+
   // Backtrack to find diff
   const result: DiffToken[] = [];
   let i = origTokens.length;
   let j = varTokens.length;
-  
+
   while (i > 0 || j > 0) {
     if (i > 0 && j > 0 && origTokens[i - 1].toLowerCase() === varTokens[j - 1].toLowerCase()) {
       result.unshift({ text: varTokens[j - 1], type: "unchanged" });
@@ -49,16 +49,16 @@ function computeWordDiff(original: string, variant: string): DiffToken[] {
       i--;
     }
   }
-  
+
   return result;
 }
 
-export function VariantDiffViewer({ 
-  quote, 
-  variants 
-}: { 
-  readonly quote: QuoteProjection; 
-  readonly variants: readonly QuoteVariantProjection[]; 
+export function VariantDiffViewer({
+  quote,
+  variants
+}: {
+  readonly quote: QuoteProjection;
+  readonly variants: readonly QuoteVariantProjection[];
 }) {
   const [activeVariantId, setActiveVariantId] = useState<string | null>(
     variants.length > 0 ? variants[0].id : null
@@ -127,13 +127,13 @@ export function VariantDiffViewer({
               <VerificationBadge status={activeVariant.status} />
             </div>
 
-            <div style={{ 
-              fontSize: "1.1rem", 
-              lineHeight: 1.6, 
-              color: "#4c331b", 
-              backgroundColor: "#fff", 
-              padding: "1.5rem", 
-              borderRadius: "8px", 
+            <div style={{
+              fontSize: "1.1rem",
+              lineHeight: 1.6,
+              color: "#4c331b",
+              backgroundColor: "#fff",
+              padding: "1.5rem",
+              borderRadius: "8px",
               border: "1px solid #e2b17b",
               fontFamily: "var(--font-mono, monospace)" // give it a slightly technical feel
             }}>
@@ -142,13 +142,13 @@ export function VariantDiffViewer({
                   // just render whitespace normally
                   return <span key={idx}>{token.text}</span>;
                 }
-                
+
                 if (token.type === "added") {
                   return (
-                    <span key={idx} style={{ 
-                      backgroundColor: "#dcfce7", 
-                      color: "#166534", 
-                      padding: "2px 4px", 
+                    <span key={idx} style={{
+                      backgroundColor: "#dcfce7",
+                      color: "#166534",
+                      padding: "2px 4px",
                       borderRadius: "4px",
                       fontWeight: "bold"
                     }}>
@@ -156,13 +156,13 @@ export function VariantDiffViewer({
                     </span>
                   );
                 }
-                
+
                 if (token.type === "removed") {
                   return (
-                    <span key={idx} style={{ 
-                      backgroundColor: "#fee2e2", 
-                      color: "#991b1b", 
-                      padding: "2px 4px", 
+                    <span key={idx} style={{
+                      backgroundColor: "#fee2e2",
+                      color: "#991b1b",
+                      padding: "2px 4px",
                       borderRadius: "4px",
                       textDecoration: "line-through",
                       opacity: 0.7

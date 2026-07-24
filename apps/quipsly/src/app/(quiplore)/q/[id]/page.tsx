@@ -1,122 +1,101 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+
+import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
-import { notFound } from "next/navigation";
-import { Metadata } from "next";
+import { normalizeAccessEmail, resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 interface Props {
-  params: Promise<{
-    id: string;
-  }>;
+  params: Promise<{ id: string }>;
 }
 
-export async function generateMetadata(props: Props): Promise<Metadata> {
-  const params = await props.params;
-  const prisma = getPrismaClient();
-  const quote = await prisma.quipLoreQuote.findUnique({
-    where: { id: params.id },
-    include: {
-      author: true,
-      work: true
-    }
-  });
+export const dynamic = "force-dynamic";
 
-  if (!quote) return { title: "Quote Not Found" };
-
-  const authorName = quote.author?.name || "High Ground Odyssey";
-  const title = `Quote by ${authorName} | QuipLore`;
-  const description = quote.text.substring(0, 160) + (quote.text.length > 160 ? "..." : "");
-
+// QuipLore quotes do not yet carry an explicit public-release state. Keep
+// metadata generic so crawlers, link unfurlers, and signed-out requests cannot
+// disclose private quote text, authors, works, tags, or project identity.
+export async function generateMetadata(): Promise<Metadata> {
   return {
-    title,
-    description,
-    openGraph: {
-      title,
-      description,
-      type: "article",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title,
-      description,
-    }
+    title: "Private quote passport | Quipsly",
+    description: "A private, source-aware QuipLore record. Sign in with project access to view it.",
+    robots: { index: false, follow: false },
   };
 }
 
 export default async function QuotePassportPage(props: Props) {
-  const params = await props.params;
+  const { id } = await props.params;
+  const session = await auth();
+  const email = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
+  if (!session?.user || !email) {
+    redirect(`/login?callbackUrl=${encodeURIComponent(`/q/${id}`)}`);
+  }
+
   const prisma = getPrismaClient();
-  
-  const quote = await prisma.quipLoreQuote.findUnique({
-    where: { id: params.id },
+  const quoteLocator = await prisma.quipLoreQuote.findUnique({
+    where: { id },
+    select: { id: true, project: { select: { id: true, slug: true } } },
+  });
+  if (!quoteLocator) notFound();
+
+  const access = await resolveStudioProjectAccess({
+    projectSlug: quoteLocator.project.slug,
+    email,
+    action: "read",
+    prisma,
+  });
+  if (!access.allowed || access.projectId !== quoteLocator.project.id) notFound();
+
+  const quote = await prisma.quipLoreQuote.findFirst({
+    where: { id, projectId: access.projectId },
     include: {
       author: true,
       work: true,
       tags: true,
-      project: true
-    }
+      project: true,
+    },
   });
-
-  if (!quote) {
-    notFound();
-  }
+  if (!quote) notFound();
 
   return (
-    <div className="min-h-screen bg-[#0E0E0E] flex items-center justify-center p-4 font-sans text-[#EAEAEA]">
-      <div className="max-w-2xl w-full bg-[#1A1A1A] border border-[#333] rounded-2xl shadow-2xl overflow-hidden">
-        
-        {/* Trading Card Header */}
-        <div className="px-8 py-6 border-b border-[#333] flex items-center justify-between bg-gradient-to-r from-[#111] to-[#1A1A1A]">
+    <main className="flex min-h-screen items-center justify-center bg-[#0E0E0E] p-4 font-sans text-[#EAEAEA]">
+      <article className="w-full max-w-2xl overflow-hidden rounded-2xl border border-[#333] bg-[#1A1A1A] shadow-2xl" aria-label="Private quote passport">
+        <header className="flex items-center justify-between border-b border-[#333] bg-gradient-to-r from-[#111] to-[#1A1A1A] px-8 py-6">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-indigo-500/20 border border-indigo-500/50 flex items-center justify-center">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full border border-indigo-500/50 bg-indigo-500/20" aria-hidden="true">
               <span className="text-xl">📖</span>
             </div>
             <div>
-              <div className="text-xs text-[#888] uppercase tracking-wider font-semibold">QuipLore Passport</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-[#888]">Private QuipLore passport</div>
               <div className="text-sm font-medium text-indigo-400">{quote.project.slug}</div>
             </div>
           </div>
-          <div className="text-xs text-[#666] font-mono">
-            ID: {quote.id.slice(-8)}
-          </div>
-        </div>
+          <div className="font-mono text-xs text-[#666]">ID: {quote.id.slice(-8)}</div>
+        </header>
 
-        {/* Quote Content */}
-        <div className="p-10 space-y-8">
-          <blockquote className="text-2xl md:text-3xl font-serif text-[#EAEAEA] leading-relaxed italic relative">
-            <span className="absolute -top-4 -left-6 text-6xl text-[#333] select-none">"</span>
+        <section className="space-y-8 p-10">
+          <blockquote className="relative font-serif text-2xl italic leading-relaxed text-[#EAEAEA] md:text-3xl">
+            <span className="absolute -left-6 -top-4 select-none text-6xl text-[#333]" aria-hidden="true">&ldquo;</span>
             {quote.text}
           </blockquote>
-          
           <div className="flex flex-col gap-1">
-            <div className="text-lg font-medium text-white">
-              — {quote.author?.name || "Unknown Author"}
-            </div>
-            {quote.work?.title && (
-              <div className="text-sm text-[#888]">
-                From <span className="italic">{quote.work.title}</span>
-              </div>
-            )}
+            <div className="text-lg font-medium text-white">— {quote.author?.name || "Unknown author"}</div>
+            {quote.work?.title ? <div className="text-sm text-[#888]">From <span className="italic">{quote.work.title}</span></div> : null}
           </div>
-        </div>
+        </section>
 
-        {/* Tags & Metadata Footer */}
-        <div className="px-8 py-5 bg-[#111] border-t border-[#333] flex flex-wrap items-center justify-between gap-4">
-          <div className="flex gap-2 flex-wrap">
-            {quote.tags.map(tag => (
-              <span key={tag.id} className="px-2.5 py-1 rounded-md bg-[#222] border border-[#333] text-xs font-medium text-[#AAA]">
-                #{tag.name}
-              </span>
-            ))}
-            {quote.tags.length === 0 && (
-              <span className="text-xs text-[#555] italic">No tags</span>
-            )}
+        <footer className="flex flex-wrap items-center justify-between gap-4 border-t border-[#333] bg-[#111] px-8 py-5">
+          <div className="flex flex-wrap gap-2">
+            {quote.tags.map((tag) => <span key={tag.id} className="rounded-md border border-[#333] bg-[#222] px-2.5 py-1 text-xs font-medium text-[#AAA]">#{tag.name}</span>)}
+            {!quote.tags.length ? <span className="text-xs italic text-[#555]">No tags</span> : null}
           </div>
-          
-          <div className="text-xs text-[#555]">
-            Extracted {quote.createdAt.toLocaleDateString()}
-          </div>
-        </div>
+          <div className="text-xs text-[#555]">Extracted {quote.createdAt.toLocaleDateString()}</div>
+        </footer>
 
-      </div>
-    </div>
+        <div className="border-t border-[#333] px-8 py-4">
+          <Link href="/research" className="text-xs font-black uppercase tracking-wider text-indigo-300 hover:text-indigo-200">Back to private research</Link>
+        </div>
+      </article>
+    </main>
   );
 }

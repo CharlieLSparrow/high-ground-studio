@@ -22,8 +22,8 @@ export default async function ManuscriptRoomPage({
 }) {
   const { roomName } = await params;
   
-  // In a real app, you would fetch user session and auth token here
-  const token = "demo-jwt-token-replace-me"; // This would come from next-auth/cookies
+  // In a real app, this should come from the Firebase-backed Quipsly session.
+  const token = "demo-jwt-token-replace-me";
   const userName = "Writer_" + Math.floor(Math.random() * 1000);
   const userColor = "#" + Math.floor(Math.random() * 16777215).toString(16);
 
@@ -55,4 +55,3 @@ export default async function ManuscriptRoomPage({
     />
   );
 }
-

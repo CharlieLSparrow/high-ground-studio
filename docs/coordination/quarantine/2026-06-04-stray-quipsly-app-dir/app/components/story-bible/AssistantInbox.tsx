@@ -16,8 +16,8 @@ export const AssistantInbox: React.FC = React.memo(() => {
 
   const renderActionCard = (action: AssistantAction, isHistory = false) => {
     return (
-      <div 
-        key={action.id} 
+      <div
+        key={action.id}
         role="article"
         aria-labelledby={`action-title-${action.id}`}
         className={`p-4 border rounded-xl mb-4 shadow-sm transition-all ${
@@ -26,16 +26,16 @@ export const AssistantInbox: React.FC = React.memo(() => {
       >
         <div className="flex justify-between items-start mb-3">
           <div className="flex items-center space-x-2">
-            <span 
+            <span
               id={`action-title-${action.id}`}
               className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider
-              ${action.type === 'PROPOSE_ENTITY' ? 'bg-green-100 text-green-800' : 
+              ${action.type === 'PROPOSE_ENTITY' ? 'bg-green-100 text-green-800' :
                 action.type === 'PROPOSE_ENTITY_UPDATE' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
               {action.type.replace(/_/g, ' ')}
             </span>
             {isHistory && (
               <span className={`text-[10px] font-bold px-2 py-1 rounded-md uppercase tracking-wider
-                ${action.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' : 
+                ${action.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-700' :
                   action.status === 'REJECTED' ? 'bg-rose-50 text-rose-700' : 'bg-gray-100 text-gray-600'}`}>
                 {action.status}
               </span>
@@ -45,11 +45,11 @@ export const AssistantInbox: React.FC = React.memo(() => {
             {new Date(action.createdAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
           </span>
         </div>
-        
+
         <p className="text-sm text-gray-800 mb-4 leading-relaxed">{action.explanation}</p>
-        
+
         {/* Diff / Payload Preview */}
-        <div 
+        <div
           className="bg-gray-900 text-gray-100 p-3 rounded-lg border border-gray-800 mb-5 font-mono text-[11px] max-h-40 overflow-y-auto"
           aria-label="Action Payload Details"
           tabIndex={0}
@@ -59,14 +59,14 @@ export const AssistantInbox: React.FC = React.memo(() => {
 
         {!isHistory ? (
           <div className="flex space-x-3">
-            <button 
+            <button
               onClick={() => approveAction(action.id)}
               aria-label={`Approve ${action.type}`}
               className="flex-1 bg-blue-600 text-white py-2 px-4 rounded-lg text-sm font-semibold shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-blue-500 transition-colors"
             >
               Approve
             </button>
-            <button 
+            <button
               onClick={() => rejectAction(action.id)}
               aria-label={`Reject ${action.type}`}
               className="flex-1 bg-white border border-gray-300 text-gray-700 py-2 px-4 rounded-lg text-sm font-semibold shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-gray-400 transition-colors"
@@ -77,7 +77,7 @@ export const AssistantInbox: React.FC = React.memo(() => {
         ) : (
           <div className="flex justify-end">
             {action.status === 'APPROVED' && (
-              <button 
+              <button
                 onClick={() => undoAction(action.id)}
                 aria-label={`Undo ${action.type}`}
                 className="text-xs text-blue-600 hover:text-blue-800 font-bold px-3 py-1.5 rounded hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"

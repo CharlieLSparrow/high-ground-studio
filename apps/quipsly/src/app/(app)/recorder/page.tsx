@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCloudStorageUpload } from "@/hooks/useCloudStorageUpload";
 import {
   createRecordingSegmentTimelineOffsets,
   getRecordingSessionDurationSeconds,
@@ -10,6 +9,7 @@ import {
   type EpisodeRecordingSession,
   type RecordingSegment,
 } from "@high-ground/quipsly-domain/recording";
+import { classifyRecorderEntryAccess, type RecorderEntryAccessState } from "./recorder-entry-access";
 
 type RecordingEventKind = "session" | "marker" | "clip" | "retake" | "note";
 
@@ -48,7 +48,7 @@ type ImportedTrack = {
   sourceId?: string;
   sourceUrl?: string;
   durationMs?: number;
-  uploadState?: "idle" | "uploading" | "uploaded" | "error";
+  uploadState?: "idle" | "uploading" | "uploaded" | "error" | "local-only";
   uploadMessage?: string;
   fileName?: string;
   recordedStartAt?: string;
@@ -489,19 +489,9 @@ function getRecorderRouteParams() {
   };
 }
 
-function mapUploadResponse(payload: unknown) {
-  if (!payload || typeof payload !== "object") return null;
-  const record = payload as Record<string, unknown>;
-  if (record.success !== true) return null;
-
-  return {
-    sourceId: coerceString(record.sourceId),
-    url: coerceString(record.url),
-    message: coerceString(record.message),
-  };
-}
-
 const RECORDING_ROOM_PAYLOAD_VERSION = 2;
+const WEB_CAPTURE_UPLOAD_PAUSED_MESSAGE =
+  "Web cloud upload is temporarily unavailable while Quipsly completes the consent-bound resumable-v2 migration. This source remains local; download or export it before leaving.";
 
 function normalizeTrackSourceUrl(url: string | undefined) {
   const trimmed = (url || "").trim();
@@ -811,44 +801,6 @@ async function postEpisodeProduction(
   return response.json();
 }
 
-async function uploadRecordingTrack(
-  blob: Blob,
-  options: {
-    projectSlug: string;
-    episodeSlug: string;
-    trackId: string;
-    trackKind: RecordingTrackKind;
-    fileName?: string;
-    signal?: AbortSignal;
-  },
-) {
-  const formData = new FormData();
-  const extension = inferUploadTrackFileExt(blob.type, options.trackKind);
-  const fileName = options.fileName ?? `${options.projectSlug}-${options.episodeSlug}-${options.trackId}.${extension}`;
-  formData.append("file", new File([blob], fileName, { type: blob.type }));
-  formData.append("projectSlug", options.projectSlug);
-  formData.append("episodeSlug", options.episodeSlug);
-  formData.append("type", options.trackKind);
-  formData.append("trackId", options.trackId);
-
-  const response = await fetch("/api/ingest/mobile", {
-    method: "POST",
-    body: formData,
-    signal: options.signal,
-  });
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) {
-    const message = mapUploadResponse(payload)?.message ?? "Failed to upload audio.";
-    throw new Error(message);
-  }
-
-  return {
-    ...(mapUploadResponse(payload) ?? {}),
-    success: true,
-  };
-}
-
 export default function RecorderDashboard() {
   const { project: routeProject, episode: routeEpisode, seed: routeSeedDemo } = getRecorderRouteParams();
 
@@ -861,9 +813,6 @@ export default function RecorderDashboard() {
   const [clips, setClips] = useState<ClipCue[]>(defaultRoom().clips);
   const [events, setEvents] = useState<RecordingEvent[]>([]);
   const [tracks, setTracks] = useState<ImportedTrack[]>([]);
-  
-  const { tasks: cloudUploadTasks, uploadFile: cloudUploadFile } = useCloudStorageUpload();
-
   const [micReady, setMicReady] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [isRecording, setIsRecording] = useState(false);
@@ -883,23 +832,25 @@ export default function RecorderDashboard() {
   const [activeSegmentId, setActiveSegmentId] = useState(DEFAULT_CLIPS[0]?.segments[0]?.id ?? "");
   const [playNonce, setPlayNonce] = useState(0);
   const [productionState, setProductionState] = useState<EpisodeProductionState | null>(null);
+  const [entryAccessState, setEntryAccessState] = useState<"checking" | RecorderEntryAccessState>("checking");
+  const [entryAccessMessage, setEntryAccessMessage] = useState<string | null>(null);
+  const [entryAccessRetryToken, setEntryAccessRetryToken] = useState(0);
   const [roomSaveState, setRoomSaveState] = useState<RoomSaveStatus>("idle");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [roomSaveToast, setRoomSaveToast] = useState<string | null>(null);
   const [audioUploadState, setAudioUploadState] = useState<AudioUploadStatus>("idle");
   const [audioUploadStatus, setAudioUploadStatus] = useState<string | null>(null);
-  const [audioUploadSourceId, setAudioUploadSourceId] = useState<string | null>(null);
   const [isMobileLayout, setIsMobileLayout] = useState(false);
   const [clipFollowRecording, setClipFollowRecording] = useState(true);
   const isHydratedFromProduction = useRef(false);
   const routeHydrationRunRef = useRef(0);
+  const entryAccessRunRef = useRef(0);
   const productionHydrationRunRef = useRef(0);
   const activeHydrationRouteRef = useRef("");
   const roomAutosaveHashRef = useRef("");
   const roomAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | ReturnType<typeof window.setTimeout> | null>(null);
   const roomAutosaveRequestRef = useRef(0);
   const roomAutosaveAbortRef = useRef<AbortController | null>(null);
-  const trackUploadAbortRefs = useRef<Record<string, AbortController>>({});
   const roomSaveToastTimerRef = useRef<ReturnType<typeof setTimeout> | ReturnType<typeof window.setTimeout> | null>(null);
   const demoSeedAppliedRef = useRef(false);
 
@@ -943,16 +894,60 @@ export default function RecorderDashboard() {
   }, []);
 
   useEffect(() => {
+    const runId = ++entryAccessRunRef.current;
+    const controller = new AbortController();
+    setEntryAccessState("checking");
+    setEntryAccessMessage(null);
+    setProductionState(null);
+    setHydrated(false);
+
+    if (!routeProject) {
+      setEntryAccessState("allowed");
+      return () => controller.abort();
+    }
+
+    postEpisodeProduction({
+      action: "ensure",
+      projectSlug: routeProject,
+      episodeSlug: routeEpisode ?? "current-episode",
+      title: humanizeSlug(routeEpisode ?? "current-episode"),
+      boundaryLabel: humanizeSlug(routeEpisode ?? "current-episode"),
+      productionJson: {
+        surface: "recorder-entry",
+        projectSlug: routeProject,
+        episodeSlug: routeEpisode ?? "current-episode",
+      },
+    }, { signal: controller.signal }).then((state) => {
+      if (controller.signal.aborted || runId !== entryAccessRunRef.current) return;
+      const accessState = classifyRecorderEntryAccess(state);
+      setEntryAccessState(accessState);
+      setEntryAccessMessage(state.message ?? null);
+      if (accessState === "allowed") setProductionState(state);
+    }).catch((error) => {
+      if (isAbortError(error) || runId !== entryAccessRunRef.current) return;
+      setEntryAccessState("unavailable");
+      setEntryAccessMessage(error instanceof Error ? error.message : "Nest access could not be verified.");
+    });
+
+    return () => controller.abort();
+  }, [entryAccessRetryToken, routeEpisode, routeProject]);
+
+  useEffect(() => {
     const runId = ++routeHydrationRunRef.current;
     setHydrated(false);
     demoSeedAppliedRef.current = false;
     isHydratedFromProduction.current = false;
-    setProductionState(null);
     setRoomSaveState("idle");
     setLastSavedAt(null);
     roomAutosaveHashRef.current = "";
 
-    const slug = routeProject ?? window.localStorage.getItem("quipsly.last-recording-project") ?? "";
+    if (entryAccessState !== "allowed") {
+      setProjectSlug(routeProject ?? "");
+      setEpisodeSlug(routeEpisode ?? "current-episode");
+      return;
+    }
+
+    const slug = routeProject ?? "";
     const episode = routeEpisode ?? "current-episode";
     if (!slug) {
       setProjectSlug("");
@@ -1028,7 +1023,7 @@ export default function RecorderDashboard() {
     return () => {
       // No-op: stale local parse steps are ignored via runId matching.
     };
-  }, [routeEpisode, routeProject]);
+  }, [entryAccessState, routeEpisode, routeProject]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -1230,7 +1225,6 @@ export default function RecorderDashboard() {
       audioContextRef.current?.close();
       if (roomAutosaveTimerRef.current) clearTimeout(roomAutosaveTimerRef.current);
       if (roomSaveToastTimerRef.current) clearTimeout(roomSaveToastTimerRef.current);
-      Object.values(trackUploadAbortRefs.current).forEach((controller) => controller.abort());
       roomAutosaveAbortRef.current?.abort();
     };
   }, []);
@@ -1373,39 +1367,13 @@ export default function RecorderDashboard() {
     setTracks((current) => current.map((track) => (track.id === trackRecordId ? { ...track, ...patch } : track)));
   }, []);
 
-  const uploadTrack = useCallback(async (trackRecordId: string, trackSlotId: string, blob: Blob, trackKind: RecordingTrackKind) => {
-    setAudioStatus("Uploading local track to Vault...", "uploading");
+  const holdTrackLocally = useCallback((trackRecordId: string) => {
     setTrackUploadMeta(trackRecordId, {
-      uploadState: "uploading",
-      uploadMessage: "Queued for upload",
+      uploadState: "local-only",
+      uploadMessage: "Local only — cloud upload paused pending resumable-v2",
     });
-
-    const fileExt = inferUploadTrackFileExt(blob.type, trackKind);
-    const fileName = `${projectSlug}-${episodeSlug}-${trackSlotId}.${fileExt}`;
-
-    try {
-      const publicUrl = await cloudUploadFile(trackRecordId, blob, fileName, blob.type, {
-        episodeId: episodeSlug,
-        directory: projectSlug,
-      });
-
-      if (publicUrl) {
-        setTrackUploadMeta(trackRecordId, {
-          sourceUrl: publicUrl,
-          uploadState: "uploaded",
-          uploadMessage: "Uploaded to GCS",
-        });
-        setAudioStatus(`Uploaded: Audio synced to episode room via GCS.`, "uploaded");
-      }
-    } catch (error) {
-      console.warn("Could not upload recording track via GCS.", error);
-      setTrackUploadMeta(trackRecordId, {
-        uploadState: "error",
-        uploadMessage: error instanceof Error ? error.message : "Upload failed",
-      });
-      setAudioStatus("Upload failed. Track stored locally and retry manually.", "error");
-    }
-  }, [episodeSlug, projectSlug, setTrackUploadMeta, cloudUploadFile]);
+    setAudioStatus(WEB_CAPTURE_UPLOAD_PAUSED_MESSAGE, "not-available");
+  }, [setTrackUploadMeta]);
 
   const roomSaveStatusLabel = (() => {
     if (roomSaveState === "queued") return "Queued";
@@ -1569,7 +1537,6 @@ export default function RecorderDashboard() {
     setAudioMimeType(mimeType || "browser-default-audio");
     setAudioBlob(null);
     setAudioUrl(null);
-    setAudioUploadSourceId(null);
     setAudioUploadStatus(null);
     setAudioUploadState("idle");
     chunksRef.current = []; // Keep in-memory as fallback/fast-path for short clips if desired, but IDB is primary
@@ -1622,7 +1589,7 @@ export default function RecorderDashboard() {
       };
       setTracks((current) => [track, ...current]);
       startedAtRef.current = null;
-      uploadTrack(trackRecordId, trackId, blob, inferredKind);
+      holdTrackLocally(trackRecordId);
     };
 
     const start = startAt.getTime();
@@ -1767,7 +1734,7 @@ export default function RecorderDashboard() {
     setTracks((current) => [...tracksToAttach, ...current]);
     tracksToAttach.forEach((track, index) => {
       if (!track.trackId) return;
-      uploadTrack(track.id, track.trackId, files[index], track.kind ?? "audio");
+      holdTrackLocally(track.id);
     });
     logEvent("session", `Attached ${files.length} local file${files.length === 1 ? "" : "s"}`);
     event.target.value = "";
@@ -1848,6 +1815,45 @@ export default function RecorderDashboard() {
     }
   };
 
+  if (entryAccessState === "checking" || (entryAccessState === "allowed" && !hydrated)) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#0b0d12] px-5 py-10 text-slate-100">
+        <section className="w-full max-w-2xl rounded-[32px] border border-amber-300/25 bg-slate-950/80 p-8 text-center shadow-2xl shadow-black/30" aria-live="polite">
+          <p className="text-xs font-black uppercase tracking-[0.32em] text-amber-300">Protected recording room</p>
+          <h1 className="mt-4 text-4xl font-black tracking-tight text-white">Checking Nest access…</h1>
+          <p className="mt-4 text-base leading-7 text-slate-300">No script, notes, local room state, or capture controls load until this account is verified.</p>
+        </section>
+      </main>
+    );
+  }
+
+  if (entryAccessState === "denied" || entryAccessState === "unavailable") {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-[#0b0d12] px-5 py-10 text-slate-100">
+        <section className="w-full max-w-2xl rounded-[32px] border border-rose-300/30 bg-slate-950/80 p-8 text-center shadow-2xl shadow-black/30" role="alert">
+          <p className="text-xs font-black uppercase tracking-[0.32em] text-rose-300">Recording room protected</p>
+          <h1 className="mt-4 text-4xl font-black tracking-tight text-white">
+            {entryAccessState === "denied" ? "This Nest recorder is private." : "Recorder access could not be verified."}
+          </h1>
+          <p className="mt-4 text-base leading-7 text-slate-300">
+            No script, producer notes, local room state, or recording controls were loaded.
+          </p>
+          {entryAccessState === "unavailable" && entryAccessMessage ? <p className="mt-3 text-sm text-slate-400">{entryAccessMessage}</p> : null}
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
+            {entryAccessState === "unavailable" ? (
+              <button type="button" onClick={() => setEntryAccessRetryToken((token) => token + 1)} className="rounded-full bg-amber-300 px-5 py-3 text-sm font-black uppercase tracking-[0.18em] text-slate-950">
+                Retry
+              </button>
+            ) : null}
+            <Link href="/projects" className="rounded-full border border-white/15 px-5 py-3 text-sm font-black uppercase tracking-[0.18em] text-slate-100">
+              Choose an accessible Nest
+            </Link>
+          </div>
+        </section>
+      </main>
+    );
+  }
+
   if (hydrated && !projectSlug) {
     return (
       <main className="min-h-screen bg-[#0b0d12] px-5 py-10 text-slate-100">
@@ -1906,10 +1912,10 @@ export default function RecorderDashboard() {
               Video editor
             </Link>
             <Link
-              href={`/call?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}&room=${encodeURIComponent(episodeSlug)}&role=host`}
+              href="/coaching/sessions"
               className="rounded-full border border-[#2f2418] bg-[#2f2418] px-4 py-2 text-white shadow-sm hover:bg-[#46331f]"
             >
-              Live call
+              Session prep
             </Link>
             <Link
               href="/asset-manager"
@@ -2030,6 +2036,9 @@ export default function RecorderDashboard() {
             {/* Bottom Recording Control Dock */}
             <div className="absolute bottom-6 left-4 right-4 z-30">
               <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-[#11141a]/80 p-4 shadow-2xl backdrop-blur-xl">
+                <div role="status" className="rounded-xl border border-amber-400/20 bg-amber-950/50 px-3 py-2 text-[10px] font-bold leading-4 text-amber-200">
+                  Cloud upload paused pending consent-bound resumable-v2. Takes stay local; download or export before leaving.
+                </div>
                 {/* Audio Visualizer */}
                 <div className="flex h-8 items-end justify-center gap-[2px] opacity-80">
                   {audioLevels.map((level, index) => (
@@ -2048,6 +2057,8 @@ export default function RecorderDashboard() {
                     <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                       {audioUploadState === "uploaded"
                         ? "Uploaded"
+                        : audioUploadState === "not-available"
+                        ? "Local only"
                         : roomSaveState === "error"
                         ? "Error"
                         : micReady
@@ -2055,6 +2066,7 @@ export default function RecorderDashboard() {
                         : "Standby"}
                     </span>
                     {micError && <span className="text-[9px] text-red-400">{micError}</span>}
+                    {audioUploadStatus && <span className="max-w-[11rem] text-[9px] leading-3 text-amber-300">{audioUploadStatus}</span>}
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -2142,7 +2154,7 @@ export default function RecorderDashboard() {
                     <div className="text-xs font-black uppercase tracking-[0.28em] text-[#f4b860]">Local audio capture</div>
                     <h2 className="mt-2 text-4xl font-black tabular-nums">{formatClock(elapsedMs)}</h2>
                     <p className="mt-2 max-w-xl text-sm leading-6 text-[#d9c7a7]">
-                      Browser audio is the quick cockpit. For mission-critical sessions, run this plus the iPhone companion/back-up recorder until upload sync lands.
+                      Browser audio stays on this device. For mission-critical sessions, use the consent-bound iPhone Capture app and keep a local backup.
                     </p>
                   </div>
 
@@ -2172,6 +2184,10 @@ export default function RecorderDashboard() {
                 {micError ? (
                   <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-950/40 p-3 text-sm text-red-100">{micError}</div>
                 ) : null}
+
+                <div role="status" className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-950/40 p-3 text-sm leading-6 text-amber-100">
+                  <strong>Web cloud upload is paused.</strong> Resumable-v2 still needs an explicit capture-session and consent preflight here. No recording or attached file is sent; download or export local sources before leaving.
+                </div>
 
                 <div className="mt-6 flex h-20 items-end gap-1 rounded-2xl border border-white/10 bg-black/30 p-4">
                   {audioLevels.map((level, index) => (
@@ -2210,9 +2226,9 @@ export default function RecorderDashboard() {
               <div className="grid gap-5 xl:grid-cols-2">
                 <div className="rounded-3xl border border-[#dfcaa5] bg-[#fffaf0] p-5 shadow-sm">
                   <div className="text-xs font-black uppercase tracking-[0.22em] text-[#b07328]">Local takes</div>
-                  <h2 className="mt-1 text-xl font-black">Audio and uploaded tracks</h2>
+                  <h2 className="mt-1 text-xl font-black">Audio and local tracks</h2>
                   <p className="mt-2 text-sm leading-6 text-[#6b5a43]">
-                    Attach iPhone voice memos, backup WAVs, or browser captures here. Uploaded takes become episode tracks with explicit start/stop spine positions.
+                    Attach iPhone voice memos, backup WAVs, or browser captures here for this tab only. Cloud upload is unavailable until the consent-bound resumable-v2 migration is complete.
                   </p>
 
                   <div className="mt-4 flex flex-wrap gap-2">
@@ -2312,7 +2328,6 @@ export default function RecorderDashboard() {
                               {track.recordedStartAt ? ` / ${formatRecordingTimestamp(track.recordedStartAt)} → ${track.recordedEndAt ? formatRecordingTimestamp(track.recordedEndAt) : "..."}` : ""}
                               {track.uploadState ? ` / ${track.uploadState}` : ""}
                               {track.uploadMessage ? ` / ${track.uploadMessage}` : ""}
-                              {cloudUploadTasks[track.id] && cloudUploadTasks[track.id].state === "uploading" ? ` / ${cloudUploadTasks[track.id].progressPercent}%` : ""}
                             </div>
                             {track.sourceUrl ? (
                               <a

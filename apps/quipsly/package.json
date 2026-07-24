@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "next typegen && tsc --noEmit --incremental false"
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.67",
@@ -22,6 +22,7 @@
     "@high-ground/quipsly-domain": "workspace:*",
     "@high-ground/studio-domain": "workspace:*",
     "@hocuspocus/provider": "^4.1.0",
+    "@js-temporal/polyfill": "^0.5.1",
     "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
     "@react-three/drei": "^10.7.7",
@@ -58,12 +59,14 @@
     "react-dom": "latest",
     "recharts": "^2.15.4",
     "remotion": "^4.0.469",
+    "server-only": "^0.0.1",
     "three": "^0.165.0",
     "tippy.js": "^6.3.7",
     "yjs": "^13.6.30",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@7.0.2",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.2.2",
     "@testing-library/jest-dom": "^6.9.1",
@@ -76,8 +79,7 @@
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "tailwindcss": "^4.2.2",
-    "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.4"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

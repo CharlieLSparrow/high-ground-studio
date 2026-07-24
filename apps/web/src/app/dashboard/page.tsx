@@ -498,12 +498,13 @@ export default async function DashboardPage({
                     {showDonationCallout && coachingDonationUrl ? (
                       <div className="mt-4 rounded-2xl border border-flare/25 bg-flare/12 p-4">
                         <div className="mb-2 text-[12px] font-bold uppercase tracking-[0.08em] text-[var(--accent)]">
-                          Donation-supported coaching
+                          Flexible coaching contribution
                         </div>
                         <p className="mb-0 text-sm leading-7 text-[rgba(245,239,230,0.9)]">
-                          During Scott&apos;s credentialing season, sessions do
-                          not have a fixed fee. If this session was helpful, you
-                          can contribute whatever feels right and sustainable.
+                          Some coaching sessions stay flexible, and some become
+                          paid one-to-one work with a clear Stripe checkout
+                          link. Quipsly keeps the booking, payment evidence,
+                          consent, recording, and follow-up trail together.
                         </p>
                       </div>
                     ) : null}
@@ -797,7 +798,7 @@ export default async function DashboardPage({
               </h2>
 
               <p className="mb-0 mt-4 max-w-[760px] text-[1rem] leading-7 text-[rgba(245,239,230,0.9)]">
-                Tell us how you would like Scott to reach out. Once you send the request, he will follow up personally about fit, scheduling, and next steps.
+                Tell us how you would like Scott to reach out, what kind of session you need, and when you are generally available. This starts a Quipsly-owned request that can become a booking, call room, consent record, recording, transcript, and follow-up packet.
               </p>
 
               <form action={submitCoachingRequestAction} className="mt-6 space-y-4">
@@ -813,6 +814,31 @@ export default async function DashboardPage({
 
                 <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.9)]">
                   Signed in as <strong>{displayName}</strong>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="sessionIntent"
+                    className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                  >
+                    What kind of session are we planning?
+                  </label>
+                  <select
+                    id="sessionIntent"
+                    name="sessionIntent"
+                    defaultValue="COACHING"
+                    className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none"
+                  >
+                    <option value="COACHING" className="text-black">
+                      Coaching conversation
+                    </option>
+                    <option value="PODCAST_CAPTURE" className="text-black">
+                      Podcast or interview capture
+                    </option>
+                    <option value="RESEARCH_INTERVIEW" className="text-black">
+                      Research conversation
+                    </option>
+                  </select>
                 </div>
 
                 <div>
@@ -857,6 +883,47 @@ export default async function DashboardPage({
                   />
                 </div>
 
+                <div>
+                  <label
+                    htmlFor="availabilityNotes"
+                    className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                  >
+                    Availability notes <span className="font-normal text-[rgba(245,239,230,0.68)]">optional</span>
+                  </label>
+                  <textarea
+                    id="availabilityNotes"
+                    name="availabilityNotes"
+                    rows={3}
+                    className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none placeholder:text-[rgba(245,239,230,0.4)]"
+                    placeholder="Example: Weekday afternoons after 2, Mondays are rough, I am in Mountain time."
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="recordingInterest"
+                    className="mb-2 block text-sm font-semibold text-[var(--text-light)]"
+                  >
+                    Recording and transcript preference
+                  </label>
+                  <select
+                    id="recordingInterest"
+                    name="recordingInterest"
+                    defaultValue="NOT_SURE"
+                    className="w-full rounded-2xl border border-white/12 bg-white/8 px-4 py-3 text-[var(--text-light)] outline-none"
+                  >
+                    <option value="YES" className="text-black">
+                      I am open to recording and transcript if everyone consents
+                    </option>
+                    <option value="NOT_SURE" className="text-black">
+                      Not sure yet, talk me through it first
+                    </option>
+                    <option value="NO" className="text-black">
+                      I do not want this recorded
+                    </option>
+                  </select>
+                </div>
+
                 <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
                   If you choose Text and provide a phone number, you agree to receive text messages from High Ground Odyssey about your coaching request, scheduling, and related follow-up. Standard message and data rates may apply. Reply STOP to opt out. Reply HELP for help. Carriers are not liable for delayed or undelivered messages. {" "}
                   <Link
@@ -884,7 +951,11 @@ export default async function DashboardPage({
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
-                  Coaching is donation-supported during this credentialing season. There is no fixed fee up front. If the session is helpful, you can donate afterward in whatever amount feels appropriate and sustainable for you.
+                  Recording never starts in secret. If a session becomes a recorded coaching call, podcast, or interview, Quipsly will ask for explicit consent and show recording state before capture begins.
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-white/6 px-4 py-3 text-sm leading-6 text-[rgba(245,239,230,0.82)]">
+                  Coaching can stay flexible or become paid one-to-one depending on the session we agree to. If paid one-to-one coaching is used, Stripe is payment evidence and Quipsly keeps the booking, consent, recording, and transcript truth.
                 </div>
 
                 <button

@@ -1,0 +1,522 @@
+{
+  "assetCount": 19,
+  "assets": [
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "48000",
+      "audioStreamCount": 1,
+      "durationMin": 74.24,
+      "durationSec": 4454.2,
+      "extension": ".mp4",
+      "file": "CharlieVideo.mp4",
+      "fps": "24000/1001",
+      "notes": [
+        "Full-length 4K HEVC source. Generate/use proxy for editing; do not preview from raw 45GB original."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/CharlieVideo.mp4",
+      "proxyCandidatePath": null,
+      "recommendedRole": "charlie-camera-source",
+      "resolution": "3840x2160",
+      "sizeMB": 45333.1,
+      "streamKinds": [
+        "audio",
+        "data",
+        "video"
+      ],
+      "videoCodec": "hevc",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 1.67,
+      "durationSec": 100.101,
+      "extension": ".mp4",
+      "file": "Joe 1.mp4",
+      "fps": "30000/1001",
+      "notes": [
+        "Short duration; likely not full Homer camera coverage. Treat as candidate clip or source insert until proven otherwise."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Joe 1.mp4",
+      "proxyCandidatePath": null,
+      "recommendedRole": "short-video-source-or-reference",
+      "resolution": "640x480",
+      "sizeMB": 5.3,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 5.2,
+      "durationSec": 312.03,
+      "extension": ".mp4",
+      "file": "Joe 2.mp4",
+      "fps": "30000/1001",
+      "notes": [
+        "Short duration; likely not full Homer camera coverage. Treat as candidate clip or source insert until proven otherwise."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Joe 2.mp4",
+      "proxyCandidatePath": null,
+      "recommendedRole": "short-video-source-or-reference",
+      "resolution": "638x360",
+      "sizeMB": 14.1,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "48000",
+      "audioStreamCount": 1,
+      "durationMin": 29.98,
+      "durationSec": 1798.8,
+      "extension": ".lrv",
+      "file": "LRV_20260507_180459_01_080.lrv",
+      "fps": "25/1",
+      "notes": [
+        "Low-resolution proxy candidate for matching INSV segment."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/LRV_20260507_180459_01_080.lrv",
+      "proxyCandidatePath": null,
+      "recommendedRole": "homer-insta360-lrv-proxy-candidate",
+      "resolution": "1664x832",
+      "sizeMB": 966.7,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "48000",
+      "audioStreamCount": 1,
+      "durationMin": 29.98,
+      "durationSec": 1798.805,
+      "extension": ".lrv",
+      "file": "LRV_20260507_180459_01_081.lrv",
+      "fps": "25/1",
+      "notes": [
+        "Low-resolution proxy candidate for matching INSV segment."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/LRV_20260507_180459_01_081.lrv",
+      "proxyCandidatePath": null,
+      "recommendedRole": "homer-insta360-lrv-proxy-candidate",
+      "resolution": "1664x832",
+      "sizeMB": 966.7,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "48000",
+      "audioStreamCount": 1,
+      "durationMin": 1.0,
+      "durationSec": 60.16,
+      "extension": ".lrv",
+      "file": "LRV_20260507_180459_01_082.lrv",
+      "fps": "25/1",
+      "notes": [
+        "Low-resolution proxy candidate for matching INSV segment."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/LRV_20260507_180459_01_082.lrv",
+      "proxyCandidatePath": null,
+      "recommendedRole": "homer-insta360-lrv-proxy-candidate",
+      "resolution": "1664x832",
+      "sizeMB": 47.2,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 2.11,
+      "durationSec": 126.433,
+      "extension": ".mp4",
+      "file": "McFarland 1 Opening Locker Room.mp4",
+      "fps": "30/1",
+      "notes": [
+        "Use as contextual cutaway/overlay while discussion references it, not as a whole watched segment by default."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/McFarland 1 Opening Locker Room.mp4",
+      "proxyCandidatePath": null,
+      "recommendedRole": "reference-clip-weave-in",
+      "resolution": "1728x1080",
+      "sizeMB": 20.1,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 2.02,
+      "durationSec": 121.44,
+      "extension": ".mp4",
+      "file": "Mcfarland 2 Picking.mp4",
+      "fps": "5457/200",
+      "notes": [
+        "Use as contextual cutaway/overlay while discussion references it, not as a whole watched segment by default."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Mcfarland 2 Picking.mp4",
+      "proxyCandidatePath": null,
+      "recommendedRole": "reference-clip-weave-in",
+      "resolution": "1920x910",
+      "sizeMB": 25.3,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 1.76,
+      "durationSec": 105.511,
+      "extension": ".mp4",
+      "file": "Mcfarland 2 Superhuman.mp4",
+      "fps": "24000/1001",
+      "notes": [
+        "Use as contextual cutaway/overlay while discussion references it, not as a whole watched segment by default."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Mcfarland 2 Superhuman.mp4",
+      "proxyCandidatePath": null,
+      "recommendedRole": "reference-clip-weave-in",
+      "resolution": "1280x720",
+      "sizeMB": 14.0,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 75.53,
+      "durationSec": 4531.792,
+      "extension": ".m4a",
+      "file": "Recording in Phone\u2026 2.m4a",
+      "fps": null,
+      "notes": [
+        "Longest audio candidate; likely useful as first sync spine because it spans the whole conversation."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Recording in Phone\u2026 2.m4a",
+      "proxyCandidatePath": null,
+      "recommendedRole": "call-audio-spine-candidate",
+      "resolution": null,
+      "sizeMB": 53.0,
+      "streamKinds": [
+        "audio"
+      ],
+      "videoCodec": null,
+      "videoStreamCount": 0
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 75.53,
+      "durationSec": 4531.792,
+      "extension": ".m4a",
+      "file": "Recording in Phone\u2026.m4a",
+      "fps": null,
+      "notes": [
+        "Longest audio candidate; likely useful as first sync spine because it spans the whole conversation."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Recording in Phone\u2026.m4a",
+      "proxyCandidatePath": null,
+      "recommendedRole": "call-audio-spine-candidate",
+      "resolution": null,
+      "sizeMB": 53.0,
+      "streamKinds": [
+        "audio"
+      ],
+      "videoCodec": null,
+      "videoStreamCount": 0
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 3.23,
+      "durationSec": 193.933,
+      "extension": ".mp4",
+      "file": "Rocky 1 Training Montage.mp4",
+      "fps": "24000/1001",
+      "notes": [
+        "Use as contextual cutaway/overlay while discussion references it, not as a whole watched segment by default."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Rocky 1 Training Montage.mp4",
+      "proxyCandidatePath": null,
+      "recommendedRole": "reference-clip-weave-in",
+      "resolution": "1280x720",
+      "sizeMB": 26.5,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 3.12,
+      "durationSec": 186.921,
+      "extension": ".mp4",
+      "file": "Rocky IV.mp4",
+      "fps": "24000/1001",
+      "notes": [
+        "Use as contextual cutaway/overlay while discussion references it, not as a whole watched segment by default."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Rocky IV.mp4",
+      "proxyCandidatePath": null,
+      "recommendedRole": "reference-clip-weave-in",
+      "resolution": "1280x720",
+      "sizeMB": 14.7,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "44100",
+      "audioStreamCount": 1,
+      "durationMin": 3.23,
+      "durationSec": 193.933,
+      "extension": ".mp4",
+      "file": "Rocky Montage.mp4",
+      "fps": "24000/1001",
+      "notes": [
+        "Use as contextual cutaway/overlay while discussion references it, not as a whole watched segment by default."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Rocky Montage.mp4",
+      "proxyCandidatePath": null,
+      "recommendedRole": "reference-clip-weave-in",
+      "resolution": "1280x720",
+      "sizeMB": 26.5,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "h264",
+      "videoStreamCount": 1
+    },
+    {
+      "audioChannels": 1,
+      "audioCodec": "pcm_f32le",
+      "audioSampleRate": "48000",
+      "audioStreamCount": 1,
+      "durationMin": 74.99,
+      "durationSec": 4499.226,
+      "extension": ".wav",
+      "file": "Untitled_1 #03Episode 6.1.wav",
+      "fps": null,
+      "notes": [
+        "Long mono WAV; likely better final audio once synced."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Untitled_1 #03Episode 6.1.wav",
+      "proxyCandidatePath": null,
+      "recommendedRole": "high-quality-audio-primary-candidate",
+      "resolution": null,
+      "sizeMB": 825.4,
+      "streamKinds": [
+        "audio"
+      ],
+      "videoCodec": null,
+      "videoStreamCount": 0
+    },
+    {
+      "audioChannels": 1,
+      "audioCodec": "pcm_f32le",
+      "audioSampleRate": "48000",
+      "audioStreamCount": 1,
+      "durationMin": 18.41,
+      "durationSec": 1104.606,
+      "extension": ".wav",
+      "file": "Untitled_1 #04Episode 6.2.wav",
+      "fps": null,
+      "notes": [
+        "Shorter WAV segment; hold until aligned against the spine."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/Untitled_1 #04Episode 6.2.wav",
+      "proxyCandidatePath": null,
+      "recommendedRole": "high-quality-audio-pickup-or-break-candidate",
+      "resolution": null,
+      "sizeMB": 202.7,
+      "streamKinds": [
+        "audio"
+      ],
+      "videoCodec": null,
+      "videoStreamCount": 0
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "48000",
+      "audioStreamCount": 1,
+      "durationMin": 30.0,
+      "durationSec": 1800.0,
+      "extension": ".insv",
+      "file": "VID_20260507_180459_00_080.insv",
+      "fps": "25/1",
+      "notes": [
+        "Matching Insta360 LRV exists and should be used as proxy/review media before touching raw INSV."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/VID_20260507_180459_00_080.insv",
+      "proxyCandidatePath": "/Volumes/My Passport/Episode 6/LRV_20260507_180459_01_080.lrv",
+      "recommendedRole": "homer-insta360-raw-segment",
+      "resolution": "3840x3840",
+      "sizeMB": 38749.2,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "hevc",
+      "videoStreamCount": 2
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "48000",
+      "audioStreamCount": 1,
+      "durationMin": 30.0,
+      "durationSec": 1800.0,
+      "extension": ".insv",
+      "file": "VID_20260507_180459_00_081.insv",
+      "fps": "25/1",
+      "notes": [
+        "Matching Insta360 LRV exists and should be used as proxy/review media before touching raw INSV."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/VID_20260507_180459_00_081.insv",
+      "proxyCandidatePath": "/Volumes/My Passport/Episode 6/LRV_20260507_180459_01_081.lrv",
+      "recommendedRole": "homer-insta360-raw-segment",
+      "resolution": "3840x3840",
+      "sizeMB": 38643.7,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "hevc",
+      "videoStreamCount": 2
+    },
+    {
+      "audioChannels": 2,
+      "audioCodec": "aac",
+      "audioSampleRate": "48000",
+      "audioStreamCount": 1,
+      "durationMin": 0.96,
+      "durationSec": 57.84,
+      "extension": ".insv",
+      "file": "VID_20260507_180459_00_082.insv",
+      "fps": "25/1",
+      "notes": [
+        "Matching Insta360 LRV exists and should be used as proxy/review media before touching raw INSV."
+      ],
+      "path": "/Volumes/My Passport/Episode 6/VID_20260507_180459_00_082.insv",
+      "proxyCandidatePath": "/Volumes/My Passport/Episode 6/LRV_20260507_180459_01_082.lrv",
+      "recommendedRole": "homer-insta360-raw-segment",
+      "resolution": "3840x3840",
+      "sizeMB": 1253.7,
+      "streamKinds": [
+        "audio",
+        "video"
+      ],
+      "videoCodec": "hevc",
+      "videoStreamCount": 2
+    }
+  ],
+  "createdAt": "2026-06-23T13:51:57.921227+00:00",
+  "episodeSlug": "episode-6",
+  "knownRisks": [
+    "CharlieVideo.mp4 and INSV files are huge; preview/export must be proxy-first.",
+    "Joe 1/2 are too short to be full episode coverage; do not assume they are Homer camera spine.",
+    "Phone M4A files appear duplicate-length; one may be duplicate or alternate export.",
+    "Reference clips do not map cleanly to one watch segment; they need editorial weave-in decisions."
+  ],
+  "model": "quipsly-episode-media-intake-report",
+  "nextSafeActions": [
+    "Build or reuse proxies for CharlieVideo.mp4 and the three INSV chunks; prefer existing LRV for Homer review.",
+    "Extract small waveform/fingerprint audio from spine, Charlie, INSV/LRV, and WAV #03 into Quipsly cache for offset detection.",
+    "Create an Episode 6 session with whole synced lanes: spine audio, Charlie camera, Homer segment 080/081/082, held HQ audio, held reference clips.",
+    "Do not create hundreds of chopped clips. Use SHOW/SKIP/source-overlay decisions on top of whole lanes."
+  ],
+  "sourceFolder": "/Volumes/My Passport/Episode 6",
+  "sourcePolicy": "Original media remains untouched. Use LRV/proxy derivatives for editing and keep all edit/sync decisions as metadata.",
+  "syncPlan": [
+    {
+      "action": "Choose spine",
+      "detail": "Start with one phone M4A as conversation spine because it spans 75.53 minutes. Compare against WAV #03 as likely final high-quality audio.",
+      "step": 1
+    },
+    {
+      "action": "Sync Charlie video",
+      "detail": "Align CharlieVideo.mp4 audio to the spine. Generate a deterministic proxy before visual editing.",
+      "step": 2
+    },
+    {
+      "action": "Sync Homer Insta360 segments",
+      "detail": "Treat the three INSV files as sequential Homer source segments and use matching LRV files as proxy candidates. Preserve segment boundaries as source continuity metadata, not chopped edit clips.",
+      "step": 3
+    },
+    {
+      "action": "Hold/align high-quality audio",
+      "detail": "Sync WAV #03 to the spine as final audio candidate; hold WAV #04 as pickup/break until its offset is known.",
+      "step": 4
+    },
+    {
+      "action": "Weave reference clips",
+      "detail": "Rocky/McFarland/Joe clips should be attached as contextual source lanes or overlay candidates, then SHOW only when the conversation calls for them.",
+      "step": 5
+    }
+  ],
+  "version": "2026-06-23.episode6.intake.v1"
+}

@@ -26,13 +26,13 @@ export function SaveToLorelistModal({
   const handleSave = () => {
     if (!selectedList) return;
     setIsSaving(true);
-    
+
     // Simulate network delay for UX
     setTimeout(() => {
       setIsSaving(false);
       setSuccess(true);
       if (onSave) onSave(selectedList, note);
-      
+
       setTimeout(() => {
         setSuccess(false);
         onClose();
@@ -104,9 +104,9 @@ export function SaveToLorelistModal({
 
             <div className="share-modal-footer" style={footerStyle}>
               <button className="button" onClick={onClose}>Cancel</button>
-              <button 
-                className="button primary" 
-                onClick={handleSave} 
+              <button
+                className="button primary"
+                onClick={handleSave}
                 disabled={!selectedList || isSaving}
                 style={{ ...(isSaving || !selectedList ? disabledBtnStyle : primaryBtnStyle) }}
               >

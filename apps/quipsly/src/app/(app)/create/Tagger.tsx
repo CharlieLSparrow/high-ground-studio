@@ -12,6 +12,8 @@ import {
   unarchiveBlock,
   reorderDocumentBlocksAction,
   addBlockComment,
+  pastePlainTextBlocksAction,
+  type AssistantDocumentApplyReceipt,
 } from "./actions";
 import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
 import { BlockItem } from "./BlockItem";
@@ -21,6 +23,12 @@ export type Block = {
   text: string;
   tags: string[];
   spans?: TaggedSpan[];
+  sourceEvidence?: {
+    annotationId: string;
+    citationLabel: string;
+    sourcePath?: string;
+    immutable?: boolean;
+  };
 };
 
 export type TaggedSpan = {
@@ -43,6 +51,7 @@ export function uniqueTagIds(block: Block) {
 
 const UNDO_GROUP_WINDOW_MS = 1400;
 const MAX_UNDO_HISTORY = 40;
+const BLOCK_AUTOSAVE_DELAY_MS = 600;
 const STRUCTURE_TAG_IDS = new Set(["chapter", "episode"]);
 
 type PersistedTagSpan = {
@@ -146,7 +155,8 @@ export default function Tagger({
   documentId,
   scrollContainerRef,
   onBlocksChange,
-  onActiveScrollBoundaryChange
+  onActiveScrollBoundaryChange,
+  initialFocusBlockId,
 }: { 
   activeView: ViewDefinition, 
   activeBoundaryId: string | null,
@@ -158,6 +168,7 @@ export default function Tagger({
   scrollContainerRef?: RefObject<HTMLDivElement | null>,
   onBlocksChange?: (blocks: Block[]) => void,
   onActiveScrollBoundaryChange?: (boundaryId: string | null) => void,
+  initialFocusBlockId?: string,
 }) {
   const { tagDefinitions, blockAccents, blockCards } = useEditorExtensions();
   const applyTagOptions = tagDefinitions.filter(t => t.category === "structure");
@@ -170,6 +181,7 @@ export default function Tagger({
   const textareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>({});
   const blockWrapperRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const blocksRef = useRef<Block[]>(initialBlocks);
+  const suppressNextBlocksChangeRef = useRef(true);
   const committedSnapshotsRef = useRef<Record<string, BlockSnapshot>>({});
   const lastUndoActionTimeRef = useRef<number>(0);
   const undoGroupIdRef = useRef<string>(`undo-group-${Date.now()}`);
@@ -180,6 +192,36 @@ export default function Tagger({
   const [undoStack, setUndoStack] = useState<UndoAction[]>([]);
   const [showUndoHistory, setShowUndoHistory] = useState(false);
   const [outlineFocusedBlockId, setOutlineFocusedBlockId] = useState<string | null>(null);
+  const [isReordering, setIsReordering] = useState(false);
+  const [persistenceError, setPersistenceError] = useState<string | null>(null);
+  const reorderInFlightRef = useRef(false);
+  const saveInFlightRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handleShowRecentChanges = () => {
+      setShowUndoHistory(true);
+    };
+
+    window.addEventListener("quipsly:show-recent-changes", handleShowRecentChanges);
+    return () => window.removeEventListener("quipsly:show-recent-changes", handleShowRecentChanges);
+  }, []);
+
+  useEffect(() => {
+    if (!initialFocusBlockId || !initialBlocks.some((block) => block.id === initialFocusBlockId)) return;
+    let clearHighlightTimer: number | undefined;
+    const timer = window.setTimeout(() => {
+      const textarea = textareaRefs.current[initialFocusBlockId];
+      textarea?.scrollIntoView({ behavior: "smooth", block: "center" });
+      setOutlineFocusedBlockId(initialFocusBlockId);
+      clearHighlightTimer = window.setTimeout(() => {
+        setOutlineFocusedBlockId((current) => current === initialFocusBlockId ? null : current);
+      }, 2400);
+    }, 120);
+    return () => {
+      window.clearTimeout(timer);
+      if (clearHighlightTimer !== undefined) window.clearTimeout(clearHighlightTimer);
+    };
+  }, [documentId, initialBlocks, initialFocusBlockId]);
 
   const normalizeTaggedSpansForSnapshot = (spans: TaggedSpan[] | undefined): PersistedTagSpan[] => {
     return spans
@@ -393,6 +435,9 @@ export default function Tagger({
       for (const block of initialBlocks) {
         ensureCommittedSnapshot(block);
       }
+      // A server refresh, document switch, or view switch is canonical input,
+      // not a local edit. Do not bounce it back to Workspace as "unsaved".
+      suppressNextBlocksChangeRef.current = true;
       setBlocks(initialBlocks);
       prevViewKeyRef.current = currentViewKey;
     }
@@ -403,11 +448,15 @@ export default function Tagger({
   }, [blocks]);
 
   useEffect(() => {
+    if (suppressNextBlocksChangeRef.current) {
+      suppressNextBlocksChangeRef.current = false;
+      return;
+    }
     onBlocksChange?.(blocks);
   }, [blocks, onBlocksChange]);
 
   useEffect(() => {
-    const hasSavingBlocks = Object.values(savingBlocks).some(Boolean);
+    const hasSavingBlocks = isReordering || Object.values(savingBlocks).some(Boolean);
     const hasDirtyBlocks = Object.values(dirtyBlocks).some(Boolean);
 
     window.dispatchEvent(new CustomEvent("quipsly:save-state", {
@@ -415,7 +464,7 @@ export default function Tagger({
         state: hasSavingBlocks ? "saving" : hasDirtyBlocks ? "unsaved" : "saved"
       }
     }));
-  }, [dirtyBlocks, savingBlocks]);
+  }, [dirtyBlocks, isReordering, savingBlocks]);
 
   useEffect(() => {
     const handleFocusBlock = (event: Event) => {
@@ -438,38 +487,58 @@ export default function Tagger({
 
   useEffect(() => {
     const handleReorderBoundary = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (!detail) return;
-      const { activeId, overId, newIndex } = detail;
-      
-      setBlocks(current => {
-        const activeBoundary = documentBoundaries.find(b => b.id === activeId);
-        if (!activeBoundary) return current;
-        
-        const boundariesWithoutActive = documentBoundaries.filter(b => b.id !== activeId);
-        boundariesWithoutActive.splice(newIndex, 0, activeBoundary);
-        
-        const newBlocks: Block[] = [];
+      void (async () => {
+        const detail = (event as CustomEvent<{ activeId?: string; newIndex?: number }>).detail;
+        if (!detail?.activeId || !Number.isInteger(detail.newIndex)) return;
+
+        if (reorderInFlightRef.current) {
+          setPersistenceError("A document reorder is already being saved. Wait for it to finish before moving another section.");
+          return;
+        }
+
+        const current = blocksRef.current;
+        const activeBoundary = documentBoundaries.find((boundary) => boundary.id === detail.activeId);
+        if (!activeBoundary) return;
+
+        const boundariesWithoutActive = documentBoundaries.filter((boundary) => boundary.id !== detail.activeId);
+        const targetIndex = Math.max(0, Math.min(detail.newIndex ?? 0, boundariesWithoutActive.length));
+        boundariesWithoutActive.splice(targetIndex, 0, activeBoundary);
+
+        const nextBlocks: Block[] = [];
         const firstBoundary = documentBoundaries[0];
         const lastBoundary = documentBoundaries[documentBoundaries.length - 1];
-        
-        if (firstBoundary) {
-          newBlocks.push(...current.slice(0, firstBoundary.startIndex));
+        if (firstBoundary) nextBlocks.push(...current.slice(0, firstBoundary.startIndex));
+        for (const boundary of boundariesWithoutActive) {
+          nextBlocks.push(...current.slice(boundary.startIndex, boundary.endIndex + 1));
         }
-        
-        for (const b of boundariesWithoutActive) {
-           newBlocks.push(...current.slice(b.startIndex, b.endIndex + 1));
-        }
-        
         if (lastBoundary && lastBoundary.endIndex < current.length - 1) {
-           newBlocks.push(...current.slice(lastBoundary.endIndex + 1));
+          nextBlocks.push(...current.slice(lastBoundary.endIndex + 1));
         }
-        
-        // Fire action in background
-        void reorderDocumentBlocksAction(documentId, newBlocks.map(b => b.id));
 
-        return newBlocks;
-      });
+        reorderInFlightRef.current = true;
+        setIsReordering(true);
+        setPersistenceError(null);
+        blocksRef.current = nextBlocks;
+        setBlocks(nextBlocks);
+
+        try {
+          const result = await reorderDocumentBlocksAction(documentId, nextBlocks.map((block) => block.id));
+          if (!result.ok) {
+            blocksRef.current = current;
+            setBlocks(current);
+            setPersistenceError(result.error);
+          }
+        } catch (error) {
+          blocksRef.current = current;
+          setBlocks(current);
+          setPersistenceError(error instanceof Error
+            ? `The document order was not saved: ${error.message}`
+            : "The document order was not saved. The previous order was restored.");
+        } finally {
+          reorderInFlightRef.current = false;
+          setIsReordering(false);
+        }
+      })();
     };
 
     window.addEventListener("quipsly:reorder-boundary", handleReorderBoundary);
@@ -477,46 +546,107 @@ export default function Tagger({
   }, [documentBoundaries, documentId]);
 
   useEffect(() => {
-    const handleApplyAssistantDraft = (event: Event) => {
-      const detail = (event as CustomEvent).detail;
-      if (!detail) return;
-      const { kind, payload } = detail;
-      
-      if ((kind === "PROPOSE_REWRITE" || kind === "PROPOSE_CONTINUITY_FIX") && payload.blockId && payload.rewriteText) {
-        handleTextChange(payload.blockId, payload.rewriteText);
-        void handleTextBlur(payload.blockId, payload.rewriteText);
-      } else if (kind === "PROPOSE_DRAFT" && payload.draftText) {
-        const activeBoundary = activeBoundaryId ? documentBoundaries.find(b => b.id === activeBoundaryId) : null;
-        const insertIndex = activeBoundary ? activeBoundary.endIndex + 1 : blocksRef.current.length;
-        
-        const newBlock = {
-          id: `pending-draft-${Date.now()}`,
-          text: payload.draftText,
-          tags: [],
-          spans: []
-        };
-        
-        setBlocks(current => {
-          const next = [...current];
-          next.splice(insertIndex, 0, newBlock);
-          return next;
-        });
-        
-        window.setTimeout(() => {
-          void handleTextBlur(newBlock.id, newBlock.text);
-          const el = textareaRefs.current[newBlock.id];
-          if (el) {
-            el.focus();
-            el.selectionStart = newBlock.text.length;
-            el.selectionEnd = newBlock.text.length;
-          }
-        }, 100);
-      }
+    const insertBlockAtActiveBoundaryEnd = (newBlock: Block) => {
+      const activeBoundary = activeBoundaryId ? documentBoundaries.find(b => b.id === activeBoundaryId) : null;
+      const insertIndex = activeBoundary ? activeBoundary.endIndex + 1 : blocksRef.current.length;
+
+      setBlocks(current => {
+        const next = [...current];
+        next.splice(insertIndex, 0, newBlock);
+        return next;
+      });
+
+      window.setTimeout(() => {
+        void handleTextBlur(newBlock.id, newBlock.text);
+        const el = textareaRefs.current[newBlock.id];
+        if (el) {
+          el.focus();
+          el.selectionStart = 0;
+          el.selectionEnd = newBlock.text.length;
+        }
+      }, 100);
     };
 
-    window.addEventListener("quipsly:apply-assistant-draft", handleApplyAssistantDraft);
-    return () => window.removeEventListener("quipsly:apply-assistant-draft", handleApplyAssistantDraft);
-  }, [activeBoundaryId, documentBoundaries]);
+    const handleAssistantEditApplied = (event: Event) => {
+      const receipt = (event as CustomEvent<AssistantDocumentApplyReceipt>).detail;
+      if (!receipt || receipt.documentId !== documentId) return;
+
+      setBlocks((current) => {
+        if (receipt.kind === "rewrite") {
+          const next = current.map((block) => block.id === receipt.blockId
+            ? { ...block, text: receipt.text }
+            : block);
+          const committed = next.find((block) => block.id === receipt.blockId);
+          if (committed) committedSnapshotsRef.current[committed.id] = snapshotFromBlock(committed);
+          return next;
+        }
+
+        if (current.some((block) => block.id === receipt.blockId)) return current;
+        const created: Block = { id: receipt.blockId, text: receipt.text, tags: [], spans: [] };
+        committedSnapshotsRef.current[created.id] = snapshotFromBlock(created);
+        const next = [...current];
+        const targetIndex = receipt.insertAfterBlockId
+          ? next.findIndex((block) => block.id === receipt.insertAfterBlockId)
+          : -1;
+        next.splice(targetIndex >= 0 ? targetIndex + 1 : next.length, 0, created);
+        return next;
+      });
+      setDirtyBlocks((current) => {
+        const next = { ...current };
+        delete next[receipt.blockId];
+        return next;
+      });
+    };
+
+    const handleAssistantEditUndone = (event: Event) => {
+      const detail = (event as CustomEvent<AssistantDocumentApplyReceipt & { restoredText: string | null }>).detail;
+      if (!detail || detail.documentId !== documentId) return;
+
+      setBlocks((current) => {
+        if (detail.kind === "draft") {
+          const next = current.filter((block) => block.id !== detail.blockId);
+          delete committedSnapshotsRef.current[detail.blockId];
+          return next;
+        }
+        if (detail.restoredText === null) return current;
+        const restoredText = detail.restoredText;
+        const next = current.map((block) => block.id === detail.blockId
+          ? { ...block, text: restoredText }
+          : block);
+        const restored = next.find((block) => block.id === detail.blockId);
+        if (restored) committedSnapshotsRef.current[restored.id] = snapshotFromBlock(restored);
+        return next;
+      });
+      setDirtyBlocks((current) => {
+        const next = { ...current };
+        delete next[detail.blockId];
+        return next;
+      });
+    };
+
+    const handleCreateStructureBlock = (event: Event) => {
+      const detail = (event as CustomEvent<{ kind?: "chapter" | "episode"; label?: string }>).detail;
+      const kind = detail?.kind === "episode" ? "episode" : "chapter";
+      const fallbackLabel = kind === "episode" ? "New Episode" : "New Chapter";
+      const label = String(detail?.label || fallbackLabel).trim() || fallbackLabel;
+
+      insertBlockAtActiveBoundaryEnd({
+        id: `pending-${kind}-${Date.now()}`,
+        text: label,
+        tags: [kind],
+        spans: []
+      });
+    };
+
+    window.addEventListener("quipsly:assistant-edit-applied", handleAssistantEditApplied);
+    window.addEventListener("quipsly:assistant-edit-undone", handleAssistantEditUndone);
+    window.addEventListener("quipsly:create-structure-block", handleCreateStructureBlock);
+    return () => {
+      window.removeEventListener("quipsly:assistant-edit-applied", handleAssistantEditApplied);
+      window.removeEventListener("quipsly:assistant-edit-undone", handleAssistantEditUndone);
+      window.removeEventListener("quipsly:create-structure-block", handleCreateStructureBlock);
+    };
+  }, [activeBoundaryId, documentBoundaries, documentId]);
 
   useEffect(() => {
     const isTypingTarget = (target: EventTarget | null) => {
@@ -627,31 +757,43 @@ export default function Tagger({
     }
   };
 
-  const handleAddComment = useCallback(async (blockId: string, startOffset: number, endOffset: number, selectedText: string, noteBody: string) => {
-    // Optimistic UI
-    const spanId = `pending-span-${Date.now()}`;
-    const newSpan: TaggedSpan = { id: spanId, tagSlug: "comment", startOffset, endOffset, selectedText, noteBody };
-    setBlocks((currentBlocks) => currentBlocks.map(b => {
-      if (b.id !== blockId) return b;
-      
-      const newCommentSpan = {
-        id: `pending-comment-${blockId}-${startOffset}-${endOffset}`,
-        tagSlug: "comment",
-        label: "Comment",
-        startOffset,
-        endOffset,
-        selectedText,
-        noteBody
-      };
+  const handleAddComment = useCallback(async (
+    blockId: string,
+    startOffset: number,
+    endOffset: number,
+    selectedText: string,
+    noteBody: string,
+  ) => {
+    setPersistenceError(null);
+    try {
+      const result = await addBlockComment(blockId, startOffset, endOffset, selectedText, noteBody);
+      if (!result.ok) {
+        setPersistenceError(result.error);
+        return false;
+      }
 
-      return {
-        ...b,
-        spans: [...(b.spans || []), newCommentSpan]
-      };
-    }));
-
-    void addBlockComment(blockId, startOffset, endOffset, selectedText, noteBody);
-  }, [addBlockComment]);
+      setBlocks((currentBlocks) => currentBlocks.map((block) => block.id === blockId
+        ? {
+            ...block,
+            spans: [...(block.spans || []), {
+              id: result.commentId,
+              tagSlug: "comment",
+              label: "Comment",
+              startOffset,
+              endOffset,
+              selectedText,
+              noteBody,
+            }],
+          }
+        : block));
+      return true;
+    } catch (error) {
+      setPersistenceError(error instanceof Error
+        ? `The comment was not saved: ${error.message}`
+        : "The comment was not saved.");
+      return false;
+    }
+  }, []);
 
   const handleClearBlockTags = async (block: Block) => {
     if (uniqueTagIds(block).length === 0) return;
@@ -744,9 +886,13 @@ export default function Tagger({
       return { ...b, text: newText };
     }));
     setDirtyBlocks(prev => ({ ...prev, [blockId]: true }));
+    setPersistenceError(null);
   };
 
   const handleTextBlur = async (blockId: string, newText: string) => {
+    if (saveInFlightRef.current.has(blockId)) return;
+    saveInFlightRef.current.add(blockId);
+    setPersistenceError(null);
     const previousScroll = captureScrollState();
     const currentBlock = getCurrentBlock(blockId);
     const committed = committedSnapshotsRef.current[blockId] ?? (currentBlock ? snapshotFromBlock(currentBlock) : null);
@@ -776,11 +922,14 @@ export default function Tagger({
     setSavingBlocks(prev => ({ ...prev, [blockId]: true }));
     try {
       await saveBlockContent(blockId, newText);
-      const committedAfter = getCurrentBlock(blockId);
-      if (committedAfter) {
-        ensureCommittedSnapshot(committedAfter);
+      const latestBlock = getCurrentBlock(blockId);
+      if (latestBlock) {
+        ensureCommittedSnapshot({ ...latestBlock, text: newText });
       }
       setDirtyBlocks(prev => {
+        if (getCurrentBlock(blockId)?.text !== newText) {
+          return { ...prev, [blockId]: true };
+        }
         const next = { ...prev };
         delete next[blockId];
         return next;
@@ -788,10 +937,46 @@ export default function Tagger({
     } catch (error) {
       console.error("Block save failed.", error);
       setDirtyBlocks(prev => ({ ...prev, [blockId]: true }));
+      setPersistenceError("This block could not be saved. Your edit is still on this screen; change it or leave and return to the field to retry.");
     } finally {
+      saveInFlightRef.current.delete(blockId);
       setSavingBlocks(prev => ({ ...prev, [blockId]: false }));
     }
   };
+
+  useEffect(() => {
+    if (persistenceError) return;
+
+    const timers: number[] = [];
+    for (const [blockId, isDirty] of Object.entries(dirtyBlocks)) {
+      if (!isDirty || savingBlocks[blockId] || saveInFlightRef.current.has(blockId)) continue;
+      const block = blocks.find((candidate) => candidate.id === blockId);
+      if (!block) continue;
+
+      timers.push(window.setTimeout(() => {
+        const latestBlock = blocksRef.current.find((candidate) => candidate.id === blockId);
+        if (latestBlock) void handleTextBlur(blockId, latestBlock.text);
+      }, BLOCK_AUTOSAVE_DELAY_MS));
+    }
+
+    return () => {
+      for (const timer of timers) window.clearTimeout(timer);
+    };
+  }, [blocks, dirtyBlocks, persistenceError, savingBlocks]);
+
+  useEffect(() => {
+    const hasPendingSave = isReordering
+      || Object.values(dirtyBlocks).some(Boolean)
+      || Object.values(savingBlocks).some(Boolean);
+    if (!hasPendingSave) return;
+
+    const protectUnsavedWork = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", protectUnsavedWork);
+    return () => window.removeEventListener("beforeunload", protectUnsavedWork);
+  }, [dirtyBlocks, isReordering, savingBlocks]);
 
   const handleNavigatePrevious = useCallback((blockId: string) => {
     const index = blocksRef.current.findIndex(b => b.id === blockId);
@@ -858,57 +1043,45 @@ export default function Tagger({
 
   const handlePasteBlocks = useCallback(async (blockId: string, chunks: string[], selectionStart: number, selectionEnd: number) => {
     if (chunks.length <= 1) return;
-    
-    const index = blocksRef.current.findIndex(b => b.id === blockId);
-    if (index === -1) return;
-    
-    const currentBlock = blocksRef.current[index];
-    const firstChunk = chunks[0];
-    const remainingChunks = chunks.slice(1);
-    
-    const beforeText = currentBlock.text.slice(0, selectionStart);
-    const afterText = currentBlock.text.slice(selectionEnd);
-    const newCurrentText = `${beforeText}${firstChunk}`;
-    
-    const newBlocks: Block[] = remainingChunks.map((chunk, i) => {
-      const isLast = i === remainingChunks.length - 1;
-      return {
-        id: `pending-paste-${Date.now()}-${i}`,
-        text: isLast ? `${chunk}${afterText}` : chunk,
-        tags: [],
-        spans: []
-      };
-    });
-    
-    setBlocks(current => {
-      const next = [...current];
-      const idx = next.findIndex(b => b.id === blockId);
-      if (idx !== -1) {
-        next[idx] = { ...next[idx], text: newCurrentText };
-        next.splice(idx + 1, 0, ...newBlocks);
-      }
-      return next;
-    });
-    
-    window.setTimeout(() => {
-      const lastBlockId = newBlocks[newBlocks.length - 1].id;
-      const el = textareaRefs.current[lastBlockId];
-      if (el) {
-        el.focus();
-        const endPos = remainingChunks[remainingChunks.length - 1].length;
-        el.selectionStart = endPos;
-        el.selectionEnd = endPos;
-      }
-    }, 0);
-    
+    setSavingBlocks((current) => ({ ...current, [blockId]: true }));
+    setPersistenceError(null);
     try {
-      if (onBlocksChange) {
-        onBlocksChange(blocksRef.current);
+      const result = await pastePlainTextBlocksAction(blockId, chunks, selectionStart, selectionEnd);
+      if (!result.ok) {
+        setPersistenceError(result.error);
+        return;
       }
-    } catch (e) {
-      console.error("Failed to save pasted blocks", e);
+      setBlocks((current) => {
+        const index = current.findIndex((block) => block.id === blockId);
+        if (index === -1) return current;
+        const next = [...current];
+        next[index] = result.currentBlock;
+        next.splice(index + 1, 0, ...result.newBlocks);
+        return next;
+      });
+      ensureCommittedSnapshot(result.currentBlock);
+      for (const block of result.newBlocks) ensureCommittedSnapshot(block);
+      setDirtyBlocks((current) => {
+        const next = { ...current };
+        delete next[blockId];
+        return next;
+      });
+      window.setTimeout(() => {
+        const lastBlock = result.newBlocks.at(-1);
+        if (!lastBlock) return;
+        const textarea = textareaRefs.current[lastBlock.id];
+        if (!textarea) return;
+        textarea.focus();
+        textarea.selectionStart = lastBlock.text.length;
+        textarea.selectionEnd = lastBlock.text.length;
+      }, 0);
+    } catch (error) {
+      console.error("Atomic paste failed.", error);
+      setPersistenceError("The pasted blocks were not saved. The canonical document was left unchanged.");
+    } finally {
+      setSavingBlocks((current) => ({ ...current, [blockId]: false }));
     }
-  }, [onBlocksChange]);
+  }, []);
 
   const handleNormalizeHeading = async (block: Block) => {
     const suggestion = canonicalBoundarySuggestion(block.text);
@@ -1305,6 +1478,22 @@ export default function Tagger({
 
   return (
     <div className="mx-auto w-full max-w-[680px] pb-96">
+      {persistenceError ? (
+        <div className="mb-5 flex items-start justify-between gap-4 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm leading-6 text-rose-900" role="alert">
+          <div>
+            <strong className="block font-black">Not saved</strong>
+            {persistenceError}
+          </div>
+          <button
+            type="button"
+            onClick={() => setPersistenceError(null)}
+            className="shrink-0 rounded-md border border-rose-300 px-2 py-1 text-xs font-black hover:bg-rose-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
+
       {undoStack.length > 0 ? (
         <div className="fixed bottom-6 right-6 z-50 w-full max-w-sm rounded-xl border border-[#eadfca] bg-white/95 p-3 text-sm text-[#5e4b33] shadow-lg backdrop-blur-sm">
           <div className="flex flex-wrap items-center gap-2">
@@ -1383,6 +1572,9 @@ export default function Tagger({
           key={block.id}
           block={block}
           blockIndex={blockIndexById.get(block.id) ?? index}
+          previousBlockIsImmutable={Boolean(
+            blocks[(blockIndexById.get(block.id) ?? index) - 1]?.sourceEvidence?.immutable
+          )}
           boundaryId={boundaryIdByBlockId.get(block.id)}
           isOutlineFocused={outlineFocusedBlockId === block.id}
           isSaving={!!savingBlocks[block.id]}

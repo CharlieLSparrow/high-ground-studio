@@ -6,19 +6,111 @@ substitutions:
   _NEXT_PUBLIC_STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
   _STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
   _QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS: "0"
+  _QUIPSLY_BUILD_ID: "manual"
+  _NEXT_PUBLIC_FIREBASE_API_KEY: "AIzaSyDvcHtENDtiZCjBS46cW-qa91nHe5DjUkM"
+  _NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "quipsly-reef.firebaseapp.com"
+  _NEXT_PUBLIC_FIREBASE_PROJECT_ID: "quipsly-reef"
+  _NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "quipsly-reef.firebasestorage.app"
+  _NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "249115653261"
+  _NEXT_PUBLIC_FIREBASE_APP_ID: "1:249115653261:web:d49c566ebe99148cbddec4"
+  _NODE_OPTIONS: "--max-old-space-size=8192"
+  _BUILD_CACHE_IMAGE_NAME: studio-build-cache
+  _BUILD_CACHE_TAG: main
 
 steps:
-  - id: build-quipsly-web-image
-    name: gcr.io/kaniko-project/executor:latest
+  - id: normalize-quipsly-context-metadata
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
+    entrypoint: bash
     args:
-      - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
-      - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:latest
-      - --cache=true
-      - --cache-ttl=168h
-      - --build-arg=NEXT_PUBLIC_STUDIO_COLLAB_URL=${_NEXT_PUBLIC_STUDIO_COLLAB_URL}
-      - --build-arg=STUDIO_COLLAB_URL=${_STUDIO_COLLAB_URL}
-      - --build-arg=QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=${_QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS}
-      - --dockerfile=apps/quipsly/Dockerfile
+      - scripts/release/quipsly-normalize-context-metadata.sh
+      - /workspace
 
-images:
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+  - id: build-quipsly-web-image
+    name: gcr.io/cloud-builders/docker@sha256:680b2a8d18a794c165cf97a3f9476784d5d962e945d424cb40b3e086cde0c284
+    entrypoint: bash
+    args:
+      - -euo
+      - pipefail
+      - -c
+      - |
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        cache_image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_BUILD_CACHE_IMAGE_NAME}:${_BUILD_CACHE_TAG}"
+
+        docker buildx version
+        docker buildx create \
+          --name quipsly-cloud-build \
+          --driver docker-container \
+          --driver-opt image=moby/buildkit:v0.30.0 \
+          --use
+        docker buildx inspect --bootstrap
+        docker buildx build \
+          --builder quipsly-cloud-build \
+          --platform linux/amd64 \
+          --progress plain \
+          --file apps/quipsly/Dockerfile \
+          --tag "$${image}" \
+          --cache-from "type=registry,ref=$${cache_image}" \
+          --cache-to "type=registry,ref=$${cache_image},mode=max,compression=zstd,oci-mediatypes=true,image-manifest=true" \
+          --build-arg NEXT_PUBLIC_STUDIO_COLLAB_URL=${_NEXT_PUBLIC_STUDIO_COLLAB_URL} \
+          --build-arg STUDIO_COLLAB_URL=${_STUDIO_COLLAB_URL} \
+          --build-arg QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=${_QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS} \
+          --build-arg QUIPSLY_BUILD_ID=${_QUIPSLY_BUILD_ID} \
+          --build-arg NEXT_PUBLIC_FIREBASE_API_KEY=${_NEXT_PUBLIC_FIREBASE_API_KEY} \
+          --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN} \
+          --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_NEXT_PUBLIC_FIREBASE_PROJECT_ID} \
+          --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET} \
+          --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID} \
+          --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=${_NEXT_PUBLIC_FIREBASE_APP_ID} \
+          --build-arg NODE_OPTIONS=${_NODE_OPTIONS} \
+          --push \
+          .
+
+  - id: verify-quipsly-web-image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
+    entrypoint: bash
+    args:
+      - -euo
+      - pipefail
+      - -c
+      - |
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        for attempt in 1 2 3 4 5 6; do
+          digest="$$(gcloud artifacts docker images describe "$${image}" \
+            --format='value(image_summary.digest)' 2>/dev/null || true)"
+          if [[ "$${digest}" =~ ^sha256:[0-9a-f]{64}$$ ]]; then
+            printf '%s\n' "$${digest}" | tee /workspace/quipsly-image-digest.txt
+            exit 0
+          fi
+          sleep "$$((attempt * 2))"
+        done
+        echo "Could not read back pushed image $${image}." >&2
+        exit 1
+
+  - id: verify-quipsly-route-bundles
+    name: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+    entrypoint: node
+    args:
+      - -e
+      - |
+        const fs = require("node:fs");
+        const manifestPath = "/app/apps/quipsly/.next/app-path-routes-manifest.json";
+        const routes = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        const requiredRoutes = new Map([
+          ["/(app)/outputs/page", "/outputs"],
+          ["/(app)/outputs/[outputId]/page", "/outputs/[outputId]"],
+          ["/api/mac/firebase-client-config/route", "/api/mac/firebase-client-config"],
+          ["/api/mac/session-check/route", "/api/mac/session-check"],
+          ["/api/mobile/capture/rooms/join/diagnostics/route", "/api/mobile/capture/rooms/join/diagnostics"],
+          ["/api/mobile/capture/rooms/join/route", "/api/mobile/capture/rooms/join"],
+        ]);
+        for (const [entry, route] of requiredRoutes) {
+          if (routes[entry] !== route) {
+            throw new Error(
+              `Missing required route ${route}: ${entry} resolved to ${routes[entry] ?? "nothing"}`,
+            );
+          }
+        }
+        console.log(`PASS Verified ${requiredRoutes.size} required Quipsly routes in the image.`);
+
+options:
+  machineType: E2_HIGHCPU_32

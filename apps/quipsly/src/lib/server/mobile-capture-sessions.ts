@@ -1,0 +1,793 @@
+import { buildQuipslyCoachingLifecycle } from "@high-ground/quipsly-domain/coaching-lifecycle";
+import {
+  isTranscriptPacketSource,
+  isUnreviewedTranscriptActionItemSource,
+} from "@high-ground/quipsly-domain/coaching-packet";
+import {
+  buildMobileCaptureConsentVersions,
+  latestMobileCaptureConsentForParticipant,
+  mobileCaptureAllPartiesReady,
+} from "./mobile-capture-consent-readiness.js";
+import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
+import { recordingContentReadiness } from "./mobile-capture-content-readiness";
+
+const MOBILE_CAPTURE_ACTION_PACKET_KIND = "quipsly-capture-action-packet-v1";
+
+function label(value: unknown) {
+  return typeof value === "string" ? value : null;
+}
+
+export function canonicalMobileSessionProject(room: any) {
+  const projectId = label(room?.project?.id) || label(room?.projectId);
+  const canonicalSlug = label(room?.project?.slug);
+  const legacySlug = label(room?.projectSlug) || label(room?.nestSlug);
+  if (projectId && canonicalSlug) {
+    return {
+      projectId,
+      projectSlug: canonicalSlug,
+      projectName: label(room?.project?.name),
+      bindingSource: "canonical-session-project",
+      legacySlugDrift: Boolean(legacySlug && legacySlug !== canonicalSlug),
+    };
+  }
+  return {
+    projectId: null,
+    projectSlug: legacySlug,
+    projectName: null,
+    bindingSource: legacySlug ? "legacy-session-slug" : "unfiled-session",
+    legacySlugDrift: false,
+  };
+}
+
+function consentNextAction(status: string | null | undefined) {
+  if (status === "GRANTED") return "Ready for consented capture.";
+  if (status === "DECLINED") return "Consent declined. Do not record this session.";
+  if (status === "REVOKED") return "Consent revoked. Stop or avoid recording until consent is granted again.";
+  return "Save your recorder attestation and collect consent from every signed-in participant before recording.";
+}
+
+function registeredParticipantConsentSummary(room: any) {
+  const participants = Array.isArray(room?.participants)
+    ? room.participants.filter((participant: any) => participant?.role !== "OBSERVER" && Boolean(participant?.userId))
+    : [];
+  const consents = Array.isArray(room?.recordingConsents) ? room.recordingConsents : [];
+  const versions = buildMobileCaptureConsentVersions({ participants, consents });
+  const grantedCount = versions.filter((consent: any) => (
+    consent.status === "GRANTED"
+    && consent.canRecordAudio
+    && Boolean(consent.consentedAt)
+    && !consent.revokedAt
+  )).length;
+
+  return {
+    requiredCount: participants.length,
+    grantedCount,
+    allGranted: mobileCaptureAllPartiesReady(versions, "audio"),
+  };
+}
+
+export function providerReadinessForMobileCaptureSession(room: any, env: NodeJS.ProcessEnv = process.env) {
+  const provider = label(room.provider)?.toLowerCase() || "planned";
+  const providerRoomId = label(room.providerRoomId);
+  const hasLiveKitConfig = Boolean(
+    env.LIVEKIT_URL &&
+      env.LIVEKIT_API_KEY &&
+      env.LIVEKIT_API_SECRET,
+  );
+
+  if (provider === "livekit" && providerRoomId && hasLiveKitConfig) {
+    return {
+      providerRoomId,
+      providerCanJoin: true,
+      providerReadiness: "livekit-ready",
+      providerNextAction: "Prepare call room to mint a short-lived LiveKit join token. Recording still requires consent.",
+    };
+  }
+
+  if (provider === "livekit" && providerRoomId) {
+    return {
+      providerRoomId,
+      providerCanJoin: false,
+      providerReadiness: "livekit-needs-config",
+      providerNextAction: "LiveKit is selected, but server credentials are not configured yet. Use local capture fallback.",
+    };
+  }
+
+  if (provider === "livekit") {
+    return {
+      providerRoomId: null,
+      providerCanJoin: false,
+      providerReadiness: "livekit-needs-room-id",
+      providerNextAction: "LiveKit is selected, but the provider room ID is missing. Ask the team to prepare the room again.",
+    };
+  }
+
+  return {
+    providerRoomId,
+    providerCanJoin: false,
+    providerReadiness: "local-fallback",
+    providerNextAction: "This session is ready for local recording fallback. Team can prepare LiveKit from the coaching runway.",
+  };
+}
+
+function sourceJson(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function isProviderRecordingReceiptSlot(asset: any) {
+  const manifest = sourceJson(asset?.localManifestJson);
+  return asset?.kind === "SERVER_MIX" && manifest.source === "provider-recording-receipt-slot";
+}
+
+function receiptsForRecordingAsset(receipts: any[], recordingAssetId: string) {
+  return receipts.filter((receipt: any) => receipt?.recordingAssetId === recordingAssetId);
+}
+
+function captureProcessingGate(room: any, asset: any, receipts: any[], transcript: boolean) {
+  if (!asset) {
+    return {
+      allowed: false as const,
+      errorCode: "CAPTURE_RECORDING_ASSET_REQUIRED",
+      error: "Capture processing requires recording asset evidence.",
+    };
+  }
+  return mobileCaptureProcessingGateFromEvidence({
+    recordingAsset: asset,
+    receipts: receiptsForRecordingAsset(receipts, asset.id),
+    room,
+    transcript,
+  });
+}
+
+function transcribableRecordingAssets(room: any, receipts: any[]) {
+  return Array.isArray(room?.recordingAssets)
+    ? room.recordingAssets.filter((asset: any) => (
+        !isProviderRecordingReceiptSlot(asset)
+        && captureProcessingGate(room, asset, receipts, true).allowed
+      ))
+    : [];
+}
+
+function providerRecordingReceiptSlot(room: any) {
+  return Array.isArray(room?.recordingAssets)
+    ? room.recordingAssets.find((asset: any) => isProviderRecordingReceiptSlot(asset)) || null
+    : null;
+}
+
+function recordingPromotion(asset: any) {
+  const manifest = sourceJson(asset?.localManifestJson);
+  return sourceJson(manifest.promotion);
+}
+
+function previewText(value: unknown, maxLength = 180) {
+  const normalized = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  if (normalized.length <= maxLength) return normalized;
+  return `${normalized.slice(0, maxLength - 3)}...`;
+}
+
+function serverRecordingVerified(value: unknown) {
+  if (isProviderRecordingReceiptSlot(value)) return false;
+  const status = label(sourceJson(value).status)?.toUpperCase() || "";
+  return ["VERIFIED", "TRANSCRIBED"].includes(status);
+}
+
+function calendarReceiptExists(booking: any) {
+  const link = booking?.calendarLinks?.[0] || null;
+  const status = label(link?.status)?.toUpperCase() || "";
+  return Boolean(
+    link?.externalEventId ||
+      link?.providerEventId ||
+      ["CREATED", "SYNCED", "UPDATED", "VERIFIED"].includes(status),
+  );
+}
+
+function afterCaptureNextAction(input: {
+  recordingCount: number;
+  latestTranscriptStatus?: string | null;
+  packetSummaryNoteId?: string | null;
+  transcriptProcessingAllowed: boolean;
+}) {
+  if (!input.transcriptProcessingAllowed && input.recordingCount > 0) {
+    return "Capture evidence is preserved. Await reviewed transcript release before running transcription or using packet projections.";
+  }
+  if (input.packetSummaryNoteId) return "Coaching packet exists. Review summary, highlights, and action items in Quipsly.";
+  if (input.latestTranscriptStatus === "COMPLETED") return "Transcript is complete. Build a coaching packet when you are ready.";
+  if (input.latestTranscriptStatus === "RUNNING") return "Transcript job is running. Refresh before building the packet.";
+  if (input.latestTranscriptStatus === "QUEUED" || input.latestTranscriptStatus === "HELD" || input.latestTranscriptStatus === "FAILED") {
+    return "Recording is uploaded. Run or retry transcription before packet review.";
+  }
+  if (input.recordingCount > 0) return "Recording exists. Run transcription; Quipsly will create or repair the transcript job if needed.";
+  return "Record with consent first. Quipsly will keep the local capture, upload it, transcribe it, then build a review packet.";
+}
+
+function captureReadinessForMobileSession(input: {
+  room: any;
+  consentStatus?: string | null;
+  consentGranted: boolean;
+  allRegisteredParticipantConsentGranted: boolean;
+  provider: ReturnType<typeof providerReadinessForMobileCaptureSession>;
+  recordingCount: number;
+  latestTranscriptStatus?: string | null;
+  packetSummaryNoteId?: string | null;
+  afterCaptureNextAction: string;
+}) {
+  const roomStatus = label(input.room.status)?.toUpperCase() || "PLANNED";
+  const bookingStatus = label(input.room.booking?.status)?.toUpperCase() || null;
+  const paymentPolicy = label(input.room.booking?.paymentPolicy)?.toUpperCase() || null;
+  const paymentStatus = label(input.room.booking?.paymentRecord?.status)?.toUpperCase() || null;
+  const blockers: string[] = [];
+  const evidence: string[] = [];
+
+  if (bookingStatus) evidence.push(`booking:${bookingStatus.toLowerCase()}`);
+  if (paymentPolicy) evidence.push(`payment-policy:${paymentPolicy.toLowerCase()}`);
+  if (paymentStatus) evidence.push(`payment:${paymentStatus.toLowerCase()}`);
+  if (input.consentStatus) evidence.push(`consent:${input.consentStatus.toLowerCase()}`);
+  if (input.provider.providerReadiness) evidence.push(`provider:${input.provider.providerReadiness}`);
+  if (input.latestTranscriptStatus) evidence.push(`transcript:${input.latestTranscriptStatus.toLowerCase()}`);
+
+  const paidOneToOneNeedsEvidence =
+    paymentPolicy === "PAID_ONE_TO_ONE" &&
+    paymentStatus !== "PAID" &&
+    bookingStatus === "HOLDING_PAYMENT";
+
+  if (bookingStatus === "CANCELED") {
+    blockers.push("booking-canceled");
+    return {
+      status: "blocked",
+      label: "Canceled",
+      tone: "blocked",
+      safeToRecordLocally: false,
+      providerCanJoin: false,
+      detail: "This booking is canceled. Preserve the record, but do not capture.",
+      nextAction: "Open the booking history or create a new confirmed booking before recording.",
+      blockers,
+      evidence,
+    };
+  }
+
+  if (input.packetSummaryNoteId) {
+    return {
+      status: "review-ready",
+      label: "Packet ready",
+      tone: "complete",
+      safeToRecordLocally: false,
+      providerCanJoin: false,
+      detail: "Recording, transcript, and coaching packet evidence are ready for review.",
+      nextAction: input.afterCaptureNextAction,
+      blockers,
+      evidence,
+    };
+  }
+
+  if (roomStatus === "ENDED") {
+    return {
+      status: "post-capture",
+      label: input.latestTranscriptStatus === "COMPLETED" ? "Transcript ready" : "After capture",
+      tone: input.latestTranscriptStatus === "COMPLETED" ? "ready" : "attention",
+      safeToRecordLocally: false,
+      providerCanJoin: false,
+      detail: "The room is ended. Continue with transcript repair or packet building instead of recording.",
+      nextAction: input.afterCaptureNextAction,
+      blockers,
+      evidence,
+    };
+  }
+
+  if (!input.consentGranted) {
+    blockers.push("recording-consent-needed");
+    return {
+      status: "needs-consent",
+      label: "Consent needed",
+      tone: "attention",
+      safeToRecordLocally: false,
+      providerCanJoin: false,
+      detail: "Recording stays locked until explicit participant consent is granted.",
+      nextAction: consentNextAction(input.consentStatus),
+      blockers,
+      evidence,
+    };
+  }
+
+  if (!input.allRegisteredParticipantConsentGranted) {
+    blockers.push("registered-participant-consent-needed");
+    return {
+      status: "needs-participant-consent",
+      label: "Participant consent needed",
+      tone: "attention",
+      safeToRecordLocally: false,
+      providerCanJoin: false,
+      detail: "Every signed-in, non-observer participant must save their own consent before this room is marked ready.",
+      nextAction: "Ask each signed-in participant to save consent. In-person people who may be heard must also be covered by the recorder attestation.",
+      blockers,
+      evidence,
+    };
+  }
+
+  if (paidOneToOneNeedsEvidence) {
+    blockers.push("payment-evidence-needed");
+    return {
+      status: "payment-hold",
+      label: "Payment hold",
+      tone: "attention",
+      safeToRecordLocally: false,
+      providerCanJoin: false,
+      detail: "This paid one-to-one booking is waiting on payment evidence before confirmed capture.",
+      nextAction: "Keep Stripe as evidence. Do not record this paid session until the booking is confirmed or a human explicitly changes the policy.",
+      blockers,
+      evidence,
+    };
+  }
+
+  if (!["PLANNED", "OPEN", "RECORDING"].includes(roomStatus)) {
+    blockers.push("room-not-open");
+    return {
+      status: "not-open",
+      label: "Room not open",
+      tone: "attention",
+      safeToRecordLocally: false,
+      providerCanJoin: false,
+      detail: "The session is not in a recordable room state.",
+      nextAction: "Open or prepare the room from the coaching runway before capture.",
+      blockers,
+      evidence,
+    };
+  }
+
+  if (input.provider.providerCanJoin) {
+    return {
+      status: "ready-provider",
+      label: "Ready to join",
+      tone: "ready",
+      safeToRecordLocally: true,
+      providerCanJoin: true,
+      detail: "Consent is granted and the provider room is join-ready. Keep local recording fallback visible.",
+      nextAction: input.provider.providerNextAction,
+      blockers,
+      evidence,
+    };
+  }
+
+  return {
+    status: "ready-local-fallback",
+    label: "Ready locally",
+    tone: input.provider.providerReadiness === "local-fallback" ? "ready" : "fallback",
+    safeToRecordLocally: true,
+    providerCanJoin: false,
+    detail: "Consent is granted. Local capture can proceed even though the provider room is not join-ready.",
+    nextAction: input.provider.providerNextAction,
+    blockers,
+    evidence,
+  };
+}
+
+function mobileSessionJourneySummary(input: {
+  room: any;
+  participant: any;
+  recordingConsentGranted: boolean;
+  provider: ReturnType<typeof providerReadinessForMobileCaptureSession>;
+  captureReadiness: ReturnType<typeof captureReadinessForMobileSession>;
+  recordingCount: number;
+  contentReadiness: ReturnType<typeof recordingContentReadiness>;
+  latestTranscriptJob: any;
+  latestTranscriptStatus?: string | null;
+  packetSummaryNoteId?: string | null;
+  afterCaptureNextAction: string;
+  transcriptProcessingAllowed: boolean;
+  transcriptHoldReasonCode?: string | null;
+}) {
+  const paymentPolicy = label(input.room.booking?.paymentPolicy)?.toUpperCase() || null;
+  const paymentStatus = label(input.room.booking?.paymentRecord?.status)?.toUpperCase() || null;
+  const paymentRequired = paymentPolicy === "PAID_ONE_TO_ONE";
+  const paymentResolved = !paymentRequired || paymentStatus === "PAID";
+
+  let stage = input.captureReadiness.status || "prepare-session";
+  if (!input.transcriptProcessingAllowed && input.recordingCount > 0) {
+    stage = "transcript-held";
+  } else if (input.packetSummaryNoteId) {
+    stage = "packet-ready";
+  } else if (input.latestTranscriptStatus === "COMPLETED") {
+    stage = "packet-needed";
+  } else if (input.latestTranscriptStatus) {
+    stage = `transcript-${String(input.latestTranscriptStatus).toLowerCase()}`;
+  } else if (input.recordingCount > 0) {
+    stage = "transcription-needed";
+  } else if (input.captureReadiness.safeToRecordLocally) {
+    stage = input.provider.providerCanJoin
+      ? "ready-provider-room"
+      : "ready-local-fallback";
+  } else if (!input.recordingConsentGranted) {
+    stage = "consent-needed";
+  } else if (!paymentResolved) {
+    stage = "payment-needed";
+  }
+
+  return {
+    stage,
+    paymentStage: paymentResolved ? "payment-resolved" : "payment-needed",
+    providerStage: input.provider.providerReadiness || "provider-unknown",
+    packetStage: !input.transcriptProcessingAllowed && input.recordingCount > 0
+      ? "transcript-held"
+      : input.packetSummaryNoteId
+      ? "packet-ready"
+      : input.latestTranscriptStatus === "COMPLETED"
+        ? "packet-needed"
+        : "not-ready",
+    evidence: {
+      appOwnedRoom: Boolean(input.room.id),
+      participantLinked: Boolean(input.participant?.id),
+      bookingAttached: Boolean(input.room.booking?.id),
+      paymentRequired,
+      paymentResolved,
+      consentGranted: input.recordingConsentGranted,
+      providerJoinReady: input.provider.providerCanJoin === true,
+      localFallbackReady: input.captureReadiness.safeToRecordLocally === true,
+      recordingEvidence: input.recordingCount > 0,
+      capturePlumbingEvidence: input.contentReadiness.captureAssetCount > 0,
+      substantialRecordingEvidence: input.contentReadiness.status === "substantial",
+      transcriptEvidence: Boolean(input.latestTranscriptJob?.id),
+      transcriptCompleted: input.transcriptProcessingAllowed && input.latestTranscriptStatus === "COMPLETED",
+      transcriptProcessingAllowed: input.transcriptProcessingAllowed,
+      packetEvidence: Boolean(input.packetSummaryNoteId),
+    },
+    blockers: uniqueText([
+      input.captureReadiness.blockers || [],
+      input.contentReadiness.captureAssetCount > 0 && input.contentReadiness.status !== "substantial"
+        ? ["substantial-recording-evidence-needed"]
+        : [],
+      input.transcriptProcessingAllowed
+        ? []
+        : [`transcript-processing-held:${input.transcriptHoldReasonCode || "reviewed-release-required"}`],
+    ]),
+    nextAction: !input.transcriptProcessingAllowed && input.recordingCount > 0
+      ? input.afterCaptureNextAction
+      : input.captureReadiness.nextAction || input.afterCaptureNextAction,
+  };
+}
+
+function uniqueText(values: unknown[]) {
+  return [...new Set(values.flatMap((value) => {
+    if (Array.isArray(value)) return value;
+    return [value];
+  }).map((value) => (typeof value === "string" ? value.trim() : "")).filter(Boolean))];
+}
+
+function lifecycleBlockers(lifecycle: any) {
+  return Array.isArray(lifecycle?.checks)
+    ? lifecycle.checks.flatMap((check: any) => {
+        const status = label(check?.status)?.toLowerCase() || "";
+        const id = label(check?.id) || "";
+        return id && ["missing", "attention"].includes(status) ? [`${id}:${status}`] : [];
+      })
+    : [];
+}
+
+function buildMobileCaptureActionPacket(input: {
+  room: any;
+  booking: any;
+  provider: ReturnType<typeof providerReadinessForMobileCaptureSession>;
+  captureReadiness: ReturnType<typeof captureReadinessForMobileSession>;
+  journeySummary: ReturnType<typeof mobileSessionJourneySummary>;
+  lifecycle: ReturnType<typeof buildQuipslyCoachingLifecycle>;
+  recordingCount: number;
+  latestTranscriptStatus?: string | null;
+  latestRecordingAssetStatus?: string | null;
+  latestRecordingPromotion?: Record<string, unknown> | null;
+  packetSummaryNoteId?: string | null;
+  providerRecordingReceiptSlotId?: string | null;
+  mediaProcessingAllowed: boolean;
+  transcriptProcessingAllowed: boolean;
+  transcriptHoldReasonCode?: string | null;
+}) {
+  const latestTranscriptStatus = label(input.latestTranscriptStatus)?.toUpperCase() || null;
+  const latestRecordingAssetStatus = label(input.latestRecordingAssetStatus)?.toUpperCase() || null;
+  const latestRecordingPromotion = input.latestRecordingPromotion || {};
+  const sessionProject = canonicalMobileSessionProject(input.room);
+  const canJoin = input.captureReadiness.providerCanJoin === true;
+  const canStartLocalRecording = input.captureReadiness.safeToRecordLocally === true;
+  const canPrepareProviderRecordingReceipt =
+    canJoin &&
+    !input.providerRecordingReceiptSlotId &&
+    input.lifecycle.readyForCapture === true;
+  const canPromoteRecordingToMedia =
+    input.mediaProcessingAllowed &&
+    input.recordingCount > 0 &&
+    latestRecordingAssetStatus === "VERIFIED" &&
+    Boolean(sessionProject.projectSlug) &&
+    !label(latestRecordingPromotion.mediaAssetId);
+  const canRunTranscript =
+    input.transcriptProcessingAllowed &&
+    input.recordingCount > 0 &&
+    latestTranscriptStatus !== "RUNNING" &&
+    latestTranscriptStatus !== "COMPLETED";
+  const canBuildPacket =
+    input.transcriptProcessingAllowed &&
+    latestTranscriptStatus === "COMPLETED" &&
+    !input.packetSummaryNoteId;
+  const canReviewPacket = input.transcriptProcessingAllowed && Boolean(input.packetSummaryNoteId);
+  const blockers = uniqueText([
+    input.captureReadiness.blockers,
+    input.journeySummary.blockers,
+    lifecycleBlockers(input.lifecycle),
+    input.recordingCount > 0 && !sessionProject.projectSlug ? ["studio-project-required"] : [],
+    input.transcriptProcessingAllowed
+      ? []
+      : [`transcript-processing-held:${input.transcriptHoldReasonCode || "reviewed-release-required"}`],
+  ]);
+
+  return {
+    packetKind: MOBILE_CAPTURE_ACTION_PACKET_KIND,
+    roomId: input.room.id,
+    bookingId: input.booking?.id ?? null,
+    stage: input.journeySummary.stage || input.lifecycle.stage,
+    capabilities: {
+      canJoin,
+      canStartLocalRecording,
+      canStartProviderRecording: false,
+      canPrepareProviderRecordingReceipt,
+      canPromoteRecordingToMedia,
+      canRunTranscript,
+      canBuildPacket,
+      canReviewPacket,
+    },
+    blockers,
+    nextAction:
+      input.lifecycle.nextAction ||
+      input.journeySummary.nextAction ||
+      input.captureReadiness.nextAction,
+    boundaries: {
+      stripeIsEvidenceOnly: true,
+      externalProviderMutation: false,
+      localRecordingFallbackAllowed: canStartLocalRecording,
+      providerRecordingRequiresReceipt: true,
+      recordingPromotionRequiresVerifiedEvidence: true,
+      providerRecordingStartAvailable: false,
+      noHiddenRecording: true,
+      reviewOnlyUntilUserActs: true,
+    },
+  };
+}
+
+export function mapMobileCaptureSessionsForUser(input: {
+  rooms: any[];
+  userId: string;
+  env?: NodeJS.ProcessEnv;
+  finalizationReceipts?: any[];
+}) {
+  const finalizationReceipts = Array.isArray(input.finalizationReceipts) ? input.finalizationReceipts : [];
+  return input.rooms.map((room: any) => {
+    const sessionProject = canonicalMobileSessionProject(room);
+    const participant = room.participants.find((item: any) => item.userId === input.userId) || null;
+    const consent = participant
+      ? latestMobileCaptureConsentForParticipant(participant, room.recordingConsents)
+      : null;
+    const booking = room.booking;
+    const latestCheckout = booking?.paymentRecord?.checkoutSessionLedgers?.[0] || null;
+    const provider = providerReadinessForMobileCaptureSession(room, input.env);
+    const latestTranscriptJob = room.transcriptJobs[0] || null;
+    const receiptSlot = providerRecordingReceiptSlot(room);
+    const allRecordingAssets = Array.isArray(room.recordingAssets)
+      ? room.recordingAssets.filter((asset: any) => !isProviderRecordingReceiptSlot(asset))
+      : [];
+    const recordingAssetsForTranscript = transcribableRecordingAssets(room, finalizationReceipts);
+    const recordingCount = allRecordingAssets.length;
+    const contentReadiness = recordingContentReadiness(allRecordingAssets, room.purpose);
+    const latestTranscriptStatus = latestTranscriptJob?.status ?? null;
+    const latestRecordingAsset = allRecordingAssets.find((asset: any) => asset.id === latestTranscriptJob?.assetId)
+      || (latestTranscriptJob?.asset && !isProviderRecordingReceiptSlot(latestTranscriptJob.asset)
+        ? latestTranscriptJob.asset
+        : recordingAssetsForTranscript[0] ?? allRecordingAssets[0] ?? null);
+    const mediaProcessingGate = captureProcessingGate(
+      room,
+      latestRecordingAsset,
+      finalizationReceipts,
+      false,
+    );
+    const transcriptProcessingGate = captureProcessingGate(
+      room,
+      latestRecordingAsset,
+      finalizationReceipts,
+      true,
+    );
+    const packetNotesForLatestTranscript = transcriptProcessingGate.allowed
+      ? room.notes.filter((note: any) => {
+          const source = sourceJson(note.sourceJson);
+          return isTranscriptPacketSource(source.source)
+            && source.transcriptJobId === latestTranscriptJob?.id;
+        })
+      : [];
+    const packetSummary = packetNotesForLatestTranscript.find((note: any) => note.kind === "SUMMARY") || null;
+    const packetHighlights = packetNotesForLatestTranscript.filter((note: any) => note.kind === "HIGHLIGHT");
+    const latestRecordingPromotion = mediaProcessingGate.allowed ? recordingPromotion(latestRecordingAsset) : {};
+    const packetSummaryNoteId = packetSummary?.id ?? null;
+    const newestPacketNote = [packetSummary, ...packetHighlights]
+      .filter(Boolean)
+      .sort((left: any, right: any) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())[0] || null;
+    const committedPacketActions = transcriptProcessingGate.allowed && latestTranscriptJob
+      ? room.actionItems.filter((item: any) => {
+          const source = sourceJson(item.sourceJson);
+          return isTranscriptPacketSource(source.source)
+            && source.transcriptJobId === latestTranscriptJob.id
+            && !isUnreviewedTranscriptActionItemSource(source);
+        })
+      : [];
+    const firstOpenAction = committedPacketActions[0] || null;
+    const afterCaptureLine = afterCaptureNextAction({
+      recordingCount,
+      latestTranscriptStatus,
+      packetSummaryNoteId,
+      transcriptProcessingAllowed: transcriptProcessingGate.allowed,
+    });
+    const actorConsentVersion = participant
+      ? buildMobileCaptureConsentVersions({
+          participants: [participant],
+          consents: room.recordingConsents,
+        })[0]
+      : null;
+    const recordingConsentGranted = actorConsentVersion
+      ? mobileCaptureAllPartiesReady([actorConsentVersion], "audio")
+      : false;
+    const participantConsent = registeredParticipantConsentSummary(room);
+    const captureReadiness = captureReadinessForMobileSession({
+      room,
+      consentStatus: consent?.status,
+      consentGranted: recordingConsentGranted,
+      allRegisteredParticipantConsentGranted: participantConsent.allGranted,
+      provider,
+      recordingCount,
+      latestTranscriptStatus,
+      packetSummaryNoteId,
+      afterCaptureNextAction: afterCaptureLine,
+    });
+    const journeySummary = mobileSessionJourneySummary({
+      room,
+      participant,
+      recordingConsentGranted,
+      provider,
+      captureReadiness,
+      recordingCount,
+      contentReadiness,
+      latestTranscriptJob,
+      latestTranscriptStatus,
+      packetSummaryNoteId,
+      afterCaptureNextAction: afterCaptureLine,
+      transcriptProcessingAllowed: transcriptProcessingGate.allowed,
+      transcriptHoldReasonCode: transcriptProcessingGate.allowed ? null : transcriptProcessingGate.errorCode,
+    });
+    const lifecycle = buildQuipslyCoachingLifecycle({
+      bookingExists: Boolean(booking?.id || room.id),
+      paymentRequired: label(booking?.paymentPolicy)?.toUpperCase() === "PAID_ONE_TO_ONE",
+      paymentResolved:
+        label(booking?.paymentPolicy)?.toUpperCase() !== "PAID_ONE_TO_ONE" ||
+        label(booking?.paymentRecord?.status)?.toUpperCase() === "PAID",
+      calendarReceiptExists: calendarReceiptExists(booking),
+      roomExists: Boolean(room.id),
+      participantsAttached: room.participants.length > 0,
+      consentGranted: recordingConsentGranted,
+      providerReady: provider.providerCanJoin === true,
+      localFallbackReady: captureReadiness.safeToRecordLocally === true,
+      recordingExists: recordingCount > 0,
+      serverRecordingVerified: mediaProcessingGate.allowed && serverRecordingVerified(latestRecordingAsset),
+      transcriptExists: Boolean(latestTranscriptJob?.id),
+      transcriptCompleted: transcriptProcessingGate.allowed && latestTranscriptStatus === "COMPLETED",
+      packetExists: Boolean(packetSummaryNoteId),
+      publicationReceiptExists: false,
+      nextAction: transcriptProcessingGate.allowed
+        ? captureReadiness.nextAction || afterCaptureLine
+        : afterCaptureLine,
+    });
+    const actionPacket = buildMobileCaptureActionPacket({
+      room,
+      booking,
+      provider,
+      captureReadiness,
+      journeySummary,
+      lifecycle,
+      recordingCount,
+      latestTranscriptStatus,
+      latestRecordingAssetStatus: latestRecordingAsset?.status ?? null,
+      latestRecordingPromotion,
+      packetSummaryNoteId,
+      providerRecordingReceiptSlotId: receiptSlot?.id ?? null,
+      mediaProcessingAllowed: mediaProcessingGate.allowed,
+      transcriptProcessingAllowed: transcriptProcessingGate.allowed,
+      transcriptHoldReasonCode: transcriptProcessingGate.allowed ? null : transcriptProcessingGate.errorCode,
+    });
+
+    return {
+      id: room.id,
+      callRoomId: room.id,
+      title: label(room.title) || booking?.offering?.title || "Quipsly capture session",
+      purpose: room.purpose,
+      status: room.status,
+      updatedAt: room.updatedAt?.toISOString?.() ?? null,
+      provider: room.provider,
+      providerRoomId: provider.providerRoomId,
+      providerCanJoin: provider.providerCanJoin,
+      providerReadiness: provider.providerReadiness,
+      providerNextAction: provider.providerNextAction,
+      projectId: sessionProject.projectId,
+      projectSlug: sessionProject.projectSlug,
+      projectName: sessionProject.projectName,
+      availableTags: Array.isArray(room.project?.tags)
+        ? room.project.tags.map((tag: any) => ({ id: tag.id, slug: tag.slug, label: tag.label }))
+        : [],
+      projectBindingSource: sessionProject.bindingSource,
+      projectLegacySlugDrift: sessionProject.legacySlugDrift,
+      episodeSlug: booking?.offering?.slug || room.id,
+      scheduledStart: room.scheduledStart?.toISOString?.() ?? null,
+      scheduledEnd: room.scheduledEnd?.toISOString?.() ?? null,
+      participantId: participant?.id ?? null,
+      recordingConsentId: consent?.id ?? null,
+      recordingConsentStatus: consent?.status ?? "not-created",
+      recordingConsentGranted,
+      canRecordNow: captureReadiness.safeToRecordLocally,
+      consentRequiredParticipantCount: participantConsent.requiredCount,
+      consentGrantedParticipantCount: participantConsent.grantedCount,
+      allRegisteredParticipantConsentGranted: participantConsent.allGranted,
+      captureReadiness,
+      contentReadiness,
+      journeySummary,
+      lifecycle,
+      actionPacket,
+      clientLabel: booking?.clientUser?.name || booking?.clientUser?.primaryEmail || null,
+      coachLabel: booking?.coachUser?.name || booking?.coachUser?.primaryEmail || null,
+      offeringTitle: booking?.offering?.title || null,
+      bookingStatus: booking?.status || null,
+      paymentPolicy: booking?.paymentPolicy || null,
+      paymentRequired: label(booking?.paymentPolicy)?.toUpperCase() === "PAID_ONE_TO_ONE",
+      paymentResolved:
+        label(booking?.paymentPolicy)?.toUpperCase() !== "PAID_ONE_TO_ONE" ||
+        label(booking?.paymentRecord?.status)?.toUpperCase() === "PAID",
+      paymentStatus: booking?.paymentRecord?.status || null,
+      amountCents: booking?.paymentRecord?.amountCents || booking?.offering?.priceCents || null,
+      currency: booking?.paymentRecord?.currency || booking?.offering?.currency || "USD",
+      latestCheckoutUrl: latestCheckout?.url || null,
+      latestCheckoutStatus: latestCheckout?.status || null,
+      latestCheckoutExpiresAt: latestCheckout?.expiresAt?.toISOString?.() ?? null,
+      calendarStatus: booking?.calendarLinks?.[0]?.status || null,
+      recordingCount,
+      providerRecordingReceiptSlotId: receiptSlot?.id ?? null,
+      providerRecordingReceiptStatus: receiptSlot?.status ?? null,
+      providerRecordingReceiptNextAction: receiptSlot
+        ? "Provider recording receipt slot exists. Attach verified provider media before transcription."
+        : null,
+      transcriptJobCount: room.transcriptJobs.length,
+      latestRecordingAssetId: latestRecordingAsset?.id ?? null,
+      latestRecordingAssetStatus: latestRecordingAsset?.status ?? null,
+      latestRecordingFileName: latestRecordingAsset?.fileName ?? null,
+      latestRecordingMediaAssetId: label(latestRecordingPromotion.mediaAssetId),
+      latestRecordingPlaybackUrl: label(latestRecordingPromotion.playbackUrl),
+      latestRecordingPromotionStatus:
+        label(latestRecordingPromotion.status) ||
+        (latestRecordingAsset?.status === "VERIFIED" ? "ready-to-promote" : null),
+      latestTranscriptJobId: latestTranscriptJob?.id ?? null,
+      latestTranscriptStatus,
+      latestTranscriptProvider: latestTranscriptJob?.provider ?? null,
+      latestTranscriptSegmentCount: latestTranscriptJob?._count?.segments ?? 0,
+      coachingPacketSummaryNoteId: packetSummaryNoteId,
+      coachingPacketTitle: packetSummary?.title ?? null,
+      coachingPacketPreview: previewText(packetSummary?.body),
+      coachingPacketHighlightCount: packetHighlights.length,
+      coachingPacketActionItemCount: packetSummary ? committedPacketActions.length : 0,
+      coachingPacketLatestActivityAt: newestPacketNote?.createdAt?.toISOString?.() ?? null,
+      coachingPacketFirstOpenActionItemId: firstOpenAction?.id ?? null,
+      captureMediaProcessingAllowed: mediaProcessingGate.allowed,
+      captureTranscriptProcessingAllowed: transcriptProcessingGate.allowed,
+      captureProcessingHoldReasonCode: mediaProcessingGate.allowed ? null : mediaProcessingGate.errorCode,
+      captureTranscriptHoldReasonCode: transcriptProcessingGate.allowed ? null : transcriptProcessingGate.errorCode,
+      coachingPacketStatus: !transcriptProcessingGate.allowed
+        ? "TRANSCRIPT_HELD"
+        : packetSummaryNoteId
+          ? "READY_FOR_REVIEW"
+          : latestTranscriptStatus === "COMPLETED"
+            ? "PACKET_READY_TO_BUILD"
+            : "NOT_READY",
+      afterCaptureNextAction: afterCaptureLine,
+      nextAction:
+        captureReadiness.nextAction ||
+        (recordingConsentGranted
+          ? provider.providerNextAction
+          : consentNextAction(consent?.status)),
+    };
+  });
+}

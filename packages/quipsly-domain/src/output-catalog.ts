@@ -11,11 +11,20 @@ export type QuipslyOutputFamily =
   | "client-gallery"
   | "community";
 
-export type QuipslyOutputStatus =
-  | "live"
-  | "beta-ready"
-  | "prototype"
-  | "planned";
+/**
+ * How complete the static capability definition is.
+ *
+ * This is deliberately not a runtime, publication, provider, or artifact
+ * status. Current operational truth belongs to persisted packets, attempts,
+ * external-artifact receipts, and live provider checks.
+ */
+export type QuipslyOutputCatalogStage =
+  | "runway-mapped"
+  | "contract-defined"
+  | "workflow-draft"
+  | "concept-only";
+
+export type QuipslyOutputRoadmapHorizon = "active-design" | "near-term" | "explore-later";
 
 export type QuipslyNestKind =
   | "writing"
@@ -31,8 +40,8 @@ export type QuipslyOutputDefinition = {
   readonly id: string;
   readonly title: string;
   readonly family: QuipslyOutputFamily;
-  readonly status: QuipslyOutputStatus;
-  readonly priority: "now" | "next" | "later";
+  readonly catalogStage: QuipslyOutputCatalogStage;
+  readonly roadmapHorizon: QuipslyOutputRoadmapHorizon;
   readonly description: string;
   readonly sourceInputs: readonly string[];
   readonly packetShape: readonly string[];
@@ -41,17 +50,18 @@ export type QuipslyOutputDefinition = {
   readonly humanPromise: string;
 };
 
-export type QuipslyOutputReadinessPlan = {
+export type QuipslyOutputCapabilityPlan = {
   readonly outputId: string;
   readonly title: string;
-  readonly readinessSummary: string;
+  readonly definitionSummary: string;
   readonly requiredInputs: readonly {
     readonly label: string;
-    readonly status: "available" | "needs-source" | "needs-review";
+    readonly catalogRole: "primary-source-spine" | "supporting-input";
+    readonly evidenceState: "not-checked";
     readonly note: string;
   }[];
   readonly safeNextActions: readonly string[];
-  readonly operatorWarning: string;
+  readonly operatorBoundary: string;
 };
 
 export type QuipslyOutputPacketSkeleton = {
@@ -62,10 +72,22 @@ export type QuipslyOutputPacketSkeleton = {
   readonly fields: Record<string, null>;
   readonly provenance: {
     readonly source: "quipsly-output-catalog";
-    readonly status: QuipslyOutputStatus;
+    readonly catalogStage: QuipslyOutputCatalogStage;
     readonly note: string;
   };
 };
+
+export const QUIPSLY_OUTPUT_CATALOG_BOUNDARY = {
+  kind: "quipsly-output-capability-roadmap-v1",
+  scope: "Static product capability definitions and roadmap horizons only.",
+  provesProducedArtifact: false,
+  provesPersistedPacket: false,
+  provesPublication: false,
+  provesProviderConnection: false,
+  provesServiceHealth: false,
+  operationalTruth:
+    "Use the Publishing runway for accessible-Nest packet, attempt, and external-artifact records. Recheck provider URLs and service health separately.",
+} as const;
 
 export const OUTPUT_FAMILY_LABELS: Record<QuipslyOutputFamily, string> = {
   "owned-site": "Owned sites",
@@ -79,11 +101,17 @@ export const OUTPUT_FAMILY_LABELS: Record<QuipslyOutputFamily, string> = {
   community: "Community and supporters",
 };
 
-export const OUTPUT_STATUS_LABELS: Record<QuipslyOutputStatus, string> = {
-  live: "Live",
-  "beta-ready": "Beta ready",
-  prototype: "Prototype",
-  planned: "Planned",
+export const OUTPUT_CATALOG_STAGE_LABELS: Record<QuipslyOutputCatalogStage, string> = {
+  "runway-mapped": "Review runway mapped",
+  "contract-defined": "Packet contract defined",
+  "workflow-draft": "Workflow draft",
+  "concept-only": "Concept map",
+};
+
+export const OUTPUT_ROADMAP_HORIZON_LABELS: Record<QuipslyOutputRoadmapHorizon, string> = {
+  "active-design": "Active design",
+  "near-term": "Near-term design",
+  "explore-later": "Explore later",
 };
 
 export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
@@ -91,8 +119,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "hgo-episode-page",
     title: "High Ground Odyssey episode page",
     family: "owned-site",
-    status: "live",
-    priority: "now",
+    catalogStage: "runway-mapped",
+    roadmapHorizon: "active-design",
     description: "A public episode page with video hero, show notes, quotes, essay/body, provenance, and support CTA.",
     sourceInputs: ["Manuscript episode boundary", "Public-safe publish packet", "YouTube ID", "Show notes", "Quotes"],
     packetShape: ["title", "slug", "summary", "media.youtubeId", "showNotes", "quotes", "body", "provenance"],
@@ -104,8 +132,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "podcast-rss-episode",
     title: "Podcast RSS episode",
     family: "audio-video",
-    status: "prototype",
-    priority: "now",
+    catalogStage: "workflow-draft",
+    roadmapHorizon: "active-design",
     description: "An RSS-ready podcast package with final audio, title, description, chapters, transcript, and artwork.",
     sourceInputs: ["Recording spine", "Final audio", "Episode manuscript", "Transcript", "Show notes"],
     packetShape: ["audioUrl", "duration", "title", "description", "chapters", "transcript", "episodeArtwork"],
@@ -117,8 +145,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "youtube-video-package",
     title: "YouTube video package",
     family: "audio-video",
-    status: "prototype",
-    priority: "now",
+    catalogStage: "workflow-draft",
+    roadmapHorizon: "active-design",
     description: "A YouTube upload package with title, description, chapters, thumbnail, source clips, and render metadata.",
     sourceInputs: ["Timeline", "Media assets", "Transcript", "Episode notes", "Thumbnail art"],
     packetShape: ["videoFile", "title", "description", "chapters", "tags", "thumbnail", "visibility"],
@@ -130,8 +158,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "social-cuts",
     title: "Shorts, Reels, and social cuts",
     family: "social",
-    status: "planned",
-    priority: "next",
+    catalogStage: "concept-only",
+    roadmapHorizon: "near-term",
     description: "Vertical or square short-form clips from the same source timeline, with captions and platform-native metadata.",
     sourceInputs: ["Marked clip cue", "Transcript range", "Timeline segment", "Quote or hook"],
     packetShape: ["aspectRatio", "clipRange", "captionText", "platformCopy", "hashtags", "safeTitle"],
@@ -143,8 +171,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "gif-loop",
     title: "GIF or looping clip",
     family: "social",
-    status: "planned",
-    priority: "next",
+    catalogStage: "concept-only",
+    roadmapHorizon: "near-term",
     description: "A lightweight loop from uploaded media, or a YouTube timestamp embed loop before true GIF export is available.",
     sourceInputs: ["Media segment", "YouTube timestamp range", "Caption", "Visual crop"],
     packetShape: ["sourceUrl", "startSeconds", "endSeconds", "loopMode", "caption", "exportFormat"],
@@ -156,8 +184,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "patreon-post",
     title: "Patreon support post",
     family: "community",
-    status: "beta-ready",
-    priority: "now",
+    catalogStage: "contract-defined",
+    roadmapHorizon: "active-design",
     description: "A supporter-facing post package with episode notes, behind-the-scenes context, links, and access language.",
     sourceInputs: ["Episode packet", "Behind-the-scenes notes", "Support CTA", "Media links"],
     packetShape: ["title", "bodyMarkdown", "visibility", "links", "attachments", "publishStatus"],
@@ -169,8 +197,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "quote-feed",
     title: "QuipLore quote feed",
     family: "quotes",
-    status: "prototype",
-    priority: "next",
+    catalogStage: "workflow-draft",
+    roadmapHorizon: "near-term",
     description: "Verified quote cards and lorelists powered by source-aware research packets.",
     sourceInputs: ["Quote overlay", "Citation", "Source document", "Theme tags", "Visual companion"],
     packetShape: ["quoteText", "person", "source", "verificationStatus", "contextNote", "visual"],
@@ -182,8 +210,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "book-export",
     title: "Book and Kindle export",
     family: "publishing",
-    status: "planned",
-    priority: "later",
+    catalogStage: "concept-only",
+    roadmapHorizon: "explore-later",
     description: "A clean book manuscript projection from the living document, excluding show notes and production scaffolding.",
     sourceInputs: ["Chapter boundaries", "Book-mode lens", "Front/back matter", "Approved text"],
     packetShape: ["chapters", "frontMatter", "backMatter", "toc", "exportFormat", "styleGuide"],
@@ -195,8 +223,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "scorm-course",
     title: "SCORM course package",
     family: "learning",
-    status: "planned",
-    priority: "next",
+    catalogStage: "concept-only",
+    roadmapHorizon: "near-term",
     description: "A standards-aware course export built from lessons, examples, quizzes, cards, and media cues.",
     sourceInputs: ["Study document", "Lesson tags", "Quiz tags", "Media clips", "Learning objectives"],
     packetShape: ["manifest", "lessons", "quizItems", "media", "completionRules", "analyticsHooks"],
@@ -208,8 +236,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "story-scroll",
     title: "Story, comic, and lesson scroll",
     family: "visual-story",
-    status: "planned",
-    priority: "next",
+    catalogStage: "concept-only",
+    roadmapHorizon: "near-term",
     description: "A vertical/horizontal scrolling experience for stories, comics, courses, photo essays, and dopamine-friendly lessons.",
     sourceInputs: ["Story beats", "Panels", "Images", "Quiz cards", "Media cues"],
     packetShape: ["sections", "cards", "horizontalGroups", "media", "interactionRules"],
@@ -221,8 +249,8 @@ export const QUIPSLY_OUTPUT_CATALOG: readonly QuipslyOutputDefinition[] = [
     id: "photo-gallery-review",
     title: "Photo client gallery review",
     family: "client-gallery",
-    status: "planned",
-    priority: "later",
+    catalogStage: "concept-only",
+    roadmapHorizon: "explore-later",
     description: "A client-facing review package with grouped photos, ratings, comments, selects, and delivery status.",
     sourceInputs: ["Photo assets", "Gallery groups", "Client comments", "Select tags", "Delivery notes"],
     packetShape: ["collections", "assets", "ratings", "comments", "approvalState", "deliveryOptions"],
@@ -243,16 +271,20 @@ export const OUTPUT_IDS_BY_NEST_KIND: Record<QuipslyNestKind, readonly string[]>
   mixed: ["hgo-episode-page", "youtube-video-package", "quote-feed"],
 };
 
-export function getOutputStatusLabel(status: QuipslyOutputStatus) {
-  return OUTPUT_STATUS_LABELS[status];
+export function getOutputCatalogStageLabel(stage: QuipslyOutputCatalogStage) {
+  return OUTPUT_CATALOG_STAGE_LABELS[stage];
+}
+
+export function getOutputRoadmapHorizonLabel(horizon: QuipslyOutputRoadmapHorizon) {
+  return OUTPUT_ROADMAP_HORIZON_LABELS[horizon];
 }
 
 export function getOutputFamilyLabel(family: QuipslyOutputFamily) {
   return OUTPUT_FAMILY_LABELS[family];
 }
 
-export function listOutputsByPriority(priority: QuipslyOutputDefinition["priority"]) {
-  return QUIPSLY_OUTPUT_CATALOG.filter((output) => output.priority === priority);
+export function listOutputsByRoadmapHorizon(horizon: QuipslyOutputRoadmapHorizon) {
+  return QUIPSLY_OUTPUT_CATALOG.filter((output) => output.roadmapHorizon === horizon);
 }
 
 export function normalizeOutputNestKind(kind: string | null | undefined): QuipslyNestKind {
@@ -273,27 +305,28 @@ export function getOutputDefinition(outputId: string) {
   return QUIPSLY_OUTPUT_CATALOG.find((output) => output.id === outputId) ?? null;
 }
 
-export function createOutputReadinessPlan(output: QuipslyOutputDefinition): QuipslyOutputReadinessPlan {
+export function createOutputCapabilityPlan(output: QuipslyOutputDefinition): QuipslyOutputCapabilityPlan {
   const implementationNote =
-    output.status === "live"
-      ? "This output has a working public path and should be treated as real production infrastructure."
-      : output.status === "beta-ready"
-        ? "This output is close enough for beta testing but should keep safe review and rollback language visible."
-        : output.status === "prototype"
-          ? "This output has enough structure to build against, but final publishing should remain explicitly reviewed."
-          : "This output is planned; use this page as the product contract before building the implementation.";
+    output.catalogStage === "runway-mapped"
+      ? "A review runway is mapped for this capability. That map is not evidence that an artifact exists, a provider is reachable, or publication succeeded."
+      : output.catalogStage === "contract-defined"
+        ? "The intended packet contract is defined. Implementation and destination evidence must still come from operational records."
+        : output.catalogStage === "workflow-draft"
+          ? "The intended workflow and packet shape are drafted. Treat them as architecture, not as a working integration."
+          : "This is a concept map for future product work, not an implemented or available output.";
 
   return {
     outputId: output.id,
     title: output.title,
-    readinessSummary: implementationNote,
+    definitionSummary: implementationNote,
     requiredInputs: output.sourceInputs.map((input, index) => ({
       label: input,
-      status: index === 0 ? "available" : output.status === "planned" ? "needs-source" : "needs-review",
+      catalogRole: index === 0 ? "primary-source-spine" : "supporting-input",
+      evidenceState: "not-checked",
       note:
         index === 0
-          ? "Primary source spine for this output."
-          : "Confirm this source exists and is public-safe before publishing.",
+          ? "Intended primary source spine. This catalog does not check whether it currently exists."
+          : "Required supporting input. Confirm it exists, is current, and is safe before creating a real packet.",
     })),
     safeNextActions: [
       "Open the source Nest or document and confirm the relevant tags/boundaries exist.",
@@ -301,8 +334,8 @@ export function createOutputReadinessPlan(output: QuipslyOutputDefinition): Quip
       "Generate or select a visual helper brief if the output needs artwork or social presentation.",
       "Preview the output packet before any destructive publish action.",
     ],
-    operatorWarning:
-      "Outputs are projections from a Nest. Do not copy content into a separate silo unless this catalog contract cannot represent the workflow.",
+    operatorBoundary:
+      "This page defines a projection from a Nest. It does not create, persist, publish, schedule, connect, or health-check anything. Use receipt-backed operational records before making an external-effect claim.",
   };
 }
 
@@ -318,7 +351,7 @@ export function createOutputPacketSkeleton(
     fields: Object.fromEntries(output.packetShape.map((field) => [field, null])),
     provenance: {
       source: "quipsly-output-catalog",
-      status: output.status,
+      catalogStage: output.catalogStage,
       note: "This is a starter packet shape, not a published artifact. Fill from a Nest/source spine and review before destination publishing.",
     },
   };

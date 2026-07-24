@@ -28,14 +28,13 @@ export interface StoryEntity {
   mentions?: StoryEntityMention[];
 }
 
-export type AssistantActionStatus = "PENDING" | "APPROVED" | "REJECTED" | "UNDONE";
-export type AssistantActionType = "PROPOSE_ENTITY" | "PROPOSE_ENTITY_UPDATE" | "PROPOSE_RELATIONSHIP";
+export type AssistantActionStatus = "proposed" | "approved";
+export type AssistantActionType = "PROPOSE_ENTITY" | "PROPOSE_ENTITY_UPDATE";
 
 export interface StudioAssistantAction {
   id: string;
-  projectId: string;
-  documentId: string | null;
-  type: AssistantActionType;
+  kind: AssistantActionType;
+  label: string;
   status: AssistantActionStatus;
   payloadJson: Record<string, any>;
   explanation: string | null;

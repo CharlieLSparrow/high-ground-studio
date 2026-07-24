@@ -54,3 +54,7 @@ When building new features:
 - Do not list every project to a non-admin user.
 - Attach media to Home Nest first if no working Nest is selected.
 - Keep private fiction, marine biology, and HGO work access-controlled by Nest grants.
+- Treat Codex and Quipslys as creative operators, not only test-data generators.
+- Generate real first-pass content when it helps prove a workflow, then label authorship, provenance, review state, and canon/publication status honestly.
+- Do not block real work just because Charlie, Homer, Mako, Melissa, or another human has not supplied every paragraph, caption, research packet, or edit note yet.
+- Preserve the distinction between disposable fixtures and serious agent-authored work.

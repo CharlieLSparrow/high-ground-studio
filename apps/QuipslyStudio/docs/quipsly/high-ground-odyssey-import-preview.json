@@ -1,0 +1,1338 @@
+{
+  "kind": "high-ground-odyssey-import-preview",
+  "bookTitle": "High Ground Odyssey",
+  "summary": {
+    "generatedAt": "2026-06-28T03:31:12Z",
+    "sourceDocumentsConsidered": 39,
+    "proposedSourceDocuments": 39,
+    "proposedDraftTargets": 39,
+    "sourceFilesMutated": false,
+    "canonicalDocumentMutated": false,
+    "databaseMutated": false
+  },
+  "proposedSourceDocuments": [
+    {
+      "id": "import-source-podcast-year-1-001",
+      "title": "Podcast Year 1 - Full Prep Source",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-001",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/Podcast Year 1.md",
+      "relativePath": "Podcast Year 1.md",
+      "wordCount": 28276,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-podcast-year-1-002",
+      "title": "Episode 1 Source - 1",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-002",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/1 - March 25 - Pilot/1.md",
+      "relativePath": "1 - March 25 - Pilot/1.md",
+      "wordCount": 692,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1",
+        "Episode 1"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-podcast-year-1-003",
+      "title": "Episode 2 Source - 2",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-003",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/2 - April 1 - It's a Metaphor!/2.md",
+      "relativePath": "2 - April 1 - It's a Metaphor!/2.md",
+      "wordCount": 1248,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1",
+        "Episode 2"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-podcast-year-1-004",
+      "title": "Episode 3 Source - Chapter Zero: In the Beginning",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-004",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/3 - April 8 - Chub and Jack/3.md",
+      "relativePath": "3 - April 8 - Chub and Jack/3.md",
+      "wordCount": 4084,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1",
+        "Episode 3"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-podcast-year-1-005",
+      "title": "Episode 4 Source - \ud83c\udfb5 Preschool Memories",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-005",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/4 - April 15 - Early Life Lessons/4.md",
+      "relativePath": "4 - April 15 - Early Life Lessons/4.md",
+      "wordCount": 2398,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1",
+        "Episode 4"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-podcast-year-1-006",
+      "title": "Episode 5 Source - 5",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-006",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/5 - April 22 - Values/5.md",
+      "relativePath": "5 - April 22 - Values/5.md",
+      "wordCount": 3017,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1",
+        "Episode 5"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-podcast-year-1-007",
+      "title": "Episode 6 Source - 6",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-007",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/6 - New - Values 2/6.md",
+      "relativePath": "6 - New - Values 2/6.md",
+      "wordCount": 3684,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1",
+        "Episode 6"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-podcast-year-1-008",
+      "title": "Episode 7 Source - 7",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-008",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/7 - In The Army Now/7.md",
+      "relativePath": "7 - In The Army Now/7.md",
+      "wordCount": 4192,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1",
+        "Episode 7"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-podcast-year-1-009",
+      "title": "Episode 8 Source - 8",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-009",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/8 - Don't Shush the Shusher/8.md",
+      "relativePath": "8 - Don't Shush the Shusher/8.md",
+      "wordCount": 6439,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1",
+        "Episode 8"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-podcast-year-1-010",
+      "title": "Episode 9 Source - 9",
+      "kind": "study-source",
+      "sourceItemId": "podcast-year-1-010",
+      "sourceFamily": "podcast-year-1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/9 - I wasn't born a leader/9.md",
+      "relativePath": "9 - I wasn't born a leader/9.md",
+      "wordCount": 2522,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Podcast Year 1",
+        "Episode 9"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-001",
+      "title": "Book Source - **Charlie's Note: Your Brain on Stories**",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-001",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Learning to Lead.md",
+      "relativePath": "Learning to Lead.md",
+      "wordCount": 58754,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-002",
+      "title": "Book Source - For the Next Book",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-002",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Eight The team needs/For the Next Book.md",
+      "relativePath": "Chapter Eight The team needs/For the Next Book.md",
+      "wordCount": 387,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-003",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-003",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Eight The team needs/Rough Draft.md",
+      "relativePath": "Chapter Eight The team needs/Rough Draft.md",
+      "wordCount": 4237,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-004",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-004",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Eleven Care/Rough Draft.md",
+      "relativePath": "Chapter Eleven Care/Rough Draft.md",
+      "wordCount": 2481,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-005",
+      "title": "Book Source - For the Next Book",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-005",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Five Leaders Make It Happen/For the Next Book.md",
+      "relativePath": "Chapter Five Leaders Make It Happen/For the Next Book.md",
+      "wordCount": 10,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-006",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-006",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Five Leaders Make It Happen/Rough Draft.md",
+      "relativePath": "Chapter Five Leaders Make It Happen/Rough Draft.md",
+      "wordCount": 7840,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-007",
+      "title": "Book Source - For the Next Book",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-007",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Four None of it Works Unless You Do/For the Next Book.md",
+      "relativePath": "Chapter Four None of it Works Unless You Do/For the Next Book.md",
+      "wordCount": 128,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-008",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-008",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Four None of it Works Unless You Do/Rough Draft.md",
+      "relativePath": "Chapter Four None of it Works Unless You Do/Rough Draft.md",
+      "wordCount": 3283,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-009",
+      "title": "Book Source - For the Next Book",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-009",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Four.Five It doesn\u2019t hurt to get lucky/For the Next Book.md",
+      "relativePath": "Chapter Four.Five It doesn\u2019t hurt to get lucky/For the Next Book.md",
+      "wordCount": 72,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-010",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-010",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Four.Five It doesn\u2019t hurt to get lucky/Rough Draft.md",
+      "relativePath": "Chapter Four.Five It doesn\u2019t hurt to get lucky/Rough Draft.md",
+      "wordCount": 7772,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-011",
+      "title": "Book Source - Hansen Statement",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-011",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Nine Learn/Hansen Statement.md",
+      "relativePath": "Chapter Nine Learn/Hansen Statement.md",
+      "wordCount": 2544,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-012",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-012",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Nine Learn/Rough Draft.md",
+      "relativePath": "Chapter Nine Learn/Rough Draft.md",
+      "wordCount": 2641,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-013",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-013",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter One The Early Days/Rough Draft.md",
+      "relativePath": "Chapter One The Early Days/Rough Draft.md",
+      "wordCount": 1649,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-014",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-014",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Seven Risk/Rough Draft.md",
+      "relativePath": "Chapter Seven Risk/Rough Draft.md",
+      "wordCount": 3278,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-015",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-015",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Six Individuals make a team/Rough Draft.md",
+      "relativePath": "Chapter Six Individuals make a team/Rough Draft.md",
+      "wordCount": 6358,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-016",
+      "title": "Book Source - Chapter Ten Do What's Important",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-016",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Ten Do What's Important and Leave a Legacy/Chapter Ten Do What's Important.md",
+      "relativePath": "Chapter Ten Do What's Important and Leave a Legacy/Chapter Ten Do What's Important.md",
+      "wordCount": 1859,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-017",
+      "title": "Book Source - Chapter Three In The Army Now",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-017",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Three In the Army Now/Chapter Three In The Army Now.md",
+      "relativePath": "Chapter Three In the Army Now/Chapter Three In The Army Now.md",
+      "wordCount": 8134,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-018",
+      "title": "Book Source - For the Next Book",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-018",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Twelve Don\u2019t Forget to Enjoy It/For the Next Book.md",
+      "relativePath": "Chapter Twelve Don\u2019t Forget to Enjoy It/For the Next Book.md",
+      "wordCount": 84,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-019",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-019",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Twelve Don\u2019t Forget to Enjoy It/Rough Draft.md",
+      "relativePath": "Chapter Twelve Don\u2019t Forget to Enjoy It/Rough Draft.md",
+      "wordCount": 1321,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-020",
+      "title": "Book Source - For the Next Book",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-020",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Two Values Get Some/For the Next Book.md",
+      "relativePath": "Chapter Two Values Get Some/For the Next Book.md",
+      "wordCount": 1130,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-021",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-021",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Two Values Get Some/Rough Draft.md",
+      "relativePath": "Chapter Two Values Get Some/Rough Draft.md",
+      "wordCount": 3781,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Chapter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-022",
+      "title": "Book Source - Chapter Zero In The Beginning (After the introduction but not quite to chapter one.)",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-022",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Zero In The Beginning/Chapter Zero In The Beginning (After the introduction but not quite to chapter one.).md",
+      "relativePath": "Chapter Zero In The Beginning/Chapter Zero In The Beginning (After the introduction but not quite to chapter one.).md",
+      "wordCount": 1894,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Front Matter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-023",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-023",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Forward/Rough Draft.md",
+      "relativePath": "Forward/Rough Draft.md",
+      "wordCount": 5,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Front Matter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-024",
+      "title": "Book Source - Research and Industry",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-024",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Introduction/Research and Industry.md",
+      "relativePath": "Introduction/Research and Industry.md",
+      "wordCount": 158,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Front Matter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-025",
+      "title": "Book Source - **Charlie's Note: Your Brain on Stories**",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-025",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Introduction/Rough Draft.md",
+      "relativePath": "Introduction/Rough Draft.md",
+      "wordCount": 1334,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Front Matter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-026",
+      "title": "Book Source - Sandbox",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-026",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Introduction/Sandbox.md",
+      "relativePath": "Introduction/Sandbox.md",
+      "wordCount": 290,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Front Matter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-027",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-027",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Outtro/Rough Draft.md",
+      "relativePath": "Outtro/Rough Draft.md",
+      "wordCount": 193,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-028",
+      "title": "Book Source - Charlie Free Writing",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-028",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Preface/Charlie Free Writing.md",
+      "relativePath": "Preface/Charlie Free Writing.md",
+      "wordCount": 267,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Front Matter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "id": "import-source-learning-to-lead-029",
+      "title": "Book Source - Rough Draft",
+      "kind": "study-source",
+      "sourceItemId": "learning-to-lead-029",
+      "sourceFamily": "learning-to-lead",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Preface/Rough Draft.md",
+      "relativePath": "Preface/Rough Draft.md",
+      "wordCount": 694,
+      "suggestedTags": [
+        "High Ground Odyssey",
+        "Source",
+        "Learning to Lead",
+        "Front Matter"
+      ],
+      "importMode": "fixed-source-copy",
+      "canonicalRisk": "low",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    }
+  ],
+  "proposedDraftTargets": [
+    {
+      "id": "draft-target-canonical-manuscript-head",
+      "title": "High Ground Odyssey - Living Manuscript",
+      "kind": "manuscript",
+      "sourceItemIds": [],
+      "importMode": "create-empty-or-open-existing",
+      "canonicalRisk": "high",
+      "why": "This is the human-promoted writing spine. Do not auto-fill it from sources without review."
+    },
+    {
+      "id": "draft-target-episode-1",
+      "title": "Episode 1 Draft / Episode Page",
+      "kind": "draft",
+      "sourceItemIds": [
+        "podcast-year-1-002"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "id": "draft-target-episode-2",
+      "title": "Episode 2 Draft / Episode Page",
+      "kind": "draft",
+      "sourceItemIds": [
+        "podcast-year-1-003"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "id": "draft-target-episode-3",
+      "title": "Episode 3 Draft / Episode Page",
+      "kind": "draft",
+      "sourceItemIds": [
+        "podcast-year-1-004"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "id": "draft-target-episode-4",
+      "title": "Episode 4 Draft / Episode Page",
+      "kind": "draft",
+      "sourceItemIds": [
+        "podcast-year-1-005"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "id": "draft-target-episode-5",
+      "title": "Episode 5 Draft / Episode Page",
+      "kind": "draft",
+      "sourceItemIds": [
+        "podcast-year-1-006"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "id": "draft-target-episode-6",
+      "title": "Episode 6 Draft / Episode Page",
+      "kind": "draft",
+      "sourceItemIds": [
+        "podcast-year-1-007"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "id": "draft-target-episode-7",
+      "title": "Episode 7 Draft / Episode Page",
+      "kind": "draft",
+      "sourceItemIds": [
+        "podcast-year-1-008"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "id": "draft-target-episode-8",
+      "title": "Episode 8 Draft / Episode Page",
+      "kind": "draft",
+      "sourceItemIds": [
+        "podcast-year-1-009"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "id": "draft-target-episode-9",
+      "title": "Episode 9 Draft / Episode Page",
+      "kind": "draft",
+      "sourceItemIds": [
+        "podcast-year-1-010"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "id": "draft-target-book-section-01",
+      "title": "Book Section Draft - Charlie Free Writing",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-028"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-02",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-029"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-03",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-023"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-04",
+      "title": "Book Section Draft - Chapter Zero In The Beginning (After the introduction but not quite to chapter one.)",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-022"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-05",
+      "title": "Book Section Draft - Research and Industry",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-024"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-06",
+      "title": "Book Section Draft - **Charlie's Note: Your Brain on Stories**",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-025"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-07",
+      "title": "Book Section Draft - Sandbox",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-026"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-08",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-013"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-09",
+      "title": "Book Section Draft - For the Next Book",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-020"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-10",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-021"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-11",
+      "title": "Book Section Draft - Chapter Three In The Army Now",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-017"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-12",
+      "title": "Book Section Draft - For the Next Book",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-007"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-13",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-008"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-14",
+      "title": "Book Section Draft - For the Next Book",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-005"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-15",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-006"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-16",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-015"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-17",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-014"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-18",
+      "title": "Book Section Draft - For the Next Book",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-002"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-19",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-003"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-20",
+      "title": "Book Section Draft - Hansen Statement",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-011"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-21",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-012"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-22",
+      "title": "Book Section Draft - Chapter Ten Do What's Important",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-016"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-23",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-004"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-24",
+      "title": "Book Section Draft - For the Next Book",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-018"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-25",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-019"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-26",
+      "title": "Book Section Draft - For the Next Book",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-009"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-27",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-010"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-28",
+      "title": "Book Section Draft - **Charlie's Note: Your Brain on Stories**",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-001"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    },
+    {
+      "id": "draft-target-book-section-29",
+      "title": "Book Section Draft - Rough Draft",
+      "kind": "draft",
+      "sourceItemIds": [
+        "learning-to-lead-027"
+      ],
+      "importMode": "draft-shell-with-source-link",
+      "canonicalRisk": "medium",
+      "why": "Use the older manuscript source as reference/completeness material before promotion."
+    }
+  ],
+  "manualPasteOrder": [
+    {
+      "step": 1,
+      "action": "Create Study Source / Note document",
+      "title": "Episode 1 Source - 1",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/1 - March 25 - Pilot/1.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 2,
+      "action": "Create Study Source / Note document",
+      "title": "Episode 2 Source - 2",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/2 - April 1 - It's a Metaphor!/2.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 3,
+      "action": "Create Study Source / Note document",
+      "title": "Episode 3 Source - Chapter Zero: In the Beginning",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/3 - April 8 - Chub and Jack/3.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 4,
+      "action": "Create Study Source / Note document",
+      "title": "Episode 4 Source - \ud83c\udfb5 Preschool Memories",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/4 - April 15 - Early Life Lessons/4.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 5,
+      "action": "Create Study Source / Note document",
+      "title": "Episode 5 Source - 5",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/5 - April 22 - Values/5.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 6,
+      "action": "Create Study Source / Note document",
+      "title": "Episode 6 Source - 6",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/6 - New - Values 2/6.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 7,
+      "action": "Create Study Source / Note document",
+      "title": "Episode 7 Source - 7",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/7 - In The Army Now/7.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 8,
+      "action": "Create Study Source / Note document",
+      "title": "Episode 8 Source - 8",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/8 - Don't Shush the Shusher/8.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 9,
+      "action": "Create Study Source / Note document",
+      "title": "Episode 9 Source - 9",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/9 - I wasn't born a leader/9.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 10,
+      "action": "Create Study Source / Note document",
+      "title": "Podcast Year 1 - Full Prep Source",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1/Podcast Year 1.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 11,
+      "action": "Create Study Source / Note document",
+      "title": "Book Source - For the Next Book",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Eight The team needs/For the Next Book.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 12,
+      "action": "Create Study Source / Note document",
+      "title": "Book Source - Rough Draft",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/apps/web/content/_inbox/HighGroundOdysseyBook/Two Sparrows/Books/Learning to Lead/Chapter Eight The team needs/Rough Draft.md",
+      "why": "Preserve the source text as an inspectable document before drafting or promotion."
+    },
+    {
+      "step": 13,
+      "action": "Create Draft shell",
+      "title": "High Ground Odyssey - Living Manuscript",
+      "sourceItemIds": [],
+      "why": "This is the human-promoted writing spine. Do not auto-fill it from sources without review."
+    },
+    {
+      "step": 14,
+      "action": "Create Draft shell",
+      "title": "Episode 1 Draft / Episode Page",
+      "sourceItemIds": [
+        "podcast-year-1-002"
+      ],
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "step": 15,
+      "action": "Create Draft shell",
+      "title": "Episode 2 Draft / Episode Page",
+      "sourceItemIds": [
+        "podcast-year-1-003"
+      ],
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "step": 16,
+      "action": "Create Draft shell",
+      "title": "Episode 3 Draft / Episode Page",
+      "sourceItemIds": [
+        "podcast-year-1-004"
+      ],
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "step": 17,
+      "action": "Create Draft shell",
+      "title": "Episode 4 Draft / Episode Page",
+      "sourceItemIds": [
+        "podcast-year-1-005"
+      ],
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "step": 18,
+      "action": "Create Draft shell",
+      "title": "Episode 5 Draft / Episode Page",
+      "sourceItemIds": [
+        "podcast-year-1-006"
+      ],
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "step": 19,
+      "action": "Create Draft shell",
+      "title": "Episode 6 Draft / Episode Page",
+      "sourceItemIds": [
+        "podcast-year-1-007"
+      ],
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    },
+    {
+      "step": 20,
+      "action": "Create Draft shell",
+      "title": "Episode 7 Draft / Episode Page",
+      "sourceItemIds": [
+        "podcast-year-1-008"
+      ],
+      "why": "Use the recording-prep source as context for an episode page, article draft, or manuscript connective pass."
+    }
+  ]
+}

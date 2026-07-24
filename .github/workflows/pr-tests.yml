@@ -6,40 +6,110 @@ on:
       - main
       - master
 
+concurrency:
+  group: quipsly-pr-tests-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Run Quipsly Validation
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Verify collaborator and documentation contract
+        run: |
+          node --test scripts/ci/audit-repository-contract.test.mjs
+          node scripts/ci/audit-repository-contract.mjs
+          node --test scripts/ci/audit-tracked-artifacts.test.mjs
+          node scripts/ci/audit-tracked-artifacts.mjs
+          node --test scripts/dev/quipsly-local-doctor.test.mjs
+
+      - name: Reject added secret material
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          node --test scripts/ci/audit-changed-secrets.test.mjs
+          node scripts/ci/audit-changed-secrets.mjs --base "${BASE_SHA}" --head HEAD
+
+      - name: Enforce binary asset budgets
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/ci/audit-binary-assets.mjs --base "${BASE_SHA}" --head HEAD
+
+      - name: Detect Quipsly release-slice changes
+        id: changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          node scripts/ci/plan-changed-surfaces.mjs \
+            --base "${BASE_SHA}" \
+            --head HEAD \
+            --github-output "${GITHUB_OUTPUT}"
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: 'pnpm'
 
       - name: Install dependencies
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck Quipsly
-        run: pnpm --filter quipsly exec tsc --noEmit --incremental false
+      - name: Typecheck High Ground web with pinned TypeScript 7
+        if: steps.changes.outputs.web == 'true'
+        run: pnpm --filter web typecheck
 
-      - name: Build Quipsly
-        env:
-          NEXT_PUBLIC_STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
-          STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
-        run: pnpm --filter quipsly build
+      - name: Typecheck Quipsly with pinned TypeScript 7
+        if: steps.changes.outputs.quipsly == 'true'
+        run: pnpm --filter quipsly typecheck
+
+      - name: Run committed Quipsly contract suite
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        run: pnpm quipsly:contracts:test
+
+      - name: Run source and production-build release gate
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        run: pnpm quipsly:release:local
 
       - name: Validate release scripts and workflows
+        if: steps.changes.outputs.quipsly == 'true'
         run: |
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/deploy-cloud-run.yml"); YAML.load_file(".github/workflows/pr-tests.yml"); puts "YAML OK"'
+          node --test scripts/ci/audit-binary-assets.test.mjs
+          node --test scripts/ci/plan-changed-surfaces.test.mjs
+          node --test scripts/quipsly-foundation-baseline-audit.test.mjs
+          node --experimental-strip-types scripts/quipsly-livekit-join-token-contract.test.mjs
+          bash -n scripts/release/quipsly-build-context.sh
+          bash -n scripts/release/quipsly-build-context.test.sh
+          bash -n scripts/release/quipsly-normalize-context-metadata.sh
           bash -n scripts/release/quipsly-release-preflight.sh
           bash -n scripts/release/quipsly-smoke-preview.sh
           bash -n scripts/release/quipsly-schema-sync.sh
+          bash scripts/release/quipsly-schema-sync.test.sh
+          bash scripts/release/quipsly-schema-context.test.sh
+          bash scripts/release/quipsly-schema-job.test.sh
           bash -n scripts/release/quipsly-deploy-preview.sh
           bash -n scripts/release/quipsly-promote-preview.sh
+
+      - name: Validate committed Quipsly release context
+        if: steps.changes.outputs.quipsly == 'true'
+        run: bash scripts/release/quipsly-build-context.test.sh
+
+      - name: Report intentionally skipped Quipsly validation
+        if: steps.changes.outputs.quipsly != 'true' && steps.changes.outputs.web != 'true'
+        run: echo "PASS This pull request does not change the Nest or High Ground web release slice."

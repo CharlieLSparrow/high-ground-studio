@@ -10,9 +10,23 @@ SERVICE_ACCOUNT="${SERVICE_ACCOUNT:-studio-cloud-run@high-ground-odyssey.iam.gse
 SQL_INSTANCE="${SQL_INSTANCE:-high-ground-odyssey:us-central1:studio-postgres}"
 JOB_NAME="${JOB_NAME:-quipsly-schema-sync}"
 RUN_PRISMA_MIGRATE="${RUN_PRISMA_MIGRATE:-0}"
+ALLOW_PRISMA_ACCEPT_DATA_LOSS="${ALLOW_PRISMA_ACCEPT_DATA_LOSS:-0}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
+  exit 2
+fi
+
+if [[ "${ALLOW_PRISMA_ACCEPT_DATA_LOSS}" != "1" ]]; then
+  cat >&2 <<'EOF'
+Refusing to run the legacy schema bridge.
+
+This command executes `prisma db push --accept-data-loss` against the selected
+database. Prefer committed migrations or a targeted additive schema job. If a
+reviewed production diff genuinely requires this bridge, rerun with:
+
+  ALLOW_PRISMA_ACCEPT_DATA_LOSS=1 bash scripts/release/quipsly-schema-sync.sh
+EOF
   exit 2
 fi
 

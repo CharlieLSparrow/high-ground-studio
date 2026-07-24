@@ -136,7 +136,7 @@ async function main() {
 
       for (let j = 0; j < seedSection.panelIds.length; j++) {
         const externalId = seedSection.panelIds[j];
-        
+
         // Attempt to find a matching frame by frameNumber if a storyboard exists
         let frameId = null;
         if (storyboardId) {
@@ -144,7 +144,7 @@ async function main() {
             where: {
               storyboardId,
               // e.g. extract "001" from "panel-001"
-              frameNumber: externalId.replace("panel-", "") 
+              frameNumber: externalId.replace("panel-", "")
             }
           });
           if (matchedFrame) {

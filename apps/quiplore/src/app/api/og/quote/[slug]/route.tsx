@@ -11,7 +11,7 @@ export async function GET(
   const passport = getQuotePassportBySlug(slug);
   const url = new URL(request.url);
   const format = url.searchParams.get("format") || "wide";
-  
+
   const isSquare = format === "square";
   const width = isSquare ? 1080 : 1200;
   const height = isSquare ? 1080 : 630;

@@ -1,0 +1,46 @@
+name: Feature proposal
+description: Propose a bounded improvement to a real user workflow.
+title: "feature: "
+labels: []
+body:
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Primary surface
+      options:
+        - Capture iPhone
+        - Nest web
+        - Quipsly contracts
+        - Quipsly Studio
+        - High Ground Odyssey web
+        - Cross-surface workflow
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: User workflow
+      description: Who is doing what, and where does the current experience fail?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Smallest useful outcome
+      description: Define a result that can be operated and verified in the app.
+    validations:
+      required: true
+  - type: textarea
+    id: truth
+    attributes:
+      label: Source of truth and risks
+      description: Note data ownership, provenance, auth, privacy, migration, or delivery implications.
+    validations:
+      required: true
+  - type: textarea
+    id: proof
+    attributes:
+      label: Acceptance proof
+      description: State the visible runtime, persistence, device, or delivery evidence required.
+    validations:
+      required: true

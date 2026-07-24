@@ -76,7 +76,7 @@ export default function BetaWelcomePage() {
               </div>
               <h3 className="text-xl font-bold text-[#3d2618] mb-2">Beta Realities</h3>
               <p className="text-sm text-[#8c552e] font-sans leading-relaxed">
-                You will find bugs. Some Quipslys are still learning to fly. If a mobile recording segment gets interrupted, don't worry—recording breaks are now treated as safe, first-class sync data, not failures.
+                You will find bugs. Some Quipslys are still learning to fly. If a mobile recording segment gets interrupted, don't worry, recording breaks are now treated as safe, first-class sync data, not failures.
               </p>
             </div>
           </div>

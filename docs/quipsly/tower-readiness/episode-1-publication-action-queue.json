@@ -1,0 +1,161 @@
+{
+  "actions": [
+    {
+      "id": "review-writing-v2",
+      "label": "Review Episode 1 v2 writing candidate",
+      "lane": "Nest",
+      "order": 1,
+      "requiredEvidence": "Review ledger row records a human or explicitly delegated decision for the v2 writing candidate.",
+      "safeNextCommand": "script/agentctl.sh episode1-writing-review-bundle --json",
+      "status": "waiting-human-review",
+      "why": "Tower copy should not become canonical public copy until the underlying writing candidate is accepted, revised, or replaced."
+    },
+    {
+      "id": "append-v2-to-live-nest",
+      "label": "Append v2 to the live Nest writing surface as a reviewable block",
+      "lane": "Nest",
+      "order": 2,
+      "requiredEvidence": "Receipt path confirms matching live Nest block id and review/authorship/tags.",
+      "safeNextCommand": "script/agentctl.sh episode1-writing-nest-ingest-receipt --json",
+      "status": "live-nest-ingest-verified",
+      "why": "The living Nest needs to hold the draft with authorship/provenance so humans and agents can work from shared truth."
+    },
+    {
+      "id": "attach-studio-export-proof",
+      "label": "Review full-length Episode 1 Studio artifact proof",
+      "lane": "Studio",
+      "order": 3,
+      "requiredEvidence": "Current artifact watch/listen review decision plus ledger row.",
+      "safeNextCommand": "cat /Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-watch-listen-review-current.json",
+      "status": "full-length-artifact-watch-listen-review-needed",
+      "why": "Complete watch/listen review before Tower artifact-ready claims."
+    },
+    {
+      "id": "review-destination-copy",
+      "label": "Review destination-specific copy",
+      "lane": "Tower",
+      "order": 4,
+      "requiredEvidence": "Review decision records destination copy as approved, needs revision, or superseded.",
+      "safeNextCommand": "script/agentctl.sh publication-destination-copy --json",
+      "status": "waiting-human-review",
+      "why": "The packet contains serious publishable-intent copy, but destination voice, links, media references, and support CTAs need approval."
+    },
+    {
+      "id": "create-hgo-page",
+      "label": "Create or update the HighGroundOdyssey.com Episode 1 page",
+      "lane": "Tower",
+      "order": 5,
+      "requiredEvidence": "Published HGO page URL captured in a Tower receipt row.",
+      "safeNextCommand": "script/agentctl.sh publication-destination-copy",
+      "status": "blocked-until-artifact-review-passes",
+      "why": "This is the first public proof of the Nest -> Studio -> Tower loop for writing plus episode context."
+    },
+    {
+      "id": "prepare-youtube-description",
+      "label": "Prepare final YouTube long-form title/description",
+      "lane": "Tower",
+      "order": 6,
+      "requiredEvidence": "YouTube URL or scheduled-provider id captured in a Tower receipt row.",
+      "safeNextCommand": "script/agentctl.sh publication-destination-copy",
+      "status": "blocked-until-artifact-review-passes",
+      "why": "YouTube copy needs final chapter times, public/scheduled video URL, and support links."
+    },
+    {
+      "id": "prepare-short-posts",
+      "label": "Prepare Shorts/Reels/social posts",
+      "lane": "Tower",
+      "order": 7,
+      "requiredEvidence": "Per-platform post URL or scheduled-provider id captured for each selected short.",
+      "safeNextCommand": "script/agentctl.sh publication-destination-copy",
+      "status": "blocked-until-artifact-review-passes",
+      "why": "Social copy seeds exist, but they need selected 9:16 exports and platform-specific approval."
+    }
+  ],
+  "commands": {
+    "inspectLiveNestIngestReceipt": "script/agentctl.sh episode1-writing-nest-ingest-receipt --json"
+  },
+  "currentArtifactMachineSanityReview": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-machine-sanity-review.json",
+  "currentArtifactMachineSanityReviewMarkdown": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-machine-sanity-review.md",
+  "currentArtifactReviewAssist": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-review-assist.json",
+  "currentArtifactReviewAssistMarkdown": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-review-assist.md",
+  "currentArtifactReviewSamples": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-review-samples.json",
+  "currentArtifactReviewSamplesMarkdown": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-review-samples.md",
+  "currentArtifactReviewStation": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-review-station.json",
+  "currentArtifactReviewStationHtml": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-review-station.html",
+  "currentArtifactWatchListenReviewDecision": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-watch-listen-review-current.json",
+  "currentArtifactWatchListenReviewLedger": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-watch-listen-review-ledger.jsonl",
+  "currentArtifactWatchListenReviewSheet": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-artifact-watch-listen-review.md",
+  "currentSampledContactSheets": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-sampled-contact-sheets.json",
+  "currentSampledContactSheetsMarkdown": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-sampled-contact-sheets.md",
+  "currentSelectedArtifactSet": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-tail-trim-promotion-current.json",
+  "currentStudioArtifactProofReview": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-full-release-artifact-proof-review.json",
+  "currentStudioArtifactProofReviewStatus": "full-length-artifact-watch-listen-review-needed",
+  "currentTailTrimCandidate": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-tail-trim-candidate.json",
+  "currentTailTrimCandidateMarkdown": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-tail-trim-candidate.md",
+  "currentTailTrimCandidateOutputDir": "/Users/wall-e/Movies/QuipslyExports/Episode1FullRelease/2026-06-20-tail-trim-candidate",
+  "currentTailTrimCandidateSanity": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-tail-trim-candidate-sanity.json",
+  "currentTailTrimCandidateSanityMarkdown": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-tail-trim-candidate-sanity.md",
+  "currentTailTrimPromotionDecision": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-tail-trim-promotion-current.json",
+  "currentTailTrimPromotionLedger": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-tail-trim-promotion-ledger.jsonl",
+  "episodeSlug": "episode-1",
+  "liveNestIngestStatus": "verified-live-nest-ingested",
+  "notReadyYet": [
+    "Full-length Episode 1 artifacts have metadata proof, but real watch/listen review is still needed.",
+    "Do not claim publication-ready until artifact review is completed.",
+    "Do not claim published until external URLs or provider ids are captured."
+  ],
+  "operatorCommands": {
+    "appendQueuedDraftToLiveNest": "script/agentctl.sh nest-serious-draft-file \"Episode 1 - The Wednesday Rule - Second Pass\" /Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md episode-1 \"book,writing,episode-1,agent-second-pass,needs-human-review,current-candidate\" \"agent second-pass draft created after content partner doctrine clarification\"",
+    "generateArtifactMachineSanityReview": "script/agentctl.sh episode1-artifact-sanity-review",
+    "generateArtifactReviewAssist": "script/agentctl.sh episode1-artifact-review-assist",
+    "generateArtifactReviewSamples": "script/agentctl.sh episode1-artifact-review-samples",
+    "generateArtifactReviewStation": "script/agentctl.sh episode1-artifact-review-station",
+    "generateArtifactWatchListenReviewSheet": "script/agentctl.sh episode1-artifact-watch-review",
+    "generateLatestStudioProofAttachmentPacket": "script/agentctl.sh episode1-studio-proof-attach-latest [/absolute/output.json]",
+    "generateSampledContactSheets": "script/agentctl.sh episode1-artifact-sampled-contact-sheets",
+    "generateStudioProofAttachmentPacket": "script/agentctl.sh episode1-studio-proof-attach /absolute/release-manifest-or-folder [/absolute/output.json]",
+    "generateTailTrimCandidate": "script/agentctl.sh episode1-tail-trim-candidate",
+    "inspectCurrentStudioArtifactProofReview": "cat /Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-current-studio-artifact-proof-review.json",
+    "inspectDestinationCopy": "script/agentctl.sh publication-destination-copy --json",
+    "inspectNestQueue": "script/agentctl.sh episode1-writing-nest-queue --json",
+    "inspectPublicationActionQueue": "script/agentctl.sh episode1-publication-action-queue --json",
+    "inspectReceiptCockpit": "script/agentctl.sh publication-receipt-cockpit",
+    "inspectReviewBundle": "script/agentctl.sh episode1-writing-review-bundle --json",
+    "inspectStudioProofAttachmentQueue": "script/agentctl.sh episode1-studio-proof-attachment-queue --json",
+    "inspectStudioProofRequirements": "script/agentctl.sh episode1-studio-artifact-proof-requirements --json",
+    "inspectTowerReadiness": "script/agentctl.sh episode1-writing-tower-readiness --json",
+    "inspectVerticalSliceBrief": "script/agentctl.sh episode1-vertical-slice-brief --json",
+    "inspectVerticalSliceNextAction": "script/agentctl.sh episode1-vertical-slice-next --json",
+    "promoteTailTrimCandidate": "script/agentctl.sh episode1-tail-trim-promote promote-for-review [actor] [note]",
+    "refreshThenInspectVerticalSliceNextAction": "script/agentctl.sh episode1-vertical-slice-refresh && script/agentctl.sh episode1-vertical-slice-next --json",
+    "refreshVerticalSliceBrief": "script/agentctl.sh episode1-vertical-slice-refresh [/absolute/output.json]",
+    "tailTrimCandidateSanity": "script/agentctl.sh episode1-tail-trim-candidate-sanity",
+    "verifyQueuedDraftInLiveNest": "script/agentctl.sh episode1-writing-nest-ingest-receipt --json"
+  },
+  "packetType": "quipsly-publication-action-queue",
+  "paths": {
+    "liveNestIngestReceipt": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-receipts/episode-1-writing-v2-nest-ingest-receipt.json"
+  },
+  "projectSlug": "high-ground-odyssey-manuscript",
+  "purpose": "Convert Episode 1 Nest writing and Tower copy into a truthful ordered publishing workflow without pretending platform publication has happened.",
+  "queueStatus": "full-length-artifact-watch-listen-review-needed",
+  "readyNow": [
+    "Complete watch/listen review on the 16:9 master, 9:16 master, podcast audio, and selected shorts when relevant.",
+    "Keep Tower blocked until a pass, needs-fix, or reject decision records actual review findings."
+  ],
+  "sourceArtifacts": {
+    "currentStudioArtifactProofReview": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-full-release-artifact-proof-review.json",
+    "destinationCopy": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-destination-copy-packet.md",
+    "loopStatus": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-writing-loop-status.json",
+    "nestQueue": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-queue/episode-1-writing-v2-queue.json",
+    "studioProofAttachmentPacket": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-latest-fit-studio-proof-attachment-packet.json",
+    "studioProofAttachmentQueue": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-studio-proof-attachment-queue.json",
+    "studioProofRequirements": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-studio-artifact-proof-requirements.json",
+    "towerReadiness": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/tower-readiness/episode-1-writing-tower-readiness.json",
+    "verticalSliceBrief": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-vertical-slice-brief.json",
+    "writingCandidate": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md"
+  },
+  "title": "Episode 1 - The Wednesday Rule - Publication action queue",
+  "truth": "This publication action queue orders the next review, Nest, Studio, and Tower steps for Episode 1. It does not approve canon, append to live Nest, export media, publish, schedule, or capture external receipts.",
+  "updatedAt": "2026-06-20T14:24:04-06:00"
+}

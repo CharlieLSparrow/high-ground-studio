@@ -11,6 +11,8 @@ xcuserdata/
 *.log
 *.profraw
 TestResults/
+fastlane/README.md
+fastlane/report.xml
 
 # SwiftPM/build output
 .build/
@@ -44,7 +46,6 @@ run_build.sh
 test_*
 dummy*
 current*
-valid*
 my_test*
 main_empirical.swift
 app_output.txt

@@ -77,6 +77,10 @@ Job:
 
 Create, read, annotate, tag, structure, and revise text while preserving source context and authorship.
 
+This includes human-authored, agent-authored, and mixed-authorship work. Quipsly should not bottleneck the workflow by requiring a human to supply every usable paragraph before the system can be tested or used. The surface must instead preserve provenance, review state, canon state, and source context so serious agent-created drafts can be inspected and revised like any other creative material.
+
+Agent-authored work should be treated as real creative material when it is created with publishable intent. It may be replaced, rejected, or rewritten later, but it should not be architecturally downgraded to filler. The writing/study surface must support visible authorship, source context, review notes, and canon state for human, agent, and mixed work.
+
 Possible surfaces:
 
 - Nest web editor
@@ -178,6 +182,10 @@ Depth by surface:
 Job:
 
 Turn one source idea into platform-specific outputs, publish them, and learn what worked.
+
+Quipsly agents may help produce drafts, metadata, captions, episode notes, social copy, article copy, and publication packets as real first-pass creative operators. Publishing surfaces must distinguish draft, reviewed, scheduled, published, and receipt-proved states rather than relying on who wrote the first version.
+
+The publishing surface should welcome agent-created packets as serious candidates while blocking fake finality. A packet written by Codex can be ready for review; it is not published until a destination workflow creates a receipt. A post drafted by a Quipsly can be useful; it is not canon unless accepted into the project state.
 
 Possible surfaces:
 
@@ -353,4 +361,3 @@ For every major capability, define:
 - `Sync-back contract`: what gets written back to Nest.
 
 This prevents platform silos and prevents feature sprawl.
-

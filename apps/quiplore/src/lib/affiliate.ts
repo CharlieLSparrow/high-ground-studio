@@ -1,6 +1,6 @@
 /**
  * QuipLore Affiliate Link Dynamic Decorator
- * 
+ *
  * Automatically appends affiliate parameters (e.g. Amazon Associate tags,
  * Bookshop.org referrer IDs) to book and tool recommendation URLs.
  */
@@ -35,7 +35,7 @@ export function decorateAffiliateLink(url: string): string {
       const separator = url.includes("?") ? "&" : "?";
       return `${url}${separator}tag=${process.env.NEXT_PUBLIC_AMAZON_ASSOCIATE_TAG || "quiplore-20"}`;
     }
-    
+
     if (url.includes("bookshop.org")) {
       const separator = url.includes("?") ? "&" : "?";
       return `${url}${separator}partner=${process.env.NEXT_PUBLIC_BOOKSHOP_REFERRER_ID || "quiplore"}`;

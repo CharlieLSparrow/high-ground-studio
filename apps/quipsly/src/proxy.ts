@@ -7,6 +7,7 @@ const marketingPathPrefixes = [
   '/philosophy',
   '/pricing',
   '/privacy',
+  '/public',
   '/quipslys',
   '/support',
   '/terms',
@@ -56,6 +57,15 @@ export function proxy(request: NextRequest) {
   // Enforce strict boundaries for quipsly.com
   // Only allow marketing paths. Everything app/workbench-shaped goes to nest.
   if (hostname === 'quipsly.com' || hostname === 'www.quipsly.com') {
+    // /coaching is a public product-education route on the marketing domain.
+    // The private/operational coaching workbench keeps the same pathname on
+    // nest.quipsly.com, so host-aware routing must be explicit here.
+    if (url.pathname === '/coaching') {
+      const marketingCoachingUrl = new URL(request.url)
+      marketingCoachingUrl.pathname = '/public/coaching'
+      return NextResponse.rewrite(marketingCoachingUrl)
+    }
+
     if (!isMarketingPath(url.pathname)) {
       return NextResponse.redirect(new URL(`${url.pathname}${url.search}`, 'https://nest.quipsly.com'))
     }

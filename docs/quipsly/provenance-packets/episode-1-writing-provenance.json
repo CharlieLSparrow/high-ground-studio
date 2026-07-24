@@ -1,0 +1,413 @@
+{
+  "allowedNextMoves": [
+    "ingest the agent first-pass draft into Nest with explicit authorship and review state",
+    "revise the draft as Codex or another Quipsly without downgrading it to placeholder",
+    "record a review decision in the Episode 1 writing review ledger",
+    "promote to mixed-authorship-ready or canon-approved only after explicit review",
+    "prepare Tower publication targets while preserving receipt boundaries",
+    "compare the first-pass and second-pass Episode 1 drafts before canon approval",
+    "ingest the second-pass draft into Nest with explicit agent-authored provenance and needs-human-review state",
+    "review the v1-v2 comparison packet and record whether v2 becomes the working draft",
+    "review the v2 Tower packet before replacing or superseding the v1 Tower packet",
+    "review the destination copy packet before posting to HGO, YouTube, Patreon, or social platforms",
+    "inspect the publication action queue before choosing the next Tower or Studio step",
+    "inspect the Studio proof requirements before claiming media artifact readiness",
+    "inspect the Studio proof attachment queue before attaching export evidence",
+    "inspect the current-candidate manifest before deciding what draft to open next",
+    "inspect the Nest intake packet before appending the v2 draft to the living Nest document",
+    "inspect the local Nest queue before running live Nest ingest",
+    "human review v2 for voice, source grounding, and canon approval after Codex mixed-authorship-ready receipt",
+    "human reviewer can use the handoff packet to decide whether v2 remains mixed-authorship-ready, needs revision, or becomes canon-approved",
+    "inspect the writing loop status before choosing the next writing action",
+    "create additional serious agent-authored supporting work when it is separately labeled with provenance and does not obscure the current review target",
+    "inspect the Tower readiness packet before claiming any destination is publication-ready",
+    "generate a Studio proof attachment packet from the current export folder or manifest before claiming artifact-ready",
+    "use script/agentctl.sh episode1-studio-proof-attach /absolute/release-manifest-or-folder [/absolute/output.json] to create candidate Studio proof attachments from current evidence",
+    "use script/agentctl.sh episode1-studio-proof-attach-latest [/absolute/output.json] to create candidate Studio proof attachments from the latest known Episode 1 Tower export evidence",
+    "inspect the Episode 1 vertical slice brief before advancing any single lane as if it were the whole product loop",
+    "refresh the Episode 1 vertical slice brief from current source packets before using it for operator planning",
+    "inspect the Episode 1 vertical slice next-action card before choosing which lane to advance",
+    "after appending the v2 draft to live Nest, run the Nest ingest receipt checker before claiming ingestion complete"
+  ],
+  "artifactFamily": "Nest writing to Tower publication preparation",
+  "artifacts": [
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-agent-first-pass-draft",
+      "intent": "serious-first-pass",
+      "kind": "writing-draft",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-first-pass.md",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "agent-first-pass",
+      "sourceContext": [
+        "High Ground Odyssey Episode 1 concept: The Wednesday Rule",
+        "Quipsly Nest Studio Tower dogfooding objective",
+        "User-stated product principle: Codex and Quipslys may create serious content as full creative partners"
+      ],
+      "truth": "This draft is serious creative work, not disposable placeholder text. It still requires review before canon or publication."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-agent-second-pass-draft",
+      "intent": "serious-second-pass",
+      "kind": "writing-draft",
+      "latestReviewReceipt": {
+        "actor": "Codex",
+        "actorType": "agent",
+        "ledgerPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-ledgers/episode-1-writing-review-ledger.jsonl",
+        "outcome": "mixed-authorship-ready",
+        "recordedAt": "2026-06-20T00:00:00-06:00"
+      },
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "mixed-authorship-ready",
+      "sourceContext": [
+        "episode-1-agent-first-pass-draft",
+        "User clarification: Codex/Quipslys are full creative content partners, not placeholder-only generators",
+        "Product doctrine: avoid invisible work, not AI-authored work"
+      ],
+      "truth": "This second pass is serious creative work and has an agent review receipt recommending it as mixed-authorship-ready. It is still not canon and not published."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-writing-publication-packet",
+      "intent": "review-ready-publication-prep",
+      "kind": "tower-publication-packet",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-writing-publication-packet.md",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "needs-human-review",
+      "sourceContext": [
+        "episode-1-agent-first-pass-draft",
+        "Tower receipt truth doctrine"
+      ],
+      "truth": "This packet prepares publication work. It does not publish, schedule, canonize, or claim external proof."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-v1-v2-comparison",
+      "intent": "review-aid",
+      "kind": "review-comparison-packet",
+      "latestReviewReceipt": {
+        "actor": "Codex",
+        "actorType": "agent",
+        "ledgerPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-ledgers/episode-1-writing-review-ledger.jsonl",
+        "outcome": "mixed-authorship-ready",
+        "recordedAt": "2026-06-20T00:00:00-06:00"
+      },
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-packets/episode-1-writing-v1-v2-comparison.md",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "mixed-authorship-ready",
+      "sourceContext": [
+        "episode-1-agent-first-pass-draft",
+        "episode-1-agent-second-pass-draft"
+      ],
+      "truth": "This packet compares draft direction and recommends v2 as working draft. It does not approve canon or publish."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-writing-publication-packet-v2",
+      "intent": "review-ready-publication-prep-second-pass",
+      "kind": "tower-publication-packet",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-writing-publication-packet-v2.md",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "needs-human-review",
+      "sourceContext": [
+        "episode-1-agent-second-pass-draft",
+        "episode-1-v1-v2-comparison"
+      ],
+      "truth": "This packet prepares v2 publication copy. It does not publish, schedule, canonize, or claim external proof."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-destination-copy-packet",
+      "intent": "destination-specific-publishable-intent-copy",
+      "kind": "tower-destination-copy-packet",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/publication-packets/hgo-episode-1-the-wednesday-rule-destination-copy-packet.md",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "needs-human-review",
+      "sourceContext": [
+        "episode-1-agent-second-pass-draft",
+        "episode-1-writing-publication-packet-v2",
+        "episode-1-writing-tower-readiness"
+      ],
+      "truth": "This packet prepares platform-specific copy for HGO, YouTube, Patreon, and social destinations. It does not publish, schedule, approve canon, export media, or capture receipts."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-writing-current-candidate",
+      "intent": "working-draft-recommendation",
+      "kind": "current-state-manifest",
+      "latestReviewReceipt": {
+        "actor": "Codex",
+        "actorType": "agent",
+        "ledgerPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-ledgers/episode-1-writing-review-ledger.jsonl",
+        "outcome": "mixed-authorship-ready",
+        "recordedAt": "2026-06-20T00:00:00-06:00"
+      },
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-writing-current-candidate.json",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "mixed-authorship-ready",
+      "sourceContext": [
+        "episode-1-agent-second-pass-draft",
+        "episode-1-v1-v2-comparison",
+        "episode-1-writing-publication-packet-v2"
+      ],
+      "truth": "This manifest recommends v2 as the current working draft. It does not canonize, publish, schedule, or receipt-confirm anything."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-writing-v2-nest-intake",
+      "intent": "safe-nest-capture-plan",
+      "kind": "nest-intake-packet",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-intake/episode-1-writing-v2-nest-intake.json",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "needs-human-review",
+      "sourceContext": [
+        "episode-1-agent-second-pass-draft",
+        "episode-1-writing-current-candidate",
+        "episode-1-v1-v2-comparison"
+      ],
+      "truth": "This intake packet describes safe Nest capture for v2. It is not proof that Nest has already ingested the draft and does not canonize or publish it."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-writing-v2-nest-queue",
+      "intent": "durable-live-nest-ingest-queue",
+      "kind": "nest-writing-queue-packet",
+      "liveNestIngestReceipt": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-receipts/episode-1-writing-v2-nest-ingest-receipt.json",
+      "liveNestIngestStatus": "verified-live-nest-ingested",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-queue/episode-1-writing-v2-queue.json",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "live-nest-ingest-verified-needs-human-review",
+      "sourceContext": [
+        "episode-1-writing-v2-nest-intake",
+        "episode-1-agent-second-pass-draft",
+        "episode-1-writing-loop-status"
+      ],
+      "truth": "This local queue packet records the next safe Nest capture action and required receipt. It does not prove live Nest ingestion."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-human-writing-review-handoff",
+      "intent": "human-review-guide",
+      "kind": "human-review-handoff",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-packets/episode-1-human-writing-review-handoff.md",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "awaiting-human-review",
+      "sourceContext": [
+        "episode-1-agent-second-pass-draft",
+        "episode-1-writing-current-candidate",
+        "episode-1-writing-review-ledger"
+      ],
+      "truth": "This handoff tells a human reviewer what to inspect and what decision commands are available. It does not approve canon or publish anything."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-writing-loop-status",
+      "intent": "operator-status-summary",
+      "kind": "status-summary-packet",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-writing-loop-status.json",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "summary-of-current-artifacts",
+      "sourceContext": [
+        "episode-1-writing-current-candidate",
+        "episode-1-writing-v2-nest-intake",
+        "episode-1-human-writing-review-handoff",
+        "episode-1-writing-review-ledger"
+      ],
+      "truth": "This status packet summarizes the current writing loop. It points to authoritative artifacts but does not replace them or prove runtime ingestion/publication."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-writing-tower-readiness",
+      "intent": "destination-readiness-and-receipt-targets",
+      "kind": "tower-readiness-packet",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/tower-readiness/episode-1-writing-tower-readiness.json",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "copy-review-ready-not-publication-ready",
+      "sourceContext": [
+        "episode-1-writing-publication-packet-v2",
+        "episode-1-writing-loop-status",
+        "episode-1-human-writing-review-handoff"
+      ],
+      "truth": "This Tower readiness packet lists destination readiness and receipt targets. It does not publish, schedule, approve canon, export media, or capture receipts."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-publication-action-queue",
+      "intent": "ordered-cross-lane-publication-next-actions",
+      "kind": "tower-publication-action-queue",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/tower-readiness/episode-1-publication-action-queue.json",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "active-review-and-artifact-prep",
+      "sourceContext": [
+        "episode-1-destination-copy-packet",
+        "episode-1-writing-tower-readiness",
+        "episode-1-writing-v2-nest-queue",
+        "episode-1-writing-loop-status"
+      ],
+      "truth": "This action queue orders the next Nest, Studio, and Tower steps required before publication claims. It does not perform those steps or capture receipts."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-studio-artifact-proof-requirements",
+      "intent": "define-media-export-evidence-needed-for-tower",
+      "kind": "studio-artifact-proof-requirements",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-studio-artifact-proof-requirements.json",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "requirements-defined-not-current-proof",
+      "sourceContext": [
+        "episode-1-publication-action-queue",
+        "episode-1-writing-tower-readiness",
+        "Episode Spine and Receipt Cockpit command surfaces"
+      ],
+      "truth": "This packet defines what Studio export evidence Tower needs. It is not itself proof that current export files exist."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "id": "episode-1-studio-proof-attachment-queue",
+      "intent": "define-empty-evidence-slots-for-current-export-proof",
+      "kind": "studio-proof-attachment-queue",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/studio-proof/episode-1-studio-proof-attachment-queue.json",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "waiting-current-export-proof",
+      "sourceContext": [
+        "episode-1-studio-artifact-proof-requirements",
+        "episode-1-publication-action-queue",
+        "historical release folder note from quipslystudio-worklog"
+      ],
+      "truth": "This queue defines where current Studio export evidence should attach. It is not current export proof and does not fill any evidence slot."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "command": "script/agentctl.sh episode1-studio-proof-attach /absolute/release-manifest-or-folder [/absolute/output.json]",
+      "creator": "Codex",
+      "id": "episode-1-studio-proof-attachment-generator",
+      "intent": "convert-current-studio-export-folder-or-manifest-into-candidate-tower-proof-attachments",
+      "kind": "operator-command-surface",
+      "latestCommand": "script/agentctl.sh episode1-studio-proof-attach-latest [/absolute/output.json]",
+      "path": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/script/agentctl.sh",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "reviewStatus": "source-wired-not-run-this-pass",
+      "sourceContext": [
+        "episode-1-studio-proof-attachment-queue",
+        "episode-1-studio-artifact-proof-requirements",
+        "episode-1-publication-action-queue"
+      ],
+      "truth": "These commands generate candidate proof attachment packets from supplied or latest known current evidence. They do not mutate the proof queue, inspect external platforms, upload, schedule, publish, or capture receipts."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "command": "script/agentctl.sh episode1-vertical-slice-brief --json",
+      "creator": "Codex",
+      "id": "episode-1-vertical-slice-brief",
+      "intent": "coordinate-current-nest-studio-tower-state-without-fake-completion",
+      "kind": "vertical-slice-coordination-packet",
+      "nextActionCommand": "script/agentctl.sh episode1-vertical-slice-next --json",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-vertical-slice-brief.json",
+      "publicationStatus": "not-published",
+      "receiptStatus": "no-external-receipts",
+      "refreshCommand": "script/agentctl.sh episode1-vertical-slice-refresh",
+      "reviewStatus": "coordination-ready-not-runtime-proof",
+      "sourceContext": [
+        "episode-1-writing-loop-status",
+        "episode-1-publication-action-queue",
+        "episode-1-studio-proof-attachment-queue",
+        "episode-1-writing-tower-readiness"
+      ],
+      "truth": "This brief coordinates the Episode 1 vertical slice and can be regenerated from current source packets. It does not ingest, export, approve canon, publish, schedule, validate runtime behavior, or capture external receipts."
+    },
+    {
+      "authorship": "agent-authored",
+      "canonStatus": "not-canon-approved",
+      "command": "script/agentctl.sh episode1-writing-nest-ingest-receipt --json",
+      "creator": "Codex",
+      "id": "episode-1-nest-ingest-receipt-checker",
+      "intent": "verify-the-queued-episode-1-v2-draft-is-visible-in-live-nest-state-after-ingest",
+      "kind": "live-nest-receipt-check-command",
+      "path": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/script/agentctl.sh",
+      "publicationStatus": "not-published",
+      "receiptStatus": "local-live-nest-receipt-checker-only",
+      "reviewStatus": "source-wired-not-run-this-pass",
+      "sourceContext": [
+        "episode-1-writing-v2-nest-queue",
+        "episode-1-writing-v2-nest-intake",
+        "nest-writing-packet"
+      ],
+      "truth": "This command checks live Nest writing state for the expected queued draft strings. It does not canonize, publish, export, schedule, or replace a future stable block-id receipt."
+    },
+    {
+      "authorship": "system-receipt",
+      "id": "episode-1-v2-live-nest-ingest-receipt",
+      "intent": "prove live Nest ingest of the agent-authored v2 writing candidate without canon approval",
+      "kind": "nest-ingest-receipt",
+      "path": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-receipts/episode-1-writing-v2-nest-ingest-receipt.json",
+      "reviewStatus": "receipt-confirmed",
+      "truth": "This receipt proves live Nest state contains the v2 draft identity/review/tags/provenance evidence. It does not publish or canon-approve."
+    }
+  ],
+  "blockedClaims": [
+    "do not claim the draft is Charlie/Homer canon until review records say so",
+    "do not claim publication until Tower captures external receipts",
+    "do not hide agent authorship",
+    "do not call serious agent work placeholder unless it was intentionally created as fixture data",
+    "do not prevent Codex or Quipslys from creating serious publishable-intent work solely because the creator is an agent"
+  ],
+  "commands": {
+    "inspectLiveNestIngestReceipt": "script/agentctl.sh episode1-writing-nest-ingest-receipt --json"
+  },
+  "doctrinePath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/quipsly-content-partner-doctrine.md",
+  "episodeSlug": "episode-1",
+  "packetType": "quipsly-writing-provenance",
+  "projectSlug": "high-ground-odyssey-manuscript",
+  "title": "The Wednesday Rule",
+  "truth": "Codex and Quipslys may create serious publishable-intent content. Episode 1 writing now has an operator status summary and Tower readiness packet, but canon approval, publication, external receipts, and actual Nest ingestion still require explicit proof."
+}

@@ -1,0 +1,1997 @@
+{
+  "cards": [
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4' 22.56",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-01-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-01-08-24' id '471E4086-8367-4E7C-8C5D-BB7132DF3524'",
+        "keep": "script/agentctl.sh shorts-review '471E4086-8367-4E7C-8C5D-BB7132DF3524' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '471E4086-8367-4E7C-8C5D-BB7132DF3524' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '471E4086-8367-4E7C-8C5D-BB7132DF3524'",
+        "writeHook": "script/agentctl.sh shorts-select id '471E4086-8367-4E7C-8C5D-BB7132DF3524' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "growthScore": 79.6,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Episode Review Candidate",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Episode Review Candidate",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Episode Review Candidate",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Episode Review Candidate",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "471E4086-8367-4E7C-8C5D-BB7132DF3524",
+      "improvementPrompts": [
+        "Write a sharper first-line hook before exporting or posting.",
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Write a sharper opening hook before packaging.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Episode Review Candidate\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Episode Review Candidate\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Episode Review Candidate\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Episode 2 Review Candidate 01 - 08:24. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 22.56,
+          "growthScore": 79.6,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Episode Review Candidate\n\nA short moment from High Ground Odyssey about episode, review, candidate.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Episode Review Candidate"
+        }
+      },
+      "platformReadiness": {
+        "basis": [
+          "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+          "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+          "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+          "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+          "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic."
+        ],
+        "counts": {
+          "needs-review": 7
+        },
+        "platforms": {
+          "facebookReels": {
+            "blockers": [],
+            "nextAction": "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "highGroundOdysseyEmbed": {
+            "blockers": [],
+            "nextAction": "Attach to the episode page with clear provenance and a useful teaser line.",
+            "status": "needs-review",
+            "warnings": [
+              "embed teaser or title hook is missing"
+            ]
+          },
+          "instagramReels": {
+            "blockers": [],
+            "nextAction": "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "linkedin": {
+            "blockers": [],
+            "nextAction": "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed",
+              "professional/work/learning angle is not obvious yet"
+            ]
+          },
+          "patreonTeaser": {
+            "blockers": [],
+            "nextAction": "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+            "status": "needs-review",
+            "warnings": [
+              "supporter teaser framing is missing",
+              "finish local watch/listen before posting to supporters"
+            ]
+          },
+          "tiktokStyle": {
+            "blockers": [],
+            "nextAction": "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "youtubeShorts": {
+            "blockers": [],
+            "nextAction": "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          }
+        }
+      },
+      "platformReadinessSummary": "0 ready / 7 needs review / 0 blocked",
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Episode 2 Review Candidate 01 - 08:24"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4' 20.24",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-02-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-02-11-29' id '48355445-FB52-4FD4-A805-8DD91AE57F70'",
+        "keep": "script/agentctl.sh shorts-review '48355445-FB52-4FD4-A805-8DD91AE57F70' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '48355445-FB52-4FD4-A805-8DD91AE57F70' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '48355445-FB52-4FD4-A805-8DD91AE57F70'",
+        "writeHook": "script/agentctl.sh shorts-select id '48355445-FB52-4FD4-A805-8DD91AE57F70' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "growthScore": 79.6,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Episode Review Candidate",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Episode Review Candidate",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Episode Review Candidate",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Episode Review Candidate",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "48355445-FB52-4FD4-A805-8DD91AE57F70",
+      "improvementPrompts": [
+        "Write a sharper first-line hook before exporting or posting.",
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Write a sharper opening hook before packaging.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Episode Review Candidate\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Episode Review Candidate\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Episode Review Candidate\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Episode 2 Review Candidate 02 - 11:29. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 20.24,
+          "growthScore": 79.6,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Episode Review Candidate\n\nA short moment from High Ground Odyssey about episode, review, candidate.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Episode Review Candidate"
+        }
+      },
+      "platformReadiness": {
+        "basis": [
+          "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+          "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+          "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+          "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+          "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic."
+        ],
+        "counts": {
+          "needs-review": 7
+        },
+        "platforms": {
+          "facebookReels": {
+            "blockers": [],
+            "nextAction": "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "highGroundOdysseyEmbed": {
+            "blockers": [],
+            "nextAction": "Attach to the episode page with clear provenance and a useful teaser line.",
+            "status": "needs-review",
+            "warnings": [
+              "embed teaser or title hook is missing"
+            ]
+          },
+          "instagramReels": {
+            "blockers": [],
+            "nextAction": "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "linkedin": {
+            "blockers": [],
+            "nextAction": "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed",
+              "professional/work/learning angle is not obvious yet"
+            ]
+          },
+          "patreonTeaser": {
+            "blockers": [],
+            "nextAction": "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+            "status": "needs-review",
+            "warnings": [
+              "supporter teaser framing is missing",
+              "finish local watch/listen before posting to supporters"
+            ]
+          },
+          "tiktokStyle": {
+            "blockers": [],
+            "nextAction": "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "youtubeShorts": {
+            "blockers": [],
+            "nextAction": "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          }
+        }
+      },
+      "platformReadinessSummary": "0 ready / 7 needs review / 0 blocked",
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Episode 2 Review Candidate 02 - 11:29"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4' 21.68",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-03-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-03-16-00' id 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E'",
+        "keep": "script/agentctl.sh shorts-review 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E'",
+        "writeHook": "script/agentctl.sh shorts-select id 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "growthScore": 79.6,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Episode Review Candidate",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Episode Review Candidate",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Episode Review Candidate",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Episode Review Candidate",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "B3454844-F98C-4EAC-B2BC-CE31C5036F4E",
+      "improvementPrompts": [
+        "Write a sharper first-line hook before exporting or posting.",
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Write a sharper opening hook before packaging.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Episode Review Candidate\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Episode Review Candidate\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Episode Review Candidate\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Episode 2 Review Candidate 03 - 16:00. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 21.68,
+          "growthScore": 79.6,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Episode Review Candidate\n\nA short moment from High Ground Odyssey about episode, review, candidate.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Episode Review Candidate"
+        }
+      },
+      "platformReadiness": {
+        "basis": [
+          "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+          "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+          "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+          "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+          "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic."
+        ],
+        "counts": {
+          "needs-review": 7
+        },
+        "platforms": {
+          "facebookReels": {
+            "blockers": [],
+            "nextAction": "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "highGroundOdysseyEmbed": {
+            "blockers": [],
+            "nextAction": "Attach to the episode page with clear provenance and a useful teaser line.",
+            "status": "needs-review",
+            "warnings": [
+              "embed teaser or title hook is missing"
+            ]
+          },
+          "instagramReels": {
+            "blockers": [],
+            "nextAction": "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "linkedin": {
+            "blockers": [],
+            "nextAction": "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed",
+              "professional/work/learning angle is not obvious yet"
+            ]
+          },
+          "patreonTeaser": {
+            "blockers": [],
+            "nextAction": "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+            "status": "needs-review",
+            "warnings": [
+              "supporter teaser framing is missing",
+              "finish local watch/listen before posting to supporters"
+            ]
+          },
+          "tiktokStyle": {
+            "blockers": [],
+            "nextAction": "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "youtubeShorts": {
+            "blockers": [],
+            "nextAction": "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          }
+        }
+      },
+      "platformReadinessSummary": "0 ready / 7 needs review / 0 blocked",
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Episode 2 Review Candidate 03 - 16:00"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4' 18.56",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-04-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-04-20-59' id '1A679D84-1478-4E68-8744-910A49795A15'",
+        "keep": "script/agentctl.sh shorts-review '1A679D84-1478-4E68-8744-910A49795A15' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '1A679D84-1478-4E68-8744-910A49795A15' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '1A679D84-1478-4E68-8744-910A49795A15'",
+        "writeHook": "script/agentctl.sh shorts-select id '1A679D84-1478-4E68-8744-910A49795A15' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "growthScore": 79.6,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Episode Review Candidate",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Episode Review Candidate",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Episode Review Candidate",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Episode Review Candidate",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "1A679D84-1478-4E68-8744-910A49795A15",
+      "improvementPrompts": [
+        "Write a sharper first-line hook before exporting or posting.",
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Write a sharper opening hook before packaging.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Episode Review Candidate\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Episode Review Candidate\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Episode Review Candidate\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Episode 2 Review Candidate 04 - 20:59. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 18.56,
+          "growthScore": 79.6,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Episode Review Candidate\n\nA short moment from High Ground Odyssey about episode, review, candidate.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Episode Review Candidate"
+        }
+      },
+      "platformReadiness": {
+        "basis": [
+          "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+          "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+          "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+          "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+          "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic."
+        ],
+        "counts": {
+          "needs-review": 7
+        },
+        "platforms": {
+          "facebookReels": {
+            "blockers": [],
+            "nextAction": "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "highGroundOdysseyEmbed": {
+            "blockers": [],
+            "nextAction": "Attach to the episode page with clear provenance and a useful teaser line.",
+            "status": "needs-review",
+            "warnings": [
+              "embed teaser or title hook is missing"
+            ]
+          },
+          "instagramReels": {
+            "blockers": [],
+            "nextAction": "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "linkedin": {
+            "blockers": [],
+            "nextAction": "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed",
+              "professional/work/learning angle is not obvious yet"
+            ]
+          },
+          "patreonTeaser": {
+            "blockers": [],
+            "nextAction": "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+            "status": "needs-review",
+            "warnings": [
+              "supporter teaser framing is missing",
+              "finish local watch/listen before posting to supporters"
+            ]
+          },
+          "tiktokStyle": {
+            "blockers": [],
+            "nextAction": "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "youtubeShorts": {
+            "blockers": [],
+            "nextAction": "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          }
+        }
+      },
+      "platformReadinessSummary": "0 ready / 7 needs review / 0 blocked",
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Episode 2 Review Candidate 04 - 20:59"
+    },
+    {
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4' 19.68",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-05-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-05-24-29' id '3AB6C255-E701-4316-9011-6CB8839B6243'",
+        "keep": "script/agentctl.sh shorts-review '3AB6C255-E701-4316-9011-6CB8839B6243' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '3AB6C255-E701-4316-9011-6CB8839B6243' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '3AB6C255-E701-4316-9011-6CB8839B6243'",
+        "writeHook": "script/agentctl.sh shorts-select id '3AB6C255-E701-4316-9011-6CB8839B6243' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "growthScore": 79.6,
+      "growthTier": "promising-needs-polish",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "Episode Review Candidate",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Episode Review Candidate",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Episode Review Candidate",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Episode Review Candidate",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "3AB6C255-E701-4316-9011-6CB8839B6243",
+      "improvementPrompts": [
+        "Write a sharper first-line hook before exporting or posting.",
+        "Create a caption/overlay plan that does not cover faces.",
+        "Listen through once for clipping, sudden loudness, or awkward cut points."
+      ],
+      "nextGrowthAction": "Write a sharper opening hook before packaging.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "Episode Review Candidate\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "Episode Review Candidate\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "Episode Review Candidate\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Episode 2 Review Candidate 05 - 24:29. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 19.68,
+          "growthScore": 79.6,
+          "growthTier": "promising-needs-polish"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "Episode Review Candidate\n\nA short moment from High Ground Odyssey about episode, review, candidate.",
+          "hashtags": [
+            "#Episode",
+            "#Review",
+            "#Candidate",
+            "#Write",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "Episode Review Candidate"
+        }
+      },
+      "platformReadiness": {
+        "basis": [
+          "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+          "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+          "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+          "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+          "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic."
+        ],
+        "counts": {
+          "needs-review": 7
+        },
+        "platforms": {
+          "facebookReels": {
+            "blockers": [],
+            "nextAction": "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "highGroundOdysseyEmbed": {
+            "blockers": [],
+            "nextAction": "Attach to the episode page with clear provenance and a useful teaser line.",
+            "status": "needs-review",
+            "warnings": [
+              "embed teaser or title hook is missing"
+            ]
+          },
+          "instagramReels": {
+            "blockers": [],
+            "nextAction": "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "linkedin": {
+            "blockers": [],
+            "nextAction": "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed",
+              "professional/work/learning angle is not obvious yet"
+            ]
+          },
+          "patreonTeaser": {
+            "blockers": [],
+            "nextAction": "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+            "status": "needs-review",
+            "warnings": [
+              "supporter teaser framing is missing",
+              "finish local watch/listen before posting to supporters"
+            ]
+          },
+          "tiktokStyle": {
+            "blockers": [],
+            "nextAction": "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          },
+          "youtubeShorts": {
+            "blockers": [],
+            "nextAction": "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+            "status": "needs-review",
+            "warnings": [
+              "opening hook missing",
+              "caption or overlay plan missing",
+              "audio listen-through still needed"
+            ]
+          }
+        }
+      },
+      "platformReadinessSummary": "0 ready / 7 needs review / 0 blocked",
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4",
+      "stage": "exported-needs-listen-through",
+      "title": "Episode 2 Review Candidate 05 - 24:29"
+    },
+    {
+      "commands": {
+        "audioSanity": "",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'script-cursor-proof-short' id 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8'",
+        "keep": "script/agentctl.sh shorts-review 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8'",
+        "writeHook": "script/agentctl.sh shorts-select id 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "episodeInference": "missing",
+      "episodeKey": "unknown-episode",
+      "episodeLabel": "Unknown episode",
+      "growthScore": 67.0,
+      "growthTier": "needs-sharper-hook-or-proof",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "This is the transcript spine one timed line that can become captions...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Script Cursor Proof Short",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Script Cursor Proof Short",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Script Cursor Proof Short",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "B5C93EC4-0CA6-4CE7-91BE-592D658659B8",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Export locally before making a posting decision.",
+        "Make sure the clip has enough context to stand alone."
+      ],
+      "nextGrowthAction": "Export locally first so the decision is based on a real file.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Script",
+            "#Cursor",
+            "#Proof",
+            "#Short",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Script",
+            "#Cursor",
+            "#Proof",
+            "#Short",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Script",
+            "#Cursor",
+            "#Proof",
+            "#Short",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Script Cursor Proof Short. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 6.24,
+          "growthScore": 67.0,
+          "growthTier": "needs-sharper-hook-or-proof"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nA short moment from High Ground Odyssey about script, cursor, proof.",
+          "hashtags": [
+            "#Script",
+            "#Cursor",
+            "#Proof",
+            "#Short",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "This is the transcript spine one timed line that can become..."
+        }
+      },
+      "platformReadiness": {
+        "basis": [
+          "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+          "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+          "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+          "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+          "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic."
+        ],
+        "counts": {
+          "blocked": 7
+        },
+        "platforms": {
+          "facebookReels": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "highGroundOdysseyEmbed": {
+            "blockers": [
+              "local export file missing",
+              "episode provenance missing"
+            ],
+            "nextAction": "Attach to the episode page with clear provenance and a useful teaser line.",
+            "status": "blocked",
+            "warnings": [
+              "episode provenance is required for HighGroundOdyssey embeds"
+            ]
+          },
+          "instagramReels": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "linkedin": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing",
+              "professional/work/learning angle is not obvious yet"
+            ]
+          },
+          "patreonTeaser": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+            "status": "blocked",
+            "warnings": [
+              "episode provenance is unclear"
+            ]
+          },
+          "tiktokStyle": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "youtubeShorts": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          }
+        }
+      },
+      "platformReadinessSummary": "0 ready / 0 needs review / 7 blocked",
+      "primaryExportExists": false,
+      "primaryExportPath": "",
+      "stage": "missing-export",
+      "title": "Script Cursor Proof Short"
+    },
+    {
+      "commands": {
+        "audioSanity": "",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'script-ledger-proof-short' id '456EB86F-9F84-4102-85B6-E6B7C0595681'",
+        "keep": "script/agentctl.sh shorts-review '456EB86F-9F84-4102-85B6-E6B7C0595681' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '456EB86F-9F84-4102-85B6-E6B7C0595681' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '456EB86F-9F84-4102-85B6-E6B7C0595681'",
+        "writeHook": "script/agentctl.sh shorts-select id '456EB86F-9F84-4102-85B6-E6B7C0595681' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "episodeInference": "missing",
+      "episodeKey": "unknown-episode",
+      "episodeLabel": "Unknown episode",
+      "growthScore": 67.0,
+      "growthTier": "needs-sharper-hook-or-proof",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "This is the transcript spine one timed line that can become captions...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Script Ledger Proof Short",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Script Ledger Proof Short",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Script Ledger Proof Short",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "456EB86F-9F84-4102-85B6-E6B7C0595681",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Export locally before making a posting decision.",
+        "Make sure the clip has enough context to stand alone."
+      ],
+      "nextGrowthAction": "Export locally first so the decision is based on a real file.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Script",
+            "#Ledger",
+            "#Proof",
+            "#Short",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Script",
+            "#Ledger",
+            "#Proof",
+            "#Short",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Script",
+            "#Ledger",
+            "#Proof",
+            "#Short",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Script Ledger Proof Short. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 5.74,
+          "growthScore": 67.0,
+          "growthTier": "needs-sharper-hook-or-proof"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nA short moment from High Ground Odyssey about script, ledger, proof.",
+          "hashtags": [
+            "#Script",
+            "#Ledger",
+            "#Proof",
+            "#Short",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "This is the transcript spine one timed line that can become..."
+        }
+      },
+      "platformReadiness": {
+        "basis": [
+          "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+          "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+          "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+          "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+          "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic."
+        ],
+        "counts": {
+          "blocked": 7
+        },
+        "platforms": {
+          "facebookReels": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "highGroundOdysseyEmbed": {
+            "blockers": [
+              "local export file missing",
+              "episode provenance missing"
+            ],
+            "nextAction": "Attach to the episode page with clear provenance and a useful teaser line.",
+            "status": "blocked",
+            "warnings": [
+              "episode provenance is required for HighGroundOdyssey embeds"
+            ]
+          },
+          "instagramReels": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "linkedin": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing",
+              "professional/work/learning angle is not obvious yet"
+            ]
+          },
+          "patreonTeaser": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+            "status": "blocked",
+            "warnings": [
+              "episode provenance is unclear"
+            ]
+          },
+          "tiktokStyle": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "youtubeShorts": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          }
+        }
+      },
+      "platformReadinessSummary": "0 ready / 0 needs review / 7 blocked",
+      "primaryExportExists": false,
+      "primaryExportPath": "",
+      "stage": "missing-export",
+      "title": "Script Ledger Proof Short"
+    },
+    {
+      "commands": {
+        "audioSanity": "",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'agentctl-port-discovery-proof-short' id '677FAA5B-B163-4314-BF00-C2357F734E37'",
+        "keep": "script/agentctl.sh shorts-review '677FAA5B-B163-4314-BF00-C2357F734E37' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '677FAA5B-B163-4314-BF00-C2357F734E37' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '677FAA5B-B163-4314-BF00-C2357F734E37'",
+        "writeHook": "script/agentctl.sh shorts-select id '677FAA5B-B163-4314-BF00-C2357F734E37' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "episodeInference": "missing",
+      "episodeKey": "unknown-episode",
+      "episodeLabel": "Unknown episode",
+      "growthScore": 67.0,
+      "growthTier": "needs-sharper-hook-or-proof",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "This is the transcript spine one timed line that can become captions...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Agentctl Port Discovery Proof Short",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Agentctl Port Discovery Proof Short",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Agentctl Port Discovery Proof Short",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "677FAA5B-B163-4314-BF00-C2357F734E37",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Export locally before making a posting decision.",
+        "Make sure the clip has enough context to stand alone."
+      ],
+      "nextGrowthAction": "Export locally first so the decision is based on a real file.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Agentctl",
+            "#Port",
+            "#Discovery",
+            "#Proof",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Agentctl",
+            "#Port",
+            "#Discovery",
+            "#Proof",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Agentctl",
+            "#Port",
+            "#Discovery",
+            "#Proof",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Agentctl Port Discovery Proof Short. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 5.74,
+          "growthScore": 67.0,
+          "growthTier": "needs-sharper-hook-or-proof"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nA short moment from High Ground Odyssey about agentctl, port, discovery.",
+          "hashtags": [
+            "#Agentctl",
+            "#Port",
+            "#Discovery",
+            "#Proof",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "This is the transcript spine one timed line that can become..."
+        }
+      },
+      "platformReadiness": {
+        "basis": [
+          "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+          "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+          "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+          "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+          "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic."
+        ],
+        "counts": {
+          "blocked": 7
+        },
+        "platforms": {
+          "facebookReels": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "highGroundOdysseyEmbed": {
+            "blockers": [
+              "local export file missing",
+              "episode provenance missing"
+            ],
+            "nextAction": "Attach to the episode page with clear provenance and a useful teaser line.",
+            "status": "blocked",
+            "warnings": [
+              "episode provenance is required for HighGroundOdyssey embeds"
+            ]
+          },
+          "instagramReels": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "linkedin": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing",
+              "professional/work/learning angle is not obvious yet"
+            ]
+          },
+          "patreonTeaser": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+            "status": "blocked",
+            "warnings": [
+              "episode provenance is unclear"
+            ]
+          },
+          "tiktokStyle": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "youtubeShorts": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          }
+        }
+      },
+      "platformReadinessSummary": "0 ready / 0 needs review / 7 blocked",
+      "primaryExportExists": false,
+      "primaryExportPath": "",
+      "stage": "missing-export",
+      "title": "Agentctl Port Discovery Proof Short"
+    },
+    {
+      "commands": {
+        "audioSanity": "",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'search-captions-proof-short' id '85F95E60-56E9-4603-8961-B01CF8E84754'",
+        "keep": "script/agentctl.sh shorts-review '85F95E60-56E9-4603-8961-B01CF8E84754' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '85F95E60-56E9-4603-8961-B01CF8E84754' refine 'Needs one concrete improvement after local review.'",
+        "requestCaptionReview": "script/agentctl.sh shorts-overlay-burn-in request_review 'Check captions/overlay for face safety and readability.'",
+        "select": "script/agentctl.sh shorts-select id '85F95E60-56E9-4603-8961-B01CF8E84754'",
+        "writeHook": "script/agentctl.sh shorts-select id '85F95E60-56E9-4603-8961-B01CF8E84754' && script/agentctl.sh shorts-update-selected hook 'Replace with a sharper opening hook.'"
+      },
+      "episodeInference": "missing",
+      "episodeKey": "unknown-episode",
+      "episodeLabel": "Unknown episode",
+      "growthScore": 67.0,
+      "growthTier": "needs-sharper-hook-or-proof",
+      "hookVariants": [
+        {
+          "angle": "direct",
+          "text": "This is the transcript spine one timed line that can become captions...",
+          "why": "Fastest to understand in the feed."
+        },
+        {
+          "angle": "curiosity",
+          "text": "The part nobody tells you about Search Captions Proof Short",
+          "why": "Creates an information gap without lying."
+        },
+        {
+          "angle": "teaching",
+          "text": "One useful way to think about Search Captions Proof Short",
+          "why": "Frames the clip as immediately useful."
+        },
+        {
+          "angle": "conversation",
+          "text": "We had to talk through Search Captions Proof Short",
+          "why": "Preserves the podcast's human conversation feel."
+        }
+      ],
+      "id": "85F95E60-56E9-4603-8961-B01CF8E84754",
+      "improvementPrompts": [
+        "Create a caption/overlay plan that does not cover faces.",
+        "Export locally before making a posting decision.",
+        "Make sure the clip has enough context to stand alone."
+      ],
+      "nextGrowthAction": "Export locally first so the decision is based on a real file.",
+      "platformCopy": {
+        "facebookReels": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nThis clip is from our ongoing High Ground Odyssey conversation.",
+          "cta": "Share with someone who would enjoy this conversation.",
+          "hashtags": [
+            "#Search",
+            "#Captions",
+            "#Proof",
+            "#Short",
+            "#HighGroundOdyssey",
+            "#PodcastClip",
+            "#LifeLessons",
+            "#Conversation"
+          ],
+          "notes": "Readable captions matter; assume many viewers start muted."
+        },
+        "instagramReels": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nSave this if it helps you think about the work differently.",
+          "cta": "Save/share if this lands.",
+          "hashtags": [
+            "#Search",
+            "#Captions",
+            "#Proof",
+            "#Short",
+            "#HighGroundOdyssey",
+            "#Reels",
+            "#PodcastMoment",
+            "#CreativeLife",
+            "#GrowthMindset"
+          ],
+          "notes": "Prioritize visual readability and face-safe captions."
+        },
+        "linkedin": {
+          "caption": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nA useful leadership/creative-work reflection from High Ground Odyssey.",
+          "cta": "What would you add to this?",
+          "hashtags": [
+            "#Search",
+            "#Captions",
+            "#Proof",
+            "#Short",
+            "#Leadership",
+            "#Coaching"
+          ],
+          "notes": "Only use if the clip has a clear work, leadership, coaching, or learning angle."
+        },
+        "patreon": {
+          "cta": "Ask supporters what part they want expanded in the next episode.",
+          "note": "Short clip candidate: Search Captions Proof Short. Use this as a teaser or behind-the-scenes discussion prompt.",
+          "notes": "Patreon can be more conversational and behind-the-scenes than public feeds.",
+          "tags": [
+            "#BehindTheScenes",
+            "#HighGroundOdyssey",
+            "#CreatorNotes"
+          ]
+        },
+        "qualityContext": {
+          "durationSeconds": 5.74,
+          "growthScore": 67.0,
+          "growthTier": "needs-sharper-hook-or-proof"
+        },
+        "youtubeShorts": {
+          "cta": "Watch the full episode when it is live.",
+          "description": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...\n\nA short moment from High Ground Odyssey about search, captions, proof.",
+          "hashtags": [
+            "#Search",
+            "#Captions",
+            "#Proof",
+            "#Short",
+            "#HighGroundOdyssey",
+            "#PodcastClips",
+            "#Wisdom",
+            "#Storytelling"
+          ],
+          "notes": "Keep the first visible text punchy; title should make the promise immediately.",
+          "title": "This is the transcript spine one timed line that can become..."
+        }
+      },
+      "platformReadiness": {
+        "basis": [
+          "YouTube Shorts: square or vertical videos up to 3 minutes are categorized as Shorts after the October 2024 longer-Shorts update.",
+          "Instagram and Facebook Reels: full-screen 9:16 vertical is the safest default, with readable captions and face-safe composition.",
+          "LinkedIn: vertical 9:16 and 4:5 are supported, but the clip should have a clear work, leadership, coaching, learning, or professional reflection angle.",
+          "Patreon: video can be native, embedded, or attached; supporter context, access framing, and post copy matter as much as the raw clip.",
+          "Modern short-form tools compete on automatic clip discovery, vertical reframing, captions, templates, virality scoring, and scheduling; Quipsly should keep those as transparent metadata instead of black-box magic."
+        ],
+        "counts": {
+          "blocked": 7
+        },
+        "platforms": {
+          "facebookReels": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Confirm readable captions and a share-friendly caption for Facebook's broader audience.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "highGroundOdysseyEmbed": {
+            "blockers": [
+              "local export file missing",
+              "episode provenance missing"
+            ],
+            "nextAction": "Attach to the episode page with clear provenance and a useful teaser line.",
+            "status": "blocked",
+            "warnings": [
+              "episode provenance is required for HighGroundOdyssey embeds"
+            ]
+          },
+          "instagramReels": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Confirm vertical crop, face-safe captions, and Reels-native caption/hashtag package.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "linkedin": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Use only when the clip has a clear professional, coaching, leadership, or learning promise.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing",
+              "professional/work/learning angle is not obvious yet"
+            ]
+          },
+          "patreonTeaser": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Frame as supporter context, behind-the-scenes prompt, or early-access teaser.",
+            "status": "blocked",
+            "warnings": [
+              "episode provenance is unclear"
+            ]
+          },
+          "tiktokStyle": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Treat as TikTok-style even before direct integration: fast hook, tight pacing, clear captions.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          },
+          "youtubeShorts": {
+            "blockers": [
+              "local export file missing"
+            ],
+            "nextAction": "Export 9:16, confirm <=3 minutes, sharpen hook/captions, then package title/description.",
+            "status": "blocked",
+            "warnings": [
+              "caption or overlay plan missing"
+            ]
+          }
+        }
+      },
+      "platformReadinessSummary": "0 ready / 0 needs review / 7 blocked",
+      "primaryExportExists": false,
+      "primaryExportPath": "",
+      "stage": "missing-export",
+      "title": "Search Captions Proof Short"
+    }
+  ],
+  "episodeCoverage": {
+    "episodeCount": 2,
+    "episodes": [
+      {
+        "episodeKey": "episode-2",
+        "localExportedFileCount": 5,
+        "reviewableCount": 5,
+        "shortCount": 5
+      },
+      {
+        "episodeKey": "unknown-episode",
+        "localExportedFileCount": 0,
+        "reviewableCount": 0,
+        "shortCount": 4
+      }
+    ],
+    "unknownEpisodeCount": 4
+  },
+  "generatedAt": "2026-06-23T11:27:19-06:00",
+  "html": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-1-shorts-platform-package-board.html",
+  "json": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-1-shorts-platform-package-board.json",
+  "markdown": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-1-shorts-platform-package-board.md",
+  "packetType": "quipsly-shorts-platform-package-board",
+  "platformReadinessCoverage": {
+    "platformCount": 7,
+    "platforms": [
+      {
+        "blocked": 4,
+        "needsReview": 5,
+        "platform": "facebookReels",
+        "ready": 0
+      },
+      {
+        "blocked": 4,
+        "needsReview": 5,
+        "platform": "highGroundOdysseyEmbed",
+        "ready": 0
+      },
+      {
+        "blocked": 4,
+        "needsReview": 5,
+        "platform": "instagramReels",
+        "ready": 0
+      },
+      {
+        "blocked": 4,
+        "needsReview": 5,
+        "platform": "linkedin",
+        "ready": 0
+      },
+      {
+        "blocked": 4,
+        "needsReview": 5,
+        "platform": "patreonTeaser",
+        "ready": 0
+      },
+      {
+        "blocked": 4,
+        "needsReview": 5,
+        "platform": "tiktokStyle",
+        "ready": 0
+      },
+      {
+        "blocked": 4,
+        "needsReview": 5,
+        "platform": "youtubeShorts",
+        "ready": 0
+      }
+    ]
+  },
+  "researchBasis": [
+    "Riverside-style social-ready clips, aspect ratios, layouts, and captions.",
+    "Descript-style templates, captions, generated B-roll, brand styling, and social aspect ratios.",
+    "OpusClip-style candidate ranking and hook/flow/engagement/trend thinking.",
+    "CapCut-style caption timing and manual subtitle correction as a first-class workflow."
+  ],
+  "truth": "This board drafts packaging. It does not publish, schedule, upload, approve, or guarantee performance.",
+  "version": "2026-06-21.shorts-platform-package-board.v1"
+}

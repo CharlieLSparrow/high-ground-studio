@@ -1,0 +1,170 @@
+import {
+  buildMobileCaptureProviderCompositeReadiness,
+  mobileCaptureConsentVersion,
+} from "./mobile-capture-consent-readiness.js";
+
+function asObject(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value : {};
+}
+
+function text(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function numeric(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function immutableReceiptMatchesRecordingAsset(receipt, recordingAsset) {
+  const metadata = asObject(receipt?.metadataJson);
+  const binding = asObject(metadata.immutableUploadBinding);
+  return Boolean(
+    text(receipt?.recordingAssetId) === text(recordingAsset?.id)
+    && text(binding.uploadSessionId) === text(receipt?.uploadSessionId)
+    && text(binding.roomId) === text(recordingAsset?.roomId)
+    && text(binding.sha256).toLowerCase() === text(recordingAsset?.checksum).toLowerCase()
+    && text(binding.bucketName) === text(recordingAsset?.storageBucket)
+    && text(binding.objectName) === text(recordingAsset?.storageObjectPath)
+    && numeric(binding.sizeBytes) !== null
+    && numeric(binding.sizeBytes) === numeric(recordingAsset?.byteSize),
+  );
+}
+
+function trustedProviderProcessingGateFromEvidence({ recordingAsset, room, transcript }) {
+  const manifest = asObject(recordingAsset?.localManifestJson);
+  const livekit = asObject(manifest.livekit);
+  const verification = asObject(manifest.verification);
+  const consentBinding = asObject(manifest.providerConsentBinding);
+  const trustedProviderEvidence =
+    recordingAsset?.kind === "SERVER_MIX"
+    && manifest.provider === "livekit"
+    && Boolean(text(livekit.egressId))
+    && verification.status === "verified"
+    && Boolean(text(recordingAsset?.storageObjectPath))
+    && consentBinding.version === 1
+    && Array.isArray(consentBinding.consentVersions)
+    && Boolean(text(consentBinding.consentVersion));
+  if (!trustedProviderEvidence) {
+    return {
+      allowed: false,
+      receipt: null,
+      errorCode: "NORMALIZED_CAPTURE_RELEASE_REQUIRED",
+      error: "This recording has no normalized release receipt or trusted provider consent binding.",
+    };
+  }
+  if (!room) {
+    return {
+      allowed: false,
+      receipt: null,
+      errorCode: "PROVIDER_CAPTURE_ROOM_REQUIRED",
+      error: "The provider recording room is unavailable, so current all-party consent cannot be verified.",
+    };
+  }
+  const readiness = buildMobileCaptureProviderCompositeReadiness({
+    participants: room.participants,
+    consents: room.recordingConsents,
+  });
+  const bindingMatches =
+    readiness.consentVersion === consentBinding.consentVersion
+    && mobileCaptureConsentVersion(consentBinding.consentVersions) === consentBinding.consentVersion;
+  if (
+    !readiness.allPartiesSourceReady
+    || !bindingMatches
+    || manifest.providerProcessingDisposition !== "RELEASED"
+  ) {
+    return {
+      allowed: false,
+      receipt: null,
+      errorCode: "PROVIDER_ALL_PARTY_SOURCE_BINDING_REQUIRED",
+      error: "Provider composite processing requires the unchanged all-party audio-and-video consent snapshot captured at egress start.",
+    };
+  }
+  if (!transcript) return { allowed: true, receipt: null };
+  if (
+    !readiness.allPartiesAllowTranscription
+    || manifest.providerTranscriptDisposition !== "RELEASED"
+  ) {
+    return {
+      allowed: false,
+      receipt: null,
+      errorCode: "PROVIDER_ALL_PARTY_TRANSCRIPTION_RELEASE_REQUIRED",
+      error: "Provider recording transcription requires separate current all-party transcription consent and an explicit provider transcript disposition.",
+    };
+  }
+  return { allowed: true, receipt: null };
+}
+
+/**
+ * @param {{recordingAsset: any, receipts?: any[], room?: any, transcript: boolean}} input
+ */
+export function mobileCaptureProcessingGateFromEvidence({
+  recordingAsset,
+  receipts = [],
+  room = null,
+  transcript,
+}) {
+  const manifest = asObject(recordingAsset?.localManifestJson);
+  if (
+    manifest.processingDisposition === "HELD"
+    || manifest.processingDisposition === "preservation-only"
+    || (transcript && manifest.transcriptionDisposition === "HELD")
+  ) {
+    return {
+      allowed: false,
+      receipt: null,
+      errorCode: String(
+        (transcript && manifest.transcriptionHoldReasonCode)
+        || manifest.processingHoldReasonCode
+        || (transcript
+          ? "CAPTURE_TRANSCRIPT_EXPLICIT_RELEASE_REQUIRED"
+          : "CAPTURE_MEDIA_EXPLICIT_RELEASE_REQUIRED"),
+      ),
+      error: String(
+        (transcript && manifest.transcriptionHoldReason)
+        || manifest.processingHoldReason
+        || (transcript
+          ? "Transcript processing is held until explicit release."
+          : "Capture media is held until explicit release."),
+      ),
+    };
+  }
+
+  const normalizedReceipts = Array.isArray(receipts) ? receipts : [];
+  const heldReceipt = normalizedReceipts.find((receipt) => (
+    transcript
+      ? receipt.processingDisposition !== "RELEASED"
+        || receipt.transcriptDisposition !== "RELEASED"
+      : receipt.processingDisposition !== "RELEASED"
+  ));
+  if (heldReceipt) {
+    return {
+      allowed: false,
+      receipt: heldReceipt,
+      errorCode: transcript && heldReceipt.transcriptDisposition !== "RELEASED"
+        ? heldReceipt.transcriptHoldReasonCode || "CAPTURE_TRANSCRIPT_EXPLICIT_RELEASE_REQUIRED"
+        : heldReceipt.holdReasonCode || "CAPTURE_MEDIA_EXPLICIT_RELEASE_REQUIRED",
+      error: transcript && heldReceipt.transcriptDisposition !== "RELEASED"
+        ? heldReceipt.transcriptHoldReason || "Transcript processing awaits reviewed release."
+        : heldReceipt.holdReason || "Capture media awaits reviewed release.",
+    };
+  }
+  if (normalizedReceipts.length > 0) {
+    const mismatchedReceipt = normalizedReceipts.find(
+      (receipt) => !immutableReceiptMatchesRecordingAsset(receipt, recordingAsset),
+    );
+    if (mismatchedReceipt) {
+      return {
+        allowed: false,
+        receipt: mismatchedReceipt,
+        errorCode: "CAPTURE_IMMUTABLE_UPLOAD_BINDING_MISMATCH",
+        error: transcript
+          ? "Transcript source media no longer matches the immutable upload evidence recorded at finalization."
+          : "Capture media no longer matches the immutable object, size, and SHA-256 evidence recorded at finalization.",
+      };
+    }
+    return { allowed: true, receipt: normalizedReceipts[0] };
+  }
+
+  return trustedProviderProcessingGateFromEvidence({ recordingAsset, room, transcript });
+}

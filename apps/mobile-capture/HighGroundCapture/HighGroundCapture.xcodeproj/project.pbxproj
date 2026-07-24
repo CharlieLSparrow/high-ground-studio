@@ -7,11 +7,14 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		05D7533C955CA2ECFC4B13E2 /* Tier1_FeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1C2F2CC15DFF0C28D925F29 /* Tier1_FeatureTests.swift */; };
+		34E74C83C2047F37B862FECA /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B2EF348CA5D2E9287A1DA85 /* ShareViewController.swift */; };
+		A17F4C120000000000000002 /* QuipslyWebSource.js in Resources */ = {isa = PBXBuildFile; fileRef = A17F4C120000000000000001 /* QuipslyWebSource.js */; };
+		410EAF99D90BE24CEEBA55E0 /* ShareCaptureExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 9529DF5B3D756E62EADF1E5A /* ShareCaptureExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		A11CE0010000000000000002 /* CaptureExperienceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE0010000000000000001 /* CaptureExperienceUITests.swift */; };
+		4F4C4956454B495450524F44 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4F4C4956454B495450524F45 /* LiveKit */; };
 		98D4B80614D75FC909B1B779 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 02257ED28F7155C09E2C04AD /* Foundation.framework */; };
-		A95234B685616B5D4FEBF68A /* Tier2_BoundaryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C90D571C28ABD6A12F17616 /* Tier2_BoundaryTests.swift */; };
-		CD613B169CCE105B6F5F11C3 /* Tier3_CrossFeatureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B443BC0A517355125F07E0AD /* Tier3_CrossFeatureTests.swift */; };
-		DA3181BBDDF5CDC3924105AA /* Tier4_WorkloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145AB90F189310EFE693A1D3 /* Tier4_WorkloadTests.swift */; };
+		A777E4031DBBE0CABAC76B11 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 02257ED28F7155C09E2C04AD /* Foundation.framework */; };
+		B6C4A3D2F00D7A0000000002 /* CaptureRoomRuntimeSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C4A3D1F00D7A0000000001 /* CaptureRoomRuntimeSmokeTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -22,31 +25,81 @@
 			remoteGlobalIDString = 4667D2B92FCA1B770008D8F0;
 			remoteInfo = HighGroundCapture;
 		};
+		E624C2683CFFFA2A145D870D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 4667D2B22FCA1B770008D8F0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = CE4322CFC08B133D502C5A8C;
+			remoteInfo = ShareCaptureExtension;
+		};
 /* End PBXContainerItemProxy section */
 
+/* Begin PBXCopyFilesBuildPhase section */
+		F1A8B168B9EF67C92EBC4D25 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				410EAF99D90BE24CEEBA55E0 /* ShareCaptureExtension.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		A11CE0010000000000000001 /* CaptureExperienceUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CaptureExperienceUITests.swift; sourceTree = "<group>"; };
 		02257ED28F7155C09E2C04AD /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		035ED62C8E00BB7B290AE2EB /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		145AB90F189310EFE693A1D3 /* Tier4_WorkloadTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tier4_WorkloadTests.swift; sourceTree = "<group>"; };
 		3C90D571C28ABD6A12F17616 /* Tier2_BoundaryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tier2_BoundaryTests.swift; sourceTree = "<group>"; };
 		4667D2BA2FCA1B770008D8F0 /* HighGroundCapture.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HighGroundCapture.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6B2EF348CA5D2E9287A1DA85 /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		795121FB5BD540E8A37ADF5E /* ShareCaptureExtension.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = ShareCaptureExtension.entitlements; sourceTree = "<group>"; };
+		9529DF5B3D756E62EADF1E5A /* ShareCaptureExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareCaptureExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		A17F4C120000000000000001 /* QuipslyWebSource.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = QuipslyWebSource.js; sourceTree = "<group>"; };
 		A51BD55E77CCFF65A09181F2 /* HighGroundCaptureUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HighGroundCaptureUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B6C4A3D1F00D7A0000000001 /* CaptureRoomRuntimeSmokeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CaptureRoomRuntimeSmokeTests.swift; sourceTree = "<group>"; };
 		B443BC0A517355125F07E0AD /* Tier3_CrossFeatureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tier3_CrossFeatureTests.swift; sourceTree = "<group>"; };
 		E1C2F2CC15DFF0C28D925F29 /* Tier1_FeatureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tier1_FeatureTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		C4A6E3F62F00000000000001 /* Exceptions for "HighGroundCapture" folder in "HighGroundCapture" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 4667D2B92FCA1B770008D8F0 /* HighGroundCapture */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		4667D2BC2FCA1B770008D8F0 /* HighGroundCapture */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				C4A6E3F62F00000000000001 /* Exceptions for "HighGroundCapture" folder in "HighGroundCapture" target */,
+			);
 			path = HighGroundCapture;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		3CF3B3BAD7D2638437BC9982 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A777E4031DBBE0CABAC76B11 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		4667D2B72FCA1B770008D8F0 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4F4C4956454B495450524F44 /* LiveKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -68,6 +121,7 @@
 				4667D2BB2FCA1B770008D8F0 /* Products */,
 				774F8E371C8C488A908131AD /* Frameworks */,
 				E976AFDB69E8514FEBD861DC /* HighGroundCaptureUITests */,
+				93D23BD3B755FD32D3A7107A /* ShareCaptureExtension */,
 			);
 			sourceTree = "<group>";
 		};
@@ -76,6 +130,7 @@
 			children = (
 				4667D2BA2FCA1B770008D8F0 /* HighGroundCapture.app */,
 				A51BD55E77CCFF65A09181F2 /* HighGroundCaptureUITests.xctest */,
+				9529DF5B3D756E62EADF1E5A /* ShareCaptureExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -86,6 +141,18 @@
 				CA9B68260A7D02DF9115D232 /* iOS */,
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		93D23BD3B755FD32D3A7107A /* ShareCaptureExtension */ = {
+			isa = PBXGroup;
+			children = (
+				6B2EF348CA5D2E9287A1DA85 /* ShareViewController.swift */,
+				A17F4C120000000000000001 /* QuipslyWebSource.js */,
+				035ED62C8E00BB7B290AE2EB /* Info.plist */,
+				795121FB5BD540E8A37ADF5E /* ShareCaptureExtension.entitlements */,
+			);
+			name = ShareCaptureExtension;
+			path = ShareCaptureExtension;
 			sourceTree = "<group>";
 		};
 		CA9B68260A7D02DF9115D232 /* iOS */ = {
@@ -99,6 +166,8 @@
 		E976AFDB69E8514FEBD861DC /* HighGroundCaptureUITests */ = {
 			isa = PBXGroup;
 			children = (
+				A11CE0010000000000000001 /* CaptureExperienceUITests.swift */,
+				B6C4A3D1F00D7A0000000001 /* CaptureRoomRuntimeSmokeTests.swift */,
 				B443BC0A517355125F07E0AD /* Tier3_CrossFeatureTests.swift */,
 				145AB90F189310EFE693A1D3 /* Tier4_WorkloadTests.swift */,
 				3C90D571C28ABD6A12F17616 /* Tier2_BoundaryTests.swift */,
@@ -117,18 +186,40 @@
 				4667D2B62FCA1B770008D8F0 /* Sources */,
 				4667D2B72FCA1B770008D8F0 /* Frameworks */,
 				4667D2B82FCA1B770008D8F0 /* Resources */,
+				F1A8B168B9EF67C92EBC4D25 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				1DD69FB593A949E423F30671 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				4667D2BC2FCA1B770008D8F0 /* HighGroundCapture */,
 			);
 			name = HighGroundCapture;
+			packageProductDependencies = (
+				4F4C4956454B495450524F45 /* LiveKit */,
+			);
 			productName = HighGroundCapture;
 			productReference = 4667D2BA2FCA1B770008D8F0 /* HighGroundCapture.app */;
 			productType = "com.apple.product-type.application";
+		};
+		CE4322CFC08B133D502C5A8C /* ShareCaptureExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 44E21C8FBBFA44E54698F9C2 /* Build configuration list for PBXNativeTarget "ShareCaptureExtension" */;
+			buildPhases = (
+				BFC94370BC5BA98A8C9855F3 /* Sources */,
+				3CF3B3BAD7D2638437BC9982 /* Frameworks */,
+				3D32EF882118EA5CF82781BE /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ShareCaptureExtension;
+			productName = ShareCaptureExtension;
+			productReference = 9529DF5B3D756E62EADF1E5A /* ShareCaptureExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		D85090F2A297BFAFB10626F7 /* HighGroundCaptureUITests */ = {
 			isa = PBXNativeTarget;
@@ -161,6 +252,9 @@
 					4667D2B92FCA1B770008D8F0 = {
 						CreatedOnToolsVersion = 26.2;
 					};
+					CE4322CFC08B133D502C5A8C = {
+						CreatedOnToolsVersion = 26.2;
+					};
 				};
 			};
 			buildConfigurationList = 4667D2B52FCA1B770008D8F0 /* Build configuration list for PBXProject "HighGroundCapture" */;
@@ -172,6 +266,9 @@
 			);
 			mainGroup = 4667D2B12FCA1B770008D8F0;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4F4C4956454B495450524F46 /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4667D2BB2FCA1B770008D8F0 /* Products */;
 			projectDirPath = "";
@@ -179,11 +276,20 @@
 			targets = (
 				4667D2B92FCA1B770008D8F0 /* HighGroundCapture */,
 				D85090F2A297BFAFB10626F7 /* HighGroundCaptureUITests */,
+				CE4322CFC08B133D502C5A8C /* ShareCaptureExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		3D32EF882118EA5CF82781BE /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A17F4C120000000000000002 /* QuipslyWebSource.js in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		0D7660B328B5D34E52C117F8 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -205,10 +311,16 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CD613B169CCE105B6F5F11C3 /* Tier3_CrossFeatureTests.swift in Sources */,
-				DA3181BBDDF5CDC3924105AA /* Tier4_WorkloadTests.swift in Sources */,
-				A95234B685616B5D4FEBF68A /* Tier2_BoundaryTests.swift in Sources */,
-				05D7533C955CA2ECFC4B13E2 /* Tier1_FeatureTests.swift in Sources */,
+				A11CE0010000000000000002 /* CaptureExperienceUITests.swift in Sources */,
+				B6C4A3D2F00D7A0000000002 /* CaptureRoomRuntimeSmokeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BFC94370BC5BA98A8C9855F3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				34E74C83C2047F37B862FECA /* ShareViewController.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -222,6 +334,12 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		1DD69FB593A949E423F30671 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = ShareCaptureExtension;
+			target = CE4322CFC08B133D502C5A8C /* ShareCaptureExtension */;
+			targetProxy = E624C2683CFFFA2A145D870D /* PBXContainerItemProxy */;
+		};
 		6914571782AC056C4E983779 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			name = HighGroundCapture;
@@ -350,48 +468,36 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HighGroundCapture/HighGroundCapture.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 585GUXMY5M;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need the microphone to record your episode audio in the background.";
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_UIBackgroundModes = audio;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HighGroundCapture/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.highgroundodyssey.HighGroundCapture;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,6";
-				XROS_DEPLOYMENT_TARGET = 26.2;
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -400,48 +506,62 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = HighGroundCapture/HighGroundCapture.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_INJECT_BASE_ENTITLEMENTS = YES;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 4;
 				DEVELOPMENT_TEAM = 585GUXMY5M;
 				ENABLE_APP_SANDBOX = NO;
 				ENABLE_HARDENED_RUNTIME = NO;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "We need the microphone to record your episode audio in the background.";
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphonesimulator*]" = YES;
-				INFOPLIST_KEY_UIBackgroundModes = audio;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphoneos*]" = YES;
-				"INFOPLIST_KEY_UILaunchScreen_Generation[sdk=iphonesimulator*]" = YES;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphoneos*]" = UIStatusBarStyleDefault;
-				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HighGroundCapture/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
-				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 26.2;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.highgroundodyssey.HighGroundCapture;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				REGISTER_APP_GROUPS = YES;
-				SDKROOT = auto;
+				SDKROOT = iphoneos;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
-				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx xros xrsimulator";
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,6";
-				XROS_DEPLOYMENT_TARGET = 26.2;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		4E91ADE694F34FEE6F4D916E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShareCaptureExtension/ShareCaptureExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 585GUXMY5M;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareCaptureExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.highgroundodyssey.HighGroundCapture.ShareCapture;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -461,13 +581,38 @@
 				PRODUCT_NAME = HighGroundCaptureUITests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,6";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = HighGroundCapture;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
+		};
+		83D42543F8D7105636959012 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_ENTITLEMENTS = ShareCaptureExtension/ShareCaptureExtension.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 4;
+				DEVELOPMENT_TEAM = 585GUXMY5M;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ShareCaptureExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.highgroundodyssey.HighGroundCapture.ShareCapture;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
 		};
 		B5414D2E07C3BA6DFB6A6857 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -485,9 +630,9 @@
 				PRODUCT_NAME = HighGroundCaptureUITests;
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SDKROOT = iphoneos;
-				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2,6";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = HighGroundCapture;
 			};
 			name = Debug;
@@ -495,6 +640,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		44E21C8FBBFA44E54698F9C2 /* Build configuration list for PBXNativeTarget "ShareCaptureExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4E91ADE694F34FEE6F4D916E /* Release */,
+				83D42543F8D7105636959012 /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		4667D2B52FCA1B770008D8F0 /* Build configuration list for PBXProject "HighGroundCapture" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -523,6 +677,26 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4F4C4956454B495450524F46 /* XCRemoteSwiftPackageReference "client-sdk-swift-xcframework" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/livekit/client-sdk-swift-xcframework.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.15.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4F4C4956454B495450524F45 /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4F4C4956454B495450524F46 /* XCRemoteSwiftPackageReference "client-sdk-swift-xcframework" */;
+			productName = LiveKit;
+		};
+/* End XCSwiftPackageProductDependency section */
+
 	};
 	rootObject = 4667D2B22FCA1B770008D8F0 /* Project object */;
 }

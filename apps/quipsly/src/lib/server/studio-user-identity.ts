@@ -171,6 +171,132 @@ export async function ensureStudioUserFromGoogle(input: {
   return ensureStudioUserFromAuthIdentity(input);
 }
 
+export async function ensureStudioUserFromFirebaseIdentity(input: {
+  firebaseUid: string;
+  email: string;
+  emailVerified?: boolean;
+  name?: string | null;
+  image?: string | null;
+}): Promise<StudioUserIdentity> {
+  const prisma = getPrismaClient();
+  const normalizedEmail = normalizeEmail(input.email);
+  const bootstrapRoles = getBootstrapRolesForEmail(normalizedEmail);
+
+  if (!input.firebaseUid || !normalizedEmail) {
+    throw new Error("Firebase identity requires both uid and email.");
+  }
+  if (input.emailVerified !== true) {
+    throw new Error("Firebase identity requires a verified email.");
+  }
+
+  const user = await prisma.$transaction(async (tx) => {
+    const byUid = await tx.user.findUnique({
+      where: { firebaseUid: input.firebaseUid },
+      include: userIdentityInclude,
+    });
+
+    const byEmail = await tx.user.findFirst({
+      where: {
+        OR: [
+          { primaryEmail: normalizedEmail },
+          { aliases: { some: { email: normalizedEmail } } },
+        ],
+      },
+      include: userIdentityInclude,
+    });
+
+    if (byUid && byEmail && byUid.id !== byEmail.id) {
+      throw new Error(
+        "Firebase identity collision: uid and email resolve to different Quipsly users.",
+      );
+    }
+
+    const existing = byUid ?? byEmail;
+
+    if (existing) {
+      // Firebase credentials must never resurrect an account after deletion or
+      // an operator safety hold. Reactivation is a separate, explicit support
+      // operation with its own identity proof and audit trail.
+      if (!existing.isActive) {
+        throw new Error("Quipsly account is inactive.");
+      }
+
+      const existingAlias = await tx.userEmail.findUnique({
+        where: { email: normalizedEmail },
+      });
+
+      if (existingAlias && existingAlias.userId !== existing.id) {
+        throw new Error(
+          "Firebase identity collision: email alias belongs to a different Quipsly user.",
+        );
+      }
+
+      if (existing.primaryEmail !== normalizedEmail && !existingAlias) {
+        await tx.userEmail.create({
+          data: {
+            userId: existing.id,
+            email: normalizedEmail,
+            label: "firebase",
+          },
+        });
+      }
+
+      const missingRoles = bootstrapRoles.filter(
+        (role) => !existing.roles.some((entry) => entry.role === role),
+      );
+
+      if (missingRoles.length > 0) {
+        await tx.userRole.createMany({
+          data: missingRoles.map((role) => ({
+            userId: existing.id,
+            role,
+          })),
+          skipDuplicates: true,
+        });
+      }
+
+      return tx.user.update({
+        where: { id: existing.id },
+        data: {
+          // Firebase UIDs are provider identifiers, not Quipsly's durable
+          // person identifier. Account recovery, an auth-project migration,
+          // or a deliberately recreated Firebase account can issue a new UID
+          // for the same verified mailbox. The collision checks above prove
+          // that both credentials resolve to this one Quipsly user before the
+          // binding is rotated, preserving rooms, grants, goals, and notes.
+          firebaseUid: input.firebaseUid,
+          name: input.name?.trim() || existing.name,
+          image: input.image || existing.image,
+          emailVerified:
+            existing.emailVerified || input.emailVerified ? new Date() : null,
+          isActive: true,
+        },
+        include: userIdentityInclude,
+      });
+    }
+
+    return tx.user.create({
+      data: {
+        firebaseUid: input.firebaseUid,
+        primaryEmail: normalizedEmail,
+        name: input.name?.trim() || null,
+        image: input.image || null,
+        emailVerified: input.emailVerified ? new Date() : null,
+        isActive: true,
+        roles:
+          bootstrapRoles.length > 0
+            ? {
+                create: bootstrapRoles.map((role) => ({ role })),
+              }
+            : undefined,
+      },
+      include: userIdentityInclude,
+    });
+  });
+
+  return mapStudioUserIdentity(user);
+}
+
 export async function ensureStudioUserFromAuthIdentity(input: {
   email: string;
   name?: string | null;
@@ -239,34 +365,4 @@ export async function ensureStudioUserFromAuthIdentity(input: {
   });
 
   return mapStudioUserIdentity(user);
-}
-
-export async function linkSocialAccount(userId: string, account: any): Promise<void> {
-  const prisma = getPrismaClient();
-
-  // NextAuth account objects have specific fields we want to capture.
-  const data = {
-    userId,
-    type: account.type || "oauth",
-    provider: account.provider,
-    providerAccountId: account.providerAccountId,
-    access_token: account.access_token || null,
-    refresh_token: account.refresh_token || null,
-    expires_at: account.expires_at || null,
-    token_type: account.token_type || null,
-    scope: account.scope || null,
-    id_token: account.id_token || null,
-    session_state: account.session_state || null,
-  };
-
-  await prisma.account.upsert({
-    where: {
-      provider_providerAccountId: {
-        provider: account.provider,
-        providerAccountId: account.providerAccountId,
-      },
-    },
-    update: data,
-    create: data,
-  });
 }

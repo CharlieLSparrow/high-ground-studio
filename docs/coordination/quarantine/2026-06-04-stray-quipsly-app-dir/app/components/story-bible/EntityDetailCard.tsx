@@ -5,7 +5,7 @@ export const EntityDetailCard: React.FC = React.memo(() => {
   const { entities, activeEntityId } = useStoryBibleState();
   const { setActiveEntity } = useStoryBibleDispatch();
   const backButtonRef = useRef<HTMLButtonElement>(null);
-  
+
   const entity = entities.find(e => e.id === activeEntityId);
 
   // Focus the back button when entering detail view for a11y
@@ -21,7 +21,7 @@ export const EntityDetailCard: React.FC = React.memo(() => {
         <div className="text-4xl mb-3 opacity-20">👻</div>
         <p className="text-sm font-medium">Entity not found</p>
         <p className="text-xs text-gray-400 mt-1">It may have been deleted or never existed.</p>
-        <button 
+        <button
           onClick={() => setActiveEntity(null)}
           className="mt-6 text-blue-600 hover:text-blue-800 text-sm font-medium focus:outline-none focus:underline"
         >
@@ -36,7 +36,7 @@ export const EntityDetailCard: React.FC = React.memo(() => {
       {/* Header */}
       <div className="p-4 border-b border-gray-200 shrink-0 bg-white sticky top-0 z-10 flex items-center justify-between">
         <div className="flex items-center space-x-3">
-          <button 
+          <button
             ref={backButtonRef}
             onClick={() => setActiveEntity(null)}
             className="text-gray-400 hover:text-gray-900 p-1.5 -ml-1.5 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -58,7 +58,7 @@ export const EntityDetailCard: React.FC = React.memo(() => {
       </div>
 
       <div className="flex-1 overflow-y-auto p-5 space-y-6">
-        
+
         {/* Aliases */}
         {entity.aliases && entity.aliases.length > 0 && (
           <section aria-labelledby="section-aliases">
@@ -112,7 +112,7 @@ export const EntityDetailCard: React.FC = React.memo(() => {
               {entity.mentions.length}
             </span>
           </h3>
-          
+
           {entity.mentions.length === 0 ? (
             <div className="text-center p-6 border-2 border-dashed border-gray-200 rounded-xl bg-gray-50">
               <p className="text-sm text-gray-500 font-medium">No mentions yet</p>

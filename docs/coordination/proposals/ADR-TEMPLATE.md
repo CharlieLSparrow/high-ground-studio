@@ -13,7 +13,7 @@ List the architectural options or schema models you considered before arriving a
 *   **Option B:** [Description] - Pros / Cons
 
 ## 3. Proposed Decision
-What is the exact technical change you want to implement? 
+What is the exact technical change you want to implement?
 *   **Schema changes:** Include a snippet of the proposed `schema.prisma` edits.
 *   **Route changes:** List the exact new routes or deleted routes.
 *   **API/Package changes:** List any shared infrastructure changes.

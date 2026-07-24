@@ -1,0 +1,17 @@
+# Default owner until product-specific maintainers have write access.
+* @CharlieLSparrow
+
+# Product surfaces
+/apps/mobile-capture/HighGroundCapture/ @CharlieLSparrow
+/apps/quipsly/ @CharlieLSparrow
+/apps/QuipslyStudio/ @CharlieLSparrow
+/apps/web/ @CharlieLSparrow
+
+# Shared contracts, data, delivery, and governance
+/packages/ @CharlieLSparrow
+/prisma/ @CharlieLSparrow
+/scripts/ @CharlieLSparrow
+/.github/ @CharlieLSparrow
+/docs/architecture/ @CharlieLSparrow
+/docs/decisions/ @CharlieLSparrow
+/docs/runbooks/ @CharlieLSparrow

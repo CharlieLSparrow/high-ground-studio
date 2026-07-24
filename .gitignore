@@ -1,6 +1,8 @@
 # dependencies
 node_modules/
 .pnpm-store/
+.venv*/
+.venv-audio/
 .pnp.*
 .yarn/
 
@@ -35,6 +37,17 @@ artifacts/auth/
 artifacts/agentic-smoke/
 artifacts/agentic-browser-smoke/
 artifacts/playwright/
+
+# Quipsly generated local/evidence artifacts
+artifacts/
+apps/QuipslyStudio/.quipsly/
+apps/QuipslyStudio/.transcript-smoke/
+apps/QuipslyStudio/reports/*--proxy-recovery-*.json
+apps/QuipslyStudio/reports/*proxy-job-current.json
+apps/QuipslyStudio/tmp/*.png
+apps/quiplore/scripts/ingest-processed/
+dataconnect/.dataconnect/
+docs/quipsly/studio-proof/
 
 # OS/editor
 .DS_Store
@@ -92,9 +105,26 @@ scratch/
 **/.agents/
 **/.codex/
 *.py
+!apps/QuipslyStudio/script/*.py
+!apps/QuipslyStudio/script/publish_workers/
+!apps/QuipslyStudio/script/publish_workers/*.py
+__pycache__/
+*.py[cod]
 fix_*.js
 content/
 !apps/web/content/
 !apps/web/content/publish/
 !apps/web/content/publish/hgo-episodes/
 !apps/web/content/publish/hgo-episodes/*.json
+
+# Ignore massive test exports
+docs/quipsly/current-state/*.mp4
+docs/quipsly/current-state/*.png
+docs/quipsly/current-state/*.json
+
+!apps/QuipslyStudio/script/experimental/*.py
+
+# Ignore all current state exports
+docs/quipsly/current-state/*
+apps/QuipslyStudio/docs/quipsly/current-state/*
+

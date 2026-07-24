@@ -6,8 +6,8 @@ const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 const merriweather = Merriweather({ weight: ["300", "400", "700", "900"], subsets: ["latin"], variable: "--font-merriweather" });
 
 export const metadata: Metadata = {
-  title: "Quipsly - Research, Writing, Media, and Publishing Nests",
-  description: "Quipsly is a living workspace for authors, researchers, podcasters, and creators: organize sources, write manuscripts, prepare media, and publish from one Nest.",
+  title: "Quipsly - Research, Studio, and Tower for Creative Work",
+  description: "Quipsly helps storytellers, coaches, trainers, and researchers gather sources, shape media and writing, and prepare publishing packets without losing the thread.",
   manifest: "/site.webmanifest",
   icons: {
     icon: [

@@ -16,7 +16,10 @@ export async function resolve(specifier, context, nextResolve) {
 
   // Resolve Next.js path alias '@/` to absolute path inside apps/quipsly/src
   if (specifier.startsWith("@/")) {
-    specifier = specifier.replace("@/", "file:///Users/wall-e/Dev/high-ground-studio/apps/quipsly/src/");
+    specifier = new URL(
+      specifier.slice(2),
+      new URL("../apps/quipsly/src/", import.meta.url),
+    ).href;
   }
 
   if ((specifier.startsWith(".") || specifier.startsWith("file:///")) && !/\.[a-z]+$/i.test(specifier)) {

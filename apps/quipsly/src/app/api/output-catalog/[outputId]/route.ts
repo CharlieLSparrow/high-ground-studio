@@ -1,7 +1,8 @@
 import {
   createOutputPacketSkeleton,
-  createOutputReadinessPlan,
+  createOutputCapabilityPlan,
   getOutputDefinition,
+  QUIPSLY_OUTPUT_CATALOG_BOUNDARY,
 } from "@high-ground/quipsly-domain/output-catalog";
 
 export async function GET(
@@ -31,8 +32,9 @@ export async function GET(
     {
       ok: true,
       generatedAt: new Date().toISOString(),
+      catalogBoundary: QUIPSLY_OUTPUT_CATALOG_BOUNDARY,
       output,
-      readinessPlan: createOutputReadinessPlan(output),
+      capabilityPlan: createOutputCapabilityPlan(output),
       packetSkeleton: createOutputPacketSkeleton(output),
     },
     {

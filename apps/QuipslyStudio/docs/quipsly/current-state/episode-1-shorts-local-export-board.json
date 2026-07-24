@@ -1,0 +1,1309 @@
+{
+  "basename": "episode-1-shorts-local-export-board",
+  "cards": [
+    {
+      "allExportedPaths": [],
+      "audioSanityExists": false,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'script-cursor-proof-short' id 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8'",
+        "keep": "script/agentctl.sh shorts-review 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8'"
+      },
+      "contactSheetExists": false,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 6.24,
+      "episodeInference": "missing",
+      "episodeKey": "unknown-episode",
+      "episodeLabel": "Unknown episode",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/unknown-episode-script-cursor-proof-short-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short.mp4",
+      "exportStatus": "not-exported",
+      "hookText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...",
+      "id": "B5C93EC4-0CA6-4CE7-91BE-592D658659B8",
+      "index": 6,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Export this short locally so we have an actual file to watch and hear.",
+      "overlayText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.",
+      "platformTargets": [
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 76,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "YouTube Shorts",
+          "status": "needs export",
+          "title": "Script Cursor Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 79,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Instagram",
+          "status": "needs export",
+          "title": "Script Cursor Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 79,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Facebook",
+          "status": "needs export",
+          "title": "Script Cursor Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 44,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "LinkedIn",
+          "status": "needs export",
+          "title": "Script Cursor Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 44,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Patreon teaser",
+          "status": "needs export",
+          "title": ""
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 79,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs export",
+          "title": "Script Cursor Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 56,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs export",
+          "title": ""
+        }
+      ],
+      "primaryExportBytes": 0,
+      "primaryExportExists": false,
+      "primaryExportPath": "",
+      "reviewStatus": "needs-human-review",
+      "segmentCount": 1,
+      "sourceRangeLabel": "0.00s -> 6.24s",
+      "stage": "missing-export",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 6.24,
+          "index": 1,
+          "sequenceEndTime": 6.24,
+          "sequenceStartTime": 0.0,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Transcript line - Charlie"
+        }
+      ],
+      "title": "Script Cursor Proof Short",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [],
+      "audioSanityExists": false,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'script-ledger-proof-short' id '456EB86F-9F84-4102-85B6-E6B7C0595681'",
+        "keep": "script/agentctl.sh shorts-review '456EB86F-9F84-4102-85B6-E6B7C0595681' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '456EB86F-9F84-4102-85B6-E6B7C0595681' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '456EB86F-9F84-4102-85B6-E6B7C0595681'"
+      },
+      "contactSheetExists": false,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 5.74,
+      "episodeInference": "missing",
+      "episodeKey": "unknown-episode",
+      "episodeLabel": "Unknown episode",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/unknown-episode-script-ledger-proof-short-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-ledger-proof-short-9x16-short.mp4",
+      "exportStatus": "not-exported",
+      "hookText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...",
+      "id": "456EB86F-9F84-4102-85B6-E6B7C0595681",
+      "index": 7,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Export this short locally so we have an actual file to watch and hear.",
+      "overlayText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.",
+      "platformTargets": [
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 76,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "YouTube Shorts",
+          "status": "needs export",
+          "title": "Script Ledger Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 79,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Instagram",
+          "status": "needs export",
+          "title": "Script Ledger Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 79,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Facebook",
+          "status": "needs export",
+          "title": "Script Ledger Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 44,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "LinkedIn",
+          "status": "needs export",
+          "title": "Script Ledger Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 44,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Patreon teaser",
+          "status": "needs export",
+          "title": ""
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 79,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs export",
+          "title": "Script Ledger Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 56,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs export",
+          "title": ""
+        }
+      ],
+      "primaryExportBytes": 0,
+      "primaryExportExists": false,
+      "primaryExportPath": "",
+      "reviewStatus": "needs-human-review",
+      "segmentCount": 1,
+      "sourceRangeLabel": "0.00s -> 5.74s",
+      "stage": "missing-export",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 5.74,
+          "index": 1,
+          "sequenceEndTime": 5.74,
+          "sequenceStartTime": 0.0,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Transcript line - Charlie"
+        }
+      ],
+      "title": "Script Ledger Proof Short",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [],
+      "audioSanityExists": false,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'agentctl-port-discovery-proof-short' id '677FAA5B-B163-4314-BF00-C2357F734E37'",
+        "keep": "script/agentctl.sh shorts-review '677FAA5B-B163-4314-BF00-C2357F734E37' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '677FAA5B-B163-4314-BF00-C2357F734E37' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '677FAA5B-B163-4314-BF00-C2357F734E37'"
+      },
+      "contactSheetExists": false,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 5.74,
+      "episodeInference": "missing",
+      "episodeKey": "unknown-episode",
+      "episodeLabel": "Unknown episode",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/unknown-episode-agentctl-port-discovery-proof-short-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/agentctl-port-discovery-proof-short-9x16-short.mp4",
+      "exportStatus": "not-exported",
+      "hookText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...",
+      "id": "677FAA5B-B163-4314-BF00-C2357F734E37",
+      "index": 8,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Export this short locally so we have an actual file to watch and hear.",
+      "overlayText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.",
+      "platformTargets": [
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 76,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "YouTube Shorts",
+          "status": "needs export",
+          "title": "Agentctl Port Discovery Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 79,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Instagram",
+          "status": "needs export",
+          "title": "Agentctl Port Discovery Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 79,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Facebook",
+          "status": "needs export",
+          "title": "Agentctl Port Discovery Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 44,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "LinkedIn",
+          "status": "needs export",
+          "title": "Agentctl Port Discovery Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 44,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Patreon teaser",
+          "status": "needs export",
+          "title": ""
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 79,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs export",
+          "title": "Agentctl Port Discovery Proof Short"
+        },
+        {
+          "detail": "No proxy proof has been rendered yet.",
+          "fitScore": 56,
+          "isReady": false,
+          "nextAction": "Export the 9:16 proof before judging this platform.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs export",
+          "title": ""
+        }
+      ],
+      "primaryExportBytes": 0,
+      "primaryExportExists": false,
+      "primaryExportPath": "",
+      "reviewStatus": "needs-human-review",
+      "segmentCount": 1,
+      "sourceRangeLabel": "0.00s -> 5.74s",
+      "stage": "missing-export",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 5.74,
+          "index": 1,
+          "sequenceEndTime": 5.74,
+          "sequenceStartTime": 0.0,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Transcript line - Charlie"
+        }
+      ],
+      "title": "Agentctl Port Discovery Proof Short",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [],
+      "audioSanityExists": false,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'search-captions-proof-short' id '85F95E60-56E9-4603-8961-B01CF8E84754'",
+        "keep": "script/agentctl.sh shorts-review '85F95E60-56E9-4603-8961-B01CF8E84754' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '85F95E60-56E9-4603-8961-B01CF8E84754' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '85F95E60-56E9-4603-8961-B01CF8E84754'"
+      },
+      "contactSheetExists": false,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 5.74,
+      "episodeInference": "missing",
+      "episodeKey": "unknown-episode",
+      "episodeLabel": "Unknown episode",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short.mp4",
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/unknown-episode-search-captions-proof-short-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/search-captions-proof-short-9x16-short.mp4",
+      "exportStatus": "exported",
+      "hookText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...",
+      "id": "85F95E60-56E9-4603-8961-B01CF8E84754",
+      "index": 9,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Export this short locally so we have an actual file to watch and hear.",
+      "overlayText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.",
+      "platformTargets": [
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 88,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "YouTube Shorts",
+          "status": "needs copy",
+          "title": "Search Captions Proof Short"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 91,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram",
+          "status": "needs copy",
+          "title": "Search Captions Proof Short"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 91,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Facebook",
+          "status": "needs copy",
+          "title": "Search Captions Proof Short"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 56,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "LinkedIn",
+          "status": "needs copy",
+          "title": "Search Captions Proof Short"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 56,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Patreon teaser",
+          "status": "needs copy",
+          "title": ""
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 91,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs copy",
+          "title": "Search Captions Proof Short"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 68,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs copy",
+          "title": ""
+        }
+      ],
+      "primaryExportBytes": 0,
+      "primaryExportExists": false,
+      "primaryExportPath": "",
+      "reviewStatus": "needs-human-review",
+      "segmentCount": 1,
+      "sourceRangeLabel": "0.00s -> 5.74s",
+      "stage": "missing-export",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 5.74,
+          "index": 1,
+          "sequenceEndTime": 5.74,
+          "sequenceStartTime": 0.0,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Transcript line - Charlie"
+        }
+      ],
+      "title": "Search Captions Proof Short",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4"
+      ],
+      "audioSanityExists": false,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-01-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4' 22.56",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-01-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-01-08-24' id '471E4086-8367-4E7C-8C5D-BB7132DF3524'",
+        "keep": "script/agentctl.sh shorts-review '471E4086-8367-4E7C-8C5D-BB7132DF3524' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '471E4086-8367-4E7C-8C5D-BB7132DF3524' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '471E4086-8367-4E7C-8C5D-BB7132DF3524'"
+      },
+      "contactSheetExists": false,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-01-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 22.56,
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-01-08-24-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-01-08-24-9x16-short.mp4",
+      "exportStatus": "exported",
+      "hookText": "",
+      "id": "471E4086-8367-4E7C-8C5D-BB7132DF3524",
+      "index": 1,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "",
+      "platformTargets": [
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 84,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "YouTube Shorts",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 01 - 08:24"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 01 - 08:24"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Facebook",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 01 - 08:24"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "LinkedIn",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 01 - 08:24"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Patreon teaser",
+          "status": "needs copy",
+          "title": ""
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 01 - 08:24"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 71,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs copy",
+          "title": ""
+        }
+      ],
+      "primaryExportBytes": 29479961,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4",
+      "reviewStatus": "draft",
+      "segmentCount": 1,
+      "sourceRangeLabel": "504.40s -> 526.96s",
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 22.56,
+          "index": 1,
+          "sequenceEndTime": 526.96,
+          "sequenceStartTime": 504.4,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
+      "title": "Episode 2 Review Candidate 01 - 08:24",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4"
+      ],
+      "audioSanityExists": false,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-02-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4' 20.24",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-02-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-02-11-29' id '48355445-FB52-4FD4-A805-8DD91AE57F70'",
+        "keep": "script/agentctl.sh shorts-review '48355445-FB52-4FD4-A805-8DD91AE57F70' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '48355445-FB52-4FD4-A805-8DD91AE57F70' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '48355445-FB52-4FD4-A805-8DD91AE57F70'"
+      },
+      "contactSheetExists": false,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-02-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 20.24,
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-02-11-29-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-02-11-29-9x16-short.mp4",
+      "exportStatus": "exported",
+      "hookText": "",
+      "id": "48355445-FB52-4FD4-A805-8DD91AE57F70",
+      "index": 2,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "",
+      "platformTargets": [
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 84,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "YouTube Shorts",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 02 - 11:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 02 - 11:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Facebook",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 02 - 11:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "LinkedIn",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 02 - 11:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Patreon teaser",
+          "status": "needs copy",
+          "title": ""
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 02 - 11:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 71,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs copy",
+          "title": ""
+        }
+      ],
+      "primaryExportBytes": 27116470,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4",
+      "reviewStatus": "draft",
+      "segmentCount": 1,
+      "sourceRangeLabel": "688.84s -> 709.08s",
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 20.24,
+          "index": 1,
+          "sequenceEndTime": 709.08,
+          "sequenceStartTime": 688.84,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
+      "title": "Episode 2 Review Candidate 02 - 11:29",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4"
+      ],
+      "audioSanityExists": false,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-03-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4' 21.68",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-03-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-03-16-00' id 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E'",
+        "keep": "script/agentctl.sh shorts-review 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id 'B3454844-F98C-4EAC-B2BC-CE31C5036F4E'"
+      },
+      "contactSheetExists": false,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-03-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 21.68,
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-03-16-00-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-03-16-00-9x16-short.mp4",
+      "exportStatus": "exported",
+      "hookText": "",
+      "id": "B3454844-F98C-4EAC-B2BC-CE31C5036F4E",
+      "index": 3,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "",
+      "platformTargets": [
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 84,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "YouTube Shorts",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 03 - 16:00"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 03 - 16:00"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Facebook",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 03 - 16:00"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "LinkedIn",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 03 - 16:00"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Patreon teaser",
+          "status": "needs copy",
+          "title": ""
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 03 - 16:00"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 71,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs copy",
+          "title": ""
+        }
+      ],
+      "primaryExportBytes": 28355502,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4",
+      "reviewStatus": "draft",
+      "segmentCount": 1,
+      "sourceRangeLabel": "960.28s -> 981.96s",
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 21.68,
+          "index": 1,
+          "sequenceEndTime": 981.96,
+          "sequenceStartTime": 960.28,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
+      "title": "Episode 2 Review Candidate 03 - 16:00",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4"
+      ],
+      "audioSanityExists": false,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-04-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4' 18.56",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-04-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-04-20-59' id '1A679D84-1478-4E68-8744-910A49795A15'",
+        "keep": "script/agentctl.sh shorts-review '1A679D84-1478-4E68-8744-910A49795A15' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '1A679D84-1478-4E68-8744-910A49795A15' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '1A679D84-1478-4E68-8744-910A49795A15'"
+      },
+      "contactSheetExists": false,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-04-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 18.56,
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-04-20-59-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-04-20-59-9x16-short.mp4",
+      "exportStatus": "exported",
+      "hookText": "",
+      "id": "1A679D84-1478-4E68-8744-910A49795A15",
+      "index": 4,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "",
+      "platformTargets": [
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 84,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "YouTube Shorts",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 04 - 20:59"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 04 - 20:59"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Facebook",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 04 - 20:59"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "LinkedIn",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 04 - 20:59"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Patreon teaser",
+          "status": "needs copy",
+          "title": ""
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 04 - 20:59"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 71,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs copy",
+          "title": ""
+        }
+      ],
+      "primaryExportBytes": 25369660,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4",
+      "reviewStatus": "draft",
+      "segmentCount": 1,
+      "sourceRangeLabel": "1259.12s -> 1277.68s",
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 18.56,
+          "index": 1,
+          "sequenceEndTime": 1277.68,
+          "sequenceStartTime": 1259.12,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
+      "title": "Episode 2 Review Candidate 04 - 20:59",
+      "visualReviewStatus": "unknown"
+    },
+    {
+      "allExportedPaths": [
+        "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4"
+      ],
+      "audioSanityExists": false,
+      "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-05-9x16-short-audio-sanity.json",
+      "commands": {
+        "audioSanity": "script/agentctl.sh shorts-audio-sanity '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4' 19.68",
+        "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-05-9x16-short-contact-sheet.png'",
+        "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'episode-2-review-candidate-05-24-29' id '3AB6C255-E701-4316-9011-6CB8839B6243'",
+        "keep": "script/agentctl.sh shorts-review '3AB6C255-E701-4316-9011-6CB8839B6243' keep 'Kept after local export review.'",
+        "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+        "refine": "script/agentctl.sh shorts-review '3AB6C255-E701-4316-9011-6CB8839B6243' refine 'Needs one concrete improvement after local review.'",
+        "select": "script/agentctl.sh shorts-select id '3AB6C255-E701-4316-9011-6CB8839B6243'"
+      },
+      "contactSheetExists": false,
+      "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-05-9x16-short-contact-sheet.png",
+      "destinations": [
+        "YouTube Shorts",
+        "Instagram",
+        "Facebook",
+        "LinkedIn"
+      ],
+      "detectedExpectedLocalExport": false,
+      "durationSeconds": 19.68,
+      "episodeInference": "inferred-from-text",
+      "episodeKey": "episode-2",
+      "episodeLabel": "Episode 2",
+      "expectedLocalExportCandidates": [
+        "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-05-24-29-9x16-short.mp4"
+      ],
+      "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-review-candidate-05-24-29-9x16-short.mp4",
+      "exportStatus": "exported",
+      "hookText": "",
+      "id": "3AB6C255-E701-4316-9011-6CB8839B6243",
+      "index": 5,
+      "listenThroughStatus": "unknown",
+      "nextAction": "Listen through the exported file and sanity-check audio.",
+      "overlayText": "",
+      "platformTargets": [
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 84,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "YouTube Shorts",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 05 - 24:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 05 - 24:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Facebook",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 05 - 24:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "LinkedIn",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 05 - 24:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 52,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Patreon teaser",
+          "status": "needs copy",
+          "title": ""
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 75,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "Instagram/Facebook Reels",
+          "status": "needs copy",
+          "title": "Episode 2 Review Candidate 05 - 24:29"
+        },
+        {
+          "detail": "Platform metadata is incomplete.",
+          "fitScore": 71,
+          "isReady": false,
+          "nextAction": "Draft or review title, caption, hashtags, and posting note.",
+          "platform": "HighGroundOdyssey.com",
+          "status": "needs copy",
+          "title": ""
+        }
+      ],
+      "primaryExportBytes": 26233775,
+      "primaryExportExists": true,
+      "primaryExportPath": "/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4",
+      "reviewStatus": "draft",
+      "segmentCount": 1,
+      "sourceRangeLabel": "1468.84s -> 1488.52s",
+      "stage": "exported-needs-listen-through",
+      "textReviewStatus": "unknown",
+      "timelineRanges": [
+        {
+          "durationSeconds": 19.68,
+          "index": 1,
+          "sequenceEndTime": 1488.52,
+          "sequenceStartTime": 1468.84,
+          "sourceLaneId": "",
+          "sourceTagId": "",
+          "timeBase": "sequence-seconds",
+          "title": "Segment 1"
+        }
+      ],
+      "title": "Episode 2 Review Candidate 05 - 24:29",
+      "visualReviewStatus": "unknown"
+    }
+  ],
+  "episodeCoverage": {
+    "episodeCount": 2,
+    "episodes": [
+      {
+        "episodeKey": "episode-2",
+        "localExportedFileCount": 5,
+        "reviewableCount": 5,
+        "shortCount": 5
+      },
+      {
+        "episodeKey": "unknown-episode",
+        "localExportedFileCount": 0,
+        "reviewableCount": 0,
+        "shortCount": 4
+      }
+    ],
+    "unknownEpisodeCount": 4
+  },
+  "generatedAt": "2026-06-23T11:27:20-06:00",
+  "html": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-1-shorts-local-export-board.html",
+  "json": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-1-shorts-local-export-board.json",
+  "localExportedFileCount": 5,
+  "markdown": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-1-shorts-local-export-board.md",
+  "missingExportCount": 4,
+  "nextShort": {
+    "allExportedPaths": [],
+    "audioSanityExists": false,
+    "audioSanityPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short-audio-sanity.json",
+    "commands": {
+      "audioSanity": "",
+      "contactSheet": "script/agentctl.sh shorts-contact-sheet '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short.mp4' '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short-contact-sheet.png'",
+      "exportLocal": "script/agentctl.sh shorts-export-selected '/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state' 'script-cursor-proof-short' id 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8'",
+      "keep": "script/agentctl.sh shorts-review 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8' keep 'Kept after local export review.'",
+      "listenThrough": "script/agentctl.sh shorts-listen-through 'Listened locally; note result here.'",
+      "refine": "script/agentctl.sh shorts-review 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8' refine 'Needs one concrete improvement after local review.'",
+      "select": "script/agentctl.sh shorts-select id 'B5C93EC4-0CA6-4CE7-91BE-592D658659B8'"
+    },
+    "contactSheetExists": false,
+    "contactSheetPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short-contact-sheet.png",
+    "destinations": [
+      "YouTube Shorts",
+      "Instagram",
+      "Facebook",
+      "LinkedIn"
+    ],
+    "detectedExpectedLocalExport": false,
+    "durationSeconds": 6.24,
+    "episodeInference": "missing",
+    "episodeKey": "unknown-episode",
+    "episodeLabel": "Unknown episode",
+    "expectedLocalExportCandidates": [
+      "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short.mp4",
+      "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/unknown-episode-script-cursor-proof-short-9x16-short.mp4"
+    ],
+    "expectedLocalExportPath": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/script-cursor-proof-short-9x16-short.mp4",
+    "exportStatus": "not-exported",
+    "hookText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...",
+    "id": "B5C93EC4-0CA6-4CE7-91BE-592D658659B8",
+    "index": 6,
+    "listenThroughStatus": "unknown",
+    "nextAction": "Export this short locally so we have an actual file to watch and hear.",
+    "overlayText": "This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.",
+    "platformTargets": [
+      {
+        "detail": "No proxy proof has been rendered yet.",
+        "fitScore": 76,
+        "isReady": false,
+        "nextAction": "Export the 9:16 proof before judging this platform.",
+        "platform": "YouTube Shorts",
+        "status": "needs export",
+        "title": "Script Cursor Proof Short"
+      },
+      {
+        "detail": "No proxy proof has been rendered yet.",
+        "fitScore": 79,
+        "isReady": false,
+        "nextAction": "Export the 9:16 proof before judging this platform.",
+        "platform": "Instagram",
+        "status": "needs export",
+        "title": "Script Cursor Proof Short"
+      },
+      {
+        "detail": "No proxy proof has been rendered yet.",
+        "fitScore": 79,
+        "isReady": false,
+        "nextAction": "Export the 9:16 proof before judging this platform.",
+        "platform": "Facebook",
+        "status": "needs export",
+        "title": "Script Cursor Proof Short"
+      },
+      {
+        "detail": "No proxy proof has been rendered yet.",
+        "fitScore": 44,
+        "isReady": false,
+        "nextAction": "Export the 9:16 proof before judging this platform.",
+        "platform": "LinkedIn",
+        "status": "needs export",
+        "title": "Script Cursor Proof Short"
+      },
+      {
+        "detail": "No proxy proof has been rendered yet.",
+        "fitScore": 44,
+        "isReady": false,
+        "nextAction": "Export the 9:16 proof before judging this platform.",
+        "platform": "Patreon teaser",
+        "status": "needs export",
+        "title": ""
+      },
+      {
+        "detail": "No proxy proof has been rendered yet.",
+        "fitScore": 79,
+        "isReady": false,
+        "nextAction": "Export the 9:16 proof before judging this platform.",
+        "platform": "Instagram/Facebook Reels",
+        "status": "needs export",
+        "title": "Script Cursor Proof Short"
+      },
+      {
+        "detail": "No proxy proof has been rendered yet.",
+        "fitScore": 56,
+        "isReady": false,
+        "nextAction": "Export the 9:16 proof before judging this platform.",
+        "platform": "HighGroundOdyssey.com",
+        "status": "needs export",
+        "title": ""
+      }
+    ],
+    "primaryExportBytes": 0,
+    "primaryExportExists": false,
+    "primaryExportPath": "",
+    "reviewStatus": "needs-human-review",
+    "segmentCount": 1,
+    "sourceRangeLabel": "0.00s -> 6.24s",
+    "stage": "missing-export",
+    "textReviewStatus": "unknown",
+    "timelineRanges": [
+      {
+        "durationSeconds": 6.24,
+        "index": 1,
+        "sequenceEndTime": 6.24,
+        "sequenceStartTime": 0.0,
+        "sourceLaneId": "",
+        "sourceTagId": "",
+        "timeBase": "sequence-seconds",
+        "title": "Transcript line - Charlie"
+      }
+    ],
+    "title": "Script Cursor Proof Short",
+    "visualReviewStatus": "unknown"
+  },
+  "operatorFocus": "Output first: export usable local files, watch them, listen to them, improve the edit, then hand off to publishing.",
+  "outputDirectory": "/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state",
+  "packetType": "quipsly-shorts-local-export-board",
+  "qualityReviewCount": 5,
+  "shortCount": 9,
+  "sourceStateHints": {
+    "exportStatus": "completed",
+    "selectedShortId": null
+  },
+  "stageCounts": {
+    "exported-needs-listen-through": 5,
+    "missing-export": 4
+  },
+  "truth": "This board does not approve, publish, schedule, upload, or mutate review state. It exists to make local export and quality review obvious.",
+  "version": "2026-06-21.shorts-local-export-board.v1"
+}

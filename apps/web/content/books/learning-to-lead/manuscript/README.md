@@ -12,4 +12,4 @@ This directory holds the future canonical living MDX manuscript.
 
 - `learning-to-lead.living.mdx`
 
-In this pass it is only a starter shell with block conventions and placeholder structure.
+It is currently seeded with baseline manuscript blocks and early Charlie bridge/draft blocks. Preserve the one-file living manuscript model: downstream episodes, pages, courses, and public extracts should point back to block IDs instead of copying prose into separate truths.

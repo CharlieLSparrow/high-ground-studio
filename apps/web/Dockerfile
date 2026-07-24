@@ -20,6 +20,7 @@ FROM base AS deps
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml prisma.config.ts ./
 COPY prisma/schema.prisma ./prisma/schema.prisma
+COPY scripts/prisma-generate-workspace-clients.mjs ./scripts/prisma-generate-workspace-clients.mjs
 COPY apps/web/package.json ./apps/web/package.json
 COPY apps/quipsly/package.json ./apps/quipsly/package.json
 COPY apps/motion-lab/package.json ./apps/motion-lab/package.json

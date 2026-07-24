@@ -7,7 +7,7 @@ import { createTextQuoteSelector } from "@high-ground/quipsly-domain/source-awar
 
 interface AssistantInboxProps {
   actions: StudioAssistantAction[];
-  onProcessAction: (actionId: string, status: "APPROVED" | "REJECTED") => Promise<void>;
+  onProcessAction: (actionId: string, status: "proposed" | "approved" | "rejected" | "committed") => Promise<void>;
   onScanEntities?: () => Promise<void>;
   isScanning?: boolean;
   scanError?: string | null;
@@ -22,12 +22,16 @@ export function AssistantInbox({
 }: AssistantInboxProps) {
   const [processingId, setProcessingId] = useState<string | null>(null);
   const [expandedAction, setExpandedAction] = useState<string | null>(null);
+  const [processError, setProcessError] = useState<string | null>(null);
 
-  const handleAction = async (id: string, status: "APPROVED" | "REJECTED") => {
+  const handleAction = async (id: string, status: "proposed" | "approved" | "rejected" | "committed") => {
     if (processingId) return;
     setProcessingId(id);
+    setProcessError(null);
     try {
       await onProcessAction(id, status);
+    } catch (error) {
+      setProcessError(error instanceof Error ? error.message : "The review decision was not recorded.");
     } finally {
       setProcessingId(null);
     }
@@ -53,8 +57,9 @@ export function AssistantInbox({
             Intelligence Inbox
           </h2>
           <p className="text-[11px] text-white/40 mt-1 uppercase tracking-wider font-medium">
-            AI extractions require your approval
+            Review first, then commit exact-source entities
           </p>
+          {processError ? <p role="alert" className="mt-2 text-[11px] font-bold text-red-300">{processError}</p> : null}
         </div>
 
         {onScanEntities && (
@@ -96,6 +101,7 @@ export function AssistantInbox({
             const payload = action.payloadJson || {};
             const attributes = payload.attributes || {};
             const excerpt = attributes.sourceExcerpt || attributes.source_excerpt || payload.sourceExcerpt;
+            const sourceBlockId = payload.sourceBlockId || attributes.sourceBlockId;
             const isHighRisk = action.riskLevel === "HIGH";
             const isExpanded = expandedAction === action.id;
 
@@ -118,7 +124,7 @@ export function AssistantInbox({
                         <Sparkles className="h-3 w-3" />
                       </div>
                       <div className="text-[10px] font-black uppercase tracking-widest text-white/80">
-                        {action.type.replace(/_/g, " ")}
+                        {action.kind.replace(/_/g, " ")}
                       </div>
                     </div>
                     {isHighRisk && (
@@ -142,7 +148,9 @@ export function AssistantInbox({
                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-flare/50 rounded-l-xl opacity-50 group-hover:bg-flare group-hover:opacity-100 transition-colors" />
                       <div className="flex justify-between items-center mb-1.5 pl-2">
                         <div className="text-[9px] uppercase font-black tracking-widest text-white/30 group-hover:text-white/50 transition-colors">Source Provenance</div>
-                        <div className="text-[8px] font-black uppercase tracking-widest text-flare/0 group-hover:text-flare/80 transition-colors">Hovering highlights manuscript</div>
+                        <div className="text-[8px] font-black uppercase tracking-widest text-white/50">
+                          {sourceBlockId ? "Exact block attached · rechecked at commit" : "Unique current match required at commit"}
+                        </div>
                       </div>
                       <div className="text-xs italic text-white/70 pl-2 leading-relaxed">
                         "{String(excerpt)}"
@@ -172,23 +180,43 @@ export function AssistantInbox({
                   )}
 
                   <div className="flex items-center gap-2 pt-3 border-t border-white/10">
-                    <button
-                      onClick={() => handleAction(action.id, "REJECTED")}
-                      className="flex-1 py-2 flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider text-white/50 bg-white/5 hover:text-white hover:bg-white/10 rounded-xl transition-all"
-                    >
-                      <X className="h-3.5 w-3.5" /> Dismiss
-                    </button>
-                    <button
-                      onClick={() => handleAction(action.id, "APPROVED")}
-                      className={`flex-1 py-2 flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-lg ${
-                        isHighRisk 
-                          ? "bg-red-500 hover:bg-red-400 text-white shadow-red-500/20" 
-                          : "bg-flare hover:bg-flare-glow text-void shadow-flare/20"
-                      }`}
-                    >
-                      {processingId === action.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} 
-                      Approve
-                    </button>
+                    {action.status === "proposed" ? (
+                      <>
+                        <button
+                          onClick={() => handleAction(action.id, "rejected")}
+                          className="flex-1 py-2 flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider text-white/50 bg-white/5 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                        >
+                          <X className="h-3.5 w-3.5" /> Reject
+                        </button>
+                        <button
+                          onClick={() => handleAction(action.id, "approved")}
+                          className={`flex-1 py-2 flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider rounded-xl transition-all shadow-lg ${
+                            isHighRisk
+                              ? "bg-red-500 hover:bg-red-400 text-white shadow-red-500/20"
+                              : "bg-flare hover:bg-flare-glow text-void shadow-flare/20"
+                          }`}
+                        >
+                          {processingId === action.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          Review proposal
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleAction(action.id, "proposed")}
+                          className="flex-1 py-2 text-xs font-bold uppercase tracking-wider text-white/50 bg-white/5 hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                        >
+                          Undo review
+                        </button>
+                        <button
+                          onClick={() => handleAction(action.id, "committed")}
+                          className="flex-1 py-2 flex items-center justify-center gap-1.5 text-xs font-bold uppercase tracking-wider rounded-xl bg-flare hover:bg-flare-glow text-void transition-all"
+                        >
+                          {processingId === action.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                          Commit to Story Bible
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               </article>

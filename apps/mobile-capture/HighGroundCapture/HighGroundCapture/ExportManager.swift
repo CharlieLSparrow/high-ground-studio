@@ -55,7 +55,7 @@ class ExportManager: ObservableObject {
             let asset = AVURLAsset(url: finalURL)
             guard let assetTrack = asset.tracks(withMediaType: .video).first else { continue }
 
-            let durationSeconds = clip.duration ?? CMTimeGetSeconds(asset.duration)
+            let durationSeconds = clip.duration
             let durationTime = CMTime(seconds: durationSeconds, preferredTimescale: 600)
 
             let timeRange = CMTimeRange(start: CMTime(seconds: clip.mediaOffset, preferredTimescale: 600), duration: durationTime)

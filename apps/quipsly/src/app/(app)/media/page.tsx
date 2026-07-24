@@ -72,7 +72,8 @@ function describeMediaDatabaseError(error: unknown) {
   return "The media database request failed.";
 }
 
-export default async function MediaLibraryPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function MediaLibraryPage({ searchParams }: { searchParams: Promise<SearchParams> }) {
+  const resolvedSearchParams = await searchParams;
   const prisma = getPrismaClient();
   const actorEmail = await getCurrentHomeNestActorEmail();
 
@@ -111,15 +112,15 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
   const projectById = new Map(projects.map((project) => [project.id, project]));
   const accessibleProjectIds = projects.map((project) => project.id);
 
-  const requestedProjectId = normalizeSearchParam(searchParams.projectId) || homeNest.id;
+  const requestedProjectId = normalizeSearchParam(resolvedSearchParams.projectId) || homeNest.id;
   const selectedProjectId =
     requestedProjectId === 'all' || projectById.has(requestedProjectId)
       ? requestedProjectId
       : homeNest.id;
-  const selectedBinId = normalizeSearchParam(searchParams.binId) || 'all';
-  const selectedTagSlug = normalizeSearchParam(searchParams.tag);
-  const mediaQuery = normalizeSearchParam(searchParams.q) || '';
-  const source = normalizeSearchParam(searchParams.source);
+  const selectedBinId = normalizeSearchParam(resolvedSearchParams.binId) || 'all';
+  const selectedTagSlug = normalizeSearchParam(resolvedSearchParams.tag);
+  const mediaQuery = normalizeSearchParam(resolvedSearchParams.q) || '';
+  const source = normalizeSearchParam(resolvedSearchParams.source);
   const isMobileSource = source === 'iphone';
   const selectedProject = selectedProjectId !== 'all' ? projectById.get(selectedProjectId) : null;
   const selectedProjectIsHome = selectedProject?.sourceLabel === sourceLabelForNestKind('home');
@@ -256,7 +257,6 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
                 name="projectId"
                 className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 defaultValue={selectedProjectId}
-                onChange={(e) => e.currentTarget.form?.submit()}
               >
                 <option value="all">All accessible media</option>
                 {projects.map((project) => (
@@ -266,6 +266,12 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
                   </option>
                 ))}
               </select>
+              <button
+                type="submit"
+                className="ml-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-black text-zinc-700 shadow-sm hover:bg-zinc-50"
+              >
+                Apply Nest filter
+              </button>
             </form>
 
             <Link

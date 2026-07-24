@@ -1,0 +1,385 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quipsly shorts local export board</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111712;
+      --panel: #192219;
+      --panel-2: #223020;
+      --ink: #f4efd8;
+      --muted: #b9ad91;
+      --gold: #f1c84d;
+      --moss: #7dbb64;
+      --clay: #c97946;
+      --red: #e26363;
+      --line: rgba(244, 239, 216, 0.16);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 10% 10%, rgba(125, 187, 100, 0.18), transparent 28rem),
+        radial-gradient(circle at 85% 0%, rgba(241, 200, 77, 0.12), transparent 24rem),
+        var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1180px; margin: 0 auto; padding: 42px 24px 64px; }
+    .hero {
+      border: 1px solid var(--line);
+      border-radius: 28px;
+      padding: 30px;
+      background: linear-gradient(135deg, rgba(25, 34, 25, 0.94), rgba(34, 48, 32, 0.84));
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.32);
+    }
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--gold);
+      text-transform: uppercase;
+      letter-spacing: 0.22em;
+      font-size: 0.72rem;
+      font-weight: 800;
+    }
+    h1 { margin: 0; font-size: clamp(2.2rem, 6vw, 4.6rem); line-height: 0.94; letter-spacing: -0.06em; }
+    h2 { margin: 0 0 6px; font-size: 1.1rem; }
+    p { color: var(--muted); max-width: 760px; }
+    code {
+      display: block;
+      white-space: pre-wrap;
+      word-break: break-word;
+      padding: 10px 12px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.28);
+      color: #fff7c4;
+      border: 1px solid rgba(241, 200, 77, 0.18);
+      font-size: 0.8rem;
+    }
+    .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 22px 0; }
+    .counts article {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 18px;
+      padding: 14px;
+    }
+    .counts strong { display: block; font-size: 2rem; color: var(--gold); }
+    .counts span { color: var(--muted); font-size: 0.82rem; }
+    .episode-coverage { margin-top: 18px; }
+    .episode-coverage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; }
+    .episode-coverage article { border: 1px solid var(--line); border-radius: 16px; padding: 12px; background: rgba(125, 187, 100, 0.07); }
+    .episode-coverage strong { display: block; color: var(--moss); text-transform: uppercase; letter-spacing: 0.08em; }
+    .episode-coverage span, .episode-coverage small { display: block; color: var(--muted); }
+    .coverage-warning { color: var(--gold); margin: 8px 0 0; }
+    .next {
+      margin-top: 22px;
+      border-left: 4px solid var(--moss);
+      padding: 14px 16px;
+      background: rgba(125, 187, 100, 0.08);
+      border-radius: 16px;
+    }
+    .shorts { display: grid; gap: 16px; margin-top: 22px; }
+    .short {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(280px, 0.9fr);
+      gap: 18px;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 18px;
+      background: rgba(25, 34, 25, 0.82);
+    }
+    .missing-export, .export-path-missing-file { border-color: rgba(226, 99, 99, 0.5); }
+    .exported-needs-visual-review, .exported-needs-listen-through, .needs-text-review { border-color: rgba(241, 200, 77, 0.45); }
+    .ready-for-social-queue { border-color: rgba(125, 187, 100, 0.55); }
+    dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 14px 0 0; }
+    dt { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; }
+    dd { margin: 0; overflow-wrap: anywhere; }
+    .commands { display: grid; gap: 8px; align-content: start; }
+    label { color: var(--moss); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; font-size: 0.7rem; }
+    @media (max-width: 860px) { .short { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Quipsly Studio - local shorts export</p>
+      <h1>Make the shorts real files.</h1>
+      <p>Output first: export usable local files, watch them, listen to them, improve the edit, then hand off to publishing.</p>
+      <div class="counts"><article><strong>4</strong><span>missing-export</span></article><article><strong>5</strong><span>exported-needs-listen-through</span></article></div>
+      
+    <section class="episode-coverage">
+      <p class="eyebrow">Episode coverage</p>
+      <div class="episode-coverage-grid">
+        <article>
+          <strong>episode-2</strong>
+          <span>5 shorts</span>
+          <small>5 exported / 5 reviewable</small>
+        </article>
+        
+        <article>
+          <strong>unknown-episode</strong>
+          <span>4 shorts</span>
+          <small>0 exported / 0 reviewable</small>
+        </article>
+        </div>
+      <p class="coverage-warning">4 shorts need episode provenance triage.</p>
+    </section>
+    
+      <section class="next">
+        <p class="eyebrow">Next practical move</p>
+        <h2>Script Cursor Proof Short</h2>
+        <p>Export this short locally so we have an actual file to watch and hear.</p>
+        <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;script-cursor-proof-short&#x27; id &#x27;B5C93EC4-0CA6-4CE7-91BE-592D658659B8&#x27;</code>
+      </section>
+    </section>
+    <section class="shorts">
+      
+            <section class="short missing-export">
+              <div>
+                <p class="eyebrow">missing-export</p>
+                <h2>Script Cursor Proof Short</h2>
+                <p>Export this short locally so we have an actual file to watch and hear.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>6.24s</dd></div>
+                  <div><dt>Source range</dt><dd>0.00s -&gt; 6.24s</dd></div>
+                  <div><dt>Episode</dt><dd>Unknown episode (missing)</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>missing - No local export path yet</dd></div>
+                  <div><dt>Review</dt><dd>needs-human-review</dd></div>
+                  <div><dt>Platforms</dt><dd>YouTube Shorts, Instagram, Facebook, LinkedIn</dd></div>
+                  <div><dt>Hook</dt><dd>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...</dd></div>
+                  <div><dt>Overlay</dt><dd>This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;script-cursor-proof-short&#x27; id &#x27;B5C93EC4-0CA6-4CE7-91BE-592D658659B8&#x27;</code>
+                <label>Audio sanity</label>
+                <code>Export first</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;B5C93EC4-0CA6-4CE7-91BE-592D658659B8&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short missing-export">
+              <div>
+                <p class="eyebrow">missing-export</p>
+                <h2>Script Ledger Proof Short</h2>
+                <p>Export this short locally so we have an actual file to watch and hear.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>5.74s</dd></div>
+                  <div><dt>Source range</dt><dd>0.00s -&gt; 5.74s</dd></div>
+                  <div><dt>Episode</dt><dd>Unknown episode (missing)</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>missing - No local export path yet</dd></div>
+                  <div><dt>Review</dt><dd>needs-human-review</dd></div>
+                  <div><dt>Platforms</dt><dd>YouTube Shorts, Instagram, Facebook, LinkedIn</dd></div>
+                  <div><dt>Hook</dt><dd>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...</dd></div>
+                  <div><dt>Overlay</dt><dd>This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;script-ledger-proof-short&#x27; id &#x27;456EB86F-9F84-4102-85B6-E6B7C0595681&#x27;</code>
+                <label>Audio sanity</label>
+                <code>Export first</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;456EB86F-9F84-4102-85B6-E6B7C0595681&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short missing-export">
+              <div>
+                <p class="eyebrow">missing-export</p>
+                <h2>Agentctl Port Discovery Proof Short</h2>
+                <p>Export this short locally so we have an actual file to watch and hear.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>5.74s</dd></div>
+                  <div><dt>Source range</dt><dd>0.00s -&gt; 5.74s</dd></div>
+                  <div><dt>Episode</dt><dd>Unknown episode (missing)</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>missing - No local export path yet</dd></div>
+                  <div><dt>Review</dt><dd>needs-human-review</dd></div>
+                  <div><dt>Platforms</dt><dd>YouTube Shorts, Instagram, Facebook, LinkedIn</dd></div>
+                  <div><dt>Hook</dt><dd>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...</dd></div>
+                  <div><dt>Overlay</dt><dd>This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;agentctl-port-discovery-proof-short&#x27; id &#x27;677FAA5B-B163-4314-BF00-C2357F734E37&#x27;</code>
+                <label>Audio sanity</label>
+                <code>Export first</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;677FAA5B-B163-4314-BF00-C2357F734E37&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short missing-export">
+              <div>
+                <p class="eyebrow">missing-export</p>
+                <h2>Search Captions Proof Short</h2>
+                <p>Export this short locally so we have an actual file to watch and hear.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>5.74s</dd></div>
+                  <div><dt>Source range</dt><dd>0.00s -&gt; 5.74s</dd></div>
+                  <div><dt>Episode</dt><dd>Unknown episode (missing)</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>missing - No local export path yet</dd></div>
+                  <div><dt>Review</dt><dd>needs-human-review</dd></div>
+                  <div><dt>Platforms</dt><dd>YouTube Shorts, Instagram, Facebook, LinkedIn</dd></div>
+                  <div><dt>Hook</dt><dd>This is the transcript spine: one timed line that can become captions, quotes, shorts, and searc...</dd></div>
+                  <div><dt>Overlay</dt><dd>This is the transcript spine: one timed line that can become captions, quotes, shorts, and search.</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-export-selected &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state&#x27; &#x27;search-captions-proof-short&#x27; id &#x27;85F95E60-56E9-4603-8961-B01CF8E84754&#x27;</code>
+                <label>Audio sanity</label>
+                <code>Export first</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;85F95E60-56E9-4603-8961-B01CF8E84754&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 01 - 08:24</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>22.56s</dd></div>
+                  <div><dt>Source range</dt><dd>504.40s -&gt; 526.96s</dd></div>
+                  <div><dt>Episode</dt><dd>Episode 2 (inferred-from-text)</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>draft</dd></div>
+                  <div><dt>Platforms</dt><dd>YouTube Shorts, Instagram, Facebook, LinkedIn</dd></div>
+                  <div><dt>Hook</dt><dd>No hook text yet</dd></div>
+                  <div><dt>Overlay</dt><dd>No overlay/caption plan yet</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4&#x27; &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-01-9x16-short-contact-sheet.png&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-01-9x16-short.mp4&#x27; 22.56</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;471E4086-8367-4E7C-8C5D-BB7132DF3524&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 02 - 11:29</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>20.24s</dd></div>
+                  <div><dt>Source range</dt><dd>688.84s -&gt; 709.08s</dd></div>
+                  <div><dt>Episode</dt><dd>Episode 2 (inferred-from-text)</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>draft</dd></div>
+                  <div><dt>Platforms</dt><dd>YouTube Shorts, Instagram, Facebook, LinkedIn</dd></div>
+                  <div><dt>Hook</dt><dd>No hook text yet</dd></div>
+                  <div><dt>Overlay</dt><dd>No overlay/caption plan yet</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4&#x27; &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-02-9x16-short-contact-sheet.png&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-02-9x16-short.mp4&#x27; 20.24</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;48355445-FB52-4FD4-A805-8DD91AE57F70&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 03 - 16:00</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>21.68s</dd></div>
+                  <div><dt>Source range</dt><dd>960.28s -&gt; 981.96s</dd></div>
+                  <div><dt>Episode</dt><dd>Episode 2 (inferred-from-text)</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>draft</dd></div>
+                  <div><dt>Platforms</dt><dd>YouTube Shorts, Instagram, Facebook, LinkedIn</dd></div>
+                  <div><dt>Hook</dt><dd>No hook text yet</dd></div>
+                  <div><dt>Overlay</dt><dd>No overlay/caption plan yet</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4&#x27; &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-03-9x16-short-contact-sheet.png&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-03-9x16-short.mp4&#x27; 21.68</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;B3454844-F98C-4EAC-B2BC-CE31C5036F4E&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 04 - 20:59</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>18.56s</dd></div>
+                  <div><dt>Source range</dt><dd>1259.12s -&gt; 1277.68s</dd></div>
+                  <div><dt>Episode</dt><dd>Episode 2 (inferred-from-text)</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>draft</dd></div>
+                  <div><dt>Platforms</dt><dd>YouTube Shorts, Instagram, Facebook, LinkedIn</dd></div>
+                  <div><dt>Hook</dt><dd>No hook text yet</dd></div>
+                  <div><dt>Overlay</dt><dd>No overlay/caption plan yet</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4&#x27; &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-04-9x16-short-contact-sheet.png&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-04-9x16-short.mp4&#x27; 18.56</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;1A679D84-1478-4E68-8744-910A49795A15&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+            <section class="short exported-needs-listen-through">
+              <div>
+                <p class="eyebrow">exported-needs-listen-through</p>
+                <h2>Episode 2 Review Candidate 05 - 24:29</h2>
+                <p>Listen through the exported file and sanity-check audio.</p>
+                <dl>
+                  <div><dt>Duration</dt><dd>19.68s</dd></div>
+                  <div><dt>Source range</dt><dd>1468.84s -&gt; 1488.52s</dd></div>
+                  <div><dt>Episode</dt><dd>Episode 2 (inferred-from-text)</dd></div>
+                  <div><dt>Segments</dt><dd>1</dd></div>
+                  <div><dt>Export</dt><dd>present - /Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4</dd></div>
+                  <div><dt>Review</dt><dd>draft</dd></div>
+                  <div><dt>Platforms</dt><dd>YouTube Shorts, Instagram, Facebook, LinkedIn</dd></div>
+                  <div><dt>Hook</dt><dd>No hook text yet</dd></div>
+                  <div><dt>Overlay</dt><dd>No overlay/caption plan yet</dd></div>
+                </dl>
+              </div>
+              <div class="commands">
+                <label>Do next</label>
+                <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4&#x27; &#x27;/Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio/docs/quipsly/current-state/episode-2-native-proof-review-short-05-9x16-short-contact-sheet.png&#x27;</code>
+                <label>Audio sanity</label>
+                <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-2-native-proof/episode-2-native-proof-review-short-05-9x16-short.mp4&#x27; 19.68</code>
+                <label>Decision after watching</label>
+                <code>script/agentctl.sh shorts-review &#x27;3AB6C255-E701-4316-9011-6CB8839B6243&#x27; keep &#x27;Kept after local export review.&#x27;</code>
+              </div>
+            </section>
+            
+    </section>
+  </main>
+</body>
+</html>

@@ -1,4 +1,4 @@
-import { signIn, signOut } from "@/auth";
+import Link from "next/link";
 
 import {
   cn,
@@ -8,22 +8,6 @@ import {
   secondaryButtonClassName,
   StudioGlyph,
 } from "./studio-ui";
-
-async function signInWithGoogle(formData: FormData) {
-  "use server";
-  const redirectToValue = formData.get("redirectTo");
-  const redirectTo =
-    typeof redirectToValue === "string" && redirectToValue.startsWith("/")
-      ? redirectToValue
-      : "/";
-
-  await signIn("google", { redirectTo });
-}
-
-async function signOutOfStudio() {
-  "use server";
-  await signOut({ redirectTo: "/" });
-}
 
 export function StudioAccessShell({
   mode,
@@ -64,18 +48,16 @@ export function StudioAccessShell({
 
         <div className="mt-1 flex flex-wrap gap-2.5">
           {isDenied ? (
-            <form className="min-w-[min(100%,220px)]" action={signOutOfStudio}>
-              <button className={secondaryButtonClassName} type="submit">
-                Sign out
-              </button>
-            </form>
+            <Link className={secondaryButtonClassName} href="/account/switch">
+              Switch account
+            </Link>
           ) : (
-            <form className="min-w-[min(100%,220px)]" action={signInWithGoogle}>
-              <input name="redirectTo" type="hidden" value={redirectTo} />
-              <button className={primaryButtonClassName} type="submit">
-                Sign in with Google
-              </button>
-            </form>
+            <Link
+              className={primaryButtonClassName}
+              href={`/login?callbackUrl=${encodeURIComponent(redirectTo)}`}
+            >
+              Sign in
+            </Link>
           )}
         </div>
       </section>

@@ -1,0 +1,68 @@
+{
+  "episodeSlug": "episode-1",
+  "items": [
+    {
+      "action": "append-reviewable-writing-block",
+      "authorship": "agent-authored",
+      "blockedClaims": [
+        "queued does not mean ingested",
+        "ingested does not mean canon-approved",
+        "ingested does not mean published",
+        "agent-authored does not mean placeholder"
+      ],
+      "canonStatus": "not-canon-approved",
+      "creator": "Codex",
+      "episode": "episode-1",
+      "id": "episode-1-v2-agent-draft-to-nest",
+      "postIngestVerificationPolicy": "Run the receipt command after the safe ingest command; do not mark live Nest ingestion complete from the local queue alone.",
+      "postIngestVerificationStatus": "verified-live-nest-ingested",
+      "priority": 1,
+      "provenance": "Agent-authored second-pass draft created to dogfood the Nest -> Studio -> Tower loop after content-partner doctrine clarification.",
+      "publicationStatus": "not-published",
+      "receiptStatus": "live-nest-ingest-receipt-confirmed",
+      "reviewStatus": "needs-human-review",
+      "role": "writing",
+      "safeIngestCommand": "script/agentctl.sh nest-serious-draft-file \"Episode 1 - The Wednesday Rule - Second Pass\" /Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md episode-1 \"book,writing,episode-1,agent-second-pass,needs-human-review,current-candidate\" \"agent second-pass draft created after content partner doctrine clarification\"",
+      "sourceArtifactId": "episode-1-agent-second-pass-draft",
+      "sourcePath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md",
+      "status": "live-nest-ingest-verified",
+      "successReceiptCommand": "script/agentctl.sh episode1-writing-nest-ingest-receipt --json",
+      "successReceiptNeeded": "Live Nest state or generated Nest writing packet shows this block with matching title, authorship, provenance, reviewStatus, and tags.",
+      "successReceiptPath": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-receipts/episode-1-writing-v2-nest-ingest-receipt.json",
+      "tags": [
+        "book",
+        "writing",
+        "episode-1",
+        "agent-second-pass",
+        "needs-human-review",
+        "current-candidate"
+      ],
+      "title": "Episode 1 - The Wednesday Rule - Second Pass"
+    }
+  ],
+  "liveNestIngestReceipt": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-receipts/episode-1-writing-v2-nest-ingest-receipt.json",
+  "liveNestIngestStatus": "verified-live-nest-ingested",
+  "operatorCommands": {
+    "appendQueuedDraftToLiveNest": "script/agentctl.sh nest-serious-draft-file \"Episode 1 - The Wednesday Rule - Second Pass\" /Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md episode-1 \"book,writing,episode-1,agent-second-pass,needs-human-review,current-candidate\" \"agent second-pass draft created after content partner doctrine clarification\"",
+    "inspectLiveQueue": "script/agentctl.sh nest-writing-queue",
+    "inspectLocalQueue": "script/agentctl.sh episode1-writing-nest-queue --json",
+    "inspectLoopStatus": "script/agentctl.sh episode1-writing-loop-status --json",
+    "inspectNestIntake": "script/agentctl.sh episode1-writing-nest-intake --json",
+    "verifyQueuedDraftInLiveNest": "script/agentctl.sh episode1-writing-nest-ingest-receipt --json"
+  },
+  "packetType": "quipsly-nest-writing-queue",
+  "projectSlug": "high-ground-odyssey-manuscript",
+  "purpose": "Give humans, Codex, and Quipslys one durable source-aware queue item for moving the Episode 1 v2 writing candidate into the living Nest writing surface.",
+  "queueStatus": "live-nest-ingest-verified-needs-human-review",
+  "supportingArtifacts": {
+    "draftV2": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/content-drafts/hgo-episode-1-the-wednesday-rule-agent-second-pass.md",
+    "loopStatus": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/current-state/episode-1-writing-loop-status.json",
+    "nestIntake": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/nest-intake/episode-1-writing-v2-nest-intake.json",
+    "provenance": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/provenance-packets/episode-1-writing-provenance.json",
+    "reviewLedger": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/review-ledgers/episode-1-writing-review-ledger.jsonl",
+    "towerReadiness": "/Users/wall-e/Dev/high-ground-studio/docs/quipsly/tower-readiness/episode-1-writing-tower-readiness.json"
+  },
+  "title": "Episode 1 - The Wednesday Rule - Nest writing queue",
+  "truth": "This local Nest writing queue packet has a live Nest ingest receipt for the Episode 1 v2 draft. It does not prove canon approval, publication, scheduling, export, or external receipts.",
+  "updatedAt": "2026-06-20T00:00:00-06:00"
+}

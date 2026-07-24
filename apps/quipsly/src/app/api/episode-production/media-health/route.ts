@@ -2,7 +2,14 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
-import { getMediaBucket, parseGcsUri } from "@/lib/server/gcs";
+import { getMediaBucket } from "@/lib/server/gcs";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { authorizeStudioMediaSource } from "@/lib/server/studio-media-source-access";
+import {
+  authorizeConfiguredMediaVaultLocation,
+  resolveAllowedLocalStudioMediaPath,
+} from "@/lib/server/studio-media-location-security";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 type HealthKind = "audio" | "video" | "unknown";
 type HealthStatus = "ok" | "warning" | "error" | "unchecked";
@@ -16,23 +23,12 @@ type HealthRequestItem = {
   size?: number;
 };
 
-type VideoSourceRecord = {
+type MediaHealthActor = {
   id: string;
-  providerSourceId: string | null;
-  url: string | null;
-  title: string | null;
+  email: string;
+  isStaff: boolean;
 };
 
-type VideoSourcePrismaClient = ReturnType<typeof getPrismaClient> & {
-  studioVideoSource: {
-    findUnique: (input: {
-      where: { id: string };
-      select: { id: true; providerSourceId: true; url: true; title: true };
-    }) => Promise<VideoSourceRecord | null>;
-  };
-};
-
-const PROBE_TIMEOUT_MS = 4500;
 const MAX_ITEMS = 80;
 
 function asRecord(value: unknown) {
@@ -104,74 +100,32 @@ function canRenderSource(args: { sourceUrl: string; kind: HealthKind; reachable:
   return args.kind === "audio" || args.kind === "video";
 }
 
-async function withTimeout<T>(operation: (signal: AbortSignal) => Promise<T>, timeoutMs = PROBE_TIMEOUT_MS) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await operation(controller.signal);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function probeRemoteUrl(sourceUrl: string) {
-  const attempt = async (method: "HEAD" | "GET") => withTimeout(async (signal) => {
-    const response = await fetch(sourceUrl, {
-      method,
-      signal,
-      redirect: "follow",
-      headers: method === "GET" ? { Range: "bytes=0-0" } : undefined,
-    });
-    return response;
-  });
-
-  let response: Response;
-  let method: "HEAD" | "GET" = "HEAD";
-  try {
-    response = await attempt("HEAD");
-    if ([405, 403, 501].includes(response.status)) {
-      method = "GET";
-      response = await attempt("GET");
-    }
-  } catch {
-    method = "GET";
-    response = await attempt("GET");
-  }
-
-  const contentType = response.headers.get("content-type") || inferContentTypeFromPath(sourceUrl);
-  const size = numberValue(response.headers.get("content-length"), 0);
-  const reachable = response.ok || response.status === 206;
-  return {
-    reachable,
-    statusCode: response.status,
-    method,
-    contentType,
-    size,
-    note: reachable ? "Remote source responded to a lightweight probe." : `Remote source returned HTTP ${response.status}.`,
-  };
-}
-
 async function probeGcsUri(gcsUri: string) {
-  const parsed = parseGcsUri(gcsUri);
-  if (!parsed) {
+  const location = authorizeConfiguredMediaVaultLocation(gcsUri);
+  if (location.kind !== "gcs") {
     return {
       reachable: false,
       statusCode: 0,
       method: "metadata",
       contentType: inferContentTypeFromPath(gcsUri),
       size: 0,
-      note: "GCS URI could not be parsed.",
+      note: location.kind === "rejected-gcs"
+        ? location.error
+        : "GCS URI could not be parsed.",
     };
   }
 
-  const file = getMediaBucket(parsed.bucketName).file(parsed.objectName);
+  const file = getMediaBucket(location.bucketName).file(
+    location.objectName,
+    location.generation ? { generation: location.generation as any } : undefined,
+  );
   const [exists] = await file.exists();
   if (!exists) {
     return {
       reachable: false,
       statusCode: 404,
       method: "metadata",
-      contentType: inferContentTypeFromPath(parsed.objectName),
+      contentType: inferContentTypeFromPath(location.objectName),
       size: 0,
       note: "GCS object was not found.",
     };
@@ -182,13 +136,13 @@ async function probeGcsUri(gcsUri: string) {
     reachable: true,
     statusCode: 200,
     method: "metadata",
-    contentType: String(metadata.contentType || inferContentTypeFromPath(parsed.objectName)),
+    contentType: String(metadata.contentType || inferContentTypeFromPath(location.objectName)),
     size: numberValue(metadata.size, 0),
     note: "Vault object metadata is reachable without downloading media.",
   };
 }
 
-async function probeInternalMedia(sourceUrl: string) {
+async function probeInternalMedia(sourceUrl: string, actor: MediaHealthActor) {
   const sourceId = sourceIdFromInternalMediaUrl(sourceUrl);
   if (!sourceId) {
     return {
@@ -201,25 +155,33 @@ async function probeInternalMedia(sourceUrl: string) {
     };
   }
 
-  const prisma = getPrismaClient() as VideoSourcePrismaClient;
-  const source = await prisma.studioVideoSource.findUnique({
-    where: { id: sourceId },
-    select: { id: true, providerSourceId: true, url: true, title: true },
+  const prisma = getPrismaClient() as any;
+  const authorization = await authorizeStudioMediaSource({
+    prisma,
+    actor,
+    sourceId,
   });
-
-  if (!source) {
+  if (!authorization.allowed) {
     return {
       reachable: false,
-      statusCode: 404,
+      statusCode: authorization.status,
       method: "metadata",
       contentType: "application/octet-stream",
       size: 0,
-      note: "Internal media source record was not found.",
+      note: authorization.error,
     };
   }
+  const source = authorization.source;
 
   if (source.url && isHttpUrl(source.url)) {
-    return probeRemoteUrl(source.url);
+    return {
+      reachable: false,
+      statusCode: 0,
+      method: "not-probed",
+      contentType: inferContentTypeFromPath(source.url),
+      size: 0,
+      note: "Remote server-side probing is disabled. Preview the authorized source in the client instead.",
+    };
   }
 
   if (source.providerSourceId?.startsWith("gcs://")) {
@@ -228,7 +190,18 @@ async function probeInternalMedia(sourceUrl: string) {
 
   if (source.providerSourceId) {
     try {
-      const stat = await fs.stat(source.providerSourceId);
+      const localPath = await resolveAllowedLocalStudioMediaPath(source.providerSourceId);
+      if (!localPath) {
+        return {
+          reachable: false,
+          statusCode: 409,
+          method: "not-probed",
+          contentType: inferContentTypeFromPath(source.providerSourceId),
+          size: 0,
+          note: "Local metadata probing is confined to configured Quipsly ingest roots.",
+        };
+      }
+      const stat = await fs.stat(localPath);
       return {
         reachable: true,
         statusCode: 200,
@@ -259,7 +232,7 @@ async function probeInternalMedia(sourceUrl: string) {
   };
 }
 
-async function checkOne(item: HealthRequestItem) {
+async function checkOne(item: HealthRequestItem, actor: MediaHealthActor) {
   const id = stringValue(item.id, stringValue(item.sourceUrl, "unknown-source"));
   const sourceUrl = stringValue(item.sourceUrl).trim();
   const expectedKind = item.expectedKind === "audio" || item.expectedKind === "video" ? item.expectedKind : "unknown";
@@ -298,11 +271,25 @@ async function checkOne(item: HealthRequestItem) {
         note: "YouTube links can be previewed as embeds, but need source media before final render.",
       };
     } else if (isInternalMediaUrl(sourceUrl)) {
-      probe = await probeInternalMedia(sourceUrl);
+      probe = await probeInternalMedia(sourceUrl, actor);
     } else if (sourceUrl.startsWith("gcs://")) {
-      probe = await probeGcsUri(sourceUrl);
+      probe = {
+        reachable: false,
+        statusCode: 0,
+        method: "not-probed",
+        contentType: declaredContentType || inferContentTypeFromPath(sourceUrl),
+        size: numberValue(item.size, 0),
+        note: "Raw GCS URI probing is disabled. Use an authorized internal media source.",
+      };
     } else if (isHttpUrl(sourceUrl)) {
-      probe = await probeRemoteUrl(sourceUrl);
+      probe = {
+        reachable: false,
+        statusCode: 0,
+        method: "not-probed",
+        contentType: declaredContentType || inferContentTypeFromPath(sourceUrl),
+        size: numberValue(item.size, 0),
+        note: "Arbitrary remote server-side probing is disabled to protect private networks.",
+      };
     } else {
       probe = {
         reachable: false,
@@ -330,7 +317,9 @@ async function checkOne(item: HealthRequestItem) {
   const previewUsable = canPreviewSource({ sourceUrl, kind, reachable: probe.reachable });
   const renderUsable = canRenderSource({ sourceUrl, kind, reachable: probe.reachable });
   const playable = previewUsable || renderUsable;
-  const status: HealthStatus = !probe.reachable
+  const status: HealthStatus = probe.method === "not-probed"
+    ? "unchecked"
+    : !probe.reachable
     ? "error"
     : !kindMatches || !renderUsable
       ? "warning"
@@ -361,6 +350,38 @@ async function checkOne(item: HealthRequestItem) {
 export async function POST(request: Request) {
   try {
     const body = asRecord(await request.json());
+    const session = await getQuipslySessionFromRequest(request);
+    if (!session?.user) {
+      return NextResponse.json(
+        { ok: false, error: "Sign in before checking episode media health." },
+        { status: 401 },
+      );
+    }
+    const projectSlug = stringValue(body.projectSlug).trim();
+    if (!projectSlug) {
+      return NextResponse.json(
+        { ok: false, error: "Choose a Nest before checking episode media health." },
+        { status: 400 },
+      );
+    }
+    const prisma = getPrismaClient() as any;
+    const projectAccess = await resolveStudioProjectAccess({
+      projectSlug,
+      email: session.user.primaryEmail,
+      action: "read",
+      prisma,
+    });
+    if (!projectAccess.allowed) {
+      return NextResponse.json(
+        { ok: false, error: "You do not have access to this Nest's media." },
+        { status: 403 },
+      );
+    }
+    const actor: MediaHealthActor = {
+      id: session.user.id,
+      email: session.user.primaryEmail,
+      isStaff: session.user.isStaff,
+    };
     const items = Array.isArray(body.items) ? body.items.slice(0, MAX_ITEMS) : [];
     const normalizedItems = items.map((item) => {
       const record = asRecord(item);
@@ -374,9 +395,10 @@ export async function POST(request: Request) {
       } satisfies HealthRequestItem;
     });
 
-    const results = await Promise.all(normalizedItems.map(checkOne));
+    const results = await Promise.all(normalizedItems.map((item) => checkOne(item, actor)));
     return NextResponse.json({
       ok: true,
+      projectSlug,
       checkedAt: new Date().toISOString(),
       results,
     });

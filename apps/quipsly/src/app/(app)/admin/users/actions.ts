@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+import { adminAuth } from "@/lib/firebase/firebase-admin";
 import { getPrismaClient } from "@/lib/prisma";
 import { grantNestAccess } from "@/lib/server/quipsly-core";
+import { ensureQuipslyStarterStateForUser } from "@/lib/server/quipsly-onboarding";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
 import {
   parseAppRole,
@@ -27,12 +29,52 @@ function safeCallbackPath(value: FormDataEntryValue | null) {
   return raw.slice(0, 500);
 }
 
+async function upsertFirebasePasswordUser(input: {
+  email: string;
+  password: string;
+  name?: string | null;
+}) {
+  const password = input.password.trim();
+  if (password.length < 8) {
+    throw new Error("Firebase login password must be at least 8 characters.");
+  }
+
+  try {
+    const existing = await adminAuth.getUserByEmail(input.email);
+    return {
+      user: await adminAuth.updateUser(existing.uid, {
+        password,
+        displayName: input.name || existing.displayName || undefined,
+        emailVerified: true,
+        disabled: false,
+      }),
+      created: false,
+    };
+  } catch (error: any) {
+    if (error?.code !== "auth/user-not-found") {
+      throw error;
+    }
+
+    return {
+      user: await adminAuth.createUser({
+        email: input.email,
+        password,
+        displayName: input.name || undefined,
+        emailVerified: true,
+        disabled: false,
+      }),
+      created: true,
+    };
+  }
+}
+
 export async function upsertManagedUserAction(formData: FormData) {
   const actor = await requireQuipslyAdminActor();
 
   const targetEmail = normalizeAccessEmail(String(formData.get("primaryEmail") || ""));
   const name = String(formData.get("name") || "").trim();
   const role = parseAppRole(String(formData.get("role") || ""));
+  const firebasePassword = String(formData.get("firebasePassword") || "");
   const params = new URLSearchParams();
 
   if (!targetEmail) {
@@ -43,46 +85,78 @@ export async function upsertManagedUserAction(formData: FormData) {
   const prisma = getPrismaClient();
 
   try {
-    const existingUser = await prisma.user.findUnique({
-      where: { primaryEmail: targetEmail },
+    const firebaseLogin = firebasePassword.trim()
+      ? await upsertFirebasePasswordUser({
+          email: targetEmail,
+          password: firebasePassword,
+          name,
+        })
+      : null;
+
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { primaryEmail: targetEmail },
+          { aliases: { some: { email: targetEmail } } },
+        ],
+      },
       select: { id: true },
     });
 
-    if (!existingUser) {
-      await prisma.user.create({
+    const savedUser = !existingUser
+      ? await prisma.user.create({
         data: {
-          primaryEmail: targetEmail,
-          name: name || null,
-          emailVerified: new Date(),
-          ...(role
-            ? {
+            primaryEmail: targetEmail,
+            name: name || null,
+            emailVerified: new Date(),
+            firebaseUid: firebaseLogin?.user.uid || undefined,
+            ...(role
+              ? {
                 roles: {
                   create: [{ role }],
                 },
               }
             : {}),
         },
-      });
-      params.set("created", targetEmail);
-    } else {
-      await prisma.$transaction(async (tx) => {
-        await tx.user.update({
-          where: { id: existingUser.id },
-          data: {
-            name: name || undefined,
-            emailVerified: new Date(),
-          },
+        select: { id: true, primaryEmail: true },
+      })
+      : await prisma.$transaction(async (tx) => {
+          await tx.user.update({
+            where: { id: existingUser.id },
+            data: {
+              name: name || undefined,
+              emailVerified: new Date(),
+              firebaseUid: firebaseLogin?.user.uid || undefined,
+            },
+          });
+
+          if (role) {
+            await tx.userRole.createMany({
+              data: [{ userId: existingUser.id, role }],
+              skipDuplicates: true,
+            });
+          }
+
+          return tx.user.findUniqueOrThrow({
+            where: { id: existingUser.id },
+            select: { id: true, primaryEmail: true },
+          });
         });
 
-        if (role) {
-          await tx.userRole.createMany({
-            data: [{ userId: existingUser.id, role }],
-            skipDuplicates: true,
-          });
-        }
-      });
+    await ensureQuipslyStarterStateForUser({
+      userId: savedUser.id,
+      email: savedUser.primaryEmail,
+      prisma,
+    });
 
+    if (!existingUser) {
+      params.set("created", targetEmail);
+    } else {
       params.set("updated", targetEmail);
+    }
+    params.set("starter", "ready");
+    if (firebaseLogin) {
+      params.set("firebaseLogin", firebaseLogin.created ? "created" : "updated");
     }
     params.set("actor", actor.email);
   } catch (error) {
@@ -90,6 +164,52 @@ export async function upsertManagedUserAction(formData: FormData) {
   }
 
   revalidatePath("/admin/users");
+  redirectBack(params);
+}
+
+export async function repairManagedUserStarterStateAction(formData: FormData) {
+  const actor = await requireQuipslyAdminActor();
+  const targetEmail = normalizeAccessEmail(String(formData.get("primaryEmail") || ""));
+  const params = new URLSearchParams();
+
+  if (!targetEmail) {
+    setError(params, "primaryEmail is required.");
+    redirectBack(params);
+  }
+
+  const prisma = getPrismaClient();
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { primaryEmail: targetEmail },
+          { aliases: { some: { email: targetEmail } } },
+        ],
+      },
+      select: { id: true, primaryEmail: true },
+    });
+
+    if (!user) {
+      throw new Error(`No app-owned user record exists for ${targetEmail}. Save the user first.`);
+    }
+
+    const starter = await ensureQuipslyStarterStateForUser({
+      userId: user.id,
+      email: user.primaryEmail,
+      prisma,
+    });
+
+    params.set("repaired", user.primaryEmail);
+    params.set("homeNest", starter.homeNest.slug);
+    params.set("starter", "ready");
+    params.set("actor", actor.email);
+  } catch (error) {
+    setError(params, error instanceof Error ? error.message : "Unable to repair starter state.");
+  }
+
+  revalidatePath("/admin/users");
+  revalidatePath("/projects");
   redirectBack(params);
 }
 

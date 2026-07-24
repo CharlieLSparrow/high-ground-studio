@@ -1,0 +1,594 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quipsly shorts improvement plan</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #101711;
+      --panel: #18231a;
+      --ink: #f8efd5;
+      --muted: #baaf96;
+      --gold: #f4d35e;
+      --moss: #8fc974;
+      --red: #ec746c;
+      --line: rgba(248,239,213,.16);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(143,201,116,.22), transparent 24rem),
+        radial-gradient(circle at 90% 5%, rgba(244,211,94,.12), transparent 26rem),
+        var(--bg);
+      color: var(--ink);
+      font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    main { max-width: 1220px; margin: 0 auto; padding: 42px 24px 72px; }
+    .hero, .candidate, .action { border: 1px solid var(--line); background: rgba(24,35,26,.88); border-radius: 28px; }
+    .hero { padding: 32px; box-shadow: 0 28px 90px rgba(0,0,0,.28); }
+    .eyebrow { margin: 0 0 8px; color: var(--gold); text-transform: uppercase; letter-spacing: .22em; font-size: .72rem; font-weight: 900; }
+    h1 { margin: 0; font-size: clamp(2.4rem, 6vw, 4.9rem); line-height: .93; letter-spacing: -.07em; }
+    h2, h3 { margin: 0 0 8px; }
+    p { color: var(--muted); }
+    strong { color: var(--ink); }
+    .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 12px; margin-top: 22px; }
+    .counts article { border: 1px solid var(--line); border-radius: 18px; padding: 14px; background: rgba(255,255,255,.04); }
+    .counts strong { display: block; color: var(--gold); font-size: 2rem; }
+    .counts span { color: var(--muted); }
+    .candidate { padding: 18px; margin-top: 16px; }
+    header { display: grid; grid-template-columns: 96px 1fr; gap: 18px; align-items: center; }
+    .score { display: grid; place-items: center; min-height: 88px; border-radius: 22px; background: rgba(244,211,94,.1); border: 1px solid rgba(244,211,94,.24); text-align: center; }
+    .score strong { color: var(--gold); font-size: 2.4rem; line-height: 1; }
+    .score span { color: var(--muted); font-size: .74rem; }
+    .actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; margin-top: 16px; }
+    .action { padding: 14px; border-radius: 20px; box-shadow: none; }
+    .action.blocker, .action.high { border-color: rgba(236,116,108,.48); }
+    .action.medium { border-color: rgba(244,211,94,.42); }
+    .action.low, .action.polish { border-color: rgba(143,201,116,.44); }
+    code { display: block; white-space: pre-wrap; word-break: break-word; min-height: 36px; padding: 10px 12px; border-radius: 12px; background: rgba(0,0,0,.32); color: #fff6bd; border: 1px solid rgba(244,211,94,.18); font-size: .8rem; }
+    @media (max-width: 760px) { header { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Quipsly Studio - shorts improvement plan</p>
+      <h1>Make the next edit obvious.</h1>
+      <p>Ranked actions for improving short quality before publication: export, hook, timing, visual crop, captions, audio, and platform package.</p>
+      <div class="counts"><article><strong>12</strong><span>high</span></article></div>
+    </section>
+    
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>95.2</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Farm Work Teaches Stewardship</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-farm-work-teaches-stewardship-9x16-short.mp4&#x27; 22.65</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action medium">
+              <p class="eyebrow">medium / hook</p>
+              <h3>Test a stronger hook variant</h3>
+              <p>The hook is usable, but another angle may earn more attention.</p>
+              <p><strong>Human check:</strong> Candidate variant: The farm lesson was not just the chore It was learning why...</p>
+              <code>script/agentctl.sh shorts-select id &#x27;18BC489A-7439-4DA5-B967-9726443A008D&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>92.0</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-visual-review</p>
+                  <h2>Learning Why, Not Just What</h2>
+                  <p>Top move: <strong>Create a caption or overlay plan</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / visual</p>
+              <h3>Generate visual proof and check safe zones</h3>
+              <p>Shorts need face-safe vertical crop and caption-safe text. Do not publish until the exported frame actually looks right.</p>
+              <p><strong>Human check:</strong> Check headroom, face position, captions/overlays, and platform UI danger zones.</p>
+              <code>script/agentctl.sh shorts-contact-sheet &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-learning-why-not-just-what-9x16-short.mp4&#x27;</code>
+            </article>
+            
+            <article class="action medium">
+              <p class="eyebrow">medium / hook</p>
+              <h3>Test a stronger hook variant</h3>
+              <p>The hook is usable, but another angle may earn more attention.</p>
+              <p><strong>Human check:</strong> Candidate variant: Good mentor does more than explain the task They make sure you...</p>
+              <code>script/agentctl.sh shorts-select id &#x27;701461B7-CB8F-4732-8F4F-D54698C77F23&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>89.6</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Test Short - Wednesday Rule moment</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-publication-pass/episode1-social-candidates-01-Test-Short-Wednesday-Rule-moment-9x16-short.mp4&#x27; 8.13</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action medium">
+              <p class="eyebrow">medium / timing</p>
+              <h3>Check standalone context</h3>
+              <p>Very short clips can work, but only if the hook and context are immediately clear.</p>
+              <p><strong>Human check:</strong> Watch without surrounding context and ask whether the point lands.</p>
+              <code>script/agentctl.sh shorts-select id &#x27;FC28A75E-451B-4D74-9636-2E842805F106&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>86.4</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Write Things Worth Reading</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/tmp/quipslystudio-episodes-1-3-review-shorts/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-09-Write-Things-Worth-Reading-cleanframe-9x16-short.mp4&#x27; 45.00</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / hook</p>
+              <h3>Replace or sharpen the opening hook</h3>
+              <p>The first second matters. A weak hook makes a technically good short disappear in the feed.</p>
+              <p><strong>Human check:</strong> Try this first: If you do not want to be forgotten write things worth reading...</p>
+              <code>script/agentctl.sh shorts-select id &#x27;975A2C70-695D-4D9E-BAAE-A47BA3277590&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>86.2</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Mutual Mentorship</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-mutual-mentorship-9x16-short.mp4&#x27; 40.00</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / hook</p>
+              <h3>Replace or sharpen the opening hook</h3>
+              <p>The first second matters. A weak hook makes a technically good short disappear in the feed.</p>
+              <p><strong>Human check:</strong> Try this first: The best mentoring relationship can work both directions</p>
+              <code>script/agentctl.sh shorts-select id &#x27;B5387438-09BF-41BD-9BDA-4765C75C36E2&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>85.6</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Record From Anywhere</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-record-from-anywhere-9x16-short.mp4&#x27; 45.00</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action medium">
+              <p class="eyebrow">medium / hook</p>
+              <h3>Test a stronger hook variant</h3>
+              <p>The hook is usable, but another angle may earn more attention.</p>
+              <p><strong>Human check:</strong> Candidate variant: The show needs to work even when the hosts are remote traveling...</p>
+              <code>script/agentctl.sh shorts-select id &#x27;0D14A2CD-259E-4DCB-8EE3-62B7A9147FF4&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>85.6</strong><span>strong-post-candidate</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Identity Changes Behavior</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-identity-changes-behavior-9x16-short.mp4&#x27; 45.00</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action medium">
+              <p class="eyebrow">medium / hook</p>
+              <h3>Test a stronger hook variant</h3>
+              <p>The hook is usable, but another angle may earn more attention.</p>
+              <p><strong>Human check:</strong> Candidate variant: Saying am the kind of person who does this changes the decision...</p>
+              <code>script/agentctl.sh shorts-select id &#x27;C4C017E7-C630-4C0D-9AF6-95496916ED8C&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>81.7</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Parkinson&#x27;s Awareness Goal</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-parkinsons-awareness-goal-9x16-short.mp4&#x27; 45.00</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / hook</p>
+              <h3>Replace or sharpen the opening hook</h3>
+              <p>The first second matters. A weak hook makes a technically good short disappear in the feed.</p>
+              <p><strong>Human check:</strong> Try this first: If our channel can raise awareness for Parkinson&#x27;s research that is goal...</p>
+              <code>script/agentctl.sh shorts-select id &#x27;7EA786A2-FA74-4D73-AE55-8A23D03AA3FC&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>81.7</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Don&#x27;t Downplay Yourself</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/Episode1Shorts/2026-06-17-codex-pass/episode1-dont-downplay-yourself-9x16-short.mp4&#x27; 45.00</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / hook</p>
+              <h3>Replace or sharpen the opening hook</h3>
+              <p>The first second matters. A weak hook makes a technically good short disappear in the feed.</p>
+              <p><strong>Human check:</strong> Try this first: Sometimes someone needs to remind you that you were already rock star</p>
+              <code>script/agentctl.sh shorts-select id &#x27;50F4E987-F34E-4DBA-976A-42C80055DFB9&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Episode 1 Review Candidate 01 - 04:27</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-01-9x16-short.mp4&#x27; 40.83</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / hook</p>
+              <h3>Replace or sharpen the opening hook</h3>
+              <p>The first second matters. A weak hook makes a technically good short disappear in the feed.</p>
+              <p><strong>Human check:</strong> Try this first: Episode Review Candidate</p>
+              <code>script/agentctl.sh shorts-select id &#x27;0F028DF4-76EF-4245-9349-1EE266C1AAEB&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>79.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Episode 1 Review Candidate 03 - 26:13</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-03-9x16-short.mp4&#x27; 41.50</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / hook</p>
+              <h3>Replace or sharpen the opening hook</h3>
+              <p>The first second matters. A weak hook makes a technically good short disappear in the feed.</p>
+              <p><strong>Human check:</strong> Try this first: Episode Review Candidate</p>
+              <code>script/agentctl.sh shorts-select id &#x27;D9526D0B-311E-46D4-B127-824D713EA2F2&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+            <section class="candidate">
+              <header>
+                <div class="score"><strong>74.6</strong><span>promising-needs-polish</span></div>
+                <div>
+                  <p class="eyebrow">exported-needs-listen-through</p>
+                  <h2>Episode 1 Review Candidate 02 - 08:19</h2>
+                  <p>Top move: <strong>Run audio sanity and listen once</strong></p>
+                </div>
+              </header>
+              <div class="actions">
+            <article class="action high">
+              <p class="eyebrow">high / audio</p>
+              <h3>Run audio sanity and listen once</h3>
+              <p>A short can survive imperfect visuals faster than harsh or broken audio.</p>
+              <p><strong>Human check:</strong> Listen for clipping, silence, sudden jumps, distracting cuts, or bad levels.</p>
+              <code>script/agentctl.sh shorts-audio-sanity &#x27;/Users/wall-e/Movies/QuipslyExports/ReviewShorts/episodes-1-3-first-pass-20260618/episode-1-premiere-rescue/episode-1-premiere-rescue-review-short-02-9x16-short.mp4&#x27; 45.00</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / caption</p>
+              <h3>Create a caption or overlay plan</h3>
+              <p>Muted autoplay is normal. The clip needs readable text that does not sit on faces.</p>
+              <p><strong>Human check:</strong> Prefer short text chunks and keep important words out of the lower UI zone.</p>
+              <code>script/agentctl.sh shorts-overlay-burn-in request_review &#x27;Check captions/overlay for face safety and readability.&#x27;</code>
+            </article>
+            
+            <article class="action high">
+              <p class="eyebrow">high / hook</p>
+              <h3>Replace or sharpen the opening hook</h3>
+              <p>The first second matters. A weak hook makes a technically good short disappear in the feed.</p>
+              <p><strong>Human check:</strong> Try this first: Episode Review Candidate</p>
+              <code>script/agentctl.sh shorts-select id &#x27;33FDE8CC-9080-4EC1-9294-1F03D0EEF61F&#x27; &amp;&amp; script/agentctl.sh shorts-update-selected hook &#x27;Replace with a sharper opening hook.&#x27;</code>
+            </article>
+            
+            <article class="action polish">
+              <p class="eyebrow">polish / platform-package</p>
+              <h3>Compare YouTube and Reels copy</h3>
+              <p>YouTube title, Reels caption, and Facebook caption should not all sound like the same pasted label.</p>
+              <p><strong>Human check:</strong> Keep the promise consistent, but make each platform feel native.</p>
+              <code></code>
+            </article>
+            </div>
+            </section>
+            
+  </main>
+</body>
+</html>
