@@ -1063,6 +1063,9 @@ struct CaptureTranscriptReviewView: View {
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else if let desk = client.desk {
                         sourceTruth(desk)
+                        if focusSegmentID != nil {
+                            transcriptSegments(desk)
+                        }
                         if let packetReviewError = client.packetReviewError {
                             reviewNotice(
                                 title: "Packet follow-through unavailable",
@@ -1087,35 +1090,8 @@ struct CaptureTranscriptReviewView: View {
                                 accessibilityFocusedSegmentID = segmentID
                             }
                         }
-                        if !desk.gate.allowed {
-                            reviewNotice(
-                                title: "Transcript review held",
-                                detail: desk.gate.error ?? "The recording release gate has not cleared.",
-                                tint: .orange,
-                                icon: "lock.fill"
-                            )
-                        } else if desk.segments.isEmpty {
-                            ContentUnavailableView(
-                                "No transcript segments",
-                                systemImage: "text.badge.xmark",
-                                description: Text("Run the recording-backed transcript before reviewing corrections.")
-                            )
-                        } else {
-                            ForEach(desk.segments) { segment in
-                                CaptureTranscriptSegmentCard(
-                                    roomID: roomID,
-                                    segment: segment,
-                                    recording: recording,
-                                    expectedRecordingAssetID: desk.playback?.recordingAssetId,
-                                    previewOnly: previewOnly,
-                                    decisionsLocked: client.isUsingProtectedCache,
-                                    client: client,
-                                    playback: playback,
-                                    library: library
-                                )
-                                .id(segment.id)
-                                .accessibilityFocused($accessibilityFocusedSegmentID, equals: segment.id)
-                            }
+                        if focusSegmentID == nil {
+                            transcriptSegments(desk)
                         }
                     } else if client.errorMessage == nil {
                         ContentUnavailableView("Transcript unavailable", systemImage: "text.magnifyingglass")
@@ -1153,6 +1129,48 @@ struct CaptureTranscriptReviewView: View {
             .onDisappear { playback.pause(resetPosition: true) }
             .accessibilityIdentifier("CaptureTranscriptReviewView")
         }
+    }
+
+    @ViewBuilder
+    private func transcriptSegments(_ desk: CaptureTranscriptCorrectionDesk) -> some View {
+        if !desk.gate.allowed {
+            reviewNotice(
+                title: "Transcript review held",
+                detail: desk.gate.error ?? "The recording release gate has not cleared.",
+                tint: .orange,
+                icon: "lock.fill"
+            )
+        } else if desk.segments.isEmpty {
+            ContentUnavailableView(
+                "No transcript segments",
+                systemImage: "text.badge.xmark",
+                description: Text("Run the recording-backed transcript before reviewing corrections.")
+            )
+        } else {
+            ForEach(orderedSegments(in: desk)) { segment in
+                CaptureTranscriptSegmentCard(
+                    roomID: roomID,
+                    segment: segment,
+                    recording: recording,
+                    expectedRecordingAssetID: desk.playback?.recordingAssetId,
+                    previewOnly: previewOnly,
+                    decisionsLocked: client.isUsingProtectedCache,
+                    client: client,
+                    playback: playback,
+                    library: library
+                )
+                .id(segment.id)
+                .accessibilityFocused($accessibilityFocusedSegmentID, equals: segment.id)
+            }
+        }
+    }
+
+    private func orderedSegments(in desk: CaptureTranscriptCorrectionDesk) -> [CaptureTranscriptSegment] {
+        guard let focusSegmentID,
+              let focusedSegment = desk.segments.first(where: { $0.id == focusSegmentID }) else {
+            return desk.segments
+        }
+        return [focusedSegment] + desk.segments.filter { $0.id != focusSegmentID }
     }
 
     private var header: some View {
