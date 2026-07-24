@@ -28,6 +28,13 @@ describe("Work Queue page truth states", () => {
     expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
+  it("preserves the dedicated tag manager destination across the sign-in boundary", async () => {
+    jest.mocked(getQuipslySession).mockResolvedValue(null as any);
+    render(await WorkPage({ searchParams: Promise.resolve({ manage: "tags" }) }));
+    expect(screen.getByText("signed-out:/work?manage=tags")).toBeInTheDocument();
+    expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
   it("shows an honest unavailable state instead of sample work", async () => {
     jest.mocked(getQuipslySession).mockResolvedValue({ user: { id: "user-1" } } as any);
     jest.mocked(getPrismaClient).mockReturnValue({

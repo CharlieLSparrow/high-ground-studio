@@ -312,11 +312,31 @@ function ImportedKeywordReview({ project, onRefresh }: { project: WorkProjectOpt
   </section>;
 }
 
-function TagVocabulary({ projects, onRefresh }: { projects: WorkProjectOption[]; onRefresh: () => void }) {
+function TagVocabulary({ projects, onRefresh, expanded = false }: { projects: WorkProjectOption[]; onRefresh: () => void; expanded?: boolean }) {
   const writableProjects = projects.filter((project) => project.canWrite);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState(writableProjects[0]?.id ?? "");
+  const [query, setQuery] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
+  const [expandedTagId, setExpandedTagId] = useState<string | null>(null);
   if (!writableProjects.length) return null;
+  const selectedProject = writableProjects.find((project) => project.id === selectedProjectId) ?? writableProjects[0];
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  const visibleTags = selectedProject.tags.filter((tag) => {
+    if (!showArchived && tag.isActive === false) return false;
+    if (!normalizedQuery) return true;
+    return [
+      tag.label,
+      tag.slug,
+      tag.category,
+      ...(tag.aliases ?? []).flatMap((alias) => [alias.label, alias.slug]),
+    ].some((value) => value.toLocaleLowerCase().includes(normalizedQuery));
+  });
+  const activeTagCount = writableProjects.reduce(
+    (count, project) => count + project.tags.filter((tag) => tag.isActive !== false).length,
+    0,
+  );
 
   function change(tag: WorkTag, operation: "RENAME" | "ARCHIVE" | "RESTORE", label?: string) {
     if (!tag.updatedAt) {
@@ -342,22 +362,45 @@ function TagVocabulary({ projects, onRefresh }: { projects: WorkProjectOption[];
 
   return <section aria-labelledby="tag-vocabulary-heading" className="rounded-3xl border border-sky-200 bg-[linear-gradient(145deg,#f7fcff,#eef8ff)] p-5 shadow-sm md:p-6">
     <div className="flex items-start gap-3"><span className="rounded-xl bg-sky-100 p-2 text-sky-900"><Tags aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-sky-800">Shared organizing language</p><h2 id="tag-vocabulary-heading" className="font-serif text-2xl font-black">Nest vocabulary</h2><p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-sky-950">Rename without breaking older iPhone captures: Quipsly keeps the former name as an alias. Archive hides a tag from new choices while preserving every existing link.</p></div></div>
-    <details className="mt-5 rounded-2xl border border-sky-200 bg-white/80 p-4">
-      <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-sky-900">Manage vocabulary · {writableProjects.reduce((count, project) => count + project.tags.filter((tag) => tag.isActive !== false).length, 0)} active across {writableProjects.length} Nest{writableProjects.length === 1 ? "" : "s"}</summary>
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-      {writableProjects.map((project) => <article key={project.id} className="rounded-2xl border border-sky-100 bg-white p-4">
-        <div className="flex items-center justify-between gap-3"><div><h3 className="font-serif text-xl font-black">{project.name}</h3><p className="text-[10px] font-black uppercase tracking-wide text-sky-800">{project.tags.filter((tag) => tag.isActive !== false).length} active · {project.tags.filter((tag) => tag.isActive === false).length} archived</p></div><Link href={`/nests/${encodeURIComponent(project.slug)}`} className="text-[10px] font-black uppercase tracking-wide text-sky-800 hover:underline">Open Nest</Link></div>
-        <ImportedKeywordReview project={project} onRefresh={onRefresh} />
-        {project.tags.length ? <ul className="mt-4 space-y-3">{project.tags.map((tag) => <li key={tag.id} className={`rounded-xl border p-3 ${tag.isActive === false ? "border-slate-200 bg-slate-50" : "border-sky-100 bg-sky-50/40"}`}>
-          <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-black">#{tag.label}</p><p className="mt-1 text-[11px] font-semibold text-sky-900">{tag.aliases?.length ? `Also matches ${tag.aliases.map((alias) => `#${alias.label}`).join(", ")}` : "No former names"}</p></div><span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tag.isActive === false ? "bg-slate-200 text-slate-700" : "bg-emerald-100 text-emerald-800"}`}>{tag.isActive === false ? "Archived" : "Active"}</span></div>
-          {tag.mergedInto ? <><p className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs font-bold text-fuchsia-950">Merged into #{tag.mergedInto.label}. Older captures using this name resolve to the canonical tag.</p><TagMergeRollbackControl source={tag} project={project} onRefresh={onRefresh} /></> : tag.isActive === false ? <button type="button" disabled={pending} onClick={() => change(tag, "RESTORE")} className="mt-3 inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-800 disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Restore</button> : <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-            <form action={(formData) => change(tag, "RENAME", String(formData.get("label") || ""))} className="flex min-w-0 flex-1 gap-2"><label htmlFor={`rename-tag-${tag.id}`} className="sr-only">Rename {tag.label}</label><input id={`rename-tag-${tag.id}`} name="label" required maxLength={80} defaultValue={tag.label} className="min-h-11 min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold" /><button type="submit" disabled={pending} className="min-h-11 rounded-full bg-sky-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Rename</button></form>
-            <button type="button" disabled={pending} onClick={() => change(tag, "ARCHIVE")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50"><Archive size={14} aria-hidden="true" />Archive</button>
-          </div>}
-          <TagMergeControl source={tag} project={project} onRefresh={onRefresh} />
-        </li>)}</ul> : <p className="mt-4 rounded-xl border border-dashed border-sky-200 p-4 text-sm font-semibold text-sky-900">Create the first reusable tag from a task, goal, or iPhone quick entry.</p>}
-      </article>)}
+    <details open={expanded || undefined} className="mt-5 rounded-2xl border border-sky-200 bg-white/80 p-4">
+      <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-sky-900">Manage vocabulary · {activeTagCount} active across {writableProjects.length} Nest{writableProjects.length === 1 ? "" : "s"}</summary>
+      <div className="mt-4 grid gap-3 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:grid-cols-[minmax(13rem,1fr)_minmax(15rem,2fr)_auto] md:items-end">
+        <label className="text-[10px] font-black uppercase tracking-wide text-sky-900">Nest
+          <select value={selectedProject.id} onChange={(event) => { setSelectedProjectId(event.target.value); setExpandedTagId(null); }} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal">
+            {writableProjects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
+          </select>
+        </label>
+        <label className="text-[10px] font-black uppercase tracking-wide text-sky-900">Find a tag or former name
+          <input type="search" value={query} onChange={(event) => { setQuery(event.target.value); setExpandedTagId(null); }} placeholder="Episode, coaching, proof listen…" className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal" />
+        </label>
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-sky-200 bg-white px-3 text-xs font-bold text-sky-950">
+          <input type="checkbox" checked={showArchived} onChange={(event) => { setShowArchived(event.target.checked); setExpandedTagId(null); }} />
+          Show archived
+        </label>
       </div>
+      <article className="mt-4 rounded-2xl border border-sky-100 bg-white p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3"><div><h3 className="font-serif text-xl font-black">{selectedProject.name}</h3><p className="text-[10px] font-black uppercase tracking-wide text-sky-800">{selectedProject.tags.filter((tag) => tag.isActive !== false).length} active · {selectedProject.tags.filter((tag) => tag.isActive === false).length} archived</p></div><Link href={`/nests/${encodeURIComponent(selectedProject.slug)}`} className="min-h-11 content-center text-[10px] font-black uppercase tracking-wide text-sky-800 hover:underline">Open Nest</Link></div>
+        {visibleTags.length ? <ul className="mt-4 space-y-2">{visibleTags.map((tag) => {
+          const isExpanded = expandedTagId === tag.id;
+          return <li key={tag.id} className={`rounded-xl border p-3 ${tag.isActive === false ? "border-slate-200 bg-slate-50" : "border-sky-100 bg-sky-50/40"}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div><p className="text-sm font-black">#{tag.label}</p><p className="mt-1 text-[11px] font-semibold text-sky-900">{tag.aliases?.length ? `Also matches ${tag.aliases.map((alias) => `#${alias.label}`).join(", ")}` : "No former names"}</p></div>
+              <div className="flex items-center gap-2">
+                <span className={`rounded-full px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${tag.isActive === false ? "bg-slate-200 text-slate-700" : "bg-emerald-100 text-emerald-800"}`}>{tag.isActive === false ? "Archived" : "Active"}</span>
+                <button type="button" aria-expanded={isExpanded} onClick={() => setExpandedTagId(isExpanded ? null : tag.id)} className="min-h-11 rounded-full border border-sky-200 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-sky-900">{isExpanded ? "Close" : `Manage ${tag.label}`}</button>
+              </div>
+            </div>
+            {isExpanded && <div className="mt-3 border-t border-sky-100 pt-3">
+              {tag.mergedInto ? <><p className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs font-bold text-fuchsia-950">Merged into #{tag.mergedInto.label}. Older captures using this name resolve to the canonical tag.</p><TagMergeRollbackControl source={tag} project={selectedProject} onRefresh={onRefresh} /></> : tag.isActive === false ? <button type="button" disabled={pending} onClick={() => change(tag, "RESTORE")} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-800 disabled:opacity-50"><RotateCcw size={14} aria-hidden="true" />Restore</button> : <div className="flex flex-col gap-2 sm:flex-row">
+                <form action={(formData) => change(tag, "RENAME", String(formData.get("label") || ""))} className="flex min-w-0 flex-1 gap-2"><label htmlFor={`rename-tag-${tag.id}`} className="sr-only">Rename {tag.label}</label><input id={`rename-tag-${tag.id}`} name="label" required maxLength={80} defaultValue={tag.label} className="min-h-11 min-w-0 flex-1 rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold" /><button type="submit" disabled={pending} className="min-h-11 rounded-full bg-sky-800 px-4 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">Rename</button></form>
+                <button type="button" disabled={pending} onClick={() => change(tag, "ARCHIVE")} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-slate-300 bg-white px-4 text-[10px] font-black uppercase tracking-wide text-slate-700 disabled:opacity-50"><Archive size={14} aria-hidden="true" />Archive</button>
+              </div>}
+              {!tag.mergedInto && <TagMergeControl source={tag} project={selectedProject} onRefresh={onRefresh} />}
+            </div>}
+          </li>;
+        })}</ul> : <p className="mt-4 rounded-xl border border-dashed border-sky-200 p-4 text-sm font-semibold text-sky-900">{normalizedQuery ? "No tags or former names match this search." : "Create the first reusable tag from a task, goal, or iPhone quick entry."}</p>}
+        <ImportedKeywordReview project={selectedProject} onRefresh={onRefresh} />
+      </article>
       {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-bold text-sky-950">{message}</p>}
     </details>
   </section>;
@@ -723,7 +766,7 @@ function WeeklyCommitmentEditor({ commitments, onRefresh }: { commitments: WorkC
   </div>;
 }
 
-export function WorkClient({ initialSnapshot, projectOptions = [], focusTaskId = null, focusGoalId = null, initialFilter = "OPEN" }: { initialSnapshot: WorkSnapshot; projectOptions?: WorkProjectOption[]; focusTaskId?: string | null; focusGoalId?: string | null; initialFilter?: "ATTENTION" | "OPEN" }) {
+export function WorkClient({ initialSnapshot, projectOptions = [], focusTaskId = null, focusGoalId = null, initialFilter = "OPEN", manageTags = false }: { initialSnapshot: WorkSnapshot; projectOptions?: WorkProjectOption[]; focusTaskId?: string | null; focusGoalId?: string | null; initialFilter?: "ATTENTION" | "OPEN"; manageTags?: boolean }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const focusedTask = focusTaskId ? initialSnapshot.tasks.find((task) => task.id === focusTaskId) : null;
   const focusedGoal = focusGoalId ? initialSnapshot.goals.find((goal) => goal.id === focusGoalId) : null;
@@ -865,19 +908,42 @@ export function WorkClient({ initialSnapshot, projectOptions = [], focusTaskId =
     ["Active goals", snapshot.counts.activeGoals, Target],
     ["Active commitments", snapshot.counts.activeCommitments, UsersRound],
   ];
+  const activeTagCount = projectOptions.reduce(
+    (count, project) => count + project.tags.filter((tag) => tag.isActive !== false).length,
+    0,
+  );
+
+  if (manageTags) {
+    return (
+      <main className="mx-auto max-w-[1080px] space-y-6 px-2 py-2 text-[#3d3122]">
+        <section className="rounded-[2rem] border border-sky-200 bg-[linear-gradient(145deg,#f7fcff,#eef8ff)] p-6 shadow-sm md:p-8">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.22em] text-sky-800">One vocabulary per Nest</p>
+              <h1 className="mt-2 font-serif text-4xl font-black tracking-tight md:text-5xl">Tags</h1>
+              <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-sky-950">Find, rename, archive, merge, and restore reusable organizing language without crowding the task queue. Existing work keeps its canonical tag identity and historical names.</p>
+            </div>
+            <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-sky-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-sky-900">Back to Work</Link>
+          </div>
+        </section>
+        <TagVocabulary projects={projectOptions} onRefresh={() => router.refresh()} expanded />
+      </main>
+    );
+  }
 
   return (
     <main className="mx-auto max-w-[1280px] space-y-8 px-2 py-2 text-[#3d3122]">
       <section className="overflow-hidden rounded-[2rem] border border-[#dfcba6] bg-[radial-gradient(circle_at_top_right,_#f4d799,_transparent_40%),linear-gradient(135deg,#fffaf0,#f8edda)] p-6 shadow-sm md:p-8">
         <p className="text-xs font-black uppercase tracking-[0.22em] text-[#9a6b2f]">Follow-through, in one place</p>
         <h1 className="mt-2 font-serif text-4xl font-black tracking-tight md:text-5xl">Work Queue</h1>
-        <p className="mt-3 max-w-3xl text-sm font-semibold leading-6 text-[#715a3e]">Committed tasks, active session goals, and weekly coaching commitments from records you can actually access. Proposed transcript follow-ups stay out until a human accepts them.</p>
+        <div className="mt-3 flex flex-wrap items-start justify-between gap-4">
+          <p className="max-w-3xl text-sm font-semibold leading-6 text-[#715a3e]">Committed tasks, active session goals, and weekly coaching commitments from records you can actually access. Proposed transcript follow-ups stay out until a human accepts them.</p>
+          <Link href="/work?manage=tags" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d6bf97] bg-white/80 px-4 text-[10px] font-black uppercase tracking-wide text-[#6f573b]"><Tags size={15} aria-hidden="true" />Manage {activeTagCount} tag{activeTagCount === 1 ? "" : "s"}</Link>
+        </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-6" aria-label="Work overview">
           {overview.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-4 shadow-sm"><Icon className="h-5 w-5 text-[#9a6b2f]" aria-hidden="true" /><p className="mt-3 text-3xl font-black">{value}</p><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{label}</p></div>)}
         </div>
       </section>
-
-      <TagVocabulary projects={projectOptions} onRefresh={() => router.refresh()} />
 
       <section aria-labelledby="new-task-heading" className="rounded-3xl border border-[#dfcba6] bg-white p-5 shadow-sm md:p-6">
         <div className="flex items-start gap-3"><span className="rounded-xl bg-amber-50 p-2 text-amber-800"><ListChecks aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Quick capture</p><h2 id="new-task-heading" className="font-serif text-2xl font-black">Add a personal task</h2><p className="mt-1 text-sm font-semibold text-[#765f40]">This explicitly assigns the new task to your signed-in account.</p></div></div>

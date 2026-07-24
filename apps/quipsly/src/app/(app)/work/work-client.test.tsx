@@ -140,6 +140,21 @@ describe("Work Queue interactions", () => {
     expect(screen.getByText("Finish episode notes")).toBeInTheDocument();
   });
 
+  it("keeps routine work focused while making the dedicated tag manager obvious", () => {
+    const project = { id: "project-1", name: "High Ground Odyssey", slug: "high-ground", role: "EDITOR", canWrite: true, tags: [
+      { id: "tag-proof", label: "Proof listen", slug: "proof-listen", category: "workflow", projectId: "project-1", isActive: true },
+    ] };
+    const { rerender } = render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} />);
+    expect(screen.queryByRole("heading", { name: "Nest vocabulary" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage 1 tag" })).toHaveAttribute("href", "/work?manage=tags");
+
+    rerender(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
+    expect(screen.getByRole("heading", { name: "Tags", level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Back to Work" })).toHaveAttribute("href", "/work");
+    expect(screen.getByRole("combobox", { name: "Nest" })).toHaveValue("project-1");
+    expect(screen.getByRole("searchbox", { name: "Find a tag or former name" })).toBeInTheDocument();
+  });
+
   it("edits only the canonical Nest tag set and refreshes from persisted truth", async () => {
     const user = userEvent.setup();
     const project = { id: "project-1", name: "High Ground Odyssey", slug: "high-ground", role: "EDITOR", canWrite: true, tags: [
@@ -152,7 +167,7 @@ describe("Work Queue interactions", () => {
     };
     jest.mocked(replaceWorkTags).mockResolvedValue({ ok: true, entityKind: "task", entityId: "task-1", projectId: "project-1", tagIds: ["tag-proof", "tag-episode"], updatedAt: "2026-07-18T18:00:01.000Z", receiptId: "tag-receipt" });
     render(<WorkClient initialSnapshot={taggedSnapshot} projectOptions={[project]} />);
-    expect(screen.getAllByText("#Proof listen")).toHaveLength(2);
+    expect(screen.getAllByText("#Proof listen")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "Find all accessible work tagged Proof listen" })).toHaveAttribute("href", "/find?q=Proof%20listen");
     await user.click(screen.getByText("Edit High Ground Odyssey tags"));
     await user.click(screen.getByRole("checkbox", { name: "Episode 4" }));
@@ -176,8 +191,8 @@ describe("Work Queue interactions", () => {
       revision: 1,
       receiptId: "taxonomy-receipt",
     });
-    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} />);
-    await user.click(screen.getByText("Manage vocabulary · 1 active across 1 Nest"));
+    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
+    await user.click(screen.getByRole("button", { name: "Manage Proof listen" }));
     const renameInput = screen.getByRole("textbox", { name: "Rename Proof listen" });
     await user.clear(renameInput);
     await user.type(renameInput, "Final listen");
@@ -240,13 +255,13 @@ describe("Work Queue interactions", () => {
       revision: 1,
       receiptId: "candidate-receipt",
     });
-    render(<WorkClient initialSnapshot={projectTaskSnapshot} projectOptions={[project]} />);
+    const { rerender } = render(<WorkClient initialSnapshot={projectTaskSnapshot} projectOptions={[project]} />);
 
     await user.click(screen.getByText("Edit High Ground Odyssey tags"));
     expect(screen.queryByRole("checkbox", { name: "Narrative evidence" })).not.toBeInTheDocument();
     expect(screen.getByText("This Nest has no active tags yet. Create the first reusable tag below.")).toBeInTheDocument();
 
-    await user.click(screen.getByText("Manage vocabulary · 0 active across 1 Nest"));
+    rerender(<WorkClient initialSnapshot={projectTaskSnapshot} projectOptions={[project]} manageTags />);
     expect(screen.getByText("Suggestion only")).toBeInTheDocument();
     const promoteButton = screen.getByRole("button", { name: "Promote to #Narrative evidence" });
     expect(promoteButton).toBeDisabled();
@@ -292,8 +307,8 @@ describe("Work Queue interactions", () => {
       counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
       deduplicated: { tasks: 1, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
     });
-    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} />);
-    await user.click(screen.getByText("Manage vocabulary · 2 active across 1 Nest"));
+    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
+    await user.click(screen.getByRole("button", { name: "Manage Rough cut" }));
     const sourceRow = screen.getByText("#Rough cut").closest("li");
     expect(sourceRow).not.toBeNull();
     await user.click(within(sourceRow!).getByText("Merge into another tag"));
@@ -351,8 +366,9 @@ describe("Work Queue interactions", () => {
       previewHash: "b".repeat(64),
       counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
     });
-    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} />);
-    await user.click(screen.getByText("Manage vocabulary · 1 active across 1 Nest"));
+    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
+    await user.click(screen.getByRole("checkbox", { name: "Show archived" }));
+    await user.click(screen.getByRole("button", { name: "Manage Rough cut" }));
     const sourceRow = screen.getByText("#Rough cut").closest("li");
     expect(sourceRow).not.toBeNull();
     await user.click(within(sourceRow!).getByText("Inspect merge receipt & rollback"));

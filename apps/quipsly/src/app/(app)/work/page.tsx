@@ -189,7 +189,7 @@ async function loadProjectOptions(actorEmail: string): Promise<WorkProjectOption
 }
 
 type WorkPageProps = {
-  searchParams?: Promise<{ task?: string | string[]; goal?: string | string[]; view?: string | string[] }>;
+  searchParams?: Promise<{ task?: string | string[]; goal?: string | string[]; view?: string | string[]; manage?: string | string[] }>;
 };
 
 function focusId(value: string | string[] | undefined) {
@@ -197,10 +197,11 @@ function focusId(value: string | string[] | undefined) {
 }
 
 export default async function WorkPage({ searchParams }: WorkPageProps) {
-  const requestedFocus = await (searchParams ?? Promise.resolve<{ task?: string | string[]; goal?: string | string[]; view?: string | string[] }>({}));
+  const requestedFocus = await (searchParams ?? Promise.resolve<{ task?: string | string[]; goal?: string | string[]; view?: string | string[]; manage?: string | string[] }>({}));
   const attentionRequested = requestedFocus.view === "attention";
+  const manageTags = requestedFocus.manage === "tags";
   const session = await getQuipslySession();
-  if (!session?.user?.id) return <StudioAccessShell mode="signed-out" redirectTo={attentionRequested ? "/work?view=attention" : "/work"} />;
+  if (!session?.user?.id) return <StudioAccessShell mode="signed-out" redirectTo={attentionRequested ? "/work?view=attention" : manageTags ? "/work?manage=tags" : "/work"} />;
   try {
     const actorEmail = (session.user.primaryEmail || session.user.email || "").trim().toLowerCase();
     const projectOptions = actorEmail ? await loadProjectOptions(actorEmail) : [];
@@ -213,6 +214,7 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
       initialFilter={attentionRequested ? "ATTENTION" : "OPEN"}
       focusTaskId={initialSnapshot.tasks.some((task) => task.id === requestedTaskId) ? requestedTaskId : null}
       focusGoalId={initialSnapshot.goals.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : null}
+      manageTags={manageTags}
     />;
   } catch (error) {
     console.error("[work] failed to load actor-scoped work", error);
