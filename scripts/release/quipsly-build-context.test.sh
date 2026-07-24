@@ -32,6 +32,44 @@ expected_sha="$(git -C "${repo_root}" rev-parse "${source_ref}^{commit}")"
 [[ ! -e "${context}/apps/mobile-capture" ]]
 [[ ! -e "${context}/node_modules" ]]
 
+destination_count="$(
+  grep -c -- '^[[:space:]]*- --destination=' \
+    "${repo_root}/cloudbuild.quipsly-web.yaml"
+)"
+if [[ "${destination_count}" != "1" ]]; then
+  echo "Preview-capable Cloud Build must publish exactly one immutable image tag." >&2
+  exit 1
+fi
+if grep -Fq '${_IMAGE_NAME}:latest' "${repo_root}/cloudbuild.quipsly-web.yaml"; then
+  echo "Preview-capable Cloud Build must not mutate the production latest alias." >&2
+  exit 1
+fi
+
+python3 - "${context}" <<'PY'
+import os
+import sys
+
+expected_mtime = 946684800
+unexpected = []
+for root, directories, files in os.walk(sys.argv[1]):
+    for name in [*directories, *files]:
+        path = os.path.join(root, name)
+        actual = int(os.lstat(path).st_mtime)
+        if actual != expected_mtime:
+            unexpected.append((path, actual))
+
+root_mtime = int(os.lstat(sys.argv[1]).st_mtime)
+if root_mtime != expected_mtime:
+    unexpected.append((sys.argv[1], root_mtime))
+
+if unexpected:
+    preview = "\n".join(f"{path}: {mtime}" for path, mtime in unexpected[:20])
+    raise SystemExit(
+        "Release context contains non-deterministic mtimes "
+        f"(expected {expected_mtime}):\n{preview}"
+    )
+PY
+
 ignore_probe="${test_root}/gcloud-ignore-probe"
 mkdir -p \
   "${ignore_probe}/apps/quipsly/src/app/(app)/outputs/[outputId]" \
@@ -70,6 +108,11 @@ if (manifest.sourceSha !== process.argv[3]) {
 }
 if (!/^[a-f0-9]{40}$/.test(manifest.inventorySha1)) {
   throw new Error("Release inventory digest is missing or invalid.");
+}
+if (manifest.normalizedMtimeUtc !== "2000-01-01T00:00:00Z") {
+  throw new Error(
+    `Unexpected normalized release mtime: ${manifest.normalizedMtimeUtc}`,
+  );
 }
 NODE
 

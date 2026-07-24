@@ -134,6 +134,15 @@ Cloud Build `b8cdc87f-b63b-4008-b9c8-b158fabe78ba` completed successfully,
 verified required route bundles, and Cloud Run reported the revision ready and
 container healthy. The reusable signed journey is committed at `3d6d4dc`.
 
+The two exact-SHA preview builds each took about eight minutes even though
+their dependency manifests were unchanged. Audit found that `git archive`
+assigned each context the source commit's timestamp, changing Kaniko `COPY`
+cache keys. The release-context builder now normalizes all metadata timestamps,
+its regression test checks the entire tree, and preview Cloud Builds no longer
+mutate `studio:latest`. Local cross-commit proof confirms identical dependency
+content now has identical metadata; the next remote build remains the required
+Kaniko cache-hit measurement.
+
 Do not distribute Build 4 as a working production account-deletion or Home Nest
 candidate until production promotion is explicitly approved and its traffic,
 source metadata, and signed contracts are read back.

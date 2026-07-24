@@ -20,7 +20,6 @@ steps:
     name: gcr.io/kaniko-project/executor:latest
     args:
       - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
-      - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:latest
       - --cache=true
       - --cache-ttl=168h
       - --build-arg=NEXT_PUBLIC_STUDIO_COLLAB_URL=${_NEXT_PUBLIC_STUDIO_COLLAB_URL}

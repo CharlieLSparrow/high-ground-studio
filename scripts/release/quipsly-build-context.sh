@@ -4,6 +4,8 @@ set -euo pipefail
 SOURCE_REF="${1:-${SOURCE_REF:-HEAD}}"
 OUTPUT_DIR="${2:-}"
 CONTEXT_MAX_MIB="${CONTEXT_MAX_MIB:-300}"
+NORMALIZED_RELEASE_MTIME="200001010000.00"
+NORMALIZED_RELEASE_MTIME_UTC="2000-01-01T00:00:00Z"
 
 repo_root="$(git rev-parse --show-toplevel)"
 source_sha="$(git -C "${repo_root}" rev-parse --verify "${SOURCE_REF}^{commit}")"
@@ -80,11 +82,17 @@ cat >"${output_dir}/quipsly-release-source.json" <<EOF
 {
   "schemaVersion": 1,
   "sourceSha": "${source_sha}",
-  "inventorySha1": "${inventory_sha}"
+  "inventorySha1": "${inventory_sha}",
+  "normalizedMtimeUtc": "${NORMALIZED_RELEASE_MTIME_UTC}"
 }
 EOF
 
 touch "${output_dir}/.quipsly-release-context"
+
+# git archive assigns the source commit's timestamp to every extracted path.
+# Normalize metadata after writing our generated files so unchanged Docker COPY
+# inputs retain identical Kaniko cache keys across different source commits.
+TZ=UTC find "${output_dir}" -exec touch -t "${NORMALIZED_RELEASE_MTIME}" {} +
 
 read -r context_files context_bytes < <(
   python3 - "${output_dir}" <<'PY'

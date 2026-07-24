@@ -81,6 +81,9 @@ The context:
 - excludes Studio, the public HGO app, Capture source, local dependencies,
   media, and agent scratch data;
 - records its source commit and inventory digest;
+- normalizes every file and directory timestamp to
+  `2000-01-01T00:00:00Z`, so a new source commit does not invalidate unchanged
+  Docker `COPY` cache inputs;
 - fails above 300 MiB;
 - is checked in pull-request CI;
 - is the only source accepted by the preview deployment script.
@@ -88,6 +91,11 @@ The context:
 A dirty development checkout is therefore visible but no longer release input.
 Production provenance is the commit SHA embedded in the image and Cloud Run
 metadata.
+
+The preview-capable Cloud Build publishes only its explicit immutable image
+tag. It must not update `studio:latest`, because a no-traffic validation build
+is not production. The GitHub production workflow may publish the compatibility
+`latest` alias only while it is building the same explicitly promoted SHA.
 
 ## Asset boundary
 
