@@ -102,6 +102,35 @@ transcript evidence boundaries, Share Sheet provenance, owner switching, and
 protected outbox recovery. This is real simulator app operation, not
 physical-device or TestFlight proof.
 
+## Production compatibility gate
+
+The current unauthenticated contract audit against
+`https://nest.quipsly.com` passes 96 checks and fails eight. These current
+routes return an HTML `404` instead of the protected JSON boundary:
+
+- `GET /api/mobile/capture/today`;
+- `GET /api/mobile/capture/work`;
+- `POST /api/mobile/capture/today`;
+- `POST /api/mobile/capture/transcripts/packet/actions`;
+- `POST /api/mobile/capture/transcripts/packet/goals`;
+- `POST /api/mobile/capture/transcripts/tasks`;
+- `POST /api/mobile/capture/transcripts/goals`;
+- `POST /api/mobile/capture/transcripts/drafts`.
+
+The contract command exits nonzero for this state. Do not distribute Build 6
+against production until a committed Nest preview passes, is promoted, and the
+production audit returns all 104 checks green.
+
+## App Store listing gate
+
+The canonical English (U.S.) listing now lives at
+`release/app-store/quipsly-capture/en-US.json`. Its source gate validates Apple
+field limits, exact public URLs, review boundaries, five planned 6.9-inch
+screenshots, and an explicit blocker ledger. The source packet passes; the
+stricter `--submission` gate fails closed because the approved screenshot files
+and delivery-layer proofs do not exist yet. No metadata was uploaded to App
+Store Connect.
+
 ## Remaining external gates
 
 Current read-only checks show:
@@ -144,8 +173,9 @@ through `APP_STORE_CONNECT_API_KEY_PATH`.
    promote, and read back the production revision and all mobile routes.
 4. Make one unlocked, trusted iPhone visible to CoreDevice.
 5. Configure the external App Store Connect API key.
-6. Upload Build 6 through `scripts/deploy-testflight.sh`, then read back Apple
-   processing and tester assignment.
+6. Upload the exact Build 6 source through
+   `scripts/deploy-testflight.sh --revision e0525e68f9d2cedaa14c597ed978c4b66715b0f4`,
+   then read back Apple processing and tester assignment.
 7. Install from TestFlight and operate real note, Task, Goal, tag, reminder,
    recording, offline/process-death recovery, upload, and same-ID Nest
    readback.

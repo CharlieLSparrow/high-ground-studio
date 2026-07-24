@@ -1,7 +1,7 @@
 # Quipsly iOS capture App Review notes draft
 
-Date: 2026-07-18
-Status: engineering draft, blocked from submission
+Date: 2026-07-24
+Status: Build 6 engineering draft, blocked from submission
 Target app: `apps/mobile-capture/HighGroundCapture`
 Bundle identifier observed: `com.highgroundodyssey.HighGroundCapture`
 
@@ -36,13 +36,43 @@ One-to-one coaching payments are intended to use Stripe only for eligible real-t
 
 ## Current engineering readiness note
 
-The Simulator/static/build candidate has substantial automated coverage, but it must not be submitted yet. Production Quipsly/Nest returned HTTP 503 during the candidate audit; the additive capture-ledger schema is not proved deployed; no physical iPhone/TestFlight candidate was available; and the retention-aware account-deletion executor, legal surfaces, reviewer account/session proof, and final privacy answers remain incomplete.
+Exact committed source `e0525e68f9d2cedaa14c597ed978c4b66715b0f4`
+passes 30/30 deterministic native UI scenarios, 80/80 safety contracts, and
+635/635 App Store static checks. Its signed `1.0 (6)` IPA passed app/extension
+signing, entitlement, provisioning-profile, privacy-manifest, purpose-string,
+and export-compliance inspection. It has not been uploaded.
+
+The account-deletion request, 30-day status policy, reviewed inventory,
+fail-closed executor, Firebase/GCS adapters, completion email, recovery state,
+and durable receipts are implemented. A disposable local operating loop
+creates, reviews, executes, retries, receipts, and cleans up an eligible test
+account, while a Home Nest with another collaborator is refused. The executor
+is disabled outside a controlled worker by default.
+
+Submission remains blocked. Production passes 96 of 104 mobile contract checks
+and lacks eight current protected routes. The Nest privacy and deletion URLs
+also redirect through an internal `:8080` port; the source fix is committed but
+not deployed. Google Cloud/Firebase authorization currently requires
+interactive reauthentication, no physical iPhone is visible, Build 6 is not in
+TestFlight, no production reviewer account/session has been proved, and final
+privacy/legal answers still require account-holder review.
 
 ## Public policy URLs
 
-Configured policy routes for reviewer reference (unavailable with HTTP 503 during the 2026-07-18 audit):
+Configured policy routes for reviewer reference:
 
-- Privacy and recording policy: `https://nest.quipsly.com/privacy`
-- Account deletion request explanation: `https://nest.quipsly.com/privacy/account-deletion`
+- Privacy and recording policy: `https://quipsly.com/privacy`
+- Account deletion request explanation:
+  `https://quipsly.com/privacy/account-deletion`
 
-The iOS Account section links to policy routes derived from its configured service URL. The in-app deletion path currently creates a deletion review request rather than completing deletion. Apple submission remains blocked until Quipsly discloses the fulfillment timeframe, applies the approved retention rules, runs the executor/anonymizer, and confirms completion to the user.
+Both canonical marketing URLs currently return HTTP 200. The iOS Account
+section derives equivalent Nest URLs from its configured service origin; the
+committed host-routing fix removes Cloud Run's internal port while redirecting
+them to the canonical marketing host. Production deployment/readback remains
+required.
+
+The in-app action creates a reviewed deletion request rather than blindly
+erasing shared or retention-sensitive records. Eligible private accounts can
+then be executed through the controlled, receipt-backed deletion workflow.
+Accounts with shared, payment, consent, session, or ambiguous retention records
+remain blocked for an explicit reviewed plan.

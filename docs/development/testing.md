@@ -19,6 +19,9 @@ node --test scripts/ci/audit-binary-assets.test.mjs
 node --test \
   scripts/dev/quipsly-local-doctor.test.mjs \
   scripts/dev/quipsly-local-lifecycle.test.mjs
+node --test scripts/release/quipsly-production-status.test.mjs
+node --test scripts/release/quipsly-capture-app-store-metadata.test.mjs
+pnpm quipsly:capture:app-store-metadata
 pnpm release:manifests:audit
 node --experimental-strip-types --test scripts/ci/plan-changed-surfaces.test.mjs
 bash scripts/ci/typecheck-typescript-7.sh
@@ -69,6 +72,17 @@ apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh verify
 apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test
 apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh release
 ```
+
+The App Store listing is checked-in data with a source-level validator and a
+stricter final-submission mode:
+
+```bash
+pnpm quipsly:capture:app-store-metadata
+pnpm quipsly:capture:app-store-metadata --submission
+```
+
+The final mode requires every declared screenshot to exist at its recorded
+dimensions, be approved, and have no remaining submission blockers.
 
 The `release` lane archives, exports, and verifies without uploading.
 `scripts/deploy-testflight.sh` runs the `beta` lane and therefore requires an

@@ -3,6 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { parseXmlPropertyList } from "./lib/parse-xml-property-list.mjs";
+import {
+  readAppStoreMetadata,
+  validateAppStoreMetadata,
+} from "./release/quipsly-capture-app-store-metadata.mjs";
 
 const root = process.cwd();
 const iosRoot = path.join(root, "apps/mobile-capture/HighGroundCapture");
@@ -56,6 +60,7 @@ const files = {
   liveKitEgressHelper: path.join(root, "apps/quipsly/src/lib/server/coaching-livekit-egress.ts"),
   meetingSpineContract: path.join(root, "packages/quipsly-domain/src/coaching-meeting-spine.ts"),
   readinessDoc: path.join(root, "docs/quipsly/ios-capture-app-store-readiness.md"),
+  listingDoc: path.join(root, "docs/quipsly/ios-capture-app-store-listing.md"),
   reviewerChecklist: path.join(root, "docs/quipsly/ios-capture-reviewer-smoke-checklist.md"),
   envExample: path.join(root, ".env.example"),
 };
@@ -166,6 +171,7 @@ const liveKitJoinTokenHelperText = read(files.liveKitJoinTokenHelper);
 const liveKitEgressHelperText = read(files.liveKitEgressHelper);
 const meetingSpineContractText = read(files.meetingSpineContract);
 const readinessDocText = read(files.readinessDoc);
+const listingDocText = read(files.listingDoc);
 const reviewerChecklistText = read(files.reviewerChecklist);
 const envExampleText = read(files.envExample);
 const mobileSwiftSourceTreeText = readSwiftSourceTree(sourceRoot);
@@ -907,6 +913,23 @@ requireIncludes(readinessDocText, "AppReviewProofPanel", "App Store readiness na
 requireIncludes(readinessDocText, "no hidden recording", "App Store readiness no hidden recording proof");
 requireIncludes(readinessDocText, "join rooms, start recording", "App Store readiness proof panel side-effect boundary");
 requireIncludes(readinessDocText, "mutate external systems", "App Store readiness proof panel no external mutation boundary");
+const appStoreMetadataResult = validateAppStoreMetadata(
+  readAppStoreMetadata(),
+  { root },
+);
+assert(
+  appStoreMetadataResult.ok,
+  "Canonical App Store listing metadata must pass its source contract.",
+  {
+    label: "canonical App Store listing metadata passes",
+    errors: appStoreMetadataResult.errors,
+  },
+);
+requireIncludes(
+  listingDocText,
+  "pnpm quipsly:capture:app-store-metadata --submission",
+  "App Store listing documents the final fail-closed gate",
+);
 requireIncludes(reviewerChecklistText, "reviewer", "reviewer smoke checklist");
 requireIncludes(reviewerChecklistText, "RUN_NATIVE_AUTH_CONTRACT_SMOKE=1", "reviewer checklist native-auth smoke");
 requireIncludes(reviewerChecklistText, "quipsly-mobile-capture-native-auth-smoke.mjs", "reviewer checklist direct native-auth smoke reference");
@@ -1015,6 +1038,7 @@ const report = {
     "mobile readiness exposes calendar evidence readiness without making Calendar the source of truth",
     "iPhone and iPad session surfaces show the capture runway",
     "privacy and account deletion routes are visible from app and web",
+    "canonical App Store metadata is within field limits and records an explicit screenshot plan and blocker ledger",
     "reviewer readiness docs include native Firebase auth plus visible-session proof",
   ],
   note: "Static proof only. Device/TestFlight smoke is still required before App Store submission.",

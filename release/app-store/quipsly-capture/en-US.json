@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "locale": "en-US",
+  "app": {
+    "name": "Quipsly Capture",
+    "subtitle": "Capture work. Keep context.",
+    "bundleId": "com.highgroundodyssey.HighGroundCapture",
+    "primaryLanguage": "English (U.S.)",
+    "primaryCategory": "Productivity",
+    "secondaryCategory": "Photo & Video",
+    "privacyPolicyUrl": "https://quipsly.com/privacy",
+    "privacyChoicesUrl": "https://quipsly.com/privacy/account-deletion"
+  },
+  "version": {
+    "versionString": "1.0",
+    "promotionalText": "Record sessions with explicit consent, capture notes and tasks in the moment, and keep projects, goals, tags, transcripts, and follow-through together.",
+    "description": "Quipsly Capture keeps the moment and the follow-through together.\n\nRecord coaching conversations, podcast sessions, interviews, and field notes with an explicit consent step and a recording state that stays visible. Capture notes, tasks, goals, projects, and tags without leaving the session. When you reconnect, protected local work can sync to your Quipsly Nest so the same context is ready on the web.\n\nBuilt for work that continues after the conversation:\n• Start from Today or the project you are working on\n• Record locally first with clear consent and source status\n• Write notes and create tasks or goals while ideas are fresh\n• Organize everything with projects and flexible tags\n• Keep local originals until you choose to delete them\n• Recover pending work after connectivity or app interruption\n• Review transcripts and follow-through in Nest when processing is ready\n\nQuipsly is designed to be honest about state. Joining a session does not silently start recording. Uploading does not mean a cloud copy is verified. A transcript or task is not marked ready until Quipsly has durable evidence.\n\nQuipsly Capture currently requires an authorized Quipsly account. Some processing and cross-device features require an internet connection; local recording and protected recovery preserve your source when the network is interrupted.",
+    "keywords": "notes,tasks,goals,projects,tags,recorder,podcast,coaching,transcript,productivity,audio",
+    "supportUrl": "https://quipsly.com/support",
+    "marketingUrl": "https://quipsly.com",
+    "copyright": "2026 High Ground Odyssey",
+    "releaseMethod": "manual"
+  },
+  "review": {
+    "notesFile": "docs/quipsly/ios-capture-app-review-notes-draft.md",
+    "demoAccountRequired": true,
+    "credentialsCommitted": false,
+    "credentialStorage": "App Store Connect App Review Information only",
+    "whatToTest": "Sign in with the supplied reviewer account. Open Today and Work; create a note, task, goal, project, and tag, then confirm the same records remain after relaunch. Open the supplied capture session, review consent, start and stop a short disposable recording, and confirm the local original remains in Library. Exercise an offline quick entry and retry after reconnecting. Confirm Account exposes Privacy and Request Account Deletion. Do not use private client, coaching, podcast, or unpublished source material."
+  },
+  "screenshots": {
+    "deviceClass": "iPhone 6.9-inch",
+    "orientation": "portrait",
+    "assetsDirectory": "release/app-store/quipsly-capture/screenshots/en-US",
+    "planned": [
+      {
+        "order": 1,
+        "filename": "01-today.png",
+        "width": 1320,
+        "height": 2868,
+        "headline": "Know what matters today",
+        "story": "Today with synthetic tasks, goals, and one clear next action.",
+        "status": "pending"
+      },
+      {
+        "order": 2,
+        "filename": "02-record.png",
+        "width": 1320,
+        "height": 2868,
+        "headline": "Consent before capture",
+        "story": "The explicit consent boundary and visible recording state.",
+        "status": "pending"
+      },
+      {
+        "order": 3,
+        "filename": "03-work.png",
+        "width": 1320,
+        "height": 2868,
+        "headline": "Turn the moment into work",
+        "story": "One project connecting notes, tasks, goals, and flexible tags.",
+        "status": "pending"
+      },
+      {
+        "order": 4,
+        "filename": "04-library.png",
+        "width": 1320,
+        "height": 2868,
+        "headline": "Keep the original safe",
+        "story": "Library showing local-source truth and recoverable upload state.",
+        "status": "pending"
+      },
+      {
+        "order": 5,
+        "filename": "05-account.png",
+        "width": 1320,
+        "height": 2868,
+        "headline": "Privacy you can reach",
+        "story": "Account with direct privacy and account-deletion controls.",
+        "status": "pending"
+      }
+    ]
+  },
+  "submission": {
+    "readiness": "blocked",
+    "blockers": [
+      "Promote and read back the Nest revision that passes all 104 production mobile contracts and canonical policy redirects.",
+      "Confirm the legal copyright owner, categories, age rating, content rights, DSA trader status, and territory availability in App Store Connect.",
+      "Create the reviewer account and visible synthetic session; store credentials only in App Store Connect.",
+      "Capture and approve all five 6.9-inch screenshots from the exact physical-device or TestFlight candidate without private data.",
+      "Operate Build 6 on the unlocked trusted physical iPhone, including interruption, offline, recovery, upload, and cross-device readback.",
+      "Upload the exact Build 6 candidate, read back processing, assign testers, and repeat the workflow from the TestFlight install.",
+      "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."
+    ]
+  }
+}

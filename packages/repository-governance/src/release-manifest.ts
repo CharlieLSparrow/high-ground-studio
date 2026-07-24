@@ -564,7 +564,9 @@ export function planChangedSurfaces(
   const studio = anyPathMatches(paths, nestManifest.changeDetection.deploy);
   const schema = manifests.some((manifest) =>
     anyPathMatches(paths, manifest.changeDetection.schema));
-  const capture = anyPathMatches(paths, captureManifest.changeDetection.deploy);
+  const capture =
+    anyPathMatches(paths, captureManifest.changeDetection.deploy)
+    || anyPathMatches(paths, captureManifest.changeDetection.validation);
   const nativeStudio = anyPathMatches(paths, nativeStudioManifest.changeDetection.deploy);
   const quipsly = studio || anyPathMatches(paths, nestManifest.changeDetection.validation);
 

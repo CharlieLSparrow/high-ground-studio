@@ -424,23 +424,61 @@ questionnaire.
 
 ## Review notes draft
 
-Quipsly Capture records only after the signed-in user selects a Quipsly session, opts into audio recording, confirms that everyone else who may be heard was told and agreed, and current required participant consent permits the Start boundary. Recording state is shown in the app while capture is active. The candidate is designed to store recordings locally first and upload them directly to private Google Cloud Storage with an authenticated resumable v2 session; production upload claims remain conditional on the live schema, CORS, reviewer, and physical-device gates below. Quipsly labels a copy verified only after checking its object generation, exact size, type, CRC32C, and SHA-256. The app never prunes local sources automatically. The signed-in owner may separately delete one local original after an explicit irreversible-deletion confirmation; this preserves a protected audit tombstone and does not delete cloud or account evidence. Users can initiate account deletion in the app, but release remains blocked until Quipsly's full retention-aware executor and completion-confirmation workflow is operational.
+Quipsly Capture records only after the signed-in user selects a Quipsly session, opts into audio recording, confirms that everyone else who may be heard was told and agreed, and current required participant consent permits the Start boundary. Recording state is shown in the app while capture is active. The candidate is designed to store recordings locally first and upload them directly to private Google Cloud Storage with an authenticated resumable v2 session; production upload claims remain conditional on the live schema, CORS, reviewer, and physical-device gates below. Quipsly labels a copy verified only after checking its object generation, exact size, type, CRC32C, and SHA-256. The app never prunes local sources automatically. The signed-in owner may separately delete one local original after an explicit irreversible-deletion confirmation; this preserves a protected audit tombstone and does not delete cloud or account evidence. Users can initiate account deletion in the app and follow its 30-day-target status. Eligible private accounts can be completed by the controlled inventory/executor/Firebase/GCS/email workflow with durable recovery and completion receipts; shared or retention-ambiguous accounts fail closed for reviewed handling. Production execution proof remains required.
+
+The canonical English (U.S.) listing, screenshot plan, field limits, review
+journey, and fail-closed blocker ledger now live in
+[`ios-capture-app-store-listing.md`](./ios-capture-app-store-listing.md) and
+`release/app-store/quipsly-capture/en-US.json`. Validate the source packet with
+`pnpm quipsly:capture:app-store-metadata`; the stricter `--submission` mode must
+remain red until approved screenshots and every delivery-layer proof exist.
 
 ## Remaining blockers before App Store submission
 
+- 2026-07-24 signed Build 6: exact source
+  `e0525e68f9d2cedaa14c597ed978c4b66715b0f4` passes 30/30 serial
+  native UI scenarios, 80/80 safety contracts, and 635/635 App Store checks.
+  Its signed 18,058,977-byte `1.0 (6)` IPA has SHA-256
+  `5612531c7130a5815b10da2e5397d99cd0a2789a5e4956f230d90b59c77666cb`.
+  No upload, Apple processing readback, tester assignment, or physical
+  installation has occurred.
+- 2026-07-24 production parity: the live mobile audit passes 96 and fails eight
+  newer protected routes with HTML 404. The Nest privacy/deletion URLs also
+  redirect to `https://quipsly.com:8080/...`. The committed proxy fix removes
+  the internal port, and production status now checks both canonical policy
+  pages plus the complete mobile contract. Preview, smoke, promotion, and
+  production readback require refreshed Google Cloud/Firebase credentials.
+- 2026-07-24 account deletion: the reviewed 30-day policy, request/status UI,
+  inventory, fail-closed controlled executor, Firebase/GCS/email adapters,
+  recovery states, durable receipts, and completion constraint are
+  implemented. Unit/route tests pass and the disposable local database/Auth
+  Emulator loop passes 2/2, including refusal when another Home Nest
+  collaborator exists. Production migration/provider/execution readback and
+  account-holder retention approval remain open.
 - 2026-07-24 release-boundary hardening: `scripts/deploy-testflight.sh` now resolves one explicit commit and runs the pinned Capture release inside a disposable detached worktree. The release receipt distinguishes archive creation, upload return/processing wait, tester assignment, and physical TestFlight installation. The canonical procedure is [`ios-capture-release-runbook.md`](./ios-capture-release-runbook.md). Local regression proof excludes an uncommitted sentinel from the runner and removes the linked worktree afterward; this is not an upload, App Store Connect readback, or physical-device result.
 
 - 2026-07-21 release-readiness pass: local code/build evidence is healthy again, but TestFlight remains externally blocked. `scripts/quipsly-mobile-capture-preflight.sh` passes after repairing its stale recording-promotion static assertion and routing TypeScript execution through the repo TS extension loader. The focused session-evidence smoke passes, Quipsly TypeScript passes, and unsigned iOS simulator build with LiveKit linked passes. Current live probes for `nest.quipsly.com`, `nest.quipsly.com/privacy`, `nest.quipsly.com/api/mac/firebase-client-config`, `app.highgroundodyssey.com/api/health`, and `highgroundodyssey.com` all return Google Frontend HTTP 503 before application route contracts are reached.
 - 2026-07-21 Apple signing and upload gates cleared: after the account agreement was accepted, `xcodebuild ... -allowProvisioningUpdates archive` created the app and share-extension profiles and produced signed archive `/tmp/QuipslyCapture-20260721151703.xcarchive`. Automatic App Store Connect distribution export produced `/tmp/QuipslyCapture-AppStoreExport-20260721151703/HighGroundCapture.ipa`; strict signature verification passed with Apple Distribution profiles for both targets. Build `1.0 (1)` then uploaded successfully and entered App Store Connect processing. Xcode warned that the vendor LiveKitWebRTC and RustLiveKitUniFFI frameworks did not include matching dSYMs; the warning did not reject the upload but leaves third-party crash symbolication incomplete. This is upload evidence, not processing completion, tester availability, TestFlight installation, or physical-device proof.
 - 2026-07-21 physical-device blocker: Xcode/CoreDevice still does not see the plugged-in iPhone as an available destination. `xctrace` lists only the Mac plus offline iPads `Layla` and `Morbo`; `devicectl` lists the same unavailable iPads. Unlock/trust the iPhone, use a data-capable cable/direct port, and confirm it appears in Xcode Devices before claiming physical-device capture proof.
 - 2026-07-21 Cloud service blocker isolated: operator and ADC authentication now pass, all four Cloud Run services report Ready, and the expected domain mappings and 100% traffic targets remain intact. Current Cloud Run request logs fail with `The request failed because billing is disabled for this project.` The project remains linked to a billing account, but that account reports closed. Reopen or replace the billing account through an authorized billing administrator, then re-probe the generated Cloud Run URLs and public domains before changing application code or deploying.
-- Restore the public Quipsly/Nest service. On 2026-07-18, the checked readiness, session, policy, and account-deletion surfaces returned HTTP 503. One earlier transient `www.quipsly.com` root probe returned HTTP 500; a later root retry returned HTTP 503. No production reviewer, room, policy, deletion, or direct-upload claim can be accepted while that remains true.
+- Replace the superseded 2026-07-18/21 availability snapshot with exact-source
+  production parity: all 104 mobile checks, canonical policy redirects, health
+  revision, and separate-account privacy readback must pass.
 - Apply `ops/quipsly-coaching-capture-additive.sql` and pass `scripts/quipsly-coaching-capture-schema-sync.mjs` against the target database before deploying backend code that reads or writes `CaptureRoomStateReceipt` or `MediaVaultUploadReservation`; upload capability issuance is launch-critical on the latter.
 - Apply the reviewed media-vault CORS policy and verify live bucket readback includes `x-goog-if-generation-match`. Local gcloud authentication could not mint a token during this audit, so the source policy is not deployment proof.
 - Add a real reviewer test account with at least one visible session, then smoke native email/password auth and the reviewer checklist against deployed `nest.quipsly.com`.
 - No reachable physical iPhone was available during this audit. Produce signed archive/TestFlight proof and validate microphone permission/fidelity, built-in/Bluetooth/USB routes, lock/background behavior, interruptions, route loss, force-quit recovery, failed-upload recovery, direct-GCS background transfer, and transcript packet creation on a physical device.
 - Join a real Nest-issued LiveKit room and prove LiveKit transport, CallKit activation/presentation, and local recording remain visibly separate through connect, timeout/failure, interruption, reconnect, and reset. Provider-egress START becomes a submission blocker only if provider recording enters release scope; otherwise prove it stays interlocked and absent from end-user Capture controls.
-- Complete the retention-aware account-deletion system: approved retention matrix, public completion timeframe, destructive/anonymizing executor, and completion confirmation. A request row is not deletion completion.
-- Finalize and serve production Terms, Privacy, and account-deletion surfaces; reconcile their claims with the binary, App Store privacy answers, reviewer notes, and actual retention behavior.
+- Operate the retention-aware deletion system in production with a disposable
+  eligible account, read back its completion receipt/confirmation, and obtain
+  account-holder approval for the retention matrix. A request row or local
+  executor proof is not production deletion completion.
+- Read back production Terms, Privacy, and account-deletion surfaces at their
+  canonical HTTPS URLs; reconcile their claims with the binary, App Store
+  privacy answers, reviewer notes, and actual retention behavior.
 - Generate Xcode's privacy report from the signed archive and confirm `PrivacyInfo.xcprivacy` and all required-reason entries appear in the distributed app bundle.
 - Refresh local Firebase ADC or configure explicit local Firebase Admin service-account credentials for repeatable non-interactive generated-auth smokes; this is separate from restoring the deployed service.
+- Capture and approve the five planned iPhone screenshots from the
+  physical/TestFlight candidate. The canonical listing metadata and source
+  validator pass; the stricter submission gate remains red until those assets
+  exist and all delivery blockers are resolved.

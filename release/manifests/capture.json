@@ -17,8 +17,19 @@
       ]
     },
     "validation": {
-      "prefixes": [],
-      "files": []
+      "prefixes": [
+        "release/app-store/quipsly-capture/"
+      ],
+      "files": [
+        "docs/quipsly/ios-capture-app-review-notes-draft.md",
+        "docs/quipsly/ios-capture-app-store-listing.md",
+        "docs/quipsly/ios-capture-app-store-readiness.md",
+        "docs/quipsly/ios-capture-privacy-label-matrix.md",
+        "docs/quipsly/ios-capture-reviewer-smoke-checklist.md",
+        "scripts/quipsly-ios-capture-app-store-static-smoke.mjs",
+        "scripts/release/quipsly-capture-app-store-metadata.mjs",
+        "scripts/release/quipsly-capture-app-store-metadata.test.mjs"
+      ]
     },
     "schema": {
       "prefixes": [],

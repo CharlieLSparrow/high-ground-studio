@@ -31,7 +31,10 @@ const config: Config = {
     '^@high-ground/quipsly-domain/coaching-packet$': '<rootDir>/../../packages/quipsly-domain/src/coaching-packet.ts',
     '^@high-ground/quipsly-domain/transcript-derived-task$': '<rootDir>/../../packages/quipsly-domain/src/transcript-derived-task.ts',
   },
-  modulePathIgnorePatterns: ['<rootDir>/.next/standalone'],
+  modulePathIgnorePatterns: [
+    '<rootDir>/.next/standalone',
+    '<rootDir>/.next-release/standalone',
+  ],
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async

@@ -7,6 +7,8 @@ SERVICE_NAME="${SERVICE_NAME:-studio}"
 CLOUD_SQL_INSTANCE="${CLOUD_SQL_INSTANCE:-studio-postgres}"
 PRODUCTION_DOMAIN="${PRODUCTION_DOMAIN:-nest.quipsly.com}"
 PRODUCTION_BASE_URL="${PRODUCTION_BASE_URL:-https://${PRODUCTION_DOMAIN}}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 failures=0
 
@@ -37,6 +39,71 @@ expect_http() {
   else
     fail "${route} returned HTTP ${code:-000}, expected one of ${accepted_codes}; production is not release-ready."
   fi
+}
+
+expect_canonical_public_route() {
+  local route="$1"
+  local expected_url="$2"
+  local marker="$3"
+  local out
+  local effective_url
+  out="$(mktemp)"
+  effective_url="$(
+    curl -fsSL \
+      --proto '=https' \
+      --proto-redir '=https' \
+      --max-redirs 4 \
+      --max-time 20 \
+      -o "${out}" \
+      -w '%{url_effective}' \
+      "${PRODUCTION_BASE_URL%/}${route}" 2>/dev/null || true
+  )"
+
+  if [[ "${effective_url}" != "${expected_url}" ]]; then
+    fail "${route} resolved to ${effective_url:-unreachable}, expected ${expected_url}."
+    rm -f "${out}"
+    return
+  fi
+  if ! grep -Fqi -- "${marker}" "${out}"; then
+    fail "${route} reached its canonical URL but did not render the required public marker."
+    rm -f "${out}"
+    return
+  fi
+
+  rm -f "${out}"
+  pass "${route} resolves to ${expected_url} and renders its public content."
+}
+
+check_mobile_contract() {
+  local report
+  local summary
+  report="$(mktemp)"
+  if node "${REPO_ROOT}/scripts/quipsly-mobile-capture-contract-smoke.mjs" \
+    "--base-url=${PRODUCTION_BASE_URL%/}" \
+    --json >"${report}"; then
+    summary="$(node -e '
+      const report = require(process.argv[1]);
+      if (report?.ok !== true || Number(report?.statusCounts?.fail || 0) !== 0) {
+        process.exit(1);
+      }
+      process.stdout.write(String(report?.statusCounts?.pass || 0));
+    ' "${report}" 2>/dev/null || true)"
+    if [[ -n "${summary}" ]]; then
+      pass "Production mobile Capture contract passed ${summary} checks."
+    else
+      fail "Production mobile Capture contract returned an invalid success report."
+    fi
+  else
+    summary="$(node -e '
+      const report = require(process.argv[1]);
+      process.stdout.write(
+        `${Number(report?.statusCounts?.pass || 0)} pass, `
+        + `${Number(report?.statusCounts?.fail || 0)} fail`,
+      );
+    ' "${report}" 2>/dev/null || true)"
+    fail "Production mobile Capture contract failed (${summary:-unreadable report})."
+  fi
+  rm -f "${report}"
 }
 
 echo "Quipsly production recovery gate"
@@ -166,6 +233,19 @@ expect_http "/" "200 301 302 303 307 308"
 expect_http "/api/health" "200"
 expect_http "/api/healthz" "200"
 expect_http "/login?callbackUrl=%2Fprojects" "200"
+expect_canonical_public_route \
+  "/support" \
+  "https://quipsly.com/support" \
+  "charlie@highgroundodyssey.com"
+expect_canonical_public_route \
+  "/privacy" \
+  "https://quipsly.com/privacy" \
+  "Your work stays inspectable, consented, and yours."
+expect_canonical_public_route \
+  "/privacy/account-deletion" \
+  "https://quipsly.com/privacy/account-deletion" \
+  "Request deletion without losing the paper trail."
+check_mobile_contract
 
 recent_billing_errors="$(
   gcloud logging read \

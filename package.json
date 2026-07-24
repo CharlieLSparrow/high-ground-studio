@@ -55,6 +55,7 @@
     "quipsly:cloudrun:traffic": "bash scripts/release/quipsly-traffic.sh",
     "quipsly:cloudrun:logs": "bash scripts/release/quipsly-logs.sh studio",
     "quipsly:production:status": "bash scripts/release/quipsly-production-status.sh",
+    "quipsly:capture:app-store-metadata": "node scripts/release/quipsly-capture-app-store-metadata.mjs",
     "quipsly:local:up": "bash scripts/dev/quipsly-local-up.sh",
     "quipsly:local:down": "bash scripts/dev/quipsly-local-down.sh",
     "quipsly:local:doctor": "bash scripts/dev/quipsly-local-doctor.sh",

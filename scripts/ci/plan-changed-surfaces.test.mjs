@@ -29,6 +29,20 @@ test("Capture workflow changes remain inside the Capture surface", () => {
   assert.equal(plan.quipsly, false);
 });
 
+test("Capture listing changes validate Capture without deploying web apps", () => {
+  const plan = planChangedSurfaces([
+    "release/app-store/quipsly-capture/en-US.json",
+    "docs/quipsly/ios-capture-app-store-listing.md",
+  ]);
+
+  assert.equal(plan.capture, true);
+  assert.equal(plan.web, false);
+  assert.equal(plan.studio, false);
+  assert.equal(plan.schema, false);
+  assert.equal(plan.quipsly, false);
+  assert.deepEqual(plan.changedSurfaces, ["capture"]);
+});
+
 test("Nest app changes validate and deploy only Nest", () => {
   const plan = planChangedSurfaces([
     "apps/quipsly/src/app/api/mobile/capture/sessions/route.ts",

@@ -330,10 +330,16 @@ for (const [label, needle] of [
   ["quipsly public coaching rewrite source", "url.pathname === '/coaching'"],
   ["quipsly public coaching rewrite target", "marketingCoachingUrl.pathname = '/public/coaching'"],
   ["quipsly public coaching rewrite stays on marketing host", "return NextResponse.rewrite(marketingCoachingUrl)"],
-  ["nest marketing route redirects to marketing host", "marketingUrl.hostname = 'quipsly.com'"],
+  ["nest marketing route redirects to canonical HTTPS marketing origin", "new URL(`${url.pathname}${url.search}`, 'https://quipsly.com')"],
 ]) {
   requireIncludes(texts.quipslyProxy, needle, label, files.quipslyProxy);
 }
+requireNotIncludes(
+  texts.quipslyProxy,
+  "marketingUrl.hostname = 'quipsly.com'",
+  "host-only marketing redirect that can retain an internal port",
+  files.quipslyProxy,
+);
 
 for (const [label, needle] of [
   ["quipsly coaching metadata title", "Quipsly for Coaches"],

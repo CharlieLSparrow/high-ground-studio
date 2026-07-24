@@ -102,6 +102,10 @@ jobs:
           bash -n scripts/release/quipsly-normalize-context-metadata.sh
           bash -n scripts/release/quipsly-release-preflight.sh
           bash -n scripts/release/quipsly-smoke-preview.sh
+          bash -n scripts/release/quipsly-production-status.sh
+          node --test scripts/release/quipsly-production-status.test.mjs
+          node --test scripts/release/quipsly-capture-app-store-metadata.test.mjs
+          node scripts/release/quipsly-capture-app-store-metadata.mjs
           bash -n scripts/release/quipsly-schema-sync.sh
           bash scripts/release/quipsly-schema-sync.test.sh
           bash scripts/release/quipsly-schema-context.test.sh

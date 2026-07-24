@@ -43,9 +43,9 @@ export function proxy(request: NextRequest) {
 
   // Forward quipsly.studio to quipsly.com
   if (hostname === 'quipsly.studio') {
-    const url = new URL(request.url)
-    url.hostname = 'quipsly.com'
-    return NextResponse.redirect(url)
+    return NextResponse.redirect(
+      new URL(`${url.pathname}${url.search}`, 'https://quipsly.com'),
+    )
   }
 
   // Public static assets are shared by the marketing and app shells.
@@ -79,9 +79,9 @@ export function proxy(request: NextRequest) {
     }
 
     if (isMarketingPath(url.pathname)) {
-      const marketingUrl = new URL(request.url)
-      marketingUrl.hostname = 'quipsly.com'
-      return NextResponse.redirect(marketingUrl)
+      return NextResponse.redirect(
+        new URL(`${url.pathname}${url.search}`, 'https://quipsly.com'),
+      )
     }
 
     return NextResponse.next()

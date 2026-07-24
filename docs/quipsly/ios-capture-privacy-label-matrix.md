@@ -1,7 +1,7 @@
 # Quipsly iOS capture privacy label and reviewer matrix
 
-Date: 2026-07-18
-Status: candidate inventory, not legal-reviewed and not App Store-submitted
+Date: 2026-07-24
+Status: Build 6 candidate inventory, not legal-reviewed or App Store-submitted
 Target app: `apps/mobile-capture/HighGroundCapture`
 
 ## Purpose
@@ -12,11 +12,18 @@ This is not legal advice. Before submission, the final App Store Connect privacy
 
 ## Public routes and readiness endpoint
 
-- Privacy policy: `https://www.quipsly.com/privacy` (the app also derives a Nest policy URL from its configured base URL)
-- Account deletion explanation: `https://nest.quipsly.com/privacy/account-deletion`
+- Privacy policy: `https://quipsly.com/privacy`
+- Account deletion explanation:
+  `https://quipsly.com/privacy/account-deletion`
 - Mobile capture readiness endpoint: `GET https://nest.quipsly.com/api/mobile/capture/readiness`
 
-The readiness endpoint exposes configuration booleans and policy URLs. It must not expose secrets. The checked Quipsly/Nest policy, login, account-deletion, mobile readiness, and session routes returned HTTP 503 during the 2026-07-18 candidate audit; a separate `www.quipsly.com` root probe returned HTTP 500. These URLs are configuration evidence only—not current availability proof.
+The two canonical marketing policy URLs currently return HTTP 200. The
+readiness endpoint returns HTTP 200, exposes configuration booleans and the
+equivalent Nest policy URLs, and does not expose secrets. The deployed Nest
+host currently redirects those marketing routes through an internal `:8080`
+port. Source now constructs an explicit canonical HTTPS origin and has a
+four-case host-routing regression, but production deployment and redirect
+readback remain required.
 
 ## Data categories likely involved
 
@@ -48,7 +55,9 @@ The app must make these facts visible:
 
 ## Account deletion posture
 
-The app has an in-app deletion-request path and public explanation route. This is not yet complete deletion fulfillment. Deletion is reviewed because accounts can attach to:
+The app has an in-app deletion-request path, visible request status, a disclosed
+30-day target, and a public explanation route. Deletion is reviewed because
+accounts can attach to:
 
 - bookings
 - Stripe evidence
@@ -59,7 +68,15 @@ The app has an in-app deletion-request path and public explanation route. This i
 - action items
 - publication or receipt records
 
-Before submission, approve the retention matrix and completion timeframe, implement the executor/anonymizer and completion confirmation, and prove the entire workflow with a test account. The Account option must stay easy to find and must not degrade into a support-only email flow.
+The controlled executor now inventories the account, refuses shared or
+retention-ambiguous records, deactivates access before destructive work, deletes
+eligible private database/GCS/Firebase identity data, sends completion email,
+and retains a sanitized durable execution receipt. It is disabled by default
+outside the controlled worker and supports idempotent recovery after failure.
+The local disposable end-to-end proof passes; production schema, provider
+configuration, execution, completion confirmation, and account-holder
+retention review remain required. The Account option must stay easy to find and
+must not degrade into a support-only email flow.
 
 ## Test account requirements
 
@@ -87,12 +104,19 @@ Reviewer instructions should explicitly say:
 
 ## Current gaps before submission
 
-- A healthy production Quipsly/Nest service plus real reviewer account/session proof.
-- Additive capture-ledger schema sync in the target database before the matching backend deploy.
+- Exact-source Nest deploy with all 104 mobile checks and both canonical policy
+  redirects green, plus a real reviewer account/session proof.
+- Production schema audit/migration proof for the matching backend deploy,
+  including account-deletion execution receipts.
 - Signed archive/TestFlight and physical-iPhone validation of microphone fidelity, Bluetooth/wired/USB routes, lock/background, interruption, route loss, force quit, reboot, and direct-GCS background recovery.
 - Real Nest-issued LiveKit/CallKit room validation and provider-egress reconciliation on device.
-- A complete retention-aware account-deletion executor, disclosed timeframe, completion confirmation, and final production Terms/Privacy surfaces.
+- Production operation of one disposable eligible deletion through completion,
+  plus account-holder approval of the retention matrix and final
+  Terms/Privacy/App Store answers.
 - Final legal/privacy review, Xcode archive privacy report, and App Store Connect privacy-label reconciliation.
+- Five approved App Store screenshots from the physical/TestFlight candidate.
+  The canonical listing metadata is maintained and source-valid; its strict
+  submission gate remains red until those assets and delivery proofs exist.
 
 ## Product principle
 
