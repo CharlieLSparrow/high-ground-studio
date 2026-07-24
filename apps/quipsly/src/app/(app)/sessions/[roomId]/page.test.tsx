@@ -30,7 +30,10 @@ describe("SessionReviewPage privacy boundary", () => {
       callRoom: { findFirst: jest.fn().mockResolvedValue(null) },
     } as never);
 
-    await expect(SessionReviewPage({ params: Promise.resolve({ roomId: "private-room" }) })).rejects.toMatchObject({
+    await expect(SessionReviewPage({
+      params: Promise.resolve({ roomId: "private-room" }),
+      searchParams: Promise.resolve({ mode: "prepare" }),
+    })).rejects.toMatchObject({
       digest: "NEXT_HTTP_ERROR_FALLBACK;404",
     });
     expect(notFound).toHaveBeenCalledTimes(1);

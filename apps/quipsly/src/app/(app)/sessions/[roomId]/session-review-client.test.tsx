@@ -94,6 +94,79 @@ describe("Session review goal candidates", () => {
     jest.restoreAllMocks();
   });
 
+  it("opens as a focused overview without fetching or rendering transcript machinery", () => {
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="overview"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 0 }}
+    />);
+
+    expect(screen.getByRole("heading", { name: "Coaching review" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Current runway" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("link", { name: "Prepare" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
+    expect(screen.getByRole("link", { name: "Recordings" })).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
+    expect(screen.getByRole("link", { name: "Transcript" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript");
+    expect(screen.getByRole("link", { name: "Outputs" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs");
+    expect(screen.getByRole("heading", { name: "Needs an honest decision" })).toBeInTheDocument();
+    expect(screen.getByText("Transcription permission is incomplete")).toBeInTheDocument();
+    expect(screen.getByText("0 of 1 standalone consent records permit transcription.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Decide candidate by candidate" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Refresh transcript truth" })).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("does not mistake an empty standalone-consent projection for the complete release gate", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Episode review"
+      mode="overview"
+      consentSnapshot={{ total: 0, granted: 0, transcriptionPermitted: 0 }}
+      contentReadiness={{
+        status: "substantial",
+        label: "Substantial recording ready",
+        tone: "ready",
+        detail: "One verified source recording is ready for gated review.",
+        nextAction: "Open Transcript to verify the complete release receipt.",
+        captureAssetCount: 1,
+        knownDurationSeconds: 3600,
+        longestKnownDurationSeconds: 3600,
+        shortCaptureCount: 0,
+        simulatorCaptureCount: 0,
+        unknownDurationCount: 0,
+        verifiedCaptureCount: 1,
+        substantialRecordingCount: 1,
+        substantialThresholdSeconds: 60,
+      }}
+    />);
+
+    expect(screen.getByText("No standalone consent rows are projected here; Transcript verifies the complete release receipt before review")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "No overview blocker" })).toBeInTheDocument();
+    expect(screen.getByText(/Transcript and Outputs still enforce their own evidence gates/)).toBeInTheDocument();
+  });
+
+  it.each([
+    ["prepare"],
+    ["recordings"],
+    ["outputs"],
+  ] as const)("keeps the %s workspace independent from transcript requests", (mode) => {
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode={mode}
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
+    />);
+
+    expect(screen.getByRole("link", { name: new RegExp(`^${mode}$`, "i") })).toHaveAttribute("aria-current", "page");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("builds the available review packet from the exact transcript without forcing a rebuild", async () => {
     const fetchMock = jest.fn()
       .mockResolvedValueOnce(jsonResponse(packetReadyToBuild()))
@@ -102,7 +175,7 @@ describe("Session review goal candidates", () => {
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
 
-    render(<SessionReviewClient roomId="room-1" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
     const build = await screen.findByRole("button", { name: "Build review packet" });
     expect(screen.getByText(/creates no task or goal and sends or publishes nothing/i)).toBeInTheDocument();
 
@@ -128,7 +201,7 @@ describe("Session review goal candidates", () => {
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
 
-    render(<SessionReviewClient roomId="room-1" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
     expect(await screen.findByRole("heading", { name: "Choose what deserves to become a goal" })).toBeInTheDocument();
     expect(screen.getByText(/only “accept as goal” writes one actor-owned active goal/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -161,7 +234,7 @@ describe("Session review goal candidates", () => {
       .mockResolvedValueOnce(jsonResponse(packet(edited)));
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
-    render(<SessionReviewClient roomId="room-1" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
+    render(<SessionReviewClient roomId="room-1" sessionTitle="Coaching review" mode="transcript" consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }} />);
     await screen.findByRole("heading", { name: "Choose what deserves to become a goal" });
     await user.click(screen.getByRole("button", { name: "Edit candidate" }));
     const title = screen.getByRole("textbox", { name: "Goal title" });
@@ -176,12 +249,13 @@ describe("Session review goal candidates", () => {
 
   it("carries canonical Nest tags into Session review and saves through the shared ledger", async () => {
     const fetchMock = jest.fn()
-      .mockResolvedValueOnce(jsonResponse(packet()))
       .mockResolvedValueOnce(jsonResponse({ ok: true, updatedAt: "2026-07-19T08:00:01.000Z", boundaries: { projectScoped: true, externalSideEffects: false } }));
     global.fetch = fetchMock as typeof fetch;
     const user = userEvent.setup();
     render(<SessionReviewClient
       roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="prepare"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
       sessionTaxonomy={{
         project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
@@ -201,9 +275,9 @@ describe("Session review goal candidates", () => {
     await user.click(screen.getByText("Edit Session tags"));
     await user.click(screen.getByRole("checkbox", { name: "Episode 4" }));
     await user.click(screen.getByRole("button", { name: "Save Session tags" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
-    expect(fetchMock.mock.calls[1][0]).toBe("/api/work/tags");
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({ entityKind: "session", entityId: "room-1", tagIds: ["tag-proof", "tag-episode"], expectedUpdatedAt: "2026-07-19T08:00:00.000Z" });
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/work/tags");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ entityKind: "session", entityId: "room-1", tagIds: ["tag-proof", "tag-episode"], expectedUpdatedAt: "2026-07-19T08:00:00.000Z" });
     expect(await screen.findByRole("status")).toHaveTextContent("No source, task, provider, calendar, or publication state changed");
     expect(screen.getByText("#Episode 4")).toBeInTheDocument();
   });
@@ -212,6 +286,8 @@ describe("Session review goal candidates", () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="outputs"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
       studioHandoff={{
         project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
@@ -241,6 +317,8 @@ describe("Session review goal candidates", () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="prepare"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
       sessionQuickEntries={[
         { id: "mobile-note-1", kind: "NOTE", title: "Quick note", body: "Let the opening breathe.", status: "CAPTURED", createdAt: "2026-07-19T09:00:00.000Z", updatedAt: "2026-07-19T09:00:00.000Z", tags: [{ id: "tag-1", label: "Opening", slug: "opening" }] },
@@ -260,7 +338,6 @@ describe("Session review goal candidates", () => {
 
   it("edits the same iPhone note and replaces its canonical Nest tags with optimistic revisions", async () => {
     const fetchMock = jest.fn()
-      .mockResolvedValueOnce(jsonResponse(packet()))
       .mockResolvedValueOnce(jsonResponse({
         ok: true,
         note: {
@@ -276,6 +353,8 @@ describe("Session review goal candidates", () => {
     const user = userEvent.setup();
     render(<SessionReviewClient
       roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="prepare"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
       sessionTaxonomy={{
         project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
@@ -309,8 +388,8 @@ describe("Session review goal candidates", () => {
     await user.type(note, "Pause, then let the question breathe.");
     await user.click(screen.getByRole("button", { name: "Save note" }));
     expect(await screen.findByRole("status")).toHaveTextContent("original Session identity");
-    expect(fetchMock.mock.calls[1][0]).toBe("/api/notes/mobile-note-1");
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
+    expect(fetchMock.mock.calls[0][0]).toBe("/api/notes/mobile-note-1");
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
       title: "Opening rhythm",
       body: "Pause, then let the question breathe.",
       expectedUpdatedAt: "2026-07-19T09:00:00.000Z",
@@ -319,7 +398,7 @@ describe("Session review goal candidates", () => {
     await user.click(screen.getByRole("checkbox", { name: "#Edit point" }));
     await user.click(screen.getByRole("button", { name: "Save tags" }));
     expect(await screen.findByRole("status")).toHaveTextContent("Canonical Nest tags saved");
-    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual({
+    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
       entityKind: "note",
       entityId: "mobile-note-1",
       tagIds: ["tag-opening", "tag-edit"],
@@ -331,6 +410,8 @@ describe("Session review goal candidates", () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="recordings"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 0 }}
       captureReceipts={{
         captures: [{
@@ -354,6 +435,8 @@ describe("Session review goal candidates", () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="recordings"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 0 }}
       contentReadiness={{
         status: "capture-proof-only",
@@ -394,6 +477,49 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("5.3 sec")).toBeInTheDocument();
     expect(screen.getByText("8 / 8")).toBeInTheDocument();
     expect(screen.getByText(/record a consented production episode take on a physical device/i)).toBeInTheDocument();
+    expect(screen.queryByText(/episode ready/i)).not.toBeInTheDocument();
+  });
+
+  it("withholds production-spine output status for simulator-only media", () => {
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="outputs"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 0 }}
+      contentReadiness={{
+        status: "capture-proof-only",
+        label: "Capture plumbing proven",
+        tone: "attention",
+        detail: "The sources are simulator captures.",
+        nextAction: "Record on a physical device.",
+        captureAssetCount: 1,
+        knownDurationSeconds: 5,
+        longestKnownDurationSeconds: 5,
+        shortCaptureCount: 1,
+        simulatorCaptureCount: 1,
+        unknownDurationCount: 0,
+        verifiedCaptureCount: 1,
+        substantialRecordingCount: 0,
+        substantialThresholdSeconds: 60,
+      }}
+      studioHandoff={{
+        project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },
+        recordings: [{
+          recordingAssetId: "simulator-recording-1",
+          fileName: "five-second-simulator.m4a",
+          kind: "LOCAL_AUDIO",
+          recordingStatus: "VERIFIED",
+          status: "ATTACHED",
+          mediaAssetId: "media-simulator-1",
+          attachmentId: "attachment-simulator-1",
+          attachmentUpdatedAt: "2026-07-19T18:24:10.000Z",
+          episodeSlug: "episode-8-rehearsal",
+          importRole: "spine-audio-candidate",
+          promotedAt: "2026-07-19T18:24:10.000Z",
+        }],
+      }}
+    />);
     expect(screen.getByText(/does not call any attached file a production spine/i)).toBeInTheDocument();
     expect(screen.getByText(/production-spine status withheld/i)).toBeInTheDocument();
     expect(screen.queryByText(/episode ready/i)).not.toBeInTheDocument();

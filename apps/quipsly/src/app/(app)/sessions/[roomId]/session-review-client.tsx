@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, CircleAlert, FileAudio, FileUp, ListTodo, LoaderCircle, MessageSquareText, RefreshCw, ShieldCheck, Tags, Target } from "lucide-react";
+import { CheckCircle2, CircleAlert, Clapperboard, ClipboardList, FileAudio, FileUp, LayoutDashboard, ListTodo, LoaderCircle, MessageSquareText, Mic2, RefreshCw, ShieldCheck, Tags, Target } from "lucide-react";
 import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
@@ -18,6 +18,12 @@ import {
 } from "./session-review-model";
 import { SessionContinuityCard } from "./session-continuity-card";
 import type { SessionContinuityState } from "./session-continuity-model";
+import {
+  SESSION_WORKSPACE_MODES,
+  sessionWorkspaceDefinition,
+  sessionWorkspaceHref,
+  type SessionWorkspaceMode,
+} from "./session-workspace-model";
 import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
 
 function humanize(value: string | null | undefined) {
@@ -437,8 +443,206 @@ function CandidateCard({
   );
 }
 
-export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness = null, sessionTaxonomy = null, studioHandoff = null, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
+function WorkspaceModeIcon({ mode }: { mode: SessionWorkspaceMode }) {
+  if (mode === "prepare") return <ClipboardList className="h-4 w-4" aria-hidden="true" />;
+  if (mode === "recordings") return <Mic2 className="h-4 w-4" aria-hidden="true" />;
+  if (mode === "transcript") return <MessageSquareText className="h-4 w-4" aria-hidden="true" />;
+  if (mode === "outputs") return <Clapperboard className="h-4 w-4" aria-hidden="true" />;
+  return <LayoutDashboard className="h-4 w-4" aria-hidden="true" />;
+}
+
+function SessionWorkspaceNavigation({
+  roomId,
+  mode,
+}: {
   roomId: string;
+  mode: SessionWorkspaceMode;
+}) {
+  const active = sessionWorkspaceDefinition(mode);
+  return (
+    <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-3 shadow-sm">
+      <nav aria-label="Session workspace modes">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+          {SESSION_WORKSPACE_MODES.map((definition) => {
+            const selected = definition.id === mode;
+            return (
+              <Link
+                key={definition.id}
+                href={sessionWorkspaceHref(roomId, definition.id)}
+                aria-current={selected ? "page" : undefined}
+                className={`flex min-h-12 items-center gap-2 rounded-xl border px-3 py-2 text-xs font-black transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700 ${
+                  selected
+                    ? "border-violet-300 bg-violet-800 text-white shadow-sm"
+                    : "border-transparent bg-white text-[#5f4d37] hover:border-violet-200 hover:bg-violet-50"
+                }`}
+              >
+                <WorkspaceModeIcon mode={definition.id} />
+                {definition.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
+      <p className="px-2 pb-1 pt-3 text-xs font-semibold leading-5 text-[#765f40]">
+        <span className="font-black text-[#3d3122]">{active.eyebrow}.</span>{" "}
+        {active.description}
+      </p>
+    </section>
+  );
+}
+
+function WorkspaceEmptyState({
+  title,
+  detail,
+}: {
+  title: string;
+  detail: string;
+}) {
+  return (
+    <section className="rounded-2xl border border-dashed border-[#d8c7a7] bg-white/60 p-6">
+      <h2 className="font-serif text-2xl font-black text-[#3d3122]">{title}</h2>
+      <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">{detail}</p>
+    </section>
+  );
+}
+
+function SessionWorkspaceOverview({
+  roomId,
+  contentReadiness,
+  sessionTaxonomy,
+  studioHandoff,
+  sessionQuickEntries,
+  sessionContinuity,
+  consentSnapshot,
+}: {
+  roomId: string;
+  contentReadiness: SessionContentReadiness | null;
+  sessionTaxonomy: SessionTaxonomy | null;
+  studioHandoff: SessionStudioHandoff | null;
+  sessionQuickEntries: SessionQuickEntry[];
+  sessionContinuity: SessionContinuityState | null;
+  consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
+}) {
+  const continuity = sessionContinuity?.current.summary;
+  const attachedOutputCount = studioHandoff?.recordings
+    .filter((recording) => recording.status === "ATTACHED").length ?? 0;
+  const substantialRecording = contentReadiness?.status === "substantial";
+  const attention = [
+    ...(!substantialRecording
+      ? [{
+          id: "recording",
+          title: contentReadiness?.label || "Recording truth is not available",
+          detail: contentReadiness?.nextAction || "Open Recordings before relying on transcript or output status.",
+          mode: "recordings" as const,
+        }]
+      : []),
+    ...((continuity?.unresolvedPastBlockCount ?? 0) > 0
+      ? [{
+          id: "follow-through",
+          title: `${continuity!.unresolvedPastBlockCount} focus block${continuity!.unresolvedPastBlockCount === 1 ? "" : "s"} need a decision`,
+          detail: "The planned time passed without completion, skip, or cancellation evidence.",
+          mode: "prepare" as const,
+        }]
+      : []),
+    ...(consentSnapshot.total > consentSnapshot.granted
+      ? [{
+          id: "consent",
+          title: "Consent evidence is incomplete",
+          detail: `${consentSnapshot.granted} of ${consentSnapshot.total} persisted consent records are granted.`,
+          mode: "transcript" as const,
+        }]
+      : consentSnapshot.total > consentSnapshot.transcriptionPermitted
+        ? [{
+            id: "transcription-permission",
+            title: "Transcription permission is incomplete",
+            detail: `${consentSnapshot.transcriptionPermitted} of ${consentSnapshot.total} standalone consent records permit transcription.`,
+            mode: "transcript" as const,
+          }]
+        : []),
+  ];
+  const lanes = [
+    {
+      mode: "prepare" as const,
+      title: "Prepare",
+      value: `${sessionQuickEntries.length} deliberate capture${sessionQuickEntries.length === 1 ? "" : "s"}`,
+      detail: `${continuity?.openTaskCount ?? 0} open task · ${continuity?.activeGoalCount ?? 0} active goal · ${sessionTaxonomy?.tags.length ?? 0} Session tags`,
+    },
+    {
+      mode: "recordings" as const,
+      title: "Recordings",
+      value: contentReadiness?.label || "Truth unavailable",
+      detail: `${contentReadiness?.captureAssetCount ?? 0} source asset${contentReadiness?.captureAssetCount === 1 ? "" : "s"} · ${contentReadiness?.verifiedCaptureCount ?? 0} verified`,
+    },
+    {
+      mode: "transcript" as const,
+      title: "Transcript",
+      value: substantialRecording ? "Source ready; inspect gate" : "Held by source truth",
+      detail: consentSnapshot.total
+        ? `${consentSnapshot.transcriptionPermitted} of ${consentSnapshot.total} standalone consent records permit transcription; Transcript enforces the complete release gate`
+        : "No standalone consent rows are projected here; Transcript verifies the complete release receipt before review",
+    },
+    {
+      mode: "outputs" as const,
+      title: "Outputs",
+      value: `${attachedOutputCount} Studio attachment${attachedOutputCount === 1 ? "" : "s"}`,
+      detail: `${studioHandoff?.recordings.length ?? 0} recording handoff receipt${studioHandoff?.recordings.length === 1 ? "" : "s"} available for inspection`,
+    },
+  ];
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm" aria-labelledby="session-runway-heading">
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">One Session, five focused modes</p>
+        <h2 id="session-runway-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Current runway</h2>
+        <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">
+          Open the lane for the job in front of you. Every lane reads the same canonical Session; switching modes creates nothing and changes nothing.
+        </p>
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {lanes.map((lane) => (
+            <Link
+              key={lane.mode}
+              href={sessionWorkspaceHref(roomId, lane.mode)}
+              className="group rounded-2xl border border-[#eadfc9] bg-[#fffdf8] p-4 transition hover:border-violet-300 hover:bg-violet-50/45 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700"
+            >
+              <span className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-violet-800">
+                <WorkspaceModeIcon mode={lane.mode} />
+                {lane.title}
+              </span>
+              <span className="mt-3 block font-serif text-xl font-black text-[#3d3122]">{lane.value}</span>
+              <span className="mt-1 block text-xs font-semibold leading-5 text-[#765f40]">{lane.detail}</span>
+              <span className="mt-3 block text-xs font-black text-violet-800 group-hover:underline">Open {lane.title}</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className={`rounded-2xl border p-5 ${attention.length ? "border-amber-200 bg-amber-50/65" : "border-emerald-200 bg-emerald-50/55"}`} aria-labelledby="session-attention-heading">
+        <h2 id="session-attention-heading" className="font-serif text-2xl font-black text-[#3d3122]">
+          {attention.length ? "Needs an honest decision" : "No overview blocker"}
+        </h2>
+        {attention.length ? (
+          <ul className="mt-3 grid gap-2 md:grid-cols-2">
+            {attention.map((item) => (
+              <li key={item.id}>
+                <Link href={sessionWorkspaceHref(roomId, item.mode)} className="block rounded-xl border border-amber-200 bg-white p-3 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-700">
+                  <span className="block text-sm font-black text-amber-950">{item.title}</span>
+                  <span className="mt-1 block text-xs font-semibold leading-5 text-amber-900">{item.detail}</span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm font-semibold text-emerald-950">The overview snapshot exposes no recording, standalone-consent, or follow-through blocker. Transcript and Outputs still enforce their own evidence gates.</p>
+        )}
+      </section>
+    </div>
+  );
+}
+
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", consentSnapshot, contentReadiness = null, sessionTaxonomy = null, studioHandoff = null, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
+  roomId: string;
+  sessionTitle: string;
+  mode?: SessionWorkspaceMode;
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
   contentReadiness?: SessionContentReadiness | null;
   sessionTaxonomy?: SessionTaxonomy | null;
@@ -448,7 +652,7 @@ export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness 
   sessionContinuity?: SessionContinuityState | null;
 }) {
   const [packet, setPacket] = useState<SessionReviewPacket | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(mode === "transcript");
   const [buildingPacket, setBuildingPacket] = useState(false);
   const [busyCandidateId, setBusyCandidateId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -469,7 +673,13 @@ export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness 
     }
   }, [roomId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    if (mode !== "transcript") {
+      setLoading(false);
+      return;
+    }
+    void load();
+  }, [load, mode]);
 
   async function buildPacket() {
     const transcriptJobId = packet?.transcriptJob?.id;
@@ -551,29 +761,52 @@ export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness 
 
   const tasks = committedTasks(packet);
   const held = packet?.transcriptProcessingGate?.allowed === false;
+  const activeMode = sessionWorkspaceDefinition(mode);
 
   return (
     <div className="space-y-8">
       <section className="rounded-3xl border border-[#e5d5b7] bg-white/85 p-6 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#987443]">Session review desk</p>
-            <h1 className="mt-2 font-serif text-4xl font-black tracking-tight text-[#3d3122]">{packet?.room?.title || "Capture session"}</h1>
-            <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Transcript evidence stays source-backed. Suggested work becomes a task only after an explicit human decision.</p>
+            <p className="text-xs font-black uppercase tracking-[0.22em] text-[#987443]">Session workspace · {activeMode.eyebrow}</p>
+            <h1 className="mt-2 font-serif text-4xl font-black tracking-tight text-[#3d3122]">{sessionTitle}</h1>
+            <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">{activeMode.description}</p>
           </div>
-          <button type="button" onClick={() => void load()} disabled={loading || buildingPacket || busyCandidateId !== null} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} className={loading ? "animate-spin" : ""} aria-hidden="true" />Refresh truth</button>
+          {mode === "transcript" ? <button type="button" onClick={() => void load()} disabled={loading || buildingPacket || busyCandidateId !== null} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} className={loading ? "animate-spin" : ""} aria-hidden="true" />Refresh transcript truth</button> : null}
         </div>
-        {message && <p role="status" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{message}</p>}
+        {mode === "transcript" && message ? <p role="status" className="mt-5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-bold text-amber-900">{message}</p> : null}
       </section>
 
-      {sessionTaxonomy && <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} />}
-      {contentReadiness && <SessionContentReadinessCard readiness={contentReadiness} />}
-      <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} />
-      {sessionContinuity && <SessionContinuityCard roomId={roomId} initial={sessionContinuity} />}
-      <SessionCaptureReceiptCard receipts={captureReceipts} />
-      {studioHandoff && <SessionStudioHandoffCard handoff={studioHandoff} contentReadiness={contentReadiness} />}
+      <SessionWorkspaceNavigation roomId={roomId} mode={mode} />
 
-      {loading ? <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Reading the session’s current evidence…</section> : !packet ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8" role="status"><CircleAlert className="text-amber-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Session review is unavailable.</h2><p className="mt-2 font-semibold text-[#765f40]">No sample transcript or tasks are substituted. Your saved session was not changed.</p></section> : <>
+      {mode === "overview" ? <SessionWorkspaceOverview
+        roomId={roomId}
+        contentReadiness={contentReadiness}
+        sessionTaxonomy={sessionTaxonomy}
+        studioHandoff={studioHandoff}
+        sessionQuickEntries={sessionQuickEntries}
+        sessionContinuity={sessionContinuity}
+        consentSnapshot={consentSnapshot}
+      /> : null}
+
+      {mode === "prepare" ? <>
+        {sessionTaxonomy ? <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} /> : <WorkspaceEmptyState title="No project context" detail="This Session is not connected to an accessible Nest, so Quipsly has no shared tag vocabulary or Studio destination to show." />}
+        <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} />
+        {sessionContinuity ? <SessionContinuityCard roomId={roomId} initial={sessionContinuity} /> : <WorkspaceEmptyState title="No continuity snapshot" detail="No actor-owned Session notes, committed tasks, goals, or focus blocks are available to carry forward." />}
+      </> : null}
+
+      {mode === "recordings" ? <>
+        {contentReadiness ? <SessionContentReadinessCard readiness={contentReadiness} /> : <WorkspaceEmptyState title="Recording truth unavailable" detail="Quipsly could not derive a source-media readiness snapshot for this Session. No substitute recording state is shown." />}
+        <SessionCaptureReceiptCard receipts={captureReceipts} />
+      </> : null}
+
+      {mode === "outputs" ? (
+        studioHandoff
+          ? <SessionStudioHandoffCard handoff={studioHandoff} contentReadiness={contentReadiness} />
+          : <WorkspaceEmptyState title="No output context" detail="This Session has no accessible Nest output boundary. Quipsly will not invent a Studio handoff or publication receipt." />
+      ) : null}
+
+      {mode === "transcript" ? (loading ? <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Reading the Session’s transcript evidence…</section> : !packet ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8" role="status"><CircleAlert className="text-amber-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript workspace is unavailable.</h2><p className="mt-2 font-semibold text-[#765f40]">No sample transcript or tasks are substituted. Your saved Session was not changed.</p></section> : <>
         <section className="grid gap-4 lg:grid-cols-3" aria-label="Session evidence status">
           <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><ShieldCheck className="text-sky-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Consent & release</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(held ? "HELD" : packet.transcriptProcessingGate?.allowed ? "RELEASED" : "NOT_READY")}`}>{held ? "Transcript held" : packet.transcriptProcessingGate?.allowed ? "Release evidence verified" : "Release not ready"}</p><p className="mt-3 text-sm font-semibold leading-relaxed text-[#765f40]">{held ? packet.transcriptProcessingGate?.error : "Packet review reads only released transcript evidence; recording and consent are not changed here."}</p><p className="mt-2 text-xs font-bold text-[#8a7354]">{consentSnapshot.granted}/{consentSnapshot.total} persisted consent record(s) granted · {consentSnapshot.transcriptionPermitted} permit transcription</p></div>
           <div className="rounded-2xl border border-[#e5d5b7] bg-white p-5"><FileAudio className="text-violet-700" aria-hidden="true" /><p className="mt-3 text-xs font-black uppercase tracking-wide text-[#987443]">Transcript</p><p className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(packet.transcriptJob?.status)}`}>{humanize(packet.transcriptJob?.status)}</p><p className="mt-3 text-sm font-semibold text-[#765f40]">{packet.transcriptJob?.segmentCount ?? 0} persisted segment(s) · {packet.transcriptJob?.asset?.fileName || "no bound recording asset"}</p></div>
@@ -608,7 +841,7 @@ export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness 
         </section>
 
         <TranscriptCorrectionDesk roomId={roomId} />
-      </>}
+      </>) : null}
     </div>
   );
 }

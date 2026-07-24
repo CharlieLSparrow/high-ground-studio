@@ -11,6 +11,7 @@ import { sessionAccessWhere } from "@/lib/server/session-access";
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
 
 import { SessionReviewClient } from "./session-review-client";
+import { parseSessionWorkspaceMode } from "./session-workspace-model";
 
 export const dynamic = "force-dynamic";
 
@@ -30,8 +31,15 @@ function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-export default async function SessionReviewPage({ params }: { params: Promise<{ roomId: string }> }) {
-  const { roomId } = await params;
+export default async function SessionReviewPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ roomId: string }>;
+  searchParams: Promise<{ mode?: string | string[] }>;
+}) {
+  const [{ roomId }, query] = await Promise.all([params, searchParams]);
+  const workspaceMode = parseSessionWorkspaceMode(query.mode);
   const session = await getQuipslySession();
   if (!session?.user) {
     return <main className="min-h-full px-6 py-10 lg:px-10"><section className="mx-auto max-w-3xl rounded-3xl border border-[#ead8b4] bg-[#fffaf0] p-8" role="status"><LockKeyhole className="text-amber-700" aria-hidden="true" /><h1 className="mt-4 font-serif text-3xl font-black text-[#3d3122]">This session review is private.</h1><p className="mt-2 font-semibold text-[#765f40]">Sign in before reading consent, transcript evidence, candidates, or committed tasks.</p><Link href={`/login?callbackUrl=${encodeURIComponent(`/sessions/${roomId}`)}`} className="mt-5 inline-flex rounded-full bg-[#3e2f21] px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white">Sign in</Link></section></main>;
@@ -44,6 +52,7 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
       where: sessionAccessWhere(roomId, session.user),
       select: {
         id: true,
+        title: true,
         purpose: true,
         createdByUserId: true,
         updatedAt: true,
@@ -198,7 +207,7 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
         };
       }),
     } : null;
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Schedule</Link><span aria-hidden="true"> / </span><span>Session review</span></nav><SessionReviewClient roomId={room.id} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Schedule</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);
