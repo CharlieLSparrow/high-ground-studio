@@ -34,6 +34,8 @@ and must not be enabled merely to make a deploy proceed.
   [Capture architecture](../../apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md)
 - Verification:
   [Capture verification](../../apps/mobile-capture/HighGroundCapture/CAPTURE_VERIFICATION.md)
+- Latest distribution checkpoint:
+  [Capture build 3](../coordination/2026-07-23-capture-build-3-release-checkpoint.md)
 
 Required stages:
 
