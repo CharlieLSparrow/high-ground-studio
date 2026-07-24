@@ -11,9 +11,12 @@ on:
       - "packages/**/*.tsx"
       - "packages/**/package.json"
       - "packages/**/tsconfig*.json"
+      - "release/manifests/**"
       - "package.json"
       - "pnpm-lock.yaml"
       - "pnpm-workspace.yaml"
+      - "scripts/ci/plan-changed-surfaces.mjs"
+      - "scripts/ci/plan-changed-surfaces.test.mjs"
       - "scripts/ci/typecheck-typescript-7.sh"
       - ".github/workflows/typescript-7.yml"
   workflow_dispatch:

@@ -1,0 +1,128 @@
+{
+  "$schema": "./schema.json",
+  "schemaVersion": 1,
+  "id": "nest",
+  "displayName": "Quipsly Nest",
+  "ownerSurface": "nest",
+  "status": "active",
+  "applicationRoot": "apps/quipsly",
+  "changeDetection": {
+    "deploy": {
+      "prefixes": [
+        "apps/quipsly/",
+        "packages/content-studio-domain/",
+        "packages/quipsly-document-kernel/",
+        "packages/quipsly-domain/",
+        "packages/studio-domain/",
+        "prisma/",
+        "scripts/quipsly-",
+        "scripts/release/quipsly-"
+      ],
+      "files": [
+        ".dockerignore",
+        ".gcloudignore",
+        ".npmrc",
+        "apps/web/content/publish/hgo-episodes/episode-1-write-it-down.json",
+        "apps/web/content/publish/hgo-episodes/episode-2-look-for-lessons.json",
+        "apps/web/content/publish/hgo-episodes/episode-3-chub-and-jack.json",
+        "cloudbuild.quipsly-hotfix.yaml",
+        "cloudbuild.quipsly-web.yaml",
+        "cloudbuild.studio.deploy.yaml",
+        "cloudbuild.studio.yaml",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "prisma.config.ts",
+        "release/manifests/nest.json"
+      ]
+    },
+    "validation": {
+      "prefixes": [
+        "scripts/ci/plan-changed-surfaces"
+      ],
+      "files": [
+        ".github/workflows/deploy-cloud-run.yml",
+        ".github/workflows/pr-tests.yml",
+        "docs/coordination/BETA-MANIFEST.md",
+        "firebase.json",
+        "scripts/scan-beta-blockers.mjs",
+        "scripts/sync-prisma-pnpm-clients.mjs"
+      ]
+    },
+    "schema": {
+      "prefixes": [
+        "prisma/"
+      ],
+      "files": [
+        "cloudbuild.prisma-migrate.yaml",
+        "ops/prisma-migrate.Dockerfile",
+        "scripts/quipsly-nest-chat-schema-push.mjs",
+        "scripts/quipsly-production-core-schema-sync.mjs",
+        "scripts/release/quipsly-coaching-capture-schema-sync.sh",
+        "scripts/release/quipsly-schema-sync.sh"
+      ]
+    }
+  },
+  "artifact": {
+    "kind": "cloud-run-image",
+    "identifier": "us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio",
+    "sourceRevision": "git-commit-sha",
+    "materializer": "scripts/release/quipsly-build-context.sh",
+    "provenanceReceipt": "quipsly-release-source.json"
+  },
+  "proofs": {
+    "source": [
+      "scripts/release/quipsly-build-context.test.sh"
+    ],
+    "deterministic": [
+      "pnpm --filter quipsly typecheck",
+      "pnpm quipsly:contracts:test",
+      "pnpm quipsly:release:local"
+    ],
+    "localRuntime": [
+      "Create and mutate synthetic notes, tasks, goals, projects, tags, sessions, and transcripts in the persistent local stack; reload and search each result."
+    ],
+    "credentialedRuntime": [
+      "Use a separate production reviewer account to prove authentication, authorization denial, persistence, capture ingestion, and exact-record reload."
+    ],
+    "deliveryReadback": [
+      "Read back the Cloud Run revision source SHA, image digest, tagged preview smoke receipt, promoted traffic, and exact production routes."
+    ]
+  },
+  "delivery": {
+    "channel": "cloud-run",
+    "target": "high-ground-odyssey/us-central1/studio",
+    "promotion": "manual"
+  },
+  "releaseContext": {
+    "maxMiB": 300,
+    "requiredPaths": [
+      ".dockerignore",
+      ".gcloudignore",
+      ".npmrc",
+      "apps/quipsly",
+      "apps/web/content/publish/hgo-episodes/episode-1-write-it-down.json",
+      "apps/web/content/publish/hgo-episodes/episode-2-look-for-lessons.json",
+      "apps/web/content/publish/hgo-episodes/episode-3-chub-and-jack.json",
+      "cloudbuild.quipsly-web.yaml",
+      "docs/coordination/BETA-MANIFEST.md",
+      "package.json",
+      "packages/content-studio-domain",
+      "packages/quipsly-document-kernel",
+      "packages/quipsly-domain",
+      "packages/studio-domain",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "prisma",
+      "prisma.config.ts",
+      "release/manifests/nest.json",
+      "scripts/quipsly-owner-override-retirement.test.mjs",
+      "scripts/release",
+      "scripts/scan-beta-blockers.mjs",
+      "scripts/sync-prisma-pnpm-clients.mjs"
+    ],
+    "optionalPaths": [
+      "docs/coordination/antigravity-reports"
+    ]
+  }
+}

@@ -49,7 +49,8 @@ pnpm install --frozen-lockfile
 pnpm repo:health --surface <surface>
 node --test scripts/ci/audit-repository-contract.test.mjs
 node scripts/ci/audit-repository-contract.mjs
-node --test scripts/ci/plan-changed-surfaces.test.mjs
+pnpm release:manifests:audit
+node --experimental-strip-types --test scripts/ci/plan-changed-surfaces.test.mjs
 ```
 
 Run the checks for every affected surface from

@@ -23,6 +23,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+          cache: 'pnpm'
+
       - name: Verify collaborator and documentation contract
         run: |
           node --test scripts/ci/audit-repository-contract.test.mjs
@@ -30,6 +39,7 @@ jobs:
           node --test scripts/ci/audit-tracked-artifacts.test.mjs
           node scripts/ci/audit-tracked-artifacts.mjs
           node --test scripts/dev/quipsly-local-doctor.test.mjs
+          pnpm release:manifests:audit
 
       - name: Reject added secret material
         env:
@@ -50,21 +60,10 @@ jobs:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          node scripts/ci/plan-changed-surfaces.mjs \
+          node --experimental-strip-types scripts/ci/plan-changed-surfaces.mjs \
             --base "${BASE_SHA}" \
             --head HEAD \
             --github-output "${GITHUB_OUTPUT}"
-
-      - name: Setup pnpm
-        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
-        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
-
-      - name: Setup Node.js
-        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version-file: .node-version
-          cache: 'pnpm'
 
       - name: Install dependencies
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
@@ -91,7 +90,7 @@ jobs:
         run: |
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/deploy-cloud-run.yml"); YAML.load_file(".github/workflows/pr-tests.yml"); puts "YAML OK"'
           node --test scripts/ci/audit-binary-assets.test.mjs
-          node --test scripts/ci/plan-changed-surfaces.test.mjs
+          node --experimental-strip-types --test scripts/ci/plan-changed-surfaces.test.mjs
           node --test scripts/quipsly-foundation-baseline-audit.test.mjs
           node --experimental-strip-types scripts/quipsly-livekit-join-token-contract.test.mjs
           bash -n scripts/release/quipsly-build-context.sh

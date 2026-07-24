@@ -16,9 +16,15 @@ Quipsly uses layered proof. Passing one layer does not imply the next.
 node --test scripts/ci/audit-repository-contract.test.mjs
 node scripts/ci/audit-repository-contract.mjs
 node --test scripts/ci/audit-binary-assets.test.mjs
-node --test scripts/ci/plan-changed-surfaces.test.mjs
+pnpm release:manifests:audit
+node --experimental-strip-types --test scripts/ci/plan-changed-surfaces.test.mjs
 bash scripts/ci/typecheck-typescript-7.sh
 ```
+
+The release manifests define app ownership, build inputs, proof levels,
+artifact provenance, and delivery targets. The changed-surface planner consumes
+that validated contract; workflow path rules are not a separate source of
+truth.
 
 ## Nest
 

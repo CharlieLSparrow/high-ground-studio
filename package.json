@@ -44,6 +44,7 @@
     "coordination:sync": "pnpm coordination:summary && pnpm coordination:scan",
     "repo:health": "node --experimental-strip-types packages/repository-governance/src/worktree-health-cli.ts",
     "repo:health:strict": "node --experimental-strip-types packages/repository-governance/src/worktree-health-cli.ts --strict",
+    "release:manifests:audit": "node --experimental-strip-types packages/repository-governance/src/release-manifest-cli.ts audit",
     "quipsly:cloudrun:deploy-preview": "bash scripts/release/quipsly-deploy-preview.sh",
     "quipsly:web:deploy": "bash scripts/quipsly-web-deploy.sh",
     "quipsly:web:stage": "STAGE_ONLY=1 bash scripts/quipsly-web-deploy.sh",

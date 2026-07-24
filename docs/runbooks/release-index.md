@@ -3,6 +3,11 @@
 Use the runbook for the surface being delivered. A green pull request is not a
 release receipt.
 
+Every supported app has a validated
+[release manifest](../../release/manifests/README.md). Run
+`pnpm release:manifests:audit` before release work. The manifest defines source
+scope and required proof levels; this index explains how to obtain the proofs.
+
 ## Nest
 
 - Local operation: [Quipsly Nest local](quipsly-nest-local.md)

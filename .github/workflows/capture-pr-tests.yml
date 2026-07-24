@@ -7,6 +7,7 @@ on:
       - master
     paths:
       - apps/mobile-capture/HighGroundCapture/**
+      - release/manifests/capture.json
       - .github/workflows/capture-pr-tests.yml
   workflow_dispatch:
 

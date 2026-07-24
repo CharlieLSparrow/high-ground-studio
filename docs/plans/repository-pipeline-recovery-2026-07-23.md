@@ -116,9 +116,10 @@ One green stage cannot substitute for another.
 - Keep the exact-commit Capture archive, IPA verifier, and receipt.
 - Make PR Quipsly install/typecheck/build conditional on changes to its declared
   release slice.
-- Use `scripts/ci/plan-changed-surfaces.mjs` as the tested source of truth for
-  PR validation and automatic Cloud Run deploy planning. Shared packages follow
-  actual workspace dependencies; root dependency changes no longer invent a
+- Use the validated per-app manifests in `release/manifests` as the source of
+  truth consumed by `scripts/ci/plan-changed-surfaces.mjs` for PR validation
+  and automatic Cloud Run deploy planning. Shared packages follow declared
+  runtime and build consumers; root dependency changes no longer invent a
   database migration.
 - Materialize `scripts/release/quipsly-build-context.sh` from the exact GitHub
   source SHA before building the Nest production image. The Docker build now
@@ -150,7 +151,8 @@ One green stage cannot substitute for another.
   as write access and durable review responsibility are granted.
 - Enable protected `main` merges and required checks in GitHub after the new
   collaborator and affected-surface checks land on the default branch.
-- Create one release manifest per app.
+- Make each app's validated release manifest drive its materializer and
+  delivery pipeline, not only affected-surface planning.
 - Store generated proof artifacts outside source paths and expire them by
   policy.
 - Add a worktree-health check that reports, but does not delete, unexpected

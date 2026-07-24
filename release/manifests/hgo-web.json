@@ -1,0 +1,101 @@
+{
+  "$schema": "./schema.json",
+  "schemaVersion": 1,
+  "id": "hgo-web",
+  "displayName": "High Ground Odyssey web",
+  "ownerSurface": "hgo-web",
+  "status": "active",
+  "applicationRoot": "apps/web",
+  "changeDetection": {
+    "deploy": {
+      "prefixes": [
+        "apps/web/",
+        "packages/quipsly-domain/",
+        "packages/worldhub-domain/",
+        "prisma/",
+        "scripts/release/web-",
+        "scripts/web-cloud-run"
+      ],
+      "files": [
+        ".dockerignore",
+        ".gcloudignore",
+        ".npmrc",
+        "apps/motion-lab/package.json",
+        "apps/quipsly/package.json",
+        "cloudbuild.web.yaml",
+        "package.json",
+        "packages/content-studio-domain/package.json",
+        "packages/motion-engine/package.json",
+        "packages/studio-domain/package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "prisma.config.ts",
+        "release/manifests/hgo-web.json",
+        "scripts/prisma-generate-workspace-clients.mjs"
+      ]
+    },
+    "validation": {
+      "prefixes": [],
+      "files": []
+    },
+    "schema": {
+      "prefixes": [],
+      "files": []
+    }
+  },
+  "artifact": {
+    "kind": "cloud-run-image",
+    "identifier": "us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web",
+    "sourceRevision": "git-commit-sha",
+    "materializer": "scripts/web-cloud-run-deploy.mjs",
+    "provenanceReceipt": "Cloud Run revision image digest and source SHA"
+  },
+  "proofs": {
+    "source": [
+      "pnpm release:manifests:audit"
+    ],
+    "deterministic": [
+      "pnpm --filter web typecheck",
+      "pnpm quipsly:release:local"
+    ],
+    "localRuntime": [
+      "Operate public episode discovery, reading, coaching request, and signed-in scheduling flows with synthetic data."
+    ],
+    "credentialedRuntime": [
+      "Prove production authentication, coaching persistence, authorization roles, calendar handoff, and canonical public-content routes."
+    ],
+    "deliveryReadback": [
+      "Read back the Cloud Run web revision, immutable image digest, production traffic, canonical domain, and public route responses."
+    ]
+  },
+  "delivery": {
+    "channel": "cloud-run",
+    "target": "high-ground-odyssey/us-central1/web",
+    "promotion": "manual"
+  },
+  "releaseContext": {
+    "maxMiB": 300,
+    "requiredPaths": [
+      ".dockerignore",
+      ".gcloudignore",
+      ".npmrc",
+      "apps/motion-lab/package.json",
+      "apps/quipsly/package.json",
+      "apps/web",
+      "cloudbuild.web.yaml",
+      "package.json",
+      "packages/content-studio-domain/package.json",
+      "packages/motion-engine/package.json",
+      "packages/quipsly-domain",
+      "packages/studio-domain/package.json",
+      "packages/worldhub-domain",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "prisma",
+      "prisma.config.ts",
+      "release/manifests/hgo-web.json",
+      "scripts/prisma-generate-workspace-clients.mjs"
+    ],
+    "optionalPaths": []
+  }
+}

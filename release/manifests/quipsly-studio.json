@@ -1,0 +1,56 @@
+{
+  "$schema": "./schema.json",
+  "schemaVersion": 1,
+  "id": "quipsly-studio",
+  "displayName": "Quipsly Studio for macOS",
+  "ownerSurface": "quipsly-studio",
+  "status": "operator-only",
+  "applicationRoot": "apps/QuipslyStudio",
+  "changeDetection": {
+    "deploy": {
+      "prefixes": [
+        "apps/QuipslyStudio/"
+      ],
+      "files": [
+        "release/manifests/quipsly-studio.json"
+      ]
+    },
+    "validation": {
+      "prefixes": [],
+      "files": []
+    },
+    "schema": {
+      "prefixes": [],
+      "files": []
+    }
+  },
+  "artifact": {
+    "kind": "macos-application",
+    "identifier": "QuipslyStudio",
+    "sourceRevision": "git-commit-sha",
+    "materializer": null,
+    "provenanceReceipt": "operator release receipt with source SHA and exported artifact checksum"
+  },
+  "proofs": {
+    "source": [
+      "Commit one dependency-closed Studio feature slice and record its exact Git SHA."
+    ],
+    "deterministic": [
+      "Run the Studio Swift test suites and deterministic media fixtures owned by the changed feature."
+    ],
+    "localRuntime": [
+      "Open real approved source media, operate Program playback and the changed editorial workflow, save, relaunch, and read back the result."
+    ],
+    "credentialedRuntime": [
+      "Prove any Nest collaboration, storage, model, or export integration with the intended non-production account and approved media."
+    ],
+    "deliveryReadback": [
+      "Verify the exported application or production artifact checksum, playback/output behavior, source provenance, and rollback copy."
+    ]
+  },
+  "delivery": {
+    "channel": "operator",
+    "target": "approved High Ground production Mac and export destination",
+    "promotion": "operator"
+  }
+}

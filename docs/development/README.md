@@ -69,7 +69,8 @@ See [Repository governance](../maintainers/repository-governance.md#worktree-hea
 
 1. Name the user workflow and source of truth.
 2. Run `pnpm repo:health --surface <surface>` before touching ambient work.
-3. Use `scripts/ci/plan-changed-surfaces.mjs` to understand affected surfaces.
+3. Use the validated [release manifests](../../release/manifests/README.md) and
+   `scripts/ci/plan-changed-surfaces.mjs` to understand affected surfaces.
 4. Make one dependency-closed change.
 5. Run deterministic checks.
 6. Operate the visible app and prove persistence when applicable.

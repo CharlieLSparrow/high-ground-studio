@@ -36,6 +36,9 @@ High Ground Odyssey is the first public consumer.
 The monorepo is retained during product convergence so Capture and Nest
 contracts change atomically. CI and deployment are surface-aware:
 
+- [`release/manifests`](../../release/manifests/README.md) is the
+  machine-readable authority for each app's inputs, artifact provenance, proof
+  levels, delivery target, and affected-surface behavior.
 - Capture changes use the macOS/iOS workflow only.
 - Nest changes validate and deploy only the Nest release slice.
 - HGO web changes do not deploy Nest.

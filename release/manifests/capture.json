@@ -1,0 +1,58 @@
+{
+  "$schema": "./schema.json",
+  "schemaVersion": 1,
+  "id": "capture",
+  "displayName": "Quipsly Capture for iPhone",
+  "ownerSurface": "capture",
+  "status": "active",
+  "applicationRoot": "apps/mobile-capture/HighGroundCapture",
+  "changeDetection": {
+    "deploy": {
+      "prefixes": [
+        "apps/mobile-capture/HighGroundCapture/"
+      ],
+      "files": [
+        ".github/workflows/capture-pr-tests.yml",
+        "release/manifests/capture.json"
+      ]
+    },
+    "validation": {
+      "prefixes": [],
+      "files": []
+    },
+    "schema": {
+      "prefixes": [],
+      "files": []
+    }
+  },
+  "artifact": {
+    "kind": "ios-ipa",
+    "identifier": "com.highgroundodyssey.HighGroundCapture",
+    "sourceRevision": "git-commit-sha",
+    "materializer": "scripts/release/quipsly-capture-release-from-commit.sh",
+    "provenanceReceipt": "capture-release-receipt.json"
+  },
+  "proofs": {
+    "source": [
+      "scripts/release/quipsly-capture-release-from-commit.sh release --revision <commit-sha>"
+    ],
+    "deterministic": [
+      "apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh verify",
+      "apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test"
+    ],
+    "localRuntime": [
+      "Install the signed candidate on a physical supported iPhone and complete note, task, project, tag, and recording workflows."
+    ],
+    "credentialedRuntime": [
+      "Sign in to production Nest with a reviewer account, upload a real disposable capture, and read back durable ownership and processing state."
+    ],
+    "deliveryReadback": [
+      "Read back App Store Connect processing, install the exact TestFlight build, and repeat the critical physical-device workflow."
+    ]
+  },
+  "delivery": {
+    "channel": "app-store-connect",
+    "target": "Quipsly Capture / TestFlight and App Store",
+    "promotion": "manual"
+  }
+}
