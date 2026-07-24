@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   ArrowLeft,
+  ArchiveRestore,
   BookOpen,
   CalendarDays,
   Camera,
@@ -535,6 +536,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                   <ToolCard href={`/editor?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`} title="Media editor" description="Sync, cut, and prepare episode or social timelines attached to this project." icon={Film} />
                   <ToolCard href={`/recorder?project=${encodeURIComponent(project.slug)}&episode=${encodeURIComponent(episodeSlug)}`} title="Recorder" description="Record a live session with the project context and manuscript nearby." icon={Mic} />
                   <ToolCard href={`/nests/${encodeURIComponent(project.slug)}/access`} title={canManage ? "Manage access" : "View collaborators"} description={canManage ? "Invite collaborators and set deliberate viewer, editor, or owner access." : "See who can access this project. An owner manages invitations."} icon={Users} />
+                  {canManage ? <ToolCard href={`/nests/${encodeURIComponent(project.slug)}/portable`} title="Backup and transfer" description="Export verified notes, work, and tag vocabulary or preview a no-overwrite restore into this Nest." icon={ArchiveRestore} /> : null}
                   <ToolCard href="/coaching/sessions" title="Session preparation" description="Prepare participants, consent, capture readiness, and follow-through before a live room." icon={Radio} />
                   <ToolCard href={`/publishing-suite/package-builder?project=${encodeURIComponent(project.slug)}`} title="Package builder" description="Prepare output packets without implying anything has been delivered or published." icon={Share2} />
                   <ToolCard href={`/media?projectId=${encodeURIComponent(project.id)}`} title="Media library" description="Browse the project’s attached assets and their durable metadata." icon={Camera} />

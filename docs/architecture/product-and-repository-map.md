@@ -17,6 +17,10 @@ High Ground Odyssey is the first public consumer.
 | HGO web | public presentation, discovery, coaching acquisition | private Nest records or editor state |
 | Prisma | canonical relational persistence and migrations | local caches and external object bytes |
 
+Nest knowledge-work recovery follows the owner-operated
+[Nest portability contract](quipsly-nest-portability.md). It is an inspectable,
+no-overwrite package boundary, not a database dump or media archive.
+
 ## Source layout
 
 - `apps/quipsly`: Nest Next.js application and Capture-facing APIs.

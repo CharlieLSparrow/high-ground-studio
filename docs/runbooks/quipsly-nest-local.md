@@ -232,11 +232,30 @@ Before treating a change as useful, operate the visible app:
 
 A passing build without this readback is not equivalent to a working product.
 
+## 6. Rehearse portable recovery
+
+Create a dedicated destination Nest and follow
+[`quipsly-nest-portability.md`](quipsly-nest-portability.md). Operate the
+rendered **Tools → Backup and transfer** path:
+
+1. download the source Nest JSON and record its file SHA-256;
+2. validate the package into the dedicated destination;
+3. require zero overwrites, source mutations, and external effects;
+4. apply once and inspect Notes, Work, tags, and planning history;
+5. validate and apply the same package again;
+6. independently confirm stable counts, no active imported reminders, and no
+   activated recurrence series.
+
+This is the local acceptance path for the knowledge-work graph. A disaster
+recovery claim still requires a separately administered environment.
+
 ## Current local limitations
 
-- Work can create a reusable Nest tag and apply it to a task or goal in one
-  operation. Vocabulary rename, alias, merge, archive/restore, and imported-keyword
-  provenance still need a dedicated Nest vocabulary surface.
+- Work owns the canonical Nest vocabulary lifecycle, including explicit
+  create, rename, alias, merge, archive/restore, imported-keyword provenance,
+  and rollback receipts.
+- Portable Nest packages intentionally exclude media bytes, Sessions,
+  recordings, transcripts, credentials, and other collaborators' assignments.
 - Today intentionally excludes ordinary undated tasks; they remain in Work
   unless deliberately planned or elevated by attention rules.
 - Production Google Calendar, transcription providers, Cloud Run, TestFlight,

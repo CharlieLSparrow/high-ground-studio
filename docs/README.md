@@ -49,6 +49,8 @@ This `docs/` tree is the durable memory layer for local-repo + Codex CLI + termi
 - `plans/quipsly-quiplore-now-next-later.md`: staged Quipsly/QuipLore build sequence, stop conditions, and first useful demo scope.
 - `vision/quipsly-creative-os-north-star.md`: current Quipsly Creative OS product vision and workspace model.
 - `architecture/quipsly-document-kernel.md`: current decision to build a Quipsly-native document kernel as canonical brain.
+- `architecture/quipsly-nest-portability.md`: owner-scoped, preview-first, no-overwrite recovery contract for Nest notes, work, and vocabulary.
+- `runbooks/quipsly-nest-portability.md`: repeatable export, restore, retry, and independent-readback procedure.
 - `plans/quipsly-kernel-now-next-later.md`: active editor/kernel execution plan.
 - `agents/quipsly-current-brief.md`: startup brief for future Quipsly editor/kernel agents.
 - `archive/quipsly-guidance-supersession.md`: index of current authority vs historical Quipsly/Studio docs.
