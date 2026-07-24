@@ -10,7 +10,7 @@ type SearchParams = Promise<{
   error?: string;
 }>;
 
-const TEAM_TIME_ZONE = "America/Denver";
+const TEAM_TIME_ZONE = "America/Los_Angeles";
 
 function StatusMessage({
   success,
