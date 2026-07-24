@@ -509,7 +509,10 @@ final class CaptureExperienceUITests: XCTestCase {
         makeGoal.tap()
         XCTAssertTrue(app.textFields["CaptureTranscriptGoalTitleField"].exists)
         XCTAssertFalse(app.buttons["CaptureTranscriptCreateGoalButton"].isEnabled)
-        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "creates no task, target date, reminder, calendar event, message, or publication")).firstMatch.exists)
+        let goalBoundary = app.staticTexts["CaptureTranscriptGoalBoundary"]
+        reveal(goalBoundary)
+        XCTAssertTrue(goalBoundary.isHittable, "The complete no-side-effects boundary should be readable before goal creation.")
+        XCTAssertTrue(goalBoundary.label.contains("creates no task, target date, reminder, calendar event, message, or publication"))
         try app.performAccessibilityAudit(for: [
             .hitRegion,
             .sufficientElementDescription,

@@ -1819,6 +1819,8 @@ private struct CaptureTranscriptSegmentCard: View {
                 Text("Creates one ACTIVE goal owned by you with this exact transcript and recording source. It creates no task, target date, reminder, calendar event, message, or publication.")
                     .font(.caption2)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureTranscriptGoalBoundary")
             } else {
                 Button {
                     goalTitle = defaultTaskTitle

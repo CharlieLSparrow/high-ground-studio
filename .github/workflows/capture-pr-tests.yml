@@ -41,6 +41,9 @@ jobs:
       - name: Validate Capture release source
         run: bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
 
+      - name: Prewarm deterministic simulator services
+        run: bash apps/mobile-capture/HighGroundCapture/scripts/prepare-ci-simulator.sh "iPhone 17 Pro" "26.2"
+
       - name: Run deterministic Capture UI suite serially
         run: |
           set -euo pipefail
