@@ -17,6 +17,7 @@ import type {
   SavedSessionContinuityBrief,
   SessionContinuityState,
 } from "./session-continuity-model";
+import { sessionWorkspaceHref } from "./session-workspace-model";
 
 function humanize(value: string) {
   return value.toLowerCase().replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -177,7 +178,7 @@ export function SessionContinuityCard({
             <ul className="mt-3 space-y-3">
               {snapshot.notes.map((note) => (
                 <li key={note.id}>
-                  <a href={`#quick-entry-${encodeURIComponent(note.id)}`} className="block rounded-lg border border-violet-100 p-3 hover:border-violet-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
+                  <a href={`${sessionWorkspaceHref(roomId, "notes")}#quick-entry-${encodeURIComponent(note.id)}`} className="block rounded-lg border border-violet-100 p-3 hover:border-violet-300 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700">
                     <span className="block text-xs font-black text-[#3d3122]">{note.title || "Quick note"}</span>
                     <span className="mt-1 line-clamp-3 block text-xs font-semibold leading-5 text-[#765f40]">{note.bodyExcerpt}</span>
                   </a>

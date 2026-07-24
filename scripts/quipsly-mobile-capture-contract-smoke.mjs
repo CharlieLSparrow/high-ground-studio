@@ -1068,7 +1068,12 @@ function checkTranscriptCorrectionContractSources() {
       && inboxText.includes("Review personal source")
       && collectionsText.includes("snapshot.items.some((item) => item.id === requestedCaptureId)")
       && sessionReviewPageText.includes("sessionQuickEntries={sessionQuickEntries}")
-      && sessionReviewText.includes("Captured deliberately on iPhone")
+      && sessionReviewText.includes('scope: "notes" | "work"')
+      && sessionReviewText.includes('scope="notes"')
+      && sessionReviewText.includes('scope="work"')
+      && sessionReviewText.includes("Actor-owned Session context")
+      && sessionReviewText.includes("Committed Session work")
+      && sessionReviewText.includes("distinct from transcript candidates")
       && sessionReviewText.includes("Open same {entry.kind.toLowerCase()} in Work"),
     "canonicalMobileQuickEntryOutbox",
     "iPhone quick Note, Task, Goal, and Source capture journals to an actor-partitioned protected outbox first; Session, Home Nest, and explicit writable-Nest work replay to canonical project records while private URL/text sources enter Inbox with exact readback and no external side effects.",

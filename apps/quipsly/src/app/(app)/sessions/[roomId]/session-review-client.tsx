@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, CircleAlert, Clapperboard, ClipboardList, FileAudio, FileUp, LayoutDashboard, ListTodo, LoaderCircle, MessageSquareText, Mic2, RefreshCw, ShieldCheck, Tags, Target } from "lucide-react";
+import { CalendarDays, CheckCircle2, CircleAlert, Clapperboard, ClipboardList, FileAudio, FileUp, LayoutDashboard, ListTodo, LoaderCircle, MessageSquareText, Mic2, NotebookPen, RefreshCw, ShieldCheck, Tags, Target, Users } from "lucide-react";
 import type { TranscriptActionReviewDecision, TranscriptGoalReviewDecision } from "@high-ground/quipsly-domain/coaching-packet";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
@@ -18,6 +18,7 @@ import {
 } from "./session-review-model";
 import { SessionContinuityCard } from "./session-continuity-card";
 import type { SessionContinuityState } from "./session-continuity-model";
+import type { SessionPreparation } from "./session-preparation-model";
 import {
   SESSION_WORKSPACE_MODES,
   sessionWorkspaceDefinition,
@@ -171,6 +172,122 @@ function SessionContentReadinessCard({ readiness }: { readiness: SessionContentR
   </section>;
 }
 
+function sessionTime(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime())
+    ? parsed.toLocaleString([], { dateStyle: "medium", timeStyle: "short" })
+    : null;
+}
+
+function SessionPreparationCard({
+  preparation,
+}: {
+  preparation: SessionPreparation;
+}) {
+  const scheduledStart = sessionTime(preparation.scheduledStart);
+  const scheduledEnd = sessionTime(preparation.scheduledEnd);
+  const scheduledLabel = scheduledStart
+    ? `${scheduledStart}${scheduledEnd ? ` – ${scheduledEnd}` : ""}`
+    : "No Quipsly schedule time";
+  const audioReady = preparation.participants.length > 0 && preparation.allAudioReady;
+
+  return (
+    <section className="rounded-2xl border border-sky-200 bg-sky-50/45 p-5" aria-labelledby="session-preparation-heading">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-3">
+          <span className="rounded-xl bg-white p-2 text-sky-700"><ClipboardList aria-hidden="true" /></span>
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-sky-800">Before capture</p>
+            <h2 id="session-preparation-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Preparation runway</h2>
+            <p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
+              Schedule, participants, and their latest versioned consent stay separate from recording, transcript, and output evidence.
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/schedule" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-950">
+            <CalendarDays className="h-4 w-4" aria-hidden="true" />Open Calendar
+          </Link>
+          <Link href="/coaching/sessions" className="inline-flex min-h-11 items-center gap-2 rounded-full border border-sky-300 bg-white px-3 py-2 text-xs font-black text-sky-950">
+            <Users className="h-4 w-4" aria-hidden="true" />Manage room setup
+          </Link>
+        </div>
+      </div>
+
+      <dl className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border border-white/90 bg-white/85 p-3">
+          <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Session type</dt>
+          <dd className="mt-1 text-lg font-black text-[#3d3122]">{humanize(preparation.purpose)}</dd>
+          <dd className="mt-1 text-xs font-semibold text-[#765f40]">{humanize(preparation.status)}</dd>
+        </div>
+        <div className="rounded-xl border border-white/90 bg-white/85 p-3">
+          <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Time</dt>
+          <dd className="mt-1 text-sm font-black leading-5 text-[#3d3122]">{scheduledLabel}</dd>
+        </div>
+        <div className="rounded-xl border border-white/90 bg-white/85 p-3">
+          <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Nest</dt>
+          <dd className="mt-1 text-lg font-black text-[#3d3122]">{preparation.project?.name || "No canonical Nest"}</dd>
+          <dd className="mt-1 text-xs font-semibold text-[#765f40]">Provider: {humanize(preparation.provider)}</dd>
+        </div>
+        <div className="rounded-xl border border-white/90 bg-white/85 p-3">
+          <dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Recording consent</dt>
+          <dd className={`mt-1 text-lg font-black ${audioReady ? "text-emerald-800" : "text-amber-900"}`}>
+            {audioReady ? "All participants ready" : "Not ready"}
+          </dd>
+          <dd className="mt-1 text-xs font-semibold text-[#765f40]">{preparation.participants.length} signed-in participant{preparation.participants.length === 1 ? "" : "s"}</dd>
+        </div>
+      </dl>
+
+      <div className="mt-5">
+        <div className="flex items-center gap-2">
+          <Users className="h-4 w-4 text-sky-700" aria-hidden="true" />
+          <h3 className="font-black text-[#3d3122]">Participants and latest consent</h3>
+        </div>
+        {preparation.participants.length ? (
+          <ul className="mt-3 grid gap-3 lg:grid-cols-2">
+            {preparation.participants.map((participant) => {
+              const consent = participant.consent;
+              const recordingReady = consent?.recordingReady === true;
+              return (
+                <li key={participant.id} className="rounded-xl border border-sky-100 bg-white p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-black text-[#3d3122]">{participant.label}</p>
+                      <p className="mt-1 text-[10px] font-black uppercase tracking-wide text-[#8a7354]">{humanize(participant.role)}</p>
+                    </div>
+                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(recordingReady ? "READY" : "HELD")}`}>
+                      {recordingReady ? "Capture ready" : consent ? "Needs current consent" : "Consent missing"}
+                    </span>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide">
+                    <span className={`rounded-full border px-2 py-1 ${consent?.canRecordAudio ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>Audio choice {consent?.canRecordAudio ? "yes" : "no"}</span>
+                    <span className={`rounded-full border px-2 py-1 ${consent?.canRecordVideo ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-50 text-slate-700"}`}>Video {consent?.canRecordVideo ? "yes" : "no"}</span>
+                    <span className={`rounded-full border px-2 py-1 ${consent?.transcriptionReady ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-900"}`}>Transcript {consent?.transcriptionReady ? "ready" : "not ready"}</span>
+                  </div>
+                  <p className="mt-3 text-xs font-semibold text-[#765f40]">
+                    {consent?.policyVersion ? `${humanize(consent.status)} · policy ${consent.policyVersion}` : "No versioned consent receipt"}
+                    {participant.joinedAt ? ` · joined ${sessionTime(participant.joinedAt)}` : ""}
+                  </p>
+                  {consent && !recordingReady ? <p className="mt-2 text-xs font-black leading-5 text-amber-950">The saved row is not current capture-ready evidence. Recollect consent in Capture before recording.</p> : null}
+                </li>
+              );
+            })}
+          </ul>
+        ) : (
+          <div className="mt-3 rounded-xl border border-dashed border-amber-200 bg-amber-50 p-4 text-xs font-black leading-5 text-amber-950">
+            No signed-in, non-observer participant is attached. Do not treat an empty consent projection as permission to record.
+          </div>
+        )}
+      </div>
+
+      <p className="mt-5 rounded-xl border border-sky-200 bg-white px-4 py-3 text-xs font-black leading-5 text-sky-950">
+        This is current preparation evidence only. Recordings verifies immutable source state; Transcript separately enforces the complete release receipt. No invitation, message, provider event, or consent decision is created here.
+      </p>
+    </section>
+  );
+}
+
 function SessionCaptureReceiptCard({ receipts }: { receipts: SessionCaptureReceipts }) {
   const visibleCaptures = receipts.captures.slice(0, 4);
   const olderCaptures = receipts.captures.slice(4);
@@ -192,11 +309,26 @@ function SessionCaptureReceiptCard({ receipts }: { receipts: SessionCaptureRecei
   </section>;
 }
 
-function SessionQuickEntryCard({ entries, taxonomy }: { entries: SessionQuickEntry[]; taxonomy: SessionTaxonomy | null }) {
-  const [currentEntries, setCurrentEntries] = useState(entries);
+function SessionQuickEntryCard({
+  entries,
+  taxonomy,
+  scope,
+}: {
+  entries: SessionQuickEntry[];
+  taxonomy: SessionTaxonomy | null;
+  scope: "notes" | "work";
+}) {
+  const entriesForScope = entries.filter((entry) => (
+    scope === "notes" ? entry.kind === "NOTE" : entry.kind === "TASK" || entry.kind === "GOAL"
+  ));
+  const [currentEntries, setCurrentEntries] = useState(entriesForScope);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  useEffect(() => setCurrentEntries(entries), [entries]);
+  useEffect(() => {
+    setCurrentEntries(entries.filter((entry) => (
+      scope === "notes" ? entry.kind === "NOTE" : entry.kind === "TASK" || entry.kind === "GOAL"
+    )));
+  }, [entries, scope]);
   const icon = (kind: SessionQuickEntry["kind"]) => kind === "NOTE" ? MessageSquareText : kind === "TASK" ? ListTodo : Target;
   function updateEntry(noteId: string, update: Partial<SessionQuickEntry>) {
     setCurrentEntries((current) => current.map((entry) => entry.id === noteId ? { ...entry, ...update } : entry));
@@ -264,8 +396,12 @@ function SessionQuickEntryCard({ entries, taxonomy }: { entries: SessionQuickEnt
       setBusyId(null);
     }
   }
-  return <section className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5" aria-labelledby="quick-entry-heading">
-    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Captured deliberately on iPhone</p><h2 id="quick-entry-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{currentEntries.length} Session note{currentEntries.length === 1 ? "" : "s"}, task{currentEntries.length === 1 ? "" : "s"}, or goal{currentEntries.length === 1 ? "" : "s"}</h2><p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">These are actor-owned canonical records, not AI candidates or copied phone drafts. Offline replay keeps the same ID.</p></div><Link href="/work" className="rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-900">Open Work</Link></div>
+  const noteScope = scope === "notes";
+  const title = noteScope
+    ? `${currentEntries.length} deliberate iPhone Session note${currentEntries.length === 1 ? "" : "s"}`
+    : `${currentEntries.length} deliberate iPhone work capture${currentEntries.length === 1 ? "" : "s"}`;
+  return <section className="rounded-2xl border border-emerald-200 bg-emerald-50/40 p-5" aria-labelledby={`quick-entry-${scope}-heading`}>
+    <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">{noteScope ? "Actor-owned Session context" : "Committed Session work"}</p><h2 id={`quick-entry-${scope}-heading`} className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{title}</h2><p className="mt-1 text-xs font-semibold leading-5 text-[#765f40]">{noteScope ? "These notes were deliberately captured for this Session. They are not transcript suggestions or copied phone drafts." : "These iPhone-created tasks and goals remain distinct from transcript candidates. Canonical work created through other reviewed paths appears in continuity below; every identity, owner, status, and tag remains unchanged here."}</p></div>{noteScope ? null : <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-black text-emerald-900">Open Work</Link>}</div>
     {notice && <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-bold text-emerald-950">{notice}</p>}
     {currentEntries.length ? <div className="mt-4 grid gap-3 lg:grid-cols-2">{currentEntries.map((entry) => {
       const Icon = icon(entry.kind);
@@ -292,7 +428,7 @@ function SessionQuickEntryCard({ entries, taxonomy }: { entries: SessionQuickEnt
           </div>}
         </details>}
       </article>;
-    })}</div> : <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-900">No iPhone quick captures have synced to this Session yet. Quipsly does not invent an Inbox count.</div>}
+    })}</div> : <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-900">{noteScope ? "No deliberate iPhone Session note has synced yet. Quipsly does not substitute transcript text or an Inbox count." : "No deliberate iPhone task or goal is bound to this Session. Transcript candidates stay out until a person accepts them."}</div>}
   </section>;
 }
 
@@ -447,6 +583,8 @@ function WorkspaceModeIcon({ mode }: { mode: SessionWorkspaceMode }) {
   if (mode === "prepare") return <ClipboardList className="h-4 w-4" aria-hidden="true" />;
   if (mode === "recordings") return <Mic2 className="h-4 w-4" aria-hidden="true" />;
   if (mode === "transcript") return <MessageSquareText className="h-4 w-4" aria-hidden="true" />;
+  if (mode === "notes") return <NotebookPen className="h-4 w-4" aria-hidden="true" />;
+  if (mode === "work") return <ListTodo className="h-4 w-4" aria-hidden="true" />;
   if (mode === "outputs") return <Clapperboard className="h-4 w-4" aria-hidden="true" />;
   return <LayoutDashboard className="h-4 w-4" aria-hidden="true" />;
 }
@@ -462,7 +600,7 @@ function SessionWorkspaceNavigation({
   return (
     <section className="rounded-2xl border border-[#e5d5b7] bg-[#fffdf8]/90 p-3 shadow-sm">
       <nav aria-label="Session workspace modes">
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-7">
           {SESSION_WORKSPACE_MODES.map((definition) => {
             const selected = definition.id === mode;
             return (
@@ -508,6 +646,7 @@ function WorkspaceEmptyState({
 
 function SessionWorkspaceOverview({
   roomId,
+  preparation,
   contentReadiness,
   sessionTaxonomy,
   studioHandoff,
@@ -516,6 +655,7 @@ function SessionWorkspaceOverview({
   consentSnapshot,
 }: {
   roomId: string;
+  preparation: SessionPreparation | null;
   contentReadiness: SessionContentReadiness | null;
   sessionTaxonomy: SessionTaxonomy | null;
   studioHandoff: SessionStudioHandoff | null;
@@ -524,6 +664,8 @@ function SessionWorkspaceOverview({
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
 }) {
   const continuity = sessionContinuity?.current.summary;
+  const noteQuickEntryCount = sessionQuickEntries.filter((entry) => entry.kind === "NOTE").length;
+  const workQuickEntryCount = sessionQuickEntries.filter((entry) => entry.kind === "TASK" || entry.kind === "GOAL").length;
   const attachedOutputCount = studioHandoff?.recordings
     .filter((recording) => recording.status === "ATTACHED").length ?? 0;
   const substantialRecording = contentReadiness?.status === "substantial";
@@ -564,8 +706,10 @@ function SessionWorkspaceOverview({
     {
       mode: "prepare" as const,
       title: "Prepare",
-      value: `${sessionQuickEntries.length} deliberate capture${sessionQuickEntries.length === 1 ? "" : "s"}`,
-      detail: `${continuity?.openTaskCount ?? 0} open task · ${continuity?.activeGoalCount ?? 0} active goal · ${sessionTaxonomy?.tags.length ?? 0} Session tags`,
+      value: preparation
+        ? `${preparation.participants.length} signed-in participant${preparation.participants.length === 1 ? "" : "s"}`
+        : "Preparation unavailable",
+      detail: `${preparation ? humanize(preparation.status) : "Unknown status"} · ${preparation?.scheduledStart ? sessionTime(preparation.scheduledStart) : "unscheduled"} · ${sessionTaxonomy?.tags.length ?? 0} Session tags`,
     },
     {
       mode: "recordings" as const,
@@ -582,6 +726,18 @@ function SessionWorkspaceOverview({
         : "No standalone consent rows are projected here; Transcript verifies the complete release receipt before review",
     },
     {
+      mode: "notes" as const,
+      title: "Notes",
+      value: `${noteQuickEntryCount} deliberate iPhone note${noteQuickEntryCount === 1 ? "" : "s"}`,
+      detail: `${continuity?.noteCount ?? 0} actor-owned note${continuity?.noteCount === 1 ? "" : "s"} in the continuity receipt`,
+    },
+    {
+      mode: "work" as const,
+      title: "Work",
+      value: `${continuity?.openTaskCount ?? 0} open task${continuity?.openTaskCount === 1 ? "" : "s"} · ${continuity?.activeGoalCount ?? 0} active goal${continuity?.activeGoalCount === 1 ? "" : "s"}`,
+      detail: `${workQuickEntryCount} deliberate iPhone work capture${workQuickEntryCount === 1 ? "" : "s"} · ${continuity?.plannedBlockCount ?? 0} planned focus block${continuity?.plannedBlockCount === 1 ? "" : "s"}`,
+    },
+    {
       mode: "outputs" as const,
       title: "Outputs",
       value: `${attachedOutputCount} Studio attachment${attachedOutputCount === 1 ? "" : "s"}`,
@@ -592,12 +748,12 @@ function SessionWorkspaceOverview({
   return (
     <div className="space-y-5">
       <section className="rounded-2xl border border-[#e5d5b7] bg-white p-6 shadow-sm" aria-labelledby="session-runway-heading">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">One Session, five focused modes</p>
+        <p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">One Session, seven focused modes</p>
         <h2 id="session-runway-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Current runway</h2>
         <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">
           Open the lane for the job in front of you. Every lane reads the same canonical Session; switching modes creates nothing and changes nothing.
         </p>
-        <div className="mt-5 grid gap-3 md:grid-cols-2">
+        <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {lanes.map((lane) => (
             <Link
               key={lane.mode}
@@ -639,10 +795,11 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", consentSnapshot, contentReadiness = null, sessionTaxonomy = null, studioHandoff = null, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", preparation = null, consentSnapshot, contentReadiness = null, sessionTaxonomy = null, studioHandoff = null, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
+  preparation?: SessionPreparation | null;
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
   contentReadiness?: SessionContentReadiness | null;
   sessionTaxonomy?: SessionTaxonomy | null;
@@ -781,6 +938,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", c
 
       {mode === "overview" ? <SessionWorkspaceOverview
         roomId={roomId}
+        preparation={preparation}
         contentReadiness={contentReadiness}
         sessionTaxonomy={sessionTaxonomy}
         studioHandoff={studioHandoff}
@@ -790,14 +948,20 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", c
       /> : null}
 
       {mode === "prepare" ? <>
+        {preparation ? <SessionPreparationCard preparation={preparation} /> : <WorkspaceEmptyState title="Preparation truth unavailable" detail="Quipsly could not derive this Session’s schedule, participant, or versioned-consent projection. No ready-to-record state is inferred." />}
         {sessionTaxonomy ? <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} /> : <WorkspaceEmptyState title="No project context" detail="This Session is not connected to an accessible Nest, so Quipsly has no shared tag vocabulary or Studio destination to show." />}
-        <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} />
-        {sessionContinuity ? <SessionContinuityCard roomId={roomId} initial={sessionContinuity} /> : <WorkspaceEmptyState title="No continuity snapshot" detail="No actor-owned Session notes, committed tasks, goals, or focus blocks are available to carry forward." />}
       </> : null}
 
       {mode === "recordings" ? <>
         {contentReadiness ? <SessionContentReadinessCard readiness={contentReadiness} /> : <WorkspaceEmptyState title="Recording truth unavailable" detail="Quipsly could not derive a source-media readiness snapshot for this Session. No substitute recording state is shown." />}
         <SessionCaptureReceiptCard receipts={captureReceipts} />
+      </> : null}
+
+      {mode === "notes" ? <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} scope="notes" /> : null}
+
+      {mode === "work" ? <>
+        <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} scope="work" />
+        {sessionContinuity ? <SessionContinuityCard roomId={roomId} initial={sessionContinuity} /> : <WorkspaceEmptyState title="No continuity snapshot" detail="No actor-owned Session notes, committed tasks, goals, or focus blocks are available to carry forward." />}
       </> : null}
 
       {mode === "outputs" ? (

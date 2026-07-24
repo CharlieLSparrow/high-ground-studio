@@ -11,6 +11,7 @@ import { sessionAccessWhere } from "@/lib/server/session-access";
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
 
 import { SessionReviewClient } from "./session-review-client";
+import { buildSessionPreparationState } from "./session-preparation-model";
 import { parseSessionWorkspaceMode } from "./session-workspace-model";
 
 export const dynamic = "force-dynamic";
@@ -54,16 +55,45 @@ export default async function SessionReviewPage({
         id: true,
         title: true,
         purpose: true,
+        status: true,
+        provider: true,
+        scheduledStart: true,
+        scheduledEnd: true,
         createdByUserId: true,
         updatedAt: true,
         project: { select: { id: true, name: true, slug: true } },
+        participants: {
+          orderBy: { createdAt: "asc" },
+          select: {
+            id: true,
+            userId: true,
+            displayName: true,
+            email: true,
+            role: true,
+            joinedAt: true,
+            user: { select: { name: true, primaryEmail: true } },
+          },
+        },
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
         recordingAssets: {
           orderBy: { createdAt: "asc" },
           select: { id: true, fileName: true, kind: true, status: true, durationSeconds: true, localManifestJson: true, segmentsJson: true },
         },
         recordingConsents: {
-          select: { status: true, canTranscribe: true },
+          select: {
+            id: true,
+            participantId: true,
+            userId: true,
+            status: true,
+            policyVersion: true,
+            canRecordAudio: true,
+            canRecordVideo: true,
+            canTranscribe: true,
+            consentedAt: true,
+            revokedAt: true,
+            updatedAt: true,
+            metadataJson: true,
+          },
         },
         stateReceipts: {
           where: { captureId: { not: null } },
@@ -74,11 +104,10 @@ export default async function SessionReviewPage({
     });
     if (!room) notFound();
 
-    const consentSnapshot = {
-      total: room.recordingConsents.length,
-      granted: room.recordingConsents.filter((consent: any) => consent.status === "GRANTED").length,
-      transcriptionPermitted: room.recordingConsents.filter((consent: any) => consent.status === "GRANTED" && consent.canTranscribe).length,
-    };
+    const {
+      preparation: sessionPreparation,
+      consentSnapshot,
+    } = buildSessionPreparationState(room);
     const contentReadiness = recordingContentReadiness(room.recordingAssets, room.purpose);
     const captureReceiptGroups = new Map<string, {
       captureId: string;
@@ -207,7 +236,7 @@ export default async function SessionReviewPage({
         };
       }),
     } : null;
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Schedule</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

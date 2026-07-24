@@ -8,8 +8,8 @@ export const SESSION_WORKSPACE_MODES = [
   {
     id: "prepare",
     label: "Prepare",
-    eyebrow: "Context and follow-through",
-    description: "Carry notes, commitments, goals, tags, and unresolved evidence forward.",
+    eyebrow: "Session readiness",
+    description: "Review schedule, participants, consent, project context, and canonical tags before capture.",
   },
   {
     id: "recordings",
@@ -22,6 +22,18 @@ export const SESSION_WORKSPACE_MODES = [
     label: "Transcript",
     eyebrow: "Listen and review",
     description: "Verify consent, correct source-backed text, and decide candidates explicitly.",
+  },
+  {
+    id: "notes",
+    label: "Notes",
+    eyebrow: "Deliberate context",
+    description: "Read and refine actor-owned Session notes without mixing them into committed work.",
+  },
+  {
+    id: "work",
+    label: "Work",
+    eyebrow: "Goals and commitments",
+    description: "Review canonical goals, tasks, evidence, focus blocks, and next-session continuity.",
   },
   {
     id: "outputs",

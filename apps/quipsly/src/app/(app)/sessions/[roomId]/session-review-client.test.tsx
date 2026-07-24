@@ -110,6 +110,8 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("link", { name: "Prepare" })).toHaveAttribute("href", "/sessions/room-1?mode=prepare");
     expect(screen.getByRole("link", { name: "Recordings" })).toHaveAttribute("href", "/sessions/room-1?mode=recordings");
     expect(screen.getByRole("link", { name: "Transcript" })).toHaveAttribute("href", "/sessions/room-1?mode=transcript");
+    expect(screen.getByRole("link", { name: "Notes" })).toHaveAttribute("href", "/sessions/room-1?mode=notes");
+    expect(screen.getByRole("link", { name: "Work" })).toHaveAttribute("href", "/sessions/room-1?mode=work");
     expect(screen.getByRole("link", { name: "Outputs" })).toHaveAttribute("href", "/sessions/room-1?mode=outputs");
     expect(screen.getByRole("heading", { name: "Needs an honest decision" })).toBeInTheDocument();
     expect(screen.getByText("Transcription permission is incomplete")).toBeInTheDocument();
@@ -152,6 +154,8 @@ describe("Session review goal candidates", () => {
   it.each([
     ["prepare"],
     ["recordings"],
+    ["notes"],
+    ["work"],
     ["outputs"],
   ] as const)("keeps the %s workspace independent from transcript requests", (mode) => {
     const fetchMock = jest.fn();
@@ -282,6 +286,54 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("#Episode 4")).toBeInTheDocument();
   });
 
+  it("shows schedule, participants, and versioned consent in Prepare without claiming capture readiness from an empty room", () => {
+    const fetchMock = jest.fn();
+    global.fetch = fetchMock as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="prepare"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 0 }}
+      preparation={{
+        purpose: "COACHING",
+        status: "PLANNED",
+        provider: "planned",
+        scheduledStart: "2026-07-26T15:00:00.000Z",
+        scheduledEnd: "2026-07-26T16:00:00.000Z",
+        project: { id: "project-1", name: "Private coaching", slug: "private-coaching" },
+        participants: [{
+          id: "participant-1",
+          label: "Homer",
+          role: "CLIENT",
+          joinedAt: null,
+          consent: {
+            status: "GRANTED",
+            policyVersion: "2026-07-04",
+            canRecordAudio: true,
+            canRecordVideo: false,
+            canTranscribe: false,
+            recordingReady: true,
+            transcriptionReady: false,
+            consentedAt: "2026-07-25T18:00:00.000Z",
+            revokedAt: null,
+            updatedAt: "2026-07-25T18:00:00.000Z",
+          },
+        }],
+        allAudioReady: true,
+        allTranscriptionReady: false,
+      }}
+    />);
+
+    expect(screen.getByRole("heading", { name: "Preparation runway" })).toBeInTheDocument();
+    expect(screen.getByText("Private coaching")).toBeInTheDocument();
+    expect(screen.getByText("Homer")).toBeInTheDocument();
+    expect(screen.getByText("All participants ready")).toBeInTheDocument();
+    expect(screen.getByText("Transcript not ready")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Manage room setup" })).toHaveAttribute("href", "/coaching/sessions");
+    expect(screen.getByText(/Transcript separately enforces the complete release receipt/)).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("shows the durable Studio attachment receipt and opens the exact episode", async () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
@@ -313,12 +365,12 @@ describe("Session review goal candidates", () => {
     expect(screen.queryByRole("button", { name: /promote|attach|send/i })).not.toBeInTheDocument();
   });
 
-  it("reads iPhone quick captures back as the same canonical task, goal, and private note", async () => {
+  it("keeps deliberate iPhone notes in Notes without mixing in tasks or goals", async () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
       sessionTitle="Coaching review"
-      mode="prepare"
+      mode="notes"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
       sessionQuickEntries={[
         { id: "mobile-note-1", kind: "NOTE", title: "Quick note", body: "Let the opening breathe.", status: "CAPTURED", createdAt: "2026-07-19T09:00:00.000Z", updatedAt: "2026-07-19T09:00:00.000Z", tags: [{ id: "tag-1", label: "Opening", slug: "opening" }] },
@@ -326,14 +378,35 @@ describe("Session review goal candidates", () => {
         { id: "mobile-goal-1", kind: "GOAL", title: "Make coaching follow-through obvious", body: null, status: "ACTIVE", createdAt: "2026-07-19T09:02:00.000Z", updatedAt: "2026-07-19T09:02:00.000Z", tags: [] },
       ]}
     />);
-    expect(await screen.findByRole("heading", { name: "3 Session notes, tasks, or goals" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "1 deliberate iPhone Session note" })).toBeInTheDocument();
     expect(screen.getAllByText("Let the opening breathe.")[0]).toBeInTheDocument();
     expect(screen.getByText("#Opening")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Find all accessible work tagged Opening" })).toHaveAttribute("href", "/find?q=Opening");
     expect(screen.getByText("Quick note").closest("article")).toHaveAttribute("id", "quick-entry-mobile-note-1");
+    expect(screen.queryByText("Proof-listen act one")).not.toBeInTheDocument();
+    expect(screen.queryByText("Make coaching follow-through obvious")).not.toBeInTheDocument();
+    expect(screen.getByText(/not transcript suggestions or copied phone drafts/i)).toBeInTheDocument();
+  });
+
+  it("keeps canonical iPhone tasks and goals in Work without mixing in notes", async () => {
+    global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Coaching review"
+      mode="work"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
+      sessionQuickEntries={[
+        { id: "mobile-note-1", kind: "NOTE", title: "Quick note", body: "Let the opening breathe.", status: "CAPTURED", createdAt: "2026-07-19T09:00:00.000Z", updatedAt: "2026-07-19T09:00:00.000Z", tags: [] },
+        { id: "mobile-task-1", kind: "TASK", title: "Proof-listen act one", body: "Use the room mix.", status: "OPEN", createdAt: "2026-07-19T09:01:00.000Z", updatedAt: "2026-07-19T09:01:00.000Z", tags: [] },
+        { id: "mobile-goal-1", kind: "GOAL", title: "Make coaching follow-through obvious", body: null, status: "ACTIVE", createdAt: "2026-07-19T09:02:00.000Z", updatedAt: "2026-07-19T09:02:00.000Z", tags: [] },
+      ]}
+    />);
+
+    expect(await screen.findByRole("heading", { name: "2 deliberate iPhone work captures" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open same task in Work" })).toHaveAttribute("href", "/work?task=mobile-task-1");
     expect(screen.getByRole("link", { name: "Open same goal in Work" })).toHaveAttribute("href", "/work?goal=mobile-goal-1");
-    expect(screen.getByText(/not AI candidates or copied phone drafts/i)).toBeInTheDocument();
+    expect(screen.queryByText("Quick note")).not.toBeInTheDocument();
+    expect(screen.getByText(/distinct from transcript candidates/i)).toBeInTheDocument();
   });
 
   it("edits the same iPhone note and replaces its canonical Nest tags with optimistic revisions", async () => {
@@ -354,7 +427,7 @@ describe("Session review goal candidates", () => {
     render(<SessionReviewClient
       roomId="room-1"
       sessionTitle="Coaching review"
-      mode="prepare"
+      mode="notes"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
       sessionTaxonomy={{
         project: { id: "project-1", name: "High Ground Odyssey", slug: "high-ground" },

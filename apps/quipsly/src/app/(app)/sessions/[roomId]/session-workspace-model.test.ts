@@ -6,15 +6,19 @@ import {
 } from "./session-workspace-model";
 
 describe("Session workspace modes", () => {
-  it("accepts only the five intentional modes and defaults safely", () => {
+  it("accepts only the seven intentional modes and defaults safely", () => {
     expect(SESSION_WORKSPACE_MODES.map((mode) => mode.id)).toEqual([
       "overview",
       "prepare",
       "recordings",
       "transcript",
+      "notes",
+      "work",
       "outputs",
     ]);
     expect(parseSessionWorkspaceMode("prepare")).toBe("prepare");
+    expect(parseSessionWorkspaceMode("notes")).toBe("notes");
+    expect(parseSessionWorkspaceMode("work")).toBe("work");
     expect(parseSessionWorkspaceMode(["transcript", "outputs"])).toBe("transcript");
     expect(parseSessionWorkspaceMode("admin")).toBe("overview");
     expect(parseSessionWorkspaceMode(undefined)).toBe("overview");
