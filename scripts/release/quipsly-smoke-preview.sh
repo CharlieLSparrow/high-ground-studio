@@ -23,12 +23,14 @@ Required for the final promotion gate:
   QUIPSLY_AUTH_SMOKE_EMAIL=<verified reviewer account>
   QUIPSLY_AUTH_SMOKE_PASSWORD=<reviewer password, supplied only through env>
 
-This script performs non-destructive HTTP smoke checks against a Quipsly preview
-and every configured public host. It also proves the signed-out boundary and a
-real signed-in Nest/writing/editor/recorder/research/publishing journey. It signs
-a short-lived, revision-bound receipt only after all checks pass, then presents
-that receipt to /api/beta-readiness. It does not mutate customer data or print
-the password, signing secret, session cookie, or receipt.
+This script performs HTTP smoke checks against a Quipsly preview and every
+configured public host. It also proves the signed-out boundary and a real
+signed-in Nest/writing/editor/recorder/research/publishing journey, including
+one idempotent release-smoke production record in the reviewer account. It
+signs a short-lived, revision-bound receipt only after all checks pass, then
+presents that receipt to /api/beta-readiness. It does not mutate customer data
+or print the password, signing secret, Firebase API key, session cookie, or
+receipt.
 USAGE
   exit 2
 fi
@@ -149,6 +151,7 @@ check_json_endpoint "/api/health" "health.compatibility"
 check_json_endpoint "/api/healthz" "health.release"
 check_json_endpoint "/api/production-core/readiness" "schema.production-core"
 check_status_endpoint "/api/mac/session-check" "401" "auth.session-boundary"
+check_json_endpoint "/api/mac/firebase-client-config" "auth.firebase-client-config"
 check_json_endpoint "/api/output-catalog" "outputs.catalog"
 check_json_endpoint "/api/output-catalog/hgo-episode-page" "outputs.episode-definition"
 check_json_endpoint "/api/output-catalog/nest-kind/writing" "outputs.writing-definition"
@@ -156,7 +159,7 @@ check_json_endpoint "/api/quipsly-art/briefs" "art.briefs"
 check_json_endpoint "/api/quipsly-art/library" "art.library"
 check_signed_out_boundary "/projects" "auth-boundary.projects"
 check_signed_out_boundary "/nests" "auth-boundary.nests"
-check_html_route "/outputs" "outputs.page" "Output catalog"
+check_html_route "/outputs" "outputs.page" "One source. Many native outputs."
 check_html_route "/outputs/hgo-episode-page" "outputs.episode-page" "High Ground Odyssey episode page"
 check_html_route "/art-foundry" "art.foundry" "Quipsly Art Foundry"
 check_html_route "/beta-readiness" "beta.dashboard" "Is Quipsly beta-shaped yet?"
@@ -167,9 +170,24 @@ check_signed_out_boundary "/research" "auth-boundary.research"
 check_signed_out_boundary "/publishing" "auth-boundary.publishing"
 
 echo "Checking the authenticated Nest and production-workspace journey"
+firebase_config_file="${TMP_DIR}/_api_mac_firebase-client-config.json"
+candidate_firebase_api_key="$(
+  node -e '
+    const fs = require("fs");
+    const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+    const apiKey = String(body?.firebase?.apiKey || "").trim();
+    if (!apiKey || /[\r\n]/.test(apiKey)) process.exit(1);
+    process.stdout.write(apiKey);
+  ' "${firebase_config_file}"
+)" || {
+  echo "Preview Firebase client config did not expose a usable public API key." >&2
+  exit 1
+}
 QUIPSLY_AUTH_SMOKE_BASE_URL="${TARGET_URL}" \
+  QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY="${QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY:-${candidate_firebase_api_key}}" \
   QUIPSLY_AUTH_SMOKE_EXPECT_ADMIN="${QUIPSLY_RELEASE_SMOKE_EXPECT_ADMIN:-0}" \
   node "${REPO_ROOT}/scripts/quipsly-firebase-auth-smoke.mjs"
+unset candidate_firebase_api_key
 passed_route_ids+=(
   "auth.signed-in-journey"
   "nest.projects"

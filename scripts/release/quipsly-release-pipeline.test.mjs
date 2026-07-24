@@ -14,6 +14,10 @@ const promote = fs.readFileSync(
   new URL("./quipsly-promote-preview.sh", import.meta.url),
   "utf8",
 );
+const authenticatedSmoke = fs.readFileSync(
+  new URL("../quipsly-firebase-auth-smoke.mjs", import.meta.url),
+  "utf8",
+);
 const gcloudIgnore = fs.readFileSync(
   new URL("../../.gcloudignore", import.meta.url),
   "utf8",
@@ -54,4 +58,10 @@ test("failed production readback rolls back to the previous revision", () => {
   assert.match(promote, /quipsly-production-status\.sh/);
   assert.match(promote, /rolling traffic back to \$\{previous_revision\}/);
   assert.match(promote, /--to-revisions="\$\{previous_revision\}=100"/);
+});
+
+test("authenticated smoke persists and verifies recorder access before claiming the surface", () => {
+  assert.match(authenticatedSmoke, /authenticated-recorder-access-proof/);
+  assert.match(authenticatedSmoke, /recorderAccessBody\.mode === "database"/);
+  assert.match(authenticatedSmoke, /Checking Nest access/);
 });

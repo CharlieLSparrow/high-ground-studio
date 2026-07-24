@@ -108,6 +108,9 @@ test("preview smoke orders route and public-host checks before private receipt g
   assert.match(source, /configured_hosts_csv}" != "\$\{expected_hosts_csv/);
   assert.match(source, /--config "\$\{receipt_curl_config\}"/);
   assert.match(source, /grep -Fqi -- "\$\{required_marker\}"/);
+  assert.match(source, /check_json_endpoint "\/api\/mac\/firebase-client-config"/);
+  assert.match(source, /QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY="\$\{QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY:-\$\{candidate_firebase_api_key\}\}"/);
+  assert.match(source, /One source\. Many native outputs\./);
   assert.match(source, /unset receipt_token/);
   assert.match(source, /"auth\.signed-in-journey"/);
   assert.doesNotMatch(source, /check_json_endpoint "\/api\/beta-readiness"/);

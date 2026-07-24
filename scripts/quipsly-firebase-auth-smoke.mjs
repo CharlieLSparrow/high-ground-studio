@@ -266,16 +266,47 @@ try {
   const createPath = `/create?project=${encodeURIComponent(sessionBody.homeNest.slug)}`;
   const editorPath = `/editor?project=${encodeURIComponent(sessionBody.homeNest.slug)}&episode=release-smoke`;
   const recorderPath = `/recorder?project=${encodeURIComponent(sessionBody.homeNest.slug)}&episode=release-smoke`;
+  const recorderAccess = await requestText(`${baseUrl}/api/episode-production`, {
+    method: "POST",
+    headers: {
+      cookie,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "ensure",
+      projectSlug: sessionBody.homeNest.slug,
+      episodeSlug: "release-smoke",
+      title: "Release smoke",
+      boundaryLabel: "Release smoke",
+      productionJson: {
+        surface: "release-smoke",
+        purpose: "authenticated-recorder-access-proof",
+      },
+    }),
+  });
+  assert(
+    recorderAccess.response.status === 200,
+    `/api/episode-production returned HTTP ${recorderAccess.response.status}: ${recorderAccess.text.slice(0, 240)}`,
+  );
+  const recorderAccessBody = JSON.parse(recorderAccess.text);
+  assert(recorderAccessBody.ok === true, "Recorder access proof did not return ok:true.");
+  assert(recorderAccessBody.mode === "database", "Recorder access proof was not persisted.");
+  assert(
+    recorderAccessBody.projectSlug === sessionBody.homeNest.slug,
+    "Recorder access proof escaped the reviewer Home Nest.",
+  );
+  assert(recorderAccessBody.slug === "release-smoke", "Recorder access proof episode mismatch.");
+  assert(recorderAccessBody.accessRole, "Recorder access proof did not return an access role.");
   const allRouteChecks = routeChecks.concat([
     [homeNestPath, 200, /Nest|Home|Quipsly/i],
     [createPath, 200, /Writing Desk/i],
     [editorPath, 200, /Episode Editor/i],
-    [recorderPath, 200, /Quipsly Nest \/ Recorder/i],
+    [recorderPath, 200, /Checking Nest access/i],
     ["/research", 200, /Evidence, with its receipts\./i],
     ["/publishing", 200, /Publishing runway|The Transmitter/i],
   ]);
 
-  const checkedRoutes = [];
+  const checkedRoutes = ["/api/episode-production:200:database"];
   let projectsText = "";
   for (const [route, expectedStatus, marker] of allRouteChecks) {
     const result = await requestText(`${baseUrl}${route}`, { headers: { cookie } });

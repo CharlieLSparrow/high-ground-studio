@@ -77,6 +77,11 @@ configured public-host set, and includes every server-required route ID. The
 authenticated leg proves Firebase login, session-cookie creation, native bearer
 verification, Home Nest/free-tier state, Nest index, writing, editor, recorder,
 research, publishing, logout, and cookie clearing.
+It reads the candidate revision's public Firebase client configuration directly
+from `/api/mac/firebase-client-config`; no separately copied Firebase API key is
+required. The reviewer journey idempotently ensures a `release-smoke`
+production record inside that reviewer's Home Nest and requires database-backed
+recorder access before claiming the recorder surface.
 
 Cloud Run tagged URLs ignore host-header overrides. A host header remains useful
 only for a non-Cloud-Run target:
