@@ -5,6 +5,7 @@
   "scripts": {
     "start": "remotion preview src/index.ts",
     "build": "remotion render src/index.ts MainComposition out/video.mp4",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "upgrade": "remotion upgrade"
   },
   "dependencies": {

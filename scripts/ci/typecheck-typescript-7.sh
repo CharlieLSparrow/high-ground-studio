@@ -10,6 +10,7 @@ readonly project_configs=(
   "apps/photography-hub/tsconfig.json"
   "apps/quipsly-api/tsconfig.json"
   "apps/quipsly/tsconfig.json"
+  "apps/render-engine/tsconfig.json"
   "apps/video-hub/tsconfig.json"
   "apps/web/tsconfig.json"
   "packages/content-studio-domain/tsconfig.json"

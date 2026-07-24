@@ -41,6 +41,8 @@ As of 2026-07-23, the gate covers:
 - Quipsly Nest and the High Ground web app
 - AI, photography, video, and motion hubs
 - the desktop companion
+- the Remotion render engine, with its React 18 type graph kept consistent with
+  the engine's declared runtime
 - the Quipsly API
 - content-studio, motion, Quipsly document, Quipsly domain, Studio domain, and
   Worldhub domain packages
@@ -55,8 +57,17 @@ These projects are intentionally not in the gate yet:
 | --- | --- |
 | `apps/local-engine` | Move its CommonJS runtime and ESM-only dependencies to one deliberate module contract. |
 | `apps/quiplore` | Align React 19 with React Three Fiber 9 and Drei 10, then prove `/discovery-lab` in the production build and browser runtime. |
-| `apps/render-engine` | Align its React type/runtime version under the hoisted workspace, then repair JSX and Remotion compiler configuration. |
 | `apps/studio-cut-web` | Restore the `@high-ground/studio-cut-schema` package boundary, then resolve the resulting strict type errors. |
 
 Do not add a holdout to the gate by weakening strictness, skipping library
 checks that affect runtime contracts, or excluding the failing source.
+
+## Related runtime follow-up
+
+The render engine's TypeScript 7 admission includes a real 300-frame H.264
+render, not compiler-only evidence. Remotion currently also reports a
+workspace-wide package-version warning: the Quipsly app requests
+`@remotion/three` 4.0.473 while the remaining Remotion packages resolve to
+4.0.469, and its Zod requirement differs from the hoisted version. Normalize
+and pin that dependency family in a dedicated Quipsly rendering slice before
+claiming workspace-wide render dependency health.
