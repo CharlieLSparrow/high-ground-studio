@@ -8,6 +8,7 @@ readonly project_configs=(
   "apps/desktop-companion/tsconfig.json"
   "apps/motion-lab/tsconfig.json"
   "apps/photography-hub/tsconfig.json"
+  "apps/quiplore/tsconfig.json"
   "apps/quipsly-api/tsconfig.json"
   "apps/quipsly/tsconfig.json"
   "apps/render-engine/tsconfig.json"

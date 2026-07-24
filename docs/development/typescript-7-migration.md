@@ -39,6 +39,8 @@ the deployable product stable without allowing migration debt to grow.
 As of 2026-07-23, the gate covers:
 
 - Quipsly Nest and the High Ground web app
+- Quiplore, including a production build and warning-free browser proof of the
+  React Three Fiber Constellation
 - AI, photography, video, and motion hubs
 - the desktop companion
 - the Remotion render engine, with its React 18 type graph kept consistent with
@@ -56,7 +58,6 @@ These projects are intentionally not in the gate yet:
 | Project | Blocking work |
 | --- | --- |
 | `apps/local-engine` | Move its CommonJS runtime and ESM-only dependencies to one deliberate module contract. |
-| `apps/quiplore` | Align React 19 with React Three Fiber 9 and Drei 10, then prove `/discovery-lab` in the production build and browser runtime. |
 | `apps/studio-cut-web` | Restore the `@high-ground/studio-cut-schema` package boundary, then resolve the resulting strict type errors. |
 
 Do not add a holdout to the gate by weakening strictness, skipping library
