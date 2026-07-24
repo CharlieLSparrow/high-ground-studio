@@ -34,8 +34,10 @@ and must not be enabled merely to make a deploy proceed.
   [Capture architecture](../../apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md)
 - Verification:
   [Capture verification](../../apps/mobile-capture/HighGroundCapture/CAPTURE_VERIFICATION.md)
-- Latest distribution checkpoint:
+- Latest Apple-distributed checkpoint:
   [Capture build 4](../coordination/2026-07-23-capture-build-4-release-checkpoint.md)
+- Current signed local candidate:
+  [Capture build 5](../coordination/2026-07-24-capture-build-5-release-checkpoint.md)
 - Canonical iOS release procedure:
   [Quipsly Capture release](../quipsly/ios-capture-release-runbook.md)
 
