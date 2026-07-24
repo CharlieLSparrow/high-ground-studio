@@ -26,7 +26,7 @@ pnpm install --frozen-lockfile
 | Goal | Start command | Primary guide |
 | --- | --- | --- |
 | Develop Nest | `pnpm quipsly:local:up` | [Nest local](../runbooks/quipsly-nest-local.md) |
-| Validate Nest | `pnpm --filter quipsly build` | [Testing](testing.md) |
+| Validate Nest and HGO | `pnpm quipsly:release:local` | [Testing](testing.md) |
 | Develop HGO web | `pnpm --filter web dev` | [Local dev](../runbooks/local-dev.md) |
 | Develop Capture | open the shared Xcode scheme | [Capture verification](../../apps/mobile-capture/HighGroundCapture/CAPTURE_VERIFICATION.md) |
 | Inspect releases | use the surface runbook | [Release index](../runbooks/release-index.md) |

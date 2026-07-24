@@ -24,9 +24,15 @@ bash scripts/ci/typecheck-typescript-7.sh
 
 ```bash
 pnpm --filter quipsly exec tsc --noEmit --incremental false
-pnpm --filter quipsly build
-bash scripts/release/quipsly-build-context.test.sh
+pnpm quipsly:contracts:test
+pnpm quipsly:release:local
 ```
+
+The release gate runs the Nest and HGO production builds plus their shared
+capture, coaching, public-route, App Store static, and schema contracts. When
+`DATABASE_URL` is absent it supplies a loopback build-only value so a clean
+checkout remains buildable; schema readiness is then an explicit non-blocking
+warning, not a database-proof claim. This local command does not deploy.
 
 For visible product behavior, use the signed-in dogfood sequence in
 [Nest local development](../runbooks/quipsly-nest-local.md): create records,

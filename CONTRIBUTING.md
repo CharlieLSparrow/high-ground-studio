@@ -45,6 +45,34 @@ Run the checks for every affected surface from
 [Testing and proof](docs/development/testing.md). Operate the visible app when
 the change affects user behavior.
 
+For a Nest or High Ground web change, run the same dependency-closed gates used
+by pull-request CI:
+
+```bash
+pnpm quipsly:contracts:test
+pnpm quipsly:release:local
+```
+
+The local release gate builds both web surfaces because their handoff and data
+contracts move together. It uses a non-production build-only database URL when
+none is configured; database readiness is reported separately and is not
+claimed by that fallback. The command never deploys or moves production
+traffic.
+
+For visible Nest work, also run the persistent local stack:
+
+```bash
+pnpm quipsly:local:up
+pnpm quipsly:local:doctor
+pnpm quipsly:local:smoke
+pnpm quipsly:local:down
+```
+
+Create or change a real synthetic record, reload it, and exercise its next
+state—not only its empty screen. A passing build cannot substitute for that
+operated proof. Physical-iPhone, TestFlight, App Store Connect, credentialed
+cloud, and production-traffic claims each require their own target readback.
+
 ## Commits
 
 - Prefer short, imperative subjects such as

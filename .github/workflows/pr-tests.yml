@@ -76,12 +76,13 @@ jobs:
         if: steps.changes.outputs.quipsly == 'true'
         run: pnpm --filter quipsly exec tsc --noEmit --incremental false
 
-      - name: Build Quipsly
-        if: steps.changes.outputs.quipsly == 'true'
-        env:
-          NEXT_PUBLIC_STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
-          STUDIO_COLLAB_URL: wss://studio-collab-hm2odnvjga-uc.a.run.app
-        run: pnpm --filter quipsly build
+      - name: Run committed Quipsly contract suite
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        run: pnpm quipsly:contracts:test
+
+      - name: Run source and production-build release gate
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        run: pnpm quipsly:release:local
 
       - name: Validate release scripts and workflows
         if: steps.changes.outputs.quipsly == 'true'
@@ -108,5 +109,5 @@ jobs:
         run: bash scripts/release/quipsly-build-context.test.sh
 
       - name: Report intentionally skipped Quipsly validation
-        if: steps.changes.outputs.quipsly != 'true'
-        run: echo "PASS This pull request does not change the Quipsly web release slice."
+        if: steps.changes.outputs.quipsly != 'true' && steps.changes.outputs.web != 'true'
+        run: echo "PASS This pull request does not change the Nest or High Ground web release slice."
