@@ -89,6 +89,8 @@ export default async function RootLayout({
     || null;
   const actorRoles = session?.user?.roles || [];
   const isAdminBypass = isUserManagementAdminEmail(actorEmail);
+  const showAdminTools =
+    isAdminBypass || actorRoles.includes("OWNER");
   const hasProjectAccessGrant = await hasAnyActiveStudioProjectAccessGrantForEmail(actorEmail);
   const hasAccess =
     isAdminBypass
@@ -122,7 +124,7 @@ export default async function RootLayout({
     <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#050505] text-studio-ink antialiased">
         <SidebarLayout
-          showAdminTools={isAdminBypass}
+          showAdminTools={showAdminTools}
           currentUser={
             session?.user
               ? {

@@ -19,12 +19,32 @@ describe("account deletion policy", () => {
         status: "COMPLETED",
         requestedAt: "2026-07-01T12:00:00.000Z",
         completedAt: "2026-07-10T12:00:00.000Z",
+        executionReceiptJson: { outcome: "completed" },
       }),
     ).toMatchObject({
       status: "COMPLETED",
       statusLabel: "Deletion completed",
       active: false,
+      completionReceiptAvailable: true,
       completedAt: new Date("2026-07-10T12:00:00.000Z"),
+    });
+  });
+
+  it("makes recoverable failures visible without pretending deletion completed", () => {
+    expect(
+      projectAccountDeletionRequest({
+        id: "request-2",
+        status: "FAILED",
+        requestedAt: "2026-07-01T12:00:00.000Z",
+        executionStartedAt: "2026-07-02T12:00:00.000Z",
+        failedAt: "2026-07-02T12:05:00.000Z",
+      }),
+    ).toMatchObject({
+      status: "FAILED",
+      statusLabel: "Deletion needs recovery",
+      active: true,
+      recoveryRequired: true,
+      completionReceiptAvailable: false,
     });
   });
 });

@@ -119,6 +119,19 @@ describe("account deletion request route", () => {
       },
     });
     expect(create).not.toHaveBeenCalled();
+    expect(findFirst).toHaveBeenCalledWith({
+      where: {
+        userId: "user-1",
+        status: {
+          in: expect.arrayContaining([
+            "REQUESTED",
+            "EXECUTING",
+            "FAILED",
+          ]),
+        },
+      },
+      orderBy: { requestedAt: "desc" },
+    });
   });
 
   it("records policy evidence when creating a request", async () => {
@@ -151,7 +164,7 @@ describe("account deletion request route", () => {
         status: "REQUESTED",
         reusedExistingRequest: false,
       },
-      policy: { version: "2026-07-24", targetDays: 30 },
+      policy: { version: "2026-07-24.v2", targetDays: 30 },
     });
     expect(create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -159,7 +172,7 @@ describe("account deletion request route", () => {
         emailSnapshot: "person@example.test",
         reason: "Please remove it.",
         metadataJson: expect.objectContaining({
-          policyVersion: "2026-07-24",
+          policyVersion: "2026-07-24.v2",
           targetDays: 30,
         }),
       }),

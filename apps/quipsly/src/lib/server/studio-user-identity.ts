@@ -214,6 +214,13 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
     const existing = byUid ?? byEmail;
 
     if (existing) {
+      // Firebase credentials must never resurrect an account after deletion or
+      // an operator safety hold. Reactivation is a separate, explicit support
+      // operation with its own identity proof and audit trail.
+      if (!existing.isActive) {
+        throw new Error("Quipsly account is inactive.");
+      }
+
       const existingAlias = await tx.userEmail.findUnique({
         where: { email: normalizedEmail },
       });

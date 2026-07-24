@@ -107,4 +107,35 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
       }),
     ).rejects.toThrow("Firebase identity requires a verified email.");
   });
+
+  it("does not resurrect an inactive Quipsly account from a valid Firebase identity", async () => {
+    const email = `firebase-inactive-${nonce}@example.test`;
+    const inactive = await prisma.user.create({
+      data: {
+        primaryEmail: email,
+        firebaseUid: `firebase-inactive-${nonce}`,
+        emailVerified: new Date(),
+        isActive: false,
+      },
+    });
+    userIds.push(inactive.id);
+
+    await expect(
+      ensureStudioUserFromFirebaseIdentity({
+        firebaseUid: `firebase-inactive-${nonce}`,
+        email,
+        emailVerified: true,
+      }),
+    ).rejects.toThrow("Quipsly account is inactive.");
+
+    await expect(
+      prisma.user.findUnique({
+        where: { id: inactive.id },
+        select: { isActive: true, firebaseUid: true },
+      }),
+    ).resolves.toEqual({
+      isActive: false,
+      firebaseUid: `firebase-inactive-${nonce}`,
+    });
+  });
 });

@@ -1,5 +1,5 @@
 export const ACCOUNT_DELETION_POLICY = {
-  version: "2026-07-24",
+  version: "2026-07-24.v2",
   targetDays: 30,
   supportEmail: "charlie@highgroundodyssey.com",
 } as const;
@@ -9,7 +9,9 @@ export type AccountDeletionRequestStatus =
   | "REVIEWING"
   | "EXPORT_PREPARING"
   | "READY_FOR_DELETION"
+  | "EXECUTING"
   | "COMPLETED"
+  | "FAILED"
   | "CANCELED"
   | "REJECTED";
 
@@ -18,8 +20,12 @@ type DeletionRequestRecord = {
   status: string;
   requestedAt: Date | string;
   reviewedAt?: Date | string | null;
+  executionStartedAt?: Date | string | null;
   completedAt?: Date | string | null;
+  failedAt?: Date | string | null;
   canceledAt?: Date | string | null;
+  executionReceiptJson?: unknown;
+  lastFailureJson?: unknown;
   updatedAt?: Date | string | null;
 };
 
@@ -57,12 +63,29 @@ const STATUS_COPY: Record<
       "Quipsly will complete the approved deletion work and send confirmation to your account email.",
     active: true,
   },
+  EXECUTING: {
+    label: "Deletion in progress",
+    detail:
+      "Quipsly is revoking account access and applying the approved deletion and retention plan.",
+    nextAction:
+      "Keep access to your account email for the final completion confirmation. Retried work resumes from the durable execution receipt.",
+    active: true,
+  },
   COMPLETED: {
     label: "Deletion completed",
-    detail: "Quipsly has marked the approved account deletion work complete.",
+    detail:
+      "Quipsly completed the approved account deletion work and recorded a durable executor receipt.",
     nextAction:
-      "Check your account email for the completion confirmation and any explanation of records that had to be retained or anonymized.",
+      "Check your account email for the completion confirmation and the disclosed categories of records that were retained or anonymized.",
     active: false,
+  },
+  FAILED: {
+    label: "Deletion needs recovery",
+    detail:
+      "Quipsly could not finish every approved deletion step. Account access remains disabled while the operation is safely retried or reviewed.",
+    nextAction:
+      "Quipsly will resume from the durable execution record. Contact support if you need an update before the retry completes.",
+    active: true,
   },
   CANCELED: {
     label: "Request canceled",
@@ -116,9 +139,16 @@ export function projectAccountDeletionRequest(record: DeletionRequestRecord) {
     requestedAt: date(record.requestedAt),
     targetCompletionAt: accountDeletionTargetAt(record.requestedAt),
     reviewedAt: date(record.reviewedAt),
+    executionStartedAt: date(record.executionStartedAt),
     completedAt: date(record.completedAt),
+    failedAt: date(record.failedAt),
     canceledAt: date(record.canceledAt),
     updatedAt: date(record.updatedAt),
+    completionReceiptAvailable:
+      status === "COMPLETED" &&
+      typeof record.executionReceiptJson === "object" &&
+      record.executionReceiptJson !== null,
+    recoveryRequired: status === "FAILED",
     active: copy.active,
     nextAction: copy.nextAction,
   };

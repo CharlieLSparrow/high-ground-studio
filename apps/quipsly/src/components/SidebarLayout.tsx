@@ -18,6 +18,7 @@ import {
   ImageIcon,
   Share2,
   ShieldCheck,
+  ShieldAlert,
   UserCog,
   ChevronDown,
   LogOut,
@@ -65,6 +66,11 @@ const secondaryNavItems: NavItem[] = [
 
 const adminNavItems: NavItem[] = [
   { name: "Users", href: "/admin/users", icon: UserCog },
+  {
+    name: "Account deletion",
+    href: "/admin/account-deletion",
+    icon: ShieldAlert,
+  },
 ];
 
 function isNavItemActive(item: NavItem, pathname: string) {

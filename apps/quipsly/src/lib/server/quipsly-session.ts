@@ -71,11 +71,9 @@ export async function getQuipslySession(): Promise<QuipslySession | null> {
   if (!sessionCookie) return null;
 
   try {
-    const checkRevoked =
-      process.env.QUIPSLY_CHECK_REVOKED_SESSION_COOKIES === "true";
     const decoded = await adminAuth.verifySessionCookie(
       sessionCookie,
-      checkRevoked,
+      true,
     );
     return sessionFromFirebaseIdentity({
       uid: decoded.uid,
@@ -102,7 +100,10 @@ export async function getQuipslySessionFromBearer(
   if (!token) return null;
 
   try {
-    const decoded = await adminAuth.verifyIdToken(token);
+    // Deletion and operator safety holds revoke credentials immediately. The
+    // extra lookup is intentional: signature validity alone can outlive a
+    // disabled or deleted Firebase account.
+    const decoded = await adminAuth.verifyIdToken(token, true);
     return sessionFromFirebaseIdentity({
       uid: decoded.uid,
       email: decoded.email,

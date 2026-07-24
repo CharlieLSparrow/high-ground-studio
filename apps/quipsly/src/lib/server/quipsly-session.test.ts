@@ -62,6 +62,7 @@ describe("Quipsly Firebase session boundary", () => {
     );
 
     expect(session).toBeNull();
+    expect(verifyIdToken).toHaveBeenCalledWith("unverified", true);
     expect(ensureIdentity).not.toHaveBeenCalled();
   });
 
@@ -94,6 +95,7 @@ describe("Quipsly Firebase session boundary", () => {
       name: "Person",
       image: null,
     });
+    expect(verifyIdToken).toHaveBeenCalledWith("verified", true);
     expect(session?.user).toMatchObject({
       id: "quipsly-user",
       primaryEmail: "person@example.test",

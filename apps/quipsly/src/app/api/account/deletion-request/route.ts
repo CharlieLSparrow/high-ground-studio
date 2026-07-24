@@ -30,6 +30,8 @@ const OPEN_DELETION_STATUSES: UserAccountDeletionRequestStatus[] = [
   UserAccountDeletionRequestStatus.REVIEWING,
   UserAccountDeletionRequestStatus.EXPORT_PREPARING,
   UserAccountDeletionRequestStatus.READY_FOR_DELETION,
+  UserAccountDeletionRequestStatus.EXECUTING,
+  UserAccountDeletionRequestStatus.FAILED,
 ];
 
 async function requireUser(request: Request) {

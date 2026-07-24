@@ -1,8 +1,15 @@
 /** @jest-environment node */
 
+jest.mock("@/lib/server/account-deletion-external", () => ({
+  createAccountDeletionExternalServices: jest.fn(),
+}));
+jest.mock("@/auth", () => ({ auth: jest.fn() }));
+
 import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { executeAccountDeletion } from "@/lib/server/account-deletion-executor";
+import { ensureQuipslyStarterStateForUser } from "@/lib/server/quipsly-onboarding";
 
 const runLocalFlow =
   process.env.QUIPSLY_LOCAL_ACCOUNT_DELETION_SMOKE === "1"
@@ -51,7 +58,7 @@ runLocalFlow("local account deletion operating loop", () => {
     await getPrismaClient().$disconnect();
   });
 
-  it("creates, reopens, advances, and confirms one disposable request", async () => {
+  it("creates, reviews, executes, recovers, and receipts one disposable account deletion", async () => {
     const nestOrigin =
       process.env.QUIPSLY_LOCAL_NEST_URL ?? "http://127.0.0.1:3012";
     const authOrigin =
@@ -68,6 +75,10 @@ runLocalFlow("local account deletion operating loop", () => {
     const prisma = getPrismaClient();
     let idToken = "";
     let firebaseIdentityDeleted = false;
+    let deletionRequestId = "";
+    let disposableHomeNestId = "";
+    let disabledFirebaseUid: string | null = null;
+    let confirmationAttempts = 0;
 
     const firebasePost = async (
       route: string,
@@ -169,6 +180,7 @@ runLocalFlow("local account deletion operating loop", () => {
         "id",
         "Deletion request creation",
       );
+      deletionRequestId = requestId;
 
       const reopened = await responseJson(
         await authenticatedRequest("GET"),
@@ -206,25 +218,182 @@ runLocalFlow("local account deletion operating loop", () => {
         },
       });
 
-      const completedAt = new Date();
+      await expect(
+        prisma.userAccountDeletionRequest.update({
+          where: { id: requestId },
+          data: { status: "COMPLETED", completedAt: new Date() },
+        }),
+      ).rejects.toThrow();
+
+      const subject = await prisma.user.findUniqueOrThrow({
+        where: { primaryEmail: email },
+        select: { id: true, firebaseUid: true },
+      });
+      const starter = await ensureQuipslyStarterStateForUser({
+        userId: subject.id,
+        email,
+        prisma,
+      });
+      const homeNest = starter.homeNest;
+      disposableHomeNestId = homeNest.id;
+      expect(homeNest.slug).toBe(expectedHomeSlug);
+      const [personalTask, homeTask] = await Promise.all([
+        prisma.actionItem.create({
+          data: {
+            assignedUserId: subject.id,
+            title: "Disposable personal task",
+          },
+        }),
+        prisma.actionItem.create({
+          data: {
+            assignedUserId: subject.id,
+            projectId: homeNest.id,
+            title: "Disposable Home Nest task",
+          },
+        }),
+      ]);
       await prisma.userAccountDeletionRequest.update({
         where: { id: requestId },
-        data: { status: "COMPLETED", completedAt },
-      });
-      const completed = await responseJson(
-        await authenticatedRequest("GET"),
-        "Deletion completion status",
-      );
-      expect(completed).toMatchObject({
-        request: {
-          id: requestId,
-          status: "COMPLETED",
-          statusLabel: "Deletion completed",
-          completedAt: completedAt.toISOString(),
-          active: false,
+        data: {
+          status: "READY_FOR_DELETION",
+          reviewedAt: new Date(),
         },
       });
-      expect(String(completed.nextAction)).toContain("completion confirmation");
+
+      const plan = {
+        schemaVersion: 1 as const,
+        requestId,
+        approvedByUserId: subject.id,
+        approvedAt: new Date().toISOString(),
+        confirmation: `DELETE ${requestId}`,
+        exportDisposition: "not-requested" as const,
+        scope: "automated-empty-or-private-account" as const,
+      };
+      const external = {
+        async disableFirebaseIdentity(firebaseUid: string | null) {
+          disabledFirebaseUid = firebaseUid;
+        },
+        async deleteFirebaseIdentity() {
+          await firebasePost(
+            "accounts:delete",
+            { idToken },
+            "Firebase executor identity deletion",
+          );
+          firebaseIdentityDeleted = true;
+        },
+        async deleteStorageObject() {
+          throw new Error(
+            "Disposable Home Nest unexpectedly referenced a storage object.",
+          );
+        },
+        async sendCompletionConfirmation() {
+          confirmationAttempts += 1;
+          if (confirmationAttempts === 1) {
+            throw new Error("Simulated confirmation-provider interruption.");
+          }
+        },
+      };
+
+      await expect(
+        executeAccountDeletion({
+          requestId,
+          plan,
+          prisma,
+          external,
+          allowExecutionWithoutEnvironmentGate: true,
+        }),
+      ).rejects.toThrow("Simulated confirmation-provider interruption.");
+
+      await expect(
+        prisma.userAccountDeletionRequest.findUnique({
+          where: { id: requestId },
+          select: { userId: true, status: true, lastFailureJson: true },
+        }),
+      ).resolves.toMatchObject({
+        userId: null,
+        status: "FAILED",
+        lastFailureJson: {
+          code: "ACCOUNT_DELETION_EXECUTION_FAILED",
+        },
+      });
+      await expect(
+        prisma.user.count({ where: { id: subject.id } }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.studioProject.count({ where: { id: homeNest.id } }),
+      ).resolves.toBe(0);
+      await expect(
+        prisma.actionItem.count({
+          where: { id: { in: [personalTask.id, homeTask.id] } },
+        }),
+      ).resolves.toBe(0);
+      expect(disabledFirebaseUid).toBe(subject.firebaseUid);
+
+      const retryPlan = {
+        ...plan,
+        approvedAt: new Date(
+          new Date(plan.approvedAt).getTime() + 1_000,
+        ).toISOString(),
+      };
+      const receipt = await executeAccountDeletion({
+        requestId,
+        plan: retryPlan,
+        prisma,
+        external,
+        allowExecutionWithoutEnvironmentGate: true,
+      });
+      expect(receipt).toMatchObject({
+        outcome: "completed",
+        requestId,
+        deletedHomeNestCount: 1,
+        retainedCategories: [],
+        confirmation: "sent",
+      });
+      expect(confirmationAttempts).toBe(2);
+
+      const replayReceipt = await executeAccountDeletion({
+        requestId,
+        plan: retryPlan,
+        prisma,
+        external,
+        allowExecutionWithoutEnvironmentGate: true,
+      });
+      expect(replayReceipt).toEqual(receipt);
+      expect(confirmationAttempts).toBe(2);
+
+      await expect(
+        prisma.userAccountDeletionRequest.findUnique({
+          where: { id: requestId },
+          select: {
+            userId: true,
+            emailSnapshot: true,
+            status: true,
+            completedAt: true,
+            executionReceiptJson: true,
+            executions: {
+              select: { status: true, receiptJson: true },
+            },
+          },
+        }),
+      ).resolves.toMatchObject({
+        userId: null,
+        emailSnapshot: null,
+        status: "COMPLETED",
+        completedAt: expect.any(Date),
+        executionReceiptJson: {
+          outcome: "completed",
+          requestId,
+        },
+        executions: [
+          {
+            status: "SUCCEEDED",
+            receiptJson: { outcome: "completed", requestId },
+          },
+        ],
+      });
+
+      const signedOutAfterDeletion = await authenticatedRequest("GET");
+      expect(signedOutAfterDeletion.status).toBe(401);
     } finally {
       if (idToken && !firebaseIdentityDeleted) {
         await firebasePost(
@@ -241,12 +410,24 @@ runLocalFlow("local account deletion operating loop", () => {
       });
       const homeProject = await prisma.studioProject.findFirst({
         where: {
-          slug: expectedHomeSlug,
-          sourceLabel: "nest-kind:home",
+          OR: [
+            ...(disposableHomeNestId
+              ? [{ id: disposableHomeNestId }]
+              : []),
+            {
+              slug: expectedHomeSlug,
+              sourceLabel: "nest-kind:home",
+            },
+          ],
         },
         select: { id: true },
       });
       await prisma.$transaction(async (tx) => {
+        if (deletionRequestId) {
+          await tx.userAccountDeletionRequest.deleteMany({
+            where: { id: deletionRequestId },
+          });
+        }
         await tx.studioProjectAccessGrant.deleteMany({ where: { email } });
         if (homeProject) {
           await tx.studioProject.delete({ where: { id: homeProject.id } });
@@ -258,6 +439,96 @@ runLocalFlow("local account deletion operating loop", () => {
       await expect(
         prisma.user.count({ where: { primaryEmail: email } }),
       ).resolves.toBe(0);
+    }
+  });
+
+  it("refuses to automate deletion when a Home Nest has another collaborator", async () => {
+    const prisma = getPrismaClient();
+    const email = `quipsly-deletion-blocked-${randomUUID()}@example.test`;
+    const collaboratorEmail = `quipsly-collaborator-${randomUUID()}@example.test`;
+    const user = await prisma.user.create({
+      data: {
+        primaryEmail: email,
+        firebaseUid: `firebase-blocked-${randomUUID()}`,
+        emailVerified: new Date(),
+      },
+    });
+    const starter = await ensureQuipslyStarterStateForUser({
+      userId: user.id,
+      email,
+      prisma,
+    });
+    await prisma.studioProjectAccessGrant.create({
+      data: {
+        projectId: starter.homeNest.id,
+        email: collaboratorEmail,
+        role: "VIEWER",
+        status: "ACTIVE",
+      },
+    });
+    const deletionRequest = await prisma.userAccountDeletionRequest.create({
+      data: {
+        userId: user.id,
+        emailSnapshot: email,
+        status: "READY_FOR_DELETION",
+        reviewedAt: new Date(),
+        source: "local-blocker-proof",
+      },
+    });
+    const external = {
+      disableFirebaseIdentity: jest.fn(),
+      deleteFirebaseIdentity: jest.fn(),
+      deleteStorageObject: jest.fn(),
+      sendCompletionConfirmation: jest.fn(),
+    };
+
+    try {
+      await expect(
+        executeAccountDeletion({
+          requestId: deletionRequest.id,
+          plan: {
+            schemaVersion: 1,
+            requestId: deletionRequest.id,
+            approvedByUserId: user.id,
+            approvedAt: new Date().toISOString(),
+            confirmation: `DELETE ${deletionRequest.id}`,
+            exportDisposition: "not-requested",
+            scope: "automated-empty-or-private-account",
+          },
+          prisma,
+          external,
+          allowExecutionWithoutEnvironmentGate: true,
+        }),
+      ).rejects.toThrow("home-nest-collaborators");
+
+      await expect(
+        prisma.user.findUnique({
+          where: { id: user.id },
+          select: { isActive: true },
+        }),
+      ).resolves.toEqual({ isActive: true });
+      await expect(
+        prisma.studioProject.count({
+          where: { id: starter.homeNest.id },
+        }),
+      ).resolves.toBe(1);
+      await expect(
+        prisma.userAccountDeletionExecution.count({
+          where: { requestId: deletionRequest.id },
+        }),
+      ).resolves.toBe(0);
+      expect(external.disableFirebaseIdentity).not.toHaveBeenCalled();
+    } finally {
+      await prisma.userAccountDeletionRequest.deleteMany({
+        where: { id: deletionRequest.id },
+      });
+      await prisma.studioProjectAccessGrant.deleteMany({
+        where: { projectId: starter.homeNest.id },
+      });
+      await prisma.studioProject.deleteMany({
+        where: { id: starter.homeNest.id },
+      });
+      await prisma.user.deleteMany({ where: { id: user.id } });
     }
   });
 });
