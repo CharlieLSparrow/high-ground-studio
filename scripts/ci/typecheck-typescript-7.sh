@@ -6,6 +6,7 @@ readonly typescript_version="7.0.2"
 readonly project_configs=(
   "apps/ai-hub/tsconfig.json"
   "apps/desktop-companion/tsconfig.json"
+  "apps/local-engine/tsconfig.json"
   "apps/motion-lab/tsconfig.json"
   "apps/photography-hub/tsconfig.json"
   "apps/quiplore/tsconfig.json"

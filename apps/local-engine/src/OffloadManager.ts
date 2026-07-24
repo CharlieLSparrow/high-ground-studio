@@ -1,12 +1,12 @@
 import fs from 'fs';
 import path from 'path';
-import xxhash from 'xxhash-wasm';
 
 export class OffloadManager {
   private create64: any;
 
   async init() {
     if (this.create64) return;
+    const { default: xxhash } = await import('xxhash-wasm');
     const xxhashApi = await xxhash();
     this.create64 = xxhashApi.create64;
   }

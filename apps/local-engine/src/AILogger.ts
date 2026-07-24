@@ -1,12 +1,14 @@
-import { GoogleGenAI } from '@google/genai';
+import type { GoogleGenAI } from '@google/genai' with { "resolution-mode": "import" };
 import fs from 'fs';
-import path from 'path';
 
 export class AILogger {
-  private ai: GoogleGenAI;
+  private readonly ai: Promise<GoogleGenAI>;
 
   constructor() {
-    this.ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    this.ai = import('@google/genai').then(
+      ({ GoogleGenAI }) =>
+        new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY }),
+    );
   }
 
   public async extractTagsAndRename(thumbnailPath: string, originalName: string): Promise<{ tags: string[], smartName: string }> {
@@ -38,7 +40,8 @@ export class AILogger {
       `;
 
       console.log(`🤖 Asking Gemini 2.5 Pro Vision to auto-log: ${originalName}`);
-      const response = await this.ai.models.generateContent({
+      const ai = await this.ai;
+      const response = await ai.models.generateContent({
         model: 'gemini-2.5-pro',
         contents: [prompt, filePart],
         config: {

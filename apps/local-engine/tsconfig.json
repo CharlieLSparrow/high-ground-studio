@@ -1,9 +1,9 @@
 {
   "compilerOptions": {
-    "module": "commonjs",
+    "module": "Node16",
     "target": "es2022",
     "esModuleInterop": true,
-    "moduleResolution": "node",
+    "moduleResolution": "Node16",
     "rootDir": "src",
     "outDir": "dist",
     "skipLibCheck": true,
