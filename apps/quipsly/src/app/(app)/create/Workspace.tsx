@@ -7,7 +7,12 @@ import Tagger, { type Block } from "./Tagger";
 import { EditorExtensionProvider } from "./registry/EditorExtensionRegistry";
 import { coreBlockCards } from "./registry/coreBlockCards";
 import ViewFilter from "./ViewFilter";
-import { DocumentBoundary, ViewDefinition, WorkbenchScopeProjectSummary } from "./types";
+import {
+  type DocumentBoundary,
+  type ViewDefinition,
+  type WorkbenchScopeProjectSummary,
+  type WorkbenchTagPayload,
+} from "./types";
 import { QuipslyAssistantSidebar } from "@/components/QuipslyAssistantSidebar";
 import { useQuipslyAssistant } from "@/components/useQuipslyAssistant";
 import { AssistantProvider } from "@/components/AssistantContext";
@@ -178,6 +183,7 @@ function hgoEpisodeLabel(sourceKey: HgoSourceKey) {
 export default function Workspace({
   initialBlocks,
   initialViews,
+  projectTags,
   projectId,
   projectSlug,
   projectName,
@@ -195,6 +201,7 @@ export default function Workspace({
 }: {
   initialBlocks: Block[],
   initialViews: ViewDefinition[],
+  projectTags: WorkbenchTagPayload[],
   projectId: string,
   projectSlug?: string,
   projectName?: string,
@@ -801,7 +808,7 @@ export default function Workspace({
 
           <div className="bg-white p-4 md:p-8 rounded-2xl shadow-sm border border-[#e8dcc4] min-h-[800px]">
             <AssistantProvider value={assistant}>
-              <EditorExtensionProvider customCards={coreBlockCards}>
+              <EditorExtensionProvider customCards={coreBlockCards} projectTags={projectTags}>
                 <Tagger
                   key={`${activeProjectSlug}:${documentId}`}
                   activeView={activeView}

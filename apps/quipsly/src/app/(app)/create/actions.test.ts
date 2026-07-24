@@ -5,6 +5,7 @@ import { syncProjectEmbeddings } from "@/lib/retrieval/embeddings";
 import {
   addBlockComment,
   approveEpisodeCandidateAction,
+  createAndApplyPassageTag,
   loadWorkbenchState,
   reorderDocumentBlocksAction,
   seedTonightPack,
@@ -64,6 +65,7 @@ describe("writing desk persistence truth", () => {
       persistenceMode: "unavailable",
       blocks: [],
       views: [],
+      projectTags: [],
       documentTitle: "Writing desk unavailable",
     });
     expect(state?.projectName).not.toMatch(/offline|browser lab/i);
@@ -233,6 +235,26 @@ describe("writing desk persistence truth", () => {
       error: "Sign in before adding a note to this passage.",
     });
     expect(result).not.toHaveProperty("commentId");
+  });
+
+  it("rejects unauthenticated reusable passage-tag creation before opening persistence", async () => {
+    (auth as jest.Mock).mockResolvedValue(null);
+
+    const result = await createAndApplyPassageTag({
+      blockId: "block-a",
+      startOffset: 0,
+      endOffset: 4,
+      selectedText: "Text",
+      label: "Episode seed",
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      state: "rejected",
+      code: "AUTH_REQUIRED",
+      error: "Sign in before creating a reusable passage tag.",
+    });
+    expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
   it("rejects an unauthenticated research-index refresh before opening persistence", async () => {

@@ -161,6 +161,7 @@ export default async function CreatePage({
   return <Workspace
     initialBlocks={state.blocks}
     initialViews={state.views}
+    projectTags={state.projectTags}
     projectId={state.projectId}
     projectSlug={state.projectSlug}
     projectName={state.projectName}

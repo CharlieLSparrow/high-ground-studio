@@ -1,6 +1,27 @@
-import React, { createContext, useContext, ReactNode } from "react";
-import { PlayCircle, MessageSquare, Mic, List, Tag, LucideIcon } from "lucide-react";
-import { Block } from "../Tagger"; // Assuming Block is exported or defined in a shared file
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  DollarSign,
+  HelpCircle,
+  Image,
+  List,
+  MessageSquare,
+  Mic,
+  PlayCircle,
+  Quote,
+  Tag,
+  User,
+  type LucideIcon,
+} from "lucide-react";
+import type { WorkbenchTagPayload } from "../types";
+import type { Block } from "../Tagger";
 
 export type TagDefinition = {
   id: string;
@@ -9,6 +30,8 @@ export type TagDefinition = {
   icon: LucideIcon;
   color: string;
   mark: string;
+  description?: string;
+  isProjectTag?: boolean;
 };
 
 export type BlockAccentRenderer = {
@@ -31,9 +54,8 @@ type EditorExtensionState = {
   tagDefinitions: TagDefinition[];
   blockAccents: BlockAccentRenderer[];
   blockCards: BlockCardRenderer[];
+  registerProjectTag: (tag: WorkbenchTagPayload) => void;
 };
-
-import { User, DollarSign, Image, HelpCircle, Quote } from "lucide-react";
 
 const defaultTagDefinitions: TagDefinition[] = [
 
@@ -63,6 +85,51 @@ const defaultTagDefinitions: TagDefinition[] = [
   { id: "youtube-clip", label: "YouTube Clip", category: "media", icon: PlayCircle, color: "bg-rose-100 text-rose-900 border-rose-200", mark: "bg-rose-100 text-rose-950 ring-rose-200" }
 ];
 
+function projectTagPresentation(category: string) {
+  if (category === "structure") {
+    return { icon: PlayCircle, color: "bg-cyan-100 text-cyan-900 border-cyan-200", mark: "bg-cyan-100 text-cyan-950 ring-cyan-200" };
+  }
+  if (category === "review" || category === "workflow_status" || category === "internal_note") {
+    return { icon: MessageSquare, color: "bg-amber-100 text-amber-900 border-amber-200", mark: "bg-amber-100 text-amber-950 ring-amber-200" };
+  }
+  if (category === "source" || category === "media" || category === "social-clip") {
+    return { icon: Mic, color: "bg-purple-100 text-purple-900 border-purple-200", mark: "bg-purple-100 text-purple-950 ring-purple-200" };
+  }
+  if (category === "projection") {
+    return { icon: Quote, color: "bg-rose-100 text-rose-900 border-rose-200", mark: "bg-rose-100 text-rose-950 ring-rose-200" };
+  }
+  return { icon: Tag, color: "bg-sky-100 text-sky-900 border-sky-200", mark: "bg-sky-100 text-sky-950 ring-sky-200" };
+}
+
+function definitionForProjectTag(tag: WorkbenchTagPayload): TagDefinition {
+  const builtIn = defaultTagDefinitions.find((definition) => definition.id === tag.slug);
+  if (builtIn) {
+    return {
+      ...builtIn,
+      label: tag.label,
+      category: tag.category,
+      isProjectTag: true,
+      ...(tag.description ? { description: tag.description } : {}),
+    };
+  }
+  return {
+    id: tag.slug,
+    label: tag.label,
+    category: tag.category,
+    description: tag.description,
+    isProjectTag: true,
+    ...projectTagPresentation(tag.category),
+  };
+}
+
+function mergedTagDefinitions(projectTags: WorkbenchTagPayload[]) {
+  const definitions = new Map(defaultTagDefinitions.map((definition) => [definition.id, definition]));
+  for (const tag of projectTags) {
+    definitions.set(tag.slug, definitionForProjectTag(tag));
+  }
+  return Array.from(definitions.values());
+}
+
 const defaultBlockAccents: BlockAccentRenderer[] = [
   { id: "voice-homer", className: "border-l-4 border-l-emerald-400 bg-emerald-50/30", shouldApply: (_, tags) => tags.includes("voice-homer") },
   { id: "voice-charlie", className: "border-l-4 border-l-sky-400 bg-sky-50/30", shouldApply: (_, tags) => tags.includes("voice-charlie") },
@@ -74,22 +141,43 @@ const EditorExtensionContext = createContext<EditorExtensionState>({
   tagDefinitions: defaultTagDefinitions,
   blockAccents: defaultBlockAccents,
   blockCards: [], // We will inject the cards here or from Workspace
+  registerProjectTag: () => undefined,
 });
 
 export const useEditorExtensions = () => useContext(EditorExtensionContext);
 
 export function EditorExtensionProvider({ 
   children, 
-  customCards = [] 
+  customCards = [],
+  projectTags = [],
 }: { 
   children: ReactNode; 
   customCards?: BlockCardRenderer[];
+  projectTags?: WorkbenchTagPayload[];
 }) {
+  const [runtimeProjectTags, setRuntimeProjectTags] = useState(projectTags);
+
+  useEffect(() => {
+    setRuntimeProjectTags(projectTags);
+  }, [projectTags]);
+
+  const registerProjectTag = useCallback((tag: WorkbenchTagPayload) => {
+    setRuntimeProjectTags((current) => {
+      const withoutPrior = current.filter((item) => item.id !== tag.id && item.slug !== tag.slug);
+      return [...withoutPrior, tag].sort((left, right) => left.label.localeCompare(right.label));
+    });
+  }, []);
+  const tagDefinitions = useMemo(
+    () => mergedTagDefinitions(runtimeProjectTags),
+    [runtimeProjectTags],
+  );
+
   return (
     <EditorExtensionContext.Provider value={{
-      tagDefinitions: defaultTagDefinitions,
+      tagDefinitions,
       blockAccents: defaultBlockAccents,
-      blockCards: customCards
+      blockCards: customCards,
+      registerProjectTag,
     }}>
       {children}
     </EditorExtensionContext.Provider>

@@ -6,12 +6,14 @@ import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import {
   addBlockComment,
+  createAndApplyPassageTag,
   createNamedDocumentCheckpointAction,
   exportPortableDocumentAction,
   listNamedDocumentCheckpointsAction,
   pastePlainTextBlocksAction,
   restoreNamedDocumentCheckpointAction,
   restorePortableDocumentAction,
+  toggleBlockTag,
 } from "./actions";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
@@ -155,10 +157,43 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     if (!commentResult.ok) throw new Error("Passage note failed.");
     expect(commentResult.operationId).toBeTruthy();
 
+    const reusablePassage = "coaching follow-through";
+    const reusablePassageStart = originalBody.indexOf(reusablePassage);
+    const reusableTagLabel = `Coaching follow-through ${nonce}`;
+    const reusableTagResult = await createAndApplyPassageTag({
+      blockId: firstBlockId,
+      startOffset: reusablePassageStart,
+      endOffset: reusablePassageStart + reusablePassage.length,
+      selectedText: reusablePassage,
+      label: reusableTagLabel,
+    });
+    expect(reusableTagResult).toMatchObject({
+      ok: true,
+      state: "persisted",
+      createdTag: true,
+      reusedApplication: false,
+      tag: { label: reusableTagLabel, category: "meaning", projectId },
+    });
+    if (!reusableTagResult.ok) throw new Error("Reusable passage tag failed.");
+    expect(reusableTagResult.operationId).toBeTruthy();
+    await expect(createAndApplyPassageTag({
+      blockId: firstBlockId,
+      startOffset: reusablePassageStart,
+      endOffset: reusablePassageStart + reusablePassage.length,
+      selectedText: reusablePassage,
+      label: reusableTagLabel,
+    })).resolves.toMatchObject({
+      ok: true,
+      spanId: reusableTagResult.spanId,
+      createdTag: false,
+      reusedApplication: true,
+      operationId: null,
+    });
+
     const checkpointResult = await createNamedDocumentCheckpointAction(documentId, "Coaching source pass approved");
     expect(checkpointResult).toMatchObject({
       ok: true,
-      checkpoint: { name: "Coaching source pass approved", blockCount: 2, spanCount: 2, citationCount: 1 },
+      checkpoint: { name: "Coaching source pass approved", blockCount: 2, spanCount: 3, citationCount: 1 },
     });
     if (!checkpointResult.ok || !checkpointResult.checkpoint) throw new Error("Checkpoint failed.");
 
@@ -169,12 +204,13 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     expect(exported).toMatchObject({
       schemaVersion: "quipsly-document-export-v1",
       snapshot: { document: { id: documentId } },
-      integrity: { blockCount: 2, spanCount: 2, citationCount: 1 },
+      integrity: { blockCount: 2, spanCount: 3, citationCount: 1 },
     });
     expect(exported.snapshot.blocks[0]).toMatchObject({
       id: firstBlockId,
       spans: expect.arrayContaining([
         expect.objectContaining({ id: commentResult.commentId, tagSlug: "comment", selectedText: passage, noteBody }),
+        expect.objectContaining({ id: reusableTagResult.spanId, tagSlug: reusableTagResult.tag.slug, selectedText: reusablePassage }),
       ]),
       citations: [{ id: citationId }],
     });
@@ -188,7 +224,7 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     const restoreResult = await restoreNamedDocumentCheckpointAction(documentId, checkpointResult.checkpoint.id);
     expect(restoreResult).toMatchObject({
       ok: true,
-      receipt: { restoredFrom: "checkpoint", blockCount: 2, spanCount: 2, citationCount: 1 },
+      receipt: { restoredFrom: "checkpoint", blockCount: 2, spanCount: 3, citationCount: 1 },
     });
     const restoredBlocks = await prisma.studioDocumentBlock.findMany({ where: { documentId }, orderBy: { order: "asc" } });
     expect(restoredBlocks.find((block) => block.id === firstBlockId)?.body).toBe(originalBody);
@@ -208,6 +244,11 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
       selectedText: passage,
       noteBody,
     });
+    expect(await prisma.studioTaggedSpan.findUnique({ where: { id: reusableTagResult.spanId } })).toMatchObject({
+      blockId: firstBlockId,
+      selectedText: reusablePassage,
+      tagId: reusableTagResult.tag.id,
+    });
 
     await prisma.studioDocumentBlock.update({ where: { id: secondBlockId }, data: { body: "A second temporary mutation." } });
     const portableRestore = await restorePortableDocumentAction(documentId, exportResult.bundleJson);
@@ -220,6 +261,56 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     });
     expect(restoreOperations).toHaveLength(2);
     expect(restoreOperations.every((operation) => operation.beforeJson && operation.afterJson && operation.reversible)).toBe(true);
+
+    const secondBody = "Turn the insight into one named task.";
+    const exactTaskPassage = "named task";
+    const exactTaskStart = secondBody.indexOf(exactTaskPassage);
+    const added = await toggleBlockTag(
+      secondBlockId,
+      documentId,
+      projectId,
+      reusableTagResult.tag.slug,
+      secondBody,
+      {
+        startOffset: exactTaskStart,
+        endOffset: exactTaskStart + exactTaskPassage.length,
+        selectedText: exactTaskPassage,
+      },
+    );
+    expect(added).toMatchObject({
+      ok: true,
+      state: "persisted",
+      operation: "added",
+      operationId: expect.any(String),
+      spanId: expect.any(String),
+    });
+    if (!added.ok || added.operation !== "added") throw new Error("Exact passage tag add failed.");
+    expect(await prisma.studioTaggedSpan.findUnique({ where: { id: added.spanId } })).toMatchObject({
+      blockId: secondBlockId,
+      tagId: reusableTagResult.tag.id,
+      selectedText: exactTaskPassage,
+    });
+
+    const removed = await toggleBlockTag(
+      secondBlockId,
+      documentId,
+      projectId,
+      reusableTagResult.tag.slug,
+      secondBody,
+      {
+        startOffset: exactTaskStart,
+        endOffset: exactTaskStart + exactTaskPassage.length,
+        selectedText: exactTaskPassage,
+      },
+    );
+    expect(removed).toMatchObject({
+      ok: true,
+      state: "persisted",
+      operation: "removed",
+      operationId: expect.any(String),
+      removedSpanIds: [added.spanId],
+    });
+    expect(await prisma.studioTaggedSpan.findUnique({ where: { id: added.spanId } })).toBeNull();
   });
 
   it("rejects tampered exports and separate-account reads without changing content", async () => {

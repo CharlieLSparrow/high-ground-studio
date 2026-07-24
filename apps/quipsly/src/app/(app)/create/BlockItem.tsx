@@ -1,5 +1,5 @@
 import React, { Fragment, useRef, useState, memo, useLayoutEffect } from "react";
-import { BookOpenCheck, Trash2, X, Tag, Sparkles } from "lucide-react";
+import { BookOpenCheck, Check, Plus, Sparkles, Tag, Tags, Trash2, X } from "lucide-react";
 import { Block, uniqueTagIds, canonicalBoundarySuggestion } from "./Tagger";
 import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
 import CommandPalette from "./CommandPalette";
@@ -16,7 +16,14 @@ interface BlockItemProps {
   isSaving: boolean;
   onTextChange: (id: string, text: string) => void;
   onTextBlur: (id: string, text: string) => void;
-  onToggleTag: (id: string, tagId: string) => void;
+  onToggleTag: (
+    id: string,
+    tagId: string,
+    selection?: { startOffset: number; endOffset: number; selectedText: string } | null,
+  ) => Promise<
+    | { ok: true; operation: "added" | "removed" }
+    | { ok: false; error: string }
+  >;
   onSplitBlock: (block: Block, start: number, end: number) => void;
   onMergeWithPrevious: (id: string) => void;
   onPasteBlocks: (id: string, chunks: string[], selectionStart: number, selectionEnd: number) => void;
@@ -26,6 +33,16 @@ interface BlockItemProps {
   onDeleteBlock: (block: Block) => void;
   onNormalizeHeading: (block: Block) => void;
   onAddComment: (blockId: string, start: number, end: number, text: string, body: string) => Promise<boolean>;
+  onCreatePassageTag: (
+    blockId: string,
+    start: number,
+    end: number,
+    text: string,
+    label: string,
+  ) => Promise<
+    | { ok: true; created: boolean; tagLabel: string }
+    | { ok: false; error: string }
+  >;
   onFindSupportingQuote: (blockId: string, text: string) => void;
   onSelectionChange: (id: string, el: HTMLTextAreaElement) => void;
   registerTextareaRef: (id: string, el: HTMLTextAreaElement | null) => void;
@@ -55,13 +72,14 @@ function BlockItemComponent({
   onDeleteBlock,
   onNormalizeHeading,
   onAddComment,
+  onCreatePassageTag,
   onFindSupportingQuote,
   onSelectionChange,
   registerTextareaRef,
   registerWrapperRef
 }: BlockItemProps) {
   const { tagDefinitions, blockAccents, blockCards } = useEditorExtensions();
-  const findTagDef = (identifier: string) => tagDefinitions.find((t) => (t as any).slug === identifier || t.id === identifier);
+  const findTagDef = (identifier: string) => tagDefinitions.find((tag) => tag.id === identifier);
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -82,6 +100,11 @@ function BlockItemComponent({
   const [draftComment, setDraftComment] = useState<string | null>(null);
   const [isSavingComment, setIsSavingComment] = useState(false);
   const [commentError, setCommentError] = useState<string | null>(null);
+  const [tagPickerOpen, setTagPickerOpen] = useState(false);
+  const [tagQuery, setTagQuery] = useState("");
+  const [newTagLabel, setNewTagLabel] = useState("");
+  const [isCreatingTag, setIsCreatingTag] = useState(false);
+  const [tagMessage, setTagMessage] = useState<{ tone: "success" | "error"; text: string } | null>(null);
 
   const submitDraftComment = async () => {
     if (!selection || !draftComment?.trim() || isSavingComment) return;
@@ -98,6 +121,7 @@ function BlockItemComponent({
       if (saved) {
         setDraftComment(null);
         setSelection(null);
+        setTagPickerOpen(false);
       } else {
         setCommentError("Comment not saved. Your draft remains here so you can copy it.");
       }
@@ -106,7 +130,44 @@ function BlockItemComponent({
     }
   };
 
+  const createSelectedPassageTag = async () => {
+    if (!selection || !newTagLabel.trim() || isCreatingTag) return;
+    setIsCreatingTag(true);
+    setTagMessage(null);
+    try {
+      const result = await onCreatePassageTag(
+        block.id,
+        selection.start,
+        selection.end,
+        selection.text,
+        newTagLabel,
+      );
+      if (!result.ok) {
+        setTagMessage({ tone: "error", text: result.error });
+        return;
+      }
+      setNewTagLabel("");
+      setTagQuery(result.tagLabel);
+      setTagMessage({
+        tone: "success",
+        text: result.created
+          ? `Created #${result.tagLabel} for this Nest and applied it here.`
+          : `Applied the existing #${result.tagLabel}; no duplicate tag was created.`,
+      });
+    } finally {
+      setIsCreatingTag(false);
+    }
+  };
+
   const applyTagOptions = tagDefinitions.filter(t => t.category === "structure");
+  const passageTagOptions = tagDefinitions
+    .filter((tag) => tag.isProjectTag && tag.category !== "structure" && tag.id !== "comment")
+    .filter((tag) => {
+      const query = tagQuery.trim().toLocaleLowerCase();
+      return !query || `${tag.label} ${tag.id} ${tag.category}`.toLocaleLowerCase().includes(query);
+    })
+    .sort((left, right) => left.label.localeCompare(right.label))
+    .slice(0, 24);
 
   const blockTagIds = uniqueTagIds(block);
   const activeStructureTag = blockTagIds.find((tagId) => STRUCTURE_TAG_IDS.has(tagId));
@@ -178,7 +239,7 @@ function BlockItemComponent({
               <button
                 key={t}
                 type="button"
-                onClick={() => onToggleTag(block.id, t)}
+                onClick={() => onToggleTag(block.id, t, null)}
                 onMouseDown={(event) => event.preventDefault()}
                 className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded-md border transition-colors hover:brightness-95 ${definition.color}`}
                 title={`Remove ${definition.label}`}
@@ -197,7 +258,11 @@ function BlockItemComponent({
               <button
                 key={span.id ?? `${block.id}-${span.startOffset}-${span.endOffset}-${span.tagSlug}`}
                 type="button"
-                onClick={() => onToggleTag(block.id, span.tagSlug)}
+                onClick={() => onToggleTag(block.id, span.tagSlug, {
+                  startOffset: span.startOffset,
+                  endOffset: span.endOffset,
+                  selectedText: span.selectedText,
+                })}
                 onMouseDown={(event) => event.preventDefault()}
                 className={`flex max-w-full items-center gap-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded-md border transition-colors hover:brightness-95 ${definition?.color ?? "border-[#d4c1a0] bg-white text-[#5e4b33]"}`}
                 title={`Remove ${definition?.label ?? span.tagSlug}: ${selectedText}`}
@@ -318,8 +383,11 @@ function BlockItemComponent({
               end: e.currentTarget.selectionEnd,
               text: e.currentTarget.value.substring(e.currentTarget.selectionStart, e.currentTarget.selectionEnd)
             });
+            setTagMessage(null);
           } else {
             setSelection(null);
+            setTagPickerOpen(false);
+            setTagMessage(null);
           }
         }}
         rows={1}
@@ -360,6 +428,20 @@ function BlockItemComponent({
 
         {selection && selection.start !== selection.end && !draftComment && (
           <>
+            <button
+              type="button"
+              data-testid="passage-tag-open"
+              aria-expanded={tagPickerOpen}
+              aria-controls={`passage-tag-picker-${block.id}`}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                setTagPickerOpen((open) => !open);
+                setTagMessage(null);
+              }}
+              className="inline-flex min-h-9 items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-sky-900 transition-colors hover:bg-sky-100"
+            >
+              <Tags size={12} /> Tag passage
+            </button>
             <button
               type="button"
               onClick={() => onFindSupportingQuote(block.id, selection.text)}
@@ -440,8 +522,133 @@ function BlockItemComponent({
         </button> : null}
       </div>
 
+      {selection && tagPickerOpen ? (
+        <section
+          id={`passage-tag-picker-${block.id}`}
+          data-testid="passage-tag-picker"
+          aria-label="Tag selected passage"
+          className="relative z-20 mt-3 rounded-2xl border border-sky-200 bg-white p-4 shadow-lg"
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <div className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-800">Reusable Nest tags</div>
+              <p className="mt-1 truncate text-sm font-semibold text-sky-950">“{selection.text}”</p>
+            </div>
+            <button
+              type="button"
+              aria-label="Close passage tag picker"
+              onClick={() => setTagPickerOpen(false)}
+              className="inline-flex min-h-9 min-w-9 items-center justify-center rounded-full border border-sky-200 text-sky-800 hover:bg-sky-50"
+            >
+              <X size={15} />
+            </button>
+          </div>
+
+          <label className="mt-4 block text-[10px] font-black uppercase tracking-wide text-sky-900">
+            Find a tag
+            <input
+              type="search"
+              value={tagQuery}
+              onChange={(event) => {
+                setTagQuery(event.target.value);
+                setTagMessage(null);
+              }}
+              placeholder="Search this Nest’s vocabulary"
+              className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-sky-50/40 px-3 text-sm font-semibold normal-case tracking-normal text-sky-950 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+            />
+          </label>
+
+          <div className="mt-3 flex max-h-52 flex-wrap gap-2 overflow-y-auto pr-1">
+            {passageTagOptions.map((tag) => {
+              const applied = (block.spans ?? []).some((span) =>
+                span.tagSlug === tag.id
+                && span.startOffset === selection.start
+                && span.endOffset === selection.end
+              );
+              const Icon = tag.icon;
+              return (
+                <button
+                  key={tag.id}
+                  type="button"
+                  aria-pressed={applied}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => {
+                    void onToggleTag(block.id, tag.id, {
+                      startOffset: selection.start,
+                      endOffset: selection.end,
+                      selectedText: selection.text,
+                    }).then((result) => {
+                      setTagMessage(result.ok
+                        ? {
+                            tone: "success",
+                            text: result.operation === "removed"
+                              ? `Removed #${tag.label} from this passage.`
+                              : `Applied #${tag.label} to this passage.`,
+                          }
+                        : { tone: "error", text: result.error });
+                    });
+                  }}
+                  className={`inline-flex min-h-11 items-center gap-1.5 rounded-full border px-3 py-2 text-xs font-bold transition-colors ${tag.color}`}
+                  title={tag.description}
+                >
+                  {applied ? <Check size={13} /> : <Icon size={13} />}
+                  {tag.label}
+                </button>
+              );
+            })}
+            {passageTagOptions.length === 0 ? (
+              <p className="py-2 text-xs font-semibold text-sky-800">No existing tags match. Create a clear reusable name below.</p>
+            ) : null}
+          </div>
+
+          <form
+            className="mt-4 border-t border-sky-100 pt-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createSelectedPassageTag();
+            }}
+          >
+            <label className="block text-[10px] font-black uppercase tracking-wide text-sky-900">
+              New reusable tag
+              <input
+                value={newTagLabel}
+                onChange={(event) => {
+                  setNewTagLabel(event.target.value);
+                  setTagMessage(null);
+                }}
+                maxLength={80}
+                required
+                placeholder="e.g. Episode seed"
+                className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 px-3 text-sm font-semibold normal-case tracking-normal text-sky-950 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              />
+            </label>
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-[11px] font-semibold leading-5 text-sky-800">
+                Shared inside this Nest with notes, tasks, goals, sessions, and writing. Exact names reuse the canonical tag.
+              </p>
+              <button
+                type="submit"
+                disabled={isCreatingTag || !newTagLabel.trim()}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-full bg-sky-800 px-4 py-2 text-[10px] font-black uppercase tracking-wide text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Plus size={13} />
+                {isCreatingTag ? "Creating…" : "Create & apply"}
+              </button>
+            </div>
+          </form>
+          {tagMessage ? (
+            <p
+              role="status"
+              className={`mt-3 text-xs font-bold ${tagMessage.tone === "error" ? "text-rose-700" : "text-sky-950"}`}
+            >
+              {tagMessage.text}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
+
       {/* Margin Annotations / Right Column */}
-      <div className="absolute -right-64 top-0 w-56 flex flex-col gap-2">
+      <div className="mt-3 flex flex-col gap-2 xl:absolute xl:-right-64 xl:top-0 xl:mt-0 xl:w-56">
         {draftComment !== null && selection && (
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 shadow-sm relative z-20">
             <div className="text-[10px] font-bold text-amber-600 mb-1 line-clamp-2 italic">
@@ -521,7 +728,9 @@ export const BlockItem = memo(BlockItemComponent, (prev, next) => {
     prev.block.text === next.block.text &&
     prev.block.tags === next.block.tags &&
     prev.block.spans === next.block.spans &&
+    prev.block.sourceEvidence === next.block.sourceEvidence &&
     prev.blockIndex === next.blockIndex &&
+    prev.previousBlockIsImmutable === next.previousBlockIsImmutable &&
     prev.boundaryId === next.boundaryId &&
     prev.isOutlineFocused === next.isOutlineFocused &&
     prev.isSaving === next.isSaving

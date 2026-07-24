@@ -16,13 +16,22 @@ import {
   canAccessStudioProjectBySlug,
   type StudioProjectAccessAction,
 } from "@/lib/server/studio-project-access";
-import type { Prisma, StoryEntityType, StudioProjectionStatus } from "@prisma/client";
+import type {
+  Prisma,
+  StoryEntityType,
+  StudioProjectionStatus,
+  StudioTagCategory,
+} from "@prisma/client";
 import { ViewDefinition } from "./types";
 import type {
   WorkbenchBaseState,
   WorkbenchScopeProjectSummary,
   WorkbenchScopedState,
 } from "./types";
+import {
+  normalizeWorkTagLabel,
+  resolveReusableProjectTag,
+} from "@/lib/server/work-tags";
 import { revalidatePath } from "next/cache";
 import {
   createManuscriptDraftPlainText,
@@ -438,12 +447,18 @@ function quipslyCategoryForTag(tag: { slug: string; category?: string | null }) 
   return TAG_CATEGORY_BY_SLUG.get(tag.slug) ?? tag.category ?? "meaning";
 }
 
-function studioDbCategoryForQuipslyCategory(category: string) {
+function studioDbCategoryForQuipslyCategory(category: string): StudioTagCategory {
   if (category === "chapter" || category === "episode") return "structure";
   if (category === "quote" || category === "educational" || category === "content_role") return "meaning";
   if (category === "media" || category === "social-clip") return "source";
   if (category === "workflow_status" || category === "internal_note") return "review";
-  if (["meaning", "structure", "source", "projection", "review"].includes(category)) return category;
+  if (
+    category === "meaning"
+    || category === "structure"
+    || category === "source"
+    || category === "projection"
+    || category === "review"
+  ) return category;
   return "meaning";
 }
 
@@ -472,6 +487,7 @@ function createUnavailableWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG): Wo
     // is unavailable. The Workspace renders a non-editable outage surface.
     blocks: [],
     views: [],
+    projectTags: [],
     projectId: UNAVAILABLE_PROJECT_ID,
     projectSlug: config.slug,
     projectName: config.name,
@@ -528,13 +544,11 @@ async function ensureDevLabShowTags(
     const dbCategory = studioDbCategoryForQuipslyCategory(tagSeed.category);
     await prisma.studioTag.upsert({
       where: { projectId_slug: { projectId: project.id, slug: tagSeed.slug } },
-      // @ts-ignore
       update: { label: tagSeed.label, category: dbCategory },
       create: {
         projectId: project.id,
         slug: tagSeed.slug,
         label: tagSeed.label,
-        // @ts-ignore
         category: dbCategory
       }
     });
@@ -607,14 +621,12 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
       where: { projectId_slug: { projectId: project.id, slug: t.slug } },
       update: {
         label: t.label,
-        // @ts-ignore
         category: dbCategory
       },
       create: {
         projectId: project.id,
         slug: t.slug,
         label: t.label,
-        // @ts-ignore - Prisma types might be stale since db push failed, so bypass strict enum checks if needed
         category: dbCategory
       }
     });
@@ -635,7 +647,6 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
         create: {
           projectId: project.id,
           name: v.name,
-          // @ts-ignore
           type: v.type,
           filters: { tagSlugs: v.tagSlugs, excludeTagSlugs: v.excludeTagSlugs ?? [], includeCategories: v.includeCategories },
           displaySettings: { mode: v.displayMode, showContext: v.showContext, collapseUnmatched: v.collapseUnmatched }
@@ -810,10 +821,21 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
   })) as ViewDefinition[];
   const effectiveViews = (views.length > 0 ? views : createDefaultViews("fallback-view"))
     .filter((view) => view.type !== "episode");
+  const projectTags = project.tags
+    .filter((tag) => tag.isActive && !tag.archivedAt && !tag.mergedIntoTagId)
+    .map((tag) => ({
+      id: tag.id,
+      slug: tag.slug,
+      label: tag.label,
+      category: quipslyCategoryForTag(tag),
+      ...(tag.description ? { description: tag.description } : {}),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
 
   return {
     blocks,
     views: effectiveViews,
+    projectTags,
     projectId: project.id,
     projectSlug: project.slug,
     projectName: project.name,
@@ -1208,7 +1230,6 @@ export async function restoreBlockState(
             projectId: block.document.projectId,
             slug: span.tagSlug,
             label: span.tagSlug,
-            // @ts-ignore
             category: "meaning"
           }
         });
@@ -1681,167 +1702,596 @@ export async function mergeBlockWithPrevious(blockId: string) {
   };
 }
 
+export type ToggleBlockTagResult =
+  | {
+      ok: true;
+      state: "persisted";
+      operation: "added";
+      operationId: string;
+      spanId: string;
+    }
+  | {
+      ok: true;
+      state: "persisted";
+      operation: "removed";
+      operationId: string;
+      removedSpanIds: string[];
+    }
+  | {
+      ok: false;
+      state: "rejected" | "unavailable";
+      code: "INVALID_INPUT" | "ACCESS_NOT_VERIFIED" | "NOT_FOUND" | "IDENTITY_MISMATCH" | "PERSISTENCE_UNAVAILABLE";
+      error: string;
+    };
+
 export async function toggleBlockTag(
   blockId: string,
   documentId: string,
   projectId: string,
   tagSlug: string,
   text: string,
-  selection?: { startOffset: number; endOffset: number; selectedText: string }
-) {
+  selection?: { startOffset: number; endOffset: number; selectedText: string },
+): Promise<ToggleBlockTagResult> {
+  void text;
+  const cleanBlockId = typeof blockId === "string" ? blockId.trim().slice(0, 200) : "";
+  const cleanDocumentId = typeof documentId === "string" ? documentId.trim().slice(0, 200) : "";
+  const cleanProjectId = typeof projectId === "string" ? projectId.trim().slice(0, 200) : "";
+  const cleanTagSlug = typeof tagSlug === "string" && /^[a-z0-9]+(?:[-_][a-z0-9]+)*$/.test(tagSlug)
+    ? tagSlug.slice(0, 80)
+    : "";
+  if (
+    !cleanBlockId
+    || !cleanDocumentId
+    || !cleanProjectId
+    || !cleanTagSlug
+    || cleanProjectId === UNAVAILABLE_PROJECT_ID
+    || cleanDocumentId === UNAVAILABLE_DOCUMENT_ID
+    || cleanBlockId.startsWith("offline-")
+  ) {
+    return {
+      ok: false,
+      state: "rejected",
+      code: "INVALID_INPUT",
+      error: "The tag target is incomplete or invalid.",
+    };
+  }
+
   let prisma: ReturnType<typeof getPrismaClient>;
   try {
     prisma = getPrismaClient();
   } catch (error) {
-    console.warn("DATABASE_URL is not set; skipping offline toggleBlockTag.", error);
-    return;
+    console.error("Writing tag could not open persistence.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The writing database is unavailable. The tag was not changed.",
+    };
   }
 
-  if (
-    projectId === UNAVAILABLE_PROJECT_ID ||
-    documentId === UNAVAILABLE_DOCUMENT_ID ||
-    blockId.startsWith("offline-")
-  ) {
-    return;
+  try {
+    await requireProjectAccessByProjectId(prisma, cleanProjectId, "write");
+  } catch (error) {
+    console.error("Writing tag could not verify write access.", error);
+    return {
+      ok: false,
+      state: "rejected",
+      code: "ACCESS_NOT_VERIFIED",
+      error: "Editor access to this Nest is required to change tags.",
+    };
   }
 
-  await requireProjectAccessByProjectId(prisma, projectId, "write");
-
-  // Find the tag
-  let tag = await prisma.studioTag.findUnique({
-    where: { projectId_slug: { projectId, slug: tagSlug } }
-  });
-
-  // Fallback creation just in case
-  if (!tag) {
-    tag = await prisma.studioTag.create({
-      data: {
-        projectId,
-        slug: tagSlug,
-        label: tagSlug,
-        // @ts-ignore
-        category: "meaning"
-      }
-    });
-  }
-
-  const isStructureTag = STRUCTURE_TAG_SLUGS.includes(tagSlug);
-  const effectiveSelection = isStructureTag ? undefined : selection;
-  const startOffset = effectiveSelection?.startOffset ?? 0;
-  const endOffset = effectiveSelection?.endOffset ?? text.length;
-  const selectedText = effectiveSelection?.selectedText ?? text;
-
-  const [doc, block] = await Promise.all([
-    prisma.studioDocument.findUnique({ where: { id: documentId } }),
-    prisma.studioDocumentBlock.findUnique({ where: { id: blockId } }),
-  ]);
-  if (!doc || !block) return;
-  if (doc.projectId !== projectId || block.documentId !== documentId) {
-    throw new Error("Tag target does not belong to this Nest/document.");
-  }
-
-  const existingSpans = await prisma.studioTaggedSpan.findMany({
-    where: isStructureTag
-      ? { blockId, tagId: tag.id }
-      : { blockId, tagId: tag.id, startOffset, endOffset }
-  });
-
-  if (existingSpans.length > 0) {
-    // Delete them
-    for (const span of existingSpans) {
-      await prisma.studioTaggedSpan.delete({ where: { id: span.id } });
-    }
-    await recordDocumentOperation(prisma, {
-      projectId,
-      documentId,
-      operationType: "tag-remove",
-      beforeJson: {
-        blockId,
-        tagSlug,
-        spans: existingSpans.map((span) => ({
-          id: span.id,
-          startOffset: span.startOffset,
-          endOffset: span.endOffset,
-          selectedText: span.selectedText,
-        })),
-      },
-      afterJson: {
-        blockId,
-        tagSlug,
-        spans: [],
-      },
-      payloadJson: {
-        blockId,
-        tagSlug,
-        isStructureTag,
-      },
-    });
-  } else {
-    // Create span
-    let removedCompetingTagSlugs: string[] = [];
-    if (isStructureTag) {
-      const competingTags = await prisma.studioTag.findMany({
-        where: {
-          projectId,
-          slug: {
-            in: STRUCTURE_TAG_SLUGS.filter((slug) => slug !== tagSlug)
-          }
+  try {
+    const [document, block] = await Promise.all([
+      prisma.studioDocument.findUnique({
+        where: { id: cleanDocumentId },
+        select: { id: true, projectId: true, stableId: true, title: true },
+      }),
+      prisma.studioDocumentBlock.findUnique({
+        where: { id: cleanBlockId },
+        select: {
+          id: true,
+          documentId: true,
+          stableId: true,
+          body: true,
+          title: true,
+          sourceLabel: true,
+          sourcePath: true,
+          externalId: true,
+          projectionStatus: true,
+          isPrivate: true,
         },
-        select: { id: true, slug: true }
-      });
-      removedCompetingTagSlugs = competingTags.map((competingTag) => competingTag.slug);
-
-      await prisma.studioTaggedSpan.deleteMany({
-        where: {
-          blockId,
-          tagId: { in: competingTags.map((competingTag) => competingTag.id) }
-        }
-      });
+      }),
+    ]);
+    if (!document || !block) {
+      return {
+        ok: false,
+        state: "rejected",
+        code: "NOT_FOUND",
+        error: "The writing block or document no longer exists.",
+      };
+    }
+    if (document.projectId !== cleanProjectId || block.documentId !== cleanDocumentId) {
+      return {
+        ok: false,
+        state: "rejected",
+        code: "IDENTITY_MISMATCH",
+        error: "The tag target does not belong to this Nest and document.",
+      };
     }
 
-    await prisma.studioTaggedSpan.create({
-      data: {
-        documentId,
-        blockId,
-        tagId: tag.id,
-        startOffset,
-        endOffset,
-        selectedText,
-        documentStableId: doc.stableId,
-        documentTitleSnapshot: doc.title,
-        blockStableId: block.stableId
+    const isStructureTag = STRUCTURE_TAG_SLUGS.includes(cleanTagSlug);
+    const startOffset = isStructureTag ? 0 : selection?.startOffset ?? 0;
+    const endOffset = isStructureTag ? block.body.length : selection?.endOffset ?? block.body.length;
+    const selectedText = isStructureTag ? block.body : selection?.selectedText ?? block.body;
+    if (
+      !Number.isSafeInteger(startOffset)
+      || !Number.isSafeInteger(endOffset)
+      || startOffset < 0
+      || endOffset <= startOffset
+      || endOffset > block.body.length
+      || block.body.slice(startOffset, endOffset) !== selectedText
+    ) {
+      return {
+        ok: false,
+        state: "rejected",
+        code: "IDENTITY_MISMATCH",
+        error: "The passage changed or the selection no longer matches. Select it again before tagging.",
+      };
+    }
+
+    const actorEmail = await getActorEmail();
+    const operation = await prisma.$transaction(async (tx) => {
+      let tag = await tx.studioTag.findUnique({
+        where: { projectId_slug: { projectId: cleanProjectId, slug: cleanTagSlug } },
+      });
+      if (!tag) {
+        const seed = SEED_TAGS.find((candidate) => candidate.slug === cleanTagSlug);
+        if (!seed) return { kind: "missing-tag" as const };
+        tag = await tx.studioTag.create({
+          data: {
+            projectId: cleanProjectId,
+            slug: seed.slug,
+            label: seed.label,
+            category: studioDbCategoryForQuipslyCategory(seed.category),
+            isPrivate: true,
+            isActive: true,
+          },
+        });
       }
-    });
-    await recordDocumentOperation(prisma, {
-      projectId,
-      documentId,
-      operationType: "tag-add",
-      beforeJson: {
-        blockId,
-        tagSlug,
-        spans: [],
-        removedCompetingTagSlugs,
-      },
-      afterJson: {
-        blockId,
-        tagSlug,
-        span: {
+      if (!tag.isActive || tag.archivedAt || tag.mergedIntoTagId) {
+        return { kind: "missing-tag" as const };
+      }
+
+      const existingSpans = await tx.studioTaggedSpan.findMany({
+        where: isStructureTag
+          ? { blockId: cleanBlockId, tagId: tag.id }
+          : { blockId: cleanBlockId, tagId: tag.id, startOffset, endOffset },
+      });
+      if (existingSpans.length > 0) {
+        await tx.studioTaggedSpan.deleteMany({
+          where: { id: { in: existingSpans.map((span) => span.id) } },
+        });
+        const receipt = await tx.studioDocumentOperation.create({
+          data: {
+            projectId: cleanProjectId,
+            documentId: cleanDocumentId,
+            actorEmail,
+            origin: "human",
+            operationType: "tag-remove",
+            status: "applied",
+            beforeJson: toPrismaJson({
+              blockId: cleanBlockId,
+              tagSlug: cleanTagSlug,
+              spans: existingSpans.map((span) => ({
+                id: span.id,
+                startOffset: span.startOffset,
+                endOffset: span.endOffset,
+                selectedText: span.selectedText,
+              })),
+            }),
+            afterJson: toPrismaJson({ blockId: cleanBlockId, tagSlug: cleanTagSlug, spans: [] }),
+            payloadJson: toPrismaJson({ blockId: cleanBlockId, tagSlug: cleanTagSlug, isStructureTag }),
+            reversible: true,
+          },
+          select: { id: true },
+        });
+        await tx.studioDocument.update({ where: { id: cleanDocumentId }, data: { updatedAt: new Date() } });
+        return {
+          kind: "removed" as const,
+          operationId: receipt.id,
+          removedSpanIds: existingSpans.map((span) => span.id),
+        };
+      }
+
+      let removedCompetingTagSlugs: string[] = [];
+      if (isStructureTag) {
+        const competingTags = await tx.studioTag.findMany({
+          where: {
+            projectId: cleanProjectId,
+            slug: { in: STRUCTURE_TAG_SLUGS.filter((slug) => slug !== cleanTagSlug) },
+          },
+          select: { id: true, slug: true },
+        });
+        removedCompetingTagSlugs = competingTags.map((competingTag) => competingTag.slug);
+        await tx.studioTaggedSpan.deleteMany({
+          where: {
+            blockId: cleanBlockId,
+            tagId: { in: competingTags.map((competingTag) => competingTag.id) },
+          },
+        });
+      }
+
+      const span = await tx.studioTaggedSpan.create({
+        data: {
+          documentId: cleanDocumentId,
+          blockId: cleanBlockId,
+          tagId: tag.id,
           startOffset,
           endOffset,
-          selectedText: selectedText.slice(0, 1600),
+          selectedText,
+          documentStableId: document.stableId,
+          documentTitleSnapshot: document.title,
+          blockStableId: block.stableId,
+          blockTitleSnapshot: block.title,
+          sourceLabel: block.sourceLabel,
+          sourcePath: block.sourcePath,
+          sourceExternalId: block.externalId,
+          projectionStatus: block.projectionStatus,
+          isPrivate: block.isPrivate,
+          createdByLabel: actorEmail,
         },
-      },
-      payloadJson: {
-        blockId,
-        tagSlug,
-        isStructureTag,
-        removedCompetingTagSlugs,
-      },
+      });
+      const receipt = await tx.studioDocumentOperation.create({
+        data: {
+          projectId: cleanProjectId,
+          documentId: cleanDocumentId,
+          actorEmail,
+          origin: "human",
+          operationType: "tag-add",
+          status: "applied",
+          beforeJson: toPrismaJson({
+            blockId: cleanBlockId,
+            tagSlug: cleanTagSlug,
+            spans: [],
+            removedCompetingTagSlugs,
+          }),
+          afterJson: toPrismaJson({
+            blockId: cleanBlockId,
+            tagSlug: cleanTagSlug,
+            span: {
+              id: span.id,
+              startOffset,
+              endOffset,
+              selectedText: selectedText.slice(0, 1600),
+            },
+          }),
+          payloadJson: toPrismaJson({
+            blockId: cleanBlockId,
+            tagSlug: cleanTagSlug,
+            isStructureTag,
+            removedCompetingTagSlugs,
+          }),
+          reversible: true,
+        },
+        select: { id: true },
+      });
+      await tx.studioDocument.update({ where: { id: cleanDocumentId }, data: { updatedAt: new Date() } });
+      return {
+        kind: "added" as const,
+        operationId: receipt.id,
+        spanId: span.id,
+      };
     });
+
+    if (operation.kind === "missing-tag") {
+      return {
+        ok: false,
+        state: "rejected",
+        code: "NOT_FOUND",
+        error: "That Nest tag is unavailable, archived, or redirected. Refresh the vocabulary before using it.",
+      };
+    }
+    revalidatePath("/");
+    revalidatePath("/create");
+    if (operation.kind === "added") {
+      return {
+        ok: true,
+        state: "persisted",
+        operation: "added",
+        operationId: operation.operationId,
+        spanId: operation.spanId,
+      };
+    }
+    return {
+      ok: true,
+      state: "persisted",
+      operation: "removed",
+      operationId: operation.operationId,
+      removedSpanIds: operation.removedSpanIds,
+    };
+  } catch (error) {
+    console.error("Writing tag persistence failed.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The tag could not be saved. Existing writing and vocabulary were left unchanged.",
+    };
+  }
+}
+
+export type CreatePassageTagActionResult =
+  | {
+      ok: true;
+      state: "persisted";
+      spanId: string;
+      operationId: string | null;
+      reusedApplication: boolean;
+      createdTag: boolean;
+      tag: {
+        id: string;
+        slug: string;
+        label: string;
+        category: string;
+        projectId: string;
+      };
+    }
+  | {
+      ok: false;
+      state: "rejected" | "unavailable";
+      code:
+        | "AUTH_REQUIRED"
+        | "INVALID_INPUT"
+        | "ACCESS_NOT_VERIFIED"
+        | "SELECTION_CHANGED"
+        | "SLUG_CONFLICT"
+        | "ARCHIVED"
+        | "PERSISTENCE_UNAVAILABLE";
+      error: string;
+    };
+
+export async function createAndApplyPassageTag(input: {
+  blockId: string;
+  startOffset: number;
+  endOffset: number;
+  selectedText: string;
+  label: string;
+}): Promise<CreatePassageTagActionResult> {
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) {
+    return {
+      ok: false,
+      state: "rejected",
+      code: "AUTH_REQUIRED",
+      error: "Sign in before creating a reusable passage tag.",
+    };
   }
 
-  revalidatePath('/');
-  revalidatePath('/create');
+  const blockId = typeof input?.blockId === "string" ? input.blockId.trim().slice(0, 200) : "";
+  const startOffset = Math.trunc(input?.startOffset);
+  const endOffset = Math.trunc(input?.endOffset);
+  const selectedText = typeof input?.selectedText === "string" ? input.selectedText : "";
+  const label = normalizeWorkTagLabel(input?.label);
+  if (
+    !blockId
+    || !Number.isSafeInteger(startOffset)
+    || !Number.isSafeInteger(endOffset)
+    || startOffset < 0
+    || endOffset <= startOffset
+    || !selectedText
+    || !label
+  ) {
+    return {
+      ok: false,
+      state: "rejected",
+      code: "INVALID_INPUT",
+      error: "Select an exact passage and enter a reusable tag name of 80 characters or fewer.",
+    };
+  }
+
+  let prisma: ReturnType<typeof getPrismaClient>;
+  try {
+    prisma = getPrismaClient();
+  } catch (error) {
+    console.error("Passage tag creation could not open persistence.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The writing database is unavailable. No tag was created or applied.",
+    };
+  }
+
+  try {
+    await requireProjectAccessByBlockId(prisma, blockId, "write");
+  } catch (error) {
+    console.error("Passage tag creation could not verify write access.", error);
+    return {
+      ok: false,
+      state: "rejected",
+      code: "ACCESS_NOT_VERIFIED",
+      error: "Editor access to this Nest is required to create reusable tags.",
+    };
+  }
+
+  try {
+    const block = await prisma.studioDocumentBlock.findUnique({
+      where: { id: blockId },
+      select: {
+        id: true,
+        stableId: true,
+        title: true,
+        body: true,
+        sourceLabel: true,
+        sourcePath: true,
+        externalId: true,
+        projectionStatus: true,
+        isPrivate: true,
+        document: {
+          select: {
+            id: true,
+            stableId: true,
+            title: true,
+            projectId: true,
+          },
+        },
+      },
+    });
+    if (
+      !block
+      || endOffset > block.body.length
+      || block.body.slice(startOffset, endOffset) !== selectedText
+    ) {
+      return {
+        ok: false,
+        state: "rejected",
+        code: "SELECTION_CHANGED",
+        error: "The passage changed or the selection no longer matches. Select it again before tagging.",
+      };
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const resolvedTag = await resolveReusableProjectTag({
+        tx,
+        projectId: block.document.projectId,
+        label,
+      });
+      if (!resolvedTag.ok) return { kind: "tag-error" as const, failure: resolvedTag };
+
+      const existing = await tx.studioTaggedSpan.findUnique({
+        where: {
+          blockId_tagId_startOffset_endOffset: {
+            blockId,
+            tagId: resolvedTag.tag.id,
+            startOffset,
+            endOffset,
+          },
+        },
+        select: { id: true, selectedText: true },
+      });
+      if (existing) {
+        if (existing.selectedText !== selectedText) {
+          return { kind: "selection-changed" as const };
+        }
+        return {
+          kind: "saved" as const,
+          spanId: existing.id,
+          operationId: null,
+          reusedApplication: true,
+          resolvedTag,
+        };
+      }
+
+      const span = await tx.studioTaggedSpan.create({
+        data: {
+          documentId: block.document.id,
+          blockId,
+          tagId: resolvedTag.tag.id,
+          startOffset,
+          endOffset,
+          selectedText,
+          documentStableId: block.document.stableId,
+          documentTitleSnapshot: block.document.title,
+          blockStableId: block.stableId,
+          blockTitleSnapshot: block.title,
+          sourceLabel: block.sourceLabel,
+          sourcePath: block.sourcePath,
+          sourceExternalId: block.externalId,
+          projectionStatus: block.projectionStatus,
+          isPrivate: block.isPrivate,
+          createdByLabel: actorEmail,
+        },
+        select: { id: true },
+      });
+      const operation = await tx.studioDocumentOperation.create({
+        data: {
+          projectId: block.document.projectId,
+          documentId: block.document.id,
+          actorEmail,
+          origin: "human",
+          operationType: "tag-add",
+          status: "applied",
+          beforeJson: toPrismaJson({
+            blockId,
+            tagId: resolvedTag.tag.id,
+            tagSlug: resolvedTag.tag.slug,
+            spans: [],
+          }),
+          afterJson: toPrismaJson({
+            blockId,
+            tagId: resolvedTag.tag.id,
+            tagSlug: resolvedTag.tag.slug,
+            spanId: span.id,
+            startOffset,
+            endOffset,
+            selectedText,
+          }),
+          payloadJson: toPrismaJson({
+            blockId,
+            tagId: resolvedTag.tag.id,
+            tagSlug: resolvedTag.tag.slug,
+            createdReusableTag: resolvedTag.created,
+          }),
+          reversible: true,
+        },
+        select: { id: true },
+      });
+      await tx.studioDocument.update({
+        where: { id: block.document.id },
+        data: { updatedAt: new Date() },
+      });
+      return {
+        kind: "saved" as const,
+        spanId: span.id,
+        operationId: operation.id,
+        reusedApplication: false,
+        resolvedTag,
+      };
+    });
+
+    if (result.kind === "tag-error") {
+      return {
+        ok: false,
+        state: "rejected",
+        code: result.failure.code,
+        error: result.failure.error,
+      };
+    }
+    if (result.kind === "selection-changed") {
+      return {
+        ok: false,
+        state: "rejected",
+        code: "SELECTION_CHANGED",
+        error: "The passage changed or the selection no longer matches. Select it again before tagging.",
+      };
+    }
+
+    revalidatePath("/create");
+    return {
+      ok: true,
+      state: "persisted",
+      spanId: result.spanId,
+      operationId: result.operationId,
+      reusedApplication: result.reusedApplication,
+      createdTag: result.resolvedTag.created,
+      tag: {
+        id: result.resolvedTag.tag.id,
+        slug: result.resolvedTag.tag.slug,
+        label: result.resolvedTag.tag.label,
+        category: String(result.resolvedTag.tag.category),
+        projectId: result.resolvedTag.tag.projectId,
+      },
+    };
+  } catch (error) {
+    console.error("Passage tag creation failed.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "Quipsly could not create or apply that tag. Existing vocabulary and writing were not changed.",
+    };
+  }
 }
 
 export async function bulkNormalizeHeadings(documentId: string): Promise<HeadingBulkNormalizeResult> {

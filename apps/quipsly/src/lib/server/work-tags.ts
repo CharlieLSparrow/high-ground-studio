@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import type { PrismaClient } from "@prisma/client";
+import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { listProjectsVisibleToEmail } from "./home-nest";
 import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
@@ -59,6 +59,120 @@ function normalizedTagIds(value: unknown) {
 
 function canonicalTagLabel(label: string) {
   return label.normalize("NFKC").toLocaleLowerCase("en-US");
+}
+
+const reusableProjectTagSelect = {
+  id: true,
+  projectId: true,
+  slug: true,
+  label: true,
+  category: true,
+  isActive: true,
+} satisfies Prisma.StudioTagSelect;
+
+export type ReusableProjectTag = Prisma.StudioTagGetPayload<{
+  select: typeof reusableProjectTagSelect;
+}>;
+
+export type ResolveReusableProjectTagResult =
+  | { ok: true; tag: ReusableProjectTag; created: boolean }
+  | { ok: false; code: "INVALID_INPUT" | "ARCHIVED"; error: string }
+  | { ok: false; code: "SLUG_CONFLICT"; error: string; existingLabel: string };
+
+/**
+ * Resolve one human-entered label to the canonical private Nest vocabulary.
+ * Former names follow aliases or merge redirects; ambiguous slug collisions
+ * fail closed. Callers must prove write access before entering this transaction.
+ */
+export async function resolveReusableProjectTag(input: {
+  tx: Prisma.TransactionClient;
+  projectId: string;
+  label: unknown;
+}): Promise<ResolveReusableProjectTagResult> {
+  const projectId = cleanId(input.projectId);
+  const label = normalizeWorkTagLabel(input.label);
+  const slug = label ? workTagSlug(label) : "";
+  if (!projectId || !label || !slug) {
+    return { ok: false, code: "INVALID_INPUT", error: "Enter a reusable tag name of 80 characters or fewer." };
+  }
+
+  const directTag = await input.tx.studioTag.findUnique({
+    where: { projectId_slug: { projectId, slug } },
+    select: {
+      ...reusableProjectTagSelect,
+      mergedInto: { select: reusableProjectTagSelect },
+    },
+  });
+  let tag: ReusableProjectTag | null = directTag?.mergedInto ?? directTag;
+  let resolvedFormerName = Boolean(directTag?.mergedInto);
+
+  if (!tag) {
+    const alias = await input.tx.studioTagAlias.findUnique({
+      where: { projectId_slug: { projectId, slug } },
+      select: {
+        label: true,
+        tag: { select: reusableProjectTagSelect },
+      },
+    });
+    if (alias) {
+      if (canonicalTagLabel(alias.label) !== canonicalTagLabel(label)) {
+        return {
+          ok: false,
+          code: "SLUG_CONFLICT",
+          existingLabel: alias.label,
+          error: `“${label}” conflicts with the existing “${alias.label}” tag. Choose a more distinct name.`,
+        };
+      }
+      tag = alias.tag;
+      resolvedFormerName = true;
+    }
+  }
+
+  if (tag) {
+    if (!tag.isActive) {
+      return {
+        ok: false,
+        code: "ARCHIVED",
+        error: "That tag is archived. Restore or rename it from the Nest vocabulary before using it.",
+      };
+    }
+    const resolvesByAlias = await input.tx.studioTagAlias.findFirst({
+      where: {
+        projectId,
+        tagId: tag.id,
+        slug,
+        label: { equals: label, mode: "insensitive" },
+      },
+      select: { id: true },
+    });
+    if (
+      canonicalTagLabel(tag.label) !== canonicalTagLabel(label)
+      && !resolvesByAlias
+      && !resolvedFormerName
+    ) {
+      return {
+        ok: false,
+        code: "SLUG_CONFLICT",
+        existingLabel: tag.label,
+        error: `“${label}” conflicts with the existing “${tag.label}” tag. Choose a more distinct name.`,
+      };
+    }
+    return { ok: true, tag, created: false };
+  }
+
+  const created = await input.tx.studioTag.create({
+    data: {
+      projectId,
+      slug,
+      label,
+      category: "meaning",
+      nodeType: "source_note",
+      isPrivate: true,
+      isActive: true,
+    },
+    select: reusableProjectTagSelect,
+  });
+  return { ok: true, tag: created, created: true };
 }
 
 async function writableProjectIds(prisma: PrismaClient, actorEmail: string) {
@@ -175,44 +289,19 @@ export async function createAndAssignWorkEntityTag(input: {
     );
     if (!currentEntity) return { kind: "conflict" as const };
 
-    let tag = await tx.studioTag.findUnique({
-      where: { projectId_slug: { projectId: entity.projectId, slug } },
-      include: { mergedInto: true },
+    const resolvedTag = await resolveReusableProjectTag({
+      tx: tx as Prisma.TransactionClient,
+      projectId: entity.projectId,
+      label,
     });
-    let created = false;
-    let resolvedFormerName = false;
-    if (tag?.mergedInto) {
-      tag = tag.mergedInto;
-      resolvedFormerName = true;
+    if (!resolvedTag.ok) {
+      if (resolvedTag.code === "ARCHIVED") return { kind: "archived" as const };
+      return {
+        kind: "slug-conflict" as const,
+        existingLabel: resolvedTag.code === "SLUG_CONFLICT" ? resolvedTag.existingLabel : label,
+      };
     }
-    if (!tag) {
-      const alias = await tx.studioTagAlias.findUnique({
-        where: { projectId_slug: { projectId: entity.projectId, slug } },
-        include: { tag: true },
-      });
-      if (alias) {
-        if (canonicalTagLabel(alias.label) !== canonicalTagLabel(label)) {
-          return { kind: "slug-conflict" as const, existingLabel: alias.label };
-        }
-        tag = alias.tag;
-        resolvedFormerName = true;
-      }
-    }
-    if (tag) {
-      if (!tag.isActive) return { kind: "archived" as const };
-      const resolvesByAlias = await tx.studioTagAlias.findFirst({
-        where: { projectId: entity.projectId, tagId: tag.id, slug, label: { equals: label, mode: "insensitive" } },
-        select: { id: true },
-      });
-      if (canonicalTagLabel(tag.label) !== canonicalTagLabel(label) && !resolvesByAlias && !resolvedFormerName) {
-        return { kind: "slug-conflict" as const, existingLabel: tag.label };
-      }
-    } else {
-      tag = await tx.studioTag.create({
-        data: { projectId: entity.projectId, slug, label, category: "meaning", nodeType: "source_note", isPrivate: true, isActive: true },
-      });
-      created = true;
-    }
+    const { tag, created } = resolvedTag;
 
     const receipt = {
       id: receiptId,

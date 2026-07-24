@@ -57,9 +57,18 @@ export type WorkbenchProjectDocumentSummary = {
   updatedAt: string | Date;
 };
 
+export type WorkbenchTagPayload = {
+  id: string;
+  slug: string;
+  label: string;
+  category: string;
+  description?: string;
+};
+
 export type WorkbenchBaseState = {
   blocks: WorkbenchBlockPayload[];
   views: ViewDefinition[];
+  projectTags: WorkbenchTagPayload[];
   projectId: string;
   projectSlug: string;
   projectName: string;

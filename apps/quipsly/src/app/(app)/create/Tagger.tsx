@@ -12,6 +12,7 @@ import {
   unarchiveBlock,
   reorderDocumentBlocksAction,
   addBlockComment,
+  createAndApplyPassageTag,
   pastePlainTextBlocksAction,
   type AssistantDocumentApplyReceipt,
 } from "./actions";
@@ -171,7 +172,12 @@ export default function Tagger({
   onActiveScrollBoundaryChange?: (boundaryId: string | null) => void,
   initialFocusBlockId?: string,
 }) {
-  const { tagDefinitions, blockAccents, blockCards } = useEditorExtensions();
+  const {
+    tagDefinitions,
+    blockAccents,
+    blockCards,
+    registerProjectTag,
+  } = useEditorExtensions();
   const applyTagOptions = tagDefinitions.filter(t => t.category === "structure");
   const getTagDef = (tagId: string) => tagDefinitions.find(t => t.id === tagId);
 
@@ -675,16 +681,34 @@ export default function Tagger({
     return () => window.removeEventListener("keydown", handleUndoShortcut);
   }, [undoLatest, undoLatestGroup]);
 
-  const handleToggleTag = async (blockId: string, tagId: string) => {
+  const handleToggleTag = async (
+    blockId: string,
+    tagId: string,
+    selectionOverride?: { startOffset: number; endOffset: number; selectedText: string } | null,
+  ): Promise<
+    | { ok: true; operation: "added" | "removed" }
+    | { ok: false; error: string }
+  > => {
     const previousScroll = captureScrollState();
+    setPersistenceError(null);
     // Optimistic UI update
-    const block = blocks.find(b => b.id === blockId);
-    if (!block) return;
+    const block = getCurrentBlock(blockId);
+    if (!block) return { ok: false, error: "The writing block is no longer available." };
     const beforeSnapshot = snapshotFromBlock(block);
     const isStructureTag = STRUCTURE_TAG_IDS.has(tagId);
-    const selection = isStructureTag ? undefined : selectedRanges[blockId];
+    const fullBlockSelection = {
+      startOffset: 0,
+      endOffset: block.text.length,
+      selectedText: block.text,
+    };
+    const selection = isStructureTag
+      ? undefined
+      : selectionOverride === undefined
+        ? selectedRanges[blockId] ?? fullBlockSelection
+        : selectionOverride ?? fullBlockSelection;
     
-    setBlocks((currentBlocks) => currentBlocks.map(b => {
+    setBlocks((currentBlocks) => {
+      const nextBlocks = currentBlocks.map(b => {
       if (b.id !== blockId) return b;
       const selectedSpan = selection && selection.startOffset !== selection.endOffset
         ? {
@@ -704,12 +728,15 @@ export default function Tagger({
           span.startOffset === selectedSpan.startOffset &&
           span.endOffset === selectedSpan.endOffset
         );
+        const nextSpans = exists
+          ? spans.filter(span => !(span.tagSlug === tagId && span.startOffset === selectedSpan.startOffset && span.endOffset === selectedSpan.endOffset))
+          : [...spans, selectedSpan];
         return {
           ...b,
-          tags: b.tags.includes(tagId) ? b.tags : [...b.tags, tagId],
-          spans: exists
-            ? spans.filter(span => !(span.tagSlug === tagId && span.startOffset === selectedSpan.startOffset && span.endOffset === selectedSpan.endOffset))
-            : [...spans, selectedSpan]
+          tags: nextSpans.some((span) => span.tagSlug === tagId)
+            ? (b.tags.includes(tagId) ? b.tags : [...b.tags, tagId])
+            : b.tags.filter((existingTagId) => existingTagId !== tagId),
+          spans: nextSpans,
         };
       }
 
@@ -731,15 +758,69 @@ export default function Tagger({
       }
 
       return { ...b, tags: [...b.tags, tagId] };
-    }));
+      });
+      blocksRef.current = nextBlocks;
+      return nextBlocks;
+    });
 
-    // Server Action
-    await toggleBlockTag(blockId, documentId, projectId, tagId, block.text, selection);
+    let savedOperation: "added" | "removed";
+    try {
+      const result = await toggleBlockTag(blockId, documentId, projectId, tagId, block.text, selection);
+      if (!result.ok) {
+        restoreBlockLocally(beforeSnapshot);
+        restoreScrollState(previousScroll);
+        setPersistenceError(result.error);
+        return { ok: false, error: result.error };
+      }
+      savedOperation = result.operation;
+      if (result.operation === "added") {
+        const persistedSelection = selection ?? fullBlockSelection;
+        setBlocks((currentBlocks) => {
+          const nextBlocks = currentBlocks.map((currentBlock) => {
+            if (currentBlock.id !== blockId) return currentBlock;
+            const spans = (currentBlock.spans ?? []).filter((span) =>
+              !(
+                span.tagSlug === tagId
+                && span.startOffset === persistedSelection.startOffset
+                && span.endOffset === persistedSelection.endOffset
+              )
+            );
+            return {
+              ...currentBlock,
+              tags: currentBlock.tags.includes(tagId)
+                ? currentBlock.tags
+                : [...currentBlock.tags, tagId],
+              spans: [...spans, {
+                id: result.spanId,
+                tagSlug: tagId,
+                label: getTagDef(tagId)?.label ?? tagId,
+                category: getTagDef(tagId)?.category,
+                startOffset: persistedSelection.startOffset,
+                endOffset: persistedSelection.endOffset,
+                selectedText: persistedSelection.selectedText,
+              }],
+            };
+          });
+          blocksRef.current = nextBlocks;
+          return nextBlocks;
+        });
+      }
+    } catch (error) {
+      restoreBlockLocally(beforeSnapshot);
+      restoreScrollState(previousScroll);
+      const message = error instanceof Error
+        ? `The tag was not saved: ${error.message}`
+        : "The tag was not saved.";
+      setPersistenceError(message);
+      return { ok: false, error: message };
+    }
 
     const restoredSnapshot = beforeSnapshot;
     const tagLabel = getTagDef(tagId)?.label ?? tagId;
     pushUndo({
-      label: `Tag ${tagLabel} on ${labelForBlock(beforeSnapshot)}`,
+      label: savedOperation === "added"
+        ? `Remove ${tagLabel} from ${labelForBlock(beforeSnapshot)}`
+        : `Restore ${tagLabel} on ${labelForBlock(beforeSnapshot)}`,
       createdAtLabel: "tag",
       undo: async () => {
         restoreBlockLocally(restoredSnapshot);
@@ -759,6 +840,8 @@ export default function Tagger({
     if (latest) {
       ensureCommittedSnapshot(latest);
     }
+    restoreScrollState(previousScroll);
+    return { ok: true, operation: savedOperation };
   };
 
   const handleAddComment = useCallback(async (
@@ -798,6 +881,89 @@ export default function Tagger({
       return false;
     }
   }, []);
+
+  const handleCreatePassageTag = async (
+    blockId: string,
+    startOffset: number,
+    endOffset: number,
+    selectedText: string,
+    label: string,
+  ) => {
+    setPersistenceError(null);
+    const beforeBlock = getCurrentBlock(blockId);
+    if (!beforeBlock) {
+      return { ok: false as const, error: "The selected writing block is no longer available." };
+    }
+    const beforeSnapshot = snapshotFromBlock(beforeBlock);
+
+    try {
+      const result = await createAndApplyPassageTag({
+        blockId,
+        startOffset,
+        endOffset,
+        selectedText,
+        label,
+      });
+      if (!result.ok) {
+        setPersistenceError(result.error);
+        return { ok: false as const, error: result.error };
+      }
+
+      registerProjectTag({
+        id: result.tag.id,
+        slug: result.tag.slug,
+        label: result.tag.label,
+        category: result.tag.category,
+      });
+      setBlocks((currentBlocks) => currentBlocks.map((block) => {
+        if (block.id !== blockId) return block;
+        const spans = block.spans ?? [];
+        const alreadyPresent = spans.some((span) =>
+          span.tagSlug === result.tag.slug
+          && span.startOffset === startOffset
+          && span.endOffset === endOffset
+        );
+        return {
+          ...block,
+          tags: block.tags.includes(result.tag.slug)
+            ? block.tags
+            : [...block.tags, result.tag.slug],
+          spans: alreadyPresent
+            ? spans
+            : [...spans, {
+                id: result.spanId,
+                tagSlug: result.tag.slug,
+                label: result.tag.label,
+                category: result.tag.category,
+                startOffset,
+                endOffset,
+                selectedText,
+              }],
+        };
+      }));
+      pushUndo({
+        label: `Remove ${result.tag.label} from ${labelForBlock(beforeSnapshot)}`,
+        createdAtLabel: "tag",
+        undo: async () => {
+          restoreBlockLocally(beforeSnapshot);
+          await restoreBlockState(blockId, beforeSnapshot.text, beforeSnapshot.spans);
+          const currentBlock = getCurrentBlock(blockId);
+          if (currentBlock) ensureCommittedSnapshot(currentBlock);
+        },
+      });
+      return {
+        ok: true as const,
+        created: result.createdTag,
+        tagLabel: result.tag.label,
+      };
+    } catch (error) {
+      const message = error instanceof Error
+        ? `The tag was not created: ${error.message}`
+        : "The tag was not created.";
+      setPersistenceError(message);
+      return { ok: false as const, error: message };
+    }
+  };
 
   const handleClearBlockTags = async (block: Block) => {
     if (uniqueTagIds(block).length === 0) return;
@@ -1596,6 +1762,7 @@ export default function Tagger({
           onDeleteBlock={handleDeleteBlock}
           onNormalizeHeading={handleNormalizeHeading}
           onAddComment={handleAddComment}
+          onCreatePassageTag={handleCreatePassageTag}
           onFindSupportingQuote={handleFindSupportingQuote}
           onSelectionChange={handleSelectionChange}
           registerTextareaRef={(id, el) => {
