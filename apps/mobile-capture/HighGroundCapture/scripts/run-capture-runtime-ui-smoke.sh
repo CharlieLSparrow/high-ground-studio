@@ -94,8 +94,15 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  session-note-edit)
+    TEST_CASE="testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox"
+    if [[ -z "$TEST_SESSION_ID" ]]; then
+      echo "Session-note edit mode requires one exact writable Session ID." >&2
+      exit 2
+    fi
+    ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, or tag-edit-offline)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, or session-note-edit)" >&2
     exit 2
     ;;
 esac

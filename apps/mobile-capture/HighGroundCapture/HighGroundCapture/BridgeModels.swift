@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import CryptoKit
 
 func normalizedNestBaseURL(_ value: String) -> String {
     #if DEBUG
@@ -390,6 +391,54 @@ struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
     }
 }
 
+private struct MobileSessionNoteEditRequest: Encodable {
+    let clientRequestId: String
+    let title: String?
+    let body: String
+    let kind: String
+    let visibility: String
+    let tagIds: [String]
+    let expectedUpdatedAt: String
+
+    init(edit: PendingSessionNoteEdit) {
+        clientRequestId = edit.clientRequestID
+        title = edit.title
+        body = edit.body
+        kind = edit.noteKind.rawValue
+        visibility = edit.noteVisibility.rawValue
+        tagIds = edit.tagIDs
+        expectedUpdatedAt = edit.expectedUpdatedAt
+    }
+}
+
+struct MobileSessionNoteEditResponse: Decodable {
+    struct Note: Decodable {
+        let id: String
+        let title: String?
+        let body: String
+        let kind: String
+        let visibility: String
+        let updatedAt: String
+        let revisionCount: Int
+        let tags: [MobileCaptureTag]
+    }
+
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let note: Note?
+    let current: Note?
+    let receiptId: String?
+    let idempotentReplay: Bool?
+    let appliedRevision: Int?
+}
+
+enum MobileSessionNoteEditSyncResult {
+    case acknowledged(idempotentReplay: Bool, message: String)
+    case retryable(message: String)
+    case held(code: String?, message: String)
+}
+
 struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let id: String
     let callRoomId: String
@@ -758,6 +807,7 @@ struct MobileCaptureTag: Codable, Identifiable, Hashable {
     let id: String
     let slug: String
     let label: String
+    var isActive: Bool? = nil
 }
 
 struct MobileCaptureProjectDestination: Codable, Identifiable, Hashable {
@@ -4049,6 +4099,72 @@ final class CaptureSessionClient: ObservableObject {
         } catch {
             return .retryable(message: "\(error.localizedDescription) The protected phone copy remains queued.")
         }
+    }
+
+    func syncSessionNoteEdit(_ edit: PendingSessionNoteEdit) async -> MobileSessionNoteEditSyncResult {
+        let encodedNoteID = edit.noteID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? edit.noteID
+        guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/notes/\(encodedNoteID)") else {
+            return .held(
+                code: "BAD_NEST_URL",
+                message: "The configured Nest URL is not valid. The protected note draft remains on this iPhone."
+            )
+        }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "PATCH"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(MobileSessionNoteEditRequest(edit: edit))
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileSessionNoteEditResponse.self, from: data)
+            if response.statusCode >= 500 || response.statusCode == 408 || response.statusCode == 429 {
+                return .retryable(
+                    message: payload.error ?? "Nest is temporarily unavailable. The complete note draft remains protected for retry."
+                )
+            }
+            guard response.statusCode < 400,
+                  payload.ok,
+                  let saved = payload.note else {
+                return .held(
+                    code: payload.code,
+                    message: payload.error ?? "Nest held this note edit. Review the protected iPhone draft beside the canonical note."
+                )
+            }
+            let receiptMatches = payload.receiptId == "session-note-edit-\(Self.sessionNoteEditDigest(ownerID: edit.ownerAccountID, requestID: edit.clientRequestID))"
+                && payload.appliedRevision != nil
+            let intentMatchesCurrent = saved.title == edit.title
+                && saved.body == edit.body
+                && saved.kind == edit.noteKind.rawValue
+                && saved.visibility == edit.noteVisibility.rawValue
+                && saved.tags.map(\.id).sorted() == edit.tagIDs
+            guard saved.id == edit.noteID,
+                  receiptMatches,
+                  payload.idempotentReplay == true || intentMatchesCurrent else {
+                return .held(
+                    code: "SESSION_NOTE_EDIT_ACKNOWLEDGEMENT_MISMATCH",
+                    message: "Nest returned a different note, audience, tag set, or revision receipt. The protected iPhone draft is held for review."
+                )
+            }
+            return .acknowledged(
+                idempotentReplay: payload.idempotentReplay == true,
+                message: payload.idempotentReplay == true
+                    ? "Nest already applied this exact protected note edit; no revision was duplicated."
+                    : "The canonical Session note, audience, and tags are updated with a new revision. Nothing was sent or published."
+            )
+        } catch {
+            return .retryable(
+                message: "\(error.localizedDescription) The complete note draft remains protected for retry."
+            )
+        }
+    }
+
+    nonisolated private static func sessionNoteEditDigest(ownerID: String, requestID: String) -> String {
+        SHA256.hash(data: Data("\(ownerID)|\(requestID)".utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+            .prefix(32)
+            .description
     }
 
     func providerRecordingAction(

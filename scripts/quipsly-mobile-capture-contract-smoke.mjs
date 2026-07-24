@@ -824,7 +824,10 @@ function checkTranscriptCorrectionContractSources() {
   const quickEntryRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts");
   const sessionNoteContractText = sourceText("apps/quipsly/src/lib/session-note-contract.ts");
   const sessionNoteAccessText = sourceText("apps/quipsly/src/lib/server/session-note-access.ts");
+  const sessionNoteEditText = sourceText("apps/quipsly/src/lib/server/session-note-edit.ts");
+  const sessionNoteEditRouteText = sourceText("apps/quipsly/src/app/api/notes/[noteId]/route.ts");
   const quickEntryOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileQuickEntryOutbox.swift");
+  const sessionNoteEditOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/SessionNoteEditOutbox.swift");
   const captureExperienceText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureExperienceModel.swift");
   const shareCaptureBridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ShareCaptureBridge.swift");
   const shareExtensionText = sourceText("apps/mobile-capture/HighGroundCapture/ShareCaptureExtension/ShareViewController.swift");
@@ -1118,6 +1121,37 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("Audience is a visibility decision, not a delivery receipt"),
     "visibilityAwareIPhoneSessionNotes",
     "iPhone Session notes preserve purpose and audience through the protected offline ledger, authorize production policy on Nest, append a revision, and project only visibility-permitted canonical notes back to the phone without claiming delivery.",
+  );
+  expect(
+    sessionNoteEditText.includes('kind: "quipsly-session-note-edit-v2"')
+      && sessionNoteEditText.includes('surface: "nest-session-notes" | "ios-capture-session-notes"')
+      && sessionNoteEditText.includes('isolationLevel: "Serializable"')
+      && sessionNoteEditText.includes("REQUEST_ID_CONFLICT")
+      && sessionNoteEditText.includes("previousContentRetainedInRevision: true")
+      && sessionNoteEditText.includes("externalSideEffects: false")
+      && sessionNoteEditText.includes("addedTagIdsInTransaction")
+      && sessionNoteEditRouteText.includes("clientRequestId")
+      && sessionNoteEditRouteText.includes("canonicalTagsAtomic")
+      && sessionNoteEditRouteText.includes("retryIdentityProtected")
+      && sessionNoteEditOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")
+      && sessionNoteEditOutboxText.includes("ownerAccountID")
+      && sessionNoteEditOutboxText.includes("var clientRequestID: String { id.uuidString.lowercased() }")
+      && captureExperienceText.includes("retrySessionNoteEdits(automatic: true)")
+      && captureExperienceText.includes("sessionNoteEditOutbox.enqueue")
+      && captureExperienceText.includes("A protected Session-note edit needs deliberate review beside Nest's current revision.")
+      && captureExperienceText.includes("sessionNoteEditMessageRoomID = edit.roomID")
+      && bridgeText.includes("syncSessionNoteEdit")
+      && bridgeText.includes("var isActive: Bool? = nil")
+      && bridgeText.includes("payload.idempotentReplay == true || intentMatchesCurrent")
+      && mobileCaptureSessionsText.includes("isActive: tag.isActive")
+      && bridgeText.includes("SESSION_NOTE_EDIT_ACKNOWLEDGEMENT_MISMATCH")
+      && shellText.includes("CaptureSessionNoteEditSheet")
+      && shellText.includes("CaptureSessionNoteEditKeyboardDone")
+      && shellText.includes("CaptureSessionNoteEditPolicyBoundary")
+      && shellText.includes("Save reviewed draft over current revision")
+      && shellText.includes("Nest remains canonical. A successful edit appends one revision"),
+    "protectedIPhoneSessionNoteEditing",
+    "iPhone Session-note edits journal complete actor-partitioned intent before sync, use optimistic and idempotent server transactions, atomically replace canonical tags, hold conflicts for explicit review, and append exactly one revision without delivery or publication.",
   );
   expect(
     schemaText.includes("model StudioPersonalSourceFiling")

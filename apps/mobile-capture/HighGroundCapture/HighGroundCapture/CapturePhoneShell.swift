@@ -1490,7 +1490,7 @@ private struct CaptureRecorderView: View {
                 if let session = model.selectedSession {
                     CaptureSessionNotesCard(
                         session: session,
-                        outbox: model.quickEntryOutbox
+                        model: model
                     )
 
                     DisclosureGroup(isExpanded: $showsSessionContext) {
@@ -1809,15 +1809,20 @@ struct CaptureQuickEntrySyncCard: View {
 
 private struct CaptureSessionNotesCard: View {
     let session: MobileCaptureSession
-    @ObservedObject var outbox: MobileQuickEntryOutbox
+    @ObservedObject var model: CaptureExperienceModel
     @State private var isExpanded = false
+    @State private var editingNote: MobileCaptureSessionNote?
+
+    private var quickEntryOutbox: MobileQuickEntryOutbox {
+        model.quickEntryOutbox
+    }
 
     private var canonicalNotes: [MobileCaptureSessionNote] {
         session.sessionNotes ?? []
     }
 
     private var pendingNotes: [PendingMobileQuickEntry] {
-        outbox.entries.filter {
+        quickEntryOutbox.entries.filter {
             $0.kind == .note && $0.callRoomID == session.callRoomId
         }
     }
@@ -1826,9 +1831,29 @@ private struct CaptureSessionNotesCard: View {
         canonicalNotes.count + pendingNotes.count
     }
 
+    private var protectedEdits: [PendingSessionNoteEdit] {
+        model.sessionNoteEditOutbox.entries.filter { $0.roomID == session.callRoomId }
+    }
+
     var body: some View {
         DisclosureGroup(isExpanded: $isExpanded) {
             VStack(alignment: .leading, spacing: 10) {
+                if model.sessionNoteEditMessageRoomID == session.callRoomId,
+                   let message = model.sessionNoteEditMessage?.nonempty {
+                    let hasHeldEdit = protectedEdits.contains { $0.disposition == .held }
+                    let hasPendingEdit = protectedEdits.contains { $0.disposition == .pending }
+                    Label(
+                        message,
+                        systemImage: hasHeldEdit
+                            ? "exclamationmark.triangle.fill"
+                            : hasPendingEdit ? "iphone.gen3.radiowaves.left.and.right" : "checkmark.shield"
+                    )
+                        .font(.caption)
+                        .foregroundStyle(hasHeldEdit ? Color.orange : CapturePalette.accent)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("CaptureSessionNoteEditMessage")
+                }
+
                 if totalCount == 0 {
                     Text("No deliberate notes yet. Quick Note above can save privately, to this Session, for client review, or to the production team.")
                         .font(.caption)
@@ -1864,6 +1889,7 @@ private struct CaptureSessionNotesCard: View {
                 }
 
                 ForEach(canonicalNotes.prefix(8)) { note in
+                    let protectedEdit = model.pendingSessionNoteEdit(for: note.id)
                     VStack(alignment: .leading, spacing: 5) {
                         HStack(alignment: .firstTextBaseline, spacing: 6) {
                             Text(note.purposeLabel)
@@ -1885,7 +1911,9 @@ private struct CaptureSessionNotesCard: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(5)
                         if !note.tags.isEmpty {
-                            Text(note.tags.map { "#\($0.label)" }.joined(separator: "  "))
+                            Text(note.tags.map {
+                                $0.isActive == false ? "#\($0.label) (retired)" : "#\($0.label)"
+                            }.joined(separator: "  "))
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.purple)
                                 .lineLimit(2)
@@ -1894,6 +1922,38 @@ private struct CaptureSessionNotesCard: View {
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let protectedEdit {
+                            Label(
+                                protectedEdit.disposition == .held
+                                    ? "Protected edit held for review"
+                                    : "Protected edit waiting for Nest",
+                                systemImage: protectedEdit.disposition == .held
+                                    ? "exclamationmark.triangle.fill"
+                                    : "iphone.gen3.radiowaves.left.and.right"
+                            )
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(protectedEdit.disposition == .held ? Color.orange : CapturePalette.accent)
+                            .accessibilityIdentifier("CaptureSessionNoteEditState_\(note.id)")
+                            if let error = protectedEdit.lastErrorMessage {
+                                Text(error)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        if note.canEdit {
+                            Button {
+                                editingNote = note
+                            } label: {
+                                Label(
+                                    protectedEdit == nil ? "Edit note" : "Review protected draft",
+                                    systemImage: protectedEdit == nil ? "pencil" : "doc.text.magnifyingglass"
+                                )
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                            .accessibilityIdentifier("CaptureSessionNoteEdit_\(note.id)")
+                        }
                     }
                     .padding(10)
                     .background(CapturePalette.accent.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -1922,6 +1982,270 @@ private struct CaptureSessionNotesCard: View {
         }
         .captureCard()
         .accessibilityHint("Shows protected pending notes and canonical notes whose audience permits this account.")
+        .sheet(item: $editingNote) { note in
+            CaptureSessionNoteEditSheet(
+                session: session,
+                note: note,
+                protectedEdit: model.pendingSessionNoteEdit(for: note.id),
+                model: model
+            )
+        }
+    }
+}
+
+private struct CaptureSessionNoteEditSheet: View {
+    private enum FocusedField: Hashable {
+        case title
+        case body
+    }
+
+    let session: MobileCaptureSession
+    let note: MobileCaptureSessionNote
+    let protectedEdit: PendingSessionNoteEdit?
+    @ObservedObject var model: CaptureExperienceModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var noteBody: String
+    @State private var noteKind: MobileSessionNoteKind
+    @State private var noteVisibility: MobileSessionNoteVisibility
+    @State private var selectedTagIDs: Set<String>
+    @State private var tagSearchText = ""
+    @FocusState private var focusedField: FocusedField?
+
+    init(
+        session: MobileCaptureSession,
+        note: MobileCaptureSessionNote,
+        protectedEdit: PendingSessionNoteEdit?,
+        model: CaptureExperienceModel
+    ) {
+        self.session = session
+        self.note = note
+        self.protectedEdit = protectedEdit
+        self.model = model
+        _title = State(initialValue: protectedEdit?.title ?? note.title ?? "")
+        _noteBody = State(initialValue: protectedEdit?.body ?? note.body)
+        _noteKind = State(initialValue: protectedEdit?.noteKind ?? MobileSessionNoteKind(rawValue: note.kind) ?? .sessionNote)
+        _noteVisibility = State(initialValue: protectedEdit?.noteVisibility ?? MobileSessionNoteVisibility(rawValue: note.visibility) ?? .authorPrivate)
+        _selectedTagIDs = State(initialValue: Set(protectedEdit?.tagIDs ?? note.tags.map(\.id)))
+    }
+
+    private var canUseProjectTeamNotes: Bool {
+        session.canUseProjectTeamNotes == true
+    }
+
+    private var availableKinds: [MobileSessionNoteKind] {
+        MobileSessionNoteKind.allCases.filter {
+            $0 != .production || canUseProjectTeamNotes || $0 == noteKind
+        }
+    }
+
+    private var availableVisibilities: [MobileSessionNoteVisibility] {
+        MobileSessionNoteVisibility.allCases.filter {
+            $0 != .projectTeam || canUseProjectTeamNotes || $0 == noteVisibility
+        }
+    }
+
+    private var availableTags: [MobileCaptureTag] {
+        let tags = session.availableTags ?? []
+        let query = tagSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return tags }
+        return tags.filter {
+            $0.label.localizedCaseInsensitiveContains(query)
+                || $0.slug.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var isWaiting: Bool {
+        protectedEdit?.disposition == .pending
+    }
+
+    private var canSave: Bool {
+        !isWaiting
+            && !noteBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && selectedTagIDs.count <= 24
+            && !model.isSyncingSessionNoteEdits
+    }
+
+    var bodyView: some View {
+        NavigationStack {
+            Form {
+                if let protectedEdit {
+                    Section("Protected iPhone draft") {
+                        LabeledContent(
+                            "State",
+                            value: protectedEdit.disposition == .held ? "Held for review" : "Waiting for Nest"
+                        )
+                        if protectedEdit.disposition == .held {
+                            Text("Nest kept its newer canonical revision. Compare it below before deliberately rebasing this draft.")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                            if let error = protectedEdit.lastErrorMessage {
+                                Text(error)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text("This exact request may already be committed. Quipsly will retry the same identity before allowing another edit.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                if protectedEdit?.disposition == .held {
+                    Section("Current Nest revision") {
+                        LabeledContent("Purpose", value: note.purposeLabel)
+                        LabeledContent("Audience", value: note.audienceLabel)
+                        Text(note.title?.nonempty ?? "Untitled note")
+                            .font(.subheadline.weight(.bold))
+                        Text(note.body)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if !note.tags.isEmpty {
+                            Text(note.tags.map { "#\($0.label)" }.joined(separator: "  "))
+                                .font(.caption2.weight(.semibold))
+                        }
+                    }
+                }
+
+                Section {
+                    TextField("Title (optional)", text: $title, axis: .vertical)
+                        .lineLimit(1...3)
+                        .focused($focusedField, equals: .title)
+                        .accessibilityIdentifier("CaptureSessionNoteEditTitle")
+                    TextField("Session note", text: $noteBody, axis: .vertical)
+                        .lineLimit(5...14)
+                        .focused($focusedField, equals: .body)
+                        .accessibilityIdentifier("CaptureSessionNoteEditBody")
+                    Picker("Purpose", selection: $noteKind) {
+                        ForEach(availableKinds) { kind in
+                            Text(kind.title).tag(kind)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                    .accessibilityIdentifier("CaptureSessionNoteEditKind")
+                    Picker("Audience", selection: $noteVisibility) {
+                        ForEach(availableVisibilities) { visibility in
+                            Text(visibility.title).tag(visibility)
+                        }
+                    }
+                    .pickerStyle(.navigationLink)
+                    .accessibilityIdentifier("CaptureSessionNoteEditVisibility")
+                    LabeledContent("Audience boundary", value: noteVisibility.title)
+                } header: {
+                    Text("Edit")
+                } footer: {
+                    Text("\(noteVisibility.boundary) Editing never sends a message, changes work, schedules an event, or publishes anything.")
+                        .accessibilityIdentifier("CaptureSessionNoteEditPolicyBoundary")
+                }
+
+                if canUseProjectTeamNotes {
+                    Section {
+                        let retiredTags = note.tags.filter { $0.isActive == false }
+                        if !retiredTags.isEmpty {
+                            Text("Retained retired tags: \(retiredTags.map { "#\($0.label)" }.joined(separator: "  "))")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if (session.availableTags ?? []).count > 8 {
+                            TextField("Find a tag", text: $tagSearchText)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .accessibilityIdentifier("CaptureSessionNoteEditTagSearch")
+                        }
+                        ForEach(availableTags) { tag in
+                            Button {
+                                if selectedTagIDs.contains(tag.id) {
+                                    selectedTagIDs.remove(tag.id)
+                                } else if selectedTagIDs.count < 24 {
+                                    selectedTagIDs.insert(tag.id)
+                                }
+                            } label: {
+                                HStack {
+                                    Text("#\(tag.label)")
+                                    Spacer()
+                                    if selectedTagIDs.contains(tag.id) {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(CapturePalette.accent)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("CaptureSessionNoteEditTag_\(tag.id)")
+                            .accessibilityValue(selectedTagIDs.contains(tag.id) ? "Selected" : "Not selected")
+                        }
+                    } header: {
+                        Text("Nest tags")
+                    } footer: {
+                        Text("These are the same canonical tags used by Nest, Search, Library, Tasks, Goals, writing, and iPhone Capture.")
+                    }
+                } else if !note.tags.isEmpty {
+                    Section {
+                        Text(note.tags.map {
+                            $0.isActive == false ? "#\($0.label) (retired)" : "#\($0.label)"
+                        }.joined(separator: "  "))
+                    } header: {
+                        Text("Nest tags")
+                    } footer: {
+                        Text("The current tags remain attached. Owner or editor access is required to change shared Nest vocabulary assignments.")
+                    }
+                }
+
+                Section {
+                    Button {
+                        let saved = model.saveSessionNoteEdit(
+                            note: note,
+                            roomID: session.callRoomId,
+                            title: title,
+                            body: noteBody,
+                            noteKind: noteKind,
+                            noteVisibility: noteVisibility,
+                            tagIDs: selectedTagIDs.sorted(),
+                            replacingHeld: protectedEdit?.disposition == .held
+                        )
+                        if saved { dismiss() }
+                    } label: {
+                        Label(
+                            protectedEdit?.disposition == .held ? "Save reviewed draft over current revision" : "Protect edit and sync",
+                            systemImage: "checkmark.shield"
+                        )
+                    }
+                    .disabled(!canSave)
+                    .accessibilityIdentifier("CaptureSessionNoteEditSave")
+
+                    if protectedEdit != nil {
+                        Button(role: .destructive) {
+                            Task {
+                                await model.discardSessionNoteEdit(noteID: note.id)
+                                dismiss()
+                            }
+                        } label: {
+                            Label("Discard protected draft", systemImage: "trash")
+                        }
+                        .accessibilityIdentifier("CaptureSessionNoteEditDiscard")
+                    }
+                } footer: {
+                    Text("Nest remains canonical. A successful edit appends one revision and preserves the prior content, audience, and tag set.")
+                }
+            }
+            .navigationTitle(protectedEdit == nil ? "Edit Session Note" : "Review Note Draft")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedField = nil }
+                        .accessibilityIdentifier("CaptureSessionNoteEditKeyboardDone")
+                }
+            }
+            .accessibilityIdentifier("CaptureSessionNoteEditSheet")
+        }
+    }
+
+    var body: some View {
+        bodyView
     }
 }
 

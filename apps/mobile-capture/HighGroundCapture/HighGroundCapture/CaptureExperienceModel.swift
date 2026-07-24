@@ -104,6 +104,9 @@ final class CaptureExperienceModel: ObservableObject {
     @Published private(set) var captureSafetyNotice: String?
     @Published private(set) var isSyncingQuickEntries = false
     @Published private(set) var quickEntrySyncMessage: String?
+    @Published private(set) var isSyncingSessionNoteEdits = false
+    @Published private(set) var sessionNoteEditMessage: String?
+    @Published private(set) var sessionNoteEditMessageRoomID: String?
     @Published private(set) var isPromotingRecordingToStudio = false
 
     let sessionClient = CaptureSessionClient()
@@ -113,6 +116,7 @@ final class CaptureExperienceModel: ObservableObject {
     let uploadManager = UploadManager.shared
     let receiptStore = CaptureRoomReceiptStore.shared
     let quickEntryOutbox = MobileQuickEntryOutbox.shared
+    let sessionNoteEditOutbox = SessionNoteEditOutbox.shared
     let taskReminderScheduler = TaskReminderScheduler.shared
 
     private(set) var usesPreviewData: Bool
@@ -155,10 +159,14 @@ final class CaptureExperienceModel: ObservableObject {
         quickEntryOutbox.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
+        sessionNoteEditOutbox.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
         taskReminderScheduler.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         taskReminderScheduler.activateOwner(observedReceiptOwnerAccountID)
+        sessionNoteEditOutbox.activateOwner(observedReceiptOwnerAccountID)
         NotificationCenter.default.publisher(for: .quipslyCaptureAccountIdentityDidChange)
             .sink { [weak self] notification in
                 self?.handleReceiptAccountIdentityChange(notification.object as? String)
@@ -240,6 +248,7 @@ final class CaptureExperienceModel: ObservableObject {
         if usesPreviewData {
             if let previewOwner = CaptureLaunchConfiguration.shareExtensionUITestOwner {
                 quickEntryOutbox.activateOwner(previewOwner)
+                sessionNoteEditOutbox.activateOwner(previewOwner)
                 let importedSharedSources = quickEntryOutbox.importShareExtensionCaptures()
                 if importedSharedSources > 0 {
                     quickEntrySyncMessage = "Imported \(importedSharedSources) protected Share Sheet source\(importedSharedSources == 1 ? "" : "s") into this account's outbox."
@@ -291,13 +300,14 @@ final class CaptureExperienceModel: ObservableObject {
             quickEntrySyncMessage = "Imported \(importedSharedSources) protected Share Sheet source\(importedSharedSources == 1 ? "" : "s") into this account's outbox."
         }
         async let sessionLoad = sessionClient.load()
-        async let todayLoad = todayClient.load()
-        async let readinessLoad = readinessClient.load()
+        async let todayLoad: Void = todayClient.load()
+        async let readinessLoad: Void = readinessClient.load()
         _ = await (sessionLoad, todayLoad, readinessLoad)
         await taskReminderScheduler.reconcile(
             drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
         )
         await retryQuickEntries(automatic: true)
+        await retrySessionNoteEdits(automatic: true)
         if selectedSessionID == nil || !sessions.contains(where: { $0.id == selectedSessionID }) {
             selectedSessionID = nextSession?.id
         }
@@ -460,6 +470,117 @@ final class CaptureExperienceModel: ObservableObject {
         case let .held(code, message):
             quickEntryOutbox.markHeld(entry.id, code: code, message: message)
             quickEntrySyncMessage = message
+        }
+    }
+
+    func pendingSessionNoteEdit(for noteID: String) -> PendingSessionNoteEdit? {
+        sessionNoteEditOutbox.edit(for: noteID)
+    }
+
+    @discardableResult
+    func saveSessionNoteEdit(
+        note: MobileCaptureSessionNote,
+        roomID: String,
+        title: String?,
+        body: String,
+        noteKind: MobileSessionNoteKind,
+        noteVisibility: MobileSessionNoteVisibility,
+        tagIDs: [String],
+        replacingHeld: Bool
+    ) -> Bool {
+        if usesPreviewData {
+            sessionNoteEditMessage = "Preview only — no canonical Session note or revision was changed."
+            sessionNoteEditMessageRoomID = roomID
+            return true
+        }
+        guard let expectedUpdatedAt = note.updatedAt, !expectedUpdatedAt.isEmpty else {
+            errorMessage = "Refresh this Session before editing its canonical note."
+            return false
+        }
+        do {
+            let edit = try sessionNoteEditOutbox.enqueue(
+                roomID: roomID,
+                noteID: note.id,
+                title: title,
+                body: body,
+                noteKind: noteKind,
+                noteVisibility: noteVisibility,
+                tagIDs: tagIDs,
+                expectedUpdatedAt: expectedUpdatedAt,
+                replacingHeld: replacingHeld
+            )
+            sessionNoteEditMessage = "The complete note edit is protected on this iPhone. Nest will recheck authorship, Session access, audience, tags, and revision before applying it."
+            sessionNoteEditMessageRoomID = roomID
+            Task { [weak self] in
+                await self?.syncSessionNoteEdit(edit)
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func retrySessionNoteEdits(automatic: Bool = false) async {
+        guard !usesPreviewData, !isSyncingSessionNoteEdits else { return }
+        let candidates = sessionNoteEditOutbox.entries.filter { $0.disposition == .pending }
+        guard !candidates.isEmpty else {
+            if !automatic {
+                let held = sessionNoteEditOutbox.entries.first { $0.disposition == .held }
+                sessionNoteEditMessage = held == nil
+                    ? "No protected Session-note edits need retry."
+                    : "A protected Session-note edit needs deliberate review beside Nest's current revision."
+                sessionNoteEditMessageRoomID = held?.roomID
+            }
+            return
+        }
+        isSyncingSessionNoteEdits = true
+        defer { isSyncingSessionNoteEdits = false }
+        for edit in candidates {
+            await syncSessionNoteEdit(edit, refreshSession: false)
+        }
+        _ = await sessionClient.load()
+    }
+
+    func discardSessionNoteEdit(noteID: String) async {
+        let roomID = sessionNoteEditOutbox.edit(for: noteID)?.roomID
+        sessionNoteEditOutbox.discard(noteID: noteID)
+        sessionNoteEditMessage = "The protected iPhone draft was discarded. The canonical Nest note was not changed."
+        sessionNoteEditMessageRoomID = roomID
+        _ = await sessionClient.load()
+    }
+
+    private func syncSessionNoteEdit(
+        _ edit: PendingSessionNoteEdit,
+        refreshSession: Bool = true
+    ) async {
+        guard sessionNoteEditOutbox.entries.contains(where: { $0.id == edit.id }) else { return }
+        guard AuthManager.shared.networkActionsAllowed else {
+            sessionNoteEditMessage = "Nest is offline. The complete Session-note edit remains protected on this iPhone."
+            sessionNoteEditMessageRoomID = edit.roomID
+            return
+        }
+        switch await sessionClient.syncSessionNoteEdit(edit) {
+        case let .acknowledged(idempotentReplay, message):
+            sessionNoteEditOutbox.markAcknowledged(edit.id)
+            sessionNoteEditMessage = idempotentReplay
+                ? "Nest had already applied this exact protected note edit; no revision was duplicated."
+                : message
+            sessionNoteEditMessageRoomID = edit.roomID
+            if refreshSession {
+                _ = await sessionClient.load(authoritativeSessionID: edit.roomID)
+            }
+        case let .retryable(message):
+            sessionNoteEditOutbox.markRetryable(edit.id, message: message)
+            sessionNoteEditMessage = message
+            sessionNoteEditMessageRoomID = edit.roomID
+        case let .held(code, message):
+            sessionNoteEditOutbox.markHeld(edit.id, code: code, message: message)
+            sessionNoteEditMessage = message
+            sessionNoteEditMessageRoomID = edit.roomID
+            if refreshSession {
+                _ = await sessionClient.load(authoritativeSessionID: edit.roomID)
+            }
         }
     }
 
@@ -1153,6 +1274,7 @@ final class CaptureExperienceModel: ObservableObject {
         guard ownerAccountID != observedReceiptOwnerAccountID else { return }
         observedReceiptOwnerAccountID = ownerAccountID
         taskReminderScheduler.activateOwner(ownerAccountID)
+        sessionNoteEditOutbox.activateOwner(ownerAccountID)
 
         receiptFlushTask?.cancel()
         receiptFlushTask = nil
@@ -1484,6 +1606,26 @@ extension MobileCaptureSession {
             coachingPacketLatestActivityAt: nil,
             coachingPacketFirstOpenActionItemId: nil,
             coachingPacketStatus: nil,
+            canUseProjectTeamNotes: true,
+            sessionNotes: [
+                MobileCaptureSessionNote(
+                    id: "preview-session-note",
+                    title: "Opening question",
+                    body: "Ask what would make this session genuinely useful.",
+                    kind: "DECISION",
+                    visibility: "CLIENT_SAFE",
+                    authorLabel: "Charlie",
+                    isMine: true,
+                    canEdit: true,
+                    origin: "iPhone Capture",
+                    revisionCount: 1,
+                    tags: [
+                        MobileCaptureTag(id: "preview-coaching", slug: "coaching", label: "Coaching"),
+                    ],
+                    createdAt: "2026-07-24T16:00:00.000Z",
+                    updatedAt: "2026-07-24T16:00:00.000Z"
+                ),
+            ],
             afterCaptureNextAction: "Record a local source, then verify upload.",
             nextAction: readiness.nextAction
         )

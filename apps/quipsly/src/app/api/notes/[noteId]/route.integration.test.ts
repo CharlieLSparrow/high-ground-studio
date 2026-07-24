@@ -27,6 +27,8 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
   let projectId = "";
   let roomId = "";
   let noteId = "";
+  let tagId = "";
+  let retiredTagId = "";
 
   beforeAll(async () => {
     const [actor, other] = await Promise.all([
@@ -39,6 +41,27 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
     workspaceId = workspace.id;
     const project = await prisma.studioProject.create({ data: { workspaceId, slug: `note-edit-${nonce}`, name: "High Ground Odyssey" } });
     projectId = project.id;
+    const tag = await prisma.studioTag.create({
+      data: {
+        projectId,
+        slug: `proof-listen-${nonce}`,
+        label: "Proof listen",
+        category: "meaning",
+        nodeType: "source_note",
+      },
+    });
+    tagId = tag.id;
+    const retiredTag = await prisma.studioTag.create({
+      data: {
+        projectId,
+        slug: `retired-context-${nonce}`,
+        label: "Retired context",
+        category: "meaning",
+        nodeType: "source_note",
+        isActive: false,
+      },
+    });
+    retiredTagId = retiredTag.id;
     await prisma.studioProjectAccessGrant.create({ data: { projectId, email: actorEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail } });
     const room = await prisma.callRoom.create({ data: { createdByUserId: otherUserId, projectId, title: "Episode note edit" } });
     roomId = room.id;
@@ -53,6 +76,14 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
       },
     });
     noteId = note.id;
+    await prisma.coachingNoteTagLink.create({
+      data: {
+        noteId,
+        tagId: retiredTagId,
+        createdByUserId: actorUserId,
+        sourceJson: { source: "local-smoke-retired-tag" },
+      },
+    });
   });
 
   afterAll(async () => {
@@ -73,6 +104,8 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
   function patch(expectedUpdatedAt: Date, title: string, body: string, options: {
     kind?: "SESSION_NOTE" | "DECISION" | "PRODUCTION";
     visibility?: "AUTHOR_PRIVATE" | "SESSION_SHARED" | "CLIENT_SAFE" | "PROJECT_TEAM";
+    tagIds?: string[];
+    clientRequestId?: string;
   } = {}) {
     return PATCH(new Request(`http://localhost/api/notes/${noteId}`, {
       method: "PATCH",
@@ -101,7 +134,7 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
       sourceJson: {
         schema: "quipsly-mobile-quick-entry-v1",
         lastEditReceipt: {
-          kind: "quipsly-session-note-edit-v1",
+          kind: "quipsly-session-note-edit-v2",
           previous: {
             title: "Opening note",
             body: "Let the opening breathe.",
@@ -182,5 +215,111 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
       title: "Opening decision",
       body: "Pause, then lead with the listener question.",
     });
+  });
+
+  it("atomically applies protected iPhone content, audience, and tags exactly once", async () => {
+    signedInAs(actorUserId, actorEmail);
+    const before = await prisma.coachingNote.findUniqueOrThrow({ where: { id: noteId } });
+    const clientRequestId = randomUUID();
+    const options = {
+      kind: "DECISION" as const,
+      visibility: "CLIENT_SAFE" as const,
+      tagIds: [tagId, retiredTagId],
+      clientRequestId,
+    };
+    const first = await patch(
+      before.updatedAt,
+      "Opening decision from iPhone",
+      "Lead with the listener question, then proof-listen before follow-up.",
+      options,
+    );
+    const replay = await patch(
+      before.updatedAt,
+      "Opening decision from iPhone",
+      "Lead with the listener question, then proof-listen before follow-up.",
+      options,
+    );
+    expect(first.status).toBe(200);
+    const firstBody = await first.json();
+    expect(firstBody).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      note: {
+        id: noteId,
+        title: "Opening decision from iPhone",
+        visibility: "CLIENT_SAFE",
+        tags: expect.arrayContaining([
+          expect.objectContaining({ id: tagId, label: "Proof listen" }),
+          expect.objectContaining({ id: retiredTagId, label: "Retired context" }),
+        ]),
+      },
+      boundaries: {
+        projectAuthorityRechecked: true,
+        canonicalTagsAtomic: true,
+        retryIdentityProtected: true,
+        externalSideEffects: false,
+      },
+    });
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      receiptId: firstBody.receiptId,
+      appliedRevision: firstBody.appliedRevision,
+      note: { id: noteId },
+    });
+
+    await expect(prisma.coachingNoteRevision.count({
+      where: { noteId, id: firstBody.receiptId },
+    })).resolves.toBe(1);
+    await expect(prisma.coachingNoteTagLink.findMany({
+      where: { noteId },
+      select: { tagId: true },
+    })).resolves.toEqual(expect.arrayContaining([
+      { tagId },
+      { tagId: retiredTagId },
+    ]));
+
+    const changedIntent = await patch(
+      before.updatedAt,
+      "Opening decision from iPhone",
+      "A different draft must not reuse the same protected identity.",
+      options,
+    );
+    expect(changedIntent.status).toBe(409);
+    expect(await changedIntent.json()).toMatchObject({
+      ok: false,
+      code: "REQUEST_ID_CONFLICT",
+    });
+
+    const afterIPhoneEdit = await prisma.coachingNote.findUniqueOrThrow({ where: { id: noteId } });
+    const laterWebEdit = await patch(
+      afterIPhoneEdit.updatedAt,
+      "Later Nest review",
+      "Nest deliberately changed the note after the protected iPhone request committed.",
+    );
+    expect(laterWebEdit.status).toBe(200);
+
+    const replayAfterLaterEdit = await patch(
+      before.updatedAt,
+      "Opening decision from iPhone",
+      "Lead with the listener question, then proof-listen before follow-up.",
+      options,
+    );
+    expect(replayAfterLaterEdit.status).toBe(200);
+    expect(await replayAfterLaterEdit.json()).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      receiptId: firstBody.receiptId,
+      appliedRevision: firstBody.appliedRevision,
+      note: {
+        id: noteId,
+        title: "Later Nest review",
+        body: "Nest deliberately changed the note after the protected iPhone request committed.",
+      },
+    });
+    await expect(prisma.coachingNoteRevision.count({
+      where: { noteId, id: firstBody.receiptId },
+    })).resolves.toBe(1);
   });
 });

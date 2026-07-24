@@ -630,8 +630,12 @@ export function mapMobileCaptureSessionsForUser(input: {
           revisionCount: note._count?.revisions ?? 0,
           tags: (note.tagLinks || [])
             .map((link: any) => link.tag)
-            .filter((tag: any) => tag.isActive)
-            .map((tag: any) => ({ id: tag.id, slug: tag.slug, label: tag.label })),
+            .map((tag: any) => ({
+              id: tag.id,
+              slug: tag.slug,
+              label: tag.label,
+              isActive: tag.isActive,
+            })),
           createdAt: note.createdAt?.toISOString?.() ?? null,
           updatedAt: note.updatedAt?.toISOString?.() ?? null,
         };

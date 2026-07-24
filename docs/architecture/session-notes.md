@@ -86,6 +86,44 @@ toggle, canonical rows, and the no-delivery boundary. These identities are part
 of the UI automation contract, but visible copy remains the primary human trust
 surface.
 
+### iPhone editing and conflict recovery
+
+An editable canonical note can be revised from the same Record surface without
+turning the phone into a second source of truth:
+
+- The phone journals the complete desired title, body, purpose, audience,
+  complete canonical tag set, note and Session identities, expected Nest
+  timestamp, actor partition, and one UUID before it attempts the PATCH.
+- The outbox is atomically file-protected and keeps a last-known-good copy. It
+  is visible only to the currently verified account. An ambiguous retry keeps
+  the same UUID bound to the exact same intent.
+- Nest derives the receipt and revision identity from actor plus request UUID,
+  rechecks note authorship, Session access, current Nest role, and every changed
+  tag inside one serializable transaction, then updates the note and complete
+  tag set beside exactly one append-only revision.
+- An exact retry returns the existing receipt. If a later Nest edit has already
+  changed the current note again, the receipt still proves the protected phone
+  request committed; the phone may clear that outbox entry and reload the newer
+  canonical state instead of holding an already-satisfied request forever.
+- Reusing a UUID for changed intent fails. A stale expected timestamp never
+  overwrites the newer canonical note. The phone holds the complete draft,
+  refreshes the Session projection, and shows the current Nest revision beside
+  the protected draft before the author can deliberately create a rebased
+  request with a new UUID.
+- Held drafts are never blindly retried. They require the visible
+  `Review protected draft` path or explicit discard. Discard removes only the
+  phone draft and does not mutate Nest.
+- Tags are editable only when the current projection offers production-capable
+  Nest authority, but the server remains authoritative. A note author without
+  that role may preserve an unchanged historical tag set while editing allowed
+  content or audience.
+
+The edit sheet keeps purpose, audience, and the no-message/no-work/no-calendar/
+no-publication boundary beside the text, uses the same searchable Nest tag
+vocabulary as the rest of Quipsly, and provides an explicit keyboard dismissal
+so tag and save controls remain reachable. Success, pending, and held states use
+different visual language, and feedback is scoped to the owning Session.
+
 The visibility migration is deliberately conservative:
 
 - existing notes become `AUTHOR_PRIVATE`;

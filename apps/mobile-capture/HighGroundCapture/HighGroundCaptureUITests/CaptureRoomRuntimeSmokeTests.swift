@@ -680,7 +680,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
-    func testClientSafeDecisionRoundTripsFromProtectedIPhoneOutboxToCanonicalSessionNotes() throws {
+    func testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty else {
             throw XCTSkip("The client-safe Session note journey requires an exact canonical Session ID.")
@@ -755,10 +755,102 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             canonicalBody.waitForExistence(timeout: 10),
             "The canonical note identity should contain the exact client-safe Decision body after its outbox is acknowledged."
         )
-        let deliveryBoundary = app.descendants(matching: .any)["CaptureSessionNotesDeliveryBoundary"].firstMatch
-        XCTAssertTrue(waitForRuntimeElement(deliveryBoundary, in: app, timeout: 10, swipeAttempts: 6))
+        let canonicalPrefix = "CaptureSessionNoteCanonical_"
+        XCTAssertTrue(canonicalDecision.identifier.hasPrefix(canonicalPrefix))
+        let noteID = String(canonicalDecision.identifier.dropFirst(canonicalPrefix.count))
+        XCTAssertFalse(noteID.isEmpty)
+
+        let editButton = app.buttons["CaptureSessionNoteEdit_\(noteID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(editButton, in: app, timeout: 15, swipeAttempts: 8),
+            "The author should be able to edit the exact canonical note created by the iPhone."
+        )
+        editButton.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureSessionNoteEditSheet"].waitForExistence(timeout: 8))
+
+        let editedTitle = "Reviewed iPhone decision \(proofID)"
+        let editedBody = "Private iPhone revision \(proofID): run the experiment, retain the evidence, and do not send a message."
+        let title = app.textFields["CaptureSessionNoteEditTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 5))
+        title.tap()
+        title.typeKey("a", modifierFlags: .command)
+        title.typeText(editedTitle)
+        let editBody = app.textFields["CaptureSessionNoteEditBody"].firstMatch
+        XCTAssertTrue(editBody.exists)
+        editBody.tap()
+        editBody.typeKey("a", modifierFlags: .command)
+        editBody.typeText(editedBody)
+        let editKeyboardDone = app.buttons["CaptureSessionNoteEditKeyboardDone"].firstMatch
+        XCTAssertTrue(editKeyboardDone.waitForExistence(timeout: 3))
+        editKeyboardDone.tap()
+
+        let editPurpose = app.descendants(matching: .any)["CaptureSessionNoteEditKind"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(editPurpose, in: app, timeout: 12, swipeAttempts: 5))
+        editPurpose.tap()
+        XCTAssertTrue(app.buttons["Session note"].waitForExistence(timeout: 4))
+        app.buttons["Session note"].tap()
+        let editAudience = app.descendants(matching: .any)["CaptureSessionNoteEditVisibility"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(editAudience, in: app, timeout: 10, swipeAttempts: 5))
+        editAudience.tap()
+        XCTAssertTrue(app.buttons["Only me"].waitForExistence(timeout: 4))
+        app.buttons["Only me"].tap()
+
+        let firstTag = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureSessionNoteEditTag_")
+        ).firstMatch
+        let editForm = app.collectionViews.firstMatch
+        for _ in 0..<12 where !firstTag.isHittable {
+            editForm.swipeUp()
+        }
+        XCTAssertTrue(
+            firstTag.isHittable,
+            "A writable Session Nest should expose its canonical tag vocabulary in the iPhone editor."
+        )
+        let selectedTagLabel = firstTag.label
+        let selectedTagText = selectedTagLabel.hasPrefix("#") ? selectedTagLabel : "#\(selectedTagLabel)"
+        firstTag.tap()
+        XCTAssertEqual(firstTag.value as? String, "Selected")
+
+        let editPolicy = app.descendants(matching: .any)["CaptureSessionNoteEditPolicyBoundary"].firstMatch
+        XCTAssertTrue(editPolicy.exists)
+        XCTAssertTrue(editPolicy.label.contains("never sends a message"))
+        let saveEdit = app.buttons["CaptureSessionNoteEditSave"].firstMatch
+        for _ in 0..<8 where !saveEdit.isHittable {
+            editForm.swipeUp()
+        }
+        XCTAssertTrue(saveEdit.isHittable)
+        XCTAssertTrue(saveEdit.isEnabled)
+        saveEdit.tap()
+        XCTAssertTrue(
+            app.staticTexts[
+                "The canonical Session note, audience, and tags are updated with a new revision. Nothing was sent or published."
+            ].waitForExistence(timeout: 30),
+            "The protected edit must remain queued until Nest acknowledges the exact revision, audience, and tag set."
+        )
+        XCTAssertTrue(app.staticTexts[editedBody].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Session note"].exists)
+        XCTAssertTrue(app.staticTexts["Only me"].exists)
+        XCTAssertTrue(app.staticTexts[selectedTagText].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureSessionNoteEditState_\(noteID)"].exists)
+
+        app.terminate()
+        let relaunched = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: relaunched)
+        selectRequestedSession(in: relaunched, credentials: credentials)
+        let relaunchedNotes = relaunched.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(relaunchedNotes, in: relaunched, timeout: 20, swipeAttempts: 10))
+        relaunchedNotes.tap()
+        XCTAssertTrue(
+            relaunched.staticTexts[editedBody].waitForExistence(timeout: 15),
+            "A fresh signed app launch must read the edited canonical note back from Nest, not a phone-only draft."
+        )
+        XCTAssertTrue(relaunched.staticTexts[selectedTagText].exists)
+        XCTAssertFalse(relaunched.descendants(matching: .any)["CaptureSessionNoteEditState_\(noteID)"].exists)
+
+        let deliveryBoundary = relaunched.descendants(matching: .any)["CaptureSessionNotesDeliveryBoundary"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(deliveryBoundary, in: relaunched, timeout: 10, swipeAttempts: 6))
         XCTAssertTrue(deliveryBoundary.label.contains("not a delivery receipt"))
-        attachRecordingIdentity(String(proofID), name: "Client-safe Session decision proof ID")
+        attachRecordingIdentity("\(proofID):\(noteID)", name: "Session-note create/edit/relaunch proof identity")
     }
 
     func testCoachingFollowThroughReadsSameCanonicalTodayRecords() throws {

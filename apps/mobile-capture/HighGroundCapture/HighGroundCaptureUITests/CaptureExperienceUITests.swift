@@ -142,6 +142,78 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(boundary.label.contains("never sends a message"))
     }
 
+    func testCanonicalSessionNoteEditMakesRevisionAudienceAndNestTagsObviousWithoutFakingPreviewWrites() {
+        app.tabBars.buttons["Record"].tap()
+        let notesCard = app.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
+        reveal(notesCard)
+        XCTAssertTrue(notesCard.isHittable)
+        notesCard.tap()
+
+        let canonical = app.descendants(matching: .any)["CaptureSessionNoteCanonical_preview-session-note"].firstMatch
+        XCTAssertTrue(canonical.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Ask what would make this session genuinely useful."].exists)
+        XCTAssertTrue(app.staticTexts["#Coaching"].exists)
+
+        let edit = app.buttons["CaptureSessionNoteEdit_preview-session-note"].firstMatch
+        reveal(edit)
+        XCTAssertTrue(edit.isHittable)
+        edit.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureSessionNoteEditSheet"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Editing never sends a message")
+        ).firstMatch.exists)
+
+        let title = app.textFields["CaptureSessionNoteEditTitle"].firstMatch
+        title.tap()
+        title.typeKey("a", modifierFlags: .command)
+        title.typeText("Reviewed opening")
+        let body = app.textFields["CaptureSessionNoteEditBody"].firstMatch
+        body.tap()
+        body.typeKey("a", modifierFlags: .command)
+        body.typeText("Begin with the question the client actually needs.")
+        let keyboardDone = app.buttons["CaptureSessionNoteEditKeyboardDone"].firstMatch
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 3))
+        keyboardDone.tap()
+
+        let purpose = app.descendants(matching: .any)["CaptureSessionNoteEditKind"].firstMatch
+        reveal(purpose)
+        purpose.tap()
+        XCTAssertTrue(app.buttons["Session note"].waitForExistence(timeout: 3))
+        app.buttons["Session note"].tap()
+        let audience = app.descendants(matching: .any)["CaptureSessionNoteEditVisibility"].firstMatch
+        reveal(audience)
+        audience.tap()
+        XCTAssertTrue(app.buttons["Only me"].waitForExistence(timeout: 3))
+        app.buttons["Only me"].tap()
+
+        let productionTag = app.buttons["CaptureSessionNoteEditTag_preview-production"].firstMatch
+        let editForm = app.collectionViews.firstMatch
+        for _ in 0..<10 where !productionTag.isHittable {
+            editForm.swipeUp()
+        }
+        XCTAssertTrue(productionTag.isHittable)
+        productionTag.tap()
+        XCTAssertEqual(productionTag.value as? String, "Selected")
+
+        let save = app.buttons["CaptureSessionNoteEditSave"].firstMatch
+        for _ in 0..<6 where !save.isHittable {
+            editForm.swipeUp()
+        }
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.staticTexts[
+            "Preview only — no canonical Session note or revision was changed."
+        ].waitForExistence(timeout: 5))
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureSessionNoteEditState_preview-session-note"].exists,
+            "Preview must not invent a protected outbox record."
+        )
+        XCTAssertTrue(
+            app.staticTexts["Ask what would make this session genuinely useful."].exists,
+            "Preview must keep the canonical Session note unchanged."
+        )
+    }
+
     func testQuickTaskCanExplicitlyTargetPrivateHomeNestEvenWhenASessionIsSelected() {
         app.tabBars.buttons["Record"].tap()
         let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
