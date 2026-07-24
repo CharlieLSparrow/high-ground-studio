@@ -54,19 +54,27 @@ jobs:
             --github-output "${GITHUB_OUTPUT}"
 
       - name: Setup pnpm
-        if: steps.changes.outputs.quipsly == 'true'
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
         uses: pnpm/action-setup@v4
 
       - name: Setup Node.js
-        if: steps.changes.outputs.quipsly == 'true'
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
         uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
           cache: 'pnpm'
 
       - name: Install dependencies
-        if: steps.changes.outputs.quipsly == 'true'
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
         run: pnpm install --frozen-lockfile
+
+      - name: Typecheck High Ground web
+        if: steps.changes.outputs.web == 'true'
+        run: pnpm --filter web exec tsc --noEmit --incremental false
+
+      - name: Typecheck High Ground web with TypeScript 7
+        if: steps.changes.outputs.web == 'true'
+        run: pnpm dlx typescript@7.0.2 -p apps/web/tsconfig.json --noEmit --incremental false
 
       - name: Typecheck Quipsly
         if: steps.changes.outputs.quipsly == 'true'

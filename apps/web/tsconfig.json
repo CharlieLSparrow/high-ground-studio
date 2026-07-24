@@ -13,10 +13,9 @@
     "isolatedModules": true,
     "jsx": "react-jsx",
     "incremental": true,
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "fumadocs-mdx:collections/*": [".source/*"]
+      "@/*": ["./src/*"],
+      "fumadocs-mdx:collections/*": ["./.source/*"]
     },
     "plugins": [{ "name": "next" }]
   },
