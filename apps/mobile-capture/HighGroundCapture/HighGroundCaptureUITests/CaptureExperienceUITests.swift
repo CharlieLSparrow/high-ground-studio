@@ -419,8 +419,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(sourceLink.isHittable)
         sourceLink.tap()
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_preview-segment"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_preview-segment"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"]
+                .waitForExistence(timeout: 5)
+        )
     }
 
     func testTodayShowsCanonicalRecurrenceWithoutEnablingPreviewMutation() {
@@ -526,8 +532,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(sourceLink.isHittable, "A transcript-derived goal should keep a one-action route back to its exact segment.")
         sourceLink.tap()
         XCTAssertTrue(app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_preview-segment"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptSourceBoundary_preview-segment"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptPreviewBoundary"]
+                .waitForExistence(timeout: 5)
+        )
     }
 
     func testTodayGoalCheckInRecordsEvidenceWithoutImplyingCompletion() {
@@ -834,6 +846,31 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         share.tap()
     }
 
+    private func selectSafariPassage(_ passage: XCUIElement, in safari: XCUIApplication) {
+        let selectionCopyAction = safari.descendants(matching: .any).matching(
+            NSPredicate(format: "label ==[c] %@", "Copy")
+        ).firstMatch
+        let educationPopover = safari.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS[c] %@", "View Bookmarks")
+        ).firstMatch
+
+        for _ in 0..<3 {
+            // Fresh hosted simulators can show a delayed Safari education
+            // popover directly over the page after launch. Tapping the passage
+            // dismisses that non-product UI before asking for a real selection.
+            if educationPopover.waitForExistence(timeout: 2) {
+                passage.tap()
+            }
+            passage.press(forDuration: 1.2)
+            if selectionCopyAction.waitForExistence(timeout: 3) {
+                return
+            }
+            passage.tap()
+        }
+
+        XCTFail("Safari must expose a real text selection before Quipsly tests passage provenance.\n\(safari.debugDescription)")
+    }
+
     override func setUpWithError() throws {
         continueAfterFailure = false
 
@@ -1004,7 +1041,7 @@ final class ShareCaptureExtensionUITests: XCTestCase {
             passage.waitForExistence(timeout: 10),
             "The deterministic example.com page must be visible before selecting a passage.\n\(safari.debugDescription)"
         )
-        passage.press(forDuration: 1.2)
+        selectSafariPassage(passage, in: safari)
 
         // Safari's contextual Share action exports only public.plain-text. Use
         // the page Share control while the selection remains active so Safari
