@@ -66,6 +66,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@7.0.2",
     "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4.2.2",
     "@testing-library/jest-dom": "^6.9.1",
@@ -78,8 +79,7 @@
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "tailwindcss": "^4.2.2",
-    "ts-jest": "^29.4.11",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.4"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

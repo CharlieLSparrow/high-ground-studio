@@ -1,12 +1,27 @@
 # TypeScript 7 migration
 
-Quipsly uses a compatibility-first migration instead of changing the monorepo's
-root dependency in one step. A project joins the TypeScript 7 compatibility
-gate only after its existing compiler check and its consuming build or package
-path have been verified.
+The High Ground Studio workspace runs every TypeScript project with the native
+TypeScript `7.0.2` compiler. Each owning package declares the same exact
+side-by-side toolchain:
 
-The compatibility compiler is pinned to `typescript@7.0.2`. Run the same gate
-locally with:
+- `@typescript/native: npm:typescript@7.0.2` supplies the `tsc` executable.
+- `typescript: npm:@typescript/typescript6@6.0.2` supplies the temporary
+  programmatic API used by Next.js, `ts-node`, and other embedded tooling.
+
+This follows the [TypeScript team's 7.0 transition
+guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6-0).
+TypeScript 7.0 intentionally ships without a programmatic API; Microsoft expects
+7.1 to introduce a new one. Installing 7.0 as the unaliased `typescript`
+package made direct `tsc` checks pass but caused Next's production build worker
+to reject the package. The paired aliases give us the TS7 compiler today
+without breaking API-dependent production tooling.
+
+The toolchain is a project-level development dependency, not an accidental
+transitive tool or an unbounded workspace-wide range. Every application and
+package therefore remains independently installable and understandable to a
+collaborator.
+
+Run the compiler contract locally with:
 
 ```bash
 bash scripts/ci/typecheck-typescript-7.sh
@@ -20,21 +35,23 @@ bash scripts/ci/typecheck-typescript-7.sh --list
 
 ## Migration rules
 
-1. Keep the project's current compiler check green.
+1. Pin both workspace aliases exactly in the owning package.
 2. Remove options deleted by TypeScript 7 instead of suppressing diagnostics.
 3. Use explicit relative `paths` targets; do not reintroduce `baseUrl`.
 4. Match module resolution to the real runtime or bundler.
 5. Fix correctness errors exposed by stricter inference.
 6. Verify the consuming Next.js, Electron, Node.js, or package build.
 7. Add the project to `scripts/ci/typecheck-typescript-7.sh`.
-8. Upgrade its package dependency and the shared lockfile only in a reviewed,
-   release-surface-aware dependency slice.
+8. Update the shared lockfile only in a reviewed, release-surface-aware
+   dependency slice.
 
-The production Quipsly container continues to use its package-pinned compiler
-while the compatibility gate proves the next compiler independently. This keeps
-the deployable product stable without allowing migration debt to grow.
+The gate verifies all three parts of that contract: the manifest has both exact
+aliases, the package resolves the expected installed TS7 compiler, and every
+tracked project configuration passes it. It does not download a shadow compiler
+with `pnpm dlx`, so local and CI results exercise the compiler that production
+builds actually resolve.
 
-## Verified compatibility set
+## Verified TypeScript 7 set
 
 As of 2026-07-23, the gate covers:
 
@@ -55,11 +72,16 @@ As of 2026-07-23, the gate covers:
 - the Quipsly document-kernel Node test project, executed directly as ESM
   instead of using the removed Node 10/CommonJS emitter
 
-## Explicit holdouts
+## Holdouts
 
-There are no known TypeScript project holdouts in the current workspace. New
-projects must join the gate in the same change that introduces their compiler
-configuration.
+There are no compiler holdouts in the current workspace. Every tracked
+`tsconfig.json` and test-project configuration runs with TypeScript 7. The
+TypeScript 6 compatibility API is an explicit ecosystem bridge, not the
+compiler used by the gate. Remove it only after the relevant framework and
+tooling builds have been proven against TypeScript's future API.
+
+New projects must declare both exact aliases and join the gate in the same
+change that introduces their compiler configuration.
 
 Do not add a holdout to the gate by weakening strictness, skipping library
 checks that affect runtime contracts, or excluding the failing source.

@@ -23,8 +23,9 @@
     "three": "^0.165.0"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@7.0.2",
     "@types/node": "25.3.3",
     "@types/react": "19.2.14",
-    "typescript": "^5.5.4"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

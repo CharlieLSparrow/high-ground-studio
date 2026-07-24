@@ -15,7 +15,8 @@
     "test": "tsc -p tsconfig.test.json && node --experimental-strip-types --import ../../scripts/register-ts-extension-loader.mjs --test src/*.test.ts"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@7.0.2",
     "@types/node": "25.3.3",
-    "typescript": "5.9.3"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }

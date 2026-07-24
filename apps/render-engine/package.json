@@ -9,13 +9,14 @@
     "upgrade": "remotion upgrade"
   },
   "dependencies": {
-    "remotion": "^4.0.140",
     "react": "^18.0.0",
-    "react-dom": "^18.0.0"
+    "react-dom": "^18.0.0",
+    "remotion": "^4.0.140"
   },
   "devDependencies": {
+    "@typescript/native": "npm:typescript@7.0.2",
     "@remotion/cli": "^4.0.140",
     "@types/react": "^18.0.0",
-    "typescript": "^5.0.0"
+    "typescript": "npm:@typescript/typescript6@6.0.2"
   }
 }
