@@ -73,18 +73,19 @@ xcrun xcresulttool export attachments \
   --path "$RESULT_BUNDLE" \
   --output-path "$ATTACHMENT_DIRECTORY"
 
-SOURCE_DIRTY_ARGUMENT=()
+MATERIALIZER_ARGUMENTS=(
+  --metadata "$METADATA_PATH"
+  --manifest "$ATTACHMENT_DIRECTORY/manifest.json"
+  --exported-directory "$ATTACHMENT_DIRECTORY"
+  --output-directory "$OUTPUT_ROOT"
+  --source-revision "$SOURCE_REVISION"
+  --result-bundle "$RESULT_BUNDLE"
+  --device-name "$DEVICE_NAME"
+  --device-id "$DEVICE_ID"
+)
 if [[ -n "$(git -C "$REPO_ROOT" status --porcelain -- apps/mobile-capture/HighGroundCapture release/app-store/quipsly-capture)" ]]; then
-  SOURCE_DIRTY_ARGUMENT=(--source-dirty)
+  MATERIALIZER_ARGUMENTS+=(--source-dirty)
 fi
 
 node "$CAPTURE_ROOT/scripts/app-store-draft-screenshots.mjs" \
-  --metadata "$METADATA_PATH" \
-  --manifest "$ATTACHMENT_DIRECTORY/manifest.json" \
-  --exported-directory "$ATTACHMENT_DIRECTORY" \
-  --output-directory "$OUTPUT_ROOT" \
-  --source-revision "$SOURCE_REVISION" \
-  "${SOURCE_DIRTY_ARGUMENT[@]}" \
-  --result-bundle "$RESULT_BUNDLE" \
-  --device-name "$DEVICE_NAME" \
-  --device-id "$DEVICE_ID"
+  "${MATERIALIZER_ARGUMENTS[@]}"

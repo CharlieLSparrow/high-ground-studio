@@ -975,6 +975,16 @@ requireIncludes(
   "draft screenshot runner isolates the deterministic screenshot journey",
 );
 requireIncludes(
+  appStoreDraftRunnerText,
+  "MATERIALIZER_ARGUMENTS=(",
+  "draft screenshot runner keeps a non-empty Bash 3 argument array on clean worktrees",
+);
+requireIncludes(
+  appStoreDraftRunnerText,
+  "MATERIALIZER_ARGUMENTS+=(--source-dirty)",
+  "draft screenshot runner adds dirty provenance without an empty optional array",
+);
+requireIncludes(
   appStoreDraftMaterializerText,
   "submissionEligible: false",
   "draft screenshot receipt fails closed for App Store submission",
