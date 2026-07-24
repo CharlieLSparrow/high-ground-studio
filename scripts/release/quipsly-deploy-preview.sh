@@ -29,6 +29,27 @@ if ! gcloud secrets versions describe "${RELEASE_SMOKE_SECRET_VERSION}" \
   exit 2
 fi
 
+if ! gcloud secrets versions access "${RELEASE_SMOKE_SECRET_VERSION}" \
+  --secret="${RELEASE_SMOKE_SECRET_NAME}" \
+  --project="${PROJECT_ID}" | node -e '
+    let value = "";
+    process.stdin.setEncoding("utf8");
+    process.stdin.on("data", (chunk) => { value += chunk; });
+    process.stdin.on("end", () => {
+      const bytes = Buffer.byteLength(value, "utf8");
+      const valid = bytes >= 32
+        && bytes <= 4096
+        && value.trim() === value
+        && !/[\u0000-\u001f\u007f]/.test(value);
+      process.exit(valid ? 0 : 1);
+    });
+  '; then
+  echo "Release-smoke secret ${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION} is not a valid 32-4096 byte signing key." >&2
+  echo "Use a value with no leading/trailing whitespace or control characters. The value was not printed." >&2
+  exit 2
+fi
+echo "Release-smoke signing key passed private byte validation."
+
 repo_root="$(git rev-parse --show-toplevel)"
 resolved_source_sha="$(git -C "${repo_root}" rev-parse --verify "${SOURCE_REF}^{commit}")"
 release_root="$(mktemp -d "${TMPDIR:-/tmp}/quipsly-preview-release.XXXXXX")"
