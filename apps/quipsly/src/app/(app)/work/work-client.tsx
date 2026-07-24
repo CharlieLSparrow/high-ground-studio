@@ -12,6 +12,17 @@ import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkS
 
 export type TaskFilter = "ATTENTION" | "OPEN" | "DONE" | "ALL";
 
+type WorkClientProps = {
+  initialSnapshot: WorkSnapshot;
+  projectOptions?: WorkProjectOption[];
+  focusTaskId?: string | null;
+  focusGoalId?: string | null;
+  unavailableFocusKind?: "task" | "goal" | null;
+  initialFilter?: "ATTENTION" | "OPEN";
+  manageTags?: boolean;
+  initialProjectId?: string | null;
+};
+
 function humanize(value: string) {
   return value.toLowerCase().replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -770,7 +781,16 @@ function WeeklyCommitmentEditor({ commitments, onRefresh }: { commitments: WorkC
   </div>;
 }
 
-export function WorkClient({ initialSnapshot, projectOptions = [], focusTaskId = null, focusGoalId = null, initialFilter = "OPEN", manageTags = false, initialProjectId = null }: { initialSnapshot: WorkSnapshot; projectOptions?: WorkProjectOption[]; focusTaskId?: string | null; focusGoalId?: string | null; initialFilter?: "ATTENTION" | "OPEN"; manageTags?: boolean; initialProjectId?: string | null }) {
+export function WorkClient({
+  initialSnapshot,
+  projectOptions = [],
+  focusTaskId = null,
+  focusGoalId = null,
+  unavailableFocusKind = null,
+  initialFilter = "OPEN",
+  manageTags = false,
+  initialProjectId = null,
+}: WorkClientProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const focusedTask = focusTaskId ? initialSnapshot.tasks.find((task) => task.id === focusTaskId) : null;
   const focusedGoal = focusGoalId ? initialSnapshot.goals.find((goal) => goal.id === focusGoalId) : null;
@@ -948,6 +968,24 @@ export function WorkClient({ initialSnapshot, projectOptions = [], focusTaskId =
           {overview.map(([label, value, Icon]) => <div key={label} className="rounded-2xl border border-white/80 bg-white/75 p-4 shadow-sm"><Icon className="h-5 w-5 text-[#9a6b2f]" aria-hidden="true" /><p className="mt-3 text-3xl font-black">{value}</p><p className="text-[10px] font-black uppercase tracking-wide text-[#806a4d]">{label}</p></div>)}
         </div>
       </section>
+
+      {unavailableFocusKind && (
+        <section
+          role="alert"
+          aria-label={`${humanize(unavailableFocusKind)} unavailable`}
+          className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950 shadow-sm"
+        >
+          <p className="text-xs font-black uppercase tracking-[0.18em] text-amber-800">
+            Could not open that {unavailableFocusKind}
+          </p>
+          <p className="mt-2 text-sm font-semibold leading-6">
+            That {unavailableFocusKind} is not available to this account. It may have moved, been deleted, or belong to another Nest.
+          </p>
+          <p className="mt-2 text-xs font-semibold text-amber-800">
+            Your accessible Work Queue is shown below. Nothing was changed.
+          </p>
+        </section>
+      )}
 
       <section aria-labelledby="new-task-heading" className="rounded-3xl border border-[#dfcba6] bg-white p-5 shadow-sm md:p-6">
         <div className="flex items-start gap-3"><span className="rounded-xl bg-amber-50 p-2 text-amber-800"><ListChecks aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-[#987443]">Quick capture</p><h2 id="new-task-heading" className="font-serif text-2xl font-black">Add a personal task</h2><p className="mt-1 text-sm font-semibold text-[#765f40]">This explicitly assigns the new task to your signed-in account.</p></div></div>

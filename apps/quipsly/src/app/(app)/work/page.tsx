@@ -209,12 +209,19 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
     const requestedTaskId = focusId(requestedFocus.task);
     const requestedGoalId = focusId(requestedFocus.goal);
     const requestedProjectId = focusId(requestedFocus.project);
+    const requestedTaskIsAvailable = initialSnapshot.tasks.some((task) => task.id === requestedTaskId);
+    const requestedGoalIsAvailable = initialSnapshot.goals.some((goal) => goal.id === requestedGoalId);
     return <WorkClient
       initialSnapshot={initialSnapshot}
       projectOptions={projectOptions}
       initialFilter={attentionRequested ? "ATTENTION" : "OPEN"}
-      focusTaskId={initialSnapshot.tasks.some((task) => task.id === requestedTaskId) ? requestedTaskId : null}
-      focusGoalId={initialSnapshot.goals.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : null}
+      focusTaskId={requestedTaskIsAvailable ? requestedTaskId : null}
+      focusGoalId={requestedGoalIsAvailable ? requestedGoalId : null}
+      unavailableFocusKind={requestedTaskId && !requestedTaskIsAvailable
+        ? "task"
+        : requestedGoalId && !requestedGoalIsAvailable
+          ? "goal"
+          : null}
       manageTags={manageTags}
       initialProjectId={projectOptions.some((project) => project.id === requestedProjectId) ? requestedProjectId : null}
     />;

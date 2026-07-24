@@ -1,4 +1,5 @@
 import React, { Fragment, useRef, useState, memo, useLayoutEffect } from "react";
+import Link from "next/link";
 import { BookOpenCheck, Check, Plus, Sparkles, Tag, Tags, Trash2, X } from "lucide-react";
 import { Block, uniqueTagIds, canonicalBoundarySuggestion } from "./Tagger";
 import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
@@ -236,46 +237,71 @@ function BlockItemComponent({
             if (!definition) return null;
             const Icon = definition.icon;
             return (
-              <button
+              <span
                 key={t}
-                type="button"
-                onClick={() => onToggleTag(block.id, t, null)}
-                onMouseDown={(event) => event.preventDefault()}
-                className={`flex items-center gap-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded-md border transition-colors hover:brightness-95 ${definition.color}`}
-                title={`Remove ${definition.label}`}
+                className={`inline-flex items-stretch overflow-hidden rounded-md border text-[10px] font-bold uppercase tracking-wider ${definition.color}`}
               >
-                <Icon size={10} />
-                {definition.label}
-                <X size={10} />
-              </button>
+                <Link
+                  href={`/find?q=${encodeURIComponent(definition.label)}`}
+                  aria-label={`Explore ${definition.label} tag in Quipsly Search`}
+                  title={`Find work, writing, sources, and Sessions tagged ${definition.label}`}
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 transition-colors hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+                >
+                  <Icon size={10} aria-hidden="true" />
+                  {definition.label}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => onToggleTag(block.id, t, null)}
+                  onMouseDown={(event) => event.preventDefault()}
+                  aria-label={`Remove ${definition.label} from this block`}
+                  title={`Remove ${definition.label} from this block`}
+                  className="inline-flex min-w-6 items-center justify-center border-l border-current/25 px-1 transition-colors hover:bg-black/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+                >
+                  <X size={10} aria-hidden="true" />
+                </button>
+              </span>
             )
           })}
           {displayedRangeSpans.slice(0, 6).map((span) => {
             const definition = findTagDef(span.tagSlug);
             const Icon = definition?.icon ?? Tag;
             const selectedText = (span.selectedText || block.text.slice(span.startOffset, span.endOffset)).trim();
+            const tagLabel = definition?.label ?? span.tagSlug;
             return (
-              <button
+              <span
                 key={span.id ?? `${block.id}-${span.startOffset}-${span.endOffset}-${span.tagSlug}`}
-                type="button"
-                onClick={() => onToggleTag(block.id, span.tagSlug, {
-                  startOffset: span.startOffset,
-                  endOffset: span.endOffset,
-                  selectedText: span.selectedText,
-                })}
-                onMouseDown={(event) => event.preventDefault()}
-                className={`flex max-w-full items-center gap-1 px-1.5 py-0.5 text-[10px] uppercase tracking-wider font-bold rounded-md border transition-colors hover:brightness-95 ${definition?.color ?? "border-[#d4c1a0] bg-white text-[#5e4b33]"}`}
-                title={`Remove ${definition?.label ?? span.tagSlug}: ${selectedText}`}
+                className={`inline-flex max-w-full items-stretch overflow-hidden rounded-md border text-[10px] font-bold uppercase tracking-wider ${definition?.color ?? "border-[#d4c1a0] bg-white text-[#5e4b33]"}`}
               >
-                <Icon size={10} />
-                <span className="shrink-0">{definition?.label ?? span.tagSlug}</span>
-                {selectedText ? (
-                  <span className="min-w-0 max-w-[18rem] truncate normal-case tracking-normal opacity-80 border-l border-current pl-1 ml-0.5">
-                    {selectedText}
-                  </span>
-                ) : null}
-                <X size={10} className="shrink-0 opacity-70 ml-0.5" />
-              </button>
+                <Link
+                  href={`/find?q=${encodeURIComponent(tagLabel)}`}
+                  aria-label={`Explore ${tagLabel} tag in Quipsly Search`}
+                  title={`Find work, writing, sources, and Sessions tagged ${tagLabel}`}
+                  className="inline-flex min-w-0 items-center gap-1 px-1.5 py-0.5 transition-colors hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+                >
+                  <Icon size={10} aria-hidden="true" />
+                  <span className="shrink-0">{tagLabel}</span>
+                  {selectedText ? (
+                    <span className="ml-0.5 min-w-0 max-w-[18rem] truncate border-l border-current pl-1 normal-case tracking-normal opacity-80">
+                      {selectedText}
+                    </span>
+                  ) : null}
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => onToggleTag(block.id, span.tagSlug, {
+                    startOffset: span.startOffset,
+                    endOffset: span.endOffset,
+                    selectedText: span.selectedText,
+                  })}
+                  onMouseDown={(event) => event.preventDefault()}
+                  aria-label={`Remove ${tagLabel} from this tagged passage`}
+                  title={`Remove ${tagLabel}: ${selectedText}`}
+                  className="inline-flex min-w-6 shrink-0 items-center justify-center border-l border-current/25 px-1 transition-colors hover:bg-black/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
+                >
+                  <X size={10} aria-hidden="true" />
+                </button>
+              </span>
             );
           })}
           {displayedRangeSpans.length > 6 && (

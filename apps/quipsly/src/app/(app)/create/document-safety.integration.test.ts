@@ -313,7 +313,7 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     expect(await prisma.studioTaggedSpan.findUnique({ where: { id: added.spanId } })).toBeNull();
   });
 
-  it("rejects tampered exports and separate-account reads without changing content", async () => {
+  it("rejects tampered exports and every separate-account backup boundary without changing content", async () => {
     signedInAs(writerEmail);
     const exportResult = await exportPortableDocumentAction(documentId);
     if (!exportResult.ok || !exportResult.bundleJson) throw new Error("Export failed.");
@@ -327,10 +327,38 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     expect(await prisma.studioDocumentBlock.findUnique({ where: { id: firstBlockId }, select: { body: true } })).toEqual(before);
 
     signedInAs(outsiderEmail);
-    await expect(listNamedDocumentCheckpointsAction(documentId)).resolves.toMatchObject({
-      ok: false,
-      code: "ACCESS_NOT_VERIFIED",
-    });
+    await Promise.all([
+      expect(listNamedDocumentCheckpointsAction(documentId)).resolves.toMatchObject({
+        ok: false,
+        code: "ACCESS_NOT_VERIFIED",
+      }),
+      expect(exportPortableDocumentAction(documentId)).resolves.toMatchObject({
+        ok: false,
+        code: "ACCESS_NOT_VERIFIED",
+      }),
+      expect(createNamedDocumentCheckpointAction(documentId, "Outsider checkpoint")).resolves.toMatchObject({
+        ok: false,
+        code: "ACCESS_NOT_VERIFIED",
+      }),
+      expect(restorePortableDocumentAction(documentId, exportResult.bundleJson)).resolves.toMatchObject({
+        ok: false,
+        code: "ACCESS_NOT_VERIFIED",
+      }),
+    ]);
+    expect(await prisma.studioDocumentBlock.findUnique({ where: { id: firstBlockId }, select: { body: true } })).toEqual(before);
+    expect(await prisma.studioDocumentOperation.count({
+      where: {
+        documentId,
+        actorEmail: outsiderEmail,
+        operationType: {
+          in: [
+            "document-named-checkpoint",
+            "document-checkpoint-restore",
+            "document-portable-restore",
+          ],
+        },
+      },
+    })).toBe(0);
   });
 
   it("persists ordinary multi-paragraph paste atomically and refuses to split a cited block", async () => {

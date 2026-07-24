@@ -489,6 +489,18 @@ describe("Work Queue interactions", () => {
     expect(screen.getByText("Unrelated durable direction")).toBeInTheDocument();
   });
 
+  it.each(["task", "goal"] as const)(
+    "explains an unavailable %s deep link without revealing or replacing scoped work",
+    (kind) => {
+      render(<WorkClient initialSnapshot={snapshot} unavailableFocusKind={kind} />);
+      const notice = screen.getByRole("alert", { name: `${kind === "task" ? "Task" : "Goal"} unavailable` });
+      expect(notice).toHaveTextContent(`That ${kind} is not available to this account`);
+      expect(notice).toHaveTextContent("belong to another Nest");
+      expect(notice).toHaveTextContent("Nothing was changed");
+      expect(screen.getByText(snapshot.tasks[0].title)).toBeInTheDocument();
+    },
+  );
+
   it("creates a personal task from the visible quick-capture form", async () => {
     jest.mocked(createWorkTask).mockResolvedValue({ ok: true, taskId: "new-task", updatedAt: "2026-07-18T19:00:00.000Z", receiptId: "receipt-1" });
     const user = userEvent.setup();
