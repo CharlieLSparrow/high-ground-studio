@@ -13,6 +13,7 @@ readonly project_configs=(
   "apps/quipsly-api/tsconfig.json"
   "apps/quipsly/tsconfig.json"
   "apps/render-engine/tsconfig.json"
+  "apps/studio-cut-web/tsconfig.json"
   "apps/video-hub/tsconfig.json"
   "apps/web/tsconfig.json"
   "packages/content-studio-domain/tsconfig.json"
@@ -20,6 +21,8 @@ readonly project_configs=(
   "packages/quipsly-document-kernel/tsconfig.json"
   "packages/quipsly-document-kernel/tsconfig.test.json"
   "packages/quipsly-domain/tsconfig.json"
+  "packages/studio-cut-schema/tsconfig.json"
+  "packages/studio-cut-schema/tsconfig.test.json"
   "packages/studio-domain/tsconfig.json"
   "packages/worldhub-domain/tsconfig.json"
 )

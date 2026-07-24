@@ -47,6 +47,8 @@ As of 2026-07-23, the gate covers:
 - the desktop companion
 - the Remotion render engine, with its React 18 type graph kept consistent with
   the engine's declared runtime
+- Studio Cut and its restored shared schema, including word-timed transcript
+  validation, schema regression tests, and the Vite production build
 - the Quipsly API
 - content-studio, motion, Quipsly document, Quipsly domain, Studio domain, and
   Worldhub domain packages
@@ -55,11 +57,9 @@ As of 2026-07-23, the gate covers:
 
 ## Explicit holdouts
 
-These projects are intentionally not in the gate yet:
-
-| Project | Blocking work |
-| --- | --- |
-| `apps/studio-cut-web` | Restore the `@high-ground/studio-cut-schema` package boundary, then resolve the resulting strict type errors. |
+There are no known TypeScript project holdouts in the current workspace. New
+projects must join the gate in the same change that introduces their compiler
+configuration.
 
 Do not add a holdout to the gate by weakening strictness, skipping library
 checks that affect runtime contracts, or excluding the failing source.
