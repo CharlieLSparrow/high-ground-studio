@@ -69,6 +69,7 @@ steps:
         const requiredRoutes = new Map([
           ["/(app)/outputs/page", "/outputs"],
           ["/(app)/outputs/[outputId]/page", "/outputs/[outputId]"],
+          ["/api/mac/firebase-client-config/route", "/api/mac/firebase-client-config"],
           ["/api/mac/session-check/route", "/api/mac/session-check"],
         ]);
         for (const [entry, route] of requiredRoutes) {
