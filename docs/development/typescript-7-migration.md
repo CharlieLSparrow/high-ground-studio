@@ -45,11 +45,12 @@ bash scripts/ci/typecheck-typescript-7.sh --list
 8. Update the shared lockfile only in a reviewed, release-surface-aware
    dependency slice.
 
-The gate verifies all three parts of that contract: the manifest has both exact
-aliases, the package resolves the expected installed TS7 compiler, and every
-tracked project configuration passes it. It does not download a shadow compiler
-with `pnpm dlx`, so local and CI results exercise the compiler that production
-builds actually resolve.
+The gate verifies all four parts of that contract: every tracked project is
+registered, the manifest has both exact aliases, the package resolves the
+expected installed TS7 compiler, and every project configuration passes it. It
+also rejects CI or package scripts that download a shadow TypeScript compiler
+with `pnpm dlx` or `npx`, so local and CI results exercise the compiler that
+production builds actually resolve.
 
 ## Verified TypeScript 7 set
 
@@ -79,6 +80,10 @@ There are no compiler holdouts in the current workspace. Every tracked
 TypeScript 6 compatibility API is an explicit ecosystem bridge, not the
 compiler used by the gate. Remove it only after the relevant framework and
 tooling builds have been proven against TypeScript's future API.
+
+The focused pull-request checks for Quipsly and High Ground web use that same
+package-pinned compiler. The workspace compatibility workflow independently
+checks all registered projects; neither path downloads a second compiler.
 
 New projects must declare both exact aliases and join the gate in the same
 change that introduces their compiler configuration.

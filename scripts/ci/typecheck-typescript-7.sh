@@ -30,6 +30,30 @@ readonly project_configs=(
   "packages/worldhub-domain/tsconfig.json"
 )
 
+if git grep -n -E '(^|[[:space:]])(pnpm[[:space:]]+dlx|npx)[[:space:]]+typescript@' \
+  -- .github package.json apps packages scripts >/dev/null; then
+  echo "FAIL TypeScript checks must use the package-pinned compiler, not a downloaded shadow compiler." >&2
+  git grep -n -E '(^|[[:space:]])(pnpm[[:space:]]+dlx|npx)[[:space:]]+typescript@' \
+    -- .github package.json apps packages scripts >&2
+  exit 1
+fi
+
+while IFS= read -r tracked_project_config; do
+  project_is_registered="false"
+
+  for project_config in "${project_configs[@]}"; do
+    if [[ "$project_config" == "$tracked_project_config" ]]; then
+      project_is_registered="true"
+      break
+    fi
+  done
+
+  if [[ "$project_is_registered" != "true" ]]; then
+    echo "FAIL Tracked TypeScript project is not registered in the TypeScript 7 gate: $tracked_project_config" >&2
+    exit 1
+  fi
+done < <(git ls-files 'apps/**/tsconfig*.json' 'packages/**/tsconfig*.json' | sort)
+
 if [[ "${1:-}" == "--list" ]]; then
   printf '%s\n' "${project_configs[@]}"
   exit 0

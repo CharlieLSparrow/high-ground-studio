@@ -68,21 +68,13 @@ jobs:
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
         run: pnpm install --frozen-lockfile
 
-      - name: Typecheck High Ground web
+      - name: Typecheck High Ground web with pinned TypeScript 7
         if: steps.changes.outputs.web == 'true'
         run: pnpm --filter web exec tsc --noEmit --incremental false
 
-      - name: Typecheck High Ground web with TypeScript 7
-        if: steps.changes.outputs.web == 'true'
-        run: pnpm dlx typescript@7.0.2 -p apps/web/tsconfig.json --noEmit --incremental false
-
-      - name: Typecheck Quipsly
+      - name: Typecheck Quipsly with pinned TypeScript 7
         if: steps.changes.outputs.quipsly == 'true'
         run: pnpm --filter quipsly exec tsc --noEmit --incremental false
-
-      - name: Typecheck Quipsly with TypeScript 7
-        if: steps.changes.outputs.quipsly == 'true'
-        run: pnpm dlx typescript@7.0.2 -p apps/quipsly/tsconfig.json --noEmit --incremental false
 
       - name: Build Quipsly
         if: steps.changes.outputs.quipsly == 'true'
