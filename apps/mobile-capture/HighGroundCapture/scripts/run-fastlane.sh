@@ -88,6 +88,10 @@ fi
 export PATH="${ruby_bin}:${PATH}"
 export BUNDLE_GEMFILE="${capture_root}/Gemfile"
 export BUNDLE_PATH="${BUNDLE_PATH:-${user_cache_root%/}/quipsly-capture/bundle/ruby-${required_ruby_version}}"
+export DEVELOPER_DIR="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
+
+[[ -x "${DEVELOPER_DIR}/usr/bin/xcodebuild" ]] ||
+  fail "Pinned Xcode developer directory is unavailable: ${DEVELOPER_DIR}"
 
 cd "${capture_root}"
 if ! "${ruby_bin}/ruby" "${ruby_bin}/bundle" check >/dev/null 2>&1; then

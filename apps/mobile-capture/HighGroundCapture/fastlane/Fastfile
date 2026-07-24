@@ -77,11 +77,26 @@ platform :ios do
   desc "Run the deterministic iPhone UX and Share Capture suite serially"
   lane :ui_test do |options|
     source_revision = sh("git", "-C", REPO_ROOT, "rev-parse", "HEAD", log: false).strip
+    capture_status = sh(
+      "git",
+      "-C",
+      REPO_ROOT,
+      "status",
+      "--porcelain",
+      "--",
+      "apps/mobile-capture/HighGroundCapture",
+      log: false,
+    ).strip
+    source_label = "#{source_revision[0, 12]}#{capture_status.empty? ? "" : "-dirty"}"
+    test_run_id = ENV["QUIPSLY_CAPTURE_UI_TEST_RUN_ID"].to_s
+    test_run_id = ENV["QUIPSLY_CAPTURE_RELEASE_RUN_ID"].to_s if test_run_id.empty?
+    test_run_id = "#{Time.now.utc.strftime("%Y%m%dT%H%M%SZ")}-#{Process.pid}" if test_run_id.empty?
+    explicit_output_root = options[:output_directory] || ENV["QUIPSLY_CAPTURE_UI_TEST_DIR"]
     output_root = File.expand_path(
-      options[:output_directory] ||
-        ENV.fetch("QUIPSLY_CAPTURE_UI_TEST_DIR", "/tmp/quipsly-capture-ui-tests/#{source_revision[0, 12]}"),
+      explicit_output_root || File.join("/tmp/quipsly-capture-ui-tests", source_label, test_run_id),
     )
     FileUtils.mkdir_p(output_root)
+    UI.message("Capture UI evidence: #{output_root}")
 
     run_tests(
       project: PROJECT_PATH,

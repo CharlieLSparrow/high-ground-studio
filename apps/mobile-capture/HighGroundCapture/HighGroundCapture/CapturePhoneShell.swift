@@ -375,6 +375,7 @@ private struct CaptureWorkView: View {
                 model: model,
                 initialProject: captureDestination
             )
+            .presentationDetents([.large])
         }
         .sheet(item: $taskTagsToEdit) { task in
             if let project = task.project {
@@ -2339,7 +2340,7 @@ private struct CaptureRecorderView: View {
         }
         .sheet(item: $quickEntryKind) { kind in
             CaptureQuickEntrySheet(kind: kind, session: model.selectedSession, model: model)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
         }
         .interactiveDismissDisabled(captureIsActive)
     }
@@ -3037,6 +3038,115 @@ struct CaptureQuickEntrySheet: View {
             : MobileSessionNoteVisibility.allCases.filter { $0 != .projectTeam }
     }
 
+    @ViewBuilder
+    private var taskTimingSections: some View {
+        Section {
+            Picker("Repeat", selection: $recurrenceMode) {
+                Text("Does not repeat").tag("NONE")
+                Text("Fixed schedule").tag("FIXED")
+                Text("After completion").tag("COMPLETION")
+            }
+            .accessibilityIdentifier("CaptureQuickEntryRecurrenceMode")
+
+            if recurrenceMode != "NONE" {
+                DatePicker(
+                    "First due",
+                    selection: $recurrenceFirstDueAt,
+                    displayedComponents: [.date, .hourAndMinute]
+                )
+                .environment(\.timeZone, recurrenceTimeZone)
+                .accessibilityIdentifier("CaptureQuickEntryRecurrenceFirstDue")
+                Picker("Unit", selection: $recurrenceFrequency) {
+                    Text("Day").tag("DAILY")
+                    Text("Week").tag("WEEKLY")
+                    Text("Month").tag("MONTHLY")
+                }
+                .accessibilityIdentifier("CaptureQuickEntryRecurrenceFrequency")
+                Stepper(
+                    "Every \(recurrenceInterval) \(recurrenceUnitName)\(recurrenceInterval == 1 ? "" : "s")",
+                    value: $recurrenceInterval,
+                    in: 1...365
+                )
+                .accessibilityIdentifier("CaptureQuickEntryRecurrenceInterval")
+                Button {
+                    showsRecurrenceTimezonePicker = true
+                } label: {
+                    HStack(spacing: 10) {
+                        Text("Timezone")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Text(recurrenceTimezoneID)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .accessibilityLabel("Task timezone")
+                .accessibilityValue(recurrenceTimezoneID)
+                .accessibilityHint("Choose the timezone that owns this task's wall-clock schedule.")
+                .accessibilityIdentifier("CaptureQuickEntryRecurrenceTimezone")
+                Text("The wall-clock due time stays in \(recurrenceTimezoneID), even if this iPhone travels.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureQuickEntryRecurrenceTimezoneBoundary")
+            }
+        } header: {
+            Text("Repeat")
+        } footer: {
+            Text(recurrenceMode == "COMPLETION"
+                ? "Quipsly creates one next occurrence after completion. It does not schedule a reminder or provider calendar event."
+                : recurrenceMode == "FIXED"
+                    ? "Quipsly creates a three-occurrence planning horizon at this local wall-clock time. It does not schedule a reminder or provider calendar event."
+                    : "One-time tasks can have a due date or private iPhone reminder below.")
+        }
+        .onChange(of: recurrenceMode) { _, newValue in
+            if newValue != "NONE" {
+                hasOneTimeReminder = false
+            }
+        }
+
+        if recurrenceMode == "NONE" {
+            Section {
+                Toggle("Set due date", isOn: $hasOneTimeDueDate)
+                    .accessibilityIdentifier("CaptureQuickEntryDueDateToggle")
+                if hasOneTimeDueDate {
+                    DatePicker(
+                        "Due",
+                        selection: $oneTimeDueAt,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .accessibilityIdentifier("CaptureQuickEntryDueDate")
+                    Text("This makes the task visible at the right time in Quipsly Today, Work, and Calendar. It does not schedule an alert or provider calendar event.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureQuickEntryDueDateBoundary")
+                }
+                Toggle("Remind me", isOn: $hasOneTimeReminder)
+                    .accessibilityIdentifier("CaptureQuickEntryReminderToggle")
+                if hasOneTimeReminder {
+                    DatePicker(
+                        "Reminder",
+                        selection: $oneTimeReminderAt,
+                        in: Date().addingTimeInterval(60)...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .accessibilityIdentifier("CaptureQuickEntryReminderDate")
+                    Text("The reminder intent syncs to Nest, while this iPhone privately schedules the alert. Quipsly asks for notification permission only when you save.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureQuickEntryReminderBoundary")
+                }
+            } header: {
+                Text("Timing")
+            } footer: {
+                Text("Due dates organize Quipsly. Reminders are separate, device-local alerts with canonical intent in Nest. Neither creates a provider calendar event.")
+            }
+        }
+    }
+
     private var savesToHomeNest: Bool {
         kind != .source && destination == "HOME_NEST"
     }
@@ -3265,6 +3375,10 @@ struct CaptureQuickEntrySheet: View {
                     }
                 }
 
+                if kind == .task {
+                    taskTimingSections
+                }
+
                 if kind != .source {
                     Section {
                         if availableTags.count > 8 {
@@ -3346,110 +3460,6 @@ struct CaptureQuickEntrySheet: View {
                     }
                 }
 
-                if kind == .task {
-                    Section {
-                        Picker("Repeat", selection: $recurrenceMode) {
-                            Text("Does not repeat").tag("NONE")
-                            Text("Fixed schedule").tag("FIXED")
-                            Text("After completion").tag("COMPLETION")
-                        }
-                        .accessibilityIdentifier("CaptureQuickEntryRecurrenceMode")
-
-                        if recurrenceMode != "NONE" {
-                            DatePicker(
-                                "First due",
-                                selection: $recurrenceFirstDueAt,
-                                displayedComponents: [.date, .hourAndMinute]
-                            )
-                            .environment(\.timeZone, recurrenceTimeZone)
-                            .accessibilityIdentifier("CaptureQuickEntryRecurrenceFirstDue")
-                            Picker("Unit", selection: $recurrenceFrequency) {
-                                Text("Day").tag("DAILY")
-                                Text("Week").tag("WEEKLY")
-                                Text("Month").tag("MONTHLY")
-                            }
-                            .accessibilityIdentifier("CaptureQuickEntryRecurrenceFrequency")
-                            Stepper("Every \(recurrenceInterval) \(recurrenceUnitName)\(recurrenceInterval == 1 ? "" : "s")", value: $recurrenceInterval, in: 1...365)
-                                .accessibilityIdentifier("CaptureQuickEntryRecurrenceInterval")
-                            Button {
-                                showsRecurrenceTimezonePicker = true
-                            } label: {
-                                HStack(spacing: 10) {
-                                    Text("Timezone")
-                                        .foregroundStyle(.primary)
-                                    Spacer()
-                                    Text(recurrenceTimezoneID)
-                                        .font(.subheadline)
-                                        .foregroundStyle(.secondary)
-                                        .multilineTextAlignment(.trailing)
-                                    Image(systemName: "chevron.right")
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.tertiary)
-                                }
-                            }
-                            .accessibilityLabel("Task timezone")
-                            .accessibilityValue(recurrenceTimezoneID)
-                            .accessibilityHint("Choose the timezone that owns this task's wall-clock schedule.")
-                            .accessibilityIdentifier("CaptureQuickEntryRecurrenceTimezone")
-                            Text("The wall-clock due time stays in \(recurrenceTimezoneID), even if this iPhone travels.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .accessibilityIdentifier("CaptureQuickEntryRecurrenceTimezoneBoundary")
-                        }
-                    } header: {
-                        Text("Repeat")
-                    } footer: {
-                        Text(recurrenceMode == "COMPLETION"
-                            ? "Quipsly creates one next occurrence after completion. It does not schedule a reminder or provider calendar event."
-                            : recurrenceMode == "FIXED"
-                                ? "Quipsly creates a three-occurrence planning horizon at this local wall-clock time. It does not schedule a reminder or provider calendar event."
-                                : "One-time tasks can be timed later from Today, Work, or Calendar.")
-                    }
-                    .onChange(of: recurrenceMode) { _, newValue in
-                        if newValue != "NONE" {
-                            hasOneTimeReminder = false
-                        }
-                    }
-
-                    if recurrenceMode == "NONE" {
-                        Section {
-                            Toggle("Set due date", isOn: $hasOneTimeDueDate)
-                                .accessibilityIdentifier("CaptureQuickEntryDueDateToggle")
-                            if hasOneTimeDueDate {
-                                DatePicker(
-                                    "Due",
-                                    selection: $oneTimeDueAt,
-                                    displayedComponents: [.date, .hourAndMinute]
-                                )
-                                .accessibilityIdentifier("CaptureQuickEntryDueDate")
-                                Text("This makes the task visible at the right time in Quipsly Today, Work, and Calendar. It does not schedule an alert or provider calendar event.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .accessibilityIdentifier("CaptureQuickEntryDueDateBoundary")
-                            }
-                            Toggle("Remind me", isOn: $hasOneTimeReminder)
-                                .accessibilityIdentifier("CaptureQuickEntryReminderToggle")
-                            if hasOneTimeReminder {
-                                DatePicker(
-                                    "Reminder",
-                                    selection: $oneTimeReminderAt,
-                                    in: Date().addingTimeInterval(60)...,
-                                    displayedComponents: [.date, .hourAndMinute]
-                                )
-                                .accessibilityIdentifier("CaptureQuickEntryReminderDate")
-                                Text("The reminder intent syncs to Nest, while this iPhone privately schedules the alert. Quipsly asks for notification permission only when you save.")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .accessibilityIdentifier("CaptureQuickEntryReminderBoundary")
-                            }
-                        } header: {
-                            Text("Timing")
-                        } footer: {
-                            Text("Due dates organize Quipsly. Reminders are separate, device-local alerts with canonical intent in Nest. Neither creates a provider calendar event.")
-                        }
-                    }
-                }
-
                 Section {
                     Label("Saved on this iPhone before Nest sync", systemImage: "iphone.gen3.radiowaves.left.and.right")
                     Label("Retry keeps one canonical ID", systemImage: "arrow.triangle.2.circlepath")
@@ -3457,6 +3467,7 @@ struct CaptureQuickEntrySheet: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Quick \(kind.title)")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

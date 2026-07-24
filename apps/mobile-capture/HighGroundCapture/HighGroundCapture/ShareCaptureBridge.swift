@@ -1,11 +1,11 @@
 import Foundation
 
 enum ShareCaptureBridge {
-    static let appGroupIdentifier = "group.com.highgroundodyssey.HighGroundCapture"
-    static let ownerDefaultsKey = "quipsly.capture.share.owner-account-id"
-    static let inboxDirectoryName = "ShareCaptureInbox"
+    nonisolated static let appGroupIdentifier = "group.com.highgroundodyssey.HighGroundCapture"
+    nonisolated static let ownerDefaultsKey = "quipsly.capture.share.owner-account-id"
+    nonisolated static let inboxDirectoryName = "ShareCaptureInbox"
 
-    static func publishOwner(_ ownerAccountID: String?) {
+    nonisolated static func publishOwner(_ ownerAccountID: String?) {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
         let normalized = ownerAccountID?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let normalized, !normalized.isEmpty, normalized.count <= 256 {

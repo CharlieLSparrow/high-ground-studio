@@ -92,8 +92,10 @@ final class CaptureExperienceUITests: XCTestCase {
         let title = app.textFields["CaptureQuickEntryTitle"]
         title.tap()
         title.typeText("Confirm the Work project destination")
+        dismissQuickEntryKeyboard()
         let tag = app.buttons["CaptureQuickEntryTag_preview-episode-4"]
         reveal(tag)
+        XCTAssertTrue(tag.isHittable)
         tag.tap()
         XCTAssertTrue(app.buttons["CaptureQuickEntrySave"].isEnabled)
         app.buttons["CaptureQuickEntrySave"].tap()
@@ -466,16 +468,16 @@ final class CaptureExperienceUITests: XCTestCase {
         let title = app.textFields["CaptureQuickEntryTitle"]
         title.tap()
         title.typeText("Prepare the next coaching packet")
+        dismissQuickEntryKeyboard()
 
         let dueDateToggle = app.switches["CaptureQuickEntryDueDateToggle"].firstMatch
-        reveal(dueDateToggle)
         XCTAssertTrue(dueDateToggle.isHittable)
-        dueDateToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        turnOn(dueDateToggle)
 
         let boundary = app.descendants(matching: .any)["CaptureQuickEntryDueDateBoundary"].firstMatch
+        reveal(boundary)
         XCTAssertTrue(boundary.waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Due"].exists)
-        reveal(boundary)
         XCTAssertTrue(boundary.label.contains("Today, Work, and Calendar"))
         XCTAssertTrue(boundary.label.contains("does not schedule an alert or provider calendar event"))
 
@@ -497,15 +499,16 @@ final class CaptureExperienceUITests: XCTestCase {
         let title = app.textFields["CaptureQuickEntryTitle"]
         title.tap()
         title.typeText("Follow up after the coaching session")
+        dismissQuickEntryKeyboard()
 
         let reminderToggle = app.switches["CaptureQuickEntryReminderToggle"].firstMatch
-        reveal(reminderToggle)
         XCTAssertTrue(reminderToggle.isHittable)
         XCTAssertEqual(reminderToggle.value as? String, "0")
-        reminderToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        turnOn(reminderToggle)
 
         let reminderDate = app.descendants(matching: .any)["CaptureQuickEntryReminderDate"].firstMatch
         let boundary = app.descendants(matching: .any)["CaptureQuickEntryReminderBoundary"].firstMatch
+        reveal(reminderDate)
         XCTAssertTrue(reminderDate.waitForExistence(timeout: 5))
         reveal(boundary)
         XCTAssertTrue(boundary.label.contains("intent syncs to Nest"))
@@ -544,9 +547,9 @@ final class CaptureExperienceUITests: XCTestCase {
         let title = app.textFields["CaptureQuickEntryTitle"]
         title.tap()
         title.typeText("Private reminder projection proof")
+        dismissQuickEntryKeyboard()
         let reminderToggle = app.switches["CaptureQuickEntryReminderToggle"].firstMatch
-        reveal(reminderToggle)
-        reminderToggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        turnOn(reminderToggle)
         app.buttons["CaptureQuickEntrySave"].tap()
 
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
@@ -963,6 +966,12 @@ final class CaptureExperienceUITests: XCTestCase {
             evaluatedWith: toggle
         )
         waitForExpectations(timeout: 3)
+    }
+
+    private func dismissQuickEntryKeyboard() {
+        let done = app.buttons["CaptureQuickEntryKeyboardDone"].firstMatch
+        XCTAssertTrue(done.waitForExistence(timeout: 3), "Quick Capture must expose a reachable keyboard dismissal action.")
+        done.tap()
     }
 }
 
