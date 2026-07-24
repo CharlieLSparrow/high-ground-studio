@@ -123,6 +123,17 @@ async function requestText(url, options = {}) {
   return { response, text };
 }
 
+async function requestJson(url, options = {}) {
+  const result = await requestText(url, options);
+  let body = {};
+  try {
+    body = JSON.parse(result.text);
+  } catch {
+    body = { unparsedBodyPrefix: result.text.slice(0, 160) };
+  }
+  return { ...result, body };
+}
+
 async function canReachQuipsly(candidate) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 3000);
@@ -235,6 +246,7 @@ async function cleanupGeneratedSignupArtifacts(
   const cleanup = {
     deletedInvites: 0,
     deletedGrants: 0,
+    deletedDeletionRequests: 0,
     deletedHomeProjects: 0,
     deletedMemberships: 0,
     deletedUsers: 0,
@@ -259,6 +271,11 @@ async function cleanupGeneratedSignupArtifacts(
     ).count;
     cleanup.deletedGrants = (
       await prisma.studioProjectAccessGrant.deleteMany({ where: { email } })
+    ).count;
+    cleanup.deletedDeletionRequests = (
+      await prisma.userAccountDeletionRequest.deleteMany({
+        where: { emailSnapshot: email },
+      })
     ).count;
 
     const homeProjects = await prisma.studioProject.findMany({
@@ -417,6 +434,194 @@ async function assertServerFirebaseAdminPreflight(baseUrl) {
   throw new Error(
     `Server Firebase Admin preflight returned HTTP ${preflight.response.status}: ${preflight.text.slice(0, 160)}`,
   );
+}
+
+async function assertMobileWorkAndDeletionContracts(baseUrl, idToken, suffix) {
+  const capturedAt = new Date();
+  const tagLabel = `Release Proof ${suffix}`;
+  const authorization = { authorization: `Bearer ${idToken}` };
+
+  const quickEntry = async (input) =>
+    requestJson(`${baseUrl}/api/mobile/capture/quick-entry`, {
+      method: "POST",
+      headers: {
+        ...authorization,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(input),
+    });
+
+  const noteInput = {
+    clientRequestId: crypto.randomUUID(),
+    callRoomId: null,
+    kind: "NOTE",
+    title: "Preview release note",
+    body: `Disposable signed preview note ${suffix}.`,
+    sourceUrl: null,
+    tagIds: [],
+    newTagLabels: [tagLabel],
+    capturedAt: capturedAt.toISOString(),
+    dueAt: null,
+    reminderAt: null,
+    recurrence: null,
+  };
+  const taskInput = {
+    clientRequestId: crypto.randomUUID(),
+    callRoomId: null,
+    kind: "TASK",
+    title: "Preview release task",
+    body: `Disposable signed preview task ${suffix}.`,
+    sourceUrl: null,
+    tagIds: [],
+    newTagLabels: [tagLabel],
+    capturedAt: capturedAt.toISOString(),
+    dueAt: new Date(capturedAt.getTime() + 2 * 86_400_000).toISOString(),
+    reminderAt: new Date(capturedAt.getTime() + 86_400_000).toISOString(),
+    recurrence: null,
+  };
+  const goalInput = {
+    clientRequestId: crypto.randomUUID(),
+    callRoomId: null,
+    kind: "GOAL",
+    title: "Preview release goal",
+    body: `Disposable signed preview goal ${suffix}.`,
+    sourceUrl: null,
+    tagIds: [],
+    newTagLabels: [tagLabel],
+    capturedAt: capturedAt.toISOString(),
+    dueAt: null,
+    reminderAt: null,
+    recurrence: null,
+  };
+
+  const note = await quickEntry(noteInput);
+  assert(
+    note.response.status === 200 &&
+      note.body?.ok === true &&
+      note.body?.idempotentReplay === false &&
+      note.body?.entry?.kind === "NOTE" &&
+      note.body?.entry?.destination === "HOME_NEST" &&
+      note.body?.entry?.tags?.some?.((tag) => tag.label === tagLabel) &&
+      note.body?.tagVocabulary?.createdCount === 1,
+    `Signed Home Nest note capture failed with HTTP ${note.response.status}`,
+    { code: note.body?.code || undefined },
+  );
+
+  const noteReplay = await quickEntry(noteInput);
+  assert(
+    noteReplay.response.status === 200 &&
+      noteReplay.body?.idempotentReplay === true &&
+      noteReplay.body?.entry?.id === note.body?.entry?.id,
+    `Signed Home Nest note replay failed with HTTP ${noteReplay.response.status}`,
+    { code: noteReplay.body?.code || undefined },
+  );
+
+  const task = await quickEntry(taskInput);
+  assert(
+    task.response.status === 200 &&
+      task.body?.ok === true &&
+      task.body?.idempotentReplay === false &&
+      task.body?.entry?.kind === "TASK" &&
+      task.body?.entry?.destination === "HOME_NEST" &&
+      task.body?.entry?.dueAt === taskInput.dueAt &&
+      task.body?.entry?.reminder?.remindAt === taskInput.reminderAt &&
+      task.body?.entry?.tags?.some?.((tag) => tag.label === tagLabel) &&
+      task.body?.tagVocabulary?.reusedCount === 1 &&
+      task.body?.boundaries?.externalCalendarMutated === false &&
+      task.body?.boundaries?.deviceNotificationScheduled === false,
+    `Signed Home Nest task capture failed with HTTP ${task.response.status}`,
+    { code: task.body?.code || undefined },
+  );
+
+  const goal = await quickEntry(goalInput);
+  assert(
+    goal.response.status === 200 &&
+      goal.body?.ok === true &&
+      goal.body?.idempotentReplay === false &&
+      goal.body?.entry?.kind === "GOAL" &&
+      goal.body?.entry?.destination === "HOME_NEST" &&
+      goal.body?.entry?.tags?.some?.((tag) => tag.label === tagLabel) &&
+      goal.body?.tagVocabulary?.reusedCount === 1,
+    `Signed Home Nest goal capture failed with HTTP ${goal.response.status}`,
+    { code: goal.body?.code || undefined },
+  );
+
+  const deletionBefore = await requestJson(
+    `${baseUrl}/api/account/deletion-request`,
+    { headers: authorization },
+  );
+  assert(
+    deletionBefore.response.status === 200 &&
+      deletionBefore.body?.ok === true &&
+      deletionBefore.body?.request === null,
+    `Initial account-deletion status failed with HTTP ${deletionBefore.response.status}`,
+  );
+
+  const deletionCreate = await requestJson(
+    `${baseUrl}/api/account/deletion-request`,
+    {
+      method: "POST",
+      headers: {
+        ...authorization,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        reason: "Disposable signed preview deletion proof",
+        source: "generated-self-serve-preview-smoke",
+        appSurface: "HighGroundCapture",
+      }),
+    },
+  );
+  assert(
+    deletionCreate.response.status === 200 &&
+      deletionCreate.body?.ok === true &&
+      deletionCreate.body?.request?.status === "REQUESTED" &&
+      deletionCreate.body?.request?.reusedExistingRequest === false &&
+      deletionCreate.body?.policy?.targetDays === 30,
+    `Account-deletion request creation failed with HTTP ${deletionCreate.response.status}`,
+    { error: deletionCreate.body?.error || undefined },
+  );
+
+  const deletionReplay = await requestJson(
+    `${baseUrl}/api/account/deletion-request`,
+    {
+      method: "POST",
+      headers: {
+        ...authorization,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        reason: "This retry must converge",
+        source: "generated-self-serve-preview-smoke",
+      }),
+    },
+  );
+  assert(
+    deletionReplay.response.status === 200 &&
+      deletionReplay.body?.request?.id === deletionCreate.body?.request?.id &&
+      deletionReplay.body?.request?.reusedExistingRequest === true,
+    `Account-deletion request replay failed with HTTP ${deletionReplay.response.status}`,
+  );
+
+  const deletionReopen = await requestJson(
+    `${baseUrl}/api/account/deletion-request`,
+    { headers: authorization },
+  );
+  assert(
+    deletionReopen.response.status === 200 &&
+      deletionReopen.body?.request?.id === deletionCreate.body?.request?.id &&
+      deletionReopen.body?.request?.status === "REQUESTED" &&
+      deletionReopen.body?.request?.active === true,
+    `Account-deletion request reopen failed with HTTP ${deletionReopen.response.status}`,
+  );
+
+  return {
+    homeNestNote: "created-and-replayed",
+    homeNestTask: "created-with-due-date-reminder-intent-and-tag",
+    homeNestGoal: "created-with-shared-tag",
+    canonicalTag: "created-once-and-reused",
+    accountDeletion: "created-replayed-and-reopened",
+  };
 }
 
 async function main() {
@@ -586,6 +791,12 @@ async function main() {
       "Mobile/native context projects list missing.",
     );
 
+    const mobileWorkAndDeletion = await assertMobileWorkAndDeletionContracts(
+      baseUrl,
+      firebaseBody.idToken,
+      suffix,
+    );
+
     smokeSucceeded = true;
     console.log(
       JSON.stringify(
@@ -601,6 +812,7 @@ async function main() {
           verifiedEmailSession: "pass",
           nativeSessionCheck: "pass",
           mobileNativeContext: "pass",
+          mobileWorkAndDeletion,
           routeChecks: routeChecks.map(([pathPart]) => String(pathPart)),
           note: "Generated password, Firebase token, and session cookie were not printed.",
         },
