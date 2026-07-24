@@ -51,6 +51,10 @@ function harness(existing: any = null) {
         return tag;
       }),
     },
+    studioTagAlias: {
+      findUnique: jest.fn().mockResolvedValue(null),
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     studioProjectAccessGrant: {
       findFirst: jest.fn().mockResolvedValue({
         id: "grant-1",
@@ -718,7 +722,14 @@ describe("mobile Capture quick-entry route", () => {
         isPrivate: true,
         isActive: true,
       }),
-      select: { id: true, slug: true, label: true, isActive: true },
+      select: {
+        id: true,
+        projectId: true,
+        slug: true,
+        label: true,
+        category: true,
+        isActive: true,
+      },
     });
     expect(tx.actionItemTagLink.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({

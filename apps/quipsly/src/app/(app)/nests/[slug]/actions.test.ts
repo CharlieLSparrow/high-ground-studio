@@ -3,12 +3,16 @@ import { createHash } from "node:crypto";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { resolveQuickEntryTags } from "@/lib/server/quick-entry-tags";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
-import { createNestQuickNoteAction } from "./actions";
+import { createNestQuickNoteAction, createNestQuickWorkAction } from "./actions";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/quick-entry-tags", () => ({
+  resolveQuickEntryTags: jest.fn(),
+}));
 jest.mock("@/lib/server/studio-project-access", () => ({
   resolveStudioProjectAccess: jest.fn(),
 }));
@@ -21,6 +25,8 @@ const replayHash = createHash("sha256").update(JSON.stringify({
   projectSlug: "project",
   title: "Keep this thought",
   body: "Durable evidence.",
+  tagIds: [],
+  newTagLabels: [],
 })).digest("hex");
 
 function signedIn() {
@@ -32,6 +38,12 @@ function signedIn() {
 describe("project quick note capture", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.mocked(resolveQuickEntryTags).mockResolvedValue({
+      kind: "resolved",
+      tags: [],
+      createdTagCount: 0,
+      reusedTagCount: 0,
+    });
   });
 
   it("rejects signed-out capture before opening the database", async () => {
@@ -188,5 +200,194 @@ describe("project quick note capture", () => {
     expect(prisma.studioDocument.findUnique).toHaveBeenCalledWith(expect.objectContaining({
       where: { stableId: `project-note:user-1:${requestId}` },
     }));
+  });
+
+  it("creates full-body canonical tag anchors inside the same note transaction", async () => {
+    signedIn();
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as any);
+    jest.mocked(resolveQuickEntryTags).mockResolvedValue({
+      kind: "resolved",
+      tags: [{ id: "tag-episode", slug: "episode", label: "Episode" }],
+      createdTagCount: 0,
+      reusedTagCount: 0,
+    });
+    const tx = {
+      studioDocument: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: "document-1" }),
+      },
+      studioTaggedSpan: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      studioDocumentOperation: { create: jest.fn().mockResolvedValue({ id: "operation-1" }) },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+
+    const result = await createNestQuickNoteAction({
+      projectSlug: "project",
+      title: "Episode thought",
+      body: "Keep this exact source-linked thought.",
+      clientRequestId: requestId,
+      tagIds: ["tag-episode"],
+      newTagLabels: [],
+    });
+
+    expect(result).toMatchObject({ ok: true, documentId: "document-1" });
+    expect(resolveQuickEntryTags).toHaveBeenCalledWith(expect.objectContaining({
+      projectId: "project-1",
+      actorEmail: "person@example.test",
+      tagIds: ["tag-episode"],
+      newTagLabels: [],
+    }));
+    expect(tx.studioTaggedSpan.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        documentId: "document-1",
+        blockId: `project-note:user-1:${requestId}:body`,
+        tagId: "tag-episode",
+        startOffset: 0,
+        endOffset: 38,
+        selectedText: "Keep this exact source-linked thought.",
+        isPrivate: true,
+      })],
+    });
+    expect(tx.studioDocumentOperation.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        afterJson: expect.objectContaining({
+          tagIds: ["tag-episode"],
+          tagLabels: ["Episode"],
+          externalSideEffects: false,
+        }),
+      }),
+    });
+  });
+});
+
+describe("project quick Task and Goal capture", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    signedIn();
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as any);
+    jest.mocked(resolveQuickEntryTags).mockResolvedValue({
+      kind: "resolved",
+      tags: [{ id: "tag-episode", slug: "episode", label: "Episode" }],
+      createdTagCount: 0,
+      reusedTagCount: 1,
+    });
+  });
+
+  it("atomically creates an idempotent tagged Task with truthful side-effect boundaries", async () => {
+    const tx = {
+      actionItem: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: `project-task-${requestId}` }),
+      },
+      actionItemTagLink: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+
+    const result = await createNestQuickWorkAction({
+      projectSlug: "project",
+      entityKind: "TASK",
+      title: " Prepare Episode 8 ",
+      body: " Read the source notes first. ",
+      clientRequestId: requestId,
+      tagIds: [],
+      newTagLabels: [" Episode "],
+    });
+
+    expect(result).toEqual({
+      ok: true,
+      entityKind: "TASK",
+      entityId: `project-task-${requestId}`,
+      projectSlug: "project",
+      href: `/work?task=project-task-${requestId}`,
+      tags: [{ id: "tag-episode", slug: "episode", label: "Episode" }],
+      idempotentReplay: false,
+      externalSideEffects: false,
+    });
+    expect(tx.actionItem.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        id: `project-task-${requestId}`,
+        assignedUserId: "user-1",
+        projectId: "project-1",
+        title: "Prepare Episode 8",
+        detail: "Read the source notes first.",
+        sourceJson: expect.objectContaining({
+          creationReceipt: expect.objectContaining({
+            tagIds: ["tag-episode"],
+            messageSent: false,
+            calendarMutated: false,
+            published: false,
+            externalSideEffects: false,
+          }),
+        }),
+      }),
+    });
+    expect(tx.actionItemTagLink.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        actionItemId: `project-task-${requestId}`,
+        tagId: "tag-episode",
+        createdByUserId: "user-1",
+      })],
+    });
+  });
+
+  it("replays the exact Goal identity without resolving or creating tags again", async () => {
+    const inputHash = createHash("sha256").update(JSON.stringify({
+      actorUserId: "user-1",
+      projectSlug: "project",
+      entityKind: "GOAL",
+      title: "Publish Episode 8",
+      body: "Finish the proof listen.",
+      tagIds: ["tag-episode"],
+      newTagLabels: [],
+    })).digest("hex");
+    const existing = {
+      id: `project-goal-${requestId}`,
+      projectId: "project-1",
+      ownerUserId: "user-1",
+      sourceJson: { creationReceipt: { inputHash } },
+      tagLinks: [{ tag: { id: "tag-episode", slug: "episode", label: "Episode" } }],
+    };
+    const tx = {
+      goal: {
+        findUnique: jest.fn().mockResolvedValue(existing),
+        create: jest.fn(),
+      },
+      goalTagLink: { createMany: jest.fn() },
+    };
+    jest.mocked(getPrismaClient).mockReturnValue({
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    } as any);
+
+    const result = await createNestQuickWorkAction({
+      projectSlug: "project",
+      entityKind: "GOAL",
+      title: "Publish Episode 8",
+      body: "Finish the proof listen.",
+      clientRequestId: requestId,
+      tagIds: ["tag-episode"],
+      newTagLabels: [],
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      entityKind: "GOAL",
+      entityId: `project-goal-${requestId}`,
+      idempotentReplay: true,
+    });
+    expect(resolveQuickEntryTags).not.toHaveBeenCalled();
+    expect(tx.goal.create).not.toHaveBeenCalled();
+    expect(tx.goalTagLink.createMany).not.toHaveBeenCalled();
   });
 });

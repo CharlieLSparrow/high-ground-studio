@@ -329,7 +329,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
           {view === "overview" ? (
             <>
               {canWrite ? (
-                <NestQuickCapture projectId={project.id} projectSlug={project.slug} projectName={project.name} />
+                <NestQuickCapture projectId={project.id} projectSlug={project.slug} projectName={project.name} tags={tags} />
               ) : (
                 <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold leading-6 text-amber-950">
                   You can read this project. An owner can grant editor access when you need to add or change work.
@@ -440,7 +440,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
 
           {view === "work" ? (
             <>
-              {canWrite ? <NestQuickCapture projectId={project.id} projectSlug={project.slug} projectName={project.name} /> : null}
+              {canWrite ? <NestQuickCapture projectId={project.id} projectSlug={project.slug} projectName={project.name} tags={tags} /> : null}
               <section aria-labelledby="nest-follow-through-heading" className="rounded-3xl border border-sky-200 bg-white p-5 shadow-sm md:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>

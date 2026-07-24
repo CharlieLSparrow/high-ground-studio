@@ -7,7 +7,9 @@ import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getPrismaClient } from "@/lib/prisma";
+import { resolveQuickEntryTags, type QuickEntryTag } from "@/lib/server/quick-entry-tags";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
+import { normalizeWorkTagLabel } from "@/lib/server/work-tag-normalization";
 import { auth } from "@/auth";
 
 type CreateNestDocumentKind = "draft" | "note" | "study-source";
@@ -19,6 +21,23 @@ export type CreateNestQuickNoteResult =
       blockId: string;
       projectSlug: string;
       href: string;
+      idempotentReplay: boolean;
+      externalSideEffects: false;
+    }
+  | {
+      ok: false;
+      code: "AUTH_REQUIRED" | "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+      error: string;
+    };
+
+export type CreateNestQuickWorkResult =
+  | {
+      ok: true;
+      entityKind: "TASK" | "GOAL";
+      entityId: string;
+      projectSlug: string;
+      href: string;
+      tags: QuickEntryTag[];
       idempotentReplay: boolean;
       externalSideEffects: false;
     }
@@ -130,6 +149,35 @@ function cleanQuickNoteText(value: unknown, maxLength: number) {
     : "";
 }
 
+function cleanQuickCaptureTagInput(input: {
+  tagIds?: unknown;
+  newTagLabels?: unknown;
+}) {
+  const rawTagIds = input.tagIds === undefined ? [] : input.tagIds;
+  const rawNewTagLabels = input.newTagLabels === undefined ? [] : input.newTagLabels;
+  if (!Array.isArray(rawTagIds) || !Array.isArray(rawNewTagLabels)
+      || rawTagIds.length > 24 || rawNewTagLabels.length > 8
+      || rawTagIds.length + rawNewTagLabels.length > 24) {
+    return null;
+  }
+  const tagIds = rawTagIds
+    .map((value) => cleanQuickNoteText(value, 200))
+    .filter(Boolean)
+    .sort();
+  const newTagLabels = rawNewTagLabels
+    .map((value) => normalizeWorkTagLabel(value))
+    .filter((value): value is string => Boolean(value))
+    .sort((left, right) => left.localeCompare(right));
+  const normalizedLabels = newTagLabels.map((label) => label.normalize("NFKC").toLocaleLowerCase("en-US"));
+  if (tagIds.length !== rawTagIds.length
+      || newTagLabels.length !== rawNewTagLabels.length
+      || new Set(tagIds).size !== tagIds.length
+      || new Set(normalizedLabels).size !== normalizedLabels.length) {
+    return null;
+  }
+  return { tagIds, newTagLabels };
+}
+
 function safeJsonRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -141,8 +189,25 @@ function quickNoteInputHash(input: {
   projectSlug: string;
   title: string;
   body: string;
+  tagIds: string[];
+  newTagLabels: string[];
 }) {
   return createHash("sha256").update(JSON.stringify(input)).digest("hex");
+}
+
+function quickCaptureTagFailure(
+  result: Exclude<Awaited<ReturnType<typeof resolveQuickEntryTags>>, { kind: "resolved" }>,
+): Extract<CreateNestQuickNoteResult, { ok: false }> {
+  if (result.kind === "tag-creation-forbidden") {
+    return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to expand its reusable vocabulary." };
+  }
+  if (result.kind === "archived-tag") {
+    return { ok: false, code: "INVALID_INPUT", error: `“${result.label}” is archived. Restore or rename it before using it.` };
+  }
+  if (result.kind === "tag-slug-conflict") {
+    return { ok: false, code: "INVALID_INPUT", error: `“${result.label}” conflicts with existing tag “${result.existingLabel}”. Choose a more distinct name.` };
+  }
+  return { ok: false, code: "INVALID_INPUT", error: "Choose only active reusable tags from this Nest." };
 }
 
 export async function createNestQuickNoteAction(input: {
@@ -150,6 +215,8 @@ export async function createNestQuickNoteAction(input: {
   title: string;
   body: string;
   clientRequestId: string;
+  tagIds?: string[];
+  newTagLabels?: string[];
 }): Promise<CreateNestQuickNoteResult> {
   const session = await auth();
   const actorUserId = session?.user?.id;
@@ -162,7 +229,8 @@ export async function createNestQuickNoteAction(input: {
   const title = cleanQuickNoteText(input?.title, 160).replace(/\s+/g, " ");
   const body = cleanQuickNoteText(input?.body, 12_000);
   const clientRequestId = cleanQuickNoteText(input?.clientRequestId, 80).toLowerCase();
-  if (!projectSlug || !title || !body || !UUID_PATTERN.test(clientRequestId)) {
+  const tagInput = cleanQuickCaptureTagInput(input ?? {});
+  if (!projectSlug || !title || !body || !UUID_PATTERN.test(clientRequestId) || !tagInput) {
     return {
       ok: false,
       code: "INVALID_INPUT",
@@ -170,7 +238,14 @@ export async function createNestQuickNoteAction(input: {
     };
   }
 
-  const inputHash = quickNoteInputHash({ actorUserId, projectSlug, title, body });
+  const inputHash = quickNoteInputHash({
+    actorUserId,
+    projectSlug,
+    title,
+    body,
+    tagIds: tagInput.tagIds,
+    newTagLabels: tagInput.newTagLabels,
+  });
   const stableId = `project-note:${actorUserId}:${clientRequestId}`;
   const groupId = `project-capture:${clientRequestId}`;
   const sourceLabel = "document-kind:note;origin:nest-project-capture";
@@ -213,6 +288,15 @@ export async function createNestQuickNoteAction(input: {
         };
       }
 
+      const tagResolution = await resolveQuickEntryTags({
+        tx,
+        projectId: access.projectId,
+        actorEmail,
+        tagIds: tagInput.tagIds,
+        newTagLabels: tagInput.newTagLabels,
+      });
+      if (tagResolution.kind !== "resolved") return tagResolution;
+
       const blockId = `${stableId}:body`;
       const document = await tx.studioDocument.create({
         data: {
@@ -237,6 +321,28 @@ export async function createNestQuickNoteAction(input: {
         select: { id: true },
       });
 
+      if (tagResolution.tags.length > 0) {
+        await tx.studioTaggedSpan.createMany({
+          data: tagResolution.tags.map((tag) => ({
+            id: `project-note-tag:${clientRequestId}:${tag.id}`,
+            documentId: document.id,
+            blockId,
+            tagId: tag.id,
+            startOffset: 0,
+            endOffset: body.length,
+            selectedText: body,
+            documentStableId: stableId,
+            documentTitleSnapshot: title,
+            blockStableId: blockId,
+            blockTitleSnapshot: null,
+            sourceLabel,
+            projectionStatus: "private",
+            isPrivate: true,
+            createdByLabel: actorEmail,
+          })),
+        });
+      }
+
       await tx.studioDocumentOperation.create({
         data: {
           projectId: access.projectId,
@@ -250,6 +356,11 @@ export async function createNestQuickNoteAction(input: {
             schema: "quipsly-project-quick-note-v1",
             inputHash,
             clientRequestId,
+            tagIds: tagResolution.tags.map((tag) => tag.id),
+            tagLabels: tagResolution.tags.map((tag) => tag.label),
+            requestedNewTagLabels: tagInput.newTagLabels,
+            createdTagCount: tagResolution.createdTagCount,
+            reusedTagCount: tagResolution.reusedTagCount,
             sourceMutated: false,
             externalSideEffects: false,
           },
@@ -280,6 +391,7 @@ export async function createNestQuickNoteAction(input: {
         error: "This capture identity already belongs to different note evidence. Your text was not overwritten.",
       };
     }
+    if (result.kind !== "saved") return quickCaptureTagFailure(result);
 
     revalidatePath(`/nests/${projectSlug}`);
     revalidatePath("/library");
@@ -338,6 +450,286 @@ export async function createNestQuickNoteAction(input: {
       ok: false,
       code: "UNAVAILABLE",
       error: "Quipsly could not save this project note. No task, message, calendar event, or publication was created.",
+    };
+  }
+}
+
+export async function createNestQuickWorkAction(input: {
+  projectSlug: string;
+  entityKind: "TASK" | "GOAL";
+  title: string;
+  body?: string;
+  clientRequestId: string;
+  tagIds?: string[];
+  newTagLabels?: string[];
+}): Promise<CreateNestQuickWorkResult> {
+  const session = await auth();
+  const actorUserId = session?.user?.id;
+  const actorEmail = (session?.user?.primaryEmail || session?.user?.email || "").trim().toLowerCase();
+  if (!actorUserId || !actorEmail) {
+    return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before saving private project work." };
+  }
+
+  const projectSlug = cleanQuickNoteText(input?.projectSlug, 160).toLowerCase();
+  const entityKind = input?.entityKind;
+  const title = cleanQuickNoteText(input?.title, 500).replace(/\s+/g, " ");
+  const body = cleanQuickNoteText(input?.body, 5_000).replace(/\s+/g, " ");
+  const clientRequestId = cleanQuickNoteText(input?.clientRequestId, 80).toLowerCase();
+  const tagInput = cleanQuickCaptureTagInput(input ?? {});
+  if (!projectSlug || !["TASK", "GOAL"].includes(entityKind) || !title
+      || !UUID_PATTERN.test(clientRequestId) || !tagInput) {
+    return {
+      ok: false,
+      code: "INVALID_INPUT",
+      error: "Add a Task or Goal title, then retry with the same capture identity.",
+    };
+  }
+
+  const inputHash = createHash("sha256").update(JSON.stringify({
+    actorUserId,
+    projectSlug,
+    entityKind,
+    title,
+    body,
+    tagIds: tagInput.tagIds,
+    newTagLabels: tagInput.newTagLabels,
+  })).digest("hex");
+  const entityId = `project-${entityKind.toLowerCase()}-${clientRequestId}`;
+  const receiptId = `project-capture-${clientRequestId}`;
+  const prisma = getPrismaClient();
+
+  const readExisting = async (database: typeof prisma) => {
+    if (entityKind === "TASK") {
+      const task = await database.actionItem.findUnique({
+        where: { id: entityId },
+        select: {
+          id: true,
+          projectId: true,
+          assignedUserId: true,
+          sourceJson: true,
+          tagLinks: {
+            select: { tag: { select: { id: true, slug: true, label: true } } },
+            orderBy: { tag: { label: "asc" } },
+          },
+        },
+      });
+      return task ? {
+        projectId: task.projectId,
+        ownerUserId: task.assignedUserId,
+        sourceJson: task.sourceJson,
+        tags: task.tagLinks.map((link) => link.tag),
+      } : null;
+    }
+    const goal = await database.goal.findUnique({
+      where: { id: entityId },
+      select: {
+        id: true,
+        projectId: true,
+        ownerUserId: true,
+        sourceJson: true,
+        tagLinks: {
+          select: { tag: { select: { id: true, slug: true, label: true } } },
+          orderBy: { tag: { label: "asc" } },
+        },
+      },
+    });
+    return goal ? {
+      projectId: goal.projectId,
+      ownerUserId: goal.ownerUserId,
+      sourceJson: goal.sourceJson,
+      tags: goal.tagLinks.map((link) => link.tag),
+    } : null;
+  };
+
+  const matchesExisting = (existing: Awaited<ReturnType<typeof readExisting>>, projectId: string) => {
+    const creationReceipt = safeJsonRecord(safeJsonRecord(existing?.sourceJson).creationReceipt);
+    return Boolean(existing)
+      && existing?.projectId === projectId
+      && existing?.ownerUserId === actorUserId
+      && creationReceipt.inputHash === inputHash;
+  };
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const access = await resolveStudioProjectAccess({
+        projectSlug,
+        email: actorEmail,
+        action: "write",
+        prisma: tx as typeof prisma,
+      });
+      if (!access.allowed || !access.projectId) return { kind: "forbidden" as const };
+
+      const existing = await readExisting(tx as typeof prisma);
+      if (existing) {
+        if (!matchesExisting(existing, access.projectId)) return { kind: "conflict" as const };
+        return { kind: "saved" as const, tags: existing.tags, idempotentReplay: true };
+      }
+
+      const tagResolution = await resolveQuickEntryTags({
+        tx,
+        projectId: access.projectId,
+        actorEmail,
+        tagIds: tagInput.tagIds,
+        newTagLabels: tagInput.newTagLabels,
+      });
+      if (tagResolution.kind !== "resolved") return tagResolution;
+
+      const now = new Date();
+      const creationReceipt = {
+        id: receiptId,
+        kind: entityKind === "TASK" ? "quipsly-project-task-capture-v1" : "quipsly-project-goal-capture-v1",
+        inputHash,
+        clientRequestId,
+        projectId: access.projectId,
+        tagIds: tagResolution.tags.map((tag) => tag.id),
+        tagLabels: tagResolution.tags.map((tag) => tag.label),
+        requestedNewTagLabels: tagInput.newTagLabels,
+        createdTagCount: tagResolution.createdTagCount,
+        reusedTagCount: tagResolution.reusedTagCount,
+        createdAt: now.toISOString(),
+        createdByUserId: actorUserId,
+        assignedToCreator: entityKind === "TASK",
+        explicitHumanCapture: true,
+        externalSideEffects: false,
+        messageSent: false,
+        calendarMutated: false,
+        published: false,
+      };
+      const sourceJson = {
+        source: "quipsly-project-quick-capture-v1",
+        surface: "nest-project",
+        creationReceipt,
+      };
+      const linkSourceJson = {
+        schema: "quipsly-record-tag-link-v1",
+        surface: "nest-project",
+        clientRequestId,
+        explicitHumanCapture: true,
+        externalSideEffects: false,
+      };
+
+      if (entityKind === "TASK") {
+        await tx.actionItem.create({
+          data: {
+            id: entityId,
+            assignedUserId: actorUserId,
+            projectId: access.projectId,
+            title,
+            detail: body || null,
+            sourceJson,
+          },
+        });
+        if (tagResolution.tags.length > 0) {
+          await tx.actionItemTagLink.createMany({
+            data: tagResolution.tags.map((tag) => ({
+              actionItemId: entityId,
+              tagId: tag.id,
+              createdByUserId: actorUserId,
+              sourceJson: linkSourceJson,
+            })),
+          });
+        }
+      } else {
+        await tx.goal.create({
+          data: {
+            id: entityId,
+            ownerUserId: actorUserId,
+            projectId: access.projectId,
+            title,
+            description: body || null,
+            sourceJson,
+          },
+        });
+        if (tagResolution.tags.length > 0) {
+          await tx.goalTagLink.createMany({
+            data: tagResolution.tags.map((tag) => ({
+              goalId: entityId,
+              tagId: tag.id,
+              createdByUserId: actorUserId,
+              sourceJson: linkSourceJson,
+            })),
+          });
+        }
+      }
+      return {
+        kind: "saved" as const,
+        tags: tagResolution.tags,
+        idempotentReplay: false,
+      };
+    }, { isolationLevel: "Serializable" });
+
+    if (result.kind === "forbidden") {
+      return { ok: false, code: "FORBIDDEN", error: "Editor access to this project is required." };
+    }
+    if (result.kind === "conflict") {
+      return {
+        ok: false,
+        code: "CONFLICT",
+        error: "This capture identity already belongs to different project work. Nothing was overwritten.",
+      };
+    }
+    if (result.kind !== "saved") return quickCaptureTagFailure(result);
+
+    revalidatePath(`/nests/${projectSlug}`);
+    revalidatePath("/work");
+    revalidatePath("/today");
+    revalidatePath("/schedule");
+    revalidatePath("/find");
+    const href = entityKind === "TASK"
+      ? `/work?task=${encodeURIComponent(entityId)}`
+      : `/work?goal=${encodeURIComponent(entityId)}`;
+    return {
+      ok: true,
+      entityKind,
+      entityId,
+      projectSlug,
+      href,
+      tags: result.tags,
+      idempotentReplay: result.idempotentReplay,
+      externalSideEffects: false,
+    };
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && String((error as { code?: unknown }).code) === "P2002") {
+      const access = await resolveStudioProjectAccess({
+        projectSlug,
+        email: actorEmail,
+        action: "write",
+      }).catch(() => null);
+      const replay = access?.allowed && access.projectId
+        ? await readExisting(prisma).catch(() => null)
+        : null;
+      if (access?.projectId && matchesExisting(replay, access.projectId)) {
+        revalidatePath(`/nests/${projectSlug}`);
+        revalidatePath("/work");
+        revalidatePath("/today");
+        revalidatePath("/schedule");
+        revalidatePath("/find");
+        return {
+          ok: true,
+          entityKind,
+          entityId,
+          projectSlug,
+          href: entityKind === "TASK"
+            ? `/work?task=${encodeURIComponent(entityId)}`
+            : `/work?goal=${encodeURIComponent(entityId)}`,
+          tags: replay?.tags ?? [],
+          idempotentReplay: true,
+          externalSideEffects: false,
+        };
+      }
+      if (replay) {
+        return {
+          ok: false,
+          code: "CONFLICT",
+          error: "This capture identity already belongs to different project work. Nothing was overwritten.",
+        };
+      }
+    }
+    console.error("[nest-project] failed to create quick work", error);
+    return {
+      ok: false,
+      code: "UNAVAILABLE",
+      error: "Quipsly could not save this project work. No message, calendar event, reminder, or publication was created.",
     };
   }
 }
