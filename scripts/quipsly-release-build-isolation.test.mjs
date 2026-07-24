@@ -5,6 +5,8 @@ import test from "node:test";
 const quipslyConfig = readFileSync("apps/quipsly/next.config.mjs", "utf8");
 const webConfig = readFileSync("apps/web/next.config.mjs", "utf8");
 const releaseGate = readFileSync("scripts/hgo-quipsly-release-readiness.mjs", "utf8");
+const quipslyTypeScript = JSON.parse(readFileSync("apps/quipsly/tsconfig.json", "utf8"));
+const webTypeScript = JSON.parse(readFileSync("apps/web/tsconfig.json", "utf8"));
 
 test("release builds use isolated Next output directories", () => {
   assert.match(
@@ -23,4 +25,13 @@ test("release builds use isolated Next output directories", () => {
 test("build output overrides stay confined to project-local generated directories", () => {
   assert.match(quipslyConfig, /\^\\\.next\(\?:-\[a-z0-9\]\+\)\*\$/);
   assert.match(webConfig, /\^\\\.next\(\?:-\[a-z0-9\]\+\)\*\$/);
+});
+
+test("TypeScript includes both developer and isolated release route types", () => {
+  for (const config of [quipslyTypeScript, webTypeScript]) {
+    assert.ok(config.include.includes(".next/types/**/*.ts"));
+    assert.ok(config.include.includes(".next/dev/types/**/*.ts"));
+    assert.ok(config.include.includes(".next-release/types/**/*.ts"));
+    assert.ok(config.include.includes(".next-release/dev/types/**/*.ts"));
+  }
 });
