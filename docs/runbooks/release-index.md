@@ -35,7 +35,9 @@ and must not be enabled merely to make a deploy proceed.
 - Verification:
   [Capture verification](../../apps/mobile-capture/HighGroundCapture/CAPTURE_VERIFICATION.md)
 - Latest distribution checkpoint:
-  [Capture build 3](../coordination/2026-07-23-capture-build-3-release-checkpoint.md)
+  [Capture build 4](../coordination/2026-07-23-capture-build-4-release-checkpoint.md)
+- Canonical iOS release procedure:
+  [Quipsly Capture release](../quipsly/ios-capture-release-runbook.md)
 
 Required stages:
 
@@ -51,13 +53,15 @@ Pinned local entry points:
 ```bash
 apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh verify
 apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test
-apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh release
+scripts/release/quipsly-capture-release-from-commit.sh release --revision <commit-sha>
 scripts/deploy-testflight.sh
 ```
 
-The first three commands never upload. The final command invokes the same
-locked `beta` lane and requires `APP_STORE_CONNECT_API_KEY_PATH`; do not place
-that credential in the repository.
+The first three commands never upload. The build-only release command resolves
+one exact commit into a disposable detached worktree. The final command uses
+the same isolation boundary and locked `beta` lane and requires
+`APP_STORE_CONNECT_API_KEY_PATH`; do not place that credential in the
+repository.
 
 ## High Ground Odyssey web
 
