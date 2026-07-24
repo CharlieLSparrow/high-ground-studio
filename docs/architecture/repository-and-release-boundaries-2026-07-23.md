@@ -64,7 +64,9 @@ context made release contents dependent on a long and fragile exclusion list.
 Quipsly releases are materialized from a single committed SHA by
 `scripts/release/quipsly-build-context.sh`.
 
-The release context is an allowlist containing only:
+The materializer reads the validated `releaseContext` allowlist and size
+ceiling from `release/manifests/nest.json` at that same selected SHA. The
+release context contains only:
 
 - Nest source and public runtime assets;
 - the four workspace packages Nest imports;

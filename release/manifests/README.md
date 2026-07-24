@@ -40,6 +40,10 @@ non-Git provenance, and a manifest that does not trigger its own boundary.
 The JSON Schema provides editor and external-tool interoperability; the
 repository validator is the CI authority.
 
+Nest's exact-SHA materializer reads `releaseContext` from the manifest stored
+in the selected commit. Its source allowlist and size ceiling therefore cannot
+drift from a second shell-script list.
+
 ## Change a boundary
 
 Treat manifest changes as release architecture changes:

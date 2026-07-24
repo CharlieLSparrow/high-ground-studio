@@ -191,10 +191,11 @@ function repositoryPathErrors(
     value !== normalizedRepositoryPath(value)
     || value.startsWith("/")
     || value.includes("\0")
+    || /[\r\n\t]/.test(value)
     || value.split("/").includes("..")
     || /[*?[\]{}]/.test(value)
   ) {
-    errors.push(`${label}: expected a normalized, repository-relative path without traversal or globs`);
+    errors.push(`${label}: expected a normalized, repository-relative path without traversal, control characters, or globs`);
   }
   if (kind === "file" && value.endsWith("/")) {
     errors.push(`${label}: exact file paths must not end with /`);

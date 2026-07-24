@@ -3,8 +3,8 @@ set -euo pipefail
 
 SOURCE_REF="${1:-${SOURCE_REF:-HEAD}}"
 OUTPUT_DIR="${2:-}"
-CONTEXT_MAX_MIB="${CONTEXT_MAX_MIB:-300}"
 NORMALIZED_RELEASE_MTIME_UTC="2000-01-01T00:00:00Z"
+RELEASE_MANIFEST_PATH="release/manifests/nest.json"
 
 repo_root="$(git rev-parse --show-toplevel)"
 source_sha="$(git -C "${repo_root}" rev-parse --verify "${SOURCE_REF}^{commit}")"
@@ -22,34 +22,74 @@ fi
 
 output_dir="$(cd "${OUTPUT_DIR}" && pwd -P)"
 
-required_paths=(
-  .dockerignore
-  .gcloudignore
-  .npmrc
-  cloudbuild.quipsly-web.yaml
-  package.json
-  pnpm-lock.yaml
-  pnpm-workspace.yaml
-  prisma.config.ts
-  apps/quipsly
-  packages/content-studio-domain
-  packages/quipsly-document-kernel
-  packages/quipsly-domain
-  packages/studio-domain
-  prisma
-  scripts/quipsly-owner-override-retirement.test.mjs
-  scripts/release
-  scripts/scan-beta-blockers.mjs
-  scripts/sync-prisma-pnpm-clients.mjs
-  docs/coordination/BETA-MANIFEST.md
-  apps/web/content/publish/hgo-episodes/episode-1-write-it-down.json
-  apps/web/content/publish/hgo-episodes/episode-2-look-for-lessons.json
-  apps/web/content/publish/hgo-episodes/episode-3-chub-and-jack.json
+if ! git -C "${repo_root}" cat-file -e "${source_sha}:${RELEASE_MANIFEST_PATH}" 2>/dev/null; then
+  echo "Nest release manifest is missing at ${source_sha}: ${RELEASE_MANIFEST_PATH}" >&2
+  exit 1
+fi
+
+required_paths=()
+optional_paths=()
+manifest_max_mib=""
+while IFS=$'\t' read -r record_kind record_value; do
+  case "${record_kind}" in
+    maxMiB)
+      manifest_max_mib="${record_value}"
+      ;;
+    required)
+      required_paths+=("${record_value}")
+      ;;
+    optional)
+      optional_paths+=("${record_value}")
+      ;;
+    *)
+      echo "Unexpected Nest release manifest record: ${record_kind}" >&2
+      exit 1
+      ;;
+  esac
+done < <(
+  git -C "${repo_root}" show "${source_sha}:${RELEASE_MANIFEST_PATH}" \
+    | node -e '
+      const fs = require("node:fs");
+      const manifest = JSON.parse(fs.readFileSync(0, "utf8"));
+      if (manifest.schemaVersion !== 1 || manifest.id !== "nest") {
+        throw new Error("Expected the Nest release manifest schema v1.");
+      }
+      const context = manifest.releaseContext;
+      if (
+        !context
+        || typeof context.maxMiB !== "number"
+        || context.maxMiB <= 0
+        || !Array.isArray(context.requiredPaths)
+        || context.requiredPaths.length === 0
+        || !Array.isArray(context.optionalPaths)
+      ) {
+        throw new Error("Nest releaseContext is missing or invalid.");
+      }
+      const checkedPaths = (kind, values) => values.map((value) => {
+        if (
+          typeof value !== "string"
+          || value.length === 0
+          || /[\u0000\r\n\t]/.test(value)
+          || value.startsWith("/")
+          || value.split("/").includes("..")
+        ) {
+          throw new Error(`Unsafe ${kind} release path: ${JSON.stringify(value)}`);
+        }
+        return value;
+      });
+      const required = checkedPaths("required", context.requiredPaths);
+      const optional = checkedPaths("optional", context.optionalPaths);
+      process.stdout.write(`maxMiB\t${context.maxMiB}\n`);
+      for (const value of required) process.stdout.write(`required\t${value}\n`);
+      for (const value of optional) process.stdout.write(`optional\t${value}\n`);
+    '
 )
 
-optional_paths=(
-  docs/coordination/antigravity-reports
-)
+if [[ -z "${manifest_max_mib}" || "${#required_paths[@]}" -eq 0 ]]; then
+  echo "Nest release manifest did not provide a usable release context." >&2
+  exit 1
+fi
+CONTEXT_MAX_MIB="${CONTEXT_MAX_MIB:-${manifest_max_mib}}"
 
 for path in "${required_paths[@]}"; do
   if ! git -C "${repo_root}" cat-file -e "${source_sha}:${path}" 2>/dev/null; then
@@ -80,6 +120,7 @@ inventory_sha="$(
 cat >"${output_dir}/quipsly-release-source.json" <<EOF
 {
   "schemaVersion": 1,
+  "releaseManifest": "${RELEASE_MANIFEST_PATH}",
   "sourceSha": "${source_sha}",
   "inventorySha1": "${inventory_sha}",
   "normalizedMtimeUtc": "${NORMALIZED_RELEASE_MTIME_UTC}"

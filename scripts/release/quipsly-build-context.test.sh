@@ -24,6 +24,7 @@ expected_sha="$(git -C "${repo_root}" rev-parse "${source_ref}^{commit}")"
 [[ -f "${context}/apps/quipsly/src/app/(app)/outputs/[outputId]/page.tsx" ]]
 [[ -f "${context}/packages/quipsly-domain/package.json" ]]
 [[ -f "${context}/prisma/schema.prisma" ]]
+[[ -f "${context}/release/manifests/nest.json" ]]
 [[ -f "${context}/quipsly-release-source.json" ]]
 [[ -x "${context}/scripts/release/quipsly-normalize-context-metadata.sh" ]]
 [[ ! -e "${context}/.git" ]]
@@ -32,6 +33,26 @@ expected_sha="$(git -C "${repo_root}" rev-parse "${source_ref}^{commit}")"
 [[ ! -e "${context}/apps/QuipslyStudio" ]]
 [[ ! -e "${context}/apps/mobile-capture" ]]
 [[ ! -e "${context}/node_modules" ]]
+
+node - "${context}" "${repo_root}/release/manifests/nest.json" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const context = process.argv[2];
+const manifest = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+for (const requiredPath of manifest.releaseContext.requiredPaths) {
+  if (!fs.existsSync(path.join(context, requiredPath))) {
+    throw new Error(`Materialized context is missing manifest path: ${requiredPath}`);
+  }
+}
+for (const optionalPath of manifest.releaseContext.optionalPaths) {
+  const sourceHasPath = fs.existsSync(path.join(process.cwd(), optionalPath));
+  const contextHasPath = fs.existsSync(path.join(context, optionalPath));
+  if (sourceHasPath !== contextHasPath) {
+    throw new Error(`Optional context path does not match source presence: ${optionalPath}`);
+  }
+}
+NODE
 
 normalize_line="$(
   grep -n -- 'id: normalize-quipsly-context-metadata' \
@@ -129,6 +150,9 @@ const fs = require("node:fs");
 const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
 if (manifest.schemaVersion !== 1) {
   throw new Error(`Unexpected release manifest version: ${manifest.schemaVersion}`);
+}
+if (manifest.releaseManifest !== "release/manifests/nest.json") {
+  throw new Error(`Unexpected release contract: ${manifest.releaseManifest}`);
 }
 if (manifest.sourceSha !== process.argv[3]) {
   throw new Error(`Expected source ${process.argv[3]}, got ${manifest.sourceSha}`);
