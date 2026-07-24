@@ -51,7 +51,12 @@ function harness(existing: any = null) {
         return tag;
       }),
     },
-    studioProjectAccessGrant: { findFirst: jest.fn().mockResolvedValue({ id: "grant-1" }) },
+    studioProjectAccessGrant: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: "grant-1",
+        project: { id: "project-direct", name: "High Ground Odyssey" },
+      }),
+    },
     studioTaggedSpan: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
     studioDocument: {
       findUnique: jest.fn(async ({ where }: any) => personalDocuments.get(where.id) || null),
@@ -330,6 +335,135 @@ describe("mobile Capture quick-entry route", () => {
     }));
     expect(tx.actionItemTagLink.createMany).toHaveBeenCalledTimes(1);
     expect(tx.goalTagLink.createMany).toHaveBeenCalledTimes(1);
+  });
+
+  it("commits a tagged iPhone task directly to one writable Nest without inventing a Session", async () => {
+    signedIn();
+    const tx = harness();
+
+    const response = await POST(request("TASK", {
+      callRoomId: null,
+      projectId: "project-direct",
+      title: "Prepare the project brief",
+      body: "Keep the task and taxonomy in High Ground Odyssey.",
+      tagIds: ["tag-episode"],
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      entry: {
+        id: `mobile-task-${requestId}`,
+        callRoomId: null,
+        projectId: "project-direct",
+        projectName: "High Ground Odyssey",
+        destination: "NEST",
+        tags: [{ id: "tag-episode" }],
+      },
+      nextAction: expect.stringContaining("High Ground Odyssey"),
+    });
+    expect(ensureHomeNestForEmail).not.toHaveBeenCalled();
+    expect(tx.callRoom.findFirst).not.toHaveBeenCalled();
+    expect(tx.studioProjectAccessGrant.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        projectId: "project-direct",
+        email: "person@example.com",
+        status: "ACTIVE",
+        role: { in: ["OWNER", "EDITOR"] },
+      }),
+    }));
+    expect(tx.actionItem.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        roomId: null,
+        projectId: "project-direct",
+        sourceJson: expect.objectContaining({
+          callRoomId: null,
+          requestedProjectId: "project-direct",
+          projectId: "project-direct",
+        }),
+      }),
+    }));
+  });
+
+  it("commits direct project notes and goals through their canonical Nest models", async () => {
+    signedIn();
+    const tx = harness();
+
+    const noteResponse = await POST(request("NOTE", {
+      callRoomId: null,
+      projectId: "project-direct",
+      title: "Episode observation",
+      body: "Keep the strongest opening question with the real project.",
+    }));
+    const goalResponse = await POST(request("GOAL", {
+      callRoomId: null,
+      projectId: "project-direct",
+      title: "Make the next episode useful",
+      body: "Ground every recommendation in the recorded conversation.",
+    }));
+
+    expect(noteResponse.status).toBe(200);
+    await expect(noteResponse.json()).resolves.toMatchObject({
+      ok: true,
+      entry: {
+        id: `mobile-note-${requestId}`,
+        title: "Episode observation",
+        callRoomId: null,
+        projectId: "project-direct",
+        projectName: "High Ground Odyssey",
+        destination: "NEST",
+      },
+      nextAction: expect.stringContaining("High Ground Odyssey"),
+    });
+    expect(goalResponse.status).toBe(200);
+    await expect(goalResponse.json()).resolves.toMatchObject({
+      ok: true,
+      entry: {
+        id: `mobile-goal-${requestId}`,
+        callRoomId: null,
+        projectId: "project-direct",
+        projectName: "High Ground Odyssey",
+        destination: "NEST",
+      },
+      nextAction: expect.stringContaining("High Ground Odyssey"),
+    });
+    expect(ensureHomeNestForEmail).not.toHaveBeenCalled();
+    expect(tx.callRoom.findFirst).not.toHaveBeenCalled();
+    expect(tx.studioDocument.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        id: `mobile-note-${requestId}`,
+        projectId: "project-direct",
+        title: "Episode observation",
+      }),
+    }));
+    expect(tx.goal.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        id: `mobile-goal-${requestId}`,
+        roomId: null,
+        projectId: "project-direct",
+        ownerUserId: "user-1",
+      }),
+    }));
+  });
+
+  it("retains direct-project capture when the Nest is no longer writable", async () => {
+    signedIn();
+    const tx = harness();
+    tx.studioProjectAccessGrant.findFirst.mockResolvedValueOnce(null);
+
+    const response = await POST(request("GOAL", {
+      callRoomId: null,
+      projectId: "project-direct",
+      title: "Make the project excellent",
+    }));
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      code: "QUICK_ENTRY_NEST_FORBIDDEN",
+      localOutboxRetained: true,
+    });
+    expect(tx.goal.upsert).not.toHaveBeenCalled();
   });
 
   it("retains a personal note on the phone when the signed-in account has no verified email identity", async () => {

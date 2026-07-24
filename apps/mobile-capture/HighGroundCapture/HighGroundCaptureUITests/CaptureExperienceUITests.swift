@@ -81,9 +81,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].waitForExistence(timeout: 5))
         let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
         XCTAssertTrue(destination.exists)
-        destination.buttons["Home Nest"].tap()
+        destination.tap()
+        XCTAssertTrue(app.buttons["Home Nest"].waitForExistence(timeout: 3))
+        app.buttons["Home Nest"].tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Private Home Nest")
+            NSPredicate(format: "label CONTAINS %@", "Home Nest")
         ).firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS %@", "Session, None")
@@ -107,9 +109,11 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
         let destination = app.descendants(matching: .any)["CaptureQuickEntryDestination"].firstMatch
         XCTAssertTrue(destination.exists)
-        destination.buttons["Home Nest"].tap()
+        destination.tap()
+        XCTAssertTrue(app.buttons["Home Nest"].waitForExistence(timeout: 3))
+        app.buttons["Home Nest"].tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(
-            NSPredicate(format: "label CONTAINS %@", "Private Home Nest")
+            NSPredicate(format: "label CONTAINS %@", "Home Nest")
         ).firstMatch.waitForExistence(timeout: 3))
         XCTAssertTrue(app.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS %@", "Session, None")
@@ -128,6 +132,37 @@ final class CaptureExperienceUITests: XCTestCase {
             "Preview only — no note, task, goal, or source was saved."
         ].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
+    }
+
+    func testQuickTaskCanTargetAWritableProjectAndReuseItsCanonicalTagsWithoutASession() {
+        app.tabBars.buttons["Record"].tap()
+        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
+        reveal(taskButton)
+        XCTAssertTrue(taskButton.isHittable)
+        taskButton.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
+        let destination = app.descendants(matching: .any)["CaptureQuickEntryDestination"].firstMatch
+        XCTAssertTrue(destination.exists)
+        destination.tap()
+        XCTAssertTrue(app.buttons["High Ground Odyssey"].waitForExistence(timeout: 3))
+        app.buttons["High Ground Odyssey"].tap()
+
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Destination, High Ground Odyssey")
+        ).firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Project capture, No Session invented")
+        ).firstMatch.exists)
+
+        let episodeTag = app.buttons["CaptureQuickEntryTag_preview-episode-4"].firstMatch
+        reveal(episodeTag)
+        XCTAssertTrue(episodeTag.isHittable)
+        episodeTag.tap()
+        XCTAssertEqual(episodeTag.value as? String, "Selected")
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "New names stay protected on this iPhone")
+        ).firstMatch.exists)
     }
 
     func testRecordSourceCaptureTargetsPrivateInboxBeforeAnyResearchNest() {

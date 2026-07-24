@@ -14,6 +14,7 @@ import {
   listAccessibleStudioProjectSummariesForEmail,
   resolveStudioProjectAccess,
 } from "@/lib/server/studio-project-access";
+import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
 
 const MOBILE_CAPTURE_ROOM_INCLUDE = {
   project: {
@@ -148,10 +149,26 @@ export async function GET(request: Request) {
         orderBy: { createdAt: "asc" },
       })
     : [];
-  const captureProjects = await listAccessibleStudioProjectSummariesForEmail(
+  const captureProjects = (await listAccessibleStudioProjectSummariesForEmail(
     session.user.primaryEmail,
     prisma,
-  );
+  )).filter((project) => project.role === "OWNER" || project.role === "EDITOR");
+  const captureProjectTags = captureProjects.length > 0
+    ? await prisma.studioTag.findMany({
+        where: {
+          projectId: { in: captureProjects.map((project) => project.id) },
+          isActive: true,
+        },
+        orderBy: [{ projectId: "asc" }, { label: "asc" }],
+        select: { id: true, projectId: true, slug: true, label: true },
+      })
+    : [];
+  const captureTagsByProject = new Map<string, typeof captureProjectTags>();
+  for (const tag of captureProjectTags) {
+    const projectTags = captureTagsByProject.get(tag.projectId) || [];
+    projectTags.push(tag);
+    captureTagsByProject.set(tag.projectId, projectTags);
+  }
 
   return NextResponse.json({
     ok: true,
@@ -162,9 +179,22 @@ export async function GET(request: Request) {
       isStaff: session.user.isStaff,
       canCreateCaptureSessions: session.user.isStaff || session.user.hasBetaAccess,
     },
-    captureProjects: captureProjects
-      .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
-      .map((project) => ({ id: project.id, slug: project.slug, name: project.name, role: project.role })),
+    captureProjects: captureProjects.map((project) => ({
+      id: project.id,
+      slug: project.slug,
+      name: project.name,
+      role: project.role,
+      isHomeNest: project.sourceLabel === sourceLabelForNestKind("home"),
+      availableTags: (captureTagsByProject.get(project.id) || []).map((tag: {
+        id: string;
+        slug: string;
+        label: string;
+      }) => ({
+        id: tag.id,
+        slug: tag.slug,
+        label: tag.label,
+      })),
+    })),
     sessions: mapMobileCaptureSessionsForUser({ rooms, userId, finalizationReceipts }),
     links: {
       today: "/api/mobile/capture/today",

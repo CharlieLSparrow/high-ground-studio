@@ -43,8 +43,9 @@ function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room:
     callRoomId: room?.id || null,
     sessionTitle: room?.id ? room.title : null,
     projectId: room?.projectId || null,
+    projectName: room?.projectName || (room?.id ? null : room?.title || null),
     dueAt: model === "task" ? row.dueAt?.toISOString?.() || null : null,
-    destination: kind === "SOURCE" ? "INBOX" : room?.id ? "SESSION" : "HOME_NEST",
+    destination: kind === "SOURCE" ? "INBOX" : room?.destination || (room?.id ? "SESSION" : "HOME_NEST"),
     sourceType: model === "bookmark" ? "BOOKMARK" : model === "snippet" ? "SNIPPET" : null,
     sourceUrl: model === "bookmark" ? row.url : model === "snippet" ? row.sourceUrl : null,
     tags: tags.map((tag) => ({ id: tag.id, slug: tag.slug, label: tag.label })),
@@ -600,18 +601,48 @@ export async function POST(request: Request) {
     );
   }
   const prisma = getPrismaClient() as any;
-  const personalHome = input.kind !== "SOURCE" && !input.callRoomId
+  const personalHome = input.kind !== "SOURCE" && !input.callRoomId && !input.projectId
     ? await ensureHomeNestForEmail(actorEmail, prisma)
     : null;
   const commit = () => prisma.$transaction(async (tx: any) => {
     const room = input.kind === "SOURCE"
       ? null
       : personalHome
-        ? { id: null, title: personalHome.name, projectId: personalHome.id }
-        : await tx.callRoom.findFirst({
-      where: captureRoomAccessWhere(input.callRoomId!, session.user),
-      select: { id: true, title: true, projectId: true },
-    });
+        ? {
+            id: null,
+            title: personalHome.name,
+            projectName: personalHome.name,
+            projectId: personalHome.id,
+            destination: "HOME_NEST",
+          }
+        : input.projectId
+          ? await tx.studioProjectAccessGrant.findFirst({
+              where: {
+                projectId: input.projectId,
+                email: actorEmail,
+                status: "ACTIVE",
+                role: { in: ["OWNER", "EDITOR"] },
+              },
+              select: {
+                project: {
+                  select: { id: true, name: true },
+                },
+              },
+            }).then((grant: any) => grant?.project ? ({
+              id: null,
+              title: grant.project.name,
+              projectName: grant.project.name,
+              projectId: grant.project.id,
+              destination: "NEST",
+            }) : null)
+          : await tx.callRoom.findFirst({
+              where: captureRoomAccessWhere(input.callRoomId!, session.user),
+              select: { id: true, title: true, projectId: true, project: { select: { name: true } } },
+            }).then((found: any) => found ? ({
+              ...found,
+              projectName: found.project?.name || null,
+              destination: "SESSION",
+            }) : null);
     if (input.kind !== "SOURCE" && !room) return { kind: "missing-room" as const };
 
     const existing = await existingEntry(tx, input, session.user.id);
@@ -678,8 +709,15 @@ export async function POST(request: Request) {
 
   if (result.kind === "missing-room") {
     return NextResponse.json(
-      { ok: false, code: "QUICK_ENTRY_SESSION_NOT_FOUND", error: "This account no longer has access to that Session. The phone copy remains in its protected outbox.", localOutboxRetained: true },
-      { status: 404 },
+      {
+        ok: false,
+        code: input.projectId ? "QUICK_ENTRY_NEST_FORBIDDEN" : "QUICK_ENTRY_SESSION_NOT_FOUND",
+        error: input.projectId
+          ? "That Nest is no longer writable by this account. The phone copy remains protected for review."
+          : "This account no longer has access to that Session. The phone copy remains in its protected outbox.",
+        localOutboxRetained: true,
+      },
+      { status: input.projectId ? 403 : 404 },
     );
   }
   if (result.kind === "identity-conflict") {
@@ -749,12 +787,16 @@ export async function POST(request: Request) {
       : input.kind === "NOTE"
       ? input.callRoomId
         ? "The private Session note is saved. Review or expand it from the Session workspace."
-        : "The private note is saved in your Home Nest document kernel. Continue it from Library or Search."
+        : input.projectId
+          ? `The private note is saved in ${result.room.projectName}. Continue it from that Nest, Library, or Search.`
+          : "The private note is saved in your Home Nest document kernel. Continue it from Library or Search."
       : input.kind === "TASK"
         ? input.recurrence
           ? input.callRoomId
             ? "The repeating task is saved in Quipsly. Today and Work now share its exact occurrences; no reminder or provider event was scheduled."
-            : "The repeating task is saved in your Home Nest. Today and Work now share its exact occurrences; no reminder or provider event was scheduled."
+            : input.projectId
+              ? `The repeating task is saved in ${result.room.projectName}. Today and Work now share its exact occurrences; no reminder or provider event was scheduled.`
+              : "The repeating task is saved in your Home Nest. Today and Work now share its exact occurrences; no reminder or provider event was scheduled."
           : input.reminderAt
             ? input.dueAt
               ? "The task, due date, and reminder intent are saved in Quipsly. This iPhone schedules the private alert only when local notification permission allows it; no provider calendar event was created."
@@ -762,12 +804,18 @@ export async function POST(request: Request) {
           : input.dueAt
             ? input.callRoomId
               ? "The task is saved and assigned to you with its due date visible in Today, Work, and Calendar. No reminder or provider event was scheduled."
-              : "The task is saved in your Home Nest and assigned to you, with its due date visible in Today, Work, and Calendar. No reminder or provider event was scheduled."
+              : input.projectId
+                ? `The task is saved in ${result.room.projectName} and assigned to you, with its due date visible in Today, Work, and Calendar. No reminder or provider event was scheduled.`
+                : "The task is saved in your Home Nest and assigned to you, with its due date visible in Today, Work, and Calendar. No reminder or provider event was scheduled."
             : input.callRoomId
               ? "The task is saved and assigned to you. Set its timing from Today, Work, or Calendar when useful."
-              : "The task is saved in your Home Nest and assigned to you. Set its timing from Today, Work, or Calendar when useful."
+              : input.projectId
+                ? `The task is saved in ${result.room.projectName} and assigned to you. Set its timing from Today, Work, or Calendar when useful.`
+                : "The task is saved in your Home Nest and assigned to you. Set its timing from Today, Work, or Calendar when useful."
         : input.callRoomId
           ? "The goal is saved as active. Add progress evidence or supporting tasks when useful."
-          : "The goal is saved as active in your Home Nest. Add progress evidence or supporting tasks when useful.",
+          : input.projectId
+            ? `The goal is saved as active in ${result.room.projectName}. Add progress evidence or supporting tasks when useful.`
+            : "The goal is saved as active in your Home Nest. Add progress evidence or supporting tasks when useful.",
   });
 }

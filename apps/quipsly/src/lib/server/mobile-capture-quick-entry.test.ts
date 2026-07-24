@@ -20,6 +20,7 @@ describe("mobile Capture quick-entry contract", () => {
     expect(result).toEqual({ ok: true, value: {
       clientRequestId: requestId,
       callRoomId: "room-1",
+      projectId: null,
       kind: "TASK",
       title: "Send the revised outline",
       body: "Include the corrected   opening beat.",
@@ -120,6 +121,26 @@ describe("mobile Capture quick-entry contract", () => {
     });
   });
 
+  it("retains one explicit writable Nest destination without inventing a Session", () => {
+    expect(validateMobileCaptureQuickEntry({
+      clientRequestId: requestId,
+      projectId: "project-high-ground",
+      kind: "TASK",
+      title: "Shape the next episode",
+      body: "Keep the work with its real project.",
+      tagIds: ["tag-episode"],
+      capturedAt: "2026-07-19T09:00:00.000Z",
+    })).toMatchObject({
+      ok: true,
+      value: {
+        callRoomId: null,
+        projectId: "project-high-ground",
+        kind: "TASK",
+        tagIds: ["tag-episode"],
+      },
+    });
+  });
+
   it("preserves a selected passage together with its canonical webpage provenance", () => {
     expect(validateMobileCaptureQuickEntry({
       clientRequestId: requestId,
@@ -138,6 +159,8 @@ describe("mobile Capture quick-entry contract", () => {
     [{ clientRequestId: requestId, callRoomId: "room-1", kind: "GOAL", title: "" }, "QUICK_ENTRY_TITLE_REQUIRED"],
     [{ clientRequestId: requestId, kind: "SOURCE", body: "" }, "QUICK_ENTRY_SOURCE_REQUIRED"],
     [{ clientRequestId: requestId, kind: "SOURCE", body: "Passage", sourceUrl: "file:///private/source" }, "QUICK_ENTRY_SOURCE_URL_INVALID"],
+    [{ clientRequestId: requestId, callRoomId: "room-1", projectId: "project-1", kind: "NOTE", body: "Ambiguous" }, "QUICK_ENTRY_DESTINATION_CONFLICT"],
+    [{ clientRequestId: requestId, projectId: "project-1", kind: "SOURCE", body: "Private first" }, "QUICK_ENTRY_SOURCE_REQUIRES_INBOX"],
     [{ clientRequestId: requestId, kind: "SOURCE", body: "https://example.com/a", sourceUrl: "https://example.com/b" }, "QUICK_ENTRY_SOURCE_URL_CONFLICT"],
     [{ clientRequestId: requestId, callRoomId: "room-1", kind: "GOAL", title: "Repeat me", recurrence: { cadence: "FIXED" } }, "QUICK_ENTRY_RECURRENCE_TASK_ONLY"],
     [{ clientRequestId: requestId, callRoomId: "room-1", kind: "TASK", title: "Bad repeat", recurrence: { cadence: "FIXED", frequency: "WEEKLY", interval: 0, timezone: "Not/AZone", localTimeMinutes: 1_500, anchorLocalDate: "2026-02-30" } }, "QUICK_ENTRY_RECURRENCE_INVALID"],

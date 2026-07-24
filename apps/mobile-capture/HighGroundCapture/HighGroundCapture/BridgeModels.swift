@@ -711,9 +711,22 @@ struct MobileCaptureTag: Codable, Identifiable, Hashable {
     let label: String
 }
 
+struct MobileCaptureProjectDestination: Codable, Identifiable, Hashable {
+    let id: String
+    let slug: String
+    let name: String
+    let role: String
+    let isHomeNest: Bool?
+    let availableTags: [MobileCaptureTag]?
+
+    var isHome: Bool { isHomeNest == true }
+    var tags: [MobileCaptureTag] { availableTags ?? [] }
+}
+
 struct MobileCaptureSessionsResponse: Codable {
     let ok: Bool
     let error: String?
+    let captureProjects: [MobileCaptureProjectDestination]?
     let sessions: [MobileCaptureSession]?
 }
 
@@ -2195,6 +2208,7 @@ struct MobileCaptureSessionContextResponse: Codable {
 private struct MobileQuickEntrySaveRequest: Encodable {
     let clientRequestId: String
     let callRoomId: String?
+    let projectId: String?
     let kind: String
     let title: String?
     let body: String
@@ -2209,6 +2223,7 @@ private struct MobileQuickEntrySaveRequest: Encodable {
     init(entry: PendingMobileQuickEntry) {
         clientRequestId = entry.clientRequestID
         callRoomId = entry.callRoomID
+        projectId = entry.destinationProjectID
         kind = entry.kind.rawValue
         title = entry.title
         body = entry.body
@@ -2254,6 +2269,8 @@ struct MobileQuickEntrySaveResponse: Decodable {
         let callRoomId: String?
         let sessionTitle: String?
         let projectId: String?
+        let projectName: String?
+        let destination: String?
         let tags: [MobileCaptureTag]?
         let dueAt: String?
         let recurrence: MobileQuickEntryRecurrence?
@@ -3141,6 +3158,7 @@ final class CaptureTodayClient: ObservableObject {
 @MainActor
 final class CaptureSessionClient: ObservableObject {
     @Published var sessions: [MobileCaptureSession] = []
+    @Published var captureProjects: [MobileCaptureProjectDestination] = []
     @Published var status = "Not loaded"
     @Published var errorMessage: String?
     @Published private(set) var isUsingCachedSessions = false
@@ -3167,6 +3185,7 @@ final class CaptureSessionClient: ObservableObject {
         let ownerEmail: String
         let savedAt: Date
         let sessions: [MobileCaptureSession]
+        let captureProjects: [MobileCaptureProjectDestination]?
     }
 
     nonisolated private static let cacheLifetime: TimeInterval = 30 * 24 * 60 * 60
@@ -3233,6 +3252,7 @@ final class CaptureSessionClient: ObservableObject {
             }
 
             sessions = payload.sessions ?? []
+            captureProjects = payload.captureProjects ?? []
             isUsingCachedSessions = false
             cachedSessionsSavedAt = Date()
             persistProtectedSessionCache()
@@ -3283,6 +3303,7 @@ final class CaptureSessionClient: ObservableObject {
 
     private func clearSessionsAfterAuthorityFailure() {
         sessions = []
+        captureProjects = []
         isUsingCachedSessions = false
         cachedSessionsSavedAt = nil
     }
@@ -3957,6 +3978,13 @@ final class CaptureSessionClient: ObservableObject {
                     message: payload.error ?? "Nest held this quick capture. The protected phone copy remains available for review."
                 )
             }
+            if let destinationProjectID = entry.destinationProjectID,
+               saved.projectId != destinationProjectID {
+                return .held(
+                    code: "QUICK_ENTRY_DESTINATION_ACKNOWLEDGEMENT_MISMATCH",
+                    message: "Nest acknowledged a different destination. The protected phone copy remains available for review."
+                )
+            }
             return .acknowledged(
                 serverRecordID: saved.id,
                 idempotentReplay: payload.idempotentReplay == true,
@@ -4274,6 +4302,7 @@ final class CaptureSessionClient: ObservableObject {
             }
 
             sessions = cache.sessions
+            captureProjects = cache.captureProjects ?? []
             cachedSessionsSavedAt = cache.savedAt
             isUsingCachedSessions = true
             status = "Cached · verifying Nest"
@@ -4300,7 +4329,8 @@ final class CaptureSessionClient: ObservableObject {
             schemaVersion: 1,
             ownerEmail: ownerEmail,
             savedAt: savedAt,
-            sessions: sessions
+            sessions: sessions,
+            captureProjects: captureProjects
         )
 
         do {

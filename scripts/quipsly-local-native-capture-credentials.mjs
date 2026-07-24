@@ -67,6 +67,9 @@ async function prepare() {
   const recurrenceEditTimezone = String(process.env.QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_TIMEZONE || "").trim();
   const taggedTaskTitle = String(process.env.QUIPSLY_CAPTURE_UI_TEST_TAGGED_TASK_TITLE || "").trim();
   const tagLabel = String(process.env.QUIPSLY_CAPTURE_UI_TEST_TAG_LABEL || "").trim();
+  const projectName = String(process.env.QUIPSLY_CAPTURE_UI_TEST_PROJECT_NAME || "").trim();
+  const projectTaskTitle = String(process.env.QUIPSLY_CAPTURE_UI_TEST_PROJECT_TASK_TITLE || "").trim();
+  const projectTagLabel = String(process.env.QUIPSLY_CAPTURE_UI_TEST_PROJECT_TAG_LABEL || "").trim();
   const goalID = String(process.env.QUIPSLY_CAPTURE_UI_TEST_GOAL_ID || "").trim();
   const planBlockID = String(process.env.QUIPSLY_CAPTURE_UI_TEST_PLAN_BLOCK_ID || "").trim();
   if (!sessionID || !sessionTitle) throw new Error("Exact Session ID and title are required for native capture dogfood.");
@@ -98,6 +101,9 @@ async function prepare() {
     ...(recurrenceEditTimezone ? { recurrenceEditTimezone } : {}),
     ...(taggedTaskTitle ? { taggedTaskTitle } : {}),
     ...(tagLabel ? { tagLabel } : {}),
+    ...(projectName ? { projectName } : {}),
+    ...(projectTaskTitle ? { projectTaskTitle } : {}),
+    ...(projectTagLabel ? { projectTagLabel } : {}),
     ...(goalID ? { goalID } : {}),
     ...(planBlockID ? { planBlockID } : {}),
   }), { mode: 0o600 });

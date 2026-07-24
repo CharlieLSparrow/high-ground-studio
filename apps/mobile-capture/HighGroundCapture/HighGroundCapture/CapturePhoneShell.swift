@@ -1803,6 +1803,13 @@ struct CaptureQuickEntrySyncCard: View {
 }
 
 struct CaptureQuickEntrySheet: View {
+    private enum FocusedField: Hashable {
+        case title
+        case body
+        case tagSearch
+        case newTag
+    }
+
     let kind: MobileQuickEntryKind
     let session: MobileCaptureSession?
     @ObservedObject var model: CaptureExperienceModel
@@ -1810,6 +1817,7 @@ struct CaptureQuickEntrySheet: View {
     @State private var title = ""
     @State private var entryBody = ""
     @State private var selectedTagIDs: Set<String> = []
+    @State private var tagSearchText = ""
     @State private var newTagDraft = ""
     @State private var newTagLabels: [String] = []
     @State private var recurrenceMode = "NONE"
@@ -1823,17 +1831,65 @@ struct CaptureQuickEntrySheet: View {
     @State private var hasOneTimeReminder = false
     @State private var oneTimeReminderAt = Date().addingTimeInterval(3_600)
     @State private var destination = "SESSION"
+    @FocusState private var focusedField: FocusedField?
+
+    init(kind: MobileQuickEntryKind, session: MobileCaptureSession?, model: CaptureExperienceModel) {
+        self.kind = kind
+        self.session = session
+        self.model = model
+        _destination = State(initialValue: session == nil ? "HOME_NEST" : "SESSION")
+    }
+
+    private var homeNest: MobileCaptureProjectDestination? {
+        model.captureProjects.first(where: \.isHome)
+    }
+
+    private var projectDestinations: [MobileCaptureProjectDestination] {
+        model.captureProjects.filter { $0.isHomeNest == false }
+    }
+
+    private var selectedProject: MobileCaptureProjectDestination? {
+        guard destination.hasPrefix("NEST:") else { return nil }
+        return model.captureProjects.first {
+            destination == "NEST:\($0.id)"
+        }
+    }
 
     private var savesNoteToHomeNest: Bool {
         kind == .note && savesToHomeNest
     }
 
     private var savesToHomeNest: Bool {
-        kind != .source && (session == nil || destination == "HOME_NEST")
+        kind != .source && destination == "HOME_NEST"
     }
 
     private var availableTags: [MobileCaptureTag] {
-        savesToHomeNest ? [] : session?.availableTags ?? []
+        if savesToHomeNest { return homeNest?.tags ?? [] }
+        if let selectedProject { return selectedProject.tags }
+        return session?.availableTags ?? []
+    }
+
+    private var visibleTags: [MobileCaptureTag] {
+        let query = tagSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return availableTags }
+        return availableTags.filter {
+            $0.label.localizedCaseInsensitiveContains(query)
+                || $0.slug.localizedCaseInsensitiveContains(query)
+        }
+    }
+
+    private var destinationProjectID: String? {
+        selectedProject?.id
+    }
+
+    private var destinationProjectName: String? {
+        selectedProject?.name
+    }
+
+    private var destinationLabel: String {
+        if savesToHomeNest { return homeNest?.name ?? "Private Home Nest" }
+        if let selectedProject { return selectedProject.name }
+        return session?.displayTitle ?? "Private Home Nest"
     }
 
     private var normalizedNewTagDraft: String {
@@ -1951,23 +2007,28 @@ struct CaptureQuickEntrySheet: View {
                     if kind == .source {
                         LabeledContent("Destination", value: "Personal Inbox")
                         LabeledContent("Shared Nest", value: "Not chosen yet")
-                    } else if let session {
+                    } else {
                         Picker("Save to", selection: $destination) {
-                            Text("This Session").tag("SESSION")
+                            if session != nil {
+                                Text("Current Session").tag("SESSION")
+                            }
                             Text("Home Nest").tag("HOME_NEST")
+                            ForEach(projectDestinations) { project in
+                                Text(project.name).tag("NEST:\(project.id)")
+                            }
                         }
-                        .pickerStyle(.segmented)
+                        .pickerStyle(.navigationLink)
                         .accessibilityIdentifier(kind == .note ? "CaptureQuickEntryNoteDestination" : "CaptureQuickEntryDestination")
                         if savesToHomeNest {
-                            LabeledContent("Destination", value: "Private Home Nest")
+                            LabeledContent("Destination", value: homeNest?.name ?? "Private Home Nest")
                             LabeledContent("Session", value: "None")
+                        } else if let selectedProject {
+                            LabeledContent("Destination", value: selectedProject.name)
+                            LabeledContent("Project capture", value: "No Session invented")
                         } else {
-                            LabeledContent("Session", value: session.displayTitle)
-                            LabeledContent("Nest", value: session.projectName?.nonempty ?? session.projectSlug?.nonempty ?? "Unfiled")
+                            LabeledContent("Session", value: session?.displayTitle ?? "Unavailable")
+                            LabeledContent("Nest", value: session?.projectName?.nonempty ?? session?.projectSlug?.nonempty ?? "Unfiled")
                         }
-                    } else {
-                        LabeledContent("Destination", value: "Private Home Nest")
-                        LabeledContent("Session", value: "None")
                     }
                 } footer: {
                     Text(kind == .source
@@ -1976,13 +2037,16 @@ struct CaptureQuickEntrySheet: View {
                             ? kind == .note
                                 ? "This note journals to the protected phone outbox first, then becomes one private document-kernel note in your Home Nest. It does not invent a Session, send, schedule, deliver, or publish anything."
                                 : "This \(kind.title.lowercased()) journals to the protected phone outbox first, then becomes private Home Nest work assigned to you. It does not invent a Session, send, schedule, deliver, or publish anything."
-                        : "This explicit capture stays private to your account and Session access. It does not send, schedule, deliver, or publish anything.")
+                        : selectedProject != nil
+                            ? "This capture journals to the protected phone outbox first, then saves directly in \(destinationLabel) without inventing a Session. It does not send, schedule, deliver, or publish anything."
+                            : "This explicit capture stays private to your account and Session access. It does not send, schedule, deliver, or publish anything.")
                 }
 
                 Section(kind == .note ? "Note" : kind.title) {
-                    if kind != .note || savesNoteToHomeNest {
+                    if kind != .note || savesNoteToHomeNest || selectedProject != nil {
                         TextField(kind == .note ? "Title (optional)" : kind == .task ? "What needs doing?" : kind == .goal ? "What does better look like?" : "Source title (optional)", text: $title, axis: .vertical)
                             .lineLimit(1...3)
+                            .focused($focusedField, equals: .title)
                             .accessibilityIdentifier("CaptureQuickEntryTitle")
                     }
                     TextField(
@@ -1991,12 +2055,26 @@ struct CaptureQuickEntrySheet: View {
                         axis: .vertical
                     )
                     .lineLimit(kind == .note || kind == .source ? 5...12 : 3...10)
+                    .focused($focusedField, equals: .body)
                     .accessibilityIdentifier("CaptureQuickEntryBody")
                 }
 
-                if kind != .source, savesToHomeNest || session?.projectId?.nonempty != nil {
+                if kind != .source {
                     Section {
-                        ForEach(availableTags) { tag in
+                        if availableTags.count > 8 {
+                            TextField("Find a tag", text: $tagSearchText)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .focused($focusedField, equals: .tagSearch)
+                                .accessibilityIdentifier("CaptureQuickEntryTagSearch")
+                        }
+
+                        if !tagSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                           visibleTags.isEmpty {
+                            ContentUnavailableView.search(text: tagSearchText)
+                        }
+
+                        ForEach(visibleTags) { tag in
                             Button {
                                 if selectedTagIDs.contains(tag.id) {
                                     selectedTagIDs.remove(tag.id)
@@ -2041,6 +2119,7 @@ struct CaptureQuickEntrySheet: View {
                                 .textInputAutocapitalization(.words)
                                 .submitLabel(.done)
                                 .onSubmit(addNewTagIntent)
+                                .focused($focusedField, equals: .newTag)
                                 .accessibilityIdentifier("CaptureQuickEntryNewTagField")
                             Button("Add", action: addNewTagIntent)
                                 .disabled(
@@ -2054,7 +2133,9 @@ struct CaptureQuickEntrySheet: View {
                         Text("Nest tags")
                     } footer: {
                         Text(savesToHomeNest
-                            ? "Name up to eight private Home Nest tags. New names stay in the protected phone outbox until Nest creates or reuses the canonical tag and links it to this \(kind.title.lowercased())."
+                            ? "Choose or name up to eight private Home Nest tags. The protected phone outbox retains their exact identities until Nest links them to this \(kind.title.lowercased())."
+                            : selectedProject != nil
+                                ? "Choose or name up to eight tags from \(destinationLabel). New names stay protected on this iPhone until that Nest creates or reuses the canonical vocabulary."
                             : "Choose or name up to eight tags. New names are protected in the phone outbox, then Nest creates or reuses the private canonical tag during sync. Work, Search, and this Session use that same canonical tag; Today keeps it when the work is planned or needs attention there.")
                     }
                 }
@@ -2183,6 +2264,8 @@ struct CaptureQuickEntrySheet: View {
                             title: title,
                             body: entryBody,
                             saveToHomeNest: savesToHomeNest,
+                            destinationProjectID: destinationProjectID,
+                            destinationProjectName: destinationProjectName,
                             tagIDs: Array(selectedTagIDs).sorted(),
                             newTagLabels: newTagLabels,
                             dueAt: dueAt,
@@ -2195,6 +2278,13 @@ struct CaptureQuickEntrySheet: View {
                     .disabled(!contentIsValid)
                     .accessibilityIdentifier("CaptureQuickEntrySave")
                 }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        focusedField = nil
+                    }
+                    .accessibilityIdentifier("CaptureQuickEntryKeyboardDone")
+                }
             }
         }
         .sheet(isPresented: $showsRecurrenceTimezonePicker) {
@@ -2205,6 +2295,9 @@ struct CaptureQuickEntrySheet: View {
         }
         .onChange(of: destination) { _, _ in
             selectedTagIDs.removeAll()
+            newTagLabels.removeAll()
+            newTagDraft = ""
+            tagSearchText = ""
         }
         .accessibilityIdentifier("CaptureQuickEntrySheet_\(kind.rawValue)")
     }

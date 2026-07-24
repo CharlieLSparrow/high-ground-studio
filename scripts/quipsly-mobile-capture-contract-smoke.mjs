@@ -1040,18 +1040,28 @@ function checkTranscriptCorrectionContractSources() {
     quickEntryText.includes('MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA = "quipsly-mobile-quick-entry-v1"')
       && quickEntryText.includes("offlineRetrySafe: true")
       && quickEntryText.includes('["NOTE", "TASK", "GOAL", "SOURCE"]')
+      && quickEntryText.includes("projectId: string | null")
+      && quickEntryText.includes("QUICK_ENTRY_DESTINATION_CONFLICT")
+      && quickEntryText.includes("requestedProjectId")
       && quickEntryRouteText.includes("captureRoomAccessWhere")
       && quickEntryRouteText.includes("isMobileCaptureQuickEntrySource")
-      && quickEntryRouteText.includes('destination: kind === "SOURCE" ? "INBOX" : room?.id ? "SESSION" : "HOME_NEST"')
+      && quickEntryRouteText.includes('destination: kind === "SOURCE" ? "INBOX" : room?.destination || (room?.id ? "SESSION" : "HOME_NEST")')
+      && quickEntryRouteText.includes('"QUICK_ENTRY_NEST_FORBIDDEN"')
       && quickEntryRouteText.includes('triageStatus: "INBOX"')
       && quickEntryRouteText.includes("externalCalendarMutated: false")
       && quickEntryRouteText.includes("messageSent: false")
+      && sessionsRouteText.includes("captureProjects")
+      && sessionsRouteText.includes("availableTags")
+      && bridgeText.includes("struct MobileCaptureProjectDestination")
       && quickEntryOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")
       && quickEntryOutboxText.includes("ownerAccountID")
+      && quickEntryOutboxText.includes("destinationProjectID")
       && quickEntryOutboxText.includes("var clientRequestID: String { id.uuidString.lowercased() }")
       && captureExperienceText.includes("quickEntryOutbox.enqueue")
       && captureExperienceText.includes("retryQuickEntries(automatic: true)")
       && shellText.includes("CaptureQuickEntry_\\(kind.rawValue)_")
+      && shellText.includes("projectDestinations")
+      && shellText.includes('TextField("Find a tag"')
       && shellText.includes('LabeledContent("Destination", value: "Personal Inbox")')
       && shellText.includes("The phone journals first. Nest retries use the same ID")
       && inboxText.includes('where: { userId, collectionId: null, researchFilings: { none: {} } }')
@@ -1061,7 +1071,7 @@ function checkTranscriptCorrectionContractSources() {
       && sessionReviewText.includes("Captured deliberately on iPhone")
       && sessionReviewText.includes("Open same {entry.kind.toLowerCase()} in Work"),
     "canonicalMobileQuickEntryOutbox",
-    "iPhone quick Note, Task, Goal, and Source capture journals to an actor-partitioned protected outbox first; Session work replays to canonical records while private URL/text sources enter Inbox as actor-owned Bookmark/Snippet identities with exact readback and no external side effects.",
+    "iPhone quick Note, Task, Goal, and Source capture journals to an actor-partitioned protected outbox first; Session, Home Nest, and explicit writable-Nest work replay to canonical project records while private URL/text sources enter Inbox with exact readback and no external side effects.",
   );
   expect(
     schemaText.includes("model StudioPersonalSourceFiling")

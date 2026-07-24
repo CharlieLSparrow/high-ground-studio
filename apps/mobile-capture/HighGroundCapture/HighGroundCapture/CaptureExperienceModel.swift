@@ -180,6 +180,10 @@ final class CaptureExperienceModel: ObservableObject {
         sessionClient.sessions
     }
 
+    var captureProjects: [MobileCaptureProjectDestination] {
+        sessionClient.captureProjects
+    }
+
     var selectedSession: MobileCaptureSession? {
         if let activeCaptureSession { return activeCaptureSession }
         if let activeRoomSession { return activeRoomSession }
@@ -245,6 +249,29 @@ final class CaptureExperienceModel: ObservableObject {
                 drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
             )
             sessionClient.sessions = MobileCaptureSession.capturePreviewFixtures
+            sessionClient.captureProjects = [
+                MobileCaptureProjectDestination(
+                    id: "preview-home",
+                    slug: "preview-home",
+                    name: "Charlie Home Nest",
+                    role: "OWNER",
+                    isHomeNest: true,
+                    availableTags: [
+                        MobileCaptureTag(id: "preview-home-personal", slug: "personal", label: "Personal"),
+                    ]
+                ),
+                MobileCaptureProjectDestination(
+                    id: "preview-high-ground",
+                    slug: "preview-high-ground",
+                    name: "High Ground Odyssey",
+                    role: "EDITOR",
+                    isHomeNest: false,
+                    availableTags: [
+                        MobileCaptureTag(id: "preview-episode-4", slug: "episode-4", label: "Episode 4"),
+                        MobileCaptureTag(id: "preview-proof-listen", slug: "proof-listen", label: "Proof listen"),
+                    ]
+                ),
+            ]
             todayClient.loadPreview()
             sessionClient.status = "Preview ready"
             selectedSessionID = selectedSessionID ?? sessionClient.sessions.first?.id
@@ -283,13 +310,17 @@ final class CaptureExperienceModel: ObservableObject {
         title: String?,
         body: String,
         saveToHomeNest: Bool = false,
+        destinationProjectID: String? = nil,
+        destinationProjectName: String? = nil,
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
         dueAt: Date? = nil,
         reminderAt: Date? = nil,
         recurrence: MobileQuickEntryRecurrence? = nil
     ) -> Bool {
-        let session = kind == .source || saveToHomeNest ? nil : selectedSession
+        let session = kind == .source || saveToHomeNest || destinationProjectID != nil
+            ? nil
+            : selectedSession
         if usesPreviewData && !CaptureLaunchConfiguration.usesReminderSystemUITest {
             quickEntrySyncMessage = "Preview only — no note, task, goal, or source was saved."
             return true
@@ -301,19 +332,25 @@ final class CaptureExperienceModel: ObservableObject {
                 session: session,
                 title: title,
                 body: body,
+                destinationProjectID: destinationProjectID,
+                destinationProjectName: destinationProjectName,
                 tagIDs: tagIDs,
                 newTagLabels: newTagLabels,
                 dueAt: dueAt,
                 reminderAt: reminderAt,
                 recurrence: recurrence
             )
-            quickEntrySyncMessage = kind == .source
-                ? "Source saved on this iPhone. Nest sync will place the same private ID in Inbox."
-                : session == nil
-                    ? "\(kind.title) saved on this iPhone. Nest sync will create the same private Home Nest record."
-                : !newTagLabels.isEmpty
-                    ? "\(kind.title) and \(newTagLabels.count) new tag name\(newTagLabels.count == 1 ? "" : "s") saved on this iPhone. Nest will create or reuse the same private vocabulary on sync."
-                : "\(kind.title) saved on this iPhone. Nest sync uses the same retry-safe ID."
+            if kind == .source {
+                quickEntrySyncMessage = "Source saved on this iPhone. Nest sync will place the same private ID in Inbox."
+            } else if let destinationProjectName {
+                quickEntrySyncMessage = "\(kind.title) saved on this iPhone for \(destinationProjectName). Nest sync will keep that exact project and retry-safe ID."
+            } else if session == nil {
+                quickEntrySyncMessage = "\(kind.title) saved on this iPhone. Nest sync will create the same private Home Nest record."
+            } else if !newTagLabels.isEmpty {
+                quickEntrySyncMessage = "\(kind.title) and \(newTagLabels.count) new tag name\(newTagLabels.count == 1 ? "" : "s") saved on this iPhone. Nest will create or reuse the same private vocabulary on sync."
+            } else {
+                quickEntrySyncMessage = "\(kind.title) saved on this iPhone. Nest sync uses the same retry-safe ID."
+            }
             Task { [weak self] in
                 if let reminderDraft = entry.taskReminderDraft {
                     guard let self else { return }

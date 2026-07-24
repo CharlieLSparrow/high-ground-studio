@@ -48,6 +48,8 @@ struct PendingMobileQuickEntry: Codable, Identifiable, Equatable {
     let sessionID: String?
     let callRoomID: String?
     let sessionTitle: String?
+    let destinationProjectID: String?
+    let destinationProjectName: String?
     let kind: MobileQuickEntryKind
     let title: String?
     let body: String
@@ -87,6 +89,7 @@ struct PendingMobileQuickEntry: Codable, Identifiable, Equatable {
 enum MobileQuickEntryStoreError: LocalizedError {
     case accountIdentityUnavailable
     case emptyContent
+    case invalidDestination
     case invalidTags
     case invalidReminder
     case ledgerUnavailable
@@ -97,6 +100,8 @@ enum MobileQuickEntryStoreError: LocalizedError {
             "Verify the current Quipsly account before saving this quick capture."
         case .emptyContent:
             "Write the note, task, goal, or source before saving it."
+        case .invalidDestination:
+            "Choose one Session or one Nest for this quick capture."
         case .invalidTags:
             "Choose or name at most eight distinct Nest tags before saving."
         case .invalidReminder:
@@ -108,7 +113,7 @@ enum MobileQuickEntryStoreError: LocalizedError {
 }
 
 /// Protected actor-partitioned outbox for small, explicit Session entries,
-/// personal Home Nest notes, and private source captures.
+/// personal Nest notes and work, and private source captures.
 ///
 /// Saving to this ledger is the iPhone success boundary. Nest delivery can be
 /// retried with the same UUID, so a timeout or process death never requires a
@@ -178,6 +183,8 @@ final class MobileQuickEntryOutbox: ObservableObject {
         title: String?,
         body: String,
         sourceURL: String? = nil,
+        destinationProjectID: String? = nil,
+        destinationProjectName: String? = nil,
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
         dueAt: Date? = nil,
@@ -214,9 +221,19 @@ final class MobileQuickEntryOutbox: ObservableObject {
                 .filter { !$0.isEmpty }
         )).sorted()
         let cleanNewTagLabels = Self.normalizedTagLabels(newTagLabels)
+        let destinationProjectWasProvided = destinationProjectID != nil
+        let cleanDestinationProjectID = Self.normalizedIdentity(destinationProjectID)
+        let cleanDestinationProjectName = destinationProjectName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .prefix(500)
         guard kind != .source || cleanTagIDs.isEmpty && cleanNewTagLabels.isEmpty,
               cleanTagIDs.count + cleanNewTagLabels.count <= 8 else {
             throw MobileQuickEntryStoreError.invalidTags
+        }
+        guard !destinationProjectWasProvided || cleanDestinationProjectID != nil,
+              session == nil || cleanDestinationProjectID == nil,
+              kind != .source || cleanDestinationProjectID == nil else {
+            throw MobileQuickEntryStoreError.invalidDestination
         }
 
         let entry = PendingMobileQuickEntry(
@@ -225,6 +242,8 @@ final class MobileQuickEntryOutbox: ObservableObject {
             sessionID: session?.id,
             callRoomID: session?.callRoomId,
             sessionTitle: session?.displayTitle,
+            destinationProjectID: cleanDestinationProjectID,
+            destinationProjectName: cleanDestinationProjectName.map(String.init),
             kind: kind,
             title: cleanTitle?.isEmpty == false ? cleanTitle : nil,
             body: cleanBody,
@@ -323,6 +342,8 @@ final class MobileQuickEntryOutbox: ObservableObject {
                         sessionID: nil,
                         callRoomID: nil,
                         sessionTitle: nil,
+                        destinationProjectID: nil,
+                        destinationProjectName: nil,
                         kind: .source,
                         title: cleanTitle?.isEmpty == false ? cleanTitle : nil,
                         body: body,
@@ -428,6 +449,13 @@ final class MobileQuickEntryOutbox: ObservableObject {
         guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !value.isEmpty,
               value.count <= 256 else { return nil }
+        return value
+    }
+
+    nonisolated private static func normalizedIdentity(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty,
+              value.count <= 200 else { return nil }
         return value
     }
 

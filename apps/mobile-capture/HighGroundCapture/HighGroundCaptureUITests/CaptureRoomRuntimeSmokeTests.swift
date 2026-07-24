@@ -23,6 +23,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let recurrenceEditTimezone: String?
         let taggedTaskTitle: String?
         let tagLabel: String?
+        let projectName: String?
+        let projectTaskTitle: String?
+        let projectTagLabel: String?
         let goalID: String?
         let planBlockID: String?
     }
@@ -48,6 +51,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 recurrenceEditTimezone: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_TIMEZONE"],
                 taggedTaskTitle: environment["QUIPSLY_CAPTURE_UI_TEST_TAGGED_TASK_TITLE"],
                 tagLabel: environment["QUIPSLY_CAPTURE_UI_TEST_TAG_LABEL"],
+                projectName: environment["QUIPSLY_CAPTURE_UI_TEST_PROJECT_NAME"],
+                projectTaskTitle: environment["QUIPSLY_CAPTURE_UI_TEST_PROJECT_TASK_TITLE"],
+                projectTagLabel: environment["QUIPSLY_CAPTURE_UI_TEST_PROJECT_TAG_LABEL"],
                 goalID: environment["QUIPSLY_CAPTURE_UI_TEST_GOAL_ID"],
                 planBlockID: environment["QUIPSLY_CAPTURE_UI_TEST_PLAN_BLOCK_ID"]
             )
@@ -86,6 +92,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             recurrenceEditTimezone: payload["recurrenceEditTimezone"] as? String,
             taggedTaskTitle: payload["taggedTaskTitle"] as? String,
             tagLabel: payload["tagLabel"] as? String,
+            projectName: payload["projectName"] as? String,
+            projectTaskTitle: payload["projectTaskTitle"] as? String,
+            projectTagLabel: payload["projectTagLabel"] as? String,
             goalID: payload["goalID"] as? String,
             planBlockID: payload["planBlockID"] as? String
         )
@@ -412,6 +421,91 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    func testIPhoneCapturesTaggedTaskDirectlyIntoWritableNest() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let projectName = credentials.projectName,
+              !projectName.isEmpty,
+              let taskTitle = credentials.projectTaskTitle,
+              !taskTitle.isEmpty,
+              let tagLabel = credentials.projectTagLabel,
+              !tagLabel.isEmpty else {
+            throw XCTSkip("Direct project capture requires one writable Nest name, unique Task title, and existing canonical tag label.")
+        }
+
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: app)
+        let taskButton = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureQuickEntry_TASK_")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(taskButton, in: app, timeout: 20, swipeAttempts: 8),
+            "Record should expose Quick Task for direct project capture."
+        )
+        taskButton.tap()
+
+        let sheet = app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 6))
+        let destination = app.descendants(matching: .any)["CaptureQuickEntryDestination"].firstMatch
+        XCTAssertTrue(destination.waitForExistence(timeout: 4))
+        destination.tap()
+        let projectChoice = app.buttons[projectName].firstMatch
+        XCTAssertTrue(projectChoice.waitForExistence(timeout: 6))
+        projectChoice.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Destination, \(projectName)")
+        ).firstMatch.waitForExistence(timeout: 4))
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Project capture, No Session invented")
+        ).firstMatch.exists)
+
+        let title = app.textFields["CaptureQuickEntryTitle"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 4))
+        title.tap()
+        title.typeText(taskTitle)
+        let keyboardDone = app.buttons["CaptureQuickEntryKeyboardDone"].firstMatch
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 4))
+        keyboardDone.tap()
+        let body = app.textFields["CaptureQuickEntryBody"].firstMatch
+        XCTAssertTrue(body.isHittable)
+        body.tap()
+        body.typeText("Captured on iPhone directly into its real project with the reusable canonical taxonomy.")
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 4))
+        keyboardDone.tap()
+
+        let search = app.textFields["CaptureQuickEntryTagSearch"].firstMatch
+        for _ in 0..<3 where !search.isHittable {
+            sheet.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+                .press(
+                    forDuration: 0.05,
+                    thenDragTo: sheet.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.48))
+                )
+            RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        }
+        XCTAssertTrue(search.isHittable)
+        search.tap()
+        search.typeText(tagLabel)
+        let tag = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS %@", tagLabel)
+        ).firstMatch
+        XCTAssertTrue(tag.waitForExistence(timeout: 4))
+        tag.tap()
+        XCTAssertEqual(tag.value as? String, "Selected")
+
+        let save = app.buttons["CaptureQuickEntrySave"].firstMatch
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 6))
+        let expectedMessage = "The task is saved in \(projectName) and assigned to you. Set its timing from Today, Work, or Calendar when useful."
+        let acknowledgement = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", expectedMessage)
+        ).firstMatch
+        XCTAssertTrue(
+            acknowledgement.waitForExistence(timeout: 30)
+        )
+        XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
+        attachRecordingIdentity(taskTitle, name: "Direct project iPhone task title")
+    }
+
     func testPersonalHomeNestNoteSyncsToDocumentKernel() throws {
         let credentials = try runtimeSmokeCredentials()
         let app = try launchSignedInCaptureApp()
@@ -429,7 +523,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(sheet.waitForExistence(timeout: 6))
         let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
         XCTAssertTrue(destination.waitForExistence(timeout: 4))
-        destination.buttons["Home Nest"].tap()
+        destination.tap()
+        XCTAssertTrue(app.buttons["Home Nest"].waitForExistence(timeout: 4))
+        app.buttons["Home Nest"].tap()
 
         let environment = ProcessInfo.processInfo.environment
         let titleText = environment["QUIPSLY_CAPTURE_UI_TEST_PERSONAL_NOTE_TITLE"]
@@ -490,7 +586,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(sheet.waitForExistence(timeout: 6))
         let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
         if destination.waitForExistence(timeout: 4) {
-            destination.buttons["Home Nest"].tap()
+            destination.tap()
+            if app.buttons["Home Nest"].waitForExistence(timeout: 4) {
+                app.buttons["Home Nest"].tap()
+            }
         }
 
         let title = app.textFields["CaptureQuickEntryTitle"].firstMatch

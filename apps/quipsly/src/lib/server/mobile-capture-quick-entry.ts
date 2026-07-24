@@ -10,6 +10,7 @@ export type MobileCaptureQuickEntryKind = typeof MOBILE_CAPTURE_QUICK_ENTRY_KIND
 export type MobileCaptureQuickEntryInput = {
   clientRequestId: string;
   callRoomId: string | null;
+  projectId: string | null;
   kind: MobileCaptureQuickEntryKind;
   title: string | null;
   body: string;
@@ -59,6 +60,7 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   const body = record(value);
   const clientRequestId = normalizedText(body.clientRequestId, 80).toLowerCase();
   const callRoomId = normalizedText(body.callRoomId, 200);
+  const projectId = normalizedText(body.projectId, 200);
   const kind = normalizedText(body.kind, 20).toUpperCase() as MobileCaptureQuickEntryKind;
   const title = normalizedText(body.title, 500);
   const entryBody = fullText(body.body, kind === "NOTE" || kind === "SOURCE" ? 20_000 : 5_000);
@@ -96,6 +98,12 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   }
   if (!MOBILE_CAPTURE_QUICK_ENTRY_KINDS.includes(kind)) {
     return { ok: false, code: "QUICK_ENTRY_KIND_INVALID", error: "Quick capture kind must be Note, Task, Goal, or Source." };
+  }
+  if (callRoomId && projectId) {
+    return { ok: false, code: "QUICK_ENTRY_DESTINATION_CONFLICT", error: "Choose either one Session or one Nest for this quick capture, not both." };
+  }
+  if (kind === "SOURCE" && projectId) {
+    return { ok: false, code: "QUICK_ENTRY_SOURCE_REQUIRES_INBOX", error: "Save a source privately to Inbox before deliberately filing it into a Research Nest." };
   }
   if (!capturedAt) {
     return { ok: false, code: "QUICK_ENTRY_CAPTURED_AT_INVALID", error: "Quick capture time must be a valid ISO date." };
@@ -167,6 +175,7 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
     value: {
       clientRequestId,
       callRoomId: callRoomId || null,
+      projectId: projectId || null,
       kind,
       title: title || null,
       body: entryBody,
@@ -200,6 +209,7 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
     origin: "explicit-human-capture",
     clientRequestId: input.clientRequestId,
     callRoomId: input.callRoomId,
+    requestedProjectId: input.projectId,
     projectId,
     sourceUrl: input.sourceUrl,
     tagIds: input.tagIds,
@@ -220,7 +230,7 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
 
 export function isMobileCaptureQuickEntrySource(
   value: unknown,
-  expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "kind" | "tagIds" | "newTagLabels" | "dueAt" | "reminderAt">,
+  expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "projectId" | "kind" | "tagIds" | "newTagLabels" | "dueAt" | "reminderAt">,
   actorUserId: string,
 ) {
   const source = record(value);
@@ -233,6 +243,7 @@ export function isMobileCaptureQuickEntrySource(
   return source.schema === MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA
     && source.clientRequestId === expected.clientRequestId
     && source.callRoomId === expected.callRoomId
+    && (source.requestedProjectId ?? null) === expected.projectId
     && source.actorUserId === actorUserId
     && JSON.stringify(sourceTagIds) === JSON.stringify(expected.tagIds)
     && JSON.stringify(sourceNewTagLabels) === JSON.stringify(expected.newTagLabels)

@@ -30,7 +30,7 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
   let homeProjectId = "";
   let tagId = "";
   let roomId = "";
-  const requestIds = Array.from({ length: 11 }, () => randomUUID());
+  const requestIds = Array.from({ length: 12 }, () => randomUUID());
 
   beforeAll(async () => {
     const [actor, outsider] = await Promise.all([
@@ -281,6 +281,67 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
         project: expect.objectContaining({ slug: library.homeNest?.slug }),
       }),
     ]));
+  });
+
+  it("commits and exactly replays one tagged task directly into a writable Nest", async () => {
+    signedInAs(actorUserId, actorEmail);
+    const request = () => POST(new Request("http://localhost/api/mobile/capture/quick-entry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientRequestId: requestIds[11],
+        callRoomId: null,
+        projectId,
+        kind: "TASK",
+        title: `Direct project capture ${nonce}`,
+        body: "Keep this iPhone task with the real project and canonical tag.",
+        tagIds: [tagId],
+        capturedAt: "2026-07-24T18:00:00.000Z",
+      }),
+    }));
+
+    const first = await request();
+    const replay = await request();
+    const [firstPayload, replayPayload] = await Promise.all([first.json(), replay.json()]);
+
+    expect(firstPayload).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      entry: {
+        id: `mobile-task-${requestIds[11]}`,
+        callRoomId: null,
+        projectId,
+        projectName: "Quick capture Nest",
+        destination: "NEST",
+        tags: [{ id: tagId, label: "Follow through" }],
+      },
+      nextAction: expect.stringContaining("Quick capture Nest"),
+    });
+    expect(replayPayload).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      entry: { id: `mobile-task-${requestIds[11]}`, destination: "NEST" },
+    });
+
+    const [task, links, count] = await Promise.all([
+      prisma.actionItem.findUniqueOrThrow({ where: { id: `mobile-task-${requestIds[11]}` } }),
+      prisma.actionItemTagLink.findMany({ where: { actionItemId: `mobile-task-${requestIds[11]}` } }),
+      prisma.actionItem.count({ where: { id: `mobile-task-${requestIds[11]}` } }),
+    ]);
+    expect(task).toMatchObject({
+      roomId: null,
+      projectId,
+      assignedUserId: actorUserId,
+      sourceJson: {
+        requestedProjectId: projectId,
+        projectId,
+        callRoomId: null,
+        offlineRetrySafe: true,
+      },
+    });
+    expect(links).toHaveLength(1);
+    expect(links[0]?.tagId).toBe(tagId);
+    expect(count).toBe(1);
   });
 
   it("deduplicates personal source identities while preserving every distinct capture receipt", async () => {
