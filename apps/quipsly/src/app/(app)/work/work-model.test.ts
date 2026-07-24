@@ -100,6 +100,45 @@ describe("Work Queue model", () => {
     expect(snapshot.tasks.find((item) => item.id === "canceled")?.reminderAt).toBeNull();
   });
 
+  it("allows only the assigned owner to edit an open, one-time canonical task", () => {
+    const snapshot = buildWorkSnapshot({
+      now,
+      actorUserId: "user-1",
+      tasks: [
+        task({ id: "editable", assignedUserId: "user-1" }),
+        task({ id: "other-owner", assignedUserId: "user-2" }),
+        task({ id: "closed", assignedUserId: "user-1", status: "DONE" }),
+        task({
+          id: "recurring",
+          assignedUserId: "user-1",
+          recurrenceOccurrence: {
+            occurrenceKey: "2026-07-17T09:00[America/Denver]",
+            scheduledLocalDate: "2026-07-17",
+            series: {
+              id: "series-1",
+              cadence: "FIXED",
+              frequency: "WEEKLY",
+              interval: 1,
+              timezone: "America/Denver",
+              localTimeMinutes: 540,
+              status: "ACTIVE",
+              updatedAt: now,
+            },
+          },
+        }),
+      ],
+      goals: [],
+      commitments: [],
+    });
+    const editability = Object.fromEntries(snapshot.tasks.map((item) => [item.id, item.canEdit]));
+    expect(editability).toEqual({
+      editable: true,
+      "other-owner": false,
+      recurring: false,
+      closed: false,
+    });
+  });
+
   it("quarantines inferred transcript candidates while retaining accepted work", () => {
     const snapshot = buildWorkSnapshot({
       now,

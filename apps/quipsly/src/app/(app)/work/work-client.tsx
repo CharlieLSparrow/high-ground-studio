@@ -7,7 +7,7 @@ import { Archive, BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, Li
 import type { LucideIcon } from "lucide-react";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
-import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, editWorkTask, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
 import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTagCandidate, WorkTask, WorkTaskStatus } from "./work-model";
 
 export type TaskFilter = "ATTENTION" | "OPEN" | "DONE" | "ALL";
@@ -550,6 +550,53 @@ function TaskReminderEditor({ task, onRefresh }: { task: WorkTask; onRefresh: ()
   </details>;
 }
 
+function TaskEditor({ task, onRefresh }: { task: WorkTask; onRefresh: () => void }) {
+  const [pending, startTransition] = useTransition();
+  const [message, setMessage] = useState<string | null>(null);
+  if (!task.canEdit || task.status !== "OPEN" || task.recurrence) return null;
+
+  const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+  function save(formData: FormData) {
+    setMessage(null);
+    startTransition(async () => {
+      const result = await editWorkTask({
+        taskId: task.id,
+        title: String(formData.get("title") || ""),
+        detail: String(formData.get("detail") || ""),
+        dueLocal: String(formData.get("dueLocal") || "") || null,
+        timezone: localTimezone,
+        expectedUpdatedAt: task.updatedAt,
+      });
+      if (!result.ok) {
+        setMessage(result.error);
+        if (result.code === "CONFLICT") onRefresh();
+        return;
+      }
+      setMessage("Task saved. Its reminder, repeat, status, tags, goal links, and external calendars were left unchanged.");
+      onRefresh();
+    });
+  }
+
+  return <details className="mt-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
+    <summary className="cursor-pointer text-[10px] font-black uppercase tracking-wide text-amber-950"><Pencil className="mr-1.5 inline h-3.5 w-3.5" aria-hidden="true" />Edit task</summary>
+    <form action={save} className="mt-3 space-y-3">
+      <label className="block text-xs font-bold text-amber-950">Edit task title
+        <input name="title" required maxLength={500} defaultValue={task.title} className="mt-1 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm" />
+      </label>
+      <label className="block text-xs font-bold text-amber-950">Edit task detail
+        <textarea name="detail" maxLength={5000} defaultValue={task.detail ?? ""} rows={3} className="mt-1 w-full rounded-xl border border-amber-200 bg-white px-3 py-2 text-sm" />
+      </label>
+      <label className="block text-xs font-bold text-amber-950">Edit due date (optional)
+        <input type="datetime-local" name="dueLocal" defaultValue={task.dueAt ? localDateTimeInput(task.dueAt, localTimezone) : ""} className="mt-1 min-h-11 w-full rounded-xl border border-amber-200 bg-white px-3 text-sm" />
+      </label>
+      <p className="text-[11px] font-semibold leading-relaxed text-amber-900">Clear the date to make this an undated task. Editing does not move its reminder or change any linked goal, repeat, tag, message, provider calendar event, or publication.</p>
+      <button type="submit" disabled={pending} className="min-h-11 rounded-full bg-amber-950 px-4 py-2 text-xs font-black uppercase tracking-wide text-white disabled:opacity-50">{pending ? "Saving…" : "Save task changes"}</button>
+      {message && <p role="status" className="rounded-xl border border-amber-200 bg-white px-3 py-2 text-xs font-bold leading-5 text-amber-950">{message}</p>}
+    </form>
+  </details>;
+}
+
 function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, onConflict }: { task: WorkTask; focused: boolean; managesRecurrence: boolean; projectOptions: WorkProjectOption[]; onSaved: (taskId: string, nextStatus: WorkTaskStatus, updatedAt: string, notice: string) => void; onConflict: () => void }) {
   const [pending, startTransition] = useTransition();
   const [recurrencePending, startRecurrenceTransition] = useTransition();
@@ -616,6 +663,7 @@ function TaskCard({ task, focused, managesRecurrence, projectOptions, onSaved, o
             {task.recurrence.status !== "ENDED" && managesRecurrence && <TaskRecurrenceEditor task={task} onRefresh={onConflict} />}
             {task.recurrence.status !== "ENDED" && !managesRecurrence && <p className="mt-2 text-[11px] font-semibold text-violet-800">Manage this series from its next open occurrence.</p>}
           </div>}
+          <TaskEditor task={task} onRefresh={onConflict} />
           <TaskReminderEditor task={task} onRefresh={onConflict} />
           {task.detail && <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-relaxed text-[#765f40]">{task.detail}</p>}
           <TagEditor entityKind="task" entityId={task.id} project={projectOptions.find((project) => project.id === task.project?.id) ?? null} tags={task.tags} updatedAt={task.updatedAt} canManage={task.canManageTags} onRefresh={onConflict} />

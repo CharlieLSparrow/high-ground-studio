@@ -4,7 +4,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
-import { createWorkGoal, createWorkTask, linkWorkGoalTask, recordWorkGoalProgress, saveWeeklyCommitment, setWorkTaskReminder, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
+import { createWorkGoal, createWorkTask, editWorkTask, linkWorkGoalTask, recordWorkGoalProgress, saveWeeklyCommitment, setWorkTaskReminder, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
@@ -50,6 +50,84 @@ describe("Work Queue task decisions", () => {
         }),
       }),
     }));
+  });
+
+  it("edits an assigned one-time task with optimistic concurrency and local due-time intent", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-07-24T12:00:00.000Z"));
+    signedIn();
+    const tx = {
+      actionItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "task-1",
+          roomId: null,
+          status: "OPEN",
+          title: "Old title",
+          detail: null,
+          dueAt: null,
+          sourceJson: { source: "quipsly-work-manual-v1" },
+          updatedAt: expected,
+          recurrenceOccurrence: null,
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "task-1",
+          roomId: null,
+          title: "Choose the cold-open story",
+          detail: "Compare the strongest candidates.",
+          dueAt: new Date("2026-07-25T15:00:00.000Z"),
+          updatedAt: persisted,
+        }),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    };
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+
+    const result = await editWorkTask({
+      taskId: "task-1",
+      title: " Choose the cold-open story ",
+      detail: " Compare the strongest candidates. ",
+      dueLocal: "2026-07-25T09:00",
+      timezone: "America/Denver",
+      expectedUpdatedAt: expected.toISOString(),
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      taskId: "task-1",
+      title: "Choose the cold-open story",
+      detail: "Compare the strongest candidates.",
+      dueAt: "2026-07-25T15:00:00.000Z",
+      updatedAt: persisted.toISOString(),
+      receiptId: expect.any(String),
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(tx.actionItem.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: "task-1",
+        assignedUserId: "user-1",
+        status: "OPEN",
+        updatedAt: expected,
+      }),
+      data: expect.objectContaining({
+        title: "Choose the cold-open story",
+        detail: "Compare the strongest candidates.",
+        dueAt: new Date("2026-07-25T15:00:00.000Z"),
+        sourceJson: expect.objectContaining({
+          editReceipts: [expect.objectContaining({
+            dueIntent: expect.objectContaining({
+              requestedLocalDateTime: "2026-07-25T09:00",
+              timezone: "America/Denver",
+            }),
+            externalSideEffects: false,
+          })],
+        }),
+      }),
+    }));
+    expect(revalidatePath).toHaveBeenCalledWith("/schedule");
+    expect(revalidatePath).toHaveBeenCalledWith("/today");
   });
 
   it("creates canonical reminder intent with an append-only revision and no delivery claim", async () => {

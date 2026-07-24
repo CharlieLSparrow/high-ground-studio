@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, updateWorkTaskStatus } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, editWorkTask, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, updateWorkTaskStatus } from "./actions";
 import { WorkClient } from "./work-client";
 import type { WorkSnapshot } from "./work-model";
 
@@ -16,6 +16,7 @@ jest.mock("./actions", () => ({
   createWorkGoal: jest.fn(),
   createWorkTask: jest.fn(),
   editTaskRecurrence: jest.fn(),
+  editWorkTask: jest.fn(),
   linkWorkGoalTask: jest.fn(),
   previewTagMerge: jest.fn(),
   previewTagMergeRollback: jest.fn(),
@@ -35,7 +36,7 @@ const snapshot: WorkSnapshot = {
     id: "task-1", title: "Finish episode notes", detail: "Use transcript evidence", status: "OPEN", dueAt: null, reminderAt: "2026-07-19T12:00:00.000Z", reminderId: "reminder-1", reminderStatus: "ACTIVE", reminderUpdatedAt: "2026-07-18T18:00:00.000Z", completedAt: null,
     createdAt: "2026-07-18T18:00:00.000Z", updatedAt: "2026-07-18T18:00:00.000Z", isOverdue: false, assigneeLabel: null,
     provenance: "Reviewed transcript timestamp", attentionReason: "Reviewed transcript follow-through", roomId: "room-1", sessionTitle: "Episode review", sessionStatus: "ENDED", workspaceSlug: null, bookingStart: null,
-    project: null, tags: [], canManageTags: true, canManageReminder: true,
+    project: null, tags: [], canEdit: true, canManageTags: true, canManageReminder: true,
     sourceAnchor: { schema: "quipsly-transcript-derived-task-v1", roomId: "room-1", transcriptJobId: "job-1", segmentId: "segment-1", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: "a".repeat(64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Welcome, everybody.", effectiveSpeakerLabelSnapshot: "Charlie", acceptedCorrectionId: "correction-1", recordingAssetId: "asset-1", playbackSourceId: "source-1" },
   }],
   goals: [], commitments: [],
@@ -83,6 +84,40 @@ describe("Work Queue interactions", () => {
       timezone: expect.any(String),
     }));
     expect(await screen.findByRole("status")).toHaveTextContent("delivery is never promised");
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("edits a one-time task and due date without implying reminder or calendar changes", async () => {
+    const user = userEvent.setup();
+    jest.mocked(editWorkTask).mockResolvedValue({
+      ok: true,
+      taskId: "task-1",
+      title: "Finish the Episode 5 outline",
+      detail: "Use the saved opening note.",
+      dueAt: "2026-07-25T15:00:00.000Z",
+      updatedAt: "2026-07-18T19:00:00.000Z",
+      receiptId: "edit-receipt",
+    });
+    render(<WorkClient initialSnapshot={snapshot} />);
+    await user.click(screen.getByText("Edit task"));
+    const title = screen.getByRole("textbox", { name: "Edit task title" });
+    await user.clear(title);
+    await user.type(title, "Finish the Episode 5 outline");
+    const detail = screen.getByRole("textbox", { name: "Edit task detail" });
+    await user.clear(detail);
+    await user.type(detail, "Use the saved opening note.");
+    await user.type(screen.getByLabelText("Edit due date (optional)"), "2026-07-25T09:00");
+    await user.click(screen.getByRole("button", { name: "Save task changes" }));
+
+    expect(editWorkTask).toHaveBeenCalledWith({
+      taskId: "task-1",
+      title: "Finish the Episode 5 outline",
+      detail: "Use the saved opening note.",
+      dueLocal: "2026-07-25T09:00",
+      timezone: expect.any(String),
+      expectedUpdatedAt: "2026-07-18T18:00:00.000Z",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("reminder, repeat, status, tags, goal links, and external calendars were left unchanged");
     expect(refresh).toHaveBeenCalled();
   });
 

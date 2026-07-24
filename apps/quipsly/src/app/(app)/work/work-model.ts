@@ -150,6 +150,7 @@ export type WorkTask = {
   workspaceSlug: string | null;
   project: WorkProject | null;
   tags: WorkTag[];
+  canEdit?: boolean;
   canManageTags: boolean;
   canManageReminder?: boolean;
   bookingStart: string | null;
@@ -355,6 +356,11 @@ export function buildWorkSnapshot(input: {
         workspaceSlug: clean(task.room?.nestSlug) || clean(task.room?.projectSlug) || null,
         project: task.project ? { id: task.project.id, name: task.project.name, slug: task.project.slug } : null,
         tags: (task.tagLinks ?? []).map((link) => link.tag),
+        canEdit: Boolean(input.actorUserId)
+          && task.assignedUserId === input.actorUserId
+          && task.status === "OPEN"
+          && !recurrence
+          && !historicalLocked,
         canManageTags: Boolean(input.actorUserId) && task.assignedUserId === input.actorUserId,
         canManageReminder: Boolean(input.actorUserId)
           && task.assignedUserId === input.actorUserId

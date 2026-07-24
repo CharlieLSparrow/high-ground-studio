@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
@@ -31,6 +32,10 @@ export type UpdateWorkTaskStatusResult =
 export type CreateWorkTaskResult =
   | { ok: true; taskId: string; updatedAt: string; receiptId: string; recurrenceSeriesId?: string; occurrenceCount?: number }
   | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "UNAVAILABLE"; error: string };
+
+export type EditWorkTaskResult =
+  | { ok: true; taskId: string; title: string; detail: string | null; dueAt: string | null; updatedAt: string; receiptId: string }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE"; error: string };
 
 export type WorkGoalMutationResult =
   | { ok: true; goalId: string; status: WorkGoalStatus; updatedAt: string; receiptId: string }
@@ -706,6 +711,107 @@ export async function createWorkTask(input: {
   } catch (error) {
     console.error("[work] failed to create private task", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not create this task. Nothing was sent or scheduled elsewhere." };
+  }
+}
+
+export async function editWorkTask(input: {
+  taskId: string;
+  title: string;
+  detail?: string | null;
+  dueLocal: string | null;
+  timezone: string;
+  expectedUpdatedAt: string;
+}): Promise<EditWorkTaskResult> {
+  const session = await getQuipslySession();
+  if (!session?.user?.id) {
+    return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before editing private work." };
+  }
+
+  const taskId = cleanId(input?.taskId);
+  const title = cleanText(input?.title, 500);
+  const detail = cleanText(input?.detail, 5000) || null;
+  const expectedUpdatedAt = expectedRevision(input?.expectedUpdatedAt);
+  const timezone = cleanId(input?.timezone, 100);
+  const hasDueDecision = Boolean(input)
+    && Object.prototype.hasOwnProperty.call(input, "dueLocal");
+  const dueLocal = cleanId(input?.dueLocal, 32);
+  const parsedDue = dueLocal ? parseRecurrenceStart(dueLocal, timezone) : null;
+  const dueAt = parsedDue?.dueAt ?? null;
+  const now = new Date();
+
+  if (!taskId
+      || !title
+      || !expectedUpdatedAt
+      || !hasDueDecision
+      || !isIanaTimeZone(timezone)
+      || (dueLocal && !parsedDue)) {
+    return { ok: false, code: "INVALID_INPUT", error: "Add a task title and, if used, a valid local due date." };
+  }
+  if (dueAt && Math.abs(dueAt.getTime() - now.getTime()) > 10 * 365 * 86_400_000) {
+    return { ok: false, code: "INVALID_INPUT", error: "Choose a due date within ten years." };
+  }
+
+  try {
+    const prisma = getPrismaClient() as any;
+    const result = await prisma.$transaction(
+      (tx: any) => editCanonicalTaskInTransaction({
+        tx,
+        taskId,
+        actorUserId: session.user.id,
+        expectedUpdatedAt,
+        title,
+        detail,
+        dueAt,
+        dueIntent: parsedDue ? {
+          requestedLocalDateTime: parsedDue.requestedLocalDateTime,
+          resolvedLocalDateTime: parsedDue.resolvedLocalDateTime,
+          dstResolution: parsedDue.dstResolution,
+          timezone: parsedDue.timezone,
+        } : null,
+        surface: "nest-work",
+        now,
+      }),
+      { isolationLevel: "Serializable" },
+    );
+
+    if (result.kind === "not-found") {
+      return { ok: false, code: "NOT_FOUND", error: "Only the assigned task owner can edit this task." };
+    }
+    if (result.kind === "closed") {
+      return { ok: false, code: "INVALID_INPUT", error: "Reopen this task before editing its contents or due date." };
+    }
+    if (result.kind === "recurring") {
+      return { ok: false, code: "INVALID_INPUT", error: "Use the repeating-task editor so Quipsly can preserve the series history." };
+    }
+    if (result.kind === "immutable-history") {
+      return { ok: false, code: "INVALID_INPUT", error: "A superseded historical task cannot be rewritten. Use its replacement task instead." };
+    }
+    if (result.kind === "conflict") {
+      return { ok: false, code: "CONFLICT", error: "This task changed elsewhere. Refresh before editing again." };
+    }
+
+    revalidatePath("/work");
+    revalidatePath("/schedule");
+    revalidatePath("/today");
+    if (result.record.roomId) revalidatePath(`/sessions/${result.record.roomId}`);
+    return {
+      ok: true,
+      taskId,
+      title: result.record.title,
+      detail: result.record.detail,
+      dueAt: result.record.dueAt?.toISOString() ?? null,
+      updatedAt: result.record.updatedAt.toISOString(),
+      receiptId: result.receiptId,
+    };
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+    if (code === "P2034") {
+      return { ok: false, code: "CONFLICT", error: "This task changed elsewhere. Refresh before editing again." };
+    }
+    console.error("[work] failed to edit private task", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not save this task edit. No reminder, calendar event, message, or provider action changed." };
   }
 }
 
