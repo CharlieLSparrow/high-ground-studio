@@ -312,11 +312,15 @@ function ImportedKeywordReview({ project, onRefresh }: { project: WorkProjectOpt
   </section>;
 }
 
-function TagVocabulary({ projects, onRefresh, expanded = false }: { projects: WorkProjectOption[]; onRefresh: () => void; expanded?: boolean }) {
+function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId = null }: { projects: WorkProjectOption[]; onRefresh: () => void; expanded?: boolean; initialProjectId?: string | null }) {
   const writableProjects = projects.filter((project) => project.canWrite);
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
-  const [selectedProjectId, setSelectedProjectId] = useState(writableProjects[0]?.id ?? "");
+  const [selectedProjectId, setSelectedProjectId] = useState(
+    writableProjects.some((project) => project.id === initialProjectId)
+      ? initialProjectId!
+      : writableProjects[0]?.id ?? "",
+  );
   const [query, setQuery] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [expandedTagId, setExpandedTagId] = useState<string | null>(null);
@@ -766,7 +770,7 @@ function WeeklyCommitmentEditor({ commitments, onRefresh }: { commitments: WorkC
   </div>;
 }
 
-export function WorkClient({ initialSnapshot, projectOptions = [], focusTaskId = null, focusGoalId = null, initialFilter = "OPEN", manageTags = false }: { initialSnapshot: WorkSnapshot; projectOptions?: WorkProjectOption[]; focusTaskId?: string | null; focusGoalId?: string | null; initialFilter?: "ATTENTION" | "OPEN"; manageTags?: boolean }) {
+export function WorkClient({ initialSnapshot, projectOptions = [], focusTaskId = null, focusGoalId = null, initialFilter = "OPEN", manageTags = false, initialProjectId = null }: { initialSnapshot: WorkSnapshot; projectOptions?: WorkProjectOption[]; focusTaskId?: string | null; focusGoalId?: string | null; initialFilter?: "ATTENTION" | "OPEN"; manageTags?: boolean; initialProjectId?: string | null }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const focusedTask = focusTaskId ? initialSnapshot.tasks.find((task) => task.id === focusTaskId) : null;
   const focusedGoal = focusGoalId ? initialSnapshot.goals.find((goal) => goal.id === focusGoalId) : null;
@@ -926,7 +930,7 @@ export function WorkClient({ initialSnapshot, projectOptions = [], focusTaskId =
             <Link href="/work" className="inline-flex min-h-11 items-center rounded-full border border-sky-300 bg-white px-4 text-xs font-black uppercase tracking-wide text-sky-900">Back to Work</Link>
           </div>
         </section>
-        <TagVocabulary projects={projectOptions} onRefresh={() => router.refresh()} expanded />
+        <TagVocabulary projects={projectOptions} onRefresh={() => router.refresh()} expanded initialProjectId={initialProjectId} />
       </main>
     );
   }

@@ -189,7 +189,7 @@ async function loadProjectOptions(actorEmail: string): Promise<WorkProjectOption
 }
 
 type WorkPageProps = {
-  searchParams?: Promise<{ task?: string | string[]; goal?: string | string[]; view?: string | string[]; manage?: string | string[] }>;
+  searchParams?: Promise<{ task?: string | string[]; goal?: string | string[]; view?: string | string[]; manage?: string | string[]; project?: string | string[] }>;
 };
 
 function focusId(value: string | string[] | undefined) {
@@ -197,7 +197,7 @@ function focusId(value: string | string[] | undefined) {
 }
 
 export default async function WorkPage({ searchParams }: WorkPageProps) {
-  const requestedFocus = await (searchParams ?? Promise.resolve<{ task?: string | string[]; goal?: string | string[]; view?: string | string[]; manage?: string | string[] }>({}));
+  const requestedFocus = await (searchParams ?? Promise.resolve<NonNullable<Awaited<WorkPageProps["searchParams"]>>>({}));
   const attentionRequested = requestedFocus.view === "attention";
   const manageTags = requestedFocus.manage === "tags";
   const session = await getQuipslySession();
@@ -208,6 +208,7 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
     const initialSnapshot = await loadWork(session.user.id, projectOptions.map((project) => project.id));
     const requestedTaskId = focusId(requestedFocus.task);
     const requestedGoalId = focusId(requestedFocus.goal);
+    const requestedProjectId = focusId(requestedFocus.project);
     return <WorkClient
       initialSnapshot={initialSnapshot}
       projectOptions={projectOptions}
@@ -215,6 +216,7 @@ export default async function WorkPage({ searchParams }: WorkPageProps) {
       focusTaskId={initialSnapshot.tasks.some((task) => task.id === requestedTaskId) ? requestedTaskId : null}
       focusGoalId={initialSnapshot.goals.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : null}
       manageTags={manageTags}
+      initialProjectId={projectOptions.some((project) => project.id === requestedProjectId) ? requestedProjectId : null}
     />;
   } catch (error) {
     console.error("[work] failed to load actor-scoped work", error);

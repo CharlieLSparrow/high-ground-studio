@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,6 +11,22 @@ import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { auth } from "@/auth";
 
 type CreateNestDocumentKind = "draft" | "note" | "study-source";
+
+export type CreateNestQuickNoteResult =
+  | {
+      ok: true;
+      documentId: string;
+      blockId: string;
+      projectSlug: string;
+      href: string;
+      idempotentReplay: boolean;
+      externalSideEffects: false;
+    }
+  | {
+      ok: false;
+      code: "AUTH_REQUIRED" | "INVALID_INPUT" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+      error: string;
+    };
 
 const DOCUMENT_PRESETS: Record<CreateNestDocumentKind, {
   title: string;
@@ -45,6 +61,7 @@ const DOCUMENT_PRESETS: Record<CreateNestDocumentKind, {
 
 const HGO_SOURCE_ROOT_ENV = "QUIPSLY_HGO_PODCAST_YEAR_ONE_SOURCE_ROOT";
 const DEFAULT_HGO_SOURCE_ROOT = path.join(process.cwd(), "data", "hgo-podcast-year-1");
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const HGO_SOURCE_CATALOG = [
   { key: "episode-1", label: "Episode 1 Source", relativePath: "1 - March 25 - Pilot/1.md" },
@@ -105,6 +122,224 @@ function chunkSourceText(text: string, maxChars = 3600) {
   }
 
   return chunks;
+}
+
+function cleanQuickNoteText(value: unknown, maxLength: number) {
+  return typeof value === "string"
+    ? value.replace(/\r\n/g, "\n").trim().slice(0, maxLength)
+    : "";
+}
+
+function safeJsonRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function quickNoteInputHash(input: {
+  actorUserId: string;
+  projectSlug: string;
+  title: string;
+  body: string;
+}) {
+  return createHash("sha256").update(JSON.stringify(input)).digest("hex");
+}
+
+export async function createNestQuickNoteAction(input: {
+  projectSlug: string;
+  title: string;
+  body: string;
+  clientRequestId: string;
+}): Promise<CreateNestQuickNoteResult> {
+  const session = await auth();
+  const actorUserId = session?.user?.id;
+  const actorEmail = (session?.user?.primaryEmail || session?.user?.email || "").trim().toLowerCase();
+  if (!actorUserId || !actorEmail) {
+    return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before saving a private project note." };
+  }
+
+  const projectSlug = cleanQuickNoteText(input?.projectSlug, 160).toLowerCase();
+  const title = cleanQuickNoteText(input?.title, 160).replace(/\s+/g, " ");
+  const body = cleanQuickNoteText(input?.body, 12_000);
+  const clientRequestId = cleanQuickNoteText(input?.clientRequestId, 80).toLowerCase();
+  if (!projectSlug || !title || !body || !UUID_PATTERN.test(clientRequestId)) {
+    return {
+      ok: false,
+      code: "INVALID_INPUT",
+      error: "Add a title and note, then retry with the same capture identity.",
+    };
+  }
+
+  const inputHash = quickNoteInputHash({ actorUserId, projectSlug, title, body });
+  const stableId = `project-note:${actorUserId}:${clientRequestId}`;
+  const groupId = `project-capture:${clientRequestId}`;
+  const sourceLabel = "document-kind:note;origin:nest-project-capture";
+  const prisma = getPrismaClient();
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const access = await resolveStudioProjectAccess({
+        projectSlug,
+        email: actorEmail,
+        action: "write",
+        prisma: tx as typeof prisma,
+      });
+      if (!access.allowed || !access.projectId) return { kind: "forbidden" as const };
+
+      const existing = await tx.studioDocument.findUnique({
+        where: { stableId },
+        select: {
+          id: true,
+          projectId: true,
+          blocks: { orderBy: { order: "asc" }, take: 1, select: { id: true } },
+          documentOperations: {
+            where: { groupId, operationType: "create-project-quick-note" },
+            orderBy: { createdAt: "asc" },
+            take: 1,
+            select: { afterJson: true },
+          },
+        },
+      });
+      if (existing) {
+        const receipt = safeJsonRecord(existing.documentOperations[0]?.afterJson);
+        if (existing.projectId !== access.projectId || receipt.inputHash !== inputHash || !existing.blocks[0]?.id) {
+          return { kind: "conflict" as const };
+        }
+        return {
+          kind: "saved" as const,
+          documentId: existing.id,
+          blockId: existing.blocks[0].id,
+          idempotentReplay: true,
+        };
+      }
+
+      const blockId = `${stableId}:body`;
+      const document = await tx.studioDocument.create({
+        data: {
+          projectId: access.projectId,
+          stableId,
+          title,
+          sourceLabel,
+          projectionStatus: "private",
+          isPrivate: true,
+          blocks: {
+            create: [{
+              id: blockId,
+              stableId: blockId,
+              order: 0,
+              title: null,
+              body,
+              sourceLabel,
+              isPrivate: true,
+            }],
+          },
+        },
+        select: { id: true },
+      });
+
+      await tx.studioDocumentOperation.create({
+        data: {
+          projectId: access.projectId,
+          documentId: document.id,
+          groupId,
+          actorEmail,
+          origin: "human",
+          operationType: "create-project-quick-note",
+          status: "applied",
+          afterJson: {
+            schema: "quipsly-project-quick-note-v1",
+            inputHash,
+            clientRequestId,
+            sourceMutated: false,
+            externalSideEffects: false,
+          },
+          payloadJson: {
+            surface: "nest-project",
+            explicitHumanCapture: true,
+            destination: "project-note",
+          },
+          reversible: true,
+        },
+      });
+
+      return {
+        kind: "saved" as const,
+        documentId: document.id,
+        blockId,
+        idempotentReplay: false,
+      };
+    }, { isolationLevel: "Serializable" });
+
+    if (result.kind === "forbidden") {
+      return { ok: false, code: "FORBIDDEN", error: "Editor access to this project is required." };
+    }
+    if (result.kind === "conflict") {
+      return {
+        ok: false,
+        code: "CONFLICT",
+        error: "This capture identity already belongs to different note evidence. Your text was not overwritten.",
+      };
+    }
+
+    revalidatePath(`/nests/${projectSlug}`);
+    revalidatePath("/library");
+    revalidatePath("/find");
+    const href = `/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(result.documentId)}&block=${encodeURIComponent(result.blockId)}`;
+    return {
+      ok: true,
+      documentId: result.documentId,
+      blockId: result.blockId,
+      projectSlug,
+      href,
+      idempotentReplay: result.idempotentReplay,
+      externalSideEffects: false,
+    };
+  } catch (error) {
+    if (error && typeof error === "object" && "code" in error && String((error as { code?: unknown }).code) === "P2002") {
+      const replay = await prisma.studioDocument.findUnique({
+        where: { stableId },
+        select: {
+          id: true,
+          project: { select: { slug: true } },
+          blocks: { orderBy: { order: "asc" }, take: 1, select: { id: true } },
+          documentOperations: {
+            where: { groupId, operationType: "create-project-quick-note" },
+            orderBy: { createdAt: "asc" },
+            take: 1,
+            select: { afterJson: true },
+          },
+        },
+      }).catch(() => null);
+      const receipt = safeJsonRecord(replay?.documentOperations[0]?.afterJson);
+      if (replay?.project.slug === projectSlug && replay.blocks[0]?.id && receipt.inputHash === inputHash) {
+        revalidatePath(`/nests/${projectSlug}`);
+        revalidatePath("/library");
+        revalidatePath("/find");
+        return {
+          ok: true,
+          documentId: replay.id,
+          blockId: replay.blocks[0].id,
+          projectSlug,
+          href: `/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(replay.id)}&block=${encodeURIComponent(replay.blocks[0].id)}`,
+          idempotentReplay: true,
+          externalSideEffects: false,
+        };
+      }
+      if (replay) {
+        return {
+          ok: false,
+          code: "CONFLICT",
+          error: "This capture identity already belongs to different note evidence. Your text was not overwritten.",
+        };
+      }
+    }
+    console.error("[nest-project] failed to create quick note", error);
+    return {
+      ok: false,
+      code: "UNAVAILABLE",
+      error: "Quipsly could not save this project note. No task, message, calendar event, or publication was created.",
+    };
+  }
 }
 
 export async function createDocumentAction(projectSlug: string, kind: CreateNestDocumentKind = "note") {

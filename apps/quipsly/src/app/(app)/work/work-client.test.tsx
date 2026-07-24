@@ -155,6 +155,32 @@ describe("Work Queue interactions", () => {
     expect(screen.getByRole("searchbox", { name: "Find a tag or former name" })).toBeInTheDocument();
   });
 
+  it("opens the vocabulary manager on the project named by the project workspace link", () => {
+    const firstProject = {
+      id: "project-1", name: "Home", slug: "home", role: "OWNER", canWrite: true, tags: [],
+    };
+    const requestedProject = {
+      id: "project-2",
+      name: "High Ground Odyssey",
+      slug: "high-ground",
+      role: "EDITOR",
+      canWrite: true,
+      tags: [{ id: "tag-episode", label: "Episode", slug: "episode", category: "meaning", projectId: "project-2", isActive: true }],
+    };
+
+    render(
+      <WorkClient
+        initialSnapshot={snapshot}
+        projectOptions={[firstProject, requestedProject]}
+        manageTags
+        initialProjectId="project-2"
+      />,
+    );
+
+    expect(screen.getByRole("combobox", { name: "Nest" })).toHaveValue("project-2");
+    expect(screen.getByRole("heading", { name: "High Ground Odyssey" })).toBeInTheDocument();
+  });
+
   it("edits only the canonical Nest tag set and refreshes from persisted truth", async () => {
     const user = userEvent.setup();
     const project = { id: "project-1", name: "High Ground Odyssey", slug: "high-ground", role: "EDITOR", canWrite: true, tags: [

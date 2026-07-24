@@ -48,8 +48,10 @@ export async function readNestProjectFollowThrough(
     }),
     prisma.actionItem.findMany({
       where: nestProjectTaskWhere(input.projectId, input.projectSlug, input.actorUserId),
-      orderBy: [{ status: "asc" }, { dueAt: "asc" }, { updatedAt: "desc" }],
-      take: 12,
+      // Recent human work must remain visible after capture. Due-date-first ordering
+      // let a handful of stale recurring items permanently hide a newly created task.
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }, { dueAt: "asc" }],
+      take: 64,
       select: {
         id: true,
         title: true,
@@ -63,7 +65,7 @@ export async function readNestProjectFollowThrough(
 
   const tasks = taskRows
     .filter((task) => !isUnreviewedTranscriptActionItemSource(task.sourceJson))
-    .slice(0, 8)
+    .slice(0, 32)
     .map((task) => {
       const parsedSource = readTranscriptDerivedTaskSource(task.sourceJson);
       return { ...task, sourceAnchor: parsedSource?.roomId === task.room?.id ? parsedSource : null };

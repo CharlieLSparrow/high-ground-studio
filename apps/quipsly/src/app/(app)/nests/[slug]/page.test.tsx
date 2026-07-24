@@ -21,6 +21,7 @@ jest.mock("@/lib/server/studio-project-access", () => ({
   roleAllowsAction: () => true,
 }));
 jest.mock("./CreateDocumentButton", () => ({ CreateDocumentButton: () => <button type="button">Create document</button> }));
+jest.mock("./NestQuickCapture", () => ({ NestQuickCapture: () => <div>Quick capture</div> }));
 
 describe("Nest project follow-through", () => {
   beforeEach(() => jest.clearAllMocks());
@@ -40,20 +41,29 @@ describe("Nest project follow-through", () => {
       studioDocument: { findMany: jest.fn().mockResolvedValue([]) },
       studioMediaAsset: { findMany: jest.fn().mockResolvedValue([]) },
       mediaBin: { findMany: jest.fn().mockResolvedValue([]) },
+      studioTag: { findMany: jest.fn().mockResolvedValue([]) },
+      callRoom: { findMany: jest.fn().mockResolvedValue([]) },
       goal: { findMany: goalFindMany },
       actionItem: { findMany: taskFindMany },
     } as any);
 
-    render(await NestDashboardPage({ params: Promise.resolve({ slug: "high-ground" }) }));
+    render(await NestDashboardPage({
+      params: Promise.resolve({ slug: "high-ground" }),
+      searchParams: Promise.resolve({ view: "work" }),
+    }));
 
     expect(screen.getByRole("heading", { name: "Project follow-through" })).toBeInTheDocument();
-    expect(screen.getByText("Operator override: OWNER")).toBeInTheDocument();
+    expect(screen.getByText("Operator OWNER")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Ship a trustworthy episode active · 75% progress" })).toHaveAttribute("href", "/work?goal=goal-1");
     expect(screen.getByRole("link", { name: "Proof-listen the recap" })).toHaveAttribute("href", "/work?task=task-1");
     expect(screen.getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute("href", "/sessions/room-1#transcript-segment-segment-1");
     expect(screen.queryByText("Maybe follow up")).not.toBeInTheDocument();
     expect(goalFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: { projectId: "project-1", ownerUserId: "user-1" } }));
     expect(taskFindMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ AND: expect.any(Array) }) }));
+    expect(taskFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      orderBy: [{ status: "asc" }, { updatedAt: "desc" }, { dueAt: "asc" }],
+      take: 64,
+    }));
     expect(JSON.stringify(taskFindMany.mock.calls[0][0].where)).toContain("assignedUserId");
     expect(JSON.stringify(taskFindMany.mock.calls[0][0].where)).toContain("user-1");
   });
