@@ -550,24 +550,39 @@ function anyPathMatches(paths: readonly string[], pathSet: ReleasePathSet): bool
   return paths.some((filePath) => releasePathSetMatches(filePath, pathSet));
 }
 
+function deployablePaths(
+  paths: readonly string[],
+  manifests: readonly ReleaseManifest[],
+): readonly string[] {
+  return paths.filter((filePath) =>
+    !manifests.some((manifest) =>
+      releasePathSetMatches(filePath, manifest.changeDetection.validation)));
+}
+
 export function planChangedSurfaces(
   inputPaths: readonly string[],
   manifests: readonly ReleaseManifest[],
 ): ChangedSurfacePlan {
   const paths = normalizedPaths(inputPaths);
+  // Validation declarations are global ownership: proof/tooling paths must not
+  // wake another app merely because they sit below an older broad prefix.
+  const deployPaths = deployablePaths(paths, manifests);
   const captureManifest = manifestById(manifests, "capture");
   const nestManifest = manifestById(manifests, "nest");
   const webManifest = manifestById(manifests, "hgo-web");
   const nativeStudioManifest = manifestById(manifests, "quipsly-studio");
 
-  const web = anyPathMatches(paths, webManifest.changeDetection.deploy);
-  const studio = anyPathMatches(paths, nestManifest.changeDetection.deploy);
+  const web = anyPathMatches(deployPaths, webManifest.changeDetection.deploy);
+  const studio = anyPathMatches(deployPaths, nestManifest.changeDetection.deploy);
   const schema = manifests.some((manifest) =>
     anyPathMatches(paths, manifest.changeDetection.schema));
   const capture =
-    anyPathMatches(paths, captureManifest.changeDetection.deploy)
+    anyPathMatches(deployPaths, captureManifest.changeDetection.deploy)
     || anyPathMatches(paths, captureManifest.changeDetection.validation);
-  const nativeStudio = anyPathMatches(paths, nativeStudioManifest.changeDetection.deploy);
+  const nativeStudio = anyPathMatches(
+    deployPaths,
+    nativeStudioManifest.changeDetection.deploy,
+  );
   const quipsly = studio || anyPathMatches(paths, nestManifest.changeDetection.validation);
 
   const deployTargets: ("web" | "studio")[] = [
@@ -581,7 +596,7 @@ export function planChangedSurfaces(
   ];
   const matchedManifestIds = [
     ...(capture ? ["capture" as const] : []),
-    ...(studio ? ["nest" as const] : []),
+    ...(quipsly ? ["nest" as const] : []),
     ...(web ? ["hgo-web" as const] : []),
     ...(nativeStudio ? ["quipsly-studio" as const] : []),
   ];

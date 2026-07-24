@@ -84,6 +84,18 @@ pnpm quipsly:capture:app-store-metadata --submission
 The final mode requires every declared screenshot to exist at its recorded
 dimensions, be approved, and have no remaining submission blockers.
 
+Draft composition evidence has its own app-owned unit contract and simulator
+journey:
+
+```bash
+node --test apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.test.mjs
+bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh
+```
+
+The simulator command produces exact-size images plus a fail-closed receipt
+under `/tmp`; it does not approve assets or satisfy signed-candidate,
+physical-iPhone, or TestFlight proof.
+
 The `release` lane archives, exports, and verifies without uploading.
 `scripts/deploy-testflight.sh` runs the `beta` lane and therefore requires an
 explicit App Store Connect API key path, a clean committed Capture slice, and

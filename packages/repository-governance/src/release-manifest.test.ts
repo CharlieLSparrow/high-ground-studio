@@ -64,6 +64,29 @@ test("manifest-backed planner keeps Capture independent from web deploys", () =>
   assert.deepEqual(plan.matchedManifestIds, ["capture"]);
 });
 
+test("validation-only ownership overrides unrelated broad deploy prefixes", () => {
+  const plan = planChangedSurfaces([
+    "scripts/quipsly-ios-capture-app-store-static-smoke.mjs",
+    "scripts/release/quipsly-capture-app-store-metadata.mjs",
+  ], audit.manifests);
+  assert.equal(plan.capture, true);
+  assert.equal(plan.web, false);
+  assert.equal(plan.studio, false);
+  assert.equal(plan.quipsly, false);
+  assert.deepEqual(plan.deployTargets, []);
+  assert.deepEqual(plan.matchedManifestIds, ["capture"]);
+});
+
+test("validation-only Nest tooling is owned without planning a deployment", () => {
+  const plan = planChangedSurfaces([
+    "scripts/ci/plan-changed-surfaces.test.mjs",
+  ], audit.manifests);
+  assert.equal(plan.quipsly, true);
+  assert.equal(plan.studio, false);
+  assert.deepEqual(plan.deployTargets, []);
+  assert.deepEqual(plan.matchedManifestIds, ["nest"]);
+});
+
 test("manifest-backed planner follows runtime package consumers", () => {
   const shared = planChangedSurfaces(
     ["packages/quipsly-domain/src/index.ts"],

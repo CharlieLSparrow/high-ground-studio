@@ -480,5 +480,9 @@ remain red until approved screenshots and every delivery-layer proof exist.
 - Refresh local Firebase ADC or configure explicit local Firebase Admin service-account credentials for repeatable non-interactive generated-auth smokes; this is separate from restoring the deployed service.
 - Capture and approve the five planned iPhone screenshots from the
   physical/TestFlight candidate. The canonical listing metadata and source
-  validator pass; the stricter submission gate remains red until those assets
-  exist and all delivery blockers are resolved.
+  validator pass. A deterministic iPhone 17 Pro Max draft harness now operates
+  the five real app surfaces, exports exact-size private-data-safe layout
+  evidence, and records `submissionEligible:false`; run
+  `bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh`.
+  The stricter submission gate remains red until signed-candidate assets exist,
+  are human-approved, and all delivery blockers are resolved.

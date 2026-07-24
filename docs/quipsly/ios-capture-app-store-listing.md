@@ -53,8 +53,8 @@ out of first-release scope.
 
 1. **Know what matters today** — Today with synthetic tasks, goals, and one
    clear next action.
-2. **Consent before capture** — the explicit consent boundary and visible
-   recording state.
+2. **Consent before capture** — independent audio and transcription choices
+   before recording can start.
 3. **Turn the moment into work** — a project connecting notes, tasks, goals,
    and flexible tags.
 4. **Keep the original safe** — Library showing local-source truth and
@@ -67,6 +67,22 @@ approved synthetic reviewer account. Do not show private coaching data,
 recordings, transcripts, unpublished research, credentials, notifications,
 device identifiers, or another person's name. Crop only system chrome that is
 outside the product story; do not fabricate product state.
+
+Before the signed candidate is available, generate private-data-safe layout
+drafts from the app's deterministic preview state:
+
+```bash
+bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh
+```
+
+That command operates all five real iPhone surfaces on an iPhone 17 Pro Max
+simulator, exports `1320 x 2868` PNG attachments, hashes them, and writes a
+`draft-receipt.json` beside the images under `/tmp`. The receipt always records
+`submissionEligible:false`. Drafts are for composition and clipping review;
+they do not satisfy the screenshot blocker and must never be copied into the
+canonical approved-assets directory. Re-run the same five stories on the exact
+signed candidate or its TestFlight install with the approved reviewer account,
+then inspect and approve those final captures separately.
 
 ## Submission ownership
 

@@ -19,6 +19,9 @@ const files = {
   liveKitProviderRoomValidator: path.join(iosRoot, "scripts/validate-livekit-provider-room.sh"),
   runtimeUISmokeRunner: path.join(iosRoot, "scripts/run-capture-runtime-ui-smoke.sh"),
   runtimeUISmokeTests: path.join(iosRoot, "HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests.swift"),
+  deterministicUITests: path.join(iosRoot, "HighGroundCaptureUITests/CaptureExperienceUITests.swift"),
+  appStoreDraftRunner: path.join(iosRoot, "scripts/capture-app-store-draft-screenshots.sh"),
+  appStoreDraftMaterializer: path.join(iosRoot, "scripts/app-store-draft-screenshots.mjs"),
   mobileCapturePreflight: path.join(root, "scripts/quipsly-mobile-capture-preflight.sh"),
   generatedMobileCaptureAuthSmoke: path.join(root, "scripts/quipsly-mobile-capture-generated-auth-smoke.mjs"),
   authManager: path.join(sourceRoot, "AuthManager.swift"),
@@ -130,6 +133,9 @@ const projectText = read(files.project);
 const liveKitProviderRoomValidatorText = read(files.liveKitProviderRoomValidator);
 const runtimeUISmokeRunnerText = read(files.runtimeUISmokeRunner);
 const runtimeUISmokeTestsText = read(files.runtimeUISmokeTests);
+const deterministicUITestsText = read(files.deterministicUITests);
+const appStoreDraftRunnerText = read(files.appStoreDraftRunner);
+const appStoreDraftMaterializerText = read(files.appStoreDraftMaterializer);
 const mobileCapturePreflightText = read(files.mobileCapturePreflight);
 const generatedMobileCaptureAuthSmokeText = read(files.generatedMobileCaptureAuthSmoke);
 const authText = read(files.authManager);
@@ -929,6 +935,59 @@ requireIncludes(
   listingDocText,
   "pnpm quipsly:capture:app-store-metadata --submission",
   "App Store listing documents the final fail-closed gate",
+);
+requireIncludes(
+  listingDocText,
+  "bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh",
+  "App Store listing documents deterministic draft capture",
+);
+requireIncludes(
+  listingDocText,
+  "`submissionEligible:false`",
+  "App Store listing refuses to treat preview drafts as submission assets",
+);
+requireIncludes(
+  deterministicUITestsText,
+  "final class CaptureAppStoreScreenshotUITests",
+  "dedicated App Store screenshot UI harness exists outside the release UX suite",
+);
+for (const filename of [
+  "01-today.png",
+  "02-record.png",
+  "03-work.png",
+  "04-library.png",
+  "05-account.png",
+]) {
+  requireIncludes(
+    deterministicUITestsText,
+    `keepScreenshot("${filename}")`,
+    `screenshot UI harness captures ${filename}`,
+  );
+}
+requireIncludes(
+  appStoreDraftRunnerText,
+  "iPhone 17 Pro Max",
+  "draft screenshot runner uses the accepted 6.9-inch simulator",
+);
+requireIncludes(
+  appStoreDraftRunnerText,
+  "-only-testing:HighGroundCaptureUITests/CaptureAppStoreScreenshotUITests/testCapturePrivateDataSafeDrafts",
+  "draft screenshot runner isolates the deterministic screenshot journey",
+);
+requireIncludes(
+  appStoreDraftMaterializerText,
+  "submissionEligible: false",
+  "draft screenshot receipt fails closed for App Store submission",
+);
+requireIncludes(
+  appStoreDraftMaterializerText,
+  "imageDimensions(bytes, planned.filename)",
+  "draft screenshot materializer verifies image dimensions from bytes",
+);
+requireIncludes(
+  capturePhoneShellText,
+  'accessibilityIdentifier("CaptureLibraryPreviewSourceCard")',
+  "Library exposes a private-data-safe local-source layout fixture",
 );
 requireIncludes(reviewerChecklistText, "reviewer", "reviewer smoke checklist");
 requireIncludes(reviewerChecklistText, "RUN_NATIVE_AUTH_CONTRACT_SMOKE=1", "reviewer checklist native-auth smoke");

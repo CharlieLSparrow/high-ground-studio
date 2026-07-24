@@ -1518,7 +1518,7 @@ extension MobileCaptureSession {
         [
             capturePreview(
                 id: "preview-coaching-ready",
-                title: "Homer coaching session",
+                title: "Demo coaching session",
                 purpose: "COACHING",
                 consentGranted: true,
                 scheduledStart: ISO8601DateFormatter().string(from: Date().addingTimeInterval(35 * 60))

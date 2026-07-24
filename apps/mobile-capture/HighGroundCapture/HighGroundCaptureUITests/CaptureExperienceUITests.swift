@@ -975,6 +975,82 @@ final class CaptureExperienceUITests: XCTestCase {
     }
 }
 
+/// Generates private-data-safe layout evidence from the same deterministic
+/// preview state used by the product UX tests. These attachments are drafts:
+/// final App Store assets must still come from the signed candidate or its
+/// TestFlight install with the approved synthetic reviewer account.
+final class CaptureAppStoreScreenshotUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+        app = XCUIApplication()
+    }
+
+    override func tearDownWithError() throws {
+        app?.terminate()
+    }
+
+    func testCapturePrivateDataSafeDrafts() {
+        launch(tab: "today", waitingFor: app.scrollViews["CaptureTodayView"])
+        keepScreenshot("01-today.png")
+
+        launch(tab: "record", waitingFor: app.navigationBars["Record"])
+        let chooser = app.buttons["CaptureSessionChooser"]
+        XCTAssertTrue(chooser.waitForExistence(timeout: 5))
+        chooser.tap()
+        let consentNeededSession = app.staticTexts["High Ground pre-show"]
+        XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
+        consentNeededSession.tap()
+        let confirmConsent = app.buttons["CaptureConfirmConsentButton"]
+        XCTAssertTrue(confirmConsent.waitForExistence(timeout: 5))
+        confirmConsent.tap()
+        XCTAssertTrue(
+            app.otherElements["CaptureConsentConfirmationSheet"].waitForExistence(timeout: 5)
+        )
+        keepScreenshot("02-record.png")
+
+        launch(tab: "work", waitingFor: app.navigationBars["Work"])
+        XCTAssertTrue(
+            app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 5)
+        )
+        keepScreenshot("03-work.png")
+
+        launch(tab: "library", waitingFor: app.navigationBars["Library"])
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureLibraryPreviewSourceCard"]
+                .waitForExistence(timeout: 5)
+        )
+        keepScreenshot("04-library.png")
+
+        launch(tab: "account", waitingFor: app.navigationBars["Account"])
+        XCTAssertTrue(app.staticTexts["Privacy policy"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Account deletion information"].exists)
+        XCTAssertTrue(app.buttons["Request account deletion"].exists)
+        keepScreenshot("05-account.png")
+    }
+
+    private func launch(tab: String, waitingFor destination: XCUIElement) {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=\(tab)",
+        ]
+        app.launch()
+        XCTAssertTrue(
+            destination.waitForExistence(timeout: 12),
+            "The deterministic \(tab) screenshot state should launch without credentials or network access."
+        )
+    }
+
+    private func keepScreenshot(_ filename: String) {
+        let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
+        attachment.name = filename
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}
+
 final class CaptureLoginExperienceUITests: XCTestCase {
     private var app: XCUIApplication!
 

@@ -3647,18 +3647,12 @@ private struct CaptureLibraryView: View {
                 }
 
                 if library.recordings.isEmpty {
-                    CaptureEmptyCard(
-                        systemImage: "waveform",
-                        title: "No local recordings yet",
-                        detail: "Your first completed take will appear here before any upload is considered complete.",
-                        actionTitle: "Open recorder",
-                        action: { model.selectedTab = .record }
-                    )
                     if model.usesPreviewData {
+                        CaptureLibraryPreviewSourceCard()
                         NavigationLink {
                             CaptureTranscriptReviewView(
                                 roomID: "room-preview-coaching-ready",
-                                sessionTitle: "Homer coaching session",
+                                sessionTitle: "Demo coaching session",
                                 recording: nil,
                                 previewOnly: true
                             )
@@ -3669,6 +3663,14 @@ private struct CaptureLibraryView: View {
                         }
                         .buttonStyle(.bordered)
                         .accessibilityIdentifier("CaptureTranscriptReviewPreviewLink")
+                    } else {
+                        CaptureEmptyCard(
+                            systemImage: "waveform",
+                            title: "No local recordings yet",
+                            detail: "Your first completed take will appear here before any upload is considered complete.",
+                            actionTitle: "Open recorder",
+                            action: { model.selectedTab = .record }
+                        )
                     }
                 } else {
                     ForEach(library.recordings) { recording in
@@ -3724,6 +3726,54 @@ private struct CaptureLibraryView: View {
         case .recording, .paused, .finalizing: true
         default: false
         }
+    }
+}
+
+private struct CaptureLibraryPreviewSourceCard: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(systemName: "waveform.circle.fill")
+                    .font(.title2)
+                    .foregroundStyle(CapturePalette.accent)
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Demo coaching session")
+                        .font(.headline)
+                    Text("Synthetic local source · 18.4 MB")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+            }
+
+            HStack(spacing: 8) {
+                CaptureStatusPill(
+                    label: "Saved on iPhone",
+                    systemImage: "internaldrive.fill",
+                    tint: .green
+                )
+                CaptureStatusPill(
+                    label: "Waiting for Nest",
+                    systemImage: "arrow.clockwise.icloud",
+                    tint: .orange
+                )
+            }
+
+            Text("The original is safe on this iPhone. Upload can be retried after reconnecting; Quipsly will not call it verified until the cloud copy matches.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Label("Recoverable · retry available when online", systemImage: "checkmark.shield.fill")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(CapturePalette.accent)
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureLibraryPreviewSourceCard")
     }
 }
 

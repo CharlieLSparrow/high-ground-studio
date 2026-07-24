@@ -44,6 +44,12 @@ non-Git provenance, and a manifest that does not trigger its own boundary.
 The JSON Schema provides editor and external-tool interoperability; the
 repository validator is the CI authority.
 
+`changeDetection.validation` is validation-only ownership across the entire
+repository. A matching validation path is never treated as deployable input for
+another manifest, even when it also falls under that manifest's older, broader
+deploy prefix. Use this precedence for release checks and operator tooling; do
+not use it to hide a real shared runtime dependency.
+
 Nest and HGO web use the shared exact-SHA materializer. It reads
 `releaseContext` from the owning manifest stored in the selected commit. Source
 allowlists, size ceilings, and provenance receipt names therefore cannot drift

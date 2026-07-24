@@ -49,7 +49,8 @@
     ],
     "deterministic": [
       "apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh verify",
-      "apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test"
+      "apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test",
+      "bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh"
     ],
     "localRuntime": [
       "Install the signed candidate on a physical supported iPhone and complete note, task, project, tag, and recording workflows."

@@ -43,6 +43,20 @@ test("Capture listing changes validate Capture without deploying web apps", () =
   assert.deepEqual(plan.changedSurfaces, ["capture"]);
 });
 
+test("Capture validators beat legacy broad scripts deploy prefixes", () => {
+  const plan = planChangedSurfaces([
+    "scripts/quipsly-ios-capture-app-store-static-smoke.mjs",
+    "scripts/release/quipsly-capture-app-store-metadata.mjs",
+  ]);
+
+  assert.equal(plan.capture, true);
+  assert.equal(plan.web, false);
+  assert.equal(plan.studio, false);
+  assert.equal(plan.quipsly, false);
+  assert.deepEqual(plan.deployTargets, []);
+  assert.deepEqual(plan.changedSurfaces, ["capture"]);
+});
+
 test("Nest app changes validate and deploy only Nest", () => {
   const plan = planChangedSurfaces([
     "apps/quipsly/src/app/api/mobile/capture/sessions/route.ts",
