@@ -83,7 +83,8 @@ The context:
 - records its source commit and inventory digest;
 - normalizes every file and directory timestamp to
   `2000-01-01T00:00:00Z`, so a new source commit does not invalidate unchanged
-  Docker `COPY` cache inputs;
+  Docker `COPY` cache inputs, then repeats normalization inside Cloud Build
+  after its source-extraction boundary;
 - fails above 300 MiB;
 - is checked in pull-request CI;
 - is the only source accepted by the preview deployment script.

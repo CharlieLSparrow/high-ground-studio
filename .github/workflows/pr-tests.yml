@@ -101,6 +101,7 @@ jobs:
           node --experimental-strip-types scripts/quipsly-livekit-join-token-contract.test.mjs
           bash -n scripts/release/quipsly-build-context.sh
           bash -n scripts/release/quipsly-build-context.test.sh
+          bash -n scripts/release/quipsly-normalize-context-metadata.sh
           bash -n scripts/release/quipsly-release-preflight.sh
           bash -n scripts/release/quipsly-smoke-preview.sh
           bash -n scripts/release/quipsly-schema-sync.sh

@@ -25,12 +25,28 @@ expected_sha="$(git -C "${repo_root}" rev-parse "${source_ref}^{commit}")"
 [[ -f "${context}/packages/quipsly-domain/package.json" ]]
 [[ -f "${context}/prisma/schema.prisma" ]]
 [[ -f "${context}/quipsly-release-source.json" ]]
+[[ -x "${context}/scripts/release/quipsly-normalize-context-metadata.sh" ]]
 [[ ! -e "${context}/.git" ]]
 [[ ! -e "${context}/apps/web/package.json" ]]
 [[ ! -e "${context}/apps/web/src" ]]
 [[ ! -e "${context}/apps/QuipslyStudio" ]]
 [[ ! -e "${context}/apps/mobile-capture" ]]
 [[ ! -e "${context}/node_modules" ]]
+
+normalize_line="$(
+  grep -n -- 'id: normalize-quipsly-context-metadata' \
+    "${repo_root}/cloudbuild.quipsly-web.yaml" \
+    | cut -d: -f1
+)"
+build_line="$(
+  grep -n -- 'id: build-quipsly-web-image' \
+    "${repo_root}/cloudbuild.quipsly-web.yaml" \
+    | cut -d: -f1
+)"
+if [[ -z "${normalize_line}" || -z "${build_line}" || "${normalize_line}" -ge "${build_line}" ]]; then
+  echo "Cloud Build must normalize extracted source before Kaniko runs." >&2
+  exit 1
+fi
 
 destination_count="$(
   grep -c -- '^[[:space:]]*- --destination=' \
@@ -44,6 +60,12 @@ if grep -Fq '${_IMAGE_NAME}:latest' "${repo_root}/cloudbuild.quipsly-web.yaml"; 
   echo "Preview-capable Cloud Build must not mutate the production latest alias." >&2
   exit 1
 fi
+
+# Simulate Cloud Build source extraction changing metadata, then prove the
+# guarded normalizer restores a stable tree before Kaniko receives it.
+touch "${context}/package.json" "${context}/pnpm-lock.yaml"
+bash "${repo_root}/scripts/release/quipsly-normalize-context-metadata.sh" \
+  "${context}"
 
 python3 - "${context}" <<'PY'
 import os

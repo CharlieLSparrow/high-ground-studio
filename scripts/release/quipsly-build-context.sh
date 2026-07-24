@@ -4,7 +4,6 @@ set -euo pipefail
 SOURCE_REF="${1:-${SOURCE_REF:-HEAD}}"
 OUTPUT_DIR="${2:-}"
 CONTEXT_MAX_MIB="${CONTEXT_MAX_MIB:-300}"
-NORMALIZED_RELEASE_MTIME="200001010000.00"
 NORMALIZED_RELEASE_MTIME_UTC="2000-01-01T00:00:00Z"
 
 repo_root="$(git rev-parse --show-toplevel)"
@@ -90,9 +89,11 @@ EOF
 touch "${output_dir}/.quipsly-release-context"
 
 # git archive assigns the source commit's timestamp to every extracted path.
-# Normalize metadata after writing our generated files so unchanged Docker COPY
-# inputs retain identical Kaniko cache keys across different source commits.
-TZ=UTC find "${output_dir}" -exec touch -t "${NORMALIZED_RELEASE_MTIME}" {} +
+# Cloud Build also restamps uploaded source when it extracts the context. This
+# first pass stabilizes local proof; cloudbuild.quipsly-web.yaml repeats it in
+# the worker immediately before Kaniko computes cache keys.
+bash "${repo_root}/scripts/release/quipsly-normalize-context-metadata.sh" \
+  "${output_dir}"
 
 read -r context_files context_bytes < <(
   python3 - "${output_dir}" <<'PY'

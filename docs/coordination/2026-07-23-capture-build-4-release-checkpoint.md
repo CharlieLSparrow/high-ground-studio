@@ -137,11 +137,12 @@ container healthy. The reusable signed journey is committed at `3d6d4dc`.
 The two exact-SHA preview builds each took about eight minutes even though
 their dependency manifests were unchanged. Audit found that `git archive`
 assigned each context the source commit's timestamp, changing Kaniko `COPY`
-cache keys. The release-context builder now normalizes all metadata timestamps,
-its regression test checks the entire tree, and preview Cloud Builds no longer
-mutate `studio:latest`. Local cross-commit proof confirms identical dependency
-content now has identical metadata; the next remote build remains the required
-Kaniko cache-hit measurement.
+cache keys. A remote repeat then proved that Cloud Build's source extraction
+restamps the uploaded files again. A guarded normalizer now runs both while
+materializing the release context and inside the worker before Kaniko; its
+regression test simulates that extraction drift and checks the entire tree.
+Preview Cloud Builds also no longer mutate `studio:latest`. The next paired
+remote build remains the required Kaniko cache-hit measurement.
 
 Do not distribute Build 4 as a working production account-deletion or Home Nest
 candidate until production promotion is explicitly approved and its traffic,
