@@ -98,6 +98,12 @@ tag. It must not update `studio:latest`, because a no-traffic validation build
 is not production. The GitHub production workflow may publish the compatibility
 `latest` alias only while it is building the same explicitly promoted SHA.
 
+Cloud Build uses the Google-supported Docker builder, pinned by digest, with a
+version-pinned BuildKit `docker-container` worker. Its registry cache is a
+separate `studio-build-cache:main` image exported in `mode=max`, so intermediate
+dependency stages can be reused without coupling a preview to a mutable runtime
+tag. The obsolete Kaniko builder is not a Quipsly release dependency.
+
 ## Asset boundary
 
 The 300 MiB cap is a migration ceiling, not a healthy steady-state target.

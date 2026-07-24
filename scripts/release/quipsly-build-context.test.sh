@@ -48,18 +48,23 @@ if [[ -z "${normalize_line}" || -z "${build_line}" || "${normalize_line}" -ge "$
   exit 1
 fi
 
-destination_count="$(
-  grep -c -- '^[[:space:]]*- --destination=' \
-    "${repo_root}/cloudbuild.quipsly-web.yaml"
-)"
-if [[ "${destination_count}" != "1" ]]; then
-  echo "Preview-capable Cloud Build must publish exactly one immutable image tag." >&2
-  exit 1
-fi
-if grep -Fq '${_IMAGE_NAME}:latest' "${repo_root}/cloudbuild.quipsly-web.yaml"; then
+cloudbuild_config="${repo_root}/cloudbuild.quipsly-web.yaml"
+if grep -Fq '${_IMAGE_NAME}:latest' "${cloudbuild_config}"; then
   echo "Preview-capable Cloud Build must not mutate the production latest alias." >&2
   exit 1
 fi
+grep -Fq \
+  'gcr.io/cloud-builders/docker@sha256:680b2a8d18a794c165cf97a3f9476784d5d962e945d424cb40b3e086cde0c284' \
+  "${cloudbuild_config}"
+grep -Fq -- '--driver docker-container' "${cloudbuild_config}"
+grep -Fq -- '--driver-opt image=moby/buildkit:v0.30.0' "${cloudbuild_config}"
+grep -Fq -- '--cache-from "type=registry,ref=$${cache_image}"' \
+  "${cloudbuild_config}"
+grep -Fq -- \
+  '--cache-to "type=registry,ref=$${cache_image},mode=max,compression=zstd,oci-mediatypes=true,image-manifest=true"' \
+  "${cloudbuild_config}"
+grep -Fq -- '--tag "$${image}"' "${cloudbuild_config}"
+grep -Fq -- '--push' "${cloudbuild_config}"
 
 # Simulate Cloud Build source extraction changing metadata, then prove the
 # guarded normalizer restores a stable tree before Kaniko receives it.

@@ -141,8 +141,11 @@ cache keys. A remote repeat then proved that Cloud Build's source extraction
 restamps the uploaded files again. A guarded normalizer now runs both while
 materializing the release context and inside the worker before Kaniko; its
 regression test simulates that extraction drift and checks the entire tree.
-Preview Cloud Builds also no longer mutate `studio:latest`. The next paired
-remote build remains the required Kaniko cache-hit measurement.
+Even then, Kaniko generated a third dependency key for identical source. The
+pipeline now uses a digest-pinned Google Docker builder plus version-pinned
+BuildKit and a separate registry cache exported in `mode=max`. Preview builds
+also no longer mutate `studio:latest`. A seed/repeat measurement remains
+required before claiming the BuildKit cache is effective.
 
 Do not distribute Build 4 as a working production account-deletion or Home Nest
 candidate until production promotion is explicitly approved and its traffic,

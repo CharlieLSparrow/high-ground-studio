@@ -14,6 +14,8 @@ substitutions:
   _NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "249115653261"
   _NEXT_PUBLIC_FIREBASE_APP_ID: "1:249115653261:web:d49c566ebe99148cbddec4"
   _NODE_OPTIONS: "--max-old-space-size=8192"
+  _BUILD_CACHE_IMAGE_NAME: studio-build-cache
+  _BUILD_CACHE_TAG: main
 
 steps:
   - id: normalize-quipsly-context-metadata
@@ -24,23 +26,44 @@ steps:
       - /workspace
 
   - id: build-quipsly-web-image
-    name: gcr.io/kaniko-project/executor:latest
+    name: gcr.io/cloud-builders/docker@sha256:680b2a8d18a794c165cf97a3f9476784d5d962e945d424cb40b3e086cde0c284
+    entrypoint: bash
     args:
-      - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
-      - --cache=true
-      - --cache-ttl=168h
-      - --build-arg=NEXT_PUBLIC_STUDIO_COLLAB_URL=${_NEXT_PUBLIC_STUDIO_COLLAB_URL}
-      - --build-arg=STUDIO_COLLAB_URL=${_STUDIO_COLLAB_URL}
-      - --build-arg=QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=${_QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS}
-      - --build-arg=QUIPSLY_BUILD_ID=${_QUIPSLY_BUILD_ID}
-      - --build-arg=NEXT_PUBLIC_FIREBASE_API_KEY=${_NEXT_PUBLIC_FIREBASE_API_KEY}
-      - --build-arg=NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN}
-      - --build-arg=NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_NEXT_PUBLIC_FIREBASE_PROJECT_ID}
-      - --build-arg=NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET}
-      - --build-arg=NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID}
-      - --build-arg=NEXT_PUBLIC_FIREBASE_APP_ID=${_NEXT_PUBLIC_FIREBASE_APP_ID}
-      - --build-arg=NODE_OPTIONS=${_NODE_OPTIONS}
-      - --dockerfile=apps/quipsly/Dockerfile
+      - -euo
+      - pipefail
+      - -c
+      - |
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        cache_image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_BUILD_CACHE_IMAGE_NAME}:${_BUILD_CACHE_TAG}"
+
+        docker buildx version
+        docker buildx create \
+          --name quipsly-cloud-build \
+          --driver docker-container \
+          --driver-opt image=moby/buildkit:v0.30.0 \
+          --use
+        docker buildx inspect --bootstrap
+        docker buildx build \
+          --builder quipsly-cloud-build \
+          --platform linux/amd64 \
+          --progress plain \
+          --file apps/quipsly/Dockerfile \
+          --tag "$${image}" \
+          --cache-from "type=registry,ref=$${cache_image}" \
+          --cache-to "type=registry,ref=$${cache_image},mode=max,compression=zstd,oci-mediatypes=true,image-manifest=true" \
+          --build-arg NEXT_PUBLIC_STUDIO_COLLAB_URL=${_NEXT_PUBLIC_STUDIO_COLLAB_URL} \
+          --build-arg STUDIO_COLLAB_URL=${_STUDIO_COLLAB_URL} \
+          --build-arg QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=${_QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS} \
+          --build-arg QUIPSLY_BUILD_ID=${_QUIPSLY_BUILD_ID} \
+          --build-arg NEXT_PUBLIC_FIREBASE_API_KEY=${_NEXT_PUBLIC_FIREBASE_API_KEY} \
+          --build-arg NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=${_NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN} \
+          --build-arg NEXT_PUBLIC_FIREBASE_PROJECT_ID=${_NEXT_PUBLIC_FIREBASE_PROJECT_ID} \
+          --build-arg NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=${_NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET} \
+          --build-arg NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=${_NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID} \
+          --build-arg NEXT_PUBLIC_FIREBASE_APP_ID=${_NEXT_PUBLIC_FIREBASE_APP_ID} \
+          --build-arg NODE_OPTIONS=${_NODE_OPTIONS} \
+          --push \
+          .
 
   - id: verify-quipsly-web-image
     name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
