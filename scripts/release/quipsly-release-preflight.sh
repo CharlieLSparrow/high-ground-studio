@@ -11,6 +11,47 @@ CONTEXT_WARN_MIB="${CONTEXT_WARN_MIB:-150}"
 CONTEXT_MAX_MIB="${CONTEXT_MAX_MIB:-300}"
 ALLOW_DIRTY_RELEASE="${ALLOW_DIRTY_RELEASE:-0}"
 RELEASE_CONTEXT_DIR="${RELEASE_CONTEXT_DIR:-}"
+QUIPSLY_PREFLIGHT_PURPOSE="${QUIPSLY_PREFLIGHT_PURPOSE:-audit}"
+
+case "${QUIPSLY_PREFLIGHT_PURPOSE}" in
+  audit|preview)
+    ;;
+  *)
+    echo "QUIPSLY_PREFLIGHT_PURPOSE must be audit or preview." >&2
+    exit 2
+    ;;
+esac
+
+# A standalone preflight must inspect the same manifest-built, committed source
+# context that Cloud Build will receive. Re-enter once with that context rather
+# than measuring ignored developer outputs from the monorepo worktree.
+if [[ -z "${RELEASE_CONTEXT_DIR}" ]]; then
+  repo_root="$(git rev-parse --show-toplevel)"
+  resolved_source_sha="$(git -C "${repo_root}" rev-parse --verify "${SOURCE_REF:-HEAD}^{commit}")"
+  preflight_root="$(mktemp -d "${TMPDIR:-/tmp}/quipsly-preflight-${resolved_source_sha:0:12}.XXXXXX")"
+  preflight_context="${preflight_root}/context"
+
+  cleanup_preflight_context() {
+    if [[ -f "${preflight_context}/.quipsly-release-context" ]]; then
+      rm -rf -- "${preflight_root}"
+    else
+      echo "Refusing to remove unmarked preflight directory: ${preflight_root}" >&2
+    fi
+  }
+  trap cleanup_preflight_context EXIT
+
+  preflight_context="$(
+    "${repo_root}/scripts/release/quipsly-build-context.sh" \
+      "${resolved_source_sha}" \
+      "${preflight_context}"
+  )"
+
+  RELEASE_CONTEXT_DIR="${preflight_context}" \
+    SOURCE_REF="${resolved_source_sha}" \
+    QUIPSLY_PREFLIGHT_PURPOSE="${QUIPSLY_PREFLIGHT_PURPOSE}" \
+    bash "${BASH_SOURCE[0]}"
+  exit $?
+fi
 
 failures=0
 
@@ -199,6 +240,8 @@ if PROJECT_ID="${PROJECT_ID}" \
   PRODUCTION_DOMAIN="${HOST_HEADER}" \
   bash scripts/release/quipsly-production-status.sh; then
   pass "Production infrastructure and public routes agree."
+elif [[ "${QUIPSLY_PREFLIGHT_PURPOSE}" == "preview" ]]; then
+  warn "Current production has blockers; continuing only because a no-traffic preview may repair them."
 else
   fail "Production recovery gate failed. Do not deploy or promote."
 fi

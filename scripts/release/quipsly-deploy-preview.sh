@@ -80,6 +80,7 @@ echo "=========================================================="
 
 RELEASE_CONTEXT_DIR="${release_context}" \
   SOURCE_REF="${resolved_source_sha}" \
+  QUIPSLY_PREFLIGHT_PURPOSE=preview \
   bash "${repo_root}/scripts/release/quipsly-release-preflight.sh"
 
 if [[ "${SKIP_BUILD:-0}" == "1" || "${SKIP_CLOUD_BUILD:-0}" == "1" ]]; then

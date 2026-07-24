@@ -17,15 +17,18 @@ The service name can be renamed later. For beta, stability matters more than a c
 
 1. Choose a committed source SHA. The deploy script archives that commit into a
    bounded release context; the dirty working tree is never build input.
-2. Run release preflight and build the exact-SHA image.
+2. Run release preflight and build the exact-SHA image. Standalone preflight
+   materializes the same manifest-bounded context as Cloud Build; it does not
+   measure local `.next-*` output or the rest of the monorepo.
 3. Check production schema status. Back up and migrate in separate, explicit
    jobs when needed; app deployment never silently changes schema.
 4. Deploy a tagged Cloud Run preview with zero traffic.
 5. Run anonymous-boundary, authenticated-workspace, schema, public-host, and
    signed-receipt smoke against that exact revision.
-6. Inspect logs and traffic, then promote only with explicit authorization.
-7. Preserve rollback by keeping the previous production revision named and
-   visible.
+6. Resolve the preview tag to one immutable revision, verify its embedded source
+   SHA, and repeat the signed smoke immediately before promotion.
+7. Promote that revision—not the movable tag—and run production readback. If
+   readback fails, automatically restore 100% traffic to the previous revision.
 
 ## Scripts
 
@@ -87,11 +90,27 @@ Inspect current traffic:
 scripts/release/quipsly-traffic.sh
 ```
 
-Promote the preview tag after smoke passes:
+Promote the exact preview revision. Promotion requires the reviewer credential
+through the environment, retrieves the managed smoke secret without printing
+it, repeats the full candidate smoke, refuses a tag that moved during smoke,
+and verifies that the candidate embeds `SOURCE_REF`:
 
 ```bash
-scripts/release/quipsly-promote-preview.sh
+QUIPSLY_AUTH_SMOKE_EMAIL=codex@dev.test \
+QUIPSLY_AUTH_SMOKE_PASSWORD="$(
+  security find-generic-password \
+    -s quipsly-capture-reviewer \
+    -a codex@dev.test \
+    -w
+)" \
+SOURCE_REF=<committed-sha> \
+PROJECT_ID=high-ground-odyssey \
+bash scripts/release/quipsly-promote-preview.sh
 ```
+
+The current production audit can report route drift while a no-traffic repair
+preview is being prepared. That drift is never accepted as candidate evidence:
+preview smoke and post-promotion production readback remain mandatory.
 
 Rollback to a known revision:
 

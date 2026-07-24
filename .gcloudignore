@@ -25,6 +25,7 @@ pnpm-store/
 **/.cache/
 .next/
 **/.next/
+**/.next-*/
 **/.build/
 **/dist/
 **/build/
