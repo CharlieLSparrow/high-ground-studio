@@ -144,8 +144,24 @@ regression test simulates that extraction drift and checks the entire tree.
 Even then, Kaniko generated a third dependency key for identical source. The
 pipeline now uses a digest-pinned Google Docker builder plus version-pinned
 BuildKit and a separate registry cache exported in `mode=max`. Preview builds
-also no longer mutate `studio:latest`. A seed/repeat measurement remains
-required before claiming the BuildKit cache is effective.
+also no longer mutate `studio:latest`.
+
+The BuildKit proof is now complete:
+
+- seed build `4f731c99-1ae0-44d0-b401-6caeefc7d2a9` succeeded in 6 minutes
+  21 seconds of worker time and verified digest
+  `sha256:1ef6e5d0e545a6e2fa7db5a7951e3116db690db3d69eeaacef41fc9f3e6a499f`;
+- identical-context repeat `c02e02b1-a95f-4933-8f3d-b31cf583f5b7` succeeded in
+  59.8 seconds of worker time and 120.0 seconds create-to-finish;
+- the repeat reported `CACHED` for every Dockerfile layer, including
+  `pnpm install` and the complete Next.js production build;
+- both images independently passed digest readback and the six required route
+  bundle checks;
+- production traffic remained 100% on `studio-00331-kll`, while validated
+  preview `studio-00400-tep` remained a 0% tagged revision;
+- legacy `studio:latest` still points to preview digest
+  `sha256:2d4703f30dfdccb82cb0158183c83a813535472ef29922568f3a8a62ef00523a`
+  and is no longer mutated by the preview-capable pipeline.
 
 Do not distribute Build 4 as a working production account-deletion or Home Nest
 candidate until production promotion is explicitly approved and its traffic,

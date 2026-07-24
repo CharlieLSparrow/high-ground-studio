@@ -82,9 +82,8 @@ The context:
   media, and agent scratch data;
 - records its source commit and inventory digest;
 - normalizes every file and directory timestamp to
-  `2000-01-01T00:00:00Z`, so a new source commit does not invalidate unchanged
-  Docker `COPY` cache inputs, then repeats normalization inside Cloud Build
-  after its source-extraction boundary;
+  `2000-01-01T00:00:00Z`, then repeats normalization inside Cloud Build after
+  its source-extraction boundary;
 - fails above 300 MiB;
 - is checked in pull-request CI;
 - is the only source accepted by the preview deployment script.
@@ -103,6 +102,12 @@ version-pinned BuildKit `docker-container` worker. Its registry cache is a
 separate `studio-build-cache:main` image exported in `mode=max`, so intermediate
 dependency stages can be reused without coupling a preview to a mutable runtime
 tag. The obsolete Kaniko builder is not a Quipsly release dependency.
+
+Remote seed/repeat proof on 2026-07-24 showed every Dockerfile layer as
+`CACHED` on the repeat, including `pnpm install` and the Next.js production
+build. The repeat's worker time was 59.8 seconds and its create-to-finish time
+was 120.0 seconds. Both runs independently verified the pushed digest and all
+six required route bundles.
 
 ## Asset boundary
 
