@@ -847,7 +847,13 @@ final class ShareCaptureExtensionUITests: XCTestCase {
         XCTAssertTrue(captureApp.descendants(matching: .any)["CapturePreviewModeBadge"].waitForExistence(timeout: 12))
 
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
-        safari.activate()
+        // Each test crosses the real Safari Share Sheet boundary. A hosted
+        // simulator can leave that system process waiting for an animation
+        // completion notification after the prior extension test, which makes
+        // a later tap synthesize correctly but never dispatch. Start each test
+        // with a fresh Safari process while preserving its installed app data.
+        safari.terminate()
+        safari.launch()
         if safari.navigationBars["SLSheetRootView"].exists, safari.buttons["Cancel"].exists {
             safari.buttons["Cancel"].tap()
         }
