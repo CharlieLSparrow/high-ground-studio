@@ -36,6 +36,10 @@ Dependabot monitors pnpm, GitHub Actions, Capture Ruby tooling, and the Nest
 Dockerfile. Minor and patch Node updates are grouped. Major upgrades require a
 separate compatibility plan and consuming-runtime proof.
 
+Every external GitHub Action is pinned to its immutable 40-character commit
+SHA with a readable release comment. Dependabot owns routine pin updates; CI
+rejects floating major tags and branches.
+
 ## Documentation ownership
 
 The root README, contributor/security policies, development guide,

@@ -68,6 +68,13 @@ export const DEFAULT_CONTRACT = {
     "## Reviewer focus",
     "## Checklist",
   ],
+  workflowFiles: [
+    ".github/workflows/capture-pr-tests.yml",
+    ".github/workflows/deploy-cloud-run.yml",
+    ".github/workflows/deploy.yml",
+    ".github/workflows/pr-tests.yml",
+    ".github/workflows/typescript-7.yml",
+  ],
   nodeVersion: "24.14.0",
   packageManager: "pnpm@10.30.3",
 };
@@ -131,6 +138,24 @@ function includesCodeownerPattern(contents, expectedPattern) {
     .some((line) => line.split(/\s+/, 1)[0] === expectedPattern);
 }
 
+export function validateActionPins(workflowPath, workflow) {
+  const errors = [];
+  const usesPattern = /^\s*(?:-\s*)?uses:\s*([^\s#]+)(?:\s+#.*)?$/gm;
+
+  for (const match of workflow.matchAll(usesPattern)) {
+    const action = match[1];
+    if (action.startsWith("./") || action.startsWith("docker://")) continue;
+
+    const separator = action.lastIndexOf("@");
+    const ref = separator >= 0 ? action.slice(separator + 1) : "";
+    if (!/^[0-9a-f]{40}$/.test(ref)) {
+      errors.push(`${workflowPath}: action must be pinned to a full commit SHA: ${action}`);
+    }
+  }
+
+  return errors;
+}
+
 export function auditRepository(root, contract = DEFAULT_CONTRACT) {
   const errors = [];
   const read = (relativePath) => readFileSync(path.join(root, relativePath), "utf8");
@@ -166,6 +191,11 @@ export function auditRepository(root, contract = DEFAULT_CONTRACT) {
         errors.push(`pull request template is missing ${heading}`);
       }
     }
+  }
+
+  for (const workflowPath of contract.workflowFiles ?? []) {
+    if (!existsSync(path.join(root, workflowPath))) continue;
+    errors.push(...validateActionPins(workflowPath, read(workflowPath)));
   }
 
   if (contract.nodeVersion && existsSync(path.join(root, ".node-version"))) {
