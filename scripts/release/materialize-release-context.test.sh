@@ -116,6 +116,25 @@ NODE
         )
         echo "PASS HGO web exact context installs, tests, and production-builds."
       fi
+      if [[ "${BUILD_WEB_CONTAINER:-0}" == "1" ]]; then
+        image_tag="hgo-web-release-context-smoke:${expected_sha:0:12}"
+        docker build \
+          --file "${context}/apps/web/Dockerfile" \
+          --build-arg "HGO_BUILD_ID=${expected_sha}" \
+          --tag "${image_tag}" \
+          "${context}"
+        image_revision="$(
+          docker image inspect \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' \
+            "${image_tag}"
+        )"
+        if [[ "${image_revision}" != "${expected_sha}" ]]; then
+          echo "Expected image revision ${expected_sha}, got ${image_revision}." >&2
+          exit 1
+        fi
+        docker image rm "${image_tag}" >/dev/null
+        echo "PASS HGO web container embeds exact source ${expected_sha}."
+      fi
       ;;
   esac
 

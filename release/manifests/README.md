@@ -34,6 +34,8 @@ node --experimental-strip-types --test \
   scripts/ci/plan-changed-surfaces.test.mjs
 BUILD_WEB_CONTEXT=1 \
   bash scripts/release/materialize-release-context.test.sh hgo-web
+BUILD_WEB_CONTAINER=1 \
+  bash scripts/release/materialize-release-context.test.sh hgo-web
 ```
 
 The TypeScript 7 validator rejects unknown properties, missing proof levels,
