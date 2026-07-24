@@ -26,6 +26,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let projectName: String?
         let projectTaskTitle: String?
         let projectTagLabel: String?
+        let projectRetagLabel: String?
         let goalID: String?
         let planBlockID: String?
     }
@@ -54,6 +55,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 projectName: environment["QUIPSLY_CAPTURE_UI_TEST_PROJECT_NAME"],
                 projectTaskTitle: environment["QUIPSLY_CAPTURE_UI_TEST_PROJECT_TASK_TITLE"],
                 projectTagLabel: environment["QUIPSLY_CAPTURE_UI_TEST_PROJECT_TAG_LABEL"],
+                projectRetagLabel: environment["QUIPSLY_CAPTURE_UI_TEST_PROJECT_RETAG_LABEL"],
                 goalID: environment["QUIPSLY_CAPTURE_UI_TEST_GOAL_ID"],
                 planBlockID: environment["QUIPSLY_CAPTURE_UI_TEST_PLAN_BLOCK_ID"]
             )
@@ -95,6 +97,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             projectName: payload["projectName"] as? String,
             projectTaskTitle: payload["projectTaskTitle"] as? String,
             projectTagLabel: payload["projectTagLabel"] as? String,
+            projectRetagLabel: payload["projectRetagLabel"] as? String,
             goalID: payload["goalID"] as? String,
             planBlockID: payload["planBlockID"] as? String
         )
@@ -221,19 +224,35 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     private func workTagChoice(label: String, in app: XCUIApplication) -> XCUIElement {
         let choice = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS %@", label)
+            NSPredicate(
+                format: "identifier BEGINSWITH %@ AND label CONTAINS %@",
+                "CaptureTodayWorkTag_",
+                label
+            )
         ).firstMatch
+        var usedSearch: XCUIElement?
+        if !choice.waitForExistence(timeout: 2) {
+            let search = app.searchFields["Find a tag"].firstMatch
+            XCTAssertTrue(
+                search.waitForExistence(timeout: 5),
+                "The canonical tag editor should expose its search control."
+            )
+            search.tap()
+            search.typeText(label)
+            usedSearch = search
+        }
         XCTAssertTrue(
             choice.waitForExistence(timeout: 8),
             "The exact reusable Nest tag should be selectable on iPhone."
         )
+        usedSearch?.typeKey(.return, modifierFlags: [])
         return choice
     }
 
     private func saveWorkTags(taskID: String, in app: XCUIApplication, expectImmediateReadback: Bool) {
         let save = app.buttons["CaptureTodayWorkTagsSave"].firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 5))
-        XCTAssertTrue(save.isEnabled)
+        XCTAssertTrue(save.isHittable)
         save.tap()
         let pending = app.descendants(matching: .any)["CaptureTodayTaskTagsPending_\(taskID)"].firstMatch
         if expectImmediateReadback {
@@ -428,8 +447,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
               let taskTitle = credentials.projectTaskTitle,
               !taskTitle.isEmpty,
               let tagLabel = credentials.projectTagLabel,
-              !tagLabel.isEmpty else {
-            throw XCTSkip("Direct project capture requires one writable Nest name, unique Task title, and existing canonical tag label.")
+              !tagLabel.isEmpty,
+              let retagLabel = credentials.projectRetagLabel,
+              !retagLabel.isEmpty else {
+            throw XCTSkip("Direct project capture requires one writable Nest name, unique Task title, and two existing canonical tag labels.")
         }
 
         let app = try launchSignedInCaptureApp()
@@ -514,6 +535,40 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(
             waitForRuntimeElement(app.staticTexts[taskTitle].firstMatch, in: app, timeout: 30, swipeAttempts: 10),
             "The same signed iPhone Work surface should read the new canonical task back from Nest."
+        )
+
+        let editTags = app.buttons["Edit tags for \(taskTitle)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(editTags, in: app, timeout: 20, swipeAttempts: 10),
+            "The canonical task should expose its reusable Nest tags directly in Work."
+        )
+        for _ in 0..<6 where !editTags.isHittable { app.swipeUp() }
+        XCTAssertTrue(editTags.isHittable)
+        editTags.tap()
+        XCTAssertTrue(app.navigationBars["Edit tags"].waitForExistence(timeout: 8))
+
+        let secondTag = workTagChoice(label: retagLabel, in: app)
+        XCTAssertNotEqual(secondTag.value as? String, "Selected", "The operated proof needs a genuinely new second tag assignment.")
+        let tagList = app.collectionViews.firstMatch
+        for _ in 0..<8 where !secondTag.isHittable {
+            tagList.swipeUp()
+        }
+        XCTAssertTrue(secondTag.isHittable)
+        secondTag.tap()
+        expectation(for: NSPredicate(format: "value == %@", "Selected"), evaluatedWith: secondTag)
+        waitForExpectations(timeout: 4)
+
+        let saveTags = app.buttons["CaptureTodayWorkTagsSave"].firstMatch
+        XCTAssertTrue(saveTags.waitForExistence(timeout: 5))
+        XCTAssertTrue(saveTags.isHittable)
+        saveTags.tap()
+        XCTAssertTrue(app.navigationBars["Edit tags"].waitForNonExistence(timeout: 8))
+        let retagReadback = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "#\(retagLabel)")
+        ).firstMatch
+        XCTAssertTrue(
+            retagReadback.waitForExistence(timeout: 30),
+            "Work should read the added canonical tag back on the same task surface."
         )
         attachRecordingIdentity(taskTitle, name: "Direct project iPhone task title")
     }

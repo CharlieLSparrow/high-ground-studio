@@ -66,6 +66,9 @@ The Work surface does not create a second mobile record model.
 - The phone journals the complete request before network sync.
 - Retry retains the same UUID and project identity.
 - Tags are selected from that Nest's canonical active vocabulary; new names use the existing protected tag intent.
+- Existing Tasks and Goals expose the same complete tag-set editor directly in Work. It searches the selected Nest's active vocabulary and keeps one persistent `Save changes` action reachable above long lists and the software keyboard.
+- A Task or Goal tag change enters the actor-partitioned protected work-tag outbox before sync, retains one request UUID across retry, uses optimistic revision evidence, and replaces only that record's canonical tag links.
+- Pending and held tag decisions render beside the affected Work record. A held decision can be discarded explicitly; a pending decision is reconciled through the same Today/Nest mutation client instead of inventing a Work-only write route.
 - Task completion and Goal check-ins reuse the existing optimistic Today mutation contract.
 - Acknowledgement and held/retry state are visible inside Work, not hidden on the Record tab.
 
@@ -82,7 +85,7 @@ The envelope contains:
 - save time;
 - the exact canonical response.
 
-Restore requires the same owner and a snapshot no older than 30 days. Sign-out deletes the Work cache. An offline snapshot is visibly labeled and Task/Goal mutations remain disabled until Nest verifies current revisions. Protected quick-capture outboxes remain the only offline write path.
+Restore requires the same owner and a snapshot no older than 30 days. Sign-out deletes the Work cache. An offline snapshot is visibly labeled. Completion and Goal-progress changes remain disabled until Nest verifies current revisions, while an explicit complete tag-set choice can enter the protected work-tag outbox and reconcile after reconnect. Protected quick-capture and tag-decision outboxes are the only offline write paths.
 
 ## Verification
 
@@ -100,6 +103,21 @@ The 2026-07-24 checkpoint proved:
 - no provider, Calendar, message, invitation, delivery, source, or publication side effect.
 
 Temporary emulator credentials and the temporary Firebase Auth user were removed. The canonical local dogfood Task remains as useful project work.
+
+The follow-on Work-native retag checkpoint additionally proved:
+
+- existing Task and Goal tag controls are visible and reachable from their Work cards;
+- a large persistent save action works with a searched real taxonomy;
+- signed native creation of Task `mobile-task-4e32e027-e14d-4403-81f9-687387468d13` (`iPhone Work retag proof 20260724T182249`);
+- same-surface mutation and readback from `Proof listen` to the complete two-tag set `Product development` plus `Proof listen`;
+- independent PostgreSQL reconciliation of exactly two `ActionItemTagLink` rows;
+- receipt `work-tags-fd2a3fd8-0c6e-47b9-93ed-4afc932a9a5b`, bound to the exact actor, Task, project, and tag identities with `externalSideEffects:false`;
+- signed XCUITest completion in 73.923 seconds;
+- deterministic navigation and Work journeys passing 2/2 on the final UI;
+- 74/74 mobile source contracts, 104/104 local source-and-network contracts, 633/633 Capture App Store static checks, and 21/21 pinned TypeScript 7.0.2 projects;
+- deletion of seven superseded failed-run synthetic Task rows after confirming they had no Goal, occurrence, reminder, or work-plan dependencies.
+
+The successful proof Task remains; temporary credentials and the temporary verified Firebase emulator user were removed.
 
 ## Open release gates
 

@@ -63,10 +63,18 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(taskTitle)
         XCTAssertTrue(taskTitle.exists)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "CaptureWorkTask_preview-work-task").firstMatch.exists)
+        let taskTagEditor = app.buttons["Edit tags for Proof-listen the episode opening"]
+        reveal(taskTagEditor)
+        XCTAssertTrue(taskTagEditor.exists)
+        XCTAssertFalse(taskTagEditor.isEnabled, "Preview Work must expose tag ownership without pretending a canonical mutation is available.")
         let goalTitle = app.staticTexts["Publish an episode we trust"]
         reveal(goalTitle)
         XCTAssertTrue(goalTitle.exists)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "CaptureWorkGoal_preview-work-goal").firstMatch.exists)
+        let goalTagEditor = app.buttons["Edit tags for Publish an episode we trust"]
+        reveal(goalTagEditor)
+        XCTAssertTrue(goalTagEditor.exists)
+        XCTAssertFalse(goalTagEditor.isEnabled, "Preview Work must never fake a Goal tag mutation.")
 
         let noteTitle = app.staticTexts["Opening idea"]
         reveal(noteTitle)

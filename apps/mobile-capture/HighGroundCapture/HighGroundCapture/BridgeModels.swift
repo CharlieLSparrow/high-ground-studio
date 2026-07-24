@@ -2928,9 +2928,11 @@ final class CaptureTodayClient: ObservableObject {
         entityID: String,
         projectID: String,
         tagIDs: [String],
-        expectedUpdatedAt: String
+        expectedUpdatedAt: String,
+        availableTagIDs: Set<String>? = nil
     ) async -> Bool {
-        let allowedTagIDs = Set(tags(for: projectID).filter(\.isActive).map(\.id))
+        let allowedTagIDs = availableTagIDs
+            ?? Set(tags(for: projectID).filter(\.isActive).map(\.id))
         let normalized = Array(Set(tagIDs)).sorted()
         guard normalized.count == tagIDs.count,
               normalized.count <= 24,

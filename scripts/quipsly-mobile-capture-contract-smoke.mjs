@@ -787,9 +787,13 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes('accessibilityIdentifier("CaptureWorkView")')
       && capturePhoneShellText.includes("CaptureWorkQuickEntry_")
       && capturePhoneShellText.includes("initialProject: captureDestination")
-      && capturePhoneShellText.includes("CaptureQuickEntrySyncCard(model: model)"),
+      && capturePhoneShellText.includes("CaptureQuickEntrySyncCard(model: model)")
+      && capturePhoneShellText.includes("CaptureWorkTaskTagsEdit_")
+      && capturePhoneShellText.includes("CaptureWorkGoalTagsEdit_")
+      && capturePhoneShellText.includes("availableTags: workTagCatalog")
+      && capturePhoneShellText.includes("workTagDecisionStatus"),
     "nativeCanonicalProjectWorkWorkspace",
-    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, and pre-binds protected quick capture to the selected writable Nest.",
+    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, and reconciles existing Task/Goal tag sets through the canonical phone outbox.",
   );
 }
 

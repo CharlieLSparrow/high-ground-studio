@@ -230,6 +230,8 @@ private struct CaptureWorkView: View {
     @State private var selectedTagID: String?
     @State private var showsCompletedTasks = false
     @State private var quickEntryKind: MobileQuickEntryKind?
+    @State private var taskTagsToEdit: MobileCaptureTodayTask?
+    @State private var goalTagsToEdit: MobileCaptureTodayGoal?
 
     init(model: CaptureExperienceModel) {
         self.model = model
@@ -288,6 +290,18 @@ private struct CaptureWorkView: View {
 
     private var retiredTags: [MobileCaptureWorkTag] {
         (workspace?.tags ?? []).filter { !$0.isActive }
+    }
+
+    private var workTagCatalog: [MobileCaptureTodayTag] {
+        (workspace?.tags ?? []).map {
+            MobileCaptureTodayTag(
+                id: $0.id,
+                projectId: $0.projectId,
+                slug: $0.slug,
+                label: $0.label,
+                isActive: $0.isActive
+            )
+        }
     }
 
     private var decisionsDisabled: Bool {
@@ -351,6 +365,7 @@ private struct CaptureWorkView: View {
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, prompt: "Find work or a tag")
         .refreshable {
+            await model.todayClient.load()
             await client.load(projectID: selectedProject?.id)
         }
         .sheet(item: $quickEntryKind) { kind in
@@ -360,6 +375,36 @@ private struct CaptureWorkView: View {
                 model: model,
                 initialProject: captureDestination
             )
+        }
+        .sheet(item: $taskTagsToEdit) { task in
+            if let project = task.project {
+                TodayWorkTagSheet(
+                    client: model.todayClient,
+                    kind: .task,
+                    entityID: task.id,
+                    entityTitle: task.title,
+                    project: project,
+                    canonicalTagIDs: task.tagIds ?? [],
+                    expectedUpdatedAt: task.updatedAt,
+                    availableTags: workTagCatalog,
+                    onSaved: reloadSelectedWork
+                )
+            }
+        }
+        .sheet(item: $goalTagsToEdit) { goal in
+            if let project = goal.project {
+                TodayWorkTagSheet(
+                    client: model.todayClient,
+                    kind: .goal,
+                    entityID: goal.id,
+                    entityTitle: goal.title,
+                    project: project,
+                    canonicalTagIDs: goal.tagIds ?? [],
+                    expectedUpdatedAt: goal.updatedAt,
+                    availableTags: workTagCatalog,
+                    onSaved: reloadSelectedWork
+                )
+            }
         }
         .onAppear {
             selectedProjectID = selectedProjectID ?? client.selectedProjectID
@@ -612,7 +657,13 @@ private struct CaptureWorkView: View {
     }
 
     private func workTaskRow(_ task: MobileCaptureTodayTask) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        let pendingTags = model.todayClient.pendingWorkTagDecision(kind: .task, entityID: task.id)
+        let visibleTagIDs = model.todayClient.effectiveTagIDs(
+            kind: .task,
+            entityID: task.id,
+            canonicalTagIDs: task.tagIds ?? []
+        )
+        return HStack(alignment: .top, spacing: 12) {
             Button {
                 Task {
                     if await model.todayClient.setTaskStatus(
@@ -638,7 +689,22 @@ private struct CaptureWorkView: View {
                 if let detail = task.detail, !detail.isEmpty {
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 }
-                workTagLabels(task.tagLabels ?? [])
+                workTagLabels(tagLabels(for: visibleTagIDs))
+                workTagDecisionStatus(kind: .task, entityID: task.id)
+                if task.canEditTags == true {
+                    Button {
+                        taskTagsToEdit = task
+                    } label: {
+                        Label("Edit tags", systemImage: "tag")
+                            .frame(minHeight: 44)
+                    }
+                    .font(.caption.weight(.bold))
+                    .buttonStyle(.bordered)
+                    .disabled(model.usesPreviewData || model.todayClient.isMutating || pendingTags != nil)
+                    .accessibilityLabel("Edit tags for \(task.title)")
+                    .accessibilityIdentifier("CaptureWorkTaskTagsEdit_\(task.id)")
+                    .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
+                }
             }
             Spacer(minLength: 0)
         }
@@ -652,7 +718,13 @@ private struct CaptureWorkView: View {
     }
 
     private func workGoalRow(_ goal: MobileCaptureTodayGoal) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
+        let pendingTags = model.todayClient.pendingWorkTagDecision(kind: .goal, entityID: goal.id)
+        let visibleTagIDs = model.todayClient.effectiveTagIDs(
+            kind: .goal,
+            entityID: goal.id,
+            canonicalTagIDs: goal.tagIds ?? []
+        )
+        return VStack(alignment: .leading, spacing: 9) {
             HStack(alignment: .top) {
                 Image(systemName: "target")
                     .foregroundStyle(CapturePalette.accent)
@@ -679,7 +751,22 @@ private struct CaptureWorkView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            workTagLabels(goal.tagLabels ?? [])
+            workTagLabels(tagLabels(for: visibleTagIDs))
+            workTagDecisionStatus(kind: .goal, entityID: goal.id)
+            if goal.canEditTags == true {
+                Button {
+                    goalTagsToEdit = goal
+                } label: {
+                    Label("Edit tags", systemImage: "tag")
+                        .frame(minHeight: 44)
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.bordered)
+                .disabled(model.usesPreviewData || model.todayClient.isMutating || pendingTags != nil)
+                .accessibilityLabel("Edit tags for \(goal.title)")
+                .accessibilityIdentifier("CaptureWorkGoalTagsEdit_\(goal.id)")
+                .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
+            }
         }
         .padding(14)
         .background(.background, in: RoundedRectangle(cornerRadius: 18))
@@ -738,6 +825,43 @@ private struct CaptureWorkView: View {
                 .foregroundStyle(CapturePalette.accent)
                 .lineLimit(2)
         }
+    }
+
+    private func tagLabels(for tagIDs: [String]) -> [String] {
+        let labelsByID = Dictionary(uniqueKeysWithValues: (workspace?.tags ?? []).map { ($0.id, $0.label) })
+        return tagIDs.compactMap { labelsByID[$0] }
+    }
+
+    @ViewBuilder
+    private func workTagDecisionStatus(
+        kind: PendingWorkTagDecision.EntityKind,
+        entityID: String
+    ) -> some View {
+        if let pending = model.todayClient.pendingWorkTagDecision(kind: kind, entityID: entityID) {
+            Label(
+                pending.disposition == .held ? "Phone tag change needs review" : "Tag change queued for Nest",
+                systemImage: pending.disposition == .held ? "exclamationmark.triangle.fill" : "tag.fill"
+            )
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(pending.disposition == .held ? Color.orange : Color.blue)
+            .accessibilityIdentifier("CaptureWorkTagsPending_\(kind.rawValue)_\(entityID)")
+            .accessibilityValue(pending.disposition == .held ? "Held" : "Queued")
+            if pending.disposition == .held {
+                Button("Discard phone tag change") {
+                    Task {
+                        await model.todayClient.discardHeldWorkTagDecision(kind: kind, entityID: entityID)
+                        await client.load(projectID: selectedProject?.id)
+                    }
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier("CaptureWorkTagsDiscard_\(kind.rawValue)_\(entityID)")
+            }
+        }
+    }
+
+    private func reloadSelectedWork() {
+        Task { await client.load(projectID: selectedProject?.id) }
     }
 
     private func compactEmpty(_ title: String, systemImage: String) -> some View {
@@ -1556,6 +1680,8 @@ private struct TodayWorkTagSheet: View {
     let project: MobileCaptureTodayProject
     let canonicalTagIDs: [String]
     let expectedUpdatedAt: String
+    let availableTags: [MobileCaptureTodayTag]?
+    let onSaved: (() -> Void)?
 
     @State private var selectedTagIDs: Set<String>
     @State private var searchText = ""
@@ -1567,7 +1693,9 @@ private struct TodayWorkTagSheet: View {
         entityTitle: String,
         project: MobileCaptureTodayProject,
         canonicalTagIDs: [String],
-        expectedUpdatedAt: String
+        expectedUpdatedAt: String,
+        availableTags: [MobileCaptureTodayTag]? = nil,
+        onSaved: (() -> Void)? = nil
     ) {
         self.client = client
         self.kind = kind
@@ -1576,11 +1704,21 @@ private struct TodayWorkTagSheet: View {
         self.project = project
         self.canonicalTagIDs = canonicalTagIDs
         self.expectedUpdatedAt = expectedUpdatedAt
+        self.availableTags = availableTags
+        self.onSaved = onSaved
         _selectedTagIDs = State(initialValue: Set(canonicalTagIDs))
     }
 
+    private var tagCatalog: [MobileCaptureTodayTag] {
+        (availableTags ?? client.tags(for: project.id))
+            .filter { $0.projectId == project.id }
+            .sorted {
+                $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+            }
+    }
+
     private var visibleTags: [MobileCaptureTodayTag] {
-        let tags = client.tags(for: project.id)
+        let tags = tagCatalog
         guard let query = searchText.nonempty else { return tags }
         return tags.filter {
             $0.label.localizedCaseInsensitiveContains(query)
@@ -1593,9 +1731,13 @@ private struct TodayWorkTagSheet: View {
     }
 
     private var archivedSelection: [MobileCaptureTodayTag] {
-        client.tags(for: project.id).filter {
+        tagCatalog.filter {
             !$0.isActive && selectedTagIDs.contains($0.id)
         }
+    }
+
+    private var saveDisabled: Bool {
+        !selectionChanged || !archivedSelection.isEmpty || client.isMutating
     }
 
     var body: some View {
@@ -1667,35 +1809,55 @@ private struct TodayWorkTagSheet: View {
                     Text("This saves the complete tag selection in a protected phone outbox first, so it can survive a lost connection or relaunch. It changes only this Quipsly record—never a calendar, provider, message, delivery, or publication.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("Create, rename, merge, and archive the reusable vocabulary in Nest. Today applies the active labels from this exact Nest.")
+                    Text("Create, rename, merge, and archive the reusable vocabulary in Nest. This iPhone applies active labels from this exact Nest.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
             }
             .searchable(text: $searchText, prompt: "Find a tag")
+            .safeAreaInset(edge: .bottom) {
+                Button {
+                    saveSelection()
+                } label: {
+                    Label(
+                        client.isMutating ? "Saving…" : "Save changes",
+                        systemImage: "checkmark.circle.fill"
+                    )
+                    .font(.headline)
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .disabled(saveDisabled)
+                .accessibilityIdentifier("CaptureTodayWorkTagsSave")
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.ultraThinMaterial)
+            }
             .navigationTitle("Edit tags")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        let selection = selectedTagIDs.sorted()
-                        Task {
-                            let saved = await client.setWorkTags(
-                                kind: kind,
-                                entityID: entityID,
-                                projectID: project.id,
-                                tagIDs: selection,
-                                expectedUpdatedAt: expectedUpdatedAt
-                            )
-                            if saved { dismiss() }
-                        }
-                    }
-                    .disabled(!selectionChanged || !archivedSelection.isEmpty || client.isMutating)
-                    .accessibilityIdentifier("CaptureTodayWorkTagsSave")
-                }
+            }
+        }
+    }
+
+    private func saveSelection() {
+        let selection = selectedTagIDs.sorted()
+        Task {
+            let saved = await client.setWorkTags(
+                kind: kind,
+                entityID: entityID,
+                projectID: project.id,
+                tagIDs: selection,
+                expectedUpdatedAt: expectedUpdatedAt,
+                availableTagIDs: Set(tagCatalog.filter(\.isActive).map(\.id))
+            )
+            if saved {
+                dismiss()
+                onSaved?()
             }
         }
     }
