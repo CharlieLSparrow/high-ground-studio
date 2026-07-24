@@ -74,6 +74,10 @@ repository.
 
 - [Web Cloud Run](web-cloud-run.md)
 
+The deploy helper materializes `release/manifests/hgo-web.json` from the
+selected commit before installing, testing, building, or submitting source.
+The `/api/health` readback must report that full source SHA.
+
 ## Quipsly Studio
 
 Native Studio delivery remains an operator workflow. A release must preserve

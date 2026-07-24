@@ -31,7 +31,9 @@
         "pnpm-workspace.yaml",
         "prisma.config.ts",
         "release/manifests/hgo-web.json",
-        "scripts/prisma-generate-workspace-clients.mjs"
+        "scripts/prisma-generate-workspace-clients.mjs",
+        "scripts/release/materialize-release-context.sh",
+        "scripts/release/quipsly-normalize-context-metadata.sh"
       ]
     },
     "validation": {
@@ -47,8 +49,8 @@
     "kind": "cloud-run-image",
     "identifier": "us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/web",
     "sourceRevision": "git-commit-sha",
-    "materializer": "scripts/web-cloud-run-deploy.mjs",
-    "provenanceReceipt": "Cloud Run revision image digest and source SHA"
+    "materializer": "scripts/release/materialize-release-context.sh",
+    "provenanceReceipt": "hgo-web-release-source.json"
   },
   "proofs": {
     "source": [
@@ -56,7 +58,8 @@
     ],
     "deterministic": [
       "pnpm --filter web typecheck",
-      "pnpm quipsly:release:local"
+      "pnpm quipsly:release:local",
+      "pnpm web:release-context:test"
     ],
     "localRuntime": [
       "Operate public episode discovery, reading, coaching request, and signed-in scheduling flows with synthetic data."
@@ -94,7 +97,10 @@
       "prisma",
       "prisma.config.ts",
       "release/manifests/hgo-web.json",
-      "scripts/prisma-generate-workspace-clients.mjs"
+      "scripts/prisma-generate-workspace-clients.mjs",
+      "scripts/release/hgo-web-build-image.sh",
+      "scripts/release/hgo-web-context-readiness.test.mjs",
+      "scripts/release/quipsly-normalize-context-metadata.sh"
     ],
     "optionalPaths": []
   }

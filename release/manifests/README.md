@@ -32,6 +32,8 @@ pnpm release:manifests:audit
 node --experimental-strip-types --test \
   packages/repository-governance/src/release-manifest.test.ts \
   scripts/ci/plan-changed-surfaces.test.mjs
+BUILD_WEB_CONTEXT=1 \
+  bash scripts/release/materialize-release-context.test.sh hgo-web
 ```
 
 The TypeScript 7 validator rejects unknown properties, missing proof levels,
@@ -40,9 +42,12 @@ non-Git provenance, and a manifest that does not trigger its own boundary.
 The JSON Schema provides editor and external-tool interoperability; the
 repository validator is the CI authority.
 
-Nest's exact-SHA materializer reads `releaseContext` from the manifest stored
-in the selected commit. Its source allowlist and size ceiling therefore cannot
-drift from a second shell-script list.
+Nest and HGO web use the shared exact-SHA materializer. It reads
+`releaseContext` from the owning manifest stored in the selected commit. Source
+allowlists, size ceilings, and provenance receipt names therefore cannot drift
+from a second shell-script list. HGO deterministic checks also run inside that
+materialized context, so ambient worktree state is neither build nor test
+input.
 
 ## Change a boundary
 

@@ -176,9 +176,15 @@ repository-wide TypeScript 7 gate passed all `22` configured projects after
 the governance package was added.
 
 This measurement supersedes the older dirty-worktree count for recovery
-planning but does not imply that the remaining paths are disposable. The next
-control is one machine-readable release manifest per deployable app, followed
-by preserve-first reconciliation of the inventoried product slices.
+planning but does not imply that the remaining paths are disposable. At this
+checkpoint, the next control was one machine-readable release manifest per
+deployable app, followed by preserve-first reconciliation of the inventoried
+product slices.
+
+The manifest/materializer control is complete for Nest and HGO web: both
+materialize bounded source from an exact commit, HGO no longer submits the
+repository root, and its deterministic predeploy checks run inside that source
+context. Capture retains its separate exact-commit Xcode archive boundary.
 
 ### Collaborator readiness
 

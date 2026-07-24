@@ -29,6 +29,15 @@ test("defines a non-sensitive web health response", async () => {
   assert.equal(response.headers.get("cache-control"), "no-store");
 });
 
+test("web health exposes the immutable source revision when present", () => {
+  assert.deepEqual(createWebHealthResponseBody({
+    HGO_BUILD_ID: "0123456789abcdef0123456789abcdef01234567",
+  }), {
+    ...WEB_HEALTH_RESPONSE,
+    sourceSha: "0123456789abcdef0123456789abcdef01234567",
+  });
+});
+
 test("web Dockerfile uses standalone webpack build path", () => {
   const dockerfile = readFileSync("apps/web/Dockerfile", "utf8");
   assert.match(dockerfile, /pnpm --filter web exec next build --webpack/);
@@ -38,6 +47,8 @@ test("web Dockerfile uses standalone webpack build path", () => {
     /DATABASE_URL=postgresql:\/\/build:build@localhost:5432\/high_ground_build/,
   );
   assert.match(dockerfile, /CMD \["node", "apps\/web\/server\.js"\]/);
+  assert.match(dockerfile, /org\.opencontainers\.image\.revision/);
+  assert.match(dockerfile, /HGO_BUILD_ID/);
 });
 
 test("web Next config is ready for Cloud Run standalone output", () => {
@@ -51,6 +62,11 @@ test("web Cloud Build config targets the web Dockerfile", () => {
   const cloudbuild = readFileSync("cloudbuild.web.yaml", "utf8");
   assert.match(cloudbuild, /apps\/web\/Dockerfile/);
   assert.match(cloudbuild, /_IMAGE_NAME: web/);
+  assert.match(cloudbuild, /normalize-hgo-web-context-metadata/);
+  assert.match(cloudbuild, /gcr\.io\/cloud-builders\/docker@sha256:[0-9a-f]{64}/);
+  assert.match(cloudbuild, /moby\/buildkit:v0\.30\.0/);
+  assert.match(cloudbuild, /--build-arg HGO_BUILD_ID=\$\{_SOURCE_SHA\}/);
+  assert.doesNotMatch(cloudbuild, /\$\{_IMAGE_NAME\}:latest/);
 });
 
 test("postgres copy job image is guarded for staged Cloud SQL migration", () => {
@@ -94,6 +110,7 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   );
 
   assert.match(packageJson, /web:cloudrun:deploy/);
+  assert.match(packageJson, /web:release-context:test/);
   assert.match(packageJson, /web:cloudrun:seed-secrets/);
   assert.match(packageJson, /web:cloudsql:prepare/);
   assert.match(packageJson, /web:db:target:report/);
@@ -121,7 +138,11 @@ test("web deploy helpers are wired for explicit first-service creation", () => {
   assert.match(deployScript, /projection-stage\/import/);
   assert.match(deployScript, /team\/progress/);
   assert.match(deployScript, /team\/hgo-publish-queue/);
-  assert.match(deployScript, /gha-creds-/);
+  assert.match(deployScript, /materialize-release-context\.sh/);
+  assert.match(deployScript, /web:release-context:test/);
+  assert.match(deployScript, /hgo-web-release-source\.json/);
+  assert.match(deployScript, /parsed\.sourceSha === sourceSha/);
+  assert.doesNotMatch(deployScript, /ALLOW_DIRTY_DEPLOY/);
   assert.match(deployScript, /WEB_IMAGE_BUILD_STRATEGY/);
   assert.match(deployScript, /apps\/web\/Dockerfile/);
   assert.match(domainScript, /app\.highgroundodyssey\.com/);

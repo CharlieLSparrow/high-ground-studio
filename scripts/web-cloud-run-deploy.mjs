@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, rmSync } from "node:fs";
+import path from "node:path";
 
 const DEFAULT_REGION = "us-central1";
 const DEFAULT_SERVICE = "web";
@@ -152,20 +154,51 @@ function getTrafficPercentForRevision(service, revisionName) {
     .reduce((total, entry) => total + (entry.percent ?? 0), 0);
 }
 
-function getShortHead() {
-  return read("git", ["rev-parse", "--short", "HEAD"]);
+function materializeWebReleaseContext(sourceRef, expectedSourceSha) {
+  const explicitContext = process.env.WEB_RELEASE_CONTEXT || "";
+  const releaseContext = explicitContext
+    ? path.resolve(explicitContext)
+    : read("bash", [
+        "scripts/release/materialize-release-context.sh",
+        "hgo-web",
+        sourceRef,
+      ]);
+  const markerPath = path.join(releaseContext, ".quipsly-release-context");
+  const receiptPath = path.join(releaseContext, "hgo-web-release-source.json");
+  if (!existsSync(markerPath) || !existsSync(receiptPath)) {
+    throw new Error(
+      `HGO web release context is missing its marker or receipt: ${releaseContext}`,
+    );
+  }
+  const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+  if (
+    receipt.releaseId !== "hgo-web"
+    || receipt.sourceSha !== expectedSourceSha
+    || receipt.releaseManifest !== "release/manifests/hgo-web.json"
+  ) {
+    throw new Error(
+      `HGO web release context provenance does not match ${expectedSourceSha}.`,
+    );
+  }
+  return {
+    path: releaseContext,
+    owned: !explicitContext,
+  };
 }
 
-function isIgnorableGitStatusLine(line) {
-  return /^\?\? gha-creds-[\w-]+\.json$/.test(line.trim());
-}
-
-function getDeployBlockingDirtyStatus() {
-  return read("git", ["status", "--short"])
-    .split("\n")
-    .filter(Boolean)
-    .filter((line) => !isIgnorableGitStatusLine(line))
-    .join("\n");
+function removeOwnedReleaseContext(releaseContext) {
+  if (
+    !releaseContext
+    || path.parse(releaseContext).root === releaseContext
+    || !existsSync(path.join(releaseContext, ".quipsly-release-context"))
+    || !existsSync(path.join(releaseContext, "hgo-web-release-source.json"))
+  ) {
+    console.error(
+      `Refusing to remove unmarked HGO web release context: ${releaseContext}`,
+    );
+    return;
+  }
+  rmSync(releaseContext, { recursive: true });
 }
 
 function secretExists(secretName) {
@@ -235,10 +268,10 @@ function buildImageWithCloudBuild() {
     "--project",
     project,
     "--config",
-    "cloudbuild.web.yaml",
+    path.join(releaseContext.path, "cloudbuild.web.yaml"),
     "--substitutions",
-    `_REGION=${region},_ARTIFACT_REPOSITORY=${artifactRepository},_IMAGE_NAME=${imageName},_IMAGE_TAG=${imageTag}`,
-    ".",
+    `_REGION=${region},_ARTIFACT_REPOSITORY=${artifactRepository},_IMAGE_NAME=${imageName},_IMAGE_TAG=${imageTag},_SOURCE_SHA=${sourceSha}`,
+    releaseContext.path,
   ]);
 }
 
@@ -249,7 +282,16 @@ function buildImageWithDocker() {
     `${region}-docker.pkg.dev`,
     "--quiet",
   ]);
-  run("docker", ["build", "--file", "apps/web/Dockerfile", "--tag", imageUri, "."]);
+  run("docker", [
+    "build",
+    "--file",
+    path.join(releaseContext.path, "apps/web/Dockerfile"),
+    "--build-arg",
+    `HGO_BUILD_ID=${sourceSha}`,
+    "--tag",
+    imageUri,
+    releaseContext.path,
+  ]);
   run("docker", ["push", imageUri]);
 }
 
@@ -319,7 +361,9 @@ const service = process.env.WEB_CLOUD_RUN_SERVICE || DEFAULT_SERVICE;
 const artifactRepository =
   process.env.WEB_ARTIFACT_REPOSITORY || DEFAULT_ARTIFACT_REPOSITORY;
 const imageName = process.env.WEB_IMAGE_NAME || DEFAULT_IMAGE_NAME;
-const imageTag = process.env.WEB_IMAGE_TAG || getShortHead();
+const sourceRef = process.env.WEB_SOURCE_REF || "HEAD";
+const sourceSha = read("git", ["rev-parse", "--verify", `${sourceRef}^{commit}`]);
+const imageTag = process.env.WEB_IMAGE_TAG || sourceSha;
 const serviceAccount =
   process.env.WEB_CLOUD_RUN_SERVICE_ACCOUNT ||
   `web-cloud-run@${project}.iam.gserviceaccount.com`;
@@ -328,12 +372,9 @@ const cloudSqlInstance =
   `${project}:${region}:${DEFAULT_CLOUD_SQL_INSTANCE}`;
 const imageUri = `${region}-docker.pkg.dev/${project}/${artifactRepository}/${imageName}:${imageTag}`;
 
-const dirtyStatus = getDeployBlockingDirtyStatus();
-
-if (dirtyStatus && process.env.ALLOW_DIRTY_DEPLOY !== "1") {
-  throw new Error(
-    "Working tree is dirty. Commit first, or set ALLOW_DIRTY_DEPLOY=1 for an intentional operator deploy.",
-  );
+const releaseContext = materializeWebReleaseContext(sourceRef, sourceSha);
+if (releaseContext.owned) {
+  process.on("exit", () => removeOwnedReleaseContext(releaseContext.path));
 }
 
 const serviceBefore = parseService(
@@ -380,6 +421,8 @@ console.log(`project: ${project}`);
 console.log(`region: ${region}`);
 console.log(`service: ${service}`);
 console.log(`image: ${imageUri}`);
+console.log(`source: ${sourceSha}`);
+console.log(`release context: ${releaseContext.path}`);
 console.log(
   `optional provider secrets mounted: ${optionalSecretBindings.length}`,
 );
@@ -399,8 +442,14 @@ if (!serviceExists) {
 }
 
 if (process.env.SKIP_LOCAL_CHECKS !== "1") {
-  run("pnpm", ["web:cloudrun:test"]);
+  run("pnpm", ["install", "--frozen-lockfile"], {
+    cwd: releaseContext.path,
+  });
+  run("pnpm", ["web:release-context:test"], {
+    cwd: releaseContext.path,
+  });
   run("pnpm", ["--filter", "web", "exec", "next", "build", "--webpack"], {
+    cwd: releaseContext.path,
     env: {
       ...process.env,
       DATABASE_URL: process.env.WEB_LOCAL_DATABASE_URL || DEFAULT_RUNTIME_DATABASE_URL,
@@ -537,7 +586,8 @@ await assertHttpOk(`${targetSmokeUrl}/api/health`, (body) => {
     return (
       parsed.ok === true &&
       parsed.service === "high-ground-studio" &&
-      parsed.app === "web"
+      parsed.app === "web" &&
+      parsed.sourceSha === sourceSha
     );
   } catch {
     return false;

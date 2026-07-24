@@ -33,7 +33,8 @@
         "pnpm-lock.yaml",
         "pnpm-workspace.yaml",
         "prisma.config.ts",
-        "release/manifests/nest.json"
+        "release/manifests/nest.json",
+        "scripts/release/materialize-release-context.sh"
       ]
     },
     "validation": {

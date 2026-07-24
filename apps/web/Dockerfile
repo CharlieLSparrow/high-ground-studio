@@ -33,7 +33,10 @@ RUN pnpm install --frozen-lockfile
 
 FROM base AS builder
 
+ARG HGO_BUILD_ID="local"
+
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HGO_BUILD_ID=$HGO_BUILD_ID
 # Build-time placeholder only. The real runtime DATABASE_URL must come from
 # Cloud Run env/Secret Manager.
 ENV DATABASE_URL=postgresql://build:build@localhost:5432/high_ground_build
@@ -64,10 +67,15 @@ RUN pnpm --filter web exec next build --webpack
 
 FROM node:22-slim AS runner
 
+ARG HGO_BUILD_ID="local"
+
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=8080
 ENV HOSTNAME=0.0.0.0
+ENV HGO_BUILD_ID=$HGO_BUILD_ID
+
+LABEL org.opencontainers.image.revision=$HGO_BUILD_ID
 
 WORKDIR /app
 

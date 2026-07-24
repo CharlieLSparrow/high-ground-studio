@@ -131,9 +131,6 @@ jobs:
           node-version-file: .node-version
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@c200f3691d83b41bf9bbd8638997a462592937ed # v2
         with:

@@ -95,6 +95,8 @@ jobs:
           node --experimental-strip-types scripts/quipsly-livekit-join-token-contract.test.mjs
           bash -n scripts/release/quipsly-build-context.sh
           bash -n scripts/release/quipsly-build-context.test.sh
+          bash -n scripts/release/materialize-release-context.sh
+          bash -n scripts/release/materialize-release-context.test.sh
           bash -n scripts/release/quipsly-normalize-context-metadata.sh
           bash -n scripts/release/quipsly-release-preflight.sh
           bash -n scripts/release/quipsly-smoke-preview.sh
@@ -104,10 +106,20 @@ jobs:
           bash scripts/release/quipsly-schema-job.test.sh
           bash -n scripts/release/quipsly-deploy-preview.sh
           bash -n scripts/release/quipsly-promote-preview.sh
+          bash scripts/release/materialize-release-context.test.sh nest
 
       - name: Validate committed Quipsly release context
         if: steps.changes.outputs.quipsly == 'true'
         run: bash scripts/release/quipsly-build-context.test.sh
+
+      - name: Validate committed HGO web release context
+        if: steps.changes.outputs.web == 'true'
+        run: |
+          node --test scripts/web-cloud-run-readiness.test.mjs
+          bash -n scripts/release/materialize-release-context.sh
+          bash -n scripts/release/materialize-release-context.test.sh
+          bash -n scripts/release/hgo-web-build-image.sh
+          bash scripts/release/materialize-release-context.test.sh hgo-web
 
       - name: Report intentionally skipped Quipsly validation
         if: steps.changes.outputs.quipsly != 'true' && steps.changes.outputs.web != 'true'

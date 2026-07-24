@@ -94,6 +94,12 @@ A dirty development checkout is therefore visible but no longer release input.
 Production provenance is the commit SHA embedded in the image and Cloud Run
 metadata.
 
+HGO web now uses the same manifest-driven exact-SHA materialization contract
+instead of submitting the repository root to Cloud Build. Its dependency
+install, readiness test, local production build, container build, source label,
+and health readback all use the selected committed context. Preview builds no
+longer mutate a `latest` image alias.
+
 The preview-capable Cloud Build publishes only its explicit immutable image
 tag. It must not update `studio:latest`, because a no-traffic validation build
 is not production. The GitHub production workflow may publish the compatibility

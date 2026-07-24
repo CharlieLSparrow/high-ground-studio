@@ -49,7 +49,8 @@ Expected health response:
 {
   "ok": true,
   "service": "high-ground-studio",
-  "app": "web"
+  "app": "web",
+  "sourceSha": "<full committed Git SHA>"
 }
 ```
 
@@ -66,9 +67,17 @@ Expected health response:
   - copies `apps/web/public` and checked-in `apps/web/content`
   - listens on Cloud Run's `PORT`, defaulting to `8080`
 - `cloudbuild.web.yaml`
-  - builds the web container image
-  - tags it for Artifact Registry
+  - normalizes the exact committed context, then builds with a digest-pinned
+    Docker builder and version-pinned BuildKit worker
+  - publishes only the requested immutable Artifact Registry tag and reads
+    back its digest
   - does not deploy to Cloud Run
+- `release/manifests/hgo-web.json`
+  - owns the bounded source allowlist, context ceiling, proof levels, artifact
+    identity, and Cloud Run delivery target
+- `scripts/release/materialize-release-context.sh`
+  - reads the HGO manifest from the selected commit and materializes only those
+    committed paths with a source and inventory receipt
 - `scripts/web-cloud-run-preflight.mjs`
   - read-only repository and local operator preflight
   - does not deploy, create resources, mutate IAM, mutate secrets, or touch
@@ -79,6 +88,8 @@ Expected health response:
   - skips secrets that already have enabled versions unless
     `FORCE_WEB_SECRET_VERSION=1` is set
 - `scripts/web-cloud-run-deploy.mjs`
+  - installs, tests, and production-builds inside the exact committed context;
+    ambient tracked or untracked work is not test or build input
   - builds the web image with Cloud Build by default
   - can build and push directly with Docker when
     `WEB_IMAGE_BUILD_STRATEGY=docker`, which is the GitHub Actions path used to
@@ -86,8 +97,8 @@ Expected health response:
   - deploys the image to Cloud Run
   - refuses first-service creation unless `WEB_CLOUD_RUN_CREATE_SERVICE=1` is
     explicitly set
-  - runs smoke checks for `/api/health`, `/`, and unauthenticated
-    `/team/progress` sign-in redirect
+  - requires `/api/health` to read back the exact source SHA, then checks `/`
+    and unauthenticated `/team/progress` sign-in redirect
   - applies the same Cloud Run disabled invoker-IAM-check setting used by
     Studio during first-service creation when org policy blocks public invoker
     IAM binding
@@ -101,8 +112,8 @@ Expected health response:
     Cloud Build config, deploy-helper wiring, domain-readiness wiring, and
     preflight read-only behavior
 - `.dockerignore`
-  - keeps env files, dependencies, build artifacts, logs, and raw
-    staging/inbox source material out of the Docker context
+  - remains a defense-in-depth container filter after the manifest allowlist;
+    it is no longer the primary release-source boundary
 
 ## Build Caveat
 
@@ -506,19 +517,14 @@ After manual cloud setup is complete, build and push the image with Cloud Build:
 pnpm web:cloudbuild:image:sha
 ```
 
-To override the default region or image tag:
+This resolves the full `HEAD` commit, materializes
+`release/manifests/hgo-web.json`, submits only that context, and reads back the
+pushed digest. To build another exact commit or override the region or tag:
 
 ```bash
-pnpm web:cloudbuild:image -- --substitutions=_REGION=us-central1,_IMAGE_TAG=$(git rev-parse --short HEAD)
-```
-
-Equivalent direct command:
-
-```bash
-gcloud builds submit \
-  --config cloudbuild.web.yaml \
-  --substitutions=_REGION=us-central1,_IMAGE_TAG=$(git rev-parse --short HEAD) \
-  .
+WEB_CLOUD_RUN_REGION=us-central1 \
+WEB_IMAGE_TAG=<immutable-tag> \
+bash scripts/release/hgo-web-build-image.sh <commit-sha>
 ```
 
 This builds and pushes an image. It does not deploy the image.
@@ -533,17 +539,29 @@ pnpm web:cloudrun:deploy
 
 The helper:
 
-1. Requires a clean working tree unless `ALLOW_DIRTY_DEPLOY=1` is set.
-2. Runs `pnpm web:cloudrun:test`.
-3. Runs the explicit webpack production build with a local build-time
-   `DATABASE_URL`.
-4. Runs Cloud Build using `cloudbuild.web.yaml`.
-5. Deploys the image to the existing `web` Cloud Run service.
-6. Routes 100% traffic to the deployed revision if the service was previously
-   pinned to an older revision.
-7. Smoke checks `/api/health`, `/`, `/projection-stage/import`, and
-   `/team/progress`.
-8. Prints a rollback command when a previous ready revision exists.
+1. Resolves `WEB_SOURCE_REF` or `HEAD` to one full commit SHA.
+2. Materializes only the HGO release paths declared at that SHA.
+3. Installs with the frozen lockfile and runs the focused
+   `pnpm web:release-context:test` inside that context; the broader
+   `pnpm web:cloudrun:test` remains a repository-readiness gate.
+4. Runs the explicit webpack production build inside the same context with a
+   local build-time `DATABASE_URL`.
+5. Runs Cloud Build using the committed context's `cloudbuild.web.yaml`.
+6. Deploys the image to the existing `web` Cloud Run service.
+7. Keeps the new revision at tagged preview traffic.
+8. Requires `/api/health` to read back the exact source SHA and smoke checks
+   `/`, `/projection-stage/import`, and `/team/progress`.
+9. Prints the explicit promotion and rollback commands.
+10. Removes only its marker-protected temporary context.
+11. Routes 100% traffic only when the separate promotion helper is run after
+   review.
+12. Retains the previous revision for rollback.
+
+The older root-context behavior is retired; a dirty development checkout is
+visible to Git but is not release input.
+
+The promotion helper routes 100% traffic to the tagged preview revision only
+after review.
 
 Override knobs:
 
@@ -553,7 +571,8 @@ WEB_CLOUD_RUN_REGION=us-central1
 WEB_CLOUD_RUN_SERVICE=web
 WEB_ARTIFACT_REPOSITORY=high-ground-studio
 WEB_IMAGE_NAME=web
-WEB_IMAGE_TAG=$(git rev-parse --short HEAD)
+WEB_SOURCE_REF=$(git rev-parse HEAD)
+WEB_IMAGE_TAG=$(git rev-parse HEAD)
 WEB_LOCAL_DATABASE_URL=postgresql://postgres:postgres@localhost:5432/high_ground_studio
 pnpm web:cloudrun:deploy
 ```
@@ -588,9 +607,9 @@ The provider is restricted to:
 CharlieLSparrow/high-ground-studio
 ```
 
-On pushes to `main`, the workflow deploys `web` only when changed files touch
-`apps/web`, shared packages, Prisma, workspace dependency files, the web Cloud
-Build config, web Cloud Run scripts, or `.dockerignore`.
+The workflow is manual during repository recovery. Its `auto` target reads the
+validated release manifests to choose `web`, `studio`, and schema work from the
+selected Git diff.
 
 Manual dispatch is available from GitHub Actions with target choices:
 
@@ -602,9 +621,9 @@ auto
 ```
 
 Manual `all` deploys both `web` and `studio` in parallel. The web job runs
-`pnpm web:cloudrun:deploy`, so it keeps the same local checks, Cloud Build
-image build, Cloud Run deploy, smoke checks, and rollback output as the
-operator helper.
+`pnpm web:cloudrun:deploy`, so it keeps the exact-commit install, tests,
+production build, image build, Cloud Run preview, source-SHA smoke, and
+rollback output used by the operator helper.
 
 ## First Service Deploy
 

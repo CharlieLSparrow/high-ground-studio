@@ -8,6 +8,10 @@ export const WEB_HEALTH_HEADERS = Object.freeze({
   "Cache-Control": "no-store",
 });
 
-export function createWebHealthResponseBody() {
-  return { ...WEB_HEALTH_RESPONSE };
+export function createWebHealthResponseBody(environment = process.env) {
+  const sourceSha = environment.HGO_BUILD_ID || "";
+  return {
+    ...WEB_HEALTH_RESPONSE,
+    ...(sourceSha ? { sourceSha } : {}),
+  };
 }

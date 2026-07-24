@@ -3,16 +3,68 @@ substitutions:
   _ARTIFACT_REPOSITORY: high-ground-studio
   _IMAGE_NAME: web
   _IMAGE_TAG: manual
+  _SOURCE_SHA: manual
+  _BUILD_CACHE_IMAGE_NAME: web-build-cache
+  _BUILD_CACHE_TAG: main
 
 steps:
-  - id: build-web-image
-    name: gcr.io/kaniko-project/executor:latest
+  - id: normalize-hgo-web-context-metadata
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
+    entrypoint: bash
     args:
-      - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
-      - --destination=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:latest
-      - --cache=true
-      - --cache-ttl=168h
-      - --dockerfile=apps/web/Dockerfile
+      - scripts/release/quipsly-normalize-context-metadata.sh
+      - /workspace
 
-images:
-  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+  - id: build-hgo-web-image
+    name: gcr.io/cloud-builders/docker@sha256:680b2a8d18a794c165cf97a3f9476784d5d962e945d424cb40b3e086cde0c284
+    entrypoint: bash
+    args:
+      - -euo
+      - pipefail
+      - -c
+      - |
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        cache_image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_BUILD_CACHE_IMAGE_NAME}:${_BUILD_CACHE_TAG}"
+
+        docker buildx version
+        docker buildx create \
+          --name hgo-web-cloud-build \
+          --driver docker-container \
+          --driver-opt image=moby/buildkit:v0.30.0 \
+          --use
+        docker buildx inspect --bootstrap
+        docker buildx build \
+          --builder hgo-web-cloud-build \
+          --platform linux/amd64 \
+          --progress plain \
+          --file apps/web/Dockerfile \
+          --tag "$${image}" \
+          --cache-from "type=registry,ref=$${cache_image}" \
+          --cache-to "type=registry,ref=$${cache_image},mode=max,compression=zstd,oci-mediatypes=true,image-manifest=true" \
+          --build-arg HGO_BUILD_ID=${_SOURCE_SHA} \
+          --push \
+          .
+
+  - id: verify-hgo-web-image
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
+    entrypoint: bash
+    args:
+      - -euo
+      - pipefail
+      - -c
+      - |
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        for attempt in 1 2 3 4 5 6; do
+          digest="$$(gcloud artifacts docker images describe "$${image}" \
+            --format='value(image_summary.digest)' 2>/dev/null || true)"
+          if [[ "$${digest}" =~ ^sha256:[0-9a-f]{64}$$ ]]; then
+            printf '%s\n' "$${digest}" | tee /workspace/hgo-web-image-digest.txt
+            exit 0
+          fi
+          sleep "$$((attempt * 2))"
+        done
+        echo "Could not read back pushed image $${image}." >&2
+        exit 1
+
+options:
+  machineType: E2_HIGHCPU_32
