@@ -169,6 +169,8 @@ const localCheckRunners = [
       summary:
         "Nest/apps/quipsly production build succeeds, including App Router route-collision, proxy, generated type, and bundle-shape checks.",
       env: {
+        DATABASE_URL: process.env.DATABASE_URL
+          || "postgresql://quipsly_build:quipsly_build@127.0.0.1:5432/quipsly_build",
         NEXT_TELEMETRY_DISABLED: "1",
       },
       cleanPaths: ["apps/quipsly/.next"],
@@ -184,6 +186,8 @@ const localCheckRunners = [
       summary:
         "HighGroundOdyssey/apps/web production build succeeds, including public route, handoff page, generated metadata, and bundle-shape checks.",
       env: {
+        DATABASE_URL: process.env.DATABASE_URL
+          || "postgresql://quipsly_build:quipsly_build@127.0.0.1:5432/quipsly_build",
         NEXT_TELEMETRY_DISABLED: "1",
       },
       cleanPaths: ["apps/web/.next"],

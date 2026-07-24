@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
-import { configuredMediaBucketName, gcsUri, mediaVaultObjectPath, publicObjectUrl } from './MediaVaultConfig';
+import { configuredMediaBucketName, gcsUri, mediaVaultObjectPath, publicObjectUrl, sanitizeMediaVaultPathPart } from './MediaVaultConfig';
 import type { CalmLocalEngineError } from './LocalEngineErrors';
 import { calmError, classifyNestError, classifyNetworkFetchError, classifyStorageError } from './LocalEngineErrors';
 
@@ -14,12 +14,25 @@ export type EpisodeMediaRegistrationResult = {
   spineAudioSet?: boolean;
   spineAudioAssetId?: string;
   bucketName?: string;
+  rawObjectPath?: string;
+  proxyObjectPath?: string;
+  thumbnailObjectPath?: string;
   rawGcsUri?: string;
   proxyGcsUri?: string;
   thumbnailGcsUri?: string;
   rawUrl?: string;
   proxyUrl?: string;
   thumbnailUrl?: string;
+  proxyRegistration?: {
+    ok: boolean;
+    status: 'not-needed' | 'registered' | 'already-registered' | 'held';
+    proxyAssetId?: string;
+    variantId?: string;
+    playbackUrl?: string;
+    message?: string;
+    error?: string;
+    rawAssetId?: string;
+  };
   registeredAt?: string;
   warnings: string[];
   error?: string;
@@ -38,12 +51,7 @@ function applyCalmError(registration: EpisodeMediaRegistrationResult, calm: Calm
 }
 
 function safeSegment(value: string, fallback = 'media') {
-  const safe = String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  return safe || fallback;
+  return sanitizeMediaVaultPathPart(value, fallback).toLowerCase();
 }
 
 function createStorageClient() {
@@ -98,8 +106,61 @@ function routeToImportEndpoint(nestBaseURL: string) {
   return url;
 }
 
+function routeToProxyRegisterEndpoint(nestBaseURL: string) {
+  const fallback = 'https://nest.quipsly.com';
+  const input = nestBaseURL && nestBaseURL.trim() ? nestBaseURL.trim() : fallback;
+  const url = new URL(input);
+  url.pathname = '/api/media-vault/proxies/register';
+  url.search = '';
+  return url;
+}
+
+function fileSizeString(filePath: string | undefined) {
+  if (!filePath) return undefined;
+  try {
+    return String(fs.statSync(filePath).size);
+  } catch {
+    return undefined;
+  }
+}
+
+function mimeTypeForPath(filePath: string | undefined, fallback = 'application/octet-stream') {
+  const ext = path.extname(String(filePath || '')).toLowerCase();
+  if (ext === '.mp4' || ext === '.m4v') return 'video/mp4';
+  if (ext === '.mov') return 'video/quicktime';
+  if (ext === '.webm') return 'video/webm';
+  if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
+  if (ext === '.png') return 'image/png';
+  if (ext === '.wav') return 'audio/wav';
+  if (ext === '.mp3') return 'audio/mpeg';
+  if (ext === '.m4a') return 'audio/mp4';
+  if (ext === '.aac') return 'audio/aac';
+  if (ext === '.flac') return 'audio/flac';
+  return fallback;
+}
+
+function firstVideoStream(input: RegistrationInput) {
+  const streams = Array.isArray(input.probe?.streams) ? input.probe.streams : [];
+  return streams.find((stream: any) => String(stream?.kind || '').toLowerCase() === 'video');
+}
+
+function proxyResolution(input: RegistrationInput) {
+  const stream = firstVideoStream(input);
+  const width = Number(stream?.width);
+  const height = Number(stream?.height);
+  return Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0
+    ? `${Math.round(width)}x${Math.round(height)}`
+    : undefined;
+}
+
+function proxyFps(input: RegistrationInput) {
+  const stream = firstVideoStream(input);
+  const fps = Number(stream?.fps);
+  return Number.isFinite(fps) && fps > 0 ? String(fps) : undefined;
+}
+
 async function registerWithNest(input: RegistrationInput, registration: EpisodeMediaRegistrationResult) {
-  const sourceUrl = registration.proxyUrl || registration.rawUrl || registration.rawGcsUri;
+  const sourceUrl = registration.rawUrl || registration.rawGcsUri || registration.proxyUrl;
   if (!sourceUrl) {
     registration.warnings.push('No uploaded source URL was available for Nest registration.');
     return applyCalmError(registration, calmError('missing-file', 'No uploaded media URL was available for Nest registration. The file was held for review.', 'sourceUrl missing'));
@@ -154,6 +215,117 @@ async function registerWithNest(input: RegistrationInput, registration: EpisodeM
     const calm = classifyNetworkFetchError(error);
     registration.warnings.push(`Nest registration skipped: ${error?.message || error}`);
     return applyCalmError(registration, calm);
+  }
+}
+
+async function registerProxyWithNest(input: RegistrationInput, registration: EpisodeMediaRegistrationResult) {
+  if (!registration.proxyGcsUri || !registration.proxyObjectPath || !registration.proxyUrl) {
+    registration.proxyRegistration = { ok: true, status: 'not-needed', message: 'No uploaded proxy was present.' };
+    return registration;
+  }
+
+  if (!registration.assetId) {
+    registration.proxyRegistration = {
+      ok: false,
+      status: 'held',
+      error: 'Raw asset was not registered with Nest, so the proxy cannot be attached as a derivative yet.',
+    };
+    registration.warnings.push('Proxy uploaded, but raw Nest asset id is missing. Proxy derivative registration was held.');
+    return registration;
+  }
+
+  const nestSessionToken = typeof input.nestSessionToken === 'string' ? input.nestSessionToken.trim() : '';
+  if (!nestSessionToken) {
+    registration.proxyRegistration = {
+      ok: false,
+      status: 'held',
+      rawAssetId: registration.assetId,
+      error: 'Nest session token missing. Proxy was uploaded but not registered in Nest inventory.',
+    };
+    registration.warnings.push('Proxy uploaded, but no Nest session token was available to register it in media inventory.');
+    return registration;
+  }
+
+  try {
+    const response = await fetch(routeToProxyRegisterEndpoint(String(input.nestBaseURL ?? '')), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${nestSessionToken}`,
+      },
+      body: JSON.stringify({
+        rawAssetId: registration.assetId,
+        nestSlug: input.projectSlug,
+        projectSlug: input.projectSlug,
+        bucketName: registration.bucketName,
+        objectPath: registration.proxyObjectPath,
+        gcsUri: registration.proxyGcsUri,
+        proxyUrl: registration.proxyUrl,
+        filename: path.basename(String(input.proxy?.proxyPath ?? 'proxy.mp4')),
+        mimeType: mimeTypeForPath(input.proxy?.proxyPath, 'video/mp4'),
+        sizeBytes: fileSizeString(input.proxy?.proxyPath),
+        duration: String(input.proxy?.durationSeconds || input.probe?.durationSeconds || ''),
+        resolution: proxyResolution(input),
+        fps: proxyFps(input),
+        thumbnailUrl: registration.thumbnailUrl,
+        variantKind: input.proxy?.kind === 'audio' ? 'proxy-audio' : 'proxy-video',
+        metadataJson: {
+          source: 'local-engine-upload-register',
+          projectSlug: input.projectSlug,
+          episodeSlug: input.episodeSlug,
+          rawObjectPath: registration.rawObjectPath,
+          proxyObjectPath: registration.proxyObjectPath,
+          thumbnailObjectPath: registration.thumbnailObjectPath,
+          rawGcsUri: registration.rawGcsUri,
+          proxyGcsUri: registration.proxyGcsUri,
+          thumbnailGcsUri: registration.thumbnailGcsUri,
+          localCacheDir: input.proxy?.cacheDir,
+          fingerprint: input.proxy?.fingerprint,
+          copiedOriginal: false,
+          mutatedOriginal: false,
+        },
+      }),
+    });
+
+    const responseText = await response.text();
+    const data = responseText ? (() => {
+      try {
+        return JSON.parse(responseText);
+      } catch {
+        return {};
+      }
+    })() : {};
+
+    if (!response.ok || data?.ok === false) {
+      registration.proxyRegistration = {
+        ok: false,
+        status: 'held',
+        rawAssetId: registration.assetId,
+        error: data?.message || data?.error || response.statusText,
+      };
+      registration.warnings.push(`Proxy uploaded, but Nest proxy registration returned ${response.status}: ${data?.message || data?.error || response.statusText}`);
+      return registration;
+    }
+
+    registration.proxyRegistration = {
+      ok: true,
+      status: data?.status === 'already-registered' ? 'already-registered' : 'registered',
+      rawAssetId: registration.assetId,
+      proxyAssetId: data?.proxyAsset?.id,
+      variantId: data?.variant?.id,
+      playbackUrl: data?.playbackUrl,
+      message: data?.message || 'Proxy registered as derivative media.',
+    };
+    return registration;
+  } catch (error: any) {
+    registration.proxyRegistration = {
+      ok: false,
+      status: 'held',
+      rawAssetId: registration.assetId,
+      error: error?.message || String(error),
+    };
+    registration.warnings.push(`Proxy uploaded, but Nest proxy registration was held: ${error?.message || error}`);
+    return registration;
   }
 }
 
@@ -308,6 +480,9 @@ export async function uploadAndRegisterEpisodeMedia(input: RegistrationInput): P
     const proxyUpload = await uploadIfPresent(bucket, bucketName, proxyPath, proxyObjectName, 'Proxy', false);
     const thumbUpload = await uploadIfPresent(bucket, bucketName, thumbnailPath, thumbObjectName, 'Thumbnail', false);
 
+    registration.rawObjectPath = rawObjectName;
+    registration.proxyObjectPath = proxyObjectName;
+    registration.thumbnailObjectPath = thumbObjectName;
     registration.rawGcsUri = rawUpload?.gcsUri;
     registration.rawUrl = rawUpload?.url;
     registration.proxyGcsUri = proxyUpload?.gcsUri;
@@ -320,6 +495,7 @@ export async function uploadAndRegisterEpisodeMedia(input: RegistrationInput): P
     }
 
     await registerWithNest(input, registration);
+    await registerProxyWithNest(input, registration);
 
     if (registration.errorCode) {
       registration.ok = false;
