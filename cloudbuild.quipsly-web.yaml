@@ -71,6 +71,8 @@ steps:
           ["/(app)/outputs/[outputId]/page", "/outputs/[outputId]"],
           ["/api/mac/firebase-client-config/route", "/api/mac/firebase-client-config"],
           ["/api/mac/session-check/route", "/api/mac/session-check"],
+          ["/api/mobile/capture/rooms/join/diagnostics/route", "/api/mobile/capture/rooms/join/diagnostics"],
+          ["/api/mobile/capture/rooms/join/route", "/api/mobile/capture/rooms/join"],
         ]);
         for (const [entry, route] of requiredRoutes) {
           if (routes[entry] !== route) {

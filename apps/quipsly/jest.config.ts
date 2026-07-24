@@ -27,6 +27,7 @@ const config: Config = {
     '^@high-ground/quipsly-domain/art-recipes$': '<rootDir>/../../packages/quipsly-domain/src/art-recipes.ts',
     '^@high-ground/quipsly-domain/generated-art$': '<rootDir>/../../packages/quipsly-domain/src/generated-art.ts',
     '^@high-ground/quipsly-domain/output-catalog$': '<rootDir>/../../packages/quipsly-domain/src/output-catalog.ts',
+    '^@high-ground/quipsly-domain/coaching-meeting-spine$': '<rootDir>/../../packages/quipsly-domain/src/coaching-meeting-spine.ts',
     '^@high-ground/quipsly-domain/coaching-packet$': '<rootDir>/../../packages/quipsly-domain/src/coaching-packet.ts',
     '^@high-ground/quipsly-domain/transcript-derived-task$': '<rootDir>/../../packages/quipsly-domain/src/transcript-derived-task.ts',
   },
