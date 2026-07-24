@@ -1,0 +1,433 @@
+# iOS Capture App Store Readiness
+
+Quipsly Capture / `HighGroundCapture` is being prepared as an explicit-consent coaching, podcast, interview, and field-note capture app.
+
+## Canonical 2026-07-18 candidate
+
+The release candidate is now the iPhone-only, iOS 17 capture-first shell documented in [`apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md`](../../apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md). Its customer navigation is **Today**, **Record**, **Library**, and **Account**. Older editor, manuscript, iPad, reviewer-report, and 360 surfaces described later in this file are supporting history or separate Studio work; they are not evidence that those features ship in Quipsly Capture.
+
+The candidate uses protected owner-partitioned source, upload-job, and room-receipt ledgers; crash-safe Start/Stop receipts; durable database room-receipt and upload-reservation ledgers; separate LiveKit media and CallKit presentation/audio-activation roles; and direct private-GCS resumable v2 uploads with exact server verification. New uploads do not stream media through Cloud Run. Unsafe legacy multipart/chunk ingress returns `410` before reading request bytes. The local recording UUID binds the device source, room `captureId`, upload idempotency key, GCS control manifest, quota reservation, and final server evidence.
+
+A clean offline launch is deliberately Library-only: a recently verified account-bound identity can access only that owner's protected local artifacts. A verified online session is required to begin a new take so access and consent can be revalidated; network loss never stops an already-active local recording.
+
+Automated build, security, accessibility, and contract evidence is recorded separately from release proof. Do not describe the build as App Store ready while public Nest is unavailable, the additive room-receipt and upload-reservation schema is not proved live, physical-iPhone capture/background transfer is unproved, reviewer credentials/session proof is unavailable, or the legal/account-deletion fulfillment workflow is incomplete.
+
+## App-owned truth
+
+- Quipsly owns the session, participant, consent, recording, transcript, packet, note, action-item, and receipt state.
+- Stripe, calendar, transcription, and provider-room systems are evidence providers, not the source of truth.
+- The app must not hide recording, auto-record in the background, or imply provider/payment state without receipts.
+- Paid one-to-one coaching sessions must not join, start recording, or prepare
+  provider recording evidence until Quipsly has payment evidence. The app can
+  show the session and next action, but capture stays held.
+
+## Call architecture decision
+
+- Production coaching, podcast, and research calls should happen inside Quipsly-owned session rooms.
+- LiveKit/WebRTC is the first provider path for the actual in-app room media. The `HighGroundCapture` Xcode project now links the LiveKit Swift package so the provider-room controller can compile into a real media client instead of permanently falling back to "SDK missing."
+- CallKit starts with the native room workflow so Quipsly calls can feel native on iOS, but it owns only presentation and the system audio-activation boundary. LiveKit is the provider media engine. Neither is local-recording truth, and a failed/timed-out CallKit activation must tear down the provider connection and clear connected UI rather than implying a usable room.
+- Normal Phone and FaceTime calls are fallback/import sources only. A user may manually import Apple call recordings, Notes transcripts, or other external evidence later, but Quipsly should not depend on regular Phone calls as the production capture path.
+- A Twilio or similar PSTN bridge may be useful later for dial-in clients, but it stays an evidence/provider layer around a Quipsly session, not the source of booking, consent, recording, transcript, or packet truth.
+
+## Current native readiness artifacts
+
+- `HighGroundCapture/PrivacyInfo.xcprivacy` declares no tracking, app-functionality collection for name/email, user ID, device ID, session/audio/user-content data, and required-reason API entries for app-specific `UserDefaults`, file metadata, and the `E174.1` capture storage-headroom check.
+- The project uses an explicit microphone purpose string: Quipsly records coaching calls, podcast sessions, interviews, and field notes after the user explicitly starts recording.
+- Native account entry supports Firebase email/password sign-in, account creation, verification email, and enumeration-safe password recovery through Firebase's public REST API, then verifies Quipsly app access through `/api/mac/session-check` with a Firebase bearer token. Current `accounts:lookup` state must show a verified mailbox before any token or cached offline identity is stored, and refresh rechecks that state. Account creation does not grant Capture beta recording/upload access; Nest remains the access authority. Google-origin accounts are guided toward the same email, recovery, web Google sign-in, or support rather than a duplicate identity. The old browser/native handoff endpoints are not the iOS product path.
+- Recorder UI shows capture readiness, consent state, visible recording state, local fallback, upload/transcript readiness, privacy/deletion routes, and preserved-upload recovery.
+- `LocalRecordingLibrary`, the upload-job ledger, and the room-receipt outbox use protected owner partitions. Library listing, playback, sharing, retry, deletion, and receipt delivery fail closed unless the current verified Quipsly actor owns the artifact; legacy unowned rows remain preserved but quarantined.
+- The Library has one destructive operation: the current owner can explicitly delete one local original after reviewing cloud-verification state, optionally sharing a copy, and acknowledging irreversible deletion. Active recording/upload/verification work blocks the action. The app commits a protected tombstone with deletion time, original byte count, and cloud-verification state before removing bytes, never automatically prunes sources, and does not delete cloud media or account evidence through this action.
+- The four-tab candidate exposes join/mute/leave controls but no end-user provider-recording or receipt-slot action. Nest retains staff/operator egress start/stop/reconcile routes, and production START is interlocked until an idempotent durable command/outbox, per-room lock, and provider reconciliation exist. STOP/reconcile remain available for safety. Only non-production integration can opt into START with both `LIVEKIT_EGRESS_ENABLED=true` and `LIVEKIT_EGRESS_UNSAFE_LOCAL_DEV=true`. Joining a room still does not start recording.
+- Provider room runtime now has an explicit LiveKit dependency validation path. `ProviderRoomController` uses a real LiveKit `Room.connect(url:token:)` path when the SDK is linked, while CallKit presents the native call surface. Server join preparation still only returns a short-lived room-scoped token; actual provider join happens in the native client, and recording remains separate.
+- Supporting legacy Session/Studio panels—not the four-tab Capture candidate—distinguish LiveKit join readiness from server-recording readiness and expose provider/storage diagnostics for operators.
+- The legacy Session live-room panel includes a `CallKitBoundaryCard`; the Capture candidate instead keeps equivalent join-versus-recording truth in its compact live-room disclosure and source-truth copy.
+- Provider recording receipt slots are not counted as recordings and cannot run transcription. They are visible evidence slots only until verified provider media is attached.
+- Legacy Session/Studio after-capture and lifecycle cards decode provider receipt slots and shared `safeActions`; these are supporting operator history, not current Capture navigation or App Review evidence.
+- The iPad Session surface remains separate Studio work. It is not part of the iPhone-only Capture candidate.
+- `UploadManager` exposes a retry path for recoverable direct private-GCS resumable v2 uploads. Its non-secret phase ledger is protected and owner-partitioned; the secret resumable capability remains in this-device Keychain. Legacy job/source evidence remains readable, but old server-buffered multipart/chunk transport is disabled; a preserved source must be re-enqueued through v2.
+- Capability issuance writes a stable, exact-size Prisma reservation under per-account and per-Nest rolling-byte, issuance-rate, and active limits. Successful canonical finalize settles generation/size evidence and frees the active slot; retries cannot mutate their actor/project/object/type/size binding.
+- Room Start/Stop outcomes are persisted transactionally in `CaptureRoomStateReceipt`, including deterministic terminal rejection evidence. Upload issuance/settlement is persisted in `MediaVaultUploadReservation`. Because the existing CallRoom lane is provisioned by additive SQL rather than a normal Prisma migration, `ops/quipsly-coaching-capture-additive.sql` must be applied and `scripts/quipsly-coaching-capture-schema-sync.mjs` must pass against the target database before the corresponding backend deploy.
+- In-app account deletion currently initiates a server request only. It is distinct from local-original deletion and is not a complete App Store deletion workflow until Quipsly has an approved retention matrix, disclosed completion timeframe, executor/anonymizer, and completion confirmation.
+- `scripts/quipsly-ios-capture-app-store-static-smoke.mjs` guards the App Store-readiness invariants that are easy to accidentally regress: no tracking, privacy data and required-reason categories, explicit microphone and dependency-required camera purpose strings, modern app target, Firebase reviewer auth, explicit consent gate, visible recording state, protected resumable uploads, capture-first iPhone UX, privacy/deletion routes, and reviewer docs.
+- `scripts/quipsly-mobile-capture-preflight.sh` is the default local health check for privacy manifest lint, Quipsly TypeScript, mobile capture contract syntax, iOS native auth invariants, App Store static invariants, upload idempotency, session evidence, and iOS simulator build.
+- `docs/quipsly/ios-capture-reviewer-smoke-checklist.md` is the physical-device/TestFlight smoke path for reviewer and beta readiness.
+
+## Local preflight
+
+Run this before claiming the iOS capture lane is healthy:
+
+```bash
+scripts/quipsly-mobile-capture-preflight.sh
+```
+
+The preflight now routes the native build through
+`apps/mobile-capture/HighGroundCapture/scripts/validate-livekit-provider-room.sh --build-simulator`
+so LiveKit package resolution and simulator build use bounded timeouts and full
+Xcode without changing global `xcode-select`.
+
+Run only the App Store static invariant guard when you are changing privacy, auth, recorder, upload, deletion, or review-copy surfaces:
+
+```bash
+node scripts/quipsly-ios-capture-app-store-static-smoke.mjs
+```
+
+Optional route smoke when a local or preview Nest is running:
+
+```bash
+RUN_ROUTE_SMOKE=1 BASE_URL=http://127.0.0.1:3000 scripts/quipsly-mobile-capture-preflight.sh
+```
+
+For a real native upload/finalization dogfood run without cloud credentials,
+configure the development-only local Capture vault explicitly:
+
+```bash
+QUIPSLY_CAPTURE_DOGFOOD_ROOT="$(mktemp -d)/quipsly-capture-vault"
+export QUIPSLY_LOCAL_CAPTURE_VAULT_ROOT="$QUIPSLY_CAPTURE_DOGFOOD_ROOT"
+export QUIPSLY_LOCAL_CAPTURE_UPLOAD_ORIGIN="http://127.0.0.1:3012"
+export QUIPSLY_LOCAL_MEDIA_ROOTS="$QUIPSLY_CAPTURE_DOGFOOD_ROOT/objects:/tmp/quipsly-media-ingest"
+pnpm --filter quipsly exec next dev --hostname 127.0.0.1 --port 3012
+```
+
+This lane is accepted only outside production with a loopback PostgreSQL
+`DATABASE_URL`, a credential-free loopback HTTP origin, and a dedicated
+directory below the operating-system temporary directory. It preserves
+immutable objects and manifest generations, but it does not satisfy GCS,
+staging, TestFlight, physical-device, backup, or production-readiness gates.
+Read `/api/mobile/capture/readiness` and require
+`activeUploadBackend: "local-development"` before running the local journey.
+Never point `QUIPSLY_LOCAL_MEDIA_ROOTS` at a broad user or repository directory.
+
+Optional local coaching payment boundary smoke:
+
+```bash
+RUN_ROUTE_SMOKE=1 RUN_COACHING_PAYMENT_SMOKE=1 BASE_URL=http://127.0.0.1:3000 scripts/quipsly-mobile-capture-preflight.sh
+```
+
+Optional generated signed-in smoke, only after Firebase Admin credentials are healthy for the target environment:
+
+```bash
+RUN_GENERATED_AUTH_SMOKE=1 RUN_COACHING_GENERATED_AUTH_SMOKE=1 BASE_URL=http://127.0.0.1:3000 scripts/quipsly-mobile-capture-preflight.sh
+```
+
+Optional reviewer/native auth contract smoke, after the reviewer account exists
+and has at least one planned coaching or podcast capture session:
+
+```bash
+QUIPSLY_MOBILE_CAPTURE_AUTH_EMAIL=<reviewer email> \
+QUIPSLY_MOBILE_CAPTURE_AUTH_PASSWORD=<reviewer password> \
+RUN_NATIVE_AUTH_CONTRACT_SMOKE=1 \
+BASE_URL=https://nest.quipsly.com \
+scripts/quipsly-mobile-capture-preflight.sh
+```
+
+Direct native-auth smoke, useful when you only need to prove the reviewer
+account and mobile-capture session contract:
+
+```bash
+QUIPSLY_MOBILE_CAPTURE_AUTH_EMAIL=<reviewer email> \
+QUIPSLY_MOBILE_CAPTURE_AUTH_PASSWORD=<reviewer password> \
+node scripts/quipsly-mobile-capture-native-auth-smoke.mjs \
+  --base-url=https://nest.quipsly.com \
+  --json
+```
+
+For local operator machines, prefer a password file or macOS Keychain instead
+of putting reviewer passwords into shell history:
+
+```bash
+QUIPSLY_MOBILE_CAPTURE_AUTH_EMAIL=<reviewer email> \
+node scripts/quipsly-mobile-capture-native-auth-smoke.mjs \
+  --base-url=https://nest.quipsly.com \
+  --password-keychain-service=quipsly-capture-reviewer \
+  --password-keychain-account=<reviewer email> \
+  --json
+```
+
+Direct reviewer visible-session smoke, useful when you need a compact
+App Review/TestFlight proof that the reviewer account has a real capture room
+visible to the native app:
+
+```bash
+bash scripts/quipsly-capture-live-reviewer-proof.sh
+```
+
+That wrapper is the preferred local operator path. It checks the static reviewer
+runway contract, reads the reviewer password from macOS Keychain, and then runs
+the live visible-session proof. By default it also creates a harmless
+Quipsly-owned reviewer session when needed. It does not charge, invite, publish,
+start recording, or create external calendar events.
+
+When the visible session is proved and the LiveKit room seam needs deeper
+evidence, run:
+
+```bash
+bash scripts/quipsly-capture-consent-room-live-proof.sh
+```
+
+This proof grants explicit app-owned reviewer consent, inspects side-effect-free
+room diagnostics, and prepares a short-lived LiveKit join token with token
+details redacted. It still must prove that preparing the room does not join
+provider media, start local or provider recording, mutate Stripe, mutate
+Calendar, send invites, or touch media/storage.
+
+If the Keychain item is missing, store it first:
+
+```bash
+bash scripts/quipsly-store-capture-reviewer-password.sh
+```
+
+The lower-level smoke remains available when CI or another secret manager is
+providing credentials directly:
+
+```bash
+QUIPSLY_CAPTURE_REVIEWER_EMAIL=<reviewer email> \
+QUIPSLY_CAPTURE_REVIEWER_PASSWORD=<reviewer password> \
+node scripts/quipsly-capture-reviewer-session-smoke.mjs \
+  --base-url=https://nest.quipsly.com \
+  --json
+```
+
+The reviewer visible-session smoke also supports `--password-file`,
+`--password-keychain-service`, and `--password-keychain-account`.
+
+This mirrors the iOS app path: fetch Firebase client config, sign in with
+Firebase email/password, verify the Quipsly bearer session through
+`/api/mac/session-check`, then prove authenticated mobile capture sessions are
+visible. It must not print tokens or passwords. It should fail if the reviewer
+account has no visible capture session, because an empty signed-in app is not a
+review-ready capture experience.
+
+The reviewer visible-session smoke reports the candidate room, participant,
+recording-consent state, lifecycle/readiness state, recordability boundary, and
+next safe action so reviewer setup failures are obvious before a device build is
+handed to anyone.
+
+Authenticated capture review digest:
+
+```bash
+curl -H "Authorization: Bearer <reviewer firebase id token>" \
+  https://nest.quipsly.com/api/mobile/capture/review-digest
+```
+
+This side-effect-free packet returns
+`packetKind:"quipsly-mobile-capture-review-digest-v1"` and summarizes visible
+capture sessions, consent, payment evidence, provider readiness, local fallback,
+recording evidence, transcript state, packet state, blockers, and next actions.
+It does not join a room, start recording, mutate payment state, or create
+external side effects. Use it as the single reviewer/agent readback after
+reviewer setup and before handing a build to TestFlight or App Review.
+
+Each visible capture session also includes
+`actionPacket.packetKind:"quipsly-capture-action-packet-v1"`. This packet is
+the compact control truth for the native app, reviewers, and agents: whether the
+room can be joined, whether local recording can start, whether a provider
+recording receipt slot can be prepared, whether transcription or packet building
+can run, what blockers remain, and what the next safe action is. Native capture
+deliberately keeps `canStartProviderRecording:false`; provider/server recording
+start is a separate Nest staff/operator action with explicit consent and receipt
+proof. Provider recording readiness must never be inferred from room join
+readiness. The readiness panel should also show when provider egress is
+configured but production START remains interlocked, so App Review, beta testers,
+humans, and agents can see that joining, local recording, and server recording
+are separate states.
+
+Legacy native iPhone/iPad Session screens, outside the four-tab Capture candidate, show this readback in
+`MobileCaptureReviewDigestPanel`, and each session can render
+`MobileCaptureActionPacketCard` beside readiness, journey, and lifecycle cards.
+Reviewer setup can be checked in the app without asking testers to run curl
+commands.
+
+The digest panel includes `ReviewerDigestBoundaryCard`, which labels the packet
+as read-only and repeats that refresh does not join rooms, start recording,
+charge, publish, schedule, invite, upload, or delete media.
+
+Those legacy Session screens also show
+`AppReviewProofPanel`: a read-only proof path explaining reviewer account setup,
+explicit consent, no hidden recording, local-source safety, recoverable upload
+failure, and inspectable transcript/packet/receipt evidence. This panel does
+not join rooms, start recording, charge, publish, or mutate external systems; it
+exists so App Review, beta testers, humans, and agents can see the safety model
+before touching controls.
+
+The lifecycle card also renders the shared `safeActions` list from Nest. Each
+row shows whether the action is currently safe, why, and its boundary. This is
+reviewer and operator guidance only; it does not start recording, charge,
+publish, or mutate external systems by itself.
+
+## Reviewer account and visible-session setup
+
+The reviewer login and reviewer session are two separate pieces of evidence.
+Both are required before TestFlight/App Review proof is meaningful.
+
+Source-only setup contract:
+
+```bash
+node scripts/quipsly-capture-reviewer-runway-static-smoke.mjs
+```
+
+This smoke verifies the admin login card, coaching reviewer preset, runway route,
+native visible-session smoke, review digest route, and checklist language stay
+aligned. It does not sign in, mutate data, charge, invite, publish, or record.
+
+1. Open `/admin/users` as a Quipsly admin.
+2. Use the `Capture reviewer setup` card to create or repair the Firebase
+   email/password reviewer login, Quipsly user record, free starter state, and
+   Home Nest.
+3. Open `/coaching` as a Quipsly staff/admin user.
+4. In the local session creator, load the `Reviewer-safe capture session
+   preset`.
+5. Confirm the account email is `reviewer-capture@dev.test`, or replace it with
+   the actual reviewer account.
+6. Use `Create booking and capture room` when the goal is a visible iOS capture
+   session. Do not use a hold-only path for App Review.
+7. Confirm the session appears in authenticated mobile capture sessions before
+   claiming the app is review-ready.
+8. Run `node scripts/quipsly-capture-reviewer-session-smoke.mjs --json` against
+   the target Nest environment and keep the JSON with App Review/TestFlight
+   handoff notes.
+
+Boundary: the reviewer session setup writes Quipsly-owned booking, room,
+requested consent, and calendar receipt-slot state. It does not charge, invite,
+publish, start recording, or create an external calendar event.
+
+Scheduling evidence follows the same rule. Quipsly owns booking holds,
+confirmed bookings, planned capture rooms, reschedule/cancel state, and calendar
+receipt slots. External calendars are evidence providers. Operators can attach a
+calendar provider event ID or event link after the external action happens, but
+the app must not imply that a calendar invitation was created, updated, or
+canceled unless that receipt is present.
+
+If the generated signed-in smoke reports `Firebase Admin credential unavailable`, check `/api/auth/firebase-admin-preflight` first. On 2026-07-05, live `https://nest.quipsly.com/api/auth/firebase-admin-preflight` was healthy, while local ADC was expired and non-interactive `gcloud auth application-default print-access-token --project=quipsly-reef` failed with reauthentication required. That is a local credential blocker, not proof that the deployed app auth is broken.
+
+Optional legacy LiveKit dependency probe, only if the package strategy changes again:
+
+```bash
+RUN_LIVEKIT_PROBE=1 LIVEKIT_TIMEOUT_SECONDS=900 scripts/quipsly-mobile-capture-preflight.sh
+```
+
+The old source-SDK probe is intentionally separate from the app build because package metadata can resolve while binary artifact downloads stall. The active app-target decision is the binary package `client-sdk-swift-xcframework.git @ 2.15.1`, validated through the project-level resolver below. Do not reintroduce half-installed source-SDK package references in the Xcode project.
+
+Optional LiveKit artifact doctor before attaching the Swift package:
+
+```bash
+RUN_LIVEKIT_ARTIFACT_DOCTOR=1 scripts/quipsly-mobile-capture-preflight.sh
+```
+
+To test the actual heavy downloads without modifying the iOS project:
+
+```bash
+DOWNLOAD=1 scripts/quipsly-livekit-artifact-doctor.sh
+```
+
+This checks the exact binary artifacts the app-target LiveKit package resolves today:
+`LiveKit.xcframework.zip`, `RustLiveKitUniFFI.xcframework.zip`, and `LiveKitWebRTC.xcframework.zip`.
+
+Current project-level LiveKit resolver:
+
+```bash
+apps/mobile-capture/HighGroundCapture/scripts/validate-livekit-provider-room.sh
+```
+
+This script uses full Xcode through `DEVELOPER_DIR` without changing global
+`xcode-select`, verifies that the Xcode project links
+`https://github.com/livekit/client-sdk-swift-xcframework.git`, and resolves the LiveKit
+package graph with a bounded timeout.
+
+Run the current local build proof when package resolution is healthy:
+
+```bash
+apps/mobile-capture/HighGroundCapture/scripts/validate-livekit-provider-room.sh --build-simulator
+```
+
+This has passed locally with the binary package linked. The next proof after package resolution and simulator build is a real Nest-issued join packet on simulator/device.
+
+If package resolution or binary artifacts hang, do not revert to hidden fallback
+behavior. Keep the project reference, report the resolver/artifact blocker, and
+make the native UI honest about whether the current build is provider-media
+ready.
+
+Provider room join and provider recording are separate App Review truths. Joining a LiveKit room must not start recording. Provider recording/egress needs explicit consent, a visible start action, visible recording state, and server-side receipt evidence before Quipsly treats it as transcript-ready.
+
+## Legacy Session context sync
+
+The older Session surface has a local-first session-context panel for quick notes, goals, and tasks. It is supporting Studio history, not a Capture v1 destination. Local drafts remain useful if a phone is offline, but the shared source of truth is Nest:
+
+- Read/write route: `/api/mobile/capture/sessions/context`.
+- Storage owner: `CallRoom.metadataJson.captureSessionContext`.
+- Side effects: none. Saving context does not start recording, charge Stripe, schedule Google Calendar, mutate LiveKit, upload files, publish, or invite anyone.
+- Native behavior: `Load Nest` pulls the shared context into the phone draft, and `Save Nest` explicitly pushes the current draft back to Nest.
+
+This is intentionally not a second notes system. It is the capture-room prep surface that later packet, transcript, follow-up, and review workflows can read.
+
+## Runtime UI smoke seam
+
+The iOS target now supports a DEBUG-only launch environment override for simulator/UI proof:
+
+```bash
+QUIPSLY_CAPTURE_UI_TEST_EMAIL="reviewer@example.com" \
+QUIPSLY_CAPTURE_UI_TEST_PASSWORD="..." \
+QUIPSLY_CAPTURE_UI_TEST_BASE_URL="http://127.0.0.1:3012" \
+apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh
+```
+
+This does not bypass auth. It makes the real native Firebase login and Quipsly bearer verification point at the intended Nest backend in DEBUG builds. The smoke expects a signed-in account with at least one capture session, then verifies the four-tab shell, selected session, consent strip, dominant local recorder, subordinate provider-room disclosure, join control, and source-truth copy.
+
+For a one-shot generated-user proof, run the generated mobile capture auth smoke with runtime UI enabled:
+
+```bash
+node scripts/quipsly-mobile-capture-generated-auth-smoke.mjs \
+  --base-url=http://127.0.0.1:3012 \
+  --run-runtime-ui-smoke=1
+```
+
+That path creates a disposable Firebase user, exchanges it into Quipsly, seeds a LiveKit-backed `CallRoom`, proves the server/mobile contracts, launches the real native iOS UI smoke with generated credentials, then cleans up the disposable user and room. It does not print the generated password, Firebase token, session cookie, database URL, or bearer token.
+
+Historical proof from 2026-07-08: the generated-user runtime UI path passed against `http://127.0.0.1:3012`, including 96 authenticated mobile contract checks and disposable artifact cleanup. It predates this candidate and must be rerun before release; it is not part of the final 2026-07-18 6/6 deterministic UI result.
+
+Stable runtime landmarks:
+
+- `CaptureSessionChooser`
+- `CaptureConsentStrip`
+- `CaptureRecorderHero`
+- `CaptureStartButton`
+- `CaptureLiveRoomDisclosure`
+- `CaptureProviderRoomControls`
+- `ProviderJoinRoomButton`
+- `CaptureSourceTruthFootnote`
+- `CaptureStudioHandoffCard_<session-id>`
+- `CaptureAttachToStudioButton_<session-id>`
+- `CaptureStudioPromotionStatus_<session-id>`
+
+Latest local end-to-end proof from 2026-07-19: `CaptureRoomRuntimeSmokeTests.testConsentedCapturePlaybackAndCrashRecovery()` passed in `/tmp/QuipslyCaptureStudioReuse-20260719-1300.xcresult` (116.910 seconds). Beyond capture, playback, process-loss recovery, offline protection, and upload verification, it operated the primary Record shell's real Studio handoff and waited for durable `Studio media ready` readback. Independent storage and database checks matched one 62,428-byte source at SHA-256 `8e8fa6367a29adc067868fc97c97da81bf88e8dbb3dd01f548ea387783da8d18`, the same finalization and promotion source/media IDs, the same canonical project, one attachment/import, `local-development` storage truth, preserved original, and consent-held transcript. Authenticated full/range playback matched the local object byte-for-byte, and a bearer-authenticated replay returned `already-promoted` without changing row counts. This is local simulator/vault evidence only; physical-device and production media-vault gates below remain open.
+
+## App Store Connect labels to review manually
+
+Before TestFlight or App Store submission, generate Xcode's privacy report from an archive and reconcile it with App Store Connect labels. Current expected categories:
+
+- Contact info: name and email, linked to user, app functionality.
+- Identifiers: app-owned user ID, device ID, and session IDs, linked to user, app functionality.
+- Audio data: recordings, linked to user, app functionality.
+- User content: transcripts, notes, packets, and action items, linked to user, app functionality.
+- Diagnostics: only if crash/log tooling is added; do not claim it until a real SDK exists.
+- Tracking: no.
+
+## Review notes draft
+
+Quipsly Capture records only after the signed-in user selects a Quipsly session, opts into audio recording, confirms that everyone else who may be heard was told and agreed, and current required participant consent permits the Start boundary. Recording state is shown in the app while capture is active. The candidate is designed to store recordings locally first and upload them directly to private Google Cloud Storage with an authenticated resumable v2 session; production upload claims remain conditional on the live schema, CORS, reviewer, and physical-device gates below. Quipsly labels a copy verified only after checking its object generation, exact size, type, CRC32C, and SHA-256. The app never prunes local sources automatically. The signed-in owner may separately delete one local original after an explicit irreversible-deletion confirmation; this preserves a protected audit tombstone and does not delete cloud or account evidence. Users can initiate account deletion in the app, but release remains blocked until Quipsly's full retention-aware executor and completion-confirmation workflow is operational.
+
+## Remaining blockers before App Store submission
+
+- 2026-07-21 release-readiness pass: local code/build evidence is healthy again, but TestFlight remains externally blocked. `scripts/quipsly-mobile-capture-preflight.sh` passes after repairing its stale recording-promotion static assertion and routing TypeScript execution through the repo TS extension loader. The focused session-evidence smoke passes, Quipsly TypeScript passes, and unsigned iOS simulator build with LiveKit linked passes. Current live probes for `nest.quipsly.com`, `nest.quipsly.com/privacy`, `nest.quipsly.com/api/mac/firebase-client-config`, `app.highgroundodyssey.com/api/health`, and `highgroundodyssey.com` all return Google Frontend HTTP 503 before application route contracts are reached.
+- 2026-07-21 Apple signing and upload gates cleared: after the account agreement was accepted, `xcodebuild ... -allowProvisioningUpdates archive` created the app and share-extension profiles and produced signed archive `/tmp/QuipslyCapture-20260721151703.xcarchive`. Automatic App Store Connect distribution export produced `/tmp/QuipslyCapture-AppStoreExport-20260721151703/HighGroundCapture.ipa`; strict signature verification passed with Apple Distribution profiles for both targets. Build `1.0 (1)` then uploaded successfully and entered App Store Connect processing. Xcode warned that the vendor LiveKitWebRTC and RustLiveKitUniFFI frameworks did not include matching dSYMs; the warning did not reject the upload but leaves third-party crash symbolication incomplete. This is upload evidence, not processing completion, tester availability, TestFlight installation, or physical-device proof.
+- 2026-07-21 physical-device blocker: Xcode/CoreDevice still does not see the plugged-in iPhone as an available destination. `xctrace` lists only the Mac plus offline iPads `Layla` and `Morbo`; `devicectl` lists the same unavailable iPads. Unlock/trust the iPhone, use a data-capable cable/direct port, and confirm it appears in Xcode Devices before claiming physical-device capture proof.
+- 2026-07-21 Cloud service blocker isolated: operator and ADC authentication now pass, all four Cloud Run services report Ready, and the expected domain mappings and 100% traffic targets remain intact. Current Cloud Run request logs fail with `The request failed because billing is disabled for this project.` The project remains linked to a billing account, but that account reports closed. Reopen or replace the billing account through an authorized billing administrator, then re-probe the generated Cloud Run URLs and public domains before changing application code or deploying.
+- Restore the public Quipsly/Nest service. On 2026-07-18, the checked readiness, session, policy, and account-deletion surfaces returned HTTP 503. One earlier transient `www.quipsly.com` root probe returned HTTP 500; a later root retry returned HTTP 503. No production reviewer, room, policy, deletion, or direct-upload claim can be accepted while that remains true.
+- Apply `ops/quipsly-coaching-capture-additive.sql` and pass `scripts/quipsly-coaching-capture-schema-sync.mjs` against the target database before deploying backend code that reads or writes `CaptureRoomStateReceipt` or `MediaVaultUploadReservation`; upload capability issuance is launch-critical on the latter.
+- Apply the reviewed media-vault CORS policy and verify live bucket readback includes `x-goog-if-generation-match`. Local gcloud authentication could not mint a token during this audit, so the source policy is not deployment proof.
+- Add a real reviewer test account with at least one visible session, then smoke native email/password auth and the reviewer checklist against deployed `nest.quipsly.com`.
+- No reachable physical iPhone was available during this audit. Produce signed archive/TestFlight proof and validate microphone permission/fidelity, built-in/Bluetooth/USB routes, lock/background behavior, interruptions, route loss, force-quit recovery, failed-upload recovery, direct-GCS background transfer, and transcript packet creation on a physical device.
+- Join a real Nest-issued LiveKit room and prove LiveKit transport, CallKit activation/presentation, and local recording remain visibly separate through connect, timeout/failure, interruption, reconnect, and reset. Provider-egress START becomes a submission blocker only if provider recording enters release scope; otherwise prove it stays interlocked and absent from end-user Capture controls.
+- Complete the retention-aware account-deletion system: approved retention matrix, public completion timeframe, destructive/anonymizing executor, and completion confirmation. A request row is not deletion completion.
+- Finalize and serve production Terms, Privacy, and account-deletion surfaces; reconcile their claims with the binary, App Store privacy answers, reviewer notes, and actual retention behavior.
+- Generate Xcode's privacy report from the signed archive and confirm `PrivacyInfo.xcprivacy` and all required-reason entries appear in the distributed app bundle.
+- Refresh local Firebase ADC or configure explicit local Firebase Admin service-account credentials for repeatable non-interactive generated-auth smokes; this is separate from restoring the deployed service.
