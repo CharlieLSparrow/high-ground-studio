@@ -53,6 +53,39 @@ Web creation uses a stable UUID request identity and a deterministic canonical
 note ID. An exact retry returns the existing note; reusing the same request
 identity for different content fails with a conflict.
 
+### iPhone capture and reconciliation
+
+The iPhone is the protected offline edge; Nest remains the canonical Session
+Notes system of record.
+
+- The local quick-entry outbox persists the note body, Session identity,
+  purpose, audience, request identity, and capture time before attempting a
+  network write. Older ledger entries without purpose or audience decode
+  conservatively as `SESSION_NOTE` and `AUTHOR_PRIVATE`.
+- Purpose and audience controls appear only when a quick Note is attached to
+  the current Session. Project-team audience and production purpose appear only
+  when the signed-in Session projection says the actor is an Owner, Editor, or
+  authorized staff member.
+- The server never trusts that projection as authorization. It rechecks
+  canonical Session and Nest access when the outbox entry reconciles, validates
+  the purpose/audience combination, and writes the note plus revision 1 in one
+  transaction.
+- Retry identity covers Session, body, purpose, and audience. An exact replay
+  converges on the original canonical note; changing any protected intent under
+  the same request identity is a conflict.
+- A successful quick-entry response returns the canonical note identity,
+  purpose, audience, revision, and an explicit statement that no message,
+  notification, task, calendar event, publication, or delivery occurred.
+- The signed-in Session projection returns only policy-visible canonical notes,
+  with author, ownership, tags, revision, origin, and timestamps. The iPhone
+  renders those separately from still-pending protected outbox entries so local
+  intent cannot masquerade as server persistence.
+
+The Session Notes disclosure exposes stable accessibility identities for the
+toggle, canonical rows, and the no-delivery boundary. These identities are part
+of the UI automation contract, but visible copy remains the primary human trust
+surface.
+
 The visibility migration is deliberately conservative:
 
 - existing notes become `AUTHOR_PRIVATE`;

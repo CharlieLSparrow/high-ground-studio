@@ -49,3 +49,39 @@ export function workspaceNoteVisibilityWhere(input: {
     ],
   };
 }
+
+/**
+ * Visibility policy for the iPhone Session projection. The enclosing room query
+ * still owns Session access; this predicate prevents that access from widening
+ * author-private notes or production-team notes.
+ */
+export function mobileSessionNoteVisibilityWhere(input: {
+  actorUserId: string;
+  actorEmail: string;
+  isStaff: boolean;
+}): Prisma.CoachingNoteWhereInput {
+  return {
+    OR: [
+      { authorUserId: input.actorUserId },
+      { visibility: { in: ["SESSION_SHARED", "CLIENT_SAFE"] } },
+      ...(input.isStaff
+        ? [{ visibility: "PROJECT_TEAM" as const }]
+        : input.actorEmail
+          ? [{
+              visibility: "PROJECT_TEAM" as const,
+              room: {
+                project: {
+                  accessGrants: {
+                    some: {
+                      email: input.actorEmail,
+                      status: "ACTIVE" as const,
+                      role: { in: ["OWNER", "EDITOR"] satisfies StudioProjectAccessRole[] },
+                    },
+                  },
+                },
+              },
+            }]
+          : []),
+    ],
+  };
+}

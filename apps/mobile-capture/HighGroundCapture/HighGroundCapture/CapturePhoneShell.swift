@@ -1488,6 +1488,11 @@ private struct CaptureRecorderView: View {
                 }
 
                 if let session = model.selectedSession {
+                    CaptureSessionNotesCard(
+                        session: session,
+                        outbox: model.quickEntryOutbox
+                    )
+
                     DisclosureGroup(isExpanded: $showsSessionContext) {
                         CaptureSessionContextPanel(
                             session: session,
@@ -1802,6 +1807,124 @@ struct CaptureQuickEntrySyncCard: View {
     }
 }
 
+private struct CaptureSessionNotesCard: View {
+    let session: MobileCaptureSession
+    @ObservedObject var outbox: MobileQuickEntryOutbox
+    @State private var isExpanded = false
+
+    private var canonicalNotes: [MobileCaptureSessionNote] {
+        session.sessionNotes ?? []
+    }
+
+    private var pendingNotes: [PendingMobileQuickEntry] {
+        outbox.entries.filter {
+            $0.kind == .note && $0.callRoomID == session.callRoomId
+        }
+    }
+
+    private var totalCount: Int {
+        canonicalNotes.count + pendingNotes.count
+    }
+
+    var body: some View {
+        DisclosureGroup(isExpanded: $isExpanded) {
+            VStack(alignment: .leading, spacing: 10) {
+                if totalCount == 0 {
+                    Text("No deliberate notes yet. Quick Note above can save privately, to this Session, for client review, or to the production team.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                ForEach(pendingNotes.prefix(4)) { entry in
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(spacing: 6) {
+                            Label("Protected on iPhone", systemImage: "iphone.gen3.radiowaves.left.and.right")
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(.orange)
+                            Spacer(minLength: 0)
+                            Text(entry.noteVisibility?.title ?? "Only me")
+                                .font(.caption2.weight(.bold))
+                        }
+                        Text(entry.displayTitle)
+                            .font(.subheadline.weight(.bold))
+                        Text(entry.body)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(4)
+                        Text("\(entry.noteKind?.title ?? "Session note") · \(entry.noteVisibility?.boundary ?? MobileSessionNoteVisibility.authorPrivate.boundary)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .background(Color.orange.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("CaptureSessionNotePending_\(entry.clientRequestID)")
+                }
+
+                ForEach(canonicalNotes.prefix(8)) { note in
+                    VStack(alignment: .leading, spacing: 5) {
+                        HStack(alignment: .firstTextBaseline, spacing: 6) {
+                            Text(note.purposeLabel)
+                                .font(.caption2.weight(.bold))
+                                .foregroundStyle(CapturePalette.accent)
+                            Text("·")
+                                .foregroundStyle(.tertiary)
+                            Text(note.audienceLabel)
+                                .font(.caption2.weight(.bold))
+                            Spacer(minLength: 0)
+                            Text("\(note.revisionCount) rev")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(note.title?.nonempty ?? note.purposeLabel)
+                            .font(.subheadline.weight(.bold))
+                        Text(note.body)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(5)
+                        if !note.tags.isEmpty {
+                            Text(note.tags.map { "#\($0.label)" }.joined(separator: "  "))
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.purple)
+                                .lineLimit(2)
+                        }
+                        Text("\(note.origin) · \(note.isMine ? "Yours" : note.authorLabel). \(note.audienceBoundary)")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(10)
+                    .background(CapturePalette.accent.opacity(0.055), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("CaptureSessionNoteCanonical_\(note.id)")
+                }
+
+                Text("Audience is a visibility decision, not a delivery receipt. Nest remains the canonical editor and revision history.")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureSessionNotesDeliveryBoundary")
+            }
+            .padding(.top, 10)
+        } label: {
+            HStack {
+                Label("Session Notes", systemImage: "note.text")
+                    .font(.headline)
+                Spacer()
+                Text(totalCount == 0 ? "None yet" : "\(totalCount)")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(totalCount == 0 ? Color.secondary : CapturePalette.accent)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("CaptureSessionNotesToggle")
+        }
+        .captureCard()
+        .accessibilityHint("Shows protected pending notes and canonical notes whose audience permits this account.")
+    }
+}
+
 struct CaptureQuickEntrySheet: View {
     private enum FocusedField: Hashable {
         case title
@@ -1831,6 +1954,8 @@ struct CaptureQuickEntrySheet: View {
     @State private var hasOneTimeReminder = false
     @State private var oneTimeReminderAt = Date().addingTimeInterval(3_600)
     @State private var destination = "SESSION"
+    @State private var noteKind = MobileSessionNoteKind.sessionNote
+    @State private var noteVisibility = MobileSessionNoteVisibility.authorPrivate
     @FocusState private var focusedField: FocusedField?
 
     init(kind: MobileQuickEntryKind, session: MobileCaptureSession?, model: CaptureExperienceModel) {
@@ -1857,6 +1982,26 @@ struct CaptureQuickEntrySheet: View {
 
     private var savesNoteToHomeNest: Bool {
         kind == .note && savesToHomeNest
+    }
+
+    private var savesSessionNote: Bool {
+        kind == .note && destination == "SESSION" && session != nil
+    }
+
+    private var canUseProjectTeamNotes: Bool {
+        session?.canUseProjectTeamNotes == true
+    }
+
+    private var availableNoteKinds: [MobileSessionNoteKind] {
+        canUseProjectTeamNotes
+            ? MobileSessionNoteKind.allCases
+            : MobileSessionNoteKind.allCases.filter { $0 != .production }
+    }
+
+    private var availableNoteVisibilities: [MobileSessionNoteVisibility] {
+        canUseProjectTeamNotes
+            ? MobileSessionNoteVisibility.allCases
+            : MobileSessionNoteVisibility.allCases.filter { $0 != .projectTeam }
     }
 
     private var savesToHomeNest: Bool {
@@ -2057,6 +2202,34 @@ struct CaptureQuickEntrySheet: View {
                     .lineLimit(kind == .note || kind == .source ? 5...12 : 3...10)
                     .focused($focusedField, equals: .body)
                     .accessibilityIdentifier("CaptureQuickEntryBody")
+                }
+
+                if savesSessionNote {
+                    Section {
+                        Picker("Purpose", selection: $noteKind) {
+                            ForEach(availableNoteKinds) { purpose in
+                                Text(purpose.title).tag(purpose)
+                            }
+                        }
+                        .pickerStyle(.navigationLink)
+                        .accessibilityIdentifier("CaptureQuickEntryNoteKind")
+
+                        Picker("Audience", selection: $noteVisibility) {
+                            ForEach(availableNoteVisibilities) { audience in
+                                Text(audience.title).tag(audience)
+                            }
+                        }
+                        .pickerStyle(.navigationLink)
+                        .accessibilityIdentifier("CaptureQuickEntryNoteVisibility")
+
+                        LabeledContent("Current audience", value: noteVisibility.title)
+                            .accessibilityIdentifier("CaptureQuickEntryNoteVisibilityReadback")
+                    } header: {
+                        Text("Purpose & audience")
+                    } footer: {
+                        Text("\(noteVisibility.boundary) Choosing an audience never sends a message, changes a task, schedules an event, or publishes anything.")
+                            .accessibilityIdentifier("CaptureQuickEntryNotePolicyBoundary")
+                    }
                 }
 
                 if kind != .source {
@@ -2266,6 +2439,8 @@ struct CaptureQuickEntrySheet: View {
                             saveToHomeNest: savesToHomeNest,
                             destinationProjectID: destinationProjectID,
                             destinationProjectName: destinationProjectName,
+                            noteKind: savesSessionNote ? noteKind : nil,
+                            noteVisibility: savesSessionNote ? noteVisibility : nil,
                             tagIDs: Array(selectedTagIDs).sorted(),
                             newTagLabels: newTagLabels,
                             dueAt: dueAt,
@@ -2298,6 +2473,13 @@ struct CaptureQuickEntrySheet: View {
             newTagLabels.removeAll()
             newTagDraft = ""
             tagSearchText = ""
+            if !savesSessionNote {
+                noteKind = .sessionNote
+                noteVisibility = .authorPrivate
+            } else {
+                if !availableNoteKinds.contains(noteKind) { noteKind = .sessionNote }
+                if !availableNoteVisibilities.contains(noteVisibility) { noteVisibility = .authorPrivate }
+            }
         }
         .accessibilityIdentifier("CaptureQuickEntrySheet_\(kind.rawValue)")
     }

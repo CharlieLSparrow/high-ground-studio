@@ -12,6 +12,12 @@ import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-proces
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
 
 const MOBILE_CAPTURE_ACTION_PACKET_KIND = "quipsly-capture-action-packet-v1";
+const DELIBERATE_SESSION_NOTE_KINDS = new Set([
+  "SESSION_NOTE",
+  "FOLLOW_UP",
+  "DECISION",
+  "PRODUCTION",
+]);
 
 function label(value: unknown) {
   return typeof value === "string" ? value : null;
@@ -550,10 +556,13 @@ function buildMobileCaptureActionPacket(input: {
 export function mapMobileCaptureSessionsForUser(input: {
   rooms: any[];
   userId: string;
+  isStaff?: boolean;
+  productionNoteProjectIds?: string[];
   env?: NodeJS.ProcessEnv;
   finalizationReceipts?: any[];
 }) {
   const finalizationReceipts = Array.isArray(input.finalizationReceipts) ? input.finalizationReceipts : [];
+  const productionNoteProjectIds = new Set(input.productionNoteProjectIds || []);
   return input.rooms.map((room: any) => {
     const sessionProject = canonicalMobileSessionProject(room);
     const participant = room.participants.find((item: any) => item.userId === input.userId) || null;
@@ -597,6 +606,36 @@ export function mapMobileCaptureSessionsForUser(input: {
       : [];
     const packetSummary = packetNotesForLatestTranscript.find((note: any) => note.kind === "SUMMARY") || null;
     const packetHighlights = packetNotesForLatestTranscript.filter((note: any) => note.kind === "HIGHLIGHT");
+    const sessionNotes = room.notes
+      .filter((note: any) => DELIBERATE_SESSION_NOTE_KINDS.has(note.kind))
+      .map((note: any) => {
+        const source = sourceJson(note.sourceJson);
+        const origin = source.schema === "quipsly-mobile-quick-entry-v1"
+          ? "iPhone Capture"
+          : source.schema === "quipsly-session-continuity-brief-v1"
+            ? "Saved continuity"
+            : source.origin === "nest-session-notes"
+              ? "Nest Session note"
+              : "Session record";
+        return {
+          id: note.id,
+          title: note.title,
+          body: note.body,
+          kind: note.kind,
+          visibility: note.visibility,
+          authorLabel: note.authorUser?.name || note.authorUser?.primaryEmail || "Note author",
+          isMine: note.authorUserId === input.userId,
+          canEdit: note.authorUserId === input.userId && note.kind !== "FOLLOW_UP",
+          origin,
+          revisionCount: note._count?.revisions ?? 0,
+          tags: (note.tagLinks || [])
+            .map((link: any) => link.tag)
+            .filter((tag: any) => tag.isActive)
+            .map((tag: any) => ({ id: tag.id, slug: tag.slug, label: tag.label })),
+          createdAt: note.createdAt?.toISOString?.() ?? null,
+          updatedAt: note.updatedAt?.toISOString?.() ?? null,
+        };
+      });
     const latestRecordingPromotion = mediaProcessingGate.allowed ? recordingPromotion(latestRecordingAsset) : {};
     const packetSummaryNoteId = packetSummary?.id ?? null;
     const newestPacketNote = [packetSummary, ...packetHighlights]
@@ -782,6 +821,9 @@ export function mapMobileCaptureSessionsForUser(input: {
           : latestTranscriptStatus === "COMPLETED"
             ? "PACKET_READY_TO_BUILD"
             : "NOT_READY",
+      canUseProjectTeamNotes: input.isStaff === true
+        || (sessionProject.projectId != null && productionNoteProjectIds.has(sessionProject.projectId)),
+      sessionNotes,
       afterCaptureNextAction: afterCaptureLine,
       nextAction:
         captureReadiness.nextAction ||

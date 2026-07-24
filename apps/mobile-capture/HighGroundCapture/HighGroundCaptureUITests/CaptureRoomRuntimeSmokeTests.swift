@@ -680,6 +680,87 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    func testClientSafeDecisionRoundTripsFromProtectedIPhoneOutboxToCanonicalSessionNotes() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty else {
+            throw XCTSkip("The client-safe Session note journey requires an exact canonical Session ID.")
+        }
+        let proofID = UUID().uuidString.lowercased().prefix(8)
+        let bodyText = "Client-safe iPhone decision \(proofID): name the next experiment without sending a message."
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: app)
+        selectRequestedSession(in: app, credentials: credentials)
+
+        let entryButton = app.buttons["CaptureQuickEntry_NOTE_\(sessionID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(entryButton, in: app, timeout: 20, swipeAttempts: 8),
+            "The selected real Session should expose Quick Note."
+        )
+        entryButton.tap()
+        let sheet = app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 6))
+
+        let purpose = app.descendants(matching: .any)["CaptureQuickEntryNoteKind"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(purpose, in: app, timeout: 20, swipeAttempts: 8))
+        purpose.tap()
+        XCTAssertTrue(app.buttons["Decision"].waitForExistence(timeout: 4))
+        app.buttons["Decision"].tap()
+
+        let audience = app.descendants(matching: .any)["CaptureQuickEntryNoteVisibility"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(audience, in: app, timeout: 10, swipeAttempts: 4))
+        audience.tap()
+        XCTAssertTrue(app.buttons["Client-safe"].waitForExistence(timeout: 4))
+        app.buttons["Client-safe"].tap()
+        let policyBoundary = app.descendants(matching: .any)["CaptureQuickEntryNotePolicyBoundary"].firstMatch
+        XCTAssertTrue(policyBoundary.exists)
+        XCTAssertTrue(policyBoundary.label.contains("not sent"))
+
+        let body = app.textFields["CaptureQuickEntryBody"].firstMatch
+        for _ in 0..<8 where !body.isHittable {
+            app.swipeDown()
+        }
+        XCTAssertTrue(body.isHittable)
+        body.tap()
+        body.typeText(bodyText)
+        let keyboardDone = app.buttons["CaptureQuickEntryKeyboardDone"].firstMatch
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 3))
+        keyboardDone.tap()
+
+        let save = app.buttons["CaptureQuickEntrySave"].firstMatch
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 6))
+        XCTAssertTrue(
+            app.staticTexts["The client-safe Session note is saved and ready for reviewed follow-up. It has not been sent."]
+                .waitForExistence(timeout: 30),
+            "Nest must acknowledge the canonical audience while refusing to imply delivery."
+        )
+        XCTAssertFalse(quickEntryRetryButton(in: app).exists)
+
+        let notesCard = app.descendants(matching: .any)["CaptureSessionNotesToggle"].firstMatch
+        for _ in 0..<12 where !notesCard.isHittable {
+            app.swipeUp()
+        }
+        XCTAssertTrue(notesCard.isHittable, "The Record surface should expose canonical Session Notes after sync.")
+        notesCard.tap()
+        let canonicalDecision = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureSessionNoteCanonical_")
+        ).firstMatch
+        XCTAssertTrue(
+            canonicalDecision.waitForExistence(timeout: 10),
+            "The expanded Session Notes card should expose a canonical note identity."
+        )
+        let canonicalBody = app.staticTexts[bodyText].firstMatch
+        XCTAssertTrue(
+            canonicalBody.waitForExistence(timeout: 10),
+            "The canonical note identity should contain the exact client-safe Decision body after its outbox is acknowledged."
+        )
+        let deliveryBoundary = app.descendants(matching: .any)["CaptureSessionNotesDeliveryBoundary"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(deliveryBoundary, in: app, timeout: 10, swipeAttempts: 6))
+        XCTAssertTrue(deliveryBoundary.label.contains("not a delivery receipt"))
+        attachRecordingIdentity(String(proofID), name: "Client-safe Session decision proof ID")
+    }
+
     func testCoachingFollowThroughReadsSameCanonicalTodayRecords() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let taskID = credentials.taskID, !taskID.isEmpty,

@@ -822,6 +822,8 @@ function checkTranscriptCorrectionContractSources() {
   const editorText = sourceText("apps/quipsly/src/app/(app)/editor/page.tsx");
   const quickEntryText = sourceText("apps/quipsly/src/lib/server/mobile-capture-quick-entry.ts");
   const quickEntryRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts");
+  const sessionNoteContractText = sourceText("apps/quipsly/src/lib/session-note-contract.ts");
+  const sessionNoteAccessText = sourceText("apps/quipsly/src/lib/server/session-note-access.ts");
   const quickEntryOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileQuickEntryOutbox.swift");
   const captureExperienceText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureExperienceModel.swift");
   const shareCaptureBridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ShareCaptureBridge.swift");
@@ -1082,6 +1084,40 @@ function checkTranscriptCorrectionContractSources() {
       && sessionReviewText.includes("Open same {entry.kind.toLowerCase()} in Work"),
     "canonicalMobileQuickEntryOutbox",
     "iPhone quick Note, Task, Goal, and Source capture journals to an actor-partitioned protected outbox first; Session, Home Nest, and explicit writable-Nest work replay to canonical project records while private URL/text sources enter Inbox with exact readback and no external side effects.",
+  );
+  expect(
+    sessionNoteContractText.includes("SESSION_NOTE_VISIBILITIES")
+      && sessionNoteContractText.includes("EDITABLE_SESSION_NOTE_KINDS")
+      && quickEntryText.includes("noteKind: EditableSessionNoteKind | null")
+      && quickEntryText.includes("noteVisibility: SessionNoteVisibility | null")
+      && quickEntryText.includes("QUICK_ENTRY_NOTE_POLICY_SESSION_ONLY")
+      && quickEntryText.includes("QUICK_ENTRY_NOTE_VISIBILITY_INVALID")
+      && quickEntryRouteText.includes('operation: "created-from-ios-capture"')
+      && quickEntryRouteText.includes('"QUICK_ENTRY_NOTE_POLICY_FORBIDDEN"')
+      && quickEntryRouteText.includes("appendOnlyNoteRevision")
+      && sessionNoteAccessText.includes("mobileSessionNoteVisibilityWhere")
+      && sessionNoteAccessText.includes("Private notes remain")
+      && sessionsRouteText.includes("mobileSessionNoteVisibilityWhere")
+      && mobileCaptureSessionsText.includes("const sessionNotes = room.notes")
+      && mobileCaptureSessionsText.includes("canUseProjectTeamNotes: input.isStaff === true")
+      && mobileCaptureSessionsText.includes("revisionCount: note._count?.revisions")
+      && quickEntryOutboxText.includes("enum MobileSessionNoteKind")
+      && quickEntryOutboxText.includes("enum MobileSessionNoteVisibility")
+      && quickEntryOutboxText.includes("let noteVisibility: MobileSessionNoteVisibility?")
+      && bridgeText.includes("struct MobileCaptureSessionNote")
+      && bridgeText.includes("var canUseProjectTeamNotes: Bool? = nil")
+      && bridgeText.includes("var sessionNotes: [MobileCaptureSessionNote]? = nil")
+      && bridgeText.includes("noteVisibility = entry.noteVisibility?.rawValue")
+      && captureExperienceText.includes("_ = await sessionClient.load(authoritativeSessionID: sessionID)")
+      && shellText.includes("CaptureQuickEntryNoteKind")
+      && shellText.includes("CaptureQuickEntryNoteVisibility")
+      && shellText.includes("session?.canUseProjectTeamNotes == true")
+      && shellText.includes("CaptureSessionNotesCard")
+      && shellText.includes("CaptureSessionNotesToggle")
+      && shellText.includes("CaptureSessionNoteCanonical_")
+      && shellText.includes("Audience is a visibility decision, not a delivery receipt"),
+    "visibilityAwareIPhoneSessionNotes",
+    "iPhone Session notes preserve purpose and audience through the protected offline ledger, authorize production policy on Nest, append a revision, and project only visibility-permitted canonical notes back to the phone without claiming delivery.",
   );
   expect(
     schemaText.includes("model StudioPersonalSourceFiling")

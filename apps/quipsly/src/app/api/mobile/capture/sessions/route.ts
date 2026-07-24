@@ -11,6 +11,10 @@ import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import { mapMobileCaptureSessionsForUser } from "@/lib/server/mobile-capture-sessions";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
+  mobileSessionNoteVisibilityWhere,
+  SESSION_NOTE_VISIBLE_KINDS,
+} from "@/lib/server/session-note-access";
+import {
   listAccessibleStudioProjectSummariesForEmail,
   resolveStudioProjectAccess,
 } from "@/lib/server/studio-project-access";
@@ -61,12 +65,20 @@ const MOBILE_CAPTURE_ROOM_INCLUDE = {
     take: 30,
     select: {
       id: true,
+      authorUserId: true,
       kind: true,
+      visibility: true,
       title: true,
       body: true,
       sourceJson: true,
       createdAt: true,
-      _count: { select: { actionItems: true } },
+      updatedAt: true,
+      authorUser: { select: { name: true, primaryEmail: true } },
+      tagLinks: {
+        orderBy: { createdAt: "asc" },
+        select: { tag: { select: { id: true, slug: true, label: true, isActive: true } } },
+      },
+      _count: { select: { actionItems: true, revisions: true } },
     },
   },
   actionItems: {
@@ -126,6 +138,7 @@ export async function GET(request: Request) {
   const prisma = getPrismaClient() as any;
   const userId = session.user.id;
   const isStaff = session.user.isStaff;
+  const actorEmail = text(session.user.primaryEmail || session.user.email).toLowerCase();
 
   const rooms = await prisma.callRoom.findMany({
     where: isStaff
@@ -140,7 +153,22 @@ export async function GET(request: Request) {
     },
     orderBy: [{ scheduledStart: "asc" }, { updatedAt: "desc" }],
     take: 30,
-    include: MOBILE_CAPTURE_ROOM_INCLUDE,
+    include: {
+      ...MOBILE_CAPTURE_ROOM_INCLUDE,
+      notes: {
+        ...MOBILE_CAPTURE_ROOM_INCLUDE.notes,
+        where: {
+          AND: [
+            { kind: { in: ["SUMMARY", "HIGHLIGHT", ...SESSION_NOTE_VISIBLE_KINDS] } },
+            mobileSessionNoteVisibilityWhere({
+              actorUserId: userId,
+              actorEmail,
+              isStaff: isStaff === true,
+            }),
+          ],
+        },
+      },
+    },
   });
   const recordingAssetIds = rooms.flatMap((room: any) => room.recordingAssets.map((asset: any) => asset.id));
   const finalizationReceipts = recordingAssetIds.length
@@ -195,7 +223,13 @@ export async function GET(request: Request) {
         label: tag.label,
       })),
     })),
-    sessions: mapMobileCaptureSessionsForUser({ rooms, userId, finalizationReceipts }),
+    sessions: mapMobileCaptureSessionsForUser({
+      rooms,
+      userId,
+      isStaff: session.user.isStaff === true,
+      productionNoteProjectIds: captureProjects.map((project) => project.id),
+      finalizationReceipts,
+    }),
     links: {
       today: "/api/mobile/capture/today",
       readiness: "/api/mobile/capture/readiness",
@@ -363,6 +397,8 @@ export async function POST(request: Request) {
   const [mapped] = mapMobileCaptureSessionsForUser({
     rooms: createdRoom ? [createdRoom] : [],
     userId,
+    isStaff: session.user.isStaff === true,
+    productionNoteProjectIds: createdRoom?.projectId ? [createdRoom.projectId] : [],
   });
 
   return NextResponse.json(

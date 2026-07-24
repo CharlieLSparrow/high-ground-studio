@@ -343,6 +343,53 @@ struct MobileCaptureActionPacket: Codable, Hashable {
     let boundaries: MobileCaptureActionBoundaries?
 }
 
+struct MobileCaptureSessionNote: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String?
+    let body: String
+    let kind: String
+    let visibility: String
+    let authorLabel: String
+    let isMine: Bool
+    let canEdit: Bool
+    let origin: String
+    let revisionCount: Int
+    let tags: [MobileCaptureTag]
+    let createdAt: String?
+    let updatedAt: String?
+
+    var purposeLabel: String {
+        switch kind.uppercased() {
+        case "FOLLOW_UP": "Continuity brief"
+        case "DECISION": "Decision"
+        case "PRODUCTION": "Production note"
+        default: "Session note"
+        }
+    }
+
+    var audienceLabel: String {
+        switch visibility.uppercased() {
+        case "SESSION_SHARED": "Session"
+        case "CLIENT_SAFE": "Client-safe"
+        case "PROJECT_TEAM": "Project team"
+        default: "Only me"
+        }
+    }
+
+    var audienceBoundary: String {
+        switch visibility.uppercased() {
+        case "SESSION_SHARED":
+            "Visible to people with access to this Session."
+        case "CLIENT_SAFE":
+            "Ready for reviewed client follow-up. It has not been sent."
+        case "PROJECT_TEAM":
+            "Visible to the production-capable Nest team. It is not published."
+        default:
+            "Visible only to the author, including against staff access."
+        }
+    }
+}
+
 struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let id: String
     let callRoomId: String
@@ -407,6 +454,8 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let coachingPacketLatestActivityAt: String?
     let coachingPacketFirstOpenActionItemId: String?
     let coachingPacketStatus: String?
+    var canUseProjectTeamNotes: Bool? = nil
+    var sessionNotes: [MobileCaptureSessionNote]? = nil
     let afterCaptureNextAction: String?
     let nextAction: String?
 
@@ -2210,6 +2259,8 @@ private struct MobileQuickEntrySaveRequest: Encodable {
     let callRoomId: String?
     let projectId: String?
     let kind: String
+    let noteKind: String?
+    let noteVisibility: String?
     let title: String?
     let body: String
     let sourceUrl: String?
@@ -2225,6 +2276,8 @@ private struct MobileQuickEntrySaveRequest: Encodable {
         callRoomId = entry.callRoomID
         projectId = entry.destinationProjectID
         kind = entry.kind.rawValue
+        noteKind = entry.noteKind?.rawValue
+        noteVisibility = entry.noteVisibility?.rawValue
         title = entry.title
         body = entry.body
         sourceUrl = entry.sourceURL
@@ -2263,6 +2316,8 @@ struct MobileQuickEntrySaveResponse: Decodable {
     struct Entry: Decodable {
         let id: String
         let kind: String
+        let noteKind: String?
+        let noteVisibility: String?
         let title: String?
         let body: String?
         let status: String?

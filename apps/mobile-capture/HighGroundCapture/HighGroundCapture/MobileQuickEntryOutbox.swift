@@ -28,6 +28,53 @@ enum MobileQuickEntryKind: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+enum MobileSessionNoteKind: String, Codable, CaseIterable, Identifiable {
+    case sessionNote = "SESSION_NOTE"
+    case decision = "DECISION"
+    case production = "PRODUCTION"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .sessionNote: "Session note"
+        case .decision: "Decision"
+        case .production: "Production note"
+        }
+    }
+}
+
+enum MobileSessionNoteVisibility: String, Codable, CaseIterable, Identifiable {
+    case authorPrivate = "AUTHOR_PRIVATE"
+    case sessionShared = "SESSION_SHARED"
+    case clientSafe = "CLIENT_SAFE"
+    case projectTeam = "PROJECT_TEAM"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .authorPrivate: "Only me"
+        case .sessionShared: "Session"
+        case .clientSafe: "Client-safe"
+        case .projectTeam: "Project team"
+        }
+    }
+
+    var boundary: String {
+        switch self {
+        case .authorPrivate:
+            "Only your verified Quipsly account can read it."
+        case .sessionShared:
+            "People with access to this Session can read it."
+        case .clientSafe:
+            "It is marked ready for reviewed client follow-up. It is not sent."
+        case .projectTeam:
+            "Nest owners and editors can read it. It is not published or delivered."
+        }
+    }
+}
+
 struct MobileQuickEntryRecurrence: Codable, Equatable {
     let cadence: String
     let frequency: String
@@ -51,6 +98,8 @@ struct PendingMobileQuickEntry: Codable, Identifiable, Equatable {
     let destinationProjectID: String?
     let destinationProjectName: String?
     let kind: MobileQuickEntryKind
+    let noteKind: MobileSessionNoteKind?
+    let noteVisibility: MobileSessionNoteVisibility?
     let title: String?
     let body: String
     let sourceURL: String?
@@ -185,6 +234,8 @@ final class MobileQuickEntryOutbox: ObservableObject {
         sourceURL: String? = nil,
         destinationProjectID: String? = nil,
         destinationProjectName: String? = nil,
+        noteKind: MobileSessionNoteKind? = nil,
+        noteVisibility: MobileSessionNoteVisibility? = nil,
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
         dueAt: Date? = nil,
@@ -235,6 +286,12 @@ final class MobileQuickEntryOutbox: ObservableObject {
               kind != .source || cleanDestinationProjectID == nil else {
             throw MobileQuickEntryStoreError.invalidDestination
         }
+        let isSessionNote = kind == .note && session != nil
+        guard isSessionNote || noteKind == nil && noteVisibility == nil else {
+            throw MobileQuickEntryStoreError.invalidDestination
+        }
+        let resolvedNoteKind: MobileSessionNoteKind? = isSessionNote ? noteKind ?? .sessionNote : nil
+        let resolvedNoteVisibility: MobileSessionNoteVisibility? = isSessionNote ? noteVisibility ?? .authorPrivate : nil
 
         let entry = PendingMobileQuickEntry(
             id: UUID(),
@@ -245,6 +302,8 @@ final class MobileQuickEntryOutbox: ObservableObject {
             destinationProjectID: cleanDestinationProjectID,
             destinationProjectName: cleanDestinationProjectName.map(String.init),
             kind: kind,
+            noteKind: resolvedNoteKind,
+            noteVisibility: resolvedNoteVisibility,
             title: cleanTitle?.isEmpty == false ? cleanTitle : nil,
             body: cleanBody,
             sourceURL: sourceURL.flatMap(Self.normalizedHTTPURL),
@@ -345,6 +404,8 @@ final class MobileQuickEntryOutbox: ObservableObject {
                         destinationProjectID: nil,
                         destinationProjectName: nil,
                         kind: .source,
+                        noteKind: nil,
+                        noteVisibility: nil,
                         title: cleanTitle?.isEmpty == false ? cleanTitle : nil,
                         body: body,
                         sourceURL: sourceURL,

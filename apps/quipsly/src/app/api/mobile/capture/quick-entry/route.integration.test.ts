@@ -23,30 +23,42 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
   const prisma = getPrismaClient();
   const nonce = randomUUID().slice(0, 8);
   const actorEmail = `quick-entry-${nonce}@example.test`;
+  const viewerEmail = `quick-entry-viewer-${nonce}@example.test`;
   const outsiderEmail = `quick-entry-outsider-${nonce}@example.test`;
   let actorUserId = "";
+  let viewerUserId = "";
   let outsiderUserId = "";
   let projectId = "";
   let homeProjectId = "";
   let tagId = "";
   let roomId = "";
-  const requestIds = Array.from({ length: 12 }, () => randomUUID());
+  const requestIds = Array.from({ length: 16 }, () => randomUUID());
 
   beforeAll(async () => {
-    const [actor, outsider] = await Promise.all([
+    const [actor, viewer, outsider] = await Promise.all([
       prisma.user.create({ data: { primaryEmail: actorEmail, name: "Quick capture actor" } }),
+      prisma.user.create({ data: { primaryEmail: viewerEmail, name: "Quick capture viewer" } }),
       prisma.user.create({ data: { primaryEmail: outsiderEmail, name: "Quick capture outsider" } }),
     ]);
     actorUserId = actor.id;
+    viewerUserId = viewer.id;
     outsiderUserId = outsider.id;
     const workspace = await ensureStudioWorkspace(prisma);
     const project = await prisma.studioProject.create({ data: { workspaceId: workspace.id, slug: `quick-entry-${nonce}`, name: "Quick capture Nest" } });
     projectId = project.id;
     const tag = await prisma.studioTag.create({ data: { projectId, slug: `follow-through-${nonce}`, label: "Follow through" } });
     tagId = tag.id;
-    await prisma.studioProjectAccessGrant.create({ data: { projectId, email: actorEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail } });
+    await prisma.studioProjectAccessGrant.createMany({
+      data: [
+        { projectId, email: actorEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail },
+        { projectId, email: viewerEmail, role: "VIEWER", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail },
+      ],
+    });
     const room = await prisma.callRoom.create({ data: { createdByUserId: actorUserId, projectId, title: "Episode quick capture" } });
     roomId = room.id;
+    await prisma.callParticipant.create({
+      data: { roomId, userId: viewerUserId, email: viewerEmail, displayName: "Quick capture viewer" },
+    });
   });
 
   afterAll(async () => {
@@ -58,7 +70,11 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
       if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
       if (projectId) await prisma.studioProject.deleteMany({ where: { id: projectId } });
       if (homeProjectId) await prisma.studioProject.deleteMany({ where: { id: homeProjectId } });
-      if (actorUserId || outsiderUserId) await prisma.user.deleteMany({ where: { id: { in: [actorUserId, outsiderUserId].filter(Boolean) } } });
+      if (actorUserId || viewerUserId || outsiderUserId) {
+        await prisma.user.deleteMany({
+          where: { id: { in: [actorUserId, viewerUserId, outsiderUserId].filter(Boolean) } },
+        });
+      }
     } finally {
       await prisma.$disconnect();
     }
@@ -88,6 +104,30 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
         body,
         capturedAt: "2026-07-23T09:00:00.000Z",
         newTagLabels,
+      }),
+    }));
+  }
+
+  function postSessionNote(
+    requestId: string,
+    noteKind: "SESSION_NOTE" | "DECISION" | "PRODUCTION",
+    noteVisibility: "AUTHOR_PRIVATE" | "SESSION_SHARED" | "CLIENT_SAFE" | "PROJECT_TEAM",
+    title: string,
+    body: string,
+  ) {
+    return POST(new Request("http://localhost/api/mobile/capture/quick-entry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        clientRequestId: requestId,
+        callRoomId: roomId,
+        kind: "NOTE",
+        noteKind,
+        noteVisibility,
+        title,
+        body,
+        capturedAt: "2026-07-24T19:00:00.000Z",
+        tagIds: [tagId],
       }),
     }));
   }
@@ -173,7 +213,7 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
       kind: "NOTE",
       href: `/sessions/${roomId}?mode=notes#session-note-${note.id}`,
       projectName: "Quick capture Nest",
-      stateLabel: "iPhone capture",
+      stateLabel: "iPhone capture · author private",
       badges: expect.arrayContaining(["#Follow through", "Offline retry safe"]),
     });
     expect(library.counts.notes).toBe(1);
@@ -342,6 +382,132 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
     expect(links).toHaveLength(1);
     expect(links[0]?.tagId).toBe(tagId);
     expect(count).toBe(1);
+  });
+
+  it("commits explicit Session note purpose and audience with one revision, while a viewer is held from production policy", async () => {
+    signedInAs(actorUserId, actorEmail);
+    const decision = await postSessionNote(
+      requestIds[12],
+      "DECISION",
+      "CLIENT_SAFE",
+      "Opening decision",
+      "Keep the quiet question before the first clip.",
+    );
+    const decisionReplay = await postSessionNote(
+      requestIds[12],
+      "DECISION",
+      "CLIENT_SAFE",
+      "Opening decision",
+      "Keep the quiet question before the first clip.",
+    );
+    const production = await postSessionNote(
+      requestIds[13],
+      "PRODUCTION",
+      "PROJECT_TEAM",
+      "Producer note",
+      "Proof-listen the source transition before release.",
+    );
+
+    expect(await decision.json()).toMatchObject({
+      ok: true,
+      idempotentReplay: false,
+      entry: {
+        id: `mobile-note-${requestIds[12]}`,
+        noteKind: "DECISION",
+        noteVisibility: "CLIENT_SAFE",
+        tags: [{ id: tagId, label: "Follow through" }],
+      },
+      boundaries: {
+        explicitNoteVisibility: true,
+        appendOnlyNoteRevision: true,
+        messageSent: false,
+        delivered: false,
+        published: false,
+      },
+      nextAction: expect.stringContaining("has not been sent"),
+    });
+    expect(await decisionReplay.json()).toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      entry: { id: `mobile-note-${requestIds[12]}` },
+    });
+    expect(await production.json()).toMatchObject({
+      ok: true,
+      entry: {
+        id: `mobile-note-${requestIds[13]}`,
+        noteKind: "PRODUCTION",
+        noteVisibility: "PROJECT_TEAM",
+      },
+      nextAction: expect.stringContaining("not been published or delivered"),
+    });
+
+    const [decisionRow, decisionRevisions, productionRow, productionRevisions] = await Promise.all([
+      prisma.coachingNote.findUniqueOrThrow({ where: { id: `mobile-note-${requestIds[12]}` } }),
+      prisma.coachingNoteRevision.findMany({ where: { noteId: `mobile-note-${requestIds[12]}` } }),
+      prisma.coachingNote.findUniqueOrThrow({ where: { id: `mobile-note-${requestIds[13]}` } }),
+      prisma.coachingNoteRevision.findMany({ where: { noteId: `mobile-note-${requestIds[13]}` } }),
+    ]);
+    expect(decisionRow).toMatchObject({
+      kind: "DECISION",
+      visibility: "CLIENT_SAFE",
+      authorUserId: actorUserId,
+      sourceJson: {
+        noteKind: "DECISION",
+        noteVisibility: "CLIENT_SAFE",
+        offlineRetrySafe: true,
+      },
+    });
+    expect(decisionRevisions).toEqual([
+      expect.objectContaining({
+        id: `mobile-note-${requestIds[12]}-revision-1`,
+        revision: 1,
+        operation: "created-from-ios-capture",
+        actorUserId,
+        snapshotJson: expect.objectContaining({
+          kind: "DECISION",
+          visibility: "CLIENT_SAFE",
+        }),
+      }),
+    ]);
+    expect(productionRow).toMatchObject({
+      kind: "PRODUCTION",
+      visibility: "PROJECT_TEAM",
+      authorUserId: actorUserId,
+    });
+    expect(productionRevisions).toHaveLength(1);
+
+    signedInAs(viewerUserId, viewerEmail);
+    const denied = await postSessionNote(
+      requestIds[14],
+      "PRODUCTION",
+      "PROJECT_TEAM",
+      "Viewer production note",
+      "This must remain only on the protected phone outbox.",
+    );
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({
+      ok: false,
+      code: "QUICK_ENTRY_NOTE_POLICY_FORBIDDEN",
+      localOutboxRetained: true,
+    });
+    await expect(prisma.coachingNote.count({
+      where: { id: `mobile-note-${requestIds[14]}` },
+    })).resolves.toBe(0);
+
+    const viewerClientSafe = await postSessionNote(
+      requestIds[15],
+      "DECISION",
+      "CLIENT_SAFE",
+      "Client-safe reflection",
+      "Name the next experiment without sending it.",
+    );
+    expect(await viewerClientSafe.json()).toMatchObject({
+      ok: true,
+      entry: {
+        noteKind: "DECISION",
+        noteVisibility: "CLIENT_SAFE",
+      },
+    });
   });
 
   it("deduplicates personal source identities while preserving every distinct capture receipt", async () => {

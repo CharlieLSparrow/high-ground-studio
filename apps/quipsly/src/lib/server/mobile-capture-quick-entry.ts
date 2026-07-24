@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import { normalizeWorkTagLabel } from "@/lib/server/work-tag-normalization";
+import {
+  isEditableSessionNoteKind,
+  isSessionNoteVisibility,
+  type EditableSessionNoteKind,
+  type SessionNoteVisibility,
+} from "@/lib/session-note-contract";
 import { validateTaskRecurrenceRule, type TaskRecurrenceRule } from "@/lib/task-recurrence";
 
 export const MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA = "quipsly-mobile-quick-entry-v1" as const;
@@ -12,6 +18,8 @@ export type MobileCaptureQuickEntryInput = {
   callRoomId: string | null;
   projectId: string | null;
   kind: MobileCaptureQuickEntryKind;
+  noteKind: EditableSessionNoteKind | null;
+  noteVisibility: SessionNoteVisibility | null;
   title: string | null;
   body: string;
   sourceUrl: string | null;
@@ -62,6 +70,15 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   const callRoomId = normalizedText(body.callRoomId, 200);
   const projectId = normalizedText(body.projectId, 200);
   const kind = normalizedText(body.kind, 20).toUpperCase() as MobileCaptureQuickEntryKind;
+  const rawNoteKind = normalizedText(body.noteKind, 40).toUpperCase();
+  const rawNoteVisibility = normalizedText(body.noteVisibility, 40).toUpperCase();
+  const isSessionNote = kind === "NOTE" && Boolean(callRoomId);
+  const noteKind = isSessionNote
+    ? (rawNoteKind || "SESSION_NOTE") as EditableSessionNoteKind
+    : null;
+  const noteVisibility = isSessionNote
+    ? (rawNoteVisibility || "AUTHOR_PRIVATE") as SessionNoteVisibility
+    : null;
   const title = normalizedText(body.title, 500);
   const entryBody = fullText(body.body, kind === "NOTE" || kind === "SOURCE" ? 20_000 : 5_000);
   const rawSourceUrl = fullText(body.sourceUrl, 20_000);
@@ -104,6 +121,15 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
   }
   if (kind === "SOURCE" && projectId) {
     return { ok: false, code: "QUICK_ENTRY_SOURCE_REQUIRES_INBOX", error: "Save a source privately to Inbox before deliberately filing it into a Research Nest." };
+  }
+  if (!isSessionNote && (rawNoteKind || rawNoteVisibility)) {
+    return { ok: false, code: "QUICK_ENTRY_NOTE_POLICY_SESSION_ONLY", error: "Note purpose and audience apply only to a note attached to one Session." };
+  }
+  if (isSessionNote && !isEditableSessionNoteKind(noteKind)) {
+    return { ok: false, code: "QUICK_ENTRY_NOTE_KIND_INVALID", error: "Choose Session note, Decision, or Production note." };
+  }
+  if (isSessionNote && !isSessionNoteVisibility(noteVisibility)) {
+    return { ok: false, code: "QUICK_ENTRY_NOTE_VISIBILITY_INVALID", error: "Choose Only me, Session, Client-safe, or Project team." };
   }
   if (!capturedAt) {
     return { ok: false, code: "QUICK_ENTRY_CAPTURED_AT_INVALID", error: "Quick capture time must be a valid ISO date." };
@@ -177,6 +203,8 @@ export function validateMobileCaptureQuickEntry(value: unknown): MobileCaptureQu
       callRoomId: callRoomId || null,
       projectId: projectId || null,
       kind,
+      noteKind,
+      noteVisibility,
       title: title || null,
       body: entryBody,
       sourceUrl,
@@ -211,6 +239,8 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
     callRoomId: input.callRoomId,
     requestedProjectId: input.projectId,
     projectId,
+    noteKind: input.noteKind,
+    noteVisibility: input.noteVisibility,
     sourceUrl: input.sourceUrl,
     tagIds: input.tagIds,
     newTagLabels: input.newTagLabels,
@@ -230,7 +260,7 @@ export function mobileCaptureQuickEntrySource(input: MobileCaptureQuickEntryInpu
 
 export function isMobileCaptureQuickEntrySource(
   value: unknown,
-  expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "projectId" | "kind" | "tagIds" | "newTagLabels" | "dueAt" | "reminderAt">,
+  expected: Pick<MobileCaptureQuickEntryInput, "clientRequestId" | "callRoomId" | "projectId" | "kind" | "noteKind" | "noteVisibility" | "tagIds" | "newTagLabels" | "dueAt" | "reminderAt">,
   actorUserId: string,
 ) {
   const source = record(value);
@@ -244,6 +274,8 @@ export function isMobileCaptureQuickEntrySource(
     && source.clientRequestId === expected.clientRequestId
     && source.callRoomId === expected.callRoomId
     && (source.requestedProjectId ?? null) === expected.projectId
+    && (source.noteKind ?? null) === expected.noteKind
+    && (source.noteVisibility ?? null) === expected.noteVisibility
     && source.actorUserId === actorUserId
     && JSON.stringify(sourceTagIds) === JSON.stringify(expected.tagIds)
     && JSON.stringify(sourceNewTagLabels) === JSON.stringify(expected.newTagLabels)

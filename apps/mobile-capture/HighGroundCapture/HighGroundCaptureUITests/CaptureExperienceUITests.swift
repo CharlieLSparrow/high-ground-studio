@@ -61,6 +61,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(body.exists)
         body.tap()
         body.typeText("Let the opening breathe before the first cut.")
+        let purpose = app.descendants(matching: .any)["CaptureQuickEntryNoteKind"].firstMatch
+        let audience = app.descendants(matching: .any)["CaptureQuickEntryNoteVisibility"].firstMatch
+        reveal(purpose)
+        XCTAssertTrue(purpose.exists, "A Session note should make its purpose explicit before save.")
+        XCTAssertTrue(audience.exists, "A Session note should make its audience explicit before save.")
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryNoteVisibilityReadback"].exists)
         let save = app.buttons["CaptureQuickEntrySave"]
         XCTAssertTrue(save.isEnabled)
         save.tap()
@@ -79,7 +85,12 @@ final class CaptureExperienceUITests: XCTestCase {
         noteButton.tap()
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].waitForExistence(timeout: 5))
+        let purpose = app.descendants(matching: .any)["CaptureQuickEntryNoteKind"].firstMatch
+        reveal(purpose)
+        XCTAssertTrue(purpose.exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryNoteVisibility"].exists)
         let destination = app.descendants(matching: .any)["CaptureQuickEntryNoteDestination"].firstMatch
+        reveal(destination)
         XCTAssertTrue(destination.exists)
         destination.tap()
         XCTAssertTrue(app.buttons["Home Nest"].waitForExistence(timeout: 3))
@@ -97,6 +108,38 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "does not invent a Session")
         ).firstMatch.exists)
+        XCTAssertTrue(purpose.waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryNoteVisibility"].waitForNonExistence(timeout: 3))
+    }
+
+    func testSessionQuickNoteMakesDecisionAndClientSafeAudienceObviousWithoutClaimingDelivery() {
+        app.tabBars.buttons["Record"].tap()
+        let noteButton = app.buttons["CaptureQuickEntry_NOTE_preview-coaching-ready"]
+        reveal(noteButton)
+        noteButton.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_NOTE"].waitForExistence(timeout: 5))
+
+        let purpose = app.descendants(matching: .any)["CaptureQuickEntryNoteKind"].firstMatch
+        reveal(purpose)
+        XCTAssertTrue(purpose.isHittable)
+        purpose.tap()
+        XCTAssertTrue(app.buttons["Decision"].waitForExistence(timeout: 3))
+        app.buttons["Decision"].tap()
+
+        let audience = app.descendants(matching: .any)["CaptureQuickEntryNoteVisibility"].firstMatch
+        reveal(audience)
+        XCTAssertTrue(audience.isHittable)
+        audience.tap()
+        XCTAssertTrue(app.buttons["Client-safe"].waitForExistence(timeout: 3))
+        app.buttons["Client-safe"].tap()
+
+        let readback = app.descendants(matching: .any)["CaptureQuickEntryNoteVisibilityReadback"].firstMatch
+        XCTAssertTrue(readback.exists)
+        XCTAssertTrue(readback.label.contains("Client-safe"))
+        let boundary = app.descendants(matching: .any)["CaptureQuickEntryNotePolicyBoundary"].firstMatch
+        XCTAssertTrue(boundary.exists)
+        XCTAssertTrue(boundary.label.contains("not sent"))
+        XCTAssertTrue(boundary.label.contains("never sends a message"))
     }
 
     func testQuickTaskCanExplicitlyTargetPrivateHomeNestEvenWhenASessionIsSelected() {

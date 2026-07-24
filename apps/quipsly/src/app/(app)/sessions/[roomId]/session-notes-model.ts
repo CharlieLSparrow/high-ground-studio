@@ -1,22 +1,20 @@
-export const SESSION_NOTE_KINDS = [
-  "SESSION_NOTE",
-  "FOLLOW_UP",
-  "DECISION",
-  "PRODUCTION",
-] as const;
+import {
+  EDITABLE_SESSION_NOTE_KINDS,
+  SESSION_NOTE_KINDS,
+  SESSION_NOTE_VISIBILITIES,
+  type EditableSessionNoteKind,
+  type SessionNoteKind,
+  type SessionNoteVisibility,
+} from "@/lib/session-note-contract";
 
-export const EDITABLE_SESSION_NOTE_KINDS = [
-  "SESSION_NOTE",
-  "DECISION",
-  "PRODUCTION",
-] as const;
-
-export const SESSION_NOTE_VISIBILITIES = [
-  "AUTHOR_PRIVATE",
-  "SESSION_SHARED",
-  "CLIENT_SAFE",
-  "PROJECT_TEAM",
-] as const;
+export {
+  EDITABLE_SESSION_NOTE_KINDS,
+  SESSION_NOTE_KINDS,
+  SESSION_NOTE_VISIBILITIES,
+  type EditableSessionNoteKind,
+  type SessionNoteKind,
+  type SessionNoteVisibility,
+} from "@/lib/session-note-contract";
 
 export const SESSION_NOTE_VIEWS = [
   { id: "all", label: "All notes" },
@@ -27,9 +25,6 @@ export const SESSION_NOTE_VIEWS = [
   { id: "decisions", label: "Decisions" },
 ] as const;
 
-export type SessionNoteKind = typeof SESSION_NOTE_KINDS[number];
-export type EditableSessionNoteKind = typeof EDITABLE_SESSION_NOTE_KINDS[number];
-export type SessionNoteVisibility = typeof SESSION_NOTE_VISIBILITIES[number];
 export type SessionNoteView = typeof SESSION_NOTE_VIEWS[number]["id"];
 
 export type SessionWorkspaceNote = {

@@ -16,6 +16,7 @@ import {
 } from "@/lib/server/mobile-capture-quick-entry";
 import { resolveQuickEntryTags } from "@/lib/server/quick-entry-tags";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { canUseProjectTeamNotes } from "@/lib/server/session-note-access";
 import { materializeTaskOccurrence, type PersistedTaskRecurrenceSeries } from "@/lib/server/task-recurrence";
 import { initialOccurrencePlan } from "@/lib/task-recurrence";
 
@@ -40,6 +41,8 @@ function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room:
     title: model === "snippet" ? row.sourceTitle : row.title,
     body: model === "note" || model === "document-note" ? row.body : model === "task" ? row.detail : model === "goal" ? row.description : model === "snippet" ? row.highlightedText : row.url,
     status: model === "task" || model === "goal" ? row.status : "CAPTURED",
+    noteKind: model === "note" ? row.kind : null,
+    noteVisibility: model === "note" ? row.visibility : null,
     callRoomId: room?.id || null,
     sessionTitle: room?.id ? room.title : null,
     projectId: room?.projectId || null,
@@ -224,11 +227,26 @@ async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUs
         id,
         roomId: room.id,
         authorUserId: actorUserId,
-        kind: "SESSION_NOTE",
-        visibility: "AUTHOR_PRIVATE",
+        kind: input.noteKind!,
+        visibility: input.noteVisibility!,
         title: input.title || "Quick note",
         body: input.body,
         sourceJson,
+        revisions: {
+          create: {
+            id: `${id}-revision-1`,
+            revision: 1,
+            operation: "created-from-ios-capture",
+            actorUserId,
+            snapshotJson: {
+              title: input.title || "Quick note",
+              body: input.body,
+              kind: input.noteKind,
+              visibility: input.noteVisibility,
+              sourceJson,
+            },
+          },
+        },
       },
     });
     if (tags.length) await tx.coachingNoteTagLink.createMany({
@@ -468,6 +486,8 @@ function entryMatches(
     return saved.model === "note"
       && saved.row.authorUserId === actorUserId
       && saved.row.roomId === input.callRoomId
+      && saved.row.kind === input.noteKind
+      && saved.row.visibility === input.noteVisibility
       && (saved.row.title || "Quick note") === (input.title || "Quick note")
       && saved.row.body === input.body
       && isMobileCaptureQuickEntrySource(saved.row.sourceJson, input, actorUserId);
@@ -545,6 +565,7 @@ export async function POST(request: Request) {
             title: personalHome.name,
             projectName: personalHome.name,
             projectId: personalHome.id,
+            projectRole: "OWNER",
             destination: "HOME_NEST",
           }
         : input.projectId
@@ -565,14 +586,30 @@ export async function POST(request: Request) {
               title: grant.project.name,
               projectName: grant.project.name,
               projectId: grant.project.id,
+              projectRole: "EDITOR",
               destination: "NEST",
             }) : null)
           : await tx.callRoom.findFirst({
               where: captureRoomAccessWhere(input.callRoomId!, session.user),
-              select: { id: true, title: true, projectId: true, project: { select: { name: true } } },
+              select: {
+                id: true,
+                title: true,
+                projectId: true,
+                project: {
+                  select: {
+                    name: true,
+                    accessGrants: actorEmail ? {
+                      where: { email: actorEmail, status: "ACTIVE" },
+                      take: 1,
+                      select: { role: true },
+                    } : undefined,
+                  },
+                },
+              },
             }).then((found: any) => found ? ({
               ...found,
               projectName: found.project?.name || null,
+              projectRole: found.project?.accessGrants?.[0]?.role || null,
               destination: "SESSION",
             }) : null);
     if (input.kind !== "SOURCE" && !room) return { kind: "missing-room" as const };
@@ -580,6 +617,15 @@ export async function POST(request: Request) {
     const existing = await existingEntry(tx, input, session.user.id);
     if (existing && !entryMatches(input, existing, session.user.id, room?.projectId || null)) {
       return { kind: "identity-conflict" as const };
+    }
+    if (
+      !existing
+      && input.kind === "NOTE"
+      && input.callRoomId
+      && (input.noteKind === "PRODUCTION" || input.noteVisibility === "PROJECT_TEAM")
+      && !canUseProjectTeamNotes(room?.projectRole, session.user.isStaff === true)
+    ) {
+      return { kind: "note-policy-forbidden" as const };
     }
 
     const tagResolution = input.kind === "SOURCE"
@@ -659,6 +705,17 @@ export async function POST(request: Request) {
       { status: 409 },
     );
   }
+  if (result.kind === "note-policy-forbidden") {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "QUICK_ENTRY_NOTE_POLICY_FORBIDDEN",
+        error: "Only a Nest owner or editor can create production or project-team Session notes. The phone copy remains protected for review.",
+        localOutboxRetained: true,
+      },
+      { status: 403 },
+    );
+  }
   if (result.kind === "invalid-tags") {
     return NextResponse.json(
       { ok: false, code: "QUICK_ENTRY_TAGS_UNAVAILABLE", error: "One or more selected tags no longer belong to the destination Nest. The phone copy remains available for review.", localOutboxRetained: true },
@@ -703,6 +760,8 @@ export async function POST(request: Request) {
     boundaries: {
       explicitHumanCapture: true,
       canonicalRecordCommitted: true,
+      explicitNoteVisibility: input.kind === "NOTE" && input.callRoomId !== null,
+      appendOnlyNoteRevision: input.kind === "NOTE" && input.callRoomId !== null,
       recurrenceAppOwned: input.recurrence !== null,
       dueDateCommitted: input.dueAt !== null,
       canonicalReminderIntentCommitted: input.reminderAt !== null,
@@ -719,7 +778,13 @@ export async function POST(request: Request) {
       ? "The private source is in Nest Inbox. Review it there before deliberately filing it into Research."
       : input.kind === "NOTE"
       ? input.callRoomId
-        ? "The private Session note is saved. Review or expand it from the Session workspace."
+        ? input.noteVisibility === "CLIENT_SAFE"
+          ? "The client-safe Session note is saved and ready for reviewed follow-up. It has not been sent."
+          : input.noteVisibility === "SESSION_SHARED"
+            ? "The Session note is saved for people with Session access. No message or delivery occurred."
+            : input.noteVisibility === "PROJECT_TEAM"
+              ? "The production-team Session note is saved. It has not been published or delivered."
+              : "The author-private Session note is saved. Review or expand it from the Session workspace."
         : input.projectId
           ? `The private note is saved in ${result.room.projectName}. Continue it from that Nest, Library, or Search.`
           : "The private note is saved in your Home Nest document kernel. Continue it from Library or Search."

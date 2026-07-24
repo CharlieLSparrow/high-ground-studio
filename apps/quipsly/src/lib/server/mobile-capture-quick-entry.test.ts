@@ -22,6 +22,8 @@ describe("mobile Capture quick-entry contract", () => {
       callRoomId: "room-1",
       projectId: null,
       kind: "TASK",
+      noteKind: null,
+      noteVisibility: null,
       title: "Send the revised outline",
       body: "Include the corrected   opening beat.",
       sourceUrl: null,
@@ -88,7 +90,43 @@ describe("mobile Capture quick-entry contract", () => {
       kind: "NOTE",
       body: "First observation\n\nSecond observation",
       capturedAt: "2026-07-19T09:00:00.000Z",
-    })).toMatchObject({ ok: true, value: { title: null, body: "First observation\n\nSecond observation" } });
+    })).toMatchObject({
+      ok: true,
+      value: {
+        title: null,
+        body: "First observation\n\nSecond observation",
+        noteKind: "SESSION_NOTE",
+        noteVisibility: "AUTHOR_PRIVATE",
+      },
+    });
+  });
+
+  it("preserves an explicit Session note purpose and audience in the retry identity", () => {
+    const result = validateMobileCaptureQuickEntry({
+      clientRequestId: requestId,
+      callRoomId: "room-1",
+      kind: "NOTE",
+      noteKind: "decision",
+      noteVisibility: "client_safe",
+      title: "Opening decision",
+      body: "Keep the quiet question before the first clip.",
+      capturedAt: "2026-07-19T09:00:00.000Z",
+    });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        noteKind: "DECISION",
+        noteVisibility: "CLIENT_SAFE",
+      },
+    });
+    if (!result.ok) return;
+    expect(mobileCaptureQuickEntrySource(result.value, "user-1", "project-1")).toMatchObject({
+      noteKind: "DECISION",
+      noteVisibility: "CLIENT_SAFE",
+      externalSideEffects: false,
+      messageSent: false,
+      published: false,
+    });
   });
 
   it("allows a personal source capture without pretending it already belongs to a Session or Nest", () => {
@@ -156,6 +194,10 @@ describe("mobile Capture quick-entry contract", () => {
     [{ callRoomId: "room-1", kind: "NOTE", body: "A note" }, "QUICK_ENTRY_REQUEST_ID_INVALID"],
     [{ clientRequestId: requestId, callRoomId: "room-1", kind: "IDEA", body: "Maybe" }, "QUICK_ENTRY_KIND_INVALID"],
     [{ clientRequestId: requestId, callRoomId: "room-1", kind: "NOTE", body: "" }, "QUICK_ENTRY_NOTE_REQUIRED"],
+    [{ clientRequestId: requestId, callRoomId: "room-1", kind: "NOTE", noteKind: "SUMMARY", body: "Not editable" }, "QUICK_ENTRY_NOTE_KIND_INVALID"],
+    [{ clientRequestId: requestId, callRoomId: "room-1", kind: "NOTE", noteVisibility: "PUBLIC", body: "Not public" }, "QUICK_ENTRY_NOTE_VISIBILITY_INVALID"],
+    [{ clientRequestId: requestId, kind: "NOTE", noteVisibility: "CLIENT_SAFE", body: "No Session" }, "QUICK_ENTRY_NOTE_POLICY_SESSION_ONLY"],
+    [{ clientRequestId: requestId, callRoomId: "room-1", kind: "TASK", noteKind: "DECISION", title: "Not a note" }, "QUICK_ENTRY_NOTE_POLICY_SESSION_ONLY"],
     [{ clientRequestId: requestId, callRoomId: "room-1", kind: "GOAL", title: "" }, "QUICK_ENTRY_TITLE_REQUIRED"],
     [{ clientRequestId: requestId, kind: "SOURCE", body: "" }, "QUICK_ENTRY_SOURCE_REQUIRED"],
     [{ clientRequestId: requestId, kind: "SOURCE", body: "Passage", sourceUrl: "file:///private/source" }, "QUICK_ENTRY_SOURCE_URL_INVALID"],

@@ -312,6 +312,8 @@ final class CaptureExperienceModel: ObservableObject {
         saveToHomeNest: Bool = false,
         destinationProjectID: String? = nil,
         destinationProjectName: String? = nil,
+        noteKind: MobileSessionNoteKind? = nil,
+        noteVisibility: MobileSessionNoteVisibility? = nil,
         tagIDs: [String] = [],
         newTagLabels: [String] = [],
         dueAt: Date? = nil,
@@ -334,6 +336,8 @@ final class CaptureExperienceModel: ObservableObject {
                 body: body,
                 destinationProjectID: destinationProjectID,
                 destinationProjectName: destinationProjectName,
+                noteKind: noteKind,
+                noteVisibility: noteVisibility,
                 tagIDs: tagIDs,
                 newTagLabels: newTagLabels,
                 dueAt: dueAt,
@@ -346,6 +350,8 @@ final class CaptureExperienceModel: ObservableObject {
                 quickEntrySyncMessage = "\(kind.title) saved on this iPhone for \(destinationProjectName). Nest sync will keep that exact project and retry-safe ID."
             } else if session == nil {
                 quickEntrySyncMessage = "\(kind.title) saved on this iPhone. Nest sync will create the same private Home Nest record."
+            } else if kind == .note, let noteVisibility {
+                quickEntrySyncMessage = "\(noteKind?.title ?? "Session note") saved on this iPhone as \(noteVisibility.title.lowercased()). \(noteVisibility.boundary) Nest sync keeps the same retry-safe ID."
             } else if !newTagLabels.isEmpty {
                 quickEntrySyncMessage = "\(kind.title) and \(newTagLabels.count) new tag name\(newTagLabels.count == 1 ? "" : "s") saved on this iPhone. Nest will create or reuse the same private vocabulary on sync."
             } else {
@@ -444,6 +450,9 @@ final class CaptureExperienceModel: ObservableObject {
             quickEntrySyncMessage = idempotentReplay
                 ? "Nest already had this exact \(entry.kind.title.lowercased()); nothing was duplicated."
                 : message
+            if entry.kind == .note, let sessionID = entry.sessionID {
+                _ = await sessionClient.load(authoritativeSessionID: sessionID)
+            }
             if refreshToday { await todayClient.load() }
         case let .retryable(message):
             quickEntryOutbox.markRetryable(entry.id, message: message)
