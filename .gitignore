@@ -9,6 +9,7 @@ node_modules/
 # builds
 dist/
 .next/
+**/.next-*/
 out/
 .vite/
 .build/
@@ -127,4 +128,3 @@ docs/quipsly/current-state/*.json
 # Ignore all current state exports
 docs/quipsly/current-state/*
 apps/QuipslyStudio/docs/quipsly/current-state/*
-

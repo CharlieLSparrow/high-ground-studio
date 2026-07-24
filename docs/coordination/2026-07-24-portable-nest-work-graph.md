@@ -2,7 +2,7 @@
 
 Date: 2026-07-24
 
-Status: implemented, operated locally, and retained as a recovery rehearsal
+Status: implemented and operated across separately administered local environments
 
 ## Product result
 
@@ -83,6 +83,41 @@ rendered app. The plan reported:
 Post-retry database counts remained exactly 2 documents, 4 Tasks, 2 Goals,
 29 tags, 1 alias, 0 active reminder rows, and 0 recurrence series.
 
+## Separately administered recovery proof
+
+The same physical package was then restored through a second rendered Nest at
+`127.0.0.1:3022`. This environment used its own Firebase Auth emulator, its own
+synthetic account, its own Next build state, and an empty loopback-only
+PostgreSQL container at `127.0.0.1:55432`. It did not read or copy the daily
+Quipsly database.
+
+All 25 committed migrations applied successfully and created 197 public
+tables. Quipsly onboarded the synthetic account and Home Nest in that database,
+then created destination Nest
+`Independent Portable Recovery 2026-07-24` through the rendered product.
+
+The first plan and Apply matched the original package boundary. The product
+then reopened the restored Note and both original blocks; rendered 2 Goals,
+3 open Tasks, 1 resolved Task, and all 29 canonical tags; and showed the
+25-percent Goal progress receipt. The same-package retry reported:
+
+- 0 new tags or aliases and 30 vocabulary routes reused;
+- 0 new Notes, blocks, Tasks, Goals, progress, links, or focus blocks;
+- 4 Tasks and 2 Goals reused;
+- 2 colliding source aliases still intentionally deferred;
+- 0 overwrites, 0 source mutations, and 0 external effects.
+
+Independent second-database readback after retry found 1 restored Note with
+2 blocks, 29 tags, 1 alias, 4 Tasks, 2 Goals, 1 progress receipt, 2 Goal/Task
+links, 3 focus blocks all `CANCELED`, 0 reminders, and 0 recurrence series.
+
+The recovery lane is now reproducible through
+`pnpm quipsly:recovery-lab:up|doctor|down`. Its services survive the invoking
+shell, the doctor binds evidence to an exact committed SHA and rejects a dirty
+worktree, and shutdown removes only exact labeled lab jobs and the disposable
+database. The canonical Nest, Auth emulator, and PostgreSQL remained healthy
+through the lifecycle test.
+
 ## Verification
 
 - Quipsly TypeScript check passed.
@@ -105,7 +140,8 @@ Post-retry database counts remained exactly 2 documents, 4 Tasks, 2 Goals,
 
 ## Remaining boundary
 
-This closes the local portable Nest knowledge-work graph. It does not close the
-goal's second-environment disaster recovery, production deployment/readback,
+This closes local second-environment disaster recovery for the included Nest
+knowledge-work graph. It does not close production deployment/readback,
 physical iPhone, TestFlight-installed workflow, real HGO/coaching completion,
-Missing Compliance authorization, or App Store submission.
+Missing Compliance authorization, media/provider recovery, or App Store
+submission.

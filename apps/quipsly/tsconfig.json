@@ -25,7 +25,9 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     ".next-release/types/**/*.ts",
-    ".next-release/dev/types/**/*.ts"
+    ".next-release/dev/types/**/*.ts",
+    ".next-recovery-lab/types/**/*.ts",
+    ".next-recovery-lab/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

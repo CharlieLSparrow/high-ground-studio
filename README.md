@@ -66,6 +66,11 @@ pnpm quipsly:local:down
 The full database, Firebase emulator, identity, dogfood, and cleanup workflow is
 in [Quipsly Nest local development](docs/runbooks/quipsly-nest-local.md).
 
+For portable-backup or migration work, prove a restore in the separately
+administered [Quipsly recovery lab](docs/runbooks/quipsly-recovery-lab.md).
+It runs on different ports and builds an empty disposable database from
+committed migrations instead of copying the daily local database.
+
 ## Making a change
 
 Read these in order:

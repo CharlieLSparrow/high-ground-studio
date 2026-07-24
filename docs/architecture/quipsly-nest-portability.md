@@ -1,6 +1,6 @@
 # Quipsly Nest portability
 
-Status: implemented local recovery boundary
+Status: implemented and proven across isolated local environments
 
 Schema: `quipsly-nest-export-v1`
 
@@ -204,7 +204,11 @@ stack is:
    and independent readback;
 5. an operated rendered-app rehearsal using a downloaded package and a
    dedicated destination Nest;
-6. repository TypeScript 7 and production build/release gates.
+6. repository TypeScript 7 and production build/release gates;
+7. a second Nest runtime, Firebase Auth emulator, and empty PostgreSQL instance
+   built from committed migrations, followed by rendered-product readback and
+   retry.
 
-The local proof does not close second-environment disaster recovery, production
-deployment, physical iPhone, TestFlight, or App Store acceptance.
+The isolated local proof closes second-environment recovery for the included
+knowledge-work package. It does not close production deployment, provider or
+media recovery, physical iPhone, TestFlight, or App Store acceptance.

@@ -85,6 +85,19 @@ state—not only its empty screen. A passing build cannot substitute for that
 operated proof. Physical-iPhone, TestFlight, App Store Connect, credentialed
 cloud, and production-traffic claims each require their own target readback.
 
+For portability, migration, or recovery changes, also use the separately
+administered recovery lane:
+
+```bash
+pnpm quipsly:recovery-lab:up
+pnpm quipsly:recovery-lab:doctor
+pnpm quipsly:recovery-lab:down
+```
+
+The authoritative rehearsal requires clean committed source and a rendered-app
+restore plus retry; same-database integration tests are necessary but not
+sufficient.
+
 ## Commits
 
 - Prefer short, imperative subjects such as

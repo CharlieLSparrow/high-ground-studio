@@ -133,6 +133,27 @@ disposable owner, collaborator, source Nest, and destination Nest; exercises
 the real relational graph; independently reads it back; and deletes only those
 exact fixtures.
 
+## Separately administered recovery rehearsal
+
+The daily local database is not a disaster-recovery target. Use the
+[isolated recovery lab](quipsly-recovery-lab.md) to start a second Nest,
+Firebase Auth emulator, and empty migration-built PostgreSQL instance:
+
+```bash
+pnpm quipsly:recovery-lab:up
+pnpm quipsly:recovery-lab:doctor
+```
+
+Operate the full upload, preview, apply, product readback, retry, and
+independent persistence checks there. When finished:
+
+```bash
+pnpm quipsly:recovery-lab:down
+```
+
+The down command permanently deletes only the explicitly labeled disposable
+lab database.
+
 ## Incident and ambiguity handling
 
 - **Browser says the download failed:** inspect the Nest server access log. An

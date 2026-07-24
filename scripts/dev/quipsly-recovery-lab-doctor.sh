@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+repo_root="$(cd "${script_dir}/../.." && pwd -P)"
+source "${script_dir}/quipsly-recovery-lab-state.sh"
+
+state_dir="$(quipsly_recovery_lab_state_dir)"
+database_url="$(quipsly_recovery_lab_database_url)"
+database_container="quipsly-portable-recovery-lab-db"
+database_label="com.quipsly.recovery-lab"
+nest_url="http://127.0.0.1:3022"
+firebase_url="http://127.0.0.1:9199"
+firebase_project="quipsly-recovery-lab"
+failed=0
+
+if [[ $# -gt 0 ]]; then
+  echo "Usage: $0" >&2
+  exit 64
+fi
+
+cd "${repo_root}"
+
+report_http() {
+  local label="$1"
+  local url="$2"
+  local expected="$3"
+  local status
+  status="$(quipsly_recovery_lab_http_status "${url}")"
+  if [[ "${status}" == "${expected}" ]]; then
+    printf "PASS  %-26s HTTP %s  %s\n" "${label}" "${status}" "${url}"
+  else
+    printf "FAIL  %-26s HTTP %s  %s\n" "${label}" "${status:-000}" "${url}"
+    failed=1
+  fi
+}
+
+echo "Quipsly isolated recovery lab"
+report_http "Nest health" "${nest_url}/api/health" "200"
+report_http "Signed-out shell" "${nest_url}/login?callbackUrl=%2Fprojects" "200"
+report_http \
+  "Firebase Auth emulator" \
+  "${firebase_url}/emulator/v1/projects/${firebase_project}/config" \
+  "200"
+
+listener="$(quipsly_local_port_listener_pid 3022)"
+actual_cwd=""
+if [[ -n "${listener}" ]]; then
+  actual_cwd="$(quipsly_local_process_cwd "${listener}")"
+fi
+if [[ "${actual_cwd}" == "${repo_root}/apps/quipsly" ]]; then
+  printf "PASS  %-26s %s\n" "Runtime source worktree" "${repo_root}"
+else
+  printf "FAIL  %-26s %s\n" "Runtime source worktree" "${actual_cwd:-unknown}"
+  failed=1
+fi
+
+recorded_root="$(sed -n '1p' "${state_dir}/repo-root" 2>/dev/null || true)"
+if [[ "${recorded_root}" == "${repo_root}" ]]; then
+  printf "PASS  %-26s %s\n" "Lifecycle state owner" "${state_dir}"
+else
+  printf "FAIL  %-26s %s\n" "Lifecycle state owner" "${recorded_root:-none}"
+  failed=1
+fi
+
+actual_label="$(docker inspect --format "{{ index .Config.Labels \"${database_label}\" }}" "${database_container}" 2>/dev/null || true)"
+if [[ "${actual_label}" == "true" ]] && docker exec "${database_container}" \
+  pg_isready -U postgres -d quipsly_portable_recovery_lab >/dev/null 2>&1; then
+  printf "PASS  %-26s container %s\n" "Disposable PostgreSQL" "${database_container}"
+else
+  printf "FAIL  %-26s container %s\n" "Disposable PostgreSQL" "${database_container}"
+  failed=1
+fi
+
+if DATABASE_URL="${database_url}" pnpm exec prisma migrate status >/dev/null 2>&1; then
+  printf "PASS  %-26s committed migrations current\n" "Migration state"
+else
+  printf "FAIL  %-26s run migrate status for detail\n" "Migration state"
+  failed=1
+fi
+
+recorded_revision="$(sed -n '1p' "${state_dir}/source-revision" 2>/dev/null || true)"
+current_revision="$(git rev-parse HEAD)"
+if [[ "${recorded_revision}" == "${current_revision}" ]]; then
+  printf "PASS  %-26s %s\n" "Exact source revision" "${current_revision}"
+else
+  printf "FAIL  %-26s running %s current %s\n" \
+    "Exact source revision" \
+    "${recorded_revision:-unknown}" \
+    "${current_revision}"
+  failed=1
+fi
+
+dirty_source="$(git status --porcelain=v1 --untracked-files=all)"
+if [[ -z "${dirty_source}" ]]; then
+  printf "PASS  %-26s clean committed source\n" "Worktree"
+else
+  printf "FAIL  %-26s has tracked or untracked changes\n" "Worktree"
+  failed=1
+fi
+
+printf "PASS  %-26s Nest 3022, Auth 9199, DB 55432\n" "Canonical lane isolation"
+exit "${failed}"
