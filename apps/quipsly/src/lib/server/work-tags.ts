@@ -1,8 +1,11 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import type { PrismaClient } from "@prisma/client";
 
 import { listProjectsVisibleToEmail } from "./home-nest";
+import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
+
+export { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 
 export type WorkTagEntityKind = "task" | "goal" | "session" | "note";
 
@@ -52,30 +55,6 @@ function normalizedTagIds(value: unknown) {
   if (!Array.isArray(value) || value.length > 24) return null;
   const ids = [...new Set(value.map(cleanId).filter(Boolean))];
   return ids.length === value.length ? ids : null;
-}
-
-export function normalizeWorkTagLabel(value: unknown) {
-  if (typeof value !== "string") return "";
-  const label = value
-    .normalize("NFKC")
-    .replace(/[\u0000-\u001F\u007F]/g, "")
-    .trim()
-    .replace(/^#+\s*/, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return label.length <= 80 ? label : "";
-}
-
-export function workTagSlug(label: string) {
-  const normalized = label.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  const readable = normalized
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 64)
-    .replace(/-+$/g, "");
-  if (readable) return readable;
-  return `tag-${createHash("sha256").update(label.normalize("NFKC").toLowerCase()).digest("hex").slice(0, 12)}`;
 }
 
 function canonicalTagLabel(label: string) {

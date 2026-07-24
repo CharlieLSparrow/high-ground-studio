@@ -2,7 +2,7 @@
 
 jest.mock("./home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
 
-import { normalizeWorkTagLabel, workTagSlug } from "./work-tags";
+import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 
 describe("work tag identity", () => {
   it("normalizes deliberate user labels without storing UI hash syntax", () => {

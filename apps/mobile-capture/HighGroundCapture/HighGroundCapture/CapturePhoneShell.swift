@@ -1685,12 +1685,10 @@ struct CaptureQuickEntryBar: View {
                     }
                     .buttonStyle(.bordered)
                     .tint(kind == .note ? CapturePalette.accent : kind == .task ? .blue : kind == .goal ? .purple : .teal)
-                    .disabled(session == nil && kind != .source && kind != .note)
                     .accessibilityHint(kind == .source
                         ? "Opens a protected personal source capture for Nest Inbox."
-                        : kind == .note && session == nil
-                            ? "Opens a protected personal note for your private Home Nest."
-                            : session.map { "Opens a local-first \(kind.title.lowercased()) for \($0.displayTitle)." } ?? "Choose a Session first.")
+                        : session.map { "Opens a local-first \(kind.title.lowercased()) for \($0.displayTitle), with a private Home Nest option." }
+                            ?? "Opens a protected personal \(kind.title.lowercased()) for your private Home Nest.")
                     .accessibilityIdentifier("CaptureQuickEntry_\(kind.rawValue)_\(session?.id ?? "personal")")
                 }
             }
@@ -1824,14 +1822,18 @@ struct CaptureQuickEntrySheet: View {
     @State private var oneTimeDueAt = Date().addingTimeInterval(86_400)
     @State private var hasOneTimeReminder = false
     @State private var oneTimeReminderAt = Date().addingTimeInterval(3_600)
-    @State private var noteDestination = "SESSION"
+    @State private var destination = "SESSION"
 
     private var savesNoteToHomeNest: Bool {
-        kind == .note && (session == nil || noteDestination == "HOME_NEST")
+        kind == .note && savesToHomeNest
+    }
+
+    private var savesToHomeNest: Bool {
+        kind != .source && (session == nil || destination == "HOME_NEST")
     }
 
     private var availableTags: [MobileCaptureTag] {
-        savesNoteToHomeNest ? [] : session?.availableTags ?? []
+        savesToHomeNest ? [] : session?.availableTags ?? []
     }
 
     private var normalizedNewTagDraft: String {
@@ -1949,32 +1951,31 @@ struct CaptureQuickEntrySheet: View {
                     if kind == .source {
                         LabeledContent("Destination", value: "Personal Inbox")
                         LabeledContent("Shared Nest", value: "Not chosen yet")
-                    } else if kind == .note, let session {
-                        Picker("Save to", selection: $noteDestination) {
+                    } else if let session {
+                        Picker("Save to", selection: $destination) {
                             Text("This Session").tag("SESSION")
                             Text("Home Nest").tag("HOME_NEST")
                         }
                         .pickerStyle(.segmented)
-                        .accessibilityIdentifier("CaptureQuickEntryNoteDestination")
-                        if savesNoteToHomeNest {
+                        .accessibilityIdentifier(kind == .note ? "CaptureQuickEntryNoteDestination" : "CaptureQuickEntryDestination")
+                        if savesToHomeNest {
                             LabeledContent("Destination", value: "Private Home Nest")
                             LabeledContent("Session", value: "None")
                         } else {
                             LabeledContent("Session", value: session.displayTitle)
                             LabeledContent("Nest", value: session.projectName?.nonempty ?? session.projectSlug?.nonempty ?? "Unfiled")
                         }
-                    } else if let session {
-                        LabeledContent("Session", value: session.displayTitle)
-                        LabeledContent("Nest", value: session.projectName?.nonempty ?? session.projectSlug?.nonempty ?? "Unfiled")
-                    } else if kind == .note {
+                    } else {
                         LabeledContent("Destination", value: "Private Home Nest")
                         LabeledContent("Session", value: "None")
                     }
                 } footer: {
                     Text(kind == .source
                         ? "This source stays private and unfiled in your Inbox until you deliberately choose a Research Nest. It does not send, schedule, deliver, or publish anything."
-                        : savesNoteToHomeNest
-                            ? "This note journals to the protected phone outbox first, then becomes one private document-kernel note in your Home Nest. It does not invent a Session, send, schedule, deliver, or publish anything."
+                        : savesToHomeNest
+                            ? kind == .note
+                                ? "This note journals to the protected phone outbox first, then becomes one private document-kernel note in your Home Nest. It does not invent a Session, send, schedule, deliver, or publish anything."
+                                : "This \(kind.title.lowercased()) journals to the protected phone outbox first, then becomes private Home Nest work assigned to you. It does not invent a Session, send, schedule, deliver, or publish anything."
                         : "This explicit capture stays private to your account and Session access. It does not send, schedule, deliver, or publish anything.")
                 }
 
@@ -1993,7 +1994,7 @@ struct CaptureQuickEntrySheet: View {
                     .accessibilityIdentifier("CaptureQuickEntryBody")
                 }
 
-                if kind != .source, savesNoteToHomeNest || session?.projectId?.nonempty != nil {
+                if kind != .source, savesToHomeNest || session?.projectId?.nonempty != nil {
                     Section {
                         ForEach(availableTags) { tag in
                             Button {
@@ -2052,8 +2053,8 @@ struct CaptureQuickEntrySheet: View {
                     } header: {
                         Text("Nest tags")
                     } footer: {
-                        Text(savesNoteToHomeNest
-                            ? "Name up to eight private Home Nest tags. New names stay in the protected phone outbox until Nest creates or reuses the canonical tag and anchors it to this note."
+                        Text(savesToHomeNest
+                            ? "Name up to eight private Home Nest tags. New names stay in the protected phone outbox until Nest creates or reuses the canonical tag and links it to this \(kind.title.lowercased())."
                             : "Choose or name up to eight tags. New names are protected in the phone outbox, then Nest creates or reuses the private canonical tag during sync. Work, Search, and this Session use that same canonical tag; Today keeps it when the work is planned or needs attention there.")
                     }
                 }
@@ -2181,7 +2182,7 @@ struct CaptureQuickEntrySheet: View {
                             kind: kind,
                             title: title,
                             body: entryBody,
-                            saveNoteToHomeNest: savesNoteToHomeNest,
+                            saveToHomeNest: savesToHomeNest,
                             tagIDs: Array(selectedTagIDs).sorted(),
                             newTagLabels: newTagLabels,
                             dueAt: dueAt,
@@ -2202,7 +2203,7 @@ struct CaptureQuickEntrySheet: View {
                 onSelect: selectRecurrenceTimeZone
             )
         }
-        .onChange(of: noteDestination) { _, _ in
+        .onChange(of: destination) { _, _ in
             selectedTagIDs.removeAll()
         }
         .accessibilityIdentifier("CaptureQuickEntrySheet_\(kind.rawValue)")

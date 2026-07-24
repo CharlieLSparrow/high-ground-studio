@@ -1,7 +1,7 @@
 # Quipsly Capture iPhone Architecture
 
 Status: implementation baseline
-Last reviewed: 2026-07-18
+Last reviewed: 2026-07-23
 Minimum OS: iOS 17
 Primary product: local-first, consent-aware audio capture for coaching, podcasts, and research interviews
 
@@ -35,6 +35,22 @@ The native 360 editor, publishing prototype, sample manuscript, sample clips, re
 - Diagnostics and receipt detail live behind disclosure. They do not displace the main task.
 - Recording state uses text, shape, timer, and VoiceOver—not color alone.
 - The app respects Dynamic Type, Reduce Motion, 44-point minimum controls, and accessible progress values.
+
+### Quick capture and personal work
+
+Record exposes Note, Task, Goal, and Source as local-first capture actions. Note,
+Task, and Goal can target either the selected Session or the signed-in user's
+private Home Nest; they do not require an invented Session. Source always lands
+in the private personal Inbox before deliberate Research Nest filing.
+
+The phone persists one client-generated UUID, the explicit destination, text,
+due/reminder/recurrence intent, and up to eight canonical tag IDs or new tag
+labels before sync. A Home Nest choice clears Session tag IDs and permits only
+new private Home Nest tag names. Nest creates or reuses those names inside the
+destination project and links the same vocabulary to the canonical note, task,
+or goal. Offline retries reuse the UUID and must either read back the identical
+record or fail closed as an identity conflict; they never send, schedule,
+publish, or create a provider calendar event.
 
 ## System boundaries
 

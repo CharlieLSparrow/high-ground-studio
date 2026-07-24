@@ -16,7 +16,7 @@ import {
 } from "@/lib/server/mobile-capture-quick-entry";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { materializeTaskOccurrence, type PersistedTaskRecurrenceSeries } from "@/lib/server/task-recurrence";
-import { workTagSlug } from "@/lib/server/work-tags";
+import { workTagSlug } from "@/lib/server/work-tag-normalization";
 import { initialOccurrencePlan } from "@/lib/task-recurrence";
 
 export const runtime = "nodejs";
@@ -41,10 +41,10 @@ function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room:
     body: model === "note" || model === "document-note" ? row.body : model === "task" ? row.detail : model === "goal" ? row.description : model === "snippet" ? row.highlightedText : row.url,
     status: model === "task" || model === "goal" ? row.status : "CAPTURED",
     callRoomId: room?.id || null,
-    sessionTitle: room?.title || null,
+    sessionTitle: room?.id ? room.title : null,
     projectId: room?.projectId || null,
     dueAt: model === "task" ? row.dueAt?.toISOString?.() || null : null,
-    destination: kind === "SOURCE" ? "INBOX" : model === "document-note" ? "HOME_NEST" : "SESSION",
+    destination: kind === "SOURCE" ? "INBOX" : room?.id ? "SESSION" : "HOME_NEST",
     sourceType: model === "bookmark" ? "BOOKMARK" : model === "snippet" ? "SNIPPET" : null,
     sourceUrl: model === "bookmark" ? row.url : model === "snippet" ? row.sourceUrl : null,
     tags: tags.map((tag) => ({ id: tag.id, slug: tag.slug, label: tag.label })),
@@ -498,12 +498,18 @@ async function ensureSourceCaptureReceipt(
   return { ok: true as const, receipt, replay: false, captureCount };
 }
 
-function entryMatches(input: MobileCaptureQuickEntryInput, saved: { row: any; model: SavedModel }, actorUserId: string) {
+function entryMatches(
+  input: MobileCaptureQuickEntryInput,
+  saved: { row: any; model: SavedModel },
+  actorUserId: string,
+  expectedProjectId: string | null,
+) {
   const recurrenceSeries = (saved as { recurrenceSeries?: any }).recurrenceSeries;
   if (input.kind === "TASK" && input.recurrence) {
     const seriesSource = record(recurrenceSeries?.sourceJson);
     return Boolean(recurrenceSeries)
       && recurrenceSeries.ownerUserId === actorUserId
+      && recurrenceSeries.projectId === expectedProjectId
       && recurrenceSeries.title === input.title
       && (recurrenceSeries.detail || "") === input.body
       && recurrenceSeries.cadence === input.recurrence.cadence
@@ -518,7 +524,7 @@ function entryMatches(input: MobileCaptureQuickEntryInput, saved: { row: any; mo
     if (!input.callRoomId) {
       const operation = saved.row.documentOperations?.[0];
       return saved.model === "document-note"
-        && saved.row.projectId !== null
+        && saved.row.projectId === expectedProjectId
         && saved.row.title === (input.title || "Quick note")
         && saved.row.body === input.body
         && operation?.projectId === saved.row.projectId
@@ -536,6 +542,7 @@ function entryMatches(input: MobileCaptureQuickEntryInput, saved: { row: any; mo
   if (input.kind === "TASK") {
     return saved.model === "task"
       && saved.row.assignedUserId === actorUserId
+      && saved.row.projectId === expectedProjectId
       && saved.row.roomId === input.callRoomId
       && saved.row.title === input.title
       && (saved.row.detail || "") === input.body
@@ -552,6 +559,7 @@ function entryMatches(input: MobileCaptureQuickEntryInput, saved: { row: any; mo
   if (input.kind === "GOAL") {
     return saved.model === "goal"
       && saved.row.ownerUserId === actorUserId
+      && saved.row.projectId === expectedProjectId
       && saved.row.roomId === input.callRoomId
       && saved.row.title === input.title
       && (saved.row.description || "") === input.body
@@ -570,7 +578,7 @@ export async function POST(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user) {
     return NextResponse.json(
-      { ok: false, code: "UNAUTHORIZED", error: "Sign in before syncing private Session quick capture." },
+      { ok: false, code: "UNAUTHORIZED", error: "Sign in before syncing private quick capture." },
       { status: 401 },
     );
   }
@@ -585,26 +593,32 @@ export async function POST(request: Request) {
 
   const input = validation.value;
   const actorEmail = (session.user.primaryEmail || session.user.email || "").trim().toLowerCase();
-  if (input.kind === "NOTE" && !input.callRoomId && !actorEmail) {
+  if (input.kind !== "SOURCE" && !input.callRoomId && !actorEmail) {
     return NextResponse.json(
-      { ok: false, code: "QUICK_ENTRY_ACCOUNT_EMAIL_REQUIRED", error: "Verify this Quipsly account before syncing a private Home Nest note. The phone copy remains protected.", localOutboxRetained: true },
+      { ok: false, code: "QUICK_ENTRY_ACCOUNT_EMAIL_REQUIRED", error: "Verify this Quipsly account before syncing private Home Nest work. The phone copy remains protected.", localOutboxRetained: true },
       { status: 403 },
     );
   }
   const prisma = getPrismaClient() as any;
-  const personalNoteHome = input.kind === "NOTE" && !input.callRoomId
+  const personalHome = input.kind !== "SOURCE" && !input.callRoomId
     ? await ensureHomeNestForEmail(actorEmail, prisma)
     : null;
   const commit = () => prisma.$transaction(async (tx: any) => {
     const room = input.kind === "SOURCE"
       ? null
-      : personalNoteHome
-        ? { id: null, title: personalNoteHome.name, projectId: personalNoteHome.id }
+      : personalHome
+        ? { id: null, title: personalHome.name, projectId: personalHome.id }
         : await tx.callRoom.findFirst({
       where: captureRoomAccessWhere(input.callRoomId!, session.user),
       select: { id: true, title: true, projectId: true },
     });
     if (input.kind !== "SOURCE" && !room) return { kind: "missing-room" as const };
+
+    const existing = await existingEntry(tx, input, session.user.id);
+    if (existing && !entryMatches(input, existing, session.user.id, room?.projectId || null)) {
+      return { kind: "identity-conflict" as const };
+    }
+
     const tagResolution = input.kind === "SOURCE"
       ? { kind: "resolved" as const, tags: [], createdTagCount: 0, reusedTagCount: 0 }
       : await resolveQuickEntryTags(
@@ -616,11 +630,7 @@ export async function POST(request: Request) {
     if (tagResolution.kind !== "resolved") return tagResolution;
     const { tags } = tagResolution;
 
-    const existing = await existingEntry(tx, input, session.user.id);
     if (existing) {
-      if (!entryMatches(input, existing, session.user.id)) {
-        return { kind: "identity-conflict" as const };
-      }
       const receipt = await ensureSourceCaptureReceipt(tx, input, session.user, existing);
       if (!receipt.ok) return { kind: "identity-conflict" as const };
       return {
@@ -637,7 +647,7 @@ export async function POST(request: Request) {
     }
 
     const saved = await createEntry(tx, input, session.user.id, actorEmail, room || { id: null, projectId: null }, tags);
-    if (!entryMatches(input, saved, session.user.id)) {
+    if (!entryMatches(input, saved, session.user.id, room?.projectId || null)) {
       return { kind: "identity-conflict" as const };
     }
     const receipt = await ensureSourceCaptureReceipt(tx, input, session.user, saved);
@@ -742,14 +752,22 @@ export async function POST(request: Request) {
         : "The private note is saved in your Home Nest document kernel. Continue it from Library or Search."
       : input.kind === "TASK"
         ? input.recurrence
-          ? "The repeating task is saved in Quipsly. Today and Work now share its exact occurrences; no reminder or provider event was scheduled."
+          ? input.callRoomId
+            ? "The repeating task is saved in Quipsly. Today and Work now share its exact occurrences; no reminder or provider event was scheduled."
+            : "The repeating task is saved in your Home Nest. Today and Work now share its exact occurrences; no reminder or provider event was scheduled."
           : input.reminderAt
             ? input.dueAt
               ? "The task, due date, and reminder intent are saved in Quipsly. This iPhone schedules the private alert only when local notification permission allows it; no provider calendar event was created."
               : "The task and reminder intent are saved in Quipsly. This iPhone schedules the private alert only when local notification permission allows it; no provider calendar event was created."
           : input.dueAt
-            ? "The task is saved and assigned to you with its due date visible in Today, Work, and Calendar. No reminder or provider event was scheduled."
-            : "The task is saved and assigned to you. Set its timing from Today, Work, or Calendar when useful."
-        : "The goal is saved as active. Add progress evidence or supporting tasks when useful.",
+            ? input.callRoomId
+              ? "The task is saved and assigned to you with its due date visible in Today, Work, and Calendar. No reminder or provider event was scheduled."
+              : "The task is saved in your Home Nest and assigned to you, with its due date visible in Today, Work, and Calendar. No reminder or provider event was scheduled."
+            : input.callRoomId
+              ? "The task is saved and assigned to you. Set its timing from Today, Work, or Calendar when useful."
+              : "The task is saved in your Home Nest and assigned to you. Set its timing from Today, Work, or Calendar when useful."
+        : input.callRoomId
+          ? "The goal is saved as active. Add progress evidence or supporting tasks when useful."
+          : "The goal is saved as active in your Home Nest. Add progress evidence or supporting tasks when useful.",
   });
 }

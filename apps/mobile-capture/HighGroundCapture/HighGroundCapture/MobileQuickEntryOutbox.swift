@@ -199,9 +199,6 @@ final class MobileQuickEntryOutbox: ObservableObject {
                 : !(cleanTitle ?? "").isEmpty else {
             throw MobileQuickEntryStoreError.emptyContent
         }
-        guard kind == .source || kind == .note || session != nil else {
-            throw MobileQuickEntryStoreError.emptyContent
-        }
         guard recurrence == nil || kind == .task else {
             throw MobileQuickEntryStoreError.emptyContent
         }

@@ -97,6 +97,39 @@ final class CaptureExperienceUITests: XCTestCase {
         ).firstMatch.exists)
     }
 
+    func testQuickTaskCanExplicitlyTargetPrivateHomeNestEvenWhenASessionIsSelected() {
+        app.tabBars.buttons["Record"].tap()
+        let taskButton = app.buttons["CaptureQuickEntry_TASK_preview-coaching-ready"]
+        reveal(taskButton)
+        XCTAssertTrue(taskButton.isHittable)
+        taskButton.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
+        let destination = app.descendants(matching: .any)["CaptureQuickEntryDestination"].firstMatch
+        XCTAssertTrue(destination.exists)
+        destination.buttons["Home Nest"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Private Home Nest")
+        ).firstMatch.waitForExistence(timeout: 3))
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Session, None")
+        ).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "private Home Nest work assigned to you")
+        ).firstMatch.exists)
+
+        let title = app.textFields["CaptureQuickEntryTitle"]
+        title.tap()
+        title.typeText("Prepare the next episode outline")
+        let save = app.buttons["CaptureQuickEntrySave"]
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(app.staticTexts[
+            "Preview only — no note, task, goal, or source was saved."
+        ].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
+    }
+
     func testRecordSourceCaptureTargetsPrivateInboxBeforeAnyResearchNest() {
         app.tabBars.buttons["Record"].tap()
         let sourceButton = app.buttons["CaptureQuickEntry_SOURCE_preview-coaching-ready"]

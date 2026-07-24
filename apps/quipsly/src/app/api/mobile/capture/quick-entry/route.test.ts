@@ -251,6 +251,87 @@ describe("mobile Capture quick-entry route", () => {
     }));
   });
 
+  it("commits personal iPhone tasks and goals to the Home Nest without inventing a Session", async () => {
+    signedIn();
+    const tx = harness();
+
+    const taskResponse = await POST(request("TASK", {
+      callRoomId: null,
+      title: "Prepare the next episode",
+      body: "Turn the open research into one honest outline.",
+      dueAt: "2026-07-24T18:00:00.000Z",
+      newTagLabels: ["Personal work"],
+    }));
+    const taskPayload = await taskResponse.json();
+
+    const goalResponse = await POST(request("GOAL", {
+      callRoomId: null,
+      title: "Publish consistently",
+      body: "Use visible weekly evidence instead of vague intention.",
+      newTagLabels: ["Personal work"],
+    }));
+    const goalPayload = await goalResponse.json();
+
+    expect(taskResponse.status).toBe(200);
+    expect(taskPayload).toMatchObject({
+      ok: true,
+      entry: {
+        id: `mobile-task-${requestId}`,
+        kind: "TASK",
+        callRoomId: null,
+        sessionTitle: null,
+        projectId: "project-home",
+        destination: "HOME_NEST",
+        tags: [{ label: "Personal work" }],
+      },
+      nextAction: expect.stringContaining("Home Nest"),
+    });
+    expect(goalResponse.status).toBe(200);
+    expect(goalPayload).toMatchObject({
+      ok: true,
+      entry: {
+        id: `mobile-goal-${requestId}`,
+        kind: "GOAL",
+        callRoomId: null,
+        sessionTitle: null,
+        projectId: "project-home",
+        destination: "HOME_NEST",
+        tags: [{ label: "Personal work" }],
+      },
+      nextAction: expect.stringContaining("Home Nest"),
+    });
+    expect(ensureHomeNestForEmail).toHaveBeenCalledTimes(2);
+    expect(tx.callRoom.findFirst).not.toHaveBeenCalled();
+    expect(tx.actionItem.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        roomId: null,
+        projectId: "project-home",
+        assignedUserId: "user-1",
+        title: "Prepare the next episode",
+        sourceJson: expect.objectContaining({
+          callRoomId: null,
+          projectId: "project-home",
+          actorUserId: "user-1",
+        }),
+      }),
+    }));
+    expect(tx.goal.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      create: expect.objectContaining({
+        roomId: null,
+        projectId: "project-home",
+        ownerUserId: "user-1",
+        title: "Publish consistently",
+        sourceJson: expect.objectContaining({
+          callRoomId: null,
+          projectId: "project-home",
+          actorUserId: "user-1",
+        }),
+      }),
+    }));
+    expect(tx.actionItemTagLink.createMany).toHaveBeenCalledTimes(1);
+    expect(tx.goalTagLink.createMany).toHaveBeenCalledTimes(1);
+  });
+
   it("retains a personal note on the phone when the signed-in account has no verified email identity", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "user-1", primaryEmail: null, email: null, isStaff: false },
@@ -599,17 +680,60 @@ describe("mobile Capture quick-entry route", () => {
       id: `mobile-task-${requestId}`,
       assignedUserId: "user-1",
       roomId: "room-1",
+      projectId: "project-1",
       title: "Quick task",
       detail: "Captured deliberately on iPhone.",
       dueAt: null,
       status: "OPEN",
       createdAt,
       updatedAt: createdAt,
-      sourceJson: { schema: "quipsly-mobile-quick-entry-v1", origin: "explicit-human-capture", clientRequestId: requestId, callRoomId: "room-1", actorUserId: "user-1", dueAt: null },
+      sourceJson: { schema: "quipsly-mobile-quick-entry-v1", origin: "explicit-human-capture", clientRequestId: requestId, callRoomId: "room-1", projectId: "project-1", actorUserId: "user-1", dueAt: null },
     };
     const tx = harness(existing);
     const response = await POST(request("TASK"));
     expect(await response.json()).toMatchObject({ ok: true, idempotentReplay: true, entry: { id: existing.id } });
+    expect(tx.actionItem.upsert).not.toHaveBeenCalled();
+  });
+
+  it("rejects a changed retry before creating destination tag vocabulary", async () => {
+    signedIn();
+    const createdAt = new Date("2026-07-19T09:00:01.000Z");
+    const existing = {
+      id: `mobile-task-${requestId}`,
+      assignedUserId: "user-1",
+      roomId: "room-1",
+      projectId: "project-1",
+      title: "Quick task",
+      detail: "Captured deliberately on iPhone.",
+      dueAt: null,
+      status: "OPEN",
+      createdAt,
+      updatedAt: createdAt,
+      sourceJson: {
+        schema: "quipsly-mobile-quick-entry-v1",
+        origin: "explicit-human-capture",
+        clientRequestId: requestId,
+        callRoomId: "room-1",
+        projectId: "project-1",
+        actorUserId: "user-1",
+        tagIds: [],
+        newTagLabels: [],
+        dueAt: null,
+        reminderAt: null,
+      },
+    };
+    const tx = harness(existing);
+    const response = await POST(request("TASK", {
+      title: "Changed title",
+      newTagLabels: ["Must not be created"],
+    }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "QUICK_ENTRY_IDENTITY_CONFLICT",
+      localOutboxRetained: true,
+    });
+    expect(tx.studioTag.create).not.toHaveBeenCalled();
     expect(tx.actionItem.upsert).not.toHaveBeenCalled();
   });
 
@@ -621,6 +745,7 @@ describe("mobile Capture quick-entry route", () => {
       id: `mobile-task-${requestId}`,
       assignedUserId: "user-1",
       roomId: "room-1",
+      projectId: "project-1",
       title: "Quick task",
       detail: "Captured deliberately on iPhone.",
       dueAt: existingDueAt,
@@ -632,6 +757,7 @@ describe("mobile Capture quick-entry route", () => {
         origin: "explicit-human-capture",
         clientRequestId: requestId,
         callRoomId: "room-1",
+        projectId: "project-1",
         actorUserId: "user-1",
         dueAt: existingDueAt.toISOString(),
       },
