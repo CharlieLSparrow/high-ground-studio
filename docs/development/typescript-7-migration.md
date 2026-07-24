@@ -39,7 +39,6 @@ the deployable product stable without allowing migration debt to grow.
 As of 2026-07-23, the gate covers:
 
 - Quipsly Nest and the High Ground web app
-- Quiplore
 - AI, photography, video, and motion hubs
 - the desktop companion
 - the Quipsly API
@@ -53,9 +52,10 @@ These projects are intentionally not in the gate yet:
 | Project | Blocking work |
 | --- | --- |
 | `apps/local-engine` | Move its CommonJS runtime and ESM-only dependencies to one deliberate module contract. |
-| `apps/render-engine` | Repair JSX, React runtime, and Remotion compiler configuration before claiming compatibility. |
+| `apps/quiplore` | Align React 19 with React Three Fiber 9 and Drei 10, then prove `/discovery-lab` in the production build and browser runtime. |
+| `apps/render-engine` | Align its React type/runtime version under the hoisted workspace, then repair JSX and Remotion compiler configuration. |
 | `apps/studio-cut-web` | Restore the `@high-ground/studio-cut-schema` package boundary, then resolve the resulting strict type errors. |
-| `packages/quipsly-document-kernel/tsconfig.test.json` | Replace the removed Node 10/CommonJS test-emission path without breaking Node's ESM resolution. |
+| `packages/quipsly-document-kernel/tsconfig.test.json` | Replace the removed Node 10/CommonJS test-emission path without breaking the source package's Turbopack resolution. |
 
 Do not add a holdout to the gate by weakening strictness, skipping library
 checks that affect runtime contracts, or excluding the failing source.
