@@ -24,11 +24,50 @@ pnpm quipsly:local:doctor
 
 The launcher starts or safely reuses PostgreSQL, the loopback-only Firebase Auth
 emulator, and Nest. It keeps logs and process ownership receipts under
-`.tmp/quipsly-local/`. The doctor verifies those services without reading or
-printing credentials and confirms the retired localhost owner override cannot
-re-enter runtime authorization. It also summarizes changed paths by product
-surface so a Nest change is not accidentally committed with unrelated Studio,
-media, iPhone, or HGO work.
+the current user's machine-wide cache directory, which the launcher prints.
+The state cannot live inside one worktree because the launchd labels and ports
+are machine-wide. The doctor checks the actual port listener's working
+directory and the lifecycle owner receipt, so a healthy Nest from a different
+checkout cannot masquerade as proof for the current source. It also verifies
+services without reading or printing credentials, confirms the retired
+localhost owner override cannot re-enter runtime authorization, and summarizes
+changed paths by product surface.
+
+The PostgreSQL Compose project is likewise pinned to `high-ground-studio`
+instead of being derived from the worktree folder name. Every checkout
+therefore resolves the preserved `high-ground-db` container and
+`high-ground-studio_postgres_data` volume rather than creating a shadow
+database.
+
+On macOS, the detached launchd job must receive a readable Nest environment
+file. The launcher uses `apps/quipsly/.env.local` when present, or an explicit
+external path:
+
+```bash
+QUIPSLY_LOCAL_ENV_FILE=/absolute/path/to/quipsly-local.env \
+  pnpm quipsly:local:up
+```
+
+Only the path is retained in machine-wide lifecycle state. Node parses the env
+file directly; the launcher neither sources it as shell code nor prints its
+values. A later restart can reuse the recorded path while it remains readable.
+The readiness gate checks `/projects`, not only `/api/health`, so missing
+database or application configuration fails startup visibly.
+
+If another worktree owns the exact Quipsly launchd jobs, the launcher fails
+with both source paths instead of silently reusing it. Deliberately transfer
+ownership with:
+
+```bash
+bash scripts/dev/quipsly-local-up.sh --replace
+pnpm quipsly:local:doctor
+```
+
+Replacement is confined to `com.quipsly.local.nest` and
+`com.quipsly.local.firebase`. It leaves PostgreSQL and its canonical local
+product data running. The Auth Emulator is ephemeral, so replacing it removes
+unexported emulator-only accounts; recreate disposable local identities as
+needed.
 
 Stop only the app processes started by the launcher:
 
@@ -37,8 +76,9 @@ pnpm quipsly:local:down
 ```
 
 The stop command validates each recorded process and working directory before
-sending a signal. It deliberately leaves PostgreSQL running so local notes,
-tasks, goals, tags, and test accounts are preserved.
+sending a signal. On macOS it removes only the two exact receipt-backed Quipsly
+launchd labels. It deliberately leaves PostgreSQL running so local notes,
+tasks, goals, and tags are preserved.
 
 This repository is preservation-sensitive. When the doctor reports a dirty
 worktree:
@@ -53,7 +93,7 @@ worktree:
 From the repository root:
 
 ```bash
-docker compose up -d postgres
+docker compose --project-name high-ground-studio up -d postgres
 mkdir -p .tmp/backups
 pg_dump \
   --format=custom \

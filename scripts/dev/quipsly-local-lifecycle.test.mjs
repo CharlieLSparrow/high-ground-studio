@@ -1,0 +1,84 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+import test from "node:test";
+
+const stateHelperPath = fileURLToPath(
+  new URL("./quipsly-local-state.sh", import.meta.url),
+);
+const upPath = fileURLToPath(new URL("./quipsly-local-up.sh", import.meta.url));
+const downPath = fileURLToPath(
+  new URL("./quipsly-local-down.sh", import.meta.url),
+);
+const doctorPath = fileURLToPath(
+  new URL("./quipsly-local-doctor.sh", import.meta.url),
+);
+
+const stateHelper = readFileSync(stateHelperPath, "utf8");
+const up = readFileSync(upPath, "utf8");
+const down = readFileSync(downPath, "utf8");
+const doctor = readFileSync(doctorPath, "utf8");
+
+test("machine-wide services use machine-wide ownership state", () => {
+  assert.match(stateHelper, /getconf DARWIN_USER_CACHE_DIR/);
+  assert.match(stateHelper, /QUIPSLY_LOCAL_STATE_DIR/);
+  assert.doesNotMatch(stateHelper, /repo_root.*\.tmp\/quipsly-local/);
+
+  for (const script of [up, down, doctor]) {
+    assert.match(script, /source "\$\{script_dir\}\/quipsly-local-state\.sh"/);
+    assert.match(script, /state_dir="?\$\(quipsly_local_state_dir\)"?/);
+  }
+  assert.match(
+    up,
+    /QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio/,
+  );
+  assert.match(up, /docker compose --project-name "\$\{compose_project\}"/);
+  assert.match(up, /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}"/);
+  assert.doesNotMatch(up, /source "\$\{local_env_file\}"/);
+  assert.match(up, /"Nest projects shell"/);
+});
+
+test("the state-directory override remains deterministic for isolated tests", () => {
+  const expected = "/tmp/quipsly-lifecycle-contract";
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      'source "$1"; QUIPSLY_LOCAL_STATE_DIR="$2"; quipsly_local_state_dir',
+      "quipsly-local-state-test",
+      stateHelperPath,
+      expected,
+    ],
+    { encoding: "utf8" },
+  );
+
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(result.stdout.trim(), expected);
+});
+
+test("healthy ports cannot hide another worktree", () => {
+  assert.match(up, /quipsly_local_process_cwd "\$\{nest_listener\}"/);
+  assert.match(up, /nest_cwd}" != "\$\{expected_nest_cwd}/);
+  assert.match(up, /--replace/);
+  assert.match(up, /repo-root/);
+  assert.match(up, /source-revision/);
+
+  assert.match(doctor, /Runtime source worktree/);
+  assert.match(doctor, /Lifecycle state owner/);
+  assert.match(doctor, /quipsly_local_process_cwd "\$\{nest_listener\}"/);
+});
+
+test("replacement and shutdown remain confined to Quipsly app jobs", () => {
+  for (const script of [up, down]) {
+    assert.match(script, /com\.quipsly\.local\.nest/);
+    assert.match(script, /com\.quipsly\.local\.firebase/);
+  }
+  assert.doesNotMatch(up, /docker compose down/);
+  assert.doesNotMatch(down, /docker compose down/);
+  assert.match(down, /PostgreSQL was intentionally left running/);
+  assert.match(
+    down,
+    /docker compose --project-name high-ground-studio stop postgres/,
+  );
+});

@@ -3,6 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 script_repo_root="$(cd "${script_dir}/../.." && pwd)"
+source "${script_dir}/quipsly-local-state.sh"
 
 if [[ "${1:-}" == "--run-firebase" ]]; then
   cd "${script_repo_root}"
@@ -14,14 +15,36 @@ fi
 
 if [[ "${1:-}" == "--run-nest" ]]; then
   cd "${script_repo_root}/apps/quipsly"
+  nest_environment=(
+    PORT=3012
+    FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
+    NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099
+    QUIPSLY_OWNER_OVERRIDE=false
+    GCLOUD_PROJECT=quipsly-reef
+    GOOGLE_CLOUD_PROJECT=quipsly-reef
+  )
+  if [[ -n "${QUIPSLY_LOCAL_ENV_FILE:-}" ]]; then
+    exec /usr/bin/env \
+      "${nest_environment[@]}" \
+      "${QUIPSLY_LOCAL_NODE_BIN:?Missing launcher node path}" \
+      "--env-file=${QUIPSLY_LOCAL_ENV_FILE}" \
+      "${QUIPSLY_LOCAL_PNPM_BIN:?Missing launcher pnpm path}" \
+      dev
+  fi
   exec /usr/bin/env \
-    PORT=3012 \
-    FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
-    NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 \
-    QUIPSLY_OWNER_OVERRIDE=false \
-    GCLOUD_PROJECT=quipsly-reef \
-    GOOGLE_CLOUD_PROJECT=quipsly-reef \
-    "${QUIPSLY_LOCAL_PNPM_BIN:?Missing launcher pnpm path}" dev
+    "${nest_environment[@]}" \
+    "${QUIPSLY_LOCAL_PNPM_BIN:?Missing launcher pnpm path}" \
+    dev
+fi
+
+replace_existing=0
+if [[ "${1:-}" == "--replace" ]]; then
+  replace_existing=1
+  shift
+fi
+if [[ "$#" -gt 0 ]]; then
+  echo "Usage: $0 [--replace]" >&2
+  exit 64
 fi
 
 repo_root="$(git rev-parse --show-toplevel 2>/dev/null || true)"
@@ -29,15 +52,37 @@ if [[ -z "${repo_root}" ]]; then
   echo "Run this command from inside the High Ground Studio repository." >&2
   exit 1
 fi
+repo_root="$(cd "${repo_root}" && pwd -P)"
 cd "${repo_root}"
 
-state_dir="${QUIPSLY_LOCAL_STATE_DIR:-${repo_root}/.tmp/quipsly-local}"
+state_dir="$(quipsly_local_state_dir)"
 nest_url="${TARGET_URL:-http://127.0.0.1:3012}"
 firebase_url="${QUIPSLY_LOCAL_FIREBASE_AUTH_URL:-http://127.0.0.1:9099}"
 database_container="${QUIPSLY_LOCAL_DATABASE_CONTAINER:-high-ground-db}"
+compose_project="${QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio}"
 firebase_label="com.quipsly.local.firebase"
 nest_label="com.quipsly.local.nest"
+umask 077
 mkdir -p "${state_dir}"
+
+local_env_file="${QUIPSLY_LOCAL_ENV_FILE:-}"
+if [[ -z "${local_env_file}" && -f "${repo_root}/apps/quipsly/.env.local" ]]; then
+  local_env_file="${repo_root}/apps/quipsly/.env.local"
+fi
+if [[ -z "${local_env_file}" && -f "${state_dir}/nest-env-path" ]]; then
+  local_env_file="$(sed -n '1p' "${state_dir}/nest-env-path")"
+fi
+if [[ -n "${local_env_file}" ]]; then
+  if [[ ! -r "${local_env_file}" ]]; then
+    echo "Nest local environment file is not readable: ${local_env_file}" >&2
+    exit 1
+  fi
+  local_env_file="$(cd "$(dirname "${local_env_file}")" && pwd -P)/$(basename "${local_env_file}")"
+elif [[ "$(uname -s)" == "Darwin" ]]; then
+  echo "Nest requires a local environment file in the launchd lane." >&2
+  echo "Create apps/quipsly/.env.local or set QUIPSLY_LOCAL_ENV_FILE to an external file." >&2
+  exit 1
+fi
 
 http_status() {
   curl -sS --max-time 3 -o /dev/null -w "%{http_code}" "$1" 2>/dev/null || true
@@ -67,11 +112,6 @@ wait_for_http() {
   return 1
 }
 
-port_listener_pid() {
-  local port="$1"
-  lsof -nP -iTCP:"${port}" -sTCP:LISTEN -t 2>/dev/null | head -1 || true
-}
-
 record_process() {
   local name="$1"
   local pid="$2"
@@ -84,12 +124,43 @@ launchctl_job_exists() {
   launchctl print "gui/$(id -u)/$1" >/dev/null 2>&1
 }
 
+wait_for_port_release() {
+  local port="$1"
+  local label="$2"
+  for _ in $(seq 1 50); do
+    if [[ -z "$(quipsly_local_port_listener_pid "${port}")" ]]; then
+      return 0
+    fi
+    sleep 0.2
+  done
+  echo "Port ${port} did not become free after stopping ${label}." >&2
+  return 1
+}
+
+replace_macos_jobs() {
+  local label
+  for label in "${nest_label}" "${firebase_label}"; do
+    if launchctl_job_exists "${label}"; then
+      launchctl remove "${label}"
+      printf "STOP  %-24s job %s\n" "Existing local service" "${label}"
+    fi
+  done
+  wait_for_port_release 3012 "${nest_label}"
+  wait_for_port_release 9099 "${firebase_label}"
+  rm -f \
+    "${state_dir}/nest.label" \
+    "${state_dir}/firebase.label" \
+    "${state_dir}/repo-root" \
+    "${state_dir}/source-revision"
+}
+
 start_macos_job() {
   local name="$1"
   local label="$2"
   local mode="$3"
   local log_file="${state_dir}/${name}.log"
-  local pnpm_bin launcher_path
+  local node_bin pnpm_bin launcher_path
+  node_bin="$(command -v node)"
   pnpm_bin="$(command -v pnpm)"
   launcher_path="$(dirname "${pnpm_bin}"):/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
@@ -104,10 +175,20 @@ start_macos_job() {
     -e "${log_file}" \
     -- /usr/bin/env \
       "QUIPSLY_LOCAL_PNPM_BIN=${pnpm_bin}" \
+      "QUIPSLY_LOCAL_NODE_BIN=${node_bin}" \
+      "QUIPSLY_LOCAL_ENV_FILE=${local_env_file}" \
       "PATH=${launcher_path}" \
       /bin/bash "${repo_root}/scripts/dev/quipsly-local-up.sh" "${mode}"
   printf "%s\n" "${label}" >"${state_dir}/${name}.label"
 }
+
+if [[ "${replace_existing}" == "1" ]]; then
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    echo "--replace is currently supported only for the macOS launchd lane." >&2
+    exit 64
+  fi
+  replace_macos_jobs
+fi
 
 if ! docker info >/dev/null 2>&1; then
   if [[ "$(uname -s)" == "Darwin" ]] && command -v open >/dev/null 2>&1; then
@@ -126,7 +207,7 @@ if ! docker info >/dev/null 2>&1; then
 fi
 
 echo "Starting or reusing local PostgreSQL..."
-docker compose up -d postgres
+docker compose --project-name "${compose_project}" up -d postgres
 if ! docker exec "${database_container}" pg_isready -U postgres -d high_ground_studio >/dev/null 2>&1; then
   echo "PostgreSQL container ${database_container} is not ready." >&2
   exit 1
@@ -137,7 +218,7 @@ firebase_status="$(http_status "${firebase_url%/}/emulator/v1/projects/quipsly-r
 if [[ "${firebase_status}" == "200" ]]; then
   printf "REUSE %-24s %s\n" "Firebase Auth emulator" "${firebase_url}"
 else
-  firebase_listener="$(port_listener_pid 9099)"
+  firebase_listener="$(quipsly_local_port_listener_pid 9099)"
   if [[ -n "${firebase_listener}" ]]; then
     echo "Port 9099 is occupied by PID ${firebase_listener}, but it is not the Quipsly Firebase Auth emulator." >&2
     exit 1
@@ -167,9 +248,20 @@ fi
 nest_status="$(http_status "${nest_url%/}/api/health")"
 login_status="$(http_status "${nest_url%/}/login?callbackUrl=%2Fprojects")"
 if [[ "${nest_status}" == "200" && "${login_status}" == "200" ]]; then
-  printf "REUSE %-24s %s\n" "Quipsly Nest" "${nest_url}"
+  nest_listener="$(quipsly_local_port_listener_pid 3012)"
+  nest_cwd=""
+  if [[ -n "${nest_listener}" ]]; then
+    nest_cwd="$(quipsly_local_process_cwd "${nest_listener}")"
+  fi
+  expected_nest_cwd="${repo_root}/apps/quipsly"
+  if [[ "${nest_cwd}" != "${expected_nest_cwd}" ]]; then
+    echo "A healthy Nest is running from '${nest_cwd:-unknown}', not '${expected_nest_cwd}'." >&2
+    echo "Run '$0 --replace' to replace the exact Quipsly launchd jobs with this worktree." >&2
+    exit 1
+  fi
+  printf "REUSE %-24s %s  source %s\n" "Quipsly Nest" "${nest_url}" "${nest_cwd}"
 else
-  nest_listener="$(port_listener_pid 3012)"
+  nest_listener="$(quipsly_local_port_listener_pid 3012)"
   if [[ -n "${nest_listener}" ]]; then
     echo "Port 3012 is occupied by PID ${nest_listener}, but it is not a healthy Quipsly Nest." >&2
     exit 1
@@ -200,9 +292,21 @@ else
     "200" \
     "${state_dir}/nest.log"
 fi
+wait_for_http \
+  "Nest projects shell" \
+  "${nest_url%/}/projects" \
+  "200" \
+  "${state_dir}/nest.log"
+
+printf "%s\n" "${repo_root}" >"${state_dir}/repo-root"
+git rev-parse HEAD >"${state_dir}/source-revision"
+if [[ -n "${local_env_file}" ]]; then
+  printf "%s\n" "${local_env_file}" >"${state_dir}/nest-env-path"
+fi
 
 echo
 echo "Quipsly local lane is ready: ${nest_url}"
+echo "Runtime source worktree: ${repo_root}"
 echo "Logs and owned-process state: ${state_dir}"
 echo "Run: pnpm quipsly:local:doctor"
 echo "Stop only launcher-owned app processes: pnpm quipsly:local:down"

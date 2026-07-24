@@ -8,11 +8,12 @@ if [[ -z "${repo_root}" ]]; then
 fi
 cd "${repo_root}"
 
-state_dir="${QUIPSLY_LOCAL_STATE_DIR:-${repo_root}/.tmp/quipsly-local}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/quipsly-local-state.sh"
+state_dir="$(quipsly_local_state_dir)"
 
 process_cwd() {
-  local pid="$1"
-  lsof -a -p "${pid}" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -1
+  quipsly_local_process_cwd "$1"
 }
 
 descendants() {
@@ -108,6 +109,8 @@ else
   stop_owned_process "firebase"
 fi
 
+rm -f "${state_dir}/repo-root" "${state_dir}/source-revision"
+
 echo
 echo "PostgreSQL was intentionally left running to preserve local data."
-echo "To stop it explicitly: docker compose stop postgres"
+echo "To stop it explicitly: docker compose --project-name high-ground-studio stop postgres"

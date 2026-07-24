@@ -41,8 +41,12 @@ if [[ -z "${repo_root}" ]]; then
   echo "Run this command from inside the High Ground Studio repository." >&2
   exit 1
 fi
+repo_root="$(cd "${repo_root}" && pwd -P)"
 cd "${repo_root}"
 
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${script_dir}/quipsly-local-state.sh"
+state_dir="$(quipsly_local_state_dir)"
 nest_url="${TARGET_URL:-http://127.0.0.1:3012}"
 firebase_url="${QUIPSLY_LOCAL_FIREBASE_AUTH_URL:-http://127.0.0.1:9099}"
 database_container="${QUIPSLY_LOCAL_DATABASE_CONTAINER:-high-ground-db}"
@@ -78,6 +82,34 @@ untracked_changes="$(printf "%s\n" "${status_output}" | awk 'substr($0,1,2) == "
 echo "Quipsly local services"
 report_http "Nest health" "${nest_url%/}/api/health" "200"
 report_http "Nest signed-out shell" "${nest_url%/}/login?callbackUrl=%2Fprojects" "200"
+
+nest_listener="$(quipsly_local_port_listener_pid 3012)"
+nest_cwd=""
+if [[ -n "${nest_listener}" ]]; then
+  nest_cwd="$(quipsly_local_process_cwd "${nest_listener}")"
+fi
+expected_nest_cwd="${repo_root}/apps/quipsly"
+if [[ "${nest_cwd}" == "${expected_nest_cwd}" ]]; then
+  printf "PASS  %-24s %s\n" "Runtime source worktree" "${repo_root}"
+else
+  printf "FAIL  %-24s running from %s\n" \
+    "Runtime source worktree" \
+    "${nest_cwd:-unknown}"
+  failed=1
+fi
+
+recorded_repo_root=""
+if [[ -f "${state_dir}/repo-root" ]]; then
+  recorded_repo_root="$(sed -n '1p' "${state_dir}/repo-root")"
+fi
+if [[ "${recorded_repo_root}" == "${repo_root}" ]]; then
+  printf "PASS  %-24s %s\n" "Lifecycle state owner" "${state_dir}"
+else
+  printf "FAIL  %-24s recorded %s\n" \
+    "Lifecycle state owner" \
+    "${recorded_repo_root:-none}"
+  failed=1
+fi
 
 if curl -sS --max-time 4 \
   "${firebase_url%/}/emulator/v1/projects/quipsly-reef/config" \
