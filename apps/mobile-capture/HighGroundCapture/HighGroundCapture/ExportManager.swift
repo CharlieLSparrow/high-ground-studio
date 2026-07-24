@@ -2,7 +2,8 @@ import Foundation
 import AVFoundation
 import Combine
 
-class ExportManager: ObservableObject {
+@MainActor
+final class ExportManager: ObservableObject {
     @Published var isExporting = false
     @Published var exportProgress: Float = 0.0
     @Published var exportSuccess: Bool = false
@@ -22,6 +23,12 @@ class ExportManager: ObservableObject {
         self.exportSuccess = false
         self.exportError = nil
 
+        Task { [weak self] in
+            await self?.performExport(timelineState)
+        }
+    }
+
+    private func performExport(_ timelineState: TimelineState) async {
         let composition = AVMutableComposition()
         let videoComposition = AVMutableVideoComposition()
         videoComposition.customVideoCompositorClass = ReframingCompositor.self
@@ -53,7 +60,7 @@ class ExportManager: ObservableObject {
             }
             let finalURL = fileURL ?? URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("\(clip.mediaAssetId).mp4")
             let asset = AVURLAsset(url: finalURL)
-            guard let assetTrack = asset.tracks(withMediaType: .video).first else { continue }
+            guard let assetTrack = try? await asset.loadTracks(withMediaType: .video).first else { continue }
 
             let durationSeconds = clip.duration
             let durationTime = CMTime(seconds: durationSeconds, preferredTimescale: 600)
@@ -95,16 +102,15 @@ class ExportManager: ObservableObject {
         self.exportSession = exportSession
 
         self.progressTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
-            guard let self = self, let session = self.exportSession else { return }
-            DispatchQueue.main.async {
+            Task { @MainActor [weak self] in
+                guard let self, let session = self.exportSession else { return }
                 self.exportProgress = session.progress
             }
         }
 
         exportSession.exportAsynchronously { [weak self] in
-            guard let self = self else { return }
-
-            DispatchQueue.main.async {
+            Task { @MainActor [weak self] in
+                guard let self, let exportSession = self.exportSession else { return }
                 self.progressTimer?.invalidate()
                 self.progressTimer = nil
                 self.isExporting = false
@@ -132,14 +138,10 @@ class ExportManager: ObservableObject {
             }
             try fileManager.copyItem(at: url, to: destinationURL)
 
-            DispatchQueue.main.async {
-                self.exportProgress = 1.0
-                self.exportSuccess = true
-            }
+            self.exportProgress = 1.0
+            self.exportSuccess = true
         } catch {
-            DispatchQueue.main.async {
-                self.exportError = "Failed to save locally: \(error.localizedDescription)"
-            }
+            self.exportError = "Failed to save locally: \(error.localizedDescription)"
         }
     }
 }

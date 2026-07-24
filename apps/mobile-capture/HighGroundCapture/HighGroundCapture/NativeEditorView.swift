@@ -3,7 +3,8 @@ import Combine
 import AVFoundation
 import AVKit
 
-class TimelineViewModel: ObservableObject {
+@MainActor
+final class TimelineViewModel: ObservableObject {
     private var timeObserverToken: Any?
     @Published var player: AVPlayer = AVPlayer()
     @Published var timelineState: TimelineState
@@ -53,11 +54,13 @@ class TimelineViewModel: ObservableObject {
     private func setupTimeObserver() {
         let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-            self?.currentTime = time.seconds
+            Task { @MainActor [weak self] in
+                self?.currentTime = time.seconds
+            }
         }
     }
 
-    deinit {
+    isolated deinit {
         if let token = timeObserverToken {
             player.removeTimeObserver(token)
         }
@@ -73,6 +76,7 @@ class TimelineViewModel: ObservableObject {
 
     @Published var playerItemStatus: AVPlayerItem.Status = .unknown
     private var statusObserverToken: NSKeyValueObservation?
+    private var rebuildRevision = 0
 
     private func recalculateStartTimes() {
         var current = 0.0
@@ -85,7 +89,16 @@ class TimelineViewModel: ObservableObject {
     }
 
     private func rebuildPlayerItem() {
+        rebuildRevision += 1
+        let revision = rebuildRevision
+        Task { [weak self] in
+            await self?.rebuildPlayerItem(revision: revision)
+        }
+    }
+
+    private func rebuildPlayerItem(revision: Int) async {
         recalculateStartTimes()
+        let clips = timelineState.clips
         let composition = AVMutableComposition()
         guard let videoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else { return }
 
@@ -95,13 +108,11 @@ class TimelineViewModel: ObservableObject {
         videoComposition.renderSize = CGSize(width: 1920, height: 1080)
 
         var instructions: [ReframingCompositionInstruction] = []
-        let activeClips = timelineState.clips.filter { !$0.deactivated }
+        let activeClips = clips.filter { !$0.deactivated }
 
         if activeClips.isEmpty {
             player.replaceCurrentItem(with: nil)
-            DispatchQueue.main.async {
-                self.playerItemStatus = .unknown
-            }
+            self.playerItemStatus = .unknown
             return
         }
 
@@ -121,7 +132,8 @@ class TimelineViewModel: ObservableObject {
             let asset = AVURLAsset(url: finalURL)
 
             var inserted = false
-            if FileManager.default.fileExists(atPath: finalURL.path), let assetTrack = asset.tracks(withMediaType: .video).first {
+            if FileManager.default.fileExists(atPath: finalURL.path),
+               let assetTrack = try? await asset.loadTracks(withMediaType: .video).first {
                 do {
                     try videoTrack.insertTimeRange(CMTimeRange(start: CMTime(seconds: clip.mediaOffset, preferredTimescale: 600), duration: duration), of: assetTrack, at: start)
                     inserted = true
@@ -147,8 +159,9 @@ class TimelineViewModel: ObservableObject {
             playerItem = AVPlayerItem(asset: composition)
         }
 
+        guard revision == rebuildRevision else { return }
         statusObserverToken = playerItem.observe(\.status, options: [.new, .initial]) { [weak self] item, _ in
-            DispatchQueue.main.async {
+            Task { @MainActor [weak self] in
                 self?.playerItemStatus = item.status
             }
         }
