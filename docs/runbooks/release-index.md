@@ -46,6 +46,19 @@ Required stages:
 5. TestFlight upload, processing, installation, and smoke;
 6. App Store metadata, privacy, compliance, review, and release readback.
 
+Pinned local entry points:
+
+```bash
+apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh verify
+apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test
+apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh release
+scripts/deploy-testflight.sh
+```
+
+The first three commands never upload. The final command invokes the same
+locked `beta` lane and requires `APP_STORE_CONNECT_API_KEY_PATH`; do not place
+that credential in the repository.
+
 ## High Ground Odyssey web
 
 - [Web Cloud Run](web-cloud-run.md)

@@ -11,6 +11,11 @@ privacy_manifest="$capture_root/HighGroundCapture/PrivacyInfo.xcprivacy"
 provider_room="$capture_root/HighGroundCapture/ProviderRoomController.swift"
 export_options="$capture_root/fastlane/ExportOptions.plist"
 fastfile="$capture_root/fastlane/Fastfile"
+gemfile="$capture_root/Gemfile"
+gemfile_lock="$capture_root/Gemfile.lock"
+ruby_version_file="$capture_root/.ruby-version"
+fastlane_runner="$capture_root/scripts/run-fastlane.sh"
+testflight_runner="$capture_root/../../../scripts/deploy-testflight.sh"
 developer_dir="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 fail() {
@@ -37,6 +42,14 @@ require_absent_text() {
   if grep -Fq "$forbidden" "$file"; then
     fail "$label"
   fi
+  pass "$label"
+}
+
+require_regex() {
+  local file="$1"
+  local expected="$2"
+  local label="$3"
+  grep -Eq "$expected" "$file" || fail "$label"
   pass "$label"
 }
 
@@ -77,6 +90,14 @@ require_absent_text "$fastfile" "HighGroundCapture.xcworkspace" "Fastlane no lon
 require_absent_text "$fastfile" "increment_build_number" "Fastlane does not silently mutate the committed build number"
 require_text "$fastfile" "only_testing: DETERMINISTIC_UI_TESTS" "TestFlight runs the deterministic Capture UI scope"
 require_text "$fastfile" "parallel_testing: false" "Capture UI tests run serially to avoid cloned Simulator launch noise"
+require_text "$gemfile" 'ruby file: ".ruby-version"' "Capture Ruby is source-pinned"
+require_regex "$gemfile" '^gem "fastlane", "[0-9]+\.[0-9]+\.[0-9]+"$' "Fastlane is directly pinned"
+require_regex "$ruby_version_file" '^[0-9]+\.[0-9]+\.[0-9]+$' "Pinned Ruby version is valid"
+require_regex "$gemfile_lock" '^BUNDLED WITH$' "Bundler version is locked"
+require_text "$fastlane_runner" 'bundle" install --jobs 4 --retry 3' "Capture runner installs the locked dependency graph"
+require_text "$fastlane_runner" 'git diff --quiet -- Gemfile Gemfile.lock .ruby-version' "Capture runner rejects dependency drift"
+require_text "$testflight_runner" 'exec "${capture_runner}" beta "$@"' "TestFlight entry point uses the pinned Capture runner"
+require_absent_text "$testflight_runner" "gem install bundler" "TestFlight entry point never mutates Apple system Ruby"
 
 app_settings="$(
   xcodebuild \

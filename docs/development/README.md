@@ -11,6 +11,8 @@ This is the authoritative collaborator entrypoint for local engineering.
 | TypeScript | package-pinned compiler plus the [TypeScript 7 compatibility gate](typescript-7-migration.md) |
 | Xcode | `26.2` for Capture CI parity |
 | iOS simulator | iOS `26.2`, iPhone 17 Pro in CI |
+| Capture Ruby | `4.0.5` from `apps/mobile-capture/HighGroundCapture/.ruby-version` |
+| Capture Bundler / Fastlane | `4.0.11` / `2.236.1` from the Capture lock and Gemfile |
 | PostgreSQL | local Docker service for persistent Nest work |
 | Firebase Auth | local emulator for disposable identities |
 
@@ -21,6 +23,15 @@ corepack enable
 pnpm install --frozen-lockfile
 ```
 
+Capture release tooling must not use or mutate Apple's system Ruby. The
+checked-in runner accepts the exact active Ruby from a version manager or the
+exact Homebrew Ruby when available, installs the locked gems into the macOS
+user cache, and fails if dependency resolution changes committed source:
+
+```bash
+apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh verify
+```
+
 ## Choose one surface
 
 | Goal | Start command | Primary guide |
@@ -28,7 +39,7 @@ pnpm install --frozen-lockfile
 | Develop Nest | `pnpm quipsly:local:up` | [Nest local](../runbooks/quipsly-nest-local.md) |
 | Validate Nest and HGO | `pnpm quipsly:release:local` | [Testing](testing.md) |
 | Develop HGO web | `pnpm --filter web dev` | [Local dev](../runbooks/local-dev.md) |
-| Develop Capture | open the shared Xcode scheme | [Capture verification](../../apps/mobile-capture/HighGroundCapture/CAPTURE_VERIFICATION.md) |
+| Develop Capture | open the shared Xcode scheme; use the pinned Fastlane runner for release lanes | [Capture verification](../../apps/mobile-capture/HighGroundCapture/CAPTURE_VERIFICATION.md) |
 | Inspect releases | use the surface runbook | [Release index](../runbooks/release-index.md) |
 
 Do not start every runtime by default. Select the product surface and the

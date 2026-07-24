@@ -52,6 +52,21 @@ claims additionally require:
 4. TestFlight-installed smoke;
 5. App Store Connect processing and compliance readback.
 
+Use the checked-in toolchain runner so a collaborator and release operator use
+the same Ruby, Bundler, Fastlane, Gemfile, lock, and lane:
+
+```bash
+apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh verify
+apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test
+apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh release
+```
+
+The `release` lane archives, exports, and verifies without uploading.
+`scripts/deploy-testflight.sh` runs the `beta` lane and therefore requires an
+explicit App Store Connect API key path, a clean committed Capture slice, and
+all preceding gates. Neither command answers export compliance or substitutes
+for installation on a physical iPhone.
+
 ## Schema changes
 
 - Add forward-only Prisma migrations.
