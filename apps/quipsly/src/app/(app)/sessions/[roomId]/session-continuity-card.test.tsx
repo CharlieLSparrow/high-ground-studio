@@ -103,7 +103,7 @@ describe("SessionContinuityCard", () => {
     expect(screen.getByText(/passed without a completion, skip, or cancellation decision/i)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /rehearse follow-through/i })).toHaveAttribute("href", "/work?task=task-1");
     expect(screen.getByRole("link", { name: /build a coaching habit/i })).toHaveAttribute("href", "/work?goal=goal-1");
-    expect(screen.getByRole("link", { name: /bring forward/i })).toHaveAttribute("href", "/sessions/room-1?mode=notes#quick-entry-note-1");
+    expect(screen.getByRole("link", { name: /bring forward/i })).toHaveAttribute("href", "/sessions/room-1?mode=notes#session-note-note-1");
     expect(screen.getByRole("link", { name: "Open Calendar" })).toHaveAttribute("href", "/schedule");
     expect(screen.getByText(/private to this actor · no AI · no external side effects/i)).toBeInTheDocument();
   });

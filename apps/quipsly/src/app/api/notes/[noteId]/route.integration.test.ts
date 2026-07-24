@@ -40,7 +40,7 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
     const project = await prisma.studioProject.create({ data: { workspaceId, slug: `note-edit-${nonce}`, name: "High Ground Odyssey" } });
     projectId = project.id;
     await prisma.studioProjectAccessGrant.create({ data: { projectId, email: actorEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail } });
-    const room = await prisma.callRoom.create({ data: { createdByUserId: actorUserId, projectId, title: "Episode note edit" } });
+    const room = await prisma.callRoom.create({ data: { createdByUserId: otherUserId, projectId, title: "Episode note edit" } });
     roomId = room.id;
     const note = await prisma.coachingNote.create({
       data: {
@@ -70,15 +70,18 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id, primaryEmail: email, isStaff: false } } as any);
   }
 
-  function patch(expectedUpdatedAt: Date, title: string, body: string) {
+  function patch(expectedUpdatedAt: Date, title: string, body: string, options: {
+    kind?: "SESSION_NOTE" | "DECISION" | "PRODUCTION";
+    visibility?: "AUTHOR_PRIVATE" | "SESSION_SHARED" | "CLIENT_SAFE" | "PROJECT_TEAM";
+  } = {}) {
     return PATCH(new Request(`http://localhost/api/notes/${noteId}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ title, body, expectedUpdatedAt: expectedUpdatedAt.toISOString() }),
+      body: JSON.stringify({ title, body, expectedUpdatedAt: expectedUpdatedAt.toISOString(), ...options }),
     }), { params: Promise.resolve({ noteId }) });
   }
 
-  it("updates the exact actor-owned note with a retained previous-value receipt", async () => {
+  it("updates the exact actor-owned note through its Nest editor grant with a retained previous-value receipt", async () => {
     signedInAs(actorUserId, actorEmail);
     const before = await prisma.coachingNote.findUniqueOrThrow({ where: { id: noteId } });
     const response = await patch(before.updatedAt, "Opening rhythm", "Pause, then let the first question breathe.");
@@ -86,14 +89,25 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
     expect(await response.json()).toMatchObject({
       ok: true,
       note: { id: noteId, title: "Opening rhythm", body: "Pause, then let the first question breathe." },
-      boundaries: { actorOwned: true, sessionAccessRechecked: true, externalSideEffects: false },
+      boundaries: {
+        actorOwned: true,
+        sessionAccessRechecked: true,
+        explicitVisibility: true,
+        appendOnlyRevision: true,
+        externalSideEffects: false,
+      },
     });
     await expect(prisma.coachingNote.findUnique({ where: { id: noteId } })).resolves.toMatchObject({
       sourceJson: {
         schema: "quipsly-mobile-quick-entry-v1",
         lastEditReceipt: {
           kind: "quipsly-session-note-edit-v1",
-          previous: { title: "Opening note", body: "Let the opening breathe." },
+          previous: {
+            title: "Opening note",
+            body: "Let the opening breathe.",
+            kind: "SESSION_NOTE",
+            visibility: "AUTHOR_PRIVATE",
+          },
           externalSideEffects: false,
         },
       },
@@ -102,7 +116,55 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
     expect(library.entries.find((entry) => entry.id === `note:${noteId}`)).toMatchObject({
       title: "Opening rhythm",
       detail: "Pause, then let the first question breathe.",
-      href: `/sessions/${roomId}#quick-entry-${noteId}`,
+      href: `/sessions/${roomId}?mode=notes#session-note-${noteId}`,
+    });
+    await expect(prisma.coachingNoteRevision.findMany({
+      where: { noteId },
+      orderBy: { revision: "asc" },
+      select: { revision: true, operation: true, snapshotJson: true },
+    })).resolves.toEqual([expect.objectContaining({
+      revision: 1,
+      operation: "content-or-visibility-updated",
+      snapshotJson: expect.objectContaining({
+        title: "Opening rhythm",
+        visibility: "AUTHOR_PRIVATE",
+        previous: expect.objectContaining({ title: "Opening note" }),
+      }),
+    })]);
+  });
+
+  it("changes note purpose and visibility while retaining the prior audience", async () => {
+    signedInAs(actorUserId, actorEmail);
+    const before = await prisma.coachingNote.findUniqueOrThrow({ where: { id: noteId } });
+    const response = await patch(
+      before.updatedAt,
+      "Opening decision",
+      "Pause, then lead with the listener question.",
+      { kind: "DECISION", visibility: "CLIENT_SAFE" },
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      note: {
+        id: noteId,
+        kind: "DECISION",
+        visibility: "CLIENT_SAFE",
+        revisionCount: 2,
+      },
+    });
+    await expect(prisma.coachingNoteRevision.findFirst({
+      where: { noteId },
+      orderBy: { revision: "desc" },
+    })).resolves.toMatchObject({
+      revision: 2,
+      snapshotJson: {
+        kind: "DECISION",
+        visibility: "CLIENT_SAFE",
+        previous: {
+          kind: "SESSION_NOTE",
+          visibility: "AUTHOR_PRIVATE",
+        },
+      },
     });
   });
 
@@ -117,8 +179,8 @@ runLocalDatabaseSmoke("Session note editing local database smoke", () => {
     const denied = await patch(current.updatedAt, "Other title", "Other body");
     expect(denied.status).toBe(404);
     await expect(prisma.coachingNote.findUnique({ where: { id: noteId }, select: { title: true, body: true } })).resolves.toEqual({
-      title: "Opening rhythm",
-      body: "Pause, then let the first question breathe.",
+      title: "Opening decision",
+      body: "Pause, then lead with the listener question.",
     });
   });
 });

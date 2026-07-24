@@ -4,6 +4,10 @@ import { BookOpenText, CircleAlert, FileAudio, FilePlus2, FileText, Film, Highli
 import { getPrismaClient } from "@/lib/prisma";
 import { homeNestSlugForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
+import {
+  SESSION_NOTE_VISIBLE_KINDS,
+  workspaceNoteVisibilityWhere,
+} from "@/lib/server/session-note-access";
 
 import { createDocumentAction } from "../nests/[slug]/actions";
 import { StudioAccessShell } from "../studio-access-shell";
@@ -17,13 +21,14 @@ export const metadata = {
   description: "Continue from canonical Sessions, recordings, transcripts, preserved sources, annotations, manuscripts, and reusable media.",
 };
 
-function roomAccess(userId: string, isStaff: boolean) {
+function roomAccess(userId: string, isStaff: boolean, projectIds: string[] = []) {
   return isStaff ? {} : {
     OR: [
       { createdByUserId: userId },
       { participants: { some: { userId } } },
       { booking: { clientUserId: userId } },
       { booking: { coachUserId: userId } },
+      ...(projectIds.length ? [{ projectId: { in: projectIds } }] : []),
     ],
   };
 }
@@ -32,13 +37,16 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
   const prisma = getPrismaClient() as any;
   const projects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
   const projectIds = projects.map((project) => project.id);
+  const projectTeamProjectIds = projects
+    .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
+    .map((project) => project.id);
   const visibleProjectIds = new Set(projectIds);
 
   const [sessions, notes, sources, documents, media, savedCounts, latestSnippet, latestBookmark] = await Promise.all([
     prisma.callRoom.findMany({
       where: {
         AND: [
-          roomAccess(userId, isStaff),
+          roomAccess(userId, isStaff, projectIds),
           { OR: [{ recordingAssets: { some: {} } }, { transcriptJobs: { some: {} } }] },
         ],
       },
@@ -65,9 +73,14 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
     }),
     prisma.coachingNote.findMany({
       where: {
-        authorUserId: userId,
-        kind: "SESSION_NOTE",
-        room: roomAccess(userId, isStaff),
+        AND: [
+          { room: roomAccess(userId, isStaff, projectIds) },
+          { kind: { in: [...SESSION_NOTE_VISIBLE_KINDS] } },
+          workspaceNoteVisibilityWhere({
+            actorUserId: userId,
+            projectTeamProjectIds: isStaff ? projectIds : projectTeamProjectIds,
+          }),
+        ],
       },
       orderBy: { updatedAt: "desc" },
       take: 300,
@@ -75,6 +88,9 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
         id: true,
         title: true,
         body: true,
+        kind: true,
+        visibility: true,
+        authorUserId: true,
         sourceJson: true,
         createdAt: true,
         updatedAt: true,
@@ -85,6 +101,7 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
             project: { select: { id: true, name: true, slug: true } },
           },
         },
+        authorUser: { select: { name: true, primaryEmail: true } },
         tagLinks: {
           orderBy: { createdAt: "asc" },
           select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } },

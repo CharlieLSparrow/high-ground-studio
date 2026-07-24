@@ -800,6 +800,7 @@ function checkTranscriptCorrectionContractSources() {
   const schedulePageText = sourceText("apps/quipsly/src/app/(app)/schedule/page.tsx");
   const schedulePlannerText = sourceText("apps/quipsly/src/app/(app)/schedule/schedule-planner.tsx");
   const sessionReviewText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-client.tsx");
+  const sessionNotesWorkspaceText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-notes-workspace.tsx");
   const sessionReviewModelText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/session-review-model.ts");
   const nestDashboardText = sourceText("apps/quipsly/src/app/(app)/nests/[slug]/page.tsx");
   const nestFollowThroughText = sourceText("apps/quipsly/src/lib/server/nest-project-follow-through.ts");
@@ -1068,10 +1069,14 @@ function checkTranscriptCorrectionContractSources() {
       && inboxText.includes("Review personal source")
       && collectionsText.includes("snapshot.items.some((item) => item.id === requestedCaptureId)")
       && sessionReviewPageText.includes("sessionQuickEntries={sessionQuickEntries}")
-      && sessionReviewText.includes('scope: "notes" | "work"')
-      && sessionReviewText.includes('scope="notes"')
+      && sessionReviewPageText.includes("sessionNotes={sessionNotes}")
+      && sessionReviewPageText.includes('return "iPhone Capture"')
+      && sessionReviewText.includes("<SessionNotesWorkspace")
+      && sessionNotesWorkspaceText.includes("TagSearchChips")
+      && sessionNotesWorkspaceText.includes('payload.idempotentReplay ? "The existing" : "One"')
+      && sessionNotesWorkspaceText.includes("canonical ${sessionNoteKindLabel")
+      && sessionNotesWorkspaceText.includes("No external action occurred")
       && sessionReviewText.includes('scope="work"')
-      && sessionReviewText.includes("Actor-owned Session context")
       && sessionReviewText.includes("Committed Session work")
       && sessionReviewText.includes("distinct from transcript candidates")
       && sessionReviewText.includes("Open same {entry.kind.toLowerCase()} in Work"),

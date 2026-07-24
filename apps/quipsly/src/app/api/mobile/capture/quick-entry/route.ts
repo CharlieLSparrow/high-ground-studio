@@ -220,7 +220,16 @@ async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUs
     const row = await tx.coachingNote.upsert({
       where: { id },
       update: {},
-      create: { id, roomId: room.id, authorUserId: actorUserId, kind: "SESSION_NOTE", title: input.title || "Quick note", body: input.body, sourceJson },
+      create: {
+        id,
+        roomId: room.id,
+        authorUserId: actorUserId,
+        kind: "SESSION_NOTE",
+        visibility: "AUTHOR_PRIVATE",
+        title: input.title || "Quick note",
+        body: input.body,
+        sourceJson,
+      },
     });
     if (tags.length) await tx.coachingNoteTagLink.createMany({
       data: tags.map((tag) => ({ noteId: row.id, tagId: tag.id, createdByUserId: actorUserId, sourceJson: linkSource })),

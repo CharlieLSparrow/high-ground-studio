@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { SessionReviewClient } from "./session-review-client";
@@ -372,20 +372,34 @@ describe("Session review goal candidates", () => {
       sessionTitle="Coaching review"
       mode="notes"
       consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
+      sessionNotes={[{
+        id: "mobile-note-1",
+        title: "Quick note",
+        body: "Let the opening breathe.",
+        kind: "SESSION_NOTE",
+        visibility: "AUTHOR_PRIVATE",
+        author: { id: "actor-1", label: "Charlie", isCurrentActor: true },
+        originLabel: "iPhone Capture",
+        canEdit: true,
+        revisionCount: 1,
+        createdAt: "2026-07-19T09:00:00.000Z",
+        updatedAt: "2026-07-19T09:00:00.000Z",
+        tags: [{ id: "tag-1", label: "Opening", slug: "opening" }],
+      }]}
       sessionQuickEntries={[
         { id: "mobile-note-1", kind: "NOTE", title: "Quick note", body: "Let the opening breathe.", status: "CAPTURED", createdAt: "2026-07-19T09:00:00.000Z", updatedAt: "2026-07-19T09:00:00.000Z", tags: [{ id: "tag-1", label: "Opening", slug: "opening" }] },
         { id: "mobile-task-1", kind: "TASK", title: "Proof-listen act one", body: "Use the room mix.", status: "OPEN", createdAt: "2026-07-19T09:01:00.000Z", updatedAt: "2026-07-19T09:01:00.000Z", tags: [] },
         { id: "mobile-goal-1", kind: "GOAL", title: "Make coaching follow-through obvious", body: null, status: "ACTIVE", createdAt: "2026-07-19T09:02:00.000Z", updatedAt: "2026-07-19T09:02:00.000Z", tags: [] },
       ]}
     />);
-    expect(await screen.findByRole("heading", { name: "1 deliberate iPhone Session note" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "1 deliberate note" })).toBeInTheDocument();
     expect(screen.getAllByText("Let the opening breathe.")[0]).toBeInTheDocument();
     expect(screen.getByText("#Opening")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Find all accessible work tagged Opening" })).toHaveAttribute("href", "/find?q=Opening");
-    expect(screen.getByText("Quick note").closest("article")).toHaveAttribute("id", "quick-entry-mobile-note-1");
+    expect(screen.getByRole("heading", { name: "Quick note" }).closest("article")).toHaveAttribute("id", "session-note-mobile-note-1");
     expect(screen.queryByText("Proof-listen act one")).not.toBeInTheDocument();
     expect(screen.queryByText("Make coaching follow-through obvious")).not.toBeInTheDocument();
-    expect(screen.getByText(/not transcript suggestions or copied phone drafts/i)).toBeInTheDocument();
+    expect(screen.getByText(/Transcript candidates and committed work stay in their own modes/i)).toBeInTheDocument();
   });
 
   it("keeps canonical iPhone tasks and goals in Work without mixing in notes", async () => {
@@ -417,7 +431,10 @@ describe("Session review goal candidates", () => {
           id: "mobile-note-1",
           title: "Opening rhythm",
           body: "Pause, then let the question breathe.",
+          kind: "SESSION_NOTE",
+          visibility: "AUTHOR_PRIVATE",
           updatedAt: "2026-07-19T09:05:00.000Z",
+          revisionCount: 2,
           tags: [{ id: "tag-opening", label: "Opening", slug: "opening" }],
         },
       }))
@@ -440,37 +457,45 @@ describe("Session review goal candidates", () => {
         canManageVocabulary: true,
         updatedAt: "2026-07-19T09:00:00.000Z",
       }}
-      sessionQuickEntries={[{
+      sessionNotes={[{
         id: "mobile-note-1",
-        kind: "NOTE",
         title: "Quick note",
         body: "Let the opening breathe.",
-        status: "CAPTURED",
+        kind: "SESSION_NOTE",
+        visibility: "AUTHOR_PRIVATE",
+        author: { id: "actor-1", label: "Charlie", isCurrentActor: true },
+        originLabel: "iPhone Capture",
+        canEdit: true,
+        revisionCount: 1,
         createdAt: "2026-07-19T09:00:00.000Z",
         updatedAt: "2026-07-19T09:00:00.000Z",
         tags: [{ id: "tag-opening", label: "Opening", slug: "opening" }],
       }]}
     />);
     expect(await screen.findByRole("heading", { name: "Coaching review" })).toBeInTheDocument();
-    await user.click(screen.getByText("Edit note and tags"));
-    const title = screen.getByRole("textbox", { name: "Title" });
-    const note = screen.getByRole("textbox", { name: "Note" });
+    const article = screen.getByRole("heading", { name: "Quick note" }).closest("article")!;
+    await user.click(within(article).getByText("Edit note, audience, and tags"));
+    const title = within(article).getByRole("textbox", { name: "Title" });
+    const note = within(article).getByRole("textbox", { name: "Note" });
     await user.clear(title);
     await user.type(title, "Opening rhythm");
     await user.clear(note);
     await user.type(note, "Pause, then let the question breathe.");
-    await user.click(screen.getByRole("button", { name: "Save note" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("original Session identity");
+    await user.click(within(article).getByRole("button", { name: "Save revision" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("append-only revision history");
     expect(fetchMock.mock.calls[0][0]).toBe("/api/notes/mobile-note-1");
     expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
       title: "Opening rhythm",
       body: "Pause, then let the question breathe.",
+      kind: "SESSION_NOTE",
+      visibility: "AUTHOR_PRIVATE",
       expectedUpdatedAt: "2026-07-19T09:00:00.000Z",
     });
 
-    await user.click(screen.getByRole("checkbox", { name: "#Edit point" }));
-    await user.click(screen.getByRole("button", { name: "Save tags" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Canonical Nest tags saved");
+    const updatedArticle = screen.getByRole("heading", { name: "Opening rhythm" }).closest("article")!;
+    await user.click(within(updatedArticle).getByRole("checkbox", { name: "#Edit point" }));
+    await user.click(within(updatedArticle).getByRole("button", { name: "Save tags" }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Canonical Nest tags are saved");
     expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
       entityKind: "note",
       entityId: "mobile-note-1",

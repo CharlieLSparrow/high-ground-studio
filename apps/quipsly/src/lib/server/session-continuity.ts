@@ -608,6 +608,7 @@ export async function saveSessionContinuityBrief(
           roomId: normalized.roomId,
           authorUserId: input.actor.id,
           kind: "FOLLOW_UP",
+          visibility: "AUTHOR_PRIVATE",
           title: `Next-session brief — ${state.current.snapshot.room.title}`.slice(0, 500),
           body,
           sourceJson: {

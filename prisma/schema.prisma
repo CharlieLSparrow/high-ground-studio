@@ -256,6 +256,15 @@ enum CoachingNoteKind {
   FOLLOW_UP
   QUOTE
   HIGHLIGHT
+  DECISION
+  PRODUCTION
+}
+
+enum CoachingNoteVisibility {
+  AUTHOR_PRIVATE
+  SESSION_SHARED
+  CLIENT_SAFE
+  PROJECT_TEAM
 }
 
 enum ActionItemStatus {
@@ -464,6 +473,7 @@ model User {
   callParticipants              CallParticipant[]                    @relation("CallParticipantUser")
   recordingConsents             RecordingConsent[]                   @relation("RecordingConsentUser")
   coachingNotesAuthored         CoachingNote[]                       @relation("CoachingNoteAuthor")
+  coachingNoteRevisionsAuthored CoachingNoteRevision[]               @relation("CoachingNoteRevisionActor")
   coachingNoteTagsCreated       CoachingNoteTagLink[]                @relation("CoachingNoteTagCreatedBy")
   actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
   taskReminders                 TaskReminder[]                       @relation("TaskReminderOwner")
@@ -1537,27 +1547,46 @@ model TranscriptCorrectionRevision {
 }
 
 model CoachingNote {
-  id           String           @id @default(cuid())
+  id           String                 @id @default(cuid())
   roomId       String?
   bookingId    String?
   authorUserId String?
-  kind         CoachingNoteKind @default(SESSION_NOTE)
+  kind         CoachingNoteKind       @default(SESSION_NOTE)
+  visibility   CoachingNoteVisibility @default(AUTHOR_PRIVATE)
   title        String?
   body         String
-  sourceJson   Json             @default("{}")
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  sourceJson   Json                   @default("{}")
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
 
-  room        CallRoom?             @relation(fields: [roomId], references: [id], onDelete: Cascade)
-  booking     CoachingBooking?      @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  authorUser  User?                 @relation("CoachingNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
+  room        CallRoom?              @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  booking     CoachingBooking?       @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  authorUser  User?                  @relation("CoachingNoteAuthor", fields: [authorUserId], references: [id], onDelete: SetNull)
   actionItems ActionItem[]
   tagLinks    CoachingNoteTagLink[]
+  revisions   CoachingNoteRevision[]
 
   @@index([roomId, createdAt])
+  @@index([roomId, visibility, updatedAt])
   @@index([bookingId, createdAt])
   @@index([authorUserId, createdAt])
   @@index([kind, createdAt])
+}
+
+model CoachingNoteRevision {
+  id           String   @id @default(cuid())
+  noteId       String
+  revision     Int
+  operation    String
+  actorUserId  String?
+  snapshotJson Json
+  createdAt    DateTime @default(now())
+
+  note  CoachingNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  actor User?        @relation("CoachingNoteRevisionActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@unique([noteId, revision])
+  @@index([actorUserId, createdAt])
 }
 
 model ActionItem {

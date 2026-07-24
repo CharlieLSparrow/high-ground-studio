@@ -52,6 +52,10 @@ export function buildLibraryEntries(input: {
     id: string;
     title?: string | null;
     body: string;
+    kind?: string;
+    visibility?: string;
+    authorUserId?: string | null;
+    authorUser?: { name?: string | null; primaryEmail?: string | null } | null;
     sourceJson?: unknown;
     createdAt: Date | string;
     updatedAt: Date | string;
@@ -141,15 +145,15 @@ export function buildLibraryEntries(input: {
       detail: body.length > 220 ? `${body.slice(0, 217)}…` : body,
       projectName: note.room.project?.name ?? null,
       projectSlug: note.room.project?.slug ?? null,
-      href: `/sessions/${encode(note.room.id)}#quick-entry-${encode(note.id)}`,
+      href: `/sessions/${encode(note.room.id)}?mode=notes#session-note-${encode(note.id)}`,
       updatedAt: iso(note.updatedAt),
-      stateLabel: capturedOnPhone ? "iPhone capture" : "Session note",
+      stateLabel: `${capturedOnPhone ? "iPhone capture" : clean(note.kind).replaceAll("_", " ").toLowerCase() || "Session note"} · ${clean(note.visibility).replaceAll("_", " ").toLowerCase() || "author private"}`,
       badges: [
         clean(note.room.title) || "Capture session",
         ...tagBadges,
-        capturedOnPhone ? "Offline retry safe" : "Actor-authored",
+        capturedOnPhone ? "Offline retry safe" : clean(note.authorUser?.name) || "Actor-authored",
       ],
-      searchText: [title, body, note.room.title, note.room.project?.name, ...note.tags.flatMap((tag) => [tag.label, tag.slug])].map(clean).join(" "),
+      searchText: [title, body, note.kind, note.visibility, note.authorUser?.name, note.room.title, note.room.project?.name, ...note.tags.flatMap((tag) => [tag.label, tag.slug])].map(clean).join(" "),
     });
   }
 

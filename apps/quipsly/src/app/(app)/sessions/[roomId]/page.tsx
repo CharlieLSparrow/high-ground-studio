@@ -9,8 +9,17 @@ import { recordingContentReadiness } from "@/lib/server/mobile-capture-content-r
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { sessionAccessWhere } from "@/lib/server/session-access";
 import { loadSessionContinuityState } from "@/lib/server/session-continuity";
+import {
+  canUseProjectTeamNotes,
+  sessionNoteVisibilityWhere,
+} from "@/lib/server/session-note-access";
 
 import { SessionReviewClient } from "./session-review-client";
+import {
+  parseSessionNoteView,
+  type SessionNoteKind,
+  type SessionNoteVisibility,
+} from "./session-notes-model";
 import { buildSessionPreparationState } from "./session-preparation-model";
 import { parseSessionWorkspaceMode } from "./session-workspace-model";
 
@@ -37,10 +46,11 @@ export default async function SessionReviewPage({
   searchParams,
 }: {
   params: Promise<{ roomId: string }>;
-  searchParams: Promise<{ mode?: string | string[] }>;
+  searchParams: Promise<{ mode?: string | string[]; view?: string | string[] }>;
 }) {
   const [{ roomId }, query] = await Promise.all([params, searchParams]);
   const workspaceMode = parseSessionWorkspaceMode(query.mode);
+  const sessionNoteView = parseSessionNoteView(query.view);
   const session = await getQuipslySession();
   if (!session?.user) {
     return <main className="min-h-full px-6 py-10 lg:px-10"><section className="mx-auto max-w-3xl rounded-3xl border border-[#ead8b4] bg-[#fffaf0] p-8" role="status"><LockKeyhole className="text-amber-700" aria-hidden="true" /><h1 className="mt-4 font-serif text-3xl font-black text-[#3d3122]">This session review is private.</h1><p className="mt-2 font-semibold text-[#765f40]">Sign in before reading consent, transcript evidence, candidates, or committed tasks.</p><Link href={`/login?callbackUrl=${encodeURIComponent(`/sessions/${roomId}`)}`} className="mt-5 inline-flex rounded-full bg-[#3e2f21] px-5 py-2.5 text-xs font-black uppercase tracking-wide text-white">Sign in</Link></section></main>;
@@ -148,19 +158,40 @@ export default async function SessionReviewPage({
     });
     const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
     const visibleProject = room.project ? visibleProjects.find((project) => project.id === room.project.id) : null;
+    const canViewProjectTeamNotes = canUseProjectTeamNotes(
+      visibleProject?.role,
+      session.user.isStaff === true,
+    );
     const tagCatalog = visibleProject ? await prisma.studioTag.findMany({
       where: { projectId: visibleProject.id, isActive: true },
       orderBy: [{ category: "asc" }, { label: "asc" }],
       select: { id: true, label: true, slug: true, category: true, projectId: true },
     }) : [];
-    const [quickNoteRows, quickTaskRows, quickGoalRows] = await Promise.all([
+    const [sessionNoteRows, quickTaskRows, quickGoalRows] = await Promise.all([
       prisma.coachingNote.findMany({
-        where: { roomId: room.id, authorUserId: session.user.id },
-        orderBy: { createdAt: "desc" },
-        take: 50,
+        where: {
+          roomId: room.id,
+          kind: { in: ["SESSION_NOTE", "FOLLOW_UP", "DECISION", "PRODUCTION"] },
+          ...sessionNoteVisibilityWhere({
+            actorUserId: session.user.id,
+            canViewProjectTeam: canViewProjectTeamNotes,
+          }),
+        },
+        orderBy: { updatedAt: "desc" },
+        take: 100,
         select: {
-          id: true, title: true, body: true, sourceJson: true, createdAt: true, updatedAt: true,
+          id: true,
+          authorUserId: true,
+          title: true,
+          body: true,
+          kind: true,
+          visibility: true,
+          sourceJson: true,
+          createdAt: true,
+          updatedAt: true,
+          authorUser: { select: { name: true, primaryEmail: true } },
           tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, projectId: true, isActive: true } } } },
+          _count: { select: { revisions: true } },
         },
       }),
       prisma.actionItem.findMany({
@@ -187,8 +218,34 @@ export default async function SessionReviewPage({
       .map((link: any) => link.tag)
       .filter((tag: any) => tag.isActive && visibleProject && tag.projectId === visibleProject.id)
       .map(({ id, label, slug }: any) => ({ id, label, slug }));
+    const noteOriginLabel = (sourceJson: unknown) => {
+      const source = jsonObject(sourceJson);
+      if (source.schema === MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA) return "iPhone Capture";
+      if (source.schema === "quipsly-session-continuity-brief-v1") return "Saved continuity";
+      if (source.schema === "quipsly-session-context-v2") return "Session plan";
+      if (source.origin === "nest-session-notes") return "Nest Session note";
+      return "Session record";
+    };
+    const sessionNotes = sessionNoteRows.map((row: any) => ({
+      id: row.id,
+      title: row.title,
+      body: row.body,
+      kind: String(row.kind) as SessionNoteKind,
+      visibility: String(row.visibility || "AUTHOR_PRIVATE") as SessionNoteVisibility,
+      author: {
+        id: row.authorUserId,
+        label: row.authorUser?.name || row.authorUser?.primaryEmail || "Note author",
+        isCurrentActor: row.authorUserId === session.user.id,
+      },
+      originLabel: noteOriginLabel(row.sourceJson),
+      canEdit: row.authorUserId === session.user.id && row.kind !== "FOLLOW_UP",
+      revisionCount: row._count?.revisions ?? 0,
+      createdAt: row.createdAt.toISOString(),
+      updatedAt: row.updatedAt.toISOString(),
+      tags: quickEntryTags(row),
+    }));
     const sessionQuickEntries = [
-      ...quickNoteRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "NOTE" as const, title: row.title, body: row.body, status: "CAPTURED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), tags: quickEntryTags(row) })),
+      ...sessionNoteRows.filter((row: any) => row.authorUserId === session.user.id && isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "NOTE" as const, title: row.title, body: row.body, status: "CAPTURED", createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), tags: quickEntryTags(row) })),
       ...quickTaskRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "TASK" as const, title: row.title, body: row.detail, status: String(row.status), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), tags: quickEntryTags(row) })),
       ...quickGoalRows.filter((row: any) => isQuickEntry(row.sourceJson)).map((row: any) => ({ id: row.id, kind: "GOAL" as const, title: row.title, body: row.description, status: String(row.status), createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(), tags: quickEntryTags(row) })),
     ].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -236,7 +293,7 @@ export default async function SessionReviewPage({
         };
       }),
     } : null;
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

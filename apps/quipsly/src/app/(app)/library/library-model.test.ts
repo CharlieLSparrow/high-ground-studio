@@ -40,7 +40,7 @@ describe("source-first Library model", () => {
       saved: { collectionCount: 2, snippetCount: 3, bookmarkCount: 4, updatedAt: "2026-07-19T10:00:00Z" },
     });
     expect(result.entries.map((entry) => [entry.kind, entry.href])).toEqual([
-      ["NOTE", "/sessions/room-1#quick-entry-note-1"],
+      ["NOTE", "/sessions/room-1?mode=notes#session-note-note-1"],
       ["SOURCE", "/research?source=source-1"],
       ["DOCUMENT", "/read?projectSlug=high-ground&episodeSlug=episode-5"],
       ["SAVED", "/collections"],

@@ -187,15 +187,19 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
       title: "Episode 7 field recording",
       badges: expect.arrayContaining(["2 segments"]),
     });
+    expect(library.entries.find((entry) => entry.id === `session:${otherRoomId}`)).toMatchObject({
+      href: `/sessions/${otherRoomId}`,
+      title: "Other person's private coaching",
+    });
     expect(library.entries.find((entry) => entry.id === `source:${sourceId}`)).toMatchObject({
       href: `/research?source=${sourceId}`,
       detail: "2 anchored annotations; preserved source text remains unchanged.",
     });
     expect(library.entries.find((entry) => entry.id === `note:${actorNoteId}`)).toMatchObject({
       kind: "NOTE",
-      href: `/sessions/${actorRoomId}#quick-entry-${actorNoteId}`,
+      href: `/sessions/${actorRoomId}?mode=notes#session-note-${actorNoteId}`,
       projectName: "High Ground Library smoke",
-      stateLabel: "iPhone capture",
+      stateLabel: "iPhone capture · author private",
       badges: expect.arrayContaining(["#Opening thought", "Offline retry safe"]),
     });
     expect(library.entries.find((entry) => entry.id === `document:${documentId}`)?.href).toContain(`/read?projectSlug=library-${nonce}&episodeSlug=episode-7-${nonce}`);
@@ -207,7 +211,7 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     });
     expect(library.entries.find((entry) => entry.id === `media:${standaloneMediaId}`)).toMatchObject({ title: "reusable-cold-open.mov" });
     expect(library.entries.some((entry) => entry.id === `media:${promotedMediaId}`)).toBe(false);
-    expect(library.counts).toMatchObject({ sessions: 1, notes: 2, sources: 1, documents: 1, media: 1, saved: 1 });
+    expect(library.counts).toMatchObject({ sessions: 2, notes: 2, sources: 1, documents: 1, media: 1, saved: 1 });
     expect(library.boundaries).toEqual({
       permissionFilteredBeforeProjection: true,
       immutableSourcesPreserved: true,
@@ -215,7 +219,6 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
       localPhoneRecordingsRemainDeviceOwned: true,
       externalSideEffects: false,
     });
-    expect(serialized).not.toContain("Other person's private coaching");
     expect(serialized).not.toContain("Other person's private interpretation");
     expect(serialized).not.toContain("Other private bookmark");
     expect(serialized).not.toContain("Other private note");
@@ -226,5 +229,78 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     await expect(prisma.studioSourceAnnotation.count({ where: { sourceUnitId: sourceId, createdByUserId: otherUserId } })).resolves.toBe(2);
     await expect(prisma.bookmark.count({ where: { userId: otherUserId } })).resolves.toBe(1);
     await expect(prisma.coachingNote.count({ where: { id: otherNoteId, authorUserId: otherUserId } })).resolves.toBe(1);
+  });
+
+  it("shows a Session participant shared and client-safe notes without leaking private or production-team notes", async () => {
+    const grant = await prisma.studioProjectAccessGrant.create({
+      data: {
+        projectId,
+        email: otherEmail,
+        role: "VIEWER",
+        status: "ACTIVE",
+        createdByUserId: actorUserId,
+        createdByEmail: actorEmail,
+      },
+    });
+    const participant = await prisma.callParticipant.create({
+      data: {
+        roomId: actorRoomId,
+        userId: otherUserId,
+        displayName: "Other participant",
+        role: "CLIENT",
+      },
+    });
+    const created = await Promise.all([
+      prisma.coachingNote.create({
+        data: {
+          roomId: actorRoomId,
+          authorUserId: actorUserId,
+          title: "Audience private marker",
+          body: "Only the author should ever project this exact marker.",
+          visibility: "AUTHOR_PRIVATE",
+        },
+      }),
+      prisma.coachingNote.create({
+        data: {
+          roomId: actorRoomId,
+          authorUserId: actorUserId,
+          title: "Audience shared marker",
+          body: "Session participants may project this exact marker.",
+          visibility: "SESSION_SHARED",
+        },
+      }),
+      prisma.coachingNote.create({
+        data: {
+          roomId: actorRoomId,
+          authorUserId: actorUserId,
+          title: "Audience client-safe marker",
+          body: "Reviewed client follow-up may use this exact marker.",
+          visibility: "CLIENT_SAFE",
+        },
+      }),
+      prisma.coachingNote.create({
+        data: {
+          roomId: actorRoomId,
+          authorUserId: actorUserId,
+          title: "Audience production marker",
+          body: "Only the production team should project this exact marker.",
+          kind: "PRODUCTION",
+          visibility: "PROJECT_TEAM",
+        },
+      }),
+    ]);
+
+    try {
+      const library = await loadLibrary(otherUserId, otherEmail, false);
+      const serialized = JSON.stringify(library);
+      expect(serialized).toContain("Audience shared marker");
+      expect(serialized).toContain("Audience client-safe marker");
+      expect(serialized).not.toContain("Audience private marker");
+      expect(serialized).not.toContain("Audience production marker");
+    } finally {
+      await prisma.coachingNote.deleteMany({ where: { id: { in: created.map((note) => note.id) } } });
+      await prisma.callParticipant.deleteMany({ where: { id: participant.id } });
+      await prisma.studioProjectAccessGrant.deleteMany({ where: { id: grant.id } });
+    }
   });
 });

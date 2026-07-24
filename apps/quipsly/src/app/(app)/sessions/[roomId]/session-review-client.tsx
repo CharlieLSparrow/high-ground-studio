@@ -19,6 +19,11 @@ import {
 import { SessionContinuityCard } from "./session-continuity-card";
 import type { SessionContinuityState } from "./session-continuity-model";
 import type { SessionPreparation } from "./session-preparation-model";
+import { SessionNotesWorkspace } from "./session-notes-workspace";
+import type {
+  SessionNoteView,
+  SessionWorkspaceNote,
+} from "./session-notes-model";
 import {
   SESSION_WORKSPACE_MODES,
   sessionWorkspaceDefinition,
@@ -650,6 +655,7 @@ function SessionWorkspaceOverview({
   contentReadiness,
   sessionTaxonomy,
   studioHandoff,
+  sessionNotes,
   sessionQuickEntries,
   sessionContinuity,
   consentSnapshot,
@@ -659,6 +665,7 @@ function SessionWorkspaceOverview({
   contentReadiness: SessionContentReadiness | null;
   sessionTaxonomy: SessionTaxonomy | null;
   studioHandoff: SessionStudioHandoff | null;
+  sessionNotes: SessionWorkspaceNote[];
   sessionQuickEntries: SessionQuickEntry[];
   sessionContinuity: SessionContinuityState | null;
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
@@ -728,8 +735,8 @@ function SessionWorkspaceOverview({
     {
       mode: "notes" as const,
       title: "Notes",
-      value: `${noteQuickEntryCount} deliberate iPhone note${noteQuickEntryCount === 1 ? "" : "s"}`,
-      detail: `${continuity?.noteCount ?? 0} actor-owned note${continuity?.noteCount === 1 ? "" : "s"} in the continuity receipt`,
+      value: `${sessionNotes.length} visible deliberate note${sessionNotes.length === 1 ? "" : "s"}`,
+      detail: `${noteQuickEntryCount} from iPhone Capture · ${continuity?.noteCount ?? 0} actor-owned note${continuity?.noteCount === 1 ? "" : "s"} in continuity`,
     },
     {
       mode: "work" as const,
@@ -795,15 +802,18 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", preparation = null, consentSnapshot, contentReadiness = null, sessionTaxonomy = null, studioHandoff = null, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", preparation = null, consentSnapshot, contentReadiness = null, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
+  notesView?: SessionNoteView;
   preparation?: SessionPreparation | null;
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
   contentReadiness?: SessionContentReadiness | null;
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
+  sessionNotes?: SessionWorkspaceNote[];
+  canUseProjectTeamNotes?: boolean;
   sessionQuickEntries?: SessionQuickEntry[];
   captureReceipts?: SessionCaptureReceipts;
   sessionContinuity?: SessionContinuityState | null;
@@ -942,6 +952,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", p
         contentReadiness={contentReadiness}
         sessionTaxonomy={sessionTaxonomy}
         studioHandoff={studioHandoff}
+        sessionNotes={sessionNotes}
         sessionQuickEntries={sessionQuickEntries}
         sessionContinuity={sessionContinuity}
         consentSnapshot={consentSnapshot}
@@ -957,7 +968,13 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", p
         <SessionCaptureReceiptCard receipts={captureReceipts} />
       </> : null}
 
-      {mode === "notes" ? <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} scope="notes" /> : null}
+      {mode === "notes" ? <SessionNotesWorkspace
+        roomId={roomId}
+        initialNotes={sessionNotes}
+        activeView={notesView}
+        taxonomy={sessionTaxonomy}
+        canUseProjectTeamNotes={canUseProjectTeamNotes}
+      /> : null}
 
       {mode === "work" ? <>
         <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} scope="work" />

@@ -706,6 +706,7 @@ export async function projectCaptureSessionContext(args: {
           bookingId: args.room.bookingId || null,
           authorUserId: args.actorUserId,
           kind: "SESSION_NOTE",
+          visibility: "AUTHOR_PRIVATE",
           title,
           body: entry.text,
           sourceJson: projectionSource({

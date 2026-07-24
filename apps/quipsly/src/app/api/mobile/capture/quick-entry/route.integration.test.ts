@@ -171,7 +171,7 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
     const library = await loadLibrary(actorUserId, actorEmail, false);
     expect(library.entries.find((entry) => entry.id === `note:${note.id}`)).toMatchObject({
       kind: "NOTE",
-      href: `/sessions/${roomId}#quick-entry-${note.id}`,
+      href: `/sessions/${roomId}?mode=notes#session-note-${note.id}`,
       projectName: "Quick capture Nest",
       stateLabel: "iPhone capture",
       badges: expect.arrayContaining(["#Follow through", "Offline retry safe"]),
