@@ -22,6 +22,8 @@ function signedIn() {
 
 describe("mobile Capture Today contract", () => {
   beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(expected);
     jest.clearAllMocks();
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([] as any);
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
@@ -39,6 +41,10 @@ describe("mobile Capture Today contract", () => {
         proposals: [{ id: "proposal-1", correctedText: null, correctedSpeakerLabel: "Charlie", reason: "Track identity", updatedAt: "2026-07-18T18:00:02.000Z" }],
       }],
     } as any);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it("fails before private reads when signed out", async () => {
