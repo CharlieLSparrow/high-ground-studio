@@ -91,7 +91,7 @@ touch "${output_dir}/.quipsly-release-context"
 # git archive assigns the source commit's timestamp to every extracted path.
 # Cloud Build also restamps uploaded source when it extracts the context. This
 # first pass stabilizes local proof; cloudbuild.quipsly-web.yaml repeats it in
-# the worker immediately before Kaniko computes cache keys.
+# the worker before BuildKit imports the context and evaluates cache keys.
 bash "${repo_root}/scripts/release/quipsly-normalize-context-metadata.sh" \
   "${output_dir}"
 

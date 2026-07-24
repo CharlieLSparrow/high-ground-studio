@@ -107,7 +107,11 @@ Remote seed/repeat proof on 2026-07-24 showed every Dockerfile layer as
 `CACHED` on the repeat, including `pnpm install` and the Next.js production
 build. The repeat's worker time was 59.8 seconds and its create-to-finish time
 was 120.0 seconds. Both runs independently verified the pushed digest and all
-six required route bundles.
+six required route bundles. A third build from the next committed source SHA
+then showed the intended incremental boundary: all dependency layers through
+`pnpm install` were cached, while the source copy and Next.js build reran.
+That cross-commit build passed digest readback and the same six-route check in
+5 minutes 24 seconds of worker time.
 
 ## Asset boundary
 

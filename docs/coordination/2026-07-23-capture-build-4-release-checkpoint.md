@@ -138,13 +138,13 @@ The two exact-SHA preview builds each took about eight minutes even though
 their dependency manifests were unchanged. Audit found that `git archive`
 assigned each context the source commit's timestamp, changing Kaniko `COPY`
 cache keys. A remote repeat then proved that Cloud Build's source extraction
-restamps the uploaded files again. A guarded normalizer now runs both while
-materializing the release context and inside the worker before Kaniko; its
-regression test simulates that extraction drift and checks the entire tree.
-Even then, Kaniko generated a third dependency key for identical source. The
-pipeline now uses a digest-pinned Google Docker builder plus version-pinned
-BuildKit and a separate registry cache exported in `mode=max`. Preview builds
-also no longer mutate `studio:latest`.
+restamps the uploaded files again. A guarded normalizer now runs while
+materializing the release context and again inside the worker before cache
+evaluation; its regression test simulates that extraction drift and checks the
+entire tree. Even with normalized inputs, Kaniko generated a third dependency
+key for identical source. The pipeline now uses a digest-pinned Google Docker
+builder plus version-pinned BuildKit and a separate registry cache exported in
+`mode=max`. Preview builds also no longer mutate `studio:latest`.
 
 The BuildKit proof is now complete:
 
@@ -157,6 +157,14 @@ The BuildKit proof is now complete:
   `pnpm install` and the complete Next.js production build;
 - both images independently passed digest readback and the six required route
   bundle checks;
+- cross-commit build `e8078a2b-b911-4403-ac51-bf52cb042067`, from source
+  `2d1c70f23fa0c3c4d5ee8ddb8e613ceebdb41e09`, reused every dependency layer
+  through `pnpm install` while correctly rerunning `COPY . .` and the Next.js
+  production build for the new source identity;
+- that cross-commit build succeeded in 5 minutes 24 seconds of worker time and
+  6 minutes 14 seconds create-to-finish, pushed digest
+  `sha256:ac634454b1afef08b8a9128a69f1aebf761d648043b78724ab1c243aec3fc7a6`,
+  and passed independent digest readback plus the six-route bundle check;
 - production traffic remained 100% on `studio-00331-kll`, while validated
   preview `studio-00400-tep` remained a 0% tagged revision;
 - legacy `studio:latest` still points to preview digest
