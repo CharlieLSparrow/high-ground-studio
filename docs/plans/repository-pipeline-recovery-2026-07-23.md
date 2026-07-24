@@ -186,6 +186,32 @@ materialize bounded source from an exact commit, HGO no longer submits the
 repository root, and its deterministic predeploy checks run inside that source
 context. Capture retains its separate exact-commit Xcode archive boundary.
 
+### Clean continuation checkpoint: 2026-07-24
+
+Recovery no longer depends on making the accumulated worktree clean before
+product work can continue. The committed product state was branched into the
+separate `codex/quipsly-product-20260724` worktree while the legacy checkout
+remained untouched for preserve-first reconciliation.
+
+The new worktree proves all of the following from committed source:
+
+- strict worktree health reports `0` staged, `0` unstaged, and `0` untracked
+  paths;
+- `pnpm install --frozen-lockfile` installs all `22` workspace projects;
+- dependency build-script decisions are explicit in `pnpm-workspace.yaml`, so
+  a collaborator does not inherit a silent skipped-build warning;
+- all `22` tracked TypeScript projects pass the pinned TypeScript `7.0.2`
+  authority;
+- all four release manifests remain valid and ownership-complete;
+- the focused Nest search, task-edit, receipt, model, and UI suite passes from
+  the clean worktree.
+
+Use the clean product worktree for new dependency-closed slices and release
+materialization. Use the legacy worktree only to inventory, preserve, and
+reconcile its remaining `611` ambient paths. Do not copy its untracked source
+wholesale into the product branch or treat the new worktree as permission to
+delete the old one.
+
 ### Collaborator readiness
 
 The repository now treats onboarding and governance as tested interfaces:

@@ -23,6 +23,12 @@ corepack enable
 pnpm install --frozen-lockfile
 ```
 
+The root `pnpm-workspace.yaml` records the approved install scripts for
+dependencies that require them. A fresh frozen install should not ask a
+collaborator to make ad hoc supply-chain decisions or silently skip a required
+binary setup step. Any new build-script dependency must be reviewed and added
+explicitly in the same dependency slice.
+
 Capture release tooling must not use or mutate Apple's system Ruby. The
 checked-in runner accepts the exact active Ruby from a version manager or the
 exact Homebrew Ruby when available, installs the locked gems into the macOS
