@@ -8,13 +8,24 @@ SERVICE_NAME="${SERVICE_NAME:-studio}"
 PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project 2>/dev/null || true)}"
 IMAGE_TAG="${IMAGE_TAG:-preview-$(date +%Y%m%d-%H%M%S)}"
 PREVIEW_TAG="${PREVIEW_TAG:-quipsly-preview}"
-SOURCE_SHA="${SOURCE_SHA:-$(git rev-parse --short HEAD 2>/dev/null || echo unknown)}"
+SOURCE_SHA="${SOURCE_SHA:-manual-preview}"
 DEPLOYED_BY="${DEPLOYED_BY:-$(whoami)}"
 CLOUD_BUILD_CONFIG="${CLOUD_BUILD_CONFIG:-cloudbuild.quipsly-web.yaml}"
 SOURCE_REF="${SOURCE_REF:-HEAD}"
+RELEASE_SMOKE_SECRET_NAME="${RELEASE_SMOKE_SECRET_NAME:-quipsly-release-smoke-secret}"
+RELEASE_SMOKE_SECRET_VERSION="${RELEASE_SMOKE_SECRET_VERSION:-latest}"
 
 if [[ -z "${PROJECT_ID}" ]]; then
   echo "PROJECT_ID is required or gcloud must have a default project." >&2
+  exit 2
+fi
+
+if ! gcloud secrets versions describe "${RELEASE_SMOKE_SECRET_VERSION}" \
+  --secret="${RELEASE_SMOKE_SECRET_NAME}" \
+  --project="${PROJECT_ID}" \
+  --format="value(state)" | grep -qx "ENABLED"; then
+  echo "Release-smoke secret ${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION} is missing or disabled." >&2
+  echo "Create an enabled Secret Manager version before deploying a promotable preview." >&2
   exit 2
 fi
 
@@ -67,6 +78,7 @@ gcloud run deploy "${SERVICE_NAME}" \
   --no-traffic \
   --tag="${PREVIEW_TAG}" \
   --remove-secrets="NEXTAUTH_SECRET,PATREON_WEBHOOK_SECRET,PATREON_RECONCILE_SECRET" \
+  --update-secrets="QUIPSLY_RELEASE_SMOKE_SECRET=${RELEASE_SMOKE_SECRET_NAME}:${RELEASE_SMOKE_SECRET_VERSION}" \
   --update-env-vars="QUIPSLY_IMAGE_TAG=${IMAGE_TAG},QUIPSLY_SOURCE_SHA=${SOURCE_SHA},QUIPSLY_RELEASE_CHANNEL=preview,QUIPSLY_DEPLOYED_BY=${DEPLOYED_BY},QUIPSLY_APP_HOST=nest.quipsly.com,QUIPSLY_MARKETING_HOST=quipsly.com,QUIPSLY_LEGACY_STUDIO_HOST=studio-hm2odnvjga-uc.a.run.app,NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app" \
   --quiet
 
@@ -74,4 +86,6 @@ echo "Preview revision deployed."
 echo "Find preview URL with:"
 echo "  gcloud run services describe ${SERVICE_NAME} --region ${REGION} --format='json(status.traffic)'"
 echo "Then smoke it with:"
-echo "  PREVIEW_URL=<preview-url> scripts/release/quipsly-smoke-preview.sh"
+echo "  QUIPSLY_RELEASE_SMOKE_SECRET=\"\$(gcloud secrets versions access ${RELEASE_SMOKE_SECRET_VERSION} --secret=${RELEASE_SMOKE_SECRET_NAME} --project=${PROJECT_ID})\" \\"
+echo "    QUIPSLY_AUTH_SMOKE_EMAIL=<reviewer-email> QUIPSLY_AUTH_SMOKE_PASSWORD=<secure-env-value> \\"
+echo "    PREVIEW_URL=<preview-url> scripts/release/quipsly-smoke-preview.sh"
