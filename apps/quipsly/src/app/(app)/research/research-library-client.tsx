@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import {
   AlertTriangle,
   ArrowRight,
@@ -153,9 +153,16 @@ function EvidenceCard({ node }: { node: ResearchEvidenceRecord }) {
 
 type PassageSelection = { startOffset: number; endOffset: number; exactText: string };
 
-function SourceAnnotationWorkbench({ source }: { source: ResearchSourceRecord }) {
+function SourceAnnotationWorkbench({
+  source,
+  focusedAnnotationId = null,
+}: {
+  source: ResearchSourceRecord;
+  focusedAnnotationId?: string | null;
+}) {
   const router = useRouter();
   const textRef = useRef<HTMLDivElement>(null);
+  const focusedAnnotationRef = useRef<HTMLElement>(null);
   const requestIdRef = useRef<string | null>(null);
   const draftRequestIdsRef = useRef<Record<string, string>>({});
   const [selection, setSelection] = useState<PassageSelection | null>(null);
@@ -165,6 +172,15 @@ function SourceAnnotationWorkbench({ source }: { source: ResearchSourceRecord })
   const [tagIds, setTagIds] = useState<string[]>([]);
   const [notice, setNotice] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!focusedAnnotationId) return;
+    const timer = window.setTimeout(() => {
+      focusedAnnotationRef.current?.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      focusedAnnotationRef.current?.focus({ preventScroll: true });
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [focusedAnnotationId]);
 
   function captureSelection() {
     if (!source.canWrite) return;
@@ -399,7 +415,23 @@ function SourceAnnotationWorkbench({ source }: { source: ResearchSourceRecord })
           <h4 className="text-xs font-black uppercase tracking-[0.14em] text-[#75593c]">Saved annotations</h4>
           <div className="mt-3 grid gap-3 lg:grid-cols-2">
             {source.annotations.map((annotation) => (
-              <article key={annotation.id} className="rounded-2xl border border-[#e8dcc4] bg-white p-4">
+              <article
+                key={annotation.id}
+                id={`research-annotation-${annotation.id}`}
+                ref={annotation.id === focusedAnnotationId ? focusedAnnotationRef : undefined}
+                tabIndex={annotation.id === focusedAnnotationId ? -1 : undefined}
+                aria-current={annotation.id === focusedAnnotationId ? "true" : undefined}
+                className={`scroll-mt-24 rounded-2xl border bg-white p-4 outline-none ${
+                  annotation.id === focusedAnnotationId
+                    ? "border-cyan-500 ring-4 ring-cyan-100"
+                    : "border-[#e8dcc4]"
+                }`}
+              >
+                {annotation.id === focusedAnnotationId ? (
+                  <p className="mb-3 text-[10px] font-black uppercase tracking-[0.14em] text-cyan-900">
+                    Exact saved annotation opened from writing
+                  </p>
+                ) : null}
                 <div className="flex flex-wrap items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em]">
                   <span className="rounded-full bg-[#f4e8d4] px-2 py-1 text-[#68472c]">{humanizeResearchStatus(annotation.kind)}</span>
                   <span className={annotation.status === "resolved" ? "text-emerald-700" : "text-amber-700"}>{humanizeResearchStatus(annotation.status)}</span>
@@ -656,7 +688,17 @@ function ResearchRestoreControl({ projects }: { projects: Array<{ id: string; sl
   );
 }
 
-export function ResearchLibraryClient({ snapshot, initialQuery = "", initialSourceId = null }: { snapshot: ResearchLibrarySnapshot; initialQuery?: string; initialSourceId?: string | null }) {
+export function ResearchLibraryClient({
+  snapshot,
+  initialQuery = "",
+  initialSourceId = null,
+  initialAnnotationId = null,
+}: {
+  snapshot: ResearchLibrarySnapshot;
+  initialQuery?: string;
+  initialSourceId?: string | null;
+  initialAnnotationId?: string | null;
+}) {
   const [query, setQuery] = useState(initialQuery);
   const [focusedSourceId, setFocusedSourceId] = useState(initialSourceId);
   const hasWriteAccess = snapshot.state === "ready" && snapshot.sources.some((source) => source.canWrite);
@@ -752,7 +794,13 @@ export function ResearchLibraryClient({ snapshot, initialQuery = "", initialSour
                 </p>
                 {filtered.sources.length > 0 ? (
                   <div className="mt-4 space-y-6">
-                    {filtered.sources.map((source) => <SourceAnnotationWorkbench key={source.id} source={source} />)}
+                    {filtered.sources.map((source) => (
+                      <SourceAnnotationWorkbench
+                        key={source.id}
+                        source={source}
+                        focusedAnnotationId={source.id === focusedSourceId ? initialAnnotationId : null}
+                      />
+                    ))}
                   </div>
                 ) : (
                   <div className="mt-4 rounded-2xl border border-dashed border-[#d9c5a5] bg-[#fffaf3] p-6">

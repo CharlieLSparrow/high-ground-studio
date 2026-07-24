@@ -295,7 +295,8 @@ export default function DocumentSafetyPanel({
                   ref={fileInputRef}
                   type="file"
                   accept="application/json,.json,.quipsly-writing.json"
-                  className="sr-only"
+                  hidden
+                  tabIndex={-1}
                   onChange={(event) => void chooseImport(event.target.files?.[0])}
                   data-testid="document-portable-file"
                 />

@@ -38,7 +38,12 @@ jest.mock("./registry/EditorExtensionRegistry", () => ({
   }),
 }));
 
-function renderBlock() {
+function renderBlock(sourceEvidence?: {
+  annotationId: string;
+  citationLabel: string;
+  sourcePath?: string;
+  immutable?: boolean;
+}) {
   const onToggleTag = jest.fn().mockResolvedValue({ ok: true, operation: "removed" });
   const body = "Proof-listen this Episode 8 source.";
   render(
@@ -63,6 +68,7 @@ function renderBlock() {
             selectedText: "Episode 8",
           },
         ],
+        sourceEvidence,
       }}
       blockIndex={0}
       previousBlockIsImmutable={false}
@@ -112,5 +118,23 @@ describe("applied writing tags", () => {
       endOffset: 27,
       selectedText: "Episode 8",
     });
+  });
+
+  it("returns source-linked writing to the exact canonical annotation instead of a repository path", () => {
+    renderBlock({
+      annotationId: "annotation-1",
+      citationLabel: "Episode 4 audio-first publication goal",
+      sourcePath: "docs/quipsly/episode-4-audio-publication-goal.md",
+      immutable: false,
+    });
+
+    expect(screen.getByRole("link", { name: "Open exact source" })).toHaveAttribute(
+      "href",
+      "/research?annotation=annotation-1",
+    );
+    expect(screen.queryByRole("link", { name: "Open original source" })).not.toBeInTheDocument();
+    expect(screen.getByText(/Source path:/)).toHaveTextContent(
+      "docs/quipsly/episode-4-audio-publication-goal.md",
+    );
   });
 });

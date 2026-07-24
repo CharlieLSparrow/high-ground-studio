@@ -326,13 +326,35 @@ async function loadResearchLibrary(): Promise<ResearchLibrarySnapshot> {
   }
 }
 
-export default async function ResearchPage({ searchParams }: { searchParams?: Promise<{ query?: string | string[]; source?: string | string[] }> }) {
+type ResearchSearchParams = {
+  query?: string | string[];
+  source?: string | string[];
+  annotation?: string | string[];
+};
+
+export default async function ResearchPage({ searchParams }: { searchParams?: Promise<ResearchSearchParams> }) {
   const snapshot = await loadResearchLibrary();
-  const params = await (searchParams ?? Promise.resolve<{ query?: string | string[]; source?: string | string[] }>({}));
+  const params = await (searchParams ?? Promise.resolve<ResearchSearchParams>({}));
   const initialQuery = typeof params.query === "string" ? params.query.trim().slice(0, 200) : "";
   const requestedSourceId = typeof params.source === "string" ? params.source.trim().slice(0, 200) : "";
-  const initialSourceId = snapshot.state === "ready" && snapshot.sources.some((source) => source.id === requestedSourceId)
-    ? requestedSourceId
+  const requestedAnnotationId = typeof params.annotation === "string" ? params.annotation.trim().slice(0, 200) : "";
+  const annotationSource = snapshot.state === "ready" && requestedAnnotationId
+    ? snapshot.sources.find((source) => source.annotations.some((annotation) => annotation.id === requestedAnnotationId))
     : null;
-  return <ResearchLibraryClient snapshot={snapshot} initialQuery={initialQuery} initialSourceId={initialSourceId} />;
+  const initialSourceId = snapshot.state === "ready"
+    ? snapshot.sources.some((source) => source.id === requestedSourceId)
+      ? requestedSourceId
+      : annotationSource?.id ?? null
+    : null;
+  const initialAnnotationId = annotationSource && annotationSource.id === initialSourceId
+    ? requestedAnnotationId
+    : null;
+  return (
+    <ResearchLibraryClient
+      snapshot={snapshot}
+      initialQuery={initialQuery}
+      initialSourceId={initialSourceId}
+      initialAnnotationId={initialAnnotationId}
+    />
+  );
 }

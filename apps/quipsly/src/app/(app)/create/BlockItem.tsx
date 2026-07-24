@@ -96,6 +96,16 @@ function BlockItemComponent({
   const isPlaceholder = block.id.startsWith("offline-");
   const isPending = block.id.startsWith("pending-");
   const isImmutableSource = block.sourceEvidence?.immutable === true;
+  const sourceAnnotationId = block.sourceEvidence && !block.sourceEvidence.annotationId.startsWith("transcript:")
+    ? block.sourceEvidence.annotationId
+    : null;
+  const sourcePathHref = block.sourceEvidence?.sourcePath
+    && (block.sourceEvidence.sourcePath.startsWith("/") || block.sourceEvidence.sourcePath.startsWith("http"))
+    ? block.sourceEvidence.sourcePath
+    : null;
+  const localSourcePath = block.sourceEvidence?.sourcePath && !sourcePathHref
+    ? block.sourceEvidence.sourcePath
+    : null;
 
   const [selection, setSelection] = useState<{ start: number; end: number; text: string } | null>(null);
   const [draftComment, setDraftComment] = useState<string | null>(null);
@@ -216,16 +226,28 @@ function BlockItemComponent({
           </div>
           <p className="mt-1.5 font-semibold">{block.sourceEvidence.citationLabel}</p>
           <div className="mt-1 flex flex-wrap gap-3">
-            <a href="/research" className="font-black underline decoration-cyan-300 underline-offset-4">Open Research</a>
-            {block.sourceEvidence.sourcePath ? (
+            <Link
+              href={sourceAnnotationId ? `/research?annotation=${encodeURIComponent(sourceAnnotationId)}` : "/research"}
+              className="font-black underline decoration-cyan-300 underline-offset-4"
+            >
+              {sourceAnnotationId ? "Open exact source" : "Open Research"}
+            </Link>
+            {sourcePathHref ? (
               <a
-                href={block.sourceEvidence.sourcePath}
-                target={block.sourceEvidence.sourcePath.startsWith("http") ? "_blank" : undefined}
-                rel={block.sourceEvidence.sourcePath.startsWith("http") ? "noreferrer" : undefined}
+                href={sourcePathHref}
+                target={sourcePathHref.startsWith("http") ? "_blank" : undefined}
+                rel={sourcePathHref.startsWith("http") ? "noreferrer" : undefined}
                 className="font-black underline decoration-cyan-300 underline-offset-4"
-              >Open exact source</a>
+              >
+                {sourceAnnotationId ? "Open original source" : "Open exact Session source"}
+              </a>
             ) : null}
           </div>
+          {localSourcePath ? (
+            <p className="mt-1 break-all text-[11px] text-cyan-900">
+              Source path: <code>{localSourcePath}</code>
+            </p>
+          ) : null}
         </div>
       ) : null}
 

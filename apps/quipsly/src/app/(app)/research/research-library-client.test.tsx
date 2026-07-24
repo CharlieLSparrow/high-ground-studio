@@ -1,5 +1,5 @@
 import React from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 jest.mock("./actions", () => ({
@@ -102,6 +102,22 @@ describe("ResearchLibraryClient", () => {
     await user.click(screen.getByRole("button", { name: "Show all research" }));
     expect(screen.getByText("Leadership source packet")).toBeInTheDocument();
     expect(screen.getByText("Systems evidence")).toBeInTheDocument();
+  });
+
+  it("returns from writing to the exact saved annotation with semantic and keyboard focus", async () => {
+    render(
+      <ResearchLibraryClient
+        snapshot={readySnapshot}
+        initialSourceId="source-1"
+        initialAnnotationId="annotation-1"
+      />,
+    );
+
+    const annotation = document.getElementById("research-annotation-annotation-1");
+    expect(annotation).toHaveAttribute("aria-current", "true");
+    expect(annotation).toHaveTextContent("Exact saved annotation opened from writing");
+    await waitFor(() => expect(annotation).toHaveFocus());
+    expect(screen.queryByText("Leadership source packet")).not.toBeInTheDocument();
   });
 
   it("labels connected records as live and filters only the loaded records", async () => {
