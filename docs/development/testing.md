@@ -17,6 +17,7 @@ node --test scripts/ci/audit-repository-contract.test.mjs
 node scripts/ci/audit-repository-contract.mjs
 node --test scripts/ci/audit-binary-assets.test.mjs
 node --test scripts/ci/plan-changed-surfaces.test.mjs
+bash scripts/ci/typecheck-typescript-7.sh
 ```
 
 ## Nest

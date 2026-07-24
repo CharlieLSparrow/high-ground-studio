@@ -8,6 +8,7 @@ This is the authoritative collaborator entrypoint for local engineering.
 | --- | --- |
 | Node | `24.14.0` from `.node-version` |
 | pnpm | `10.30.3` from `package.json` |
+| TypeScript | package-pinned compiler plus the [TypeScript 7 compatibility gate](typescript-7-migration.md) |
 | Xcode | `26.2` for Capture CI parity |
 | iOS simulator | iOS `26.2`, iPhone 17 Pro in CI |
 | PostgreSQL | local Docker service for persistent Nest work |

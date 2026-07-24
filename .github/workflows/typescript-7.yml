@@ -1,0 +1,52 @@
+name: TypeScript 7 Compatibility
+
+on:
+  pull_request:
+    paths:
+      - "apps/**/*.ts"
+      - "apps/**/*.tsx"
+      - "apps/**/package.json"
+      - "apps/**/tsconfig*.json"
+      - "packages/**/*.ts"
+      - "packages/**/*.tsx"
+      - "packages/**/package.json"
+      - "packages/**/tsconfig*.json"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "pnpm-workspace.yaml"
+      - "scripts/ci/typecheck-typescript-7.sh"
+      - ".github/workflows/typescript-7.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: typescript-7-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: Check migrated projects
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate compatibility runner
+        run: bash -n scripts/ci/typecheck-typescript-7.sh
+
+      - name: Typecheck migrated projects with TypeScript 7
+        run: bash scripts/ci/typecheck-typescript-7.sh
