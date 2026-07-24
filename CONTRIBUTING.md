@@ -11,11 +11,21 @@ surface works.
 3. Locate the owning surface in the
    [product and repository map](docs/architecture/product-and-repository-map.md).
 4. Read the relevant architecture decision and release runbook.
-5. Run `node scripts/ci/audit-repository-contract.mjs`.
+5. Run `pnpm repo:health --surface <surface>` before touching a checkout with
+   existing work. Valid surfaces are `capture`, `nest`, `quipsly-studio`,
+   `hgo-web`, `shared-contracts`, `repository`, `prototype-archive`, and
+   `other`.
+6. Run `node scripts/ci/audit-repository-contract.mjs`.
 
 Ask before starting work that changes licensing, user-data retention, public
 APIs, authentication providers, production infrastructure, payment behavior,
 or repository boundaries.
+
+`repo:health` is a read-only inventory. It reports staged, unstaged, and
+untracked paths, ownership boundaries, generated evidence, caches, media, and
+large untracked files. It never cleans or deletes. Treat findings as a
+preserve-first recovery queue; do not discard a path merely because it is
+unexpected for your active surface.
 
 ## Branch and change scope
 
@@ -36,6 +46,7 @@ when the contract, both consumers, and their tests move together.
 ```bash
 corepack enable
 pnpm install --frozen-lockfile
+pnpm repo:health --surface <surface>
 node --test scripts/ci/audit-repository-contract.test.mjs
 node scripts/ci/audit-repository-contract.mjs
 node --test scripts/ci/plan-changed-surfaces.test.mjs
@@ -78,6 +89,8 @@ cloud, and production-traffic claims each require their own target readback.
 - Prefer short, imperative subjects such as
   `fix(capture): preserve failed upload recovery`.
 - Use explicit-path staging and inspect `git diff --cached`.
+- Run `pnpm repo:health --surface <surface>` again before staging; explain any
+  cross-surface dependency rather than absorbing ambient work.
 - Do not commit credentials, `.env` files, production exports, user recordings,
   private notes, client data, or App Store Connect keys.
 - Do not rewrite shared branch history without maintainer coordination.

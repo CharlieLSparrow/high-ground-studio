@@ -156,6 +156,28 @@ One green stage cannot substitute for another.
 - Add a worktree-health check that reports, but does not delete, unexpected
   generated files and cross-surface dirty state.
 
+### Recovery checkpoint: 2026-07-24
+
+The worktree-health control is now implemented as a TypeScript 7 package and
+root command:
+
+```bash
+pnpm repo:health --surface <surface>
+pnpm repo:health:strict --surface <surface>
+```
+
+Its first real-checkout inventory reported `621` dirty paths: `68` unstaged and
+`553` untracked. Ownership was `512` QuipslyStudio, `3` Nest, `2` HGO web, `78`
+repository, and `26` other paths. It identified five generated-evidence files
+and one large untracked file without moving or deleting anything. The
+repository-wide TypeScript 7 gate passed all `22` configured projects after
+the governance package was added.
+
+This measurement supersedes the older dirty-worktree count for recovery
+planning but does not imply that the remaining paths are disposable. The next
+control is one machine-readable release manifest per deployable app, followed
+by preserve-first reconciliation of the inventoried product slices.
+
 ### Collaborator readiness
 
 The repository now treats onboarding and governance as tested interfaces:
@@ -180,7 +202,8 @@ private vulnerability reporting, or automatic branch updates.
 
 1. Preserve current work by coherent surface, using explicit-path commits and
    immutable backup/readback for media.
-2. Do not run broad `git add`, `reset`, `clean`, or branch deletion.
+2. Run `pnpm repo:health --surface <surface>` and use its path inventory; do not
+   run broad `git add`, `reset`, `clean`, or branch deletion.
 3. Reconcile the Nest WIP as one dependency-closed slice: routes, domain code,
    migrations, tests, reviewer tooling, and docs must pass together.
 4. Reconcile QuipslyStudio by feature vertical, not by file extension or one

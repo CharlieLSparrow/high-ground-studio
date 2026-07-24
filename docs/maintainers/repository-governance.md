@@ -49,6 +49,41 @@ interfaces. CI validates their presence and local links.
 Historical session notes are evidence, not automatic authority. Durable
 decisions move into architecture, decisions, or runbooks.
 
+## Worktree health and recovery
+
+Run the repository-owned, read-only inventory before changing or handing off a
+checkout with existing work:
+
+```bash
+pnpm repo:health --surface repository
+pnpm repo:health --surface nest --json
+pnpm repo:health:strict --surface capture
+```
+
+The report merges staged, unstaged, and untracked Git state without modifying
+files. It classifies every path by product surface and by source, test,
+documentation, configuration, generated evidence, cache/build output, media,
+or binary asset. It also reports:
+
+- paths outside the dependency-closed active surface;
+- generated evidence and build/cache data inside the checkout;
+- media and oversized untracked or binary files;
+- active work exceeding the `50`-path recovery budget.
+
+The normal command is advisory so it can safely inspect an unhealthy checkout.
+The strict command exits nonzero when it finds a boundary issue and is intended
+for a deliberately prepared slice, not as permission to erase unrelated work.
+Recovery remains preserve-first:
+
+1. inspect the named paths and their diffs;
+2. identify their owner and intended product slice;
+3. preserve unique source, evidence, or media before relocation;
+4. stage only explicit paths for one dependency-closed outcome;
+5. rerun the inventory and the affected-surface tests.
+
+Never use broad `git add`, reset, clean, or recursive deletion to make the
+health report green.
+
 ## Access onboarding
 
 A collaborator receives the least privilege needed:

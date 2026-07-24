@@ -50,3 +50,6 @@ jobs:
 
       - name: Typecheck migrated projects with TypeScript 7
         run: bash scripts/ci/typecheck-typescript-7.sh
+
+      - name: Test TypeScript repository governance tooling
+        run: pnpm --filter @high-ground/repository-governance test

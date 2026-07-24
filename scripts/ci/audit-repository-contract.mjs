@@ -34,6 +34,11 @@ export const DEFAULT_CONTRACT = {
     "scripts/ci/audit-repository-contract.test.mjs",
     "scripts/ci/audit-tracked-artifacts.mjs",
     "scripts/ci/audit-tracked-artifacts.test.mjs",
+    "packages/repository-governance/package.json",
+    "packages/repository-governance/tsconfig.json",
+    "packages/repository-governance/src/worktree-health.ts",
+    "packages/repository-governance/src/worktree-health-cli.ts",
+    "packages/repository-governance/src/worktree-health.test.ts",
   ],
   maintainedMarkdown: [
     "README.md",

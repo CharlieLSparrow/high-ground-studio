@@ -24,6 +24,7 @@ readonly project_configs=(
   "packages/quipsly-document-kernel/tsconfig.json"
   "packages/quipsly-document-kernel/tsconfig.test.json"
   "packages/quipsly-domain/tsconfig.json"
+  "packages/repository-governance/tsconfig.json"
   "packages/studio-cut-schema/tsconfig.json"
   "packages/studio-cut-schema/tsconfig.test.json"
   "packages/studio-domain/tsconfig.json"

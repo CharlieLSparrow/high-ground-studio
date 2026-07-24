@@ -42,6 +42,8 @@
     "coordination:summary": "node scripts/generate-coordination-summary.mjs",
     "coordination:scan": "node scripts/scan-beta-blockers.mjs",
     "coordination:sync": "pnpm coordination:summary && pnpm coordination:scan",
+    "repo:health": "node --experimental-strip-types packages/repository-governance/src/worktree-health-cli.ts",
+    "repo:health:strict": "node --experimental-strip-types packages/repository-governance/src/worktree-health-cli.ts --strict",
     "quipsly:cloudrun:deploy-preview": "bash scripts/release/quipsly-deploy-preview.sh",
     "quipsly:web:deploy": "bash scripts/quipsly-web-deploy.sh",
     "quipsly:web:stage": "STAGE_ONLY=1 bash scripts/quipsly-web-deploy.sh",

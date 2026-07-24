@@ -1,0 +1,16 @@
+{
+  "name": "@high-ground/repository-governance",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "audit": "node --experimental-strip-types src/worktree-health-cli.ts",
+    "test": "node --experimental-strip-types --test src/*.test.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "25.3.3",
+    "@typescript/native": "npm:typescript@7.0.2",
+    "typescript": "npm:@typescript/typescript6@6.0.2"
+  }
+}

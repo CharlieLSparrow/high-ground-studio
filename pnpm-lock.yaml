@@ -801,6 +801,18 @@ importers:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
 
+  packages/repository-governance:
+    devDependencies:
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      '@typescript/native':
+        specifier: npm:typescript@7.0.2
+        version: typescript@7.0.2
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
   packages/studio-cut-schema:
     devDependencies:
       '@types/node':
