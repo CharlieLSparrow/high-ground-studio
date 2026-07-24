@@ -2,6 +2,8 @@
 
 Candidate date: 2026-07-18
 
+Latest addendum: 2026-07-24
+
 Scope: iPhone capture app, mobile-capture Nest APIs, durable media upload, and release-readiness surfaces
 
 Canonical design: [`CAPTURE_ARCHITECTURE.md`](./CAPTURE_ARCHITECTURE.md)
@@ -54,7 +56,7 @@ The final local run records exact results after all hardening changes settled. S
 | Gate | Command or proof | Result |
 |---|---|---|
 | Privacy manifest | `plutil -lint HighGroundCapture/PrivacyInfo.xcprivacy` | PASS — valid plist |
-| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 563/563 |
+| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 628/628 |
 | Owner isolation | `node --test scripts/quipsly-ios-capture-account-isolation.test.mjs` | PASS — 15/15 |
 | iOS source durability | `node scripts/quipsly-ios-capture-durability-contract.test.mjs` | PASS — 50/50 |
 | Mobile source contracts | `node scripts/quipsly-mobile-capture-contract-smoke.mjs --source-only=1` | PASS — 47/47 |
@@ -66,10 +68,13 @@ The final local run records exact results after all hardening changes settled. S
 | Legacy web callers fail closed | `node --test scripts/quipsly-web-upload-callers-fail-closed.test.mjs` | PASS — 3/3 |
 | Prisma schema | `pnpm exec prisma validate --schema prisma/schema.prisma` | PASS |
 | Nest TypeScript | `pnpm --filter quipsly typecheck` | PASS |
+| Account deletion API | focused Jest policy/route suite | PASS — 7/7 |
+| Account deletion operating loop | disposable verified Firebase-emulator identity against local Nest/Postgres | PASS — create, idempotent replay, reopen, review, completion readback, and cleanup |
+| Account deletion iPhone UX | focused iPhone 17 Pro iOS 26.3.1 simulator journey | PASS — 1/1; 30-day timing, persistent-status explanation, and preview no-write boundary |
 | Debug Simulator | generic iOS Simulator `xcodebuild` | PASS — arm64 and x86_64 |
 | Static analysis | generic iOS Simulator `xcodebuild analyze` | PASS |
 | Unsigned Release | generic iOS device, signing disabled | PASS — two deprecation warnings confined to deferred `ExportManager` / `NativeEditorView` prototypes |
-| Capture UX and native auth | four `CaptureExperienceUITests` plus two accessibility-XXXL login tests | PASS — 6/6, no skips |
+| Capture UX, native auth, and Share extension | focused `CaptureExperienceUITests`, `CaptureLoginExperienceUITests`, and `ShareCaptureExtensionUITests` | PASS — 26/26, no skips; `/tmp/quipsly-account-deletion-full-ui.xcresult` |
 | Visual QA | Today, Record, Library, Account; light/dark, large type, and accessibility XXXL | PASS — final visual surfaces inspected; later consent-actor and test-only autofill changes are nonvisual, with final UI suite 6/6 |
 | Patch hygiene | tracked-worktree `git diff --check` | PASS |
 
@@ -81,7 +86,7 @@ These checks cannot be substituted with source inspection or Simulator output:
 - Restore public policy/support surfaces. On the candidate audit date, the checked `www.quipsly.com` policy/login routes and `nest.quipsly.com` policy, account-deletion, authentication, readiness, and session APIs returned HTTP 503. One earlier transient probe of the `www.quipsly.com` root returned HTTP 500; a later root retry returned HTTP 503. None is current reviewer proof.
 - Apply and verify `ops/quipsly-coaching-capture-additive.sql` through the repository's schema-sync job before exercising capture state or issuing upload capabilities. It must prove both `CaptureRoomStateReceipt` and `MediaVaultUploadReservation` plus their indexes. This repository's historical Prisma migrations do not own the existing `CallRoom` rollout, so no standalone Prisma migration is claimed.
 - Apply and read back the reviewed media-vault CORS policy containing `x-goog-if-generation-match`; local source review alone does not prove browser create-only uploads work against the live bucket.
-- Approve a legal retention matrix and a user-visible deletion SLA, implement the destructive/anonymizing account-deletion executor plus completion confirmation, and prove it against a test account. The current in-app route records a review request; that is not yet complete App Store deletion proof.
+- Approve the 30-day target and legal retention matrix, implement the reviewed destructive/anonymizing executor, and prove its completion email against a disposable test account. The app and API now create and reopen one idempotent request, show its durable review/completion status and target date, and provide an in-app completion readback. The operator status transition still does not itself erase or anonymize data, so this is not yet complete destructive-deletion proof.
 - Replace the explicitly beta/incomplete Terms and high-level beta privacy surface with counsel-approved production terms, retention/vendor/rights disclosures, and App Store privacy answers that match the candidate.
 - Record on a physical supported iPhone with built-in, Bluetooth HFP, wired, and USB microphones.
 - Exercise lock/unlock, background, call/alarm/Siri interruption, route removal, Low Data Mode, constrained/cellular transfer, force quit, and reboot.

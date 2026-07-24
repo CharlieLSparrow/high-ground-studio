@@ -2314,14 +2314,32 @@ enum ProviderRecordingAction {
 struct AccountDeletionRequestPayload: Codable {
     let id: String?
     let status: String?
+    let statusLabel: String?
+    let statusDetail: String?
     let requestedAt: String?
+    let targetCompletionAt: String?
+    let reviewedAt: String?
+    let completedAt: String?
+    let canceledAt: String?
+    let updatedAt: String?
+    let active: Bool?
+    let nextAction: String?
     let reusedExistingRequest: Bool?
+}
+
+struct AccountDeletionPolicyPayload: Codable {
+    let version: String?
+    let targetDays: Int?
+    let supportEmail: String?
+    let timing: String?
+    let completionConfirmation: String?
 }
 
 struct AccountDeletionRequestResponse: Codable {
     let ok: Bool
     let error: String?
     let request: AccountDeletionRequestPayload?
+    let policy: AccountDeletionPolicyPayload?
     let nextAction: String?
 }
 
@@ -2357,12 +2375,49 @@ final class AccountDeletionClient: ObservableObject {
     @Published var errorMessage: String?
     @Published var latestRequestId: String?
     @Published var latestNextAction: String?
+    @Published var latestRequest: AccountDeletionRequestPayload?
+    @Published var policy: AccountDeletionPolicyPayload?
+    @Published var isLoading = false
     @Published var isSubmitting = false
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
 
+    func loadStatus() async {
+        guard let url = endpointURL else {
+            status = "Bad Nest URL"
+            errorMessage = "The configured Nest URL is not valid."
+            return
+        }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(AccountDeletionRequestResponse.self, from: data)
+
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "AccountDeletion",
+                    code: 2,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Deletion request status could not be loaded."]
+                )
+            }
+
+            apply(payload)
+            status = payload.request?.statusLabel ?? "No deletion request"
+        } catch {
+            status = "Status unavailable"
+            errorMessage = error.localizedDescription
+        }
+
+        isLoading = false
+    }
+
     func requestDeletion(reason: String) async {
-        guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/account/deletion-request") else {
+        guard let url = endpointURL else {
             status = "Bad Nest URL"
             errorMessage = "The configured Nest URL is not valid."
             return
@@ -2393,15 +2448,26 @@ final class AccountDeletionClient: ObservableObject {
                 )
             }
 
-            latestRequestId = payload.request?.id
-            latestNextAction = payload.nextAction
-            status = payload.request?.reusedExistingRequest == true ? "Request already recorded" : "Request recorded"
+            apply(payload)
+            status = payload.request?.statusLabel
+                ?? (payload.request?.reusedExistingRequest == true ? "Request already recorded" : "Request recorded")
         } catch {
             status = "Needs attention"
             errorMessage = error.localizedDescription
         }
 
         isSubmitting = false
+    }
+
+    private var endpointURL: URL? {
+        URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/account/deletion-request")
+    }
+
+    private func apply(_ payload: AccountDeletionRequestResponse) {
+        latestRequest = payload.request
+        latestRequestId = payload.request?.id
+        latestNextAction = payload.request?.nextAction ?? payload.nextAction
+        policy = payload.policy
     }
 }
 

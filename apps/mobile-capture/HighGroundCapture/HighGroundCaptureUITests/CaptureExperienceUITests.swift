@@ -676,6 +676,25 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Request account deletion"].isHittable)
     }
 
+    func testAccountDeletionExplainsTimingAndPersistentStatusBeforeSubmission() {
+        app.tabBars.buttons["Account"].tap()
+
+        let deletionButton = app.buttons["Request account deletion"]
+        reveal(deletionButton)
+        XCTAssertTrue(deletionButton.isHittable)
+        deletionButton.tap()
+
+        XCTAssertTrue(app.descendants(matching: .any)["AccountDeletionSheet"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Expected timing"].exists)
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "targets completion within 30 days")
+        ).firstMatch.exists)
+        XCTAssertTrue(app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Reopen Account to follow progress")
+        ).firstMatch.exists)
+        XCTAssertFalse(app.buttons["Submit"].isEnabled, "Preview mode must explain deletion without submitting a real request.")
+    }
+
     private func reveal(_ element: XCUIElement) {
         let visibleBottom = app.frame.maxY - 96
         if element.exists,

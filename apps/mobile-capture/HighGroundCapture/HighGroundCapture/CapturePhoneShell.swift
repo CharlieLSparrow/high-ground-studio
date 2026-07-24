@@ -2413,6 +2413,7 @@ private struct CaptureAccountView: View {
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @StateObject private var auth = AuthManager.shared
     @StateObject private var library = LocalRecordingLibrary.shared
+    @StateObject private var deletionClient = AccountDeletionClient()
     @AppStorage("com.quipsly.capture.upload.allowsCellular") private var allowsCellular = true
     @AppStorage("com.quipsly.capture.upload.allowsExpensive") private var allowsExpensive = true
     @AppStorage("com.quipsly.capture.upload.allowsConstrained") private var allowsConstrained = true
@@ -2471,6 +2472,14 @@ private struct CaptureAccountView: View {
                 }
                 .captureCard(contentPadding: 4)
 
+                if let request = deletionClient.latestRequest {
+                    AccountDeletionStatusCard(
+                        request: request,
+                        client: deletionClient,
+                        onOpen: { showsDeletion = true }
+                    )
+                }
+
                 Button(role: .destructive) {
                     if model.isSessionContextLocked {
                         showsSignOutWarning = true
@@ -2497,14 +2506,22 @@ private struct CaptureAccountView: View {
         .navigationTitle("Account")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showsDeletion) {
-            AccountDeletionSheet(isPresented: $showsDeletion)
-                .presentationDetents([.medium])
+            AccountDeletionSheet(
+                isPresented: $showsDeletion,
+                client: deletionClient,
+                usesPreviewData: model.usesPreviewData
+            )
+            .presentationDetents([.medium, .large])
         }
         .alert("Capture session is still active", isPresented: $showsSignOutWarning) {
             Button("Keep session active", role: .cancel) {}
             Button("Open recorder") { model.selectedTab = .record }
         } message: {
             Text("Stop and save the local source and leave any live room before signing out.")
+        }
+        .task {
+            guard !model.usesPreviewData else { return }
+            await deletionClient.loadStatus()
         }
     }
 
@@ -3870,9 +3887,14 @@ private struct NewCaptureSessionSheet: View {
 
 private struct AccountDeletionSheet: View {
     @Binding var isPresented: Bool
-    @StateObject private var client = AccountDeletionClient()
+    @ObservedObject var client: AccountDeletionClient
+    let usesPreviewData: Bool
     @State private var reason = ""
     @State private var confirmsRequest = false
+
+    private var hasActiveRequest: Bool {
+        client.latestRequest?.active == true
+    }
 
     var body: some View {
         NavigationStack {
@@ -3881,34 +3903,128 @@ private struct AccountDeletionSheet: View {
                     Text("Request deletion of your Quipsly account and associated app-owned data. The request is reviewed so recording retention and legal obligations can be handled honestly.")
                         .font(.subheadline)
                 }
-                Section("Optional note") {
-                    TextField("Why are you leaving?", text: $reason, axis: .vertical)
-                        .lineLimit(2...4)
+
+                Section("Expected timing") {
+                    Text(client.policy?.timing ?? "Quipsly targets completion within 30 days. If legal retention or unusually complex attached records require more time, Quipsly will explain the delay.")
+                    Text(client.policy?.completionConfirmation ?? "Reopen Account to follow progress. Quipsly also sends completion confirmation to your account email.")
+                        .foregroundStyle(.secondary)
                 }
-                Section {
-                    Toggle("I want to submit an account deletion request", isOn: $confirmsRequest)
+
+                if let request = client.latestRequest {
+                    AccountDeletionRequestStatusSection(request: request)
                 }
+
+                if !hasActiveRequest {
+                    Section("Optional note") {
+                        TextField("Why are you leaving?", text: $reason, axis: .vertical)
+                            .lineLimit(2...4)
+                    }
+                    Section {
+                        Toggle("I want to submit an account deletion request", isOn: $confirmsRequest)
+                    }
+                }
+
                 if let error = client.errorMessage {
                     Section { Text(error).foregroundStyle(.red) }
                 } else if let next = client.latestNextAction {
-                    Section { Text(next).foregroundStyle(.secondary) }
+                    Section("Next step") { Text(next).foregroundStyle(.secondary) }
                 }
             }
+            .accessibilityIdentifier("AccountDeletionSheet")
             .navigationTitle("Delete account")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { isPresented = false }
+                    Button(hasActiveRequest ? "Done" : "Cancel") { isPresented = false }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Submit", role: .destructive) {
-                        Task { await client.requestDeletion(reason: reason) }
+                    if hasActiveRequest {
+                        Button(client.isLoading ? "Refreshing…" : "Refresh") {
+                            Task { await client.loadStatus() }
+                        }
+                        .disabled(client.isLoading)
+                    } else {
+                        Button("Submit", role: .destructive) {
+                            Task { await client.requestDeletion(reason: reason) }
+                        }
+                        .disabled(!confirmsRequest || client.isSubmitting || usesPreviewData)
                     }
-                    .disabled(!confirmsRequest || client.isSubmitting)
                 }
+            }
+            .task {
+                guard !usesPreviewData else { return }
+                await client.loadStatus()
             }
         }
     }
+}
+
+private struct AccountDeletionRequestStatusSection: View {
+    let request: AccountDeletionRequestPayload
+
+    var body: some View {
+        Section("Request status") {
+            LabeledContent("Status", value: request.statusLabel ?? request.status ?? "Recorded")
+            if let requested = accountDeletionDate(request.requestedAt) {
+                LabeledContent("Requested", value: requested)
+            }
+            if let completed = accountDeletionDate(request.completedAt) {
+                LabeledContent("Completed", value: completed)
+            } else if let target = accountDeletionDate(request.targetCompletionAt) {
+                LabeledContent("Target", value: target)
+            }
+            if let detail = request.statusDetail {
+                Text(detail).foregroundStyle(.secondary)
+            }
+        }
+    }
+}
+
+private struct AccountDeletionStatusCard: View {
+    let request: AccountDeletionRequestPayload
+    @ObservedObject var client: AccountDeletionClient
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Label("Account deletion", systemImage: request.status == "COMPLETED" ? "checkmark.circle.fill" : "clock.arrow.circlepath")
+                        .font(.headline)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.tertiary)
+                }
+                Text(request.statusLabel ?? request.status ?? "Request recorded")
+                    .font(.subheadline.weight(.semibold))
+                if let completed = accountDeletionDate(request.completedAt) {
+                    Text("Completed \(completed)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let target = accountDeletionDate(request.targetCompletionAt) {
+                    Text("Target completion by \(target)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if client.isLoading {
+                    ProgressView().controlSize(.small)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .captureCard()
+        .accessibilityIdentifier("AccountDeletionStatusCard")
+    }
+}
+
+private func accountDeletionDate(_ value: String?) -> String? {
+    guard let value else { return nil }
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    guard let date = formatter.date(from: value) else { return nil }
+    return date.formatted(date: .abbreviated, time: .omitted)
 }
 
 private struct GlobalCaptureBanner: View {
