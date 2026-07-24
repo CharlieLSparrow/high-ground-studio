@@ -4,3 +4,4 @@
 !.env.example
 apps/web/.env.local
 next-env.d.ts
+.next-release/

@@ -33,6 +33,9 @@ capture, coaching, public-route, App Store static, and schema contracts. When
 `DATABASE_URL` is absent it supplies a loopback build-only value so a clean
 checkout remains buildable; schema readiness is then an explicit non-blocking
 warning, not a database-proof claim. This local command does not deploy.
+Its production builds use ignored `.next-release` directories, so the gate can
+run while the local Nest dev server continues using `.next`; a release check
+must not require restarting the dogfood app.
 
 For visible product behavior, use the signed-in dogfood sequence in
 [Nest local development](../runbooks/quipsly-nest-local.md): create records,

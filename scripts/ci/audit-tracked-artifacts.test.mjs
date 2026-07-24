@@ -13,6 +13,7 @@ test("rejects generated caches, local databases, runtime state, and backups", ()
     "apps/api/__pycache__/server.cpython-313.pyc",
     "apps/web/.next/server/app.js",
     "apps/editor/DerivedData/build.log",
+    "apps/quipsly/.next-release/server/app.js",
     "apps/studio/reports/render.pid",
     "apps/web/src/app/page.backup.tsx",
     "apps/web/next-env.d.ts",

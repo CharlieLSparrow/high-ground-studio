@@ -37,7 +37,13 @@ export function trackedArtifactReason(filePath) {
   const segments = candidate.split("/").filter(Boolean);
   const basename = segments.at(-1) ?? "";
 
-  if (segments.some((segment) => FORBIDDEN_SEGMENTS.has(segment) || segment.startsWith(".venv-"))) {
+  if (
+    segments.some((segment) => (
+      FORBIDDEN_SEGMENTS.has(segment)
+      || segment.startsWith(".next-")
+      || segment.startsWith(".venv-")
+    ))
+  ) {
     return "generated dependency, build, or interpreter directory";
   }
   if (FORBIDDEN_BASENAMES.has(basename)) {
