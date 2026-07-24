@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+
+import { parseXmlPropertyList } from "./lib/parse-xml-property-list.mjs";
 
 const root = process.cwd();
 const iosRoot = path.join(root, "apps/mobile-capture/HighGroundCapture");
@@ -169,11 +170,7 @@ const mobileSwiftSourceTreeText = readSwiftSourceTree(sourceRoot);
 
 let privacy;
 try {
-  privacy = JSON.parse(
-    execFileSync("plutil", ["-convert", "json", "-o", "-", files.privacyManifest], {
-      encoding: "utf8",
-    }),
-  );
+  privacy = parseXmlPropertyList(privacyText);
 } catch (error) {
   fail("Privacy manifest could not be parsed.", { reason: error instanceof Error ? error.message : String(error) });
 }

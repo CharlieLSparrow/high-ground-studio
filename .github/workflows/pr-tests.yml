@@ -27,6 +27,8 @@ jobs:
         run: |
           node --test scripts/ci/audit-repository-contract.test.mjs
           node scripts/ci/audit-repository-contract.mjs
+          node --test scripts/ci/audit-tracked-artifacts.test.mjs
+          node scripts/ci/audit-tracked-artifacts.mjs
           node --test scripts/dev/quipsly-local-doctor.test.mjs
 
       - name: Reject added secret material

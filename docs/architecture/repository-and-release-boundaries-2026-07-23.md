@@ -138,6 +138,9 @@ it is not the runtime CDN and not the home for recordings or generated media.
 
 - Release only committed, source-labeled contexts.
 - Block oversized contexts.
+- Reject tracked dependency/build caches, interpreter bytecode, local
+  databases, runtime PID files, editor backups, and operating-system metadata
+  across the complete tree.
 - Keep local media and generated artifacts ignored and outside application
   directories.
 - Remove the obsolete duplicate deployment workflow after confirming the

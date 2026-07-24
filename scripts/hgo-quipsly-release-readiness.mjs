@@ -9,6 +9,12 @@ const ROOT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..");
 const args = new Set(process.argv.slice(2));
 const jsonOutput = args.has("--json");
 const localOnly = args.has("--local-only");
+const productionBuildNodeOptions = [
+  process.env.NODE_OPTIONS
+    ?.replace(/(?:^|\s)--max[-_]old[-_]space[-_]size(?:=|\s+)\d+/g, " ")
+    .trim(),
+  "--max-old-space-size=4096",
+].filter(Boolean).join(" ");
 
 function parseJson(value) {
   try {
@@ -172,6 +178,7 @@ const localCheckRunners = [
         DATABASE_URL: process.env.DATABASE_URL
           || "postgresql://quipsly_build:quipsly_build@127.0.0.1:5432/quipsly_build",
         NEXT_TELEMETRY_DISABLED: "1",
+        NODE_OPTIONS: productionBuildNodeOptions,
       },
       cleanPaths: ["apps/quipsly/.next"],
       lockName: "next-production-build",
@@ -189,6 +196,7 @@ const localCheckRunners = [
         DATABASE_URL: process.env.DATABASE_URL
           || "postgresql://quipsly_build:quipsly_build@127.0.0.1:5432/quipsly_build",
         NEXT_TELEMETRY_DISABLED: "1",
+        NODE_OPTIONS: productionBuildNodeOptions,
       },
       cleanPaths: ["apps/web/.next"],
       lockName: "next-production-build",

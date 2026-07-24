@@ -32,6 +32,8 @@ export const DEFAULT_CONTRACT = {
     "scripts/ci/audit-changed-secrets.test.mjs",
     "scripts/ci/audit-repository-contract.mjs",
     "scripts/ci/audit-repository-contract.test.mjs",
+    "scripts/ci/audit-tracked-artifacts.mjs",
+    "scripts/ci/audit-tracked-artifacts.test.mjs",
   ],
   maintainedMarkdown: [
     "README.md",
