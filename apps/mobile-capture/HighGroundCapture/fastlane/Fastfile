@@ -1,6 +1,7 @@
 require "fileutils"
 require "digest"
 require "json"
+require "time"
 
 default_platform(:ios)
 
@@ -24,7 +25,9 @@ def release_paths(options)
   build = get_build_number(xcodeproj: PROJECT_PATH)
   base_root = File.expand_path(options[:output_directory] || ENV.fetch("QUIPSLY_CAPTURE_RELEASE_DIR", "/tmp/quipsly-capture-release"))
   source_revision = ENV["QUIPSLY_CAPTURE_SOURCE_REVISION"].to_s
+  release_run_id = ENV["QUIPSLY_CAPTURE_RELEASE_RUN_ID"].to_s
   root = source_revision.empty? ? base_root : File.join(base_root, source_revision[0, 12])
+  root = File.join(root, release_run_id) unless release_run_id.empty?
   stem = "QuipslyCapture-#{version}.#{build}"
 
   {
@@ -36,6 +39,29 @@ def release_paths(options)
     output_name: "#{stem}.ipa",
     ipa_path: File.join(root, "#{stem}.ipa"),
   }
+end
+
+def release_receipt_path(paths)
+  File.join(
+    paths[:output_directory],
+    "QuipslyCapture-#{paths[:version]}.#{paths[:build]}-release-receipt.json",
+  )
+end
+
+def write_release_receipt(receipt_path, receipt)
+  temporary_path = "#{receipt_path}.tmp-#{Process.pid}"
+  File.write(temporary_path, JSON.pretty_generate(receipt) + "\n")
+  FileUtils.mv(temporary_path, receipt_path)
+ensure
+  FileUtils.rm_f(temporary_path) if defined?(temporary_path)
+end
+
+def update_release_receipt(paths)
+  receipt_path = release_receipt_path(paths)
+  receipt = JSON.parse(File.read(receipt_path))
+  yield(receipt)
+  write_release_receipt(receipt_path, receipt)
+  receipt_path
 end
 
 platform :ios do
@@ -86,6 +112,12 @@ platform :ios do
     UI.user_error!("Commit the Capture release slice before archiving:\n#{capture_status}") unless capture_status.empty?
 
     source_revision = sh("git", "-C", REPO_ROOT, "rev-parse", "HEAD", log: false).strip
+    expected_revision = ENV["QUIPSLY_CAPTURE_SOURCE_REVISION"].to_s
+    if !expected_revision.empty? && expected_revision != source_revision
+      UI.user_error!(
+        "Release worktree is at #{source_revision}, not requested revision #{expected_revision}.",
+      )
+    end
     ENV["QUIPSLY_CAPTURE_SOURCE_REVISION"] = source_revision
     paths = release_paths(options)
     FileUtils.mkdir_p(paths[:output_directory])
@@ -119,22 +151,28 @@ platform :ios do
     FileUtils.mv(exported_ipa, paths[:ipa_path])
 
     sh(ARTIFACT_VERIFIER, paths[:archive_path], paths[:ipa_path])
-    receipt_path = File.join(paths[:output_directory], "QuipslyCapture-#{paths[:version]}.#{paths[:build]}-release-receipt.json")
-    File.write(
+    receipt_path = release_receipt_path(paths)
+    write_release_receipt(
       receipt_path,
-      JSON.pretty_generate(
-        {
-          schema: "quipsly-capture-release-receipt-v1",
-          sourceRevision: source_revision,
-          version: paths[:version],
-          build: paths[:build],
-          archivePath: paths[:archive_path],
-          ipaPath: paths[:ipa_path],
-          ipaBytes: File.size(paths[:ipa_path]),
-          ipaSHA256: Digest::SHA256.file(paths[:ipa_path]).hexdigest,
-          uploadPerformed: false,
-        },
-      ) + "\n",
+      {
+        schema: "quipsly-capture-release-receipt-v1",
+        builtAt: Time.now.utc.iso8601,
+        sourceRevision: source_revision,
+        sourceIsolation: ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1" ? "detached-worktree" : "current-worktree",
+        releaseRunID: ENV["QUIPSLY_CAPTURE_RELEASE_RUN_ID"],
+        version: paths[:version],
+        build: paths[:build],
+        archivePath: paths[:archive_path],
+        ipaPath: paths[:ipa_path],
+        ipaBytes: File.size(paths[:ipa_path]),
+        ipaSHA256: Digest::SHA256.file(paths[:ipa_path]).hexdigest,
+        uploadAttempted: false,
+        uploadPerformed: false,
+        uploadOutcome: "not-attempted",
+        buildProcessingWaitReturned: false,
+        testerAssignmentPerformed: false,
+        physicalTestFlightInstallReadbackPerformed: false,
+      },
     )
     UI.success("Verified Quipsly Capture #{paths[:version]} (#{paths[:build]}) at #{paths[:ipa_path]}")
     UI.success("Release receipt: #{receipt_path}")
@@ -142,12 +180,22 @@ platform :ios do
 
   desc "Build and upload to TestFlight without silently changing the committed build number"
   lane :beta do |options|
+    unless ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1"
+      UI.user_error!(
+        "TestFlight uploads must use scripts/deploy-testflight.sh from an exact committed revision.",
+      )
+    end
     api_key_path = options[:api_key_path] || ENV["APP_STORE_CONNECT_API_KEY_PATH"]
     UI.user_error!("Set APP_STORE_CONNECT_API_KEY_PATH to a Fastlane App Store Connect API key JSON file.") if api_key_path.to_s.empty?
 
     ui_test(device: options[:device])
     release(options)
     paths = release_paths(options)
+    update_release_receipt(paths) do |receipt|
+      receipt["uploadAttempted"] = true
+      receipt["uploadAttemptedAt"] = Time.now.utc.iso8601
+      receipt["uploadOutcome"] = "unknown-until-app-store-connect-readback"
+    end
     upload_to_testflight(
       api_key_path: File.expand_path(api_key_path),
       ipa: paths[:ipa_path],
@@ -158,5 +206,21 @@ platform :ios do
       distribute_external: false,
       notify_external_testers: false,
     )
+    receipt_path = update_release_receipt(paths) do |receipt|
+      receipt["uploadAttempted"] = true
+      receipt["uploadPerformed"] = true
+      receipt["uploadReturnedAt"] = Time.now.utc.iso8601
+      receipt["uploadOutcome"] = "returned-successfully"
+      receipt["buildProcessingWaitReturned"] = true
+      receipt["externalDistributionRequested"] = false
+      receipt["externalNotificationRequested"] = false
+      receipt["testerAssignmentPerformed"] = false
+      receipt["physicalTestFlightInstallReadbackPerformed"] = false
+    end
+    UI.success("TestFlight upload and processing wait returned successfully.")
+    UI.important(
+      "Tester assignment and a physical TestFlight install still require independent readback.",
+    )
+    UI.success("Updated release receipt: #{receipt_path}")
   end
 end

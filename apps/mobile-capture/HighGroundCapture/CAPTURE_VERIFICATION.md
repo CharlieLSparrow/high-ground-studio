@@ -24,7 +24,7 @@ Passing an earlier gate does not imply a later gate.
 
 | Finding | Candidate disposition |
 |---|---|
-| Prototype-heavy iPhone navigation obscured the recording task | Replaced by four destinations: Today, Record, Library, Account. |
+| Prototype-heavy iPhone navigation obscured the recording task | Replaced by five destinations: Today, Record, Work, Library, Account. |
 | Recording, room join, provider egress, upload, and verification could read as one state | Separate controls, labels, receipts, and state vocabularies. Joining is never described as recording. |
 | Local source safety depended too heavily on in-memory/UI state | Added a preallocated UUID, durable `armed` source row and START receipt before recorder start, protected owner sidecars/last-known-good ledgers, crash validation, and no automatic deletion. |
 | An interrupted M4A could be called recovered without proving playback | Launch recovery persists a non-playable, relaunch-requeued `Validating preserved audio` state, then a sequential utility task proves positive duration and decodes through declared EOF before durable promotion; incomplete/corrupt bytes stay preserved as `Audio needs repair` and are not auditioned or retried. |
@@ -56,10 +56,12 @@ The final local run records exact results after all hardening changes settled. S
 | Gate | Command or proof | Result |
 |---|---|---|
 | Privacy manifest | `plutil -lint HighGroundCapture/PrivacyInfo.xcprivacy` | PASS — valid plist |
-| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 628/628 |
+| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 635/635 |
 | Owner isolation | `node --test scripts/quipsly-ios-capture-account-isolation.test.mjs` | PASS — 15/15 |
 | iOS source durability | `node scripts/quipsly-ios-capture-durability-contract.test.mjs` | PASS — 50/50 |
-| Mobile source contracts | `node scripts/quipsly-mobile-capture-contract-smoke.mjs --source-only=1` | PASS — 47/47 |
+| Mobile source contracts | `node scripts/quipsly-mobile-capture-contract-smoke.mjs --source-only=1` | PASS — 74/74 source; 104/104 with local network |
+| Committed release isolation | `scripts/release/quipsly-capture-release-from-commit.test.sh` | PASS — exact SHA, dirty-source exclusion, argument/output preservation, cleanup |
+| Repository TypeScript authority | `bash scripts/ci/typecheck-typescript-7.sh` | PASS — 21/21 on pinned TypeScript 7.0.2 |
 | Security boundaries | `node --experimental-strip-types scripts/quipsly-mobile-capture-security.test.mjs` | PASS — 6/6 |
 | Resumable upload | `node scripts/quipsly-mobile-capture-resumable-contract.test.mjs` | PASS — 6/6 |
 | Ingestion idempotency | `node scripts/quipsly-mobile-capture-ingestion-idempotency.test.mjs` | PASS |
@@ -75,7 +77,7 @@ The final local run records exact results after all hardening changes settled. S
 | Static analysis | generic iOS Simulator `xcodebuild analyze` | PASS |
 | Unsigned Release | generic iOS device, signing disabled | PASS — two deprecation warnings confined to deferred `ExportManager` / `NativeEditorView` prototypes |
 | Capture UX, native auth, and Share extension | focused `CaptureExperienceUITests`, `CaptureLoginExperienceUITests`, and `ShareCaptureExtensionUITests` | PASS — 26/26, no skips; `/tmp/quipsly-account-deletion-full-ui.xcresult` |
-| Visual QA | Today, Record, Library, Account; light/dark, large type, and accessibility XXXL | PASS — final visual surfaces inspected; later consent-actor and test-only autofill changes are nonvisual, with final UI suite 6/6 |
+| Visual QA | Today, Record, Work, Library, Account; light/dark, large type, and accessibility XXXL | PASS — focused navigation and Work journeys plus signed local Work operation; physical TestFlight inspection remains open |
 | Patch hygiene | tracked-worktree `git diff --check` | PASS |
 
 ## External proof still required
@@ -93,6 +95,11 @@ These checks cannot be substituted with source inspection or Simulator output:
 - Confirm each resulting source is playable, remains visible in the correct account's Library, resumes upload, and becomes **Verified in Quipsly** without local deletion.
 - Join a Nest-issued LiveKit packet and prove CallKit activation/deactivation, remote participant updates, mute, disconnect/reset, and simultaneous local-source behavior.
 - Install the archived candidate through TestFlight and repeat the critical record/save/upload verification on the distributed binary.
+
+The canonical archive/upload procedure is
+[`docs/quipsly/ios-capture-release-runbook.md`](../../../docs/quipsly/ios-capture-release-runbook.md).
+It builds from one detached committed worktree and keeps upload, processing,
+tester assignment, and physical installation as separate receipt states.
 
 ## Release decision
 

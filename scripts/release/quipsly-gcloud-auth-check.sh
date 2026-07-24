@@ -64,7 +64,13 @@ if (!getApps().length) {
   });
 }
 
-await getAuth().listUsers(1);
+try {
+  await getAuth().listUsers(1);
+} catch (error) {
+  const safeCode = error?.errorInfo?.code ?? error?.code ?? "unknown";
+  console.error(`Firebase Admin authorization check failed (${safeCode}).`);
+  process.exit(1);
+}
 NODE
 ); then
   pass "Application Default Credentials can call Firebase Admin for ${FIREBASE_PROJECT_ID}."

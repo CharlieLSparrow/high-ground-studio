@@ -4,7 +4,7 @@ Quipsly Capture / `HighGroundCapture` is being prepared as an explicit-consent c
 
 ## Canonical 2026-07-18 candidate
 
-The release candidate is now the iPhone-only, iOS 17 capture-first shell documented in [`apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md`](../../apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md). Its customer navigation is **Today**, **Record**, **Library**, and **Account**. Older editor, manuscript, iPad, reviewer-report, and 360 surfaces described later in this file are supporting history or separate Studio work; they are not evidence that those features ship in Quipsly Capture.
+The release candidate is now the iPhone-only, iOS 17 capture-first shell documented in [`apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md`](../../apps/mobile-capture/HighGroundCapture/CAPTURE_ARCHITECTURE.md). Its customer navigation is **Today**, **Record**, **Work**, **Library**, and **Account**. Older editor, manuscript, iPad, reviewer-report, and 360 surfaces described later in this file are supporting history or separate Studio work; they are not evidence that those features ship in Quipsly Capture.
 
 The candidate uses protected owner-partitioned source, upload-job, and room-receipt ledgers; crash-safe Start/Stop receipts; durable database room-receipt and upload-reservation ledgers; separate LiveKit media and CallKit presentation/audio-activation roles; and direct private-GCS resumable v2 uploads with exact server verification. New uploads do not stream media through Cloud Run. Unsafe legacy multipart/chunk ingress returns `410` before reading request bytes. The local recording UUID binds the device source, room `captureId`, upload idempotency key, GCS control manifest, quota reservation, and final server evidence.
 
@@ -37,9 +37,9 @@ Automated build, security, accessibility, and contract evidence is recorded sepa
 - Recorder UI shows capture readiness, consent state, visible recording state, local fallback, upload/transcript readiness, privacy/deletion routes, and preserved-upload recovery.
 - `LocalRecordingLibrary`, the upload-job ledger, and the room-receipt outbox use protected owner partitions. Library listing, playback, sharing, retry, deletion, and receipt delivery fail closed unless the current verified Quipsly actor owns the artifact; legacy unowned rows remain preserved but quarantined.
 - The Library has one destructive operation: the current owner can explicitly delete one local original after reviewing cloud-verification state, optionally sharing a copy, and acknowledging irreversible deletion. Active recording/upload/verification work blocks the action. The app commits a protected tombstone with deletion time, original byte count, and cloud-verification state before removing bytes, never automatically prunes sources, and does not delete cloud media or account evidence through this action.
-- The four-tab candidate exposes join/mute/leave controls but no end-user provider-recording or receipt-slot action. Nest retains staff/operator egress start/stop/reconcile routes, and production START is interlocked until an idempotent durable command/outbox, per-room lock, and provider reconciliation exist. STOP/reconcile remain available for safety. Only non-production integration can opt into START with both `LIVEKIT_EGRESS_ENABLED=true` and `LIVEKIT_EGRESS_UNSAFE_LOCAL_DEV=true`. Joining a room still does not start recording.
+- The five-tab candidate exposes join/mute/leave controls but no end-user provider-recording or receipt-slot action. Nest retains staff/operator egress start/stop/reconcile routes, and production START is interlocked until an idempotent durable command/outbox, per-room lock, and provider reconciliation exist. STOP/reconcile remain available for safety. Only non-production integration can opt into START with both `LIVEKIT_EGRESS_ENABLED=true` and `LIVEKIT_EGRESS_UNSAFE_LOCAL_DEV=true`. Joining a room still does not start recording.
 - Provider room runtime now has an explicit LiveKit dependency validation path. `ProviderRoomController` uses a real LiveKit `Room.connect(url:token:)` path when the SDK is linked, while CallKit presents the native call surface. Server join preparation still only returns a short-lived room-scoped token; actual provider join happens in the native client, and recording remains separate.
-- Supporting legacy Session/Studio panels—not the four-tab Capture candidate—distinguish LiveKit join readiness from server-recording readiness and expose provider/storage diagnostics for operators.
+- Supporting legacy Session/Studio panels—not the five-tab Capture candidate—distinguish LiveKit join readiness from server-recording readiness and expose provider/storage diagnostics for operators.
 - The legacy Session live-room panel includes a `CallKitBoundaryCard`; the Capture candidate instead keeps equivalent join-versus-recording truth in its compact live-room disclosure and source-truth copy.
 - Provider recording receipt slots are not counted as recordings and cannot run transcription. They are visible evidence slots only until verified provider media is attached.
 - Legacy Session/Studio after-capture and lifecycle cards decode provider receipt slots and shared `safeActions`; these are supporting operator history, not current Capture navigation or App Review evidence.
@@ -231,7 +231,7 @@ configured but production START remains interlocked, so App Review, beta testers
 humans, and agents can see that joining, local recording, and server recording
 are separate states.
 
-Legacy native iPhone/iPad Session screens, outside the four-tab Capture candidate, show this readback in
+Legacy native iPhone/iPad Session screens, outside the five-tab Capture candidate, show this readback in
 `MobileCaptureReviewDigestPanel`, and each session can render
 `MobileCaptureActionPacketCard` beside readiness, journey, and lifecycle cards.
 Reviewer setup can be checked in the app without asking testers to run curl
@@ -370,7 +370,7 @@ QUIPSLY_CAPTURE_UI_TEST_BASE_URL="http://127.0.0.1:3012" \
 apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh
 ```
 
-This does not bypass auth. It makes the real native Firebase login and Quipsly bearer verification point at the intended Nest backend in DEBUG builds. The smoke expects a signed-in account with at least one capture session, then verifies the four-tab shell, selected session, consent strip, dominant local recorder, subordinate provider-room disclosure, join control, and source-truth copy.
+This does not bypass auth. It makes the real native Firebase login and Quipsly bearer verification point at the intended Nest backend in DEBUG builds. The smoke expects a signed-in account with at least one capture session, then verifies the five-tab shell, selected session, consent strip, dominant local recorder, subordinate provider-room disclosure, join control, and source-truth copy.
 
 For a one-shot generated-user proof, run the generated mobile capture auth smoke with runtime UI enabled:
 
@@ -411,11 +411,24 @@ Before TestFlight or App Store submission, generate Xcode's privacy report from 
 - Diagnostics: only if crash/log tooling is added; do not claim it until a real SDK exists.
 - Tracking: no.
 
+The source and packaged app declare `ITSAppUsesNonExemptEncryption = NO`.
+Current app-owned CryptoKit calls are SHA-256 integrity/identifier hashing; the
+app otherwise uses operating-system HTTPS/TLS and the linked LiveKit/WebRTC
+transport and does not enable a custom or LiveKit end-to-end encryption
+feature. This is evidence for no **non-exempt** encryption, not a substitute
+for the account holder's export-compliance responsibility when dependencies or
+media security behavior change. The archive verifier requires the declaration
+in the packaged binary. If App Store Connect still reports Missing Compliance,
+inspect that exact processed build rather than guessing through its legal
+questionnaire.
+
 ## Review notes draft
 
 Quipsly Capture records only after the signed-in user selects a Quipsly session, opts into audio recording, confirms that everyone else who may be heard was told and agreed, and current required participant consent permits the Start boundary. Recording state is shown in the app while capture is active. The candidate is designed to store recordings locally first and upload them directly to private Google Cloud Storage with an authenticated resumable v2 session; production upload claims remain conditional on the live schema, CORS, reviewer, and physical-device gates below. Quipsly labels a copy verified only after checking its object generation, exact size, type, CRC32C, and SHA-256. The app never prunes local sources automatically. The signed-in owner may separately delete one local original after an explicit irreversible-deletion confirmation; this preserves a protected audit tombstone and does not delete cloud or account evidence. Users can initiate account deletion in the app, but release remains blocked until Quipsly's full retention-aware executor and completion-confirmation workflow is operational.
 
 ## Remaining blockers before App Store submission
+
+- 2026-07-24 release-boundary hardening: `scripts/deploy-testflight.sh` now resolves one explicit commit and runs the pinned Capture release inside a disposable detached worktree. The release receipt distinguishes archive creation, upload return/processing wait, tester assignment, and physical TestFlight installation. The canonical procedure is [`ios-capture-release-runbook.md`](./ios-capture-release-runbook.md). Local regression proof excludes an uncommitted sentinel from the runner and removes the linked worktree afterward; this is not an upload, App Store Connect readback, or physical-device result.
 
 - 2026-07-21 release-readiness pass: local code/build evidence is healthy again, but TestFlight remains externally blocked. `scripts/quipsly-mobile-capture-preflight.sh` passes after repairing its stale recording-promotion static assertion and routing TypeScript execution through the repo TS extension loader. The focused session-evidence smoke passes, Quipsly TypeScript passes, and unsigned iOS simulator build with LiveKit linked passes. Current live probes for `nest.quipsly.com`, `nest.quipsly.com/privacy`, `nest.quipsly.com/api/mac/firebase-client-config`, `app.highgroundodyssey.com/api/health`, and `highgroundodyssey.com` all return Google Frontend HTTP 503 before application route contracts are reached.
 - 2026-07-21 Apple signing and upload gates cleared: after the account agreement was accepted, `xcodebuild ... -allowProvisioningUpdates archive` created the app and share-extension profiles and produced signed archive `/tmp/QuipslyCapture-20260721151703.xcarchive`. Automatic App Store Connect distribution export produced `/tmp/QuipslyCapture-AppStoreExport-20260721151703/HighGroundCapture.ipa`; strict signature verification passed with Apple Distribution profiles for both targets. Build `1.0 (1)` then uploaded successfully and entered App Store Connect processing. Xcode warned that the vendor LiveKitWebRTC and RustLiveKitUniFFI frameworks did not include matching dSYMs; the warning did not reject the upload but leaves third-party crash symbolication incomplete. This is upload evidence, not processing completion, tester availability, TestFlight installation, or physical-device proof.

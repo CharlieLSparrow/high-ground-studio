@@ -16,6 +16,7 @@ gemfile_lock="$capture_root/Gemfile.lock"
 ruby_version_file="$capture_root/.ruby-version"
 fastlane_runner="$capture_root/scripts/run-fastlane.sh"
 testflight_runner="$capture_root/../../../scripts/deploy-testflight.sh"
+isolated_release_runner="$capture_root/../../../scripts/release/quipsly-capture-release-from-commit.sh"
 developer_dir="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 fail() {
@@ -75,6 +76,9 @@ require_text "$app_info_plist" "Audio recording does not use the camera" "Camera
 require_text "$app_info_plist" "NSMicrophoneUsageDescription" "Microphone purpose key is configured"
 require_text "$app_info_plist" "after you explicitly start recording" "Microphone purpose string requires explicit capture"
 require_text "$app_info_plist" "UIBackgroundModes" "Audio background mode key is configured"
+[[ "$(/usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$app_info_plist")" == "false" ]] ||
+  fail "Export compliance metadata must declare no non-exempt encryption"
+pass "Export compliance metadata declares no non-exempt encryption"
 /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$app_info_plist" | grep -q "audio" ||
   fail "Audio background mode does not contain audio"
 pass "Audio background mode contains audio"
@@ -90,13 +94,22 @@ require_absent_text "$fastfile" "HighGroundCapture.xcworkspace" "Fastlane no lon
 require_absent_text "$fastfile" "increment_build_number" "Fastlane does not silently mutate the committed build number"
 require_text "$fastfile" "only_testing: DETERMINISTIC_UI_TESTS" "TestFlight runs the deterministic Capture UI scope"
 require_text "$fastfile" "parallel_testing: false" "Capture UI tests run serially to avoid cloned Simulator launch noise"
+require_text "$fastfile" 'ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1"' "TestFlight upload requires committed-source isolation"
+require_text "$fastfile" 'receipt["uploadPerformed"] = true' "Successful TestFlight return updates the release receipt"
+require_text "$fastfile" 'unknown-until-app-store-connect-readback' "Ambiguous TestFlight attempts require provider readback"
+require_text "$fastfile" 'write_release_receipt' "Release receipt updates use the atomic writer"
+require_text "$fastfile" 'physicalTestFlightInstallReadbackPerformed' "Release receipt preserves the physical-install proof boundary"
 require_text "$gemfile" 'ruby file: ".ruby-version"' "Capture Ruby is source-pinned"
 require_regex "$gemfile" '^gem "fastlane", "[0-9]+\.[0-9]+\.[0-9]+"$' "Fastlane is directly pinned"
 require_regex "$ruby_version_file" '^[0-9]+\.[0-9]+\.[0-9]+$' "Pinned Ruby version is valid"
 require_regex "$gemfile_lock" '^BUNDLED WITH$' "Bundler version is locked"
 require_text "$fastlane_runner" 'bundle" install --jobs 4 --retry 3' "Capture runner installs the locked dependency graph"
 require_text "$fastlane_runner" 'git diff --quiet -- Gemfile Gemfile.lock .ruby-version' "Capture runner rejects dependency drift"
-require_text "$testflight_runner" 'exec "${capture_runner}" beta "$@"' "TestFlight entry point uses the pinned Capture runner"
+require_text "$isolated_release_runner" 'worktree add --detach "$worktree_path" "$source_revision"' "Capture release uses a detached committed worktree"
+require_text "$isolated_release_runner" 'export QUIPSLY_CAPTURE_RELEASE_ISOLATED=1' "Capture release marks the isolated source boundary"
+require_text "$isolated_release_runner" 'export QUIPSLY_CAPTURE_RELEASE_RUN_ID=' "Capture release isolates each invocation's evidence"
+require_text "$isolated_release_runner" '"$capture_runner" "$lane"' "Isolated release invokes the pinned Capture runner"
+require_text "$testflight_runner" 'exec "${release_runner}" beta "$@"' "TestFlight entry point uses committed-source isolation"
 require_absent_text "$testflight_runner" "gem install bundler" "TestFlight entry point never mutates Apple system Ruby"
 
 app_settings="$(

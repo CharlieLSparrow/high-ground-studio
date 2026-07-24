@@ -68,6 +68,8 @@ verify_capture_app() {
   [[ "$microphone_purpose" == *"explicitly start recording"* ]] || fail "Packaged microphone purpose string is missing the explicit-start boundary"
   pass "Packaged NSMicrophoneUsageDescription is present and bounded"
 
+  require_plist_value "$info_plist" "ITSAppUsesNonExemptEncryption" "false"
+
   /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$info_plist" 2>/dev/null | grep -q "audio" ||
     fail "Packaged app does not declare audio background mode"
   pass "Packaged app declares audio background mode"

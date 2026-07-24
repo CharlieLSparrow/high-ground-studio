@@ -223,6 +223,12 @@ requireIncludes(appInfoText, "only after you explicitly choose video", "camera u
 requireIncludes(appInfoText, "Audio recording does not use the camera", "camera usage audio boundary");
 requireIncludes(providerRoomText, "configuration.supportsVideo = false", "audio-only CallKit presentation");
 requireIncludes(appInfoText, "UIBackgroundModes", "background audio mode");
+requireIncludes(appInfoText, "ITSAppUsesNonExemptEncryption", "export compliance declaration");
+requireRegex(
+  appInfoText,
+  /<key>ITSAppUsesNonExemptEncryption<\/key>\s*<false\/>/,
+  "no non-exempt encryption declaration",
+);
 requireRegex(projectText, /PRODUCT_BUNDLE_IDENTIFIER = com\.highgroundodyssey\.HighGroundCapture;/, "production bundle identifier");
 requireRegex(projectText, /IPHONEOS_DEPLOYMENT_TARGET = 17\.0;/, "supported iOS 17 deployment floor");
 requireRegex(projectText, /SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";/, "iPhone-only supported platforms");
