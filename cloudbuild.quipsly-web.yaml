@@ -57,5 +57,28 @@ steps:
         echo "Could not read back pushed image $${image}." >&2
         exit 1
 
+  - id: verify-quipsly-route-bundles
+    name: ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}
+    entrypoint: node
+    args:
+      - -e
+      - |
+        const fs = require("node:fs");
+        const manifestPath = "/app/apps/quipsly/.next/app-path-routes-manifest.json";
+        const routes = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+        const requiredRoutes = new Map([
+          ["/(app)/outputs/page", "/outputs"],
+          ["/(app)/outputs/[outputId]/page", "/outputs/[outputId]"],
+          ["/api/mac/session-check/route", "/api/mac/session-check"],
+        ]);
+        for (const [entry, route] of requiredRoutes) {
+          if (routes[entry] !== route) {
+            throw new Error(
+              `Missing required route ${route}: ${entry} resolved to ${routes[entry] ?? "nothing"}`,
+            );
+          }
+        }
+        console.log(`PASS Verified ${requiredRoutes.size} required Quipsly routes in the image.`);
+
 options:
   machineType: E2_HIGHCPU_32

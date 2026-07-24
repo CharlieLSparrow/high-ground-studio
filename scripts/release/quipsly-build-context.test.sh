@@ -20,6 +20,8 @@ expected_sha="$(git -C "${repo_root}" rev-parse "${source_ref}^{commit}")"
 
 [[ "${context}" == "${context_dir}" ]]
 [[ -f "${context}/apps/quipsly/Dockerfile" ]]
+[[ -f "${context}/apps/quipsly/src/app/(app)/outputs/page.tsx" ]]
+[[ -f "${context}/apps/quipsly/src/app/(app)/outputs/[outputId]/page.tsx" ]]
 [[ -f "${context}/packages/quipsly-domain/package.json" ]]
 [[ -f "${context}/prisma/schema.prisma" ]]
 [[ -f "${context}/quipsly-release-source.json" ]]
@@ -29,6 +31,31 @@ expected_sha="$(git -C "${repo_root}" rev-parse "${source_ref}^{commit}")"
 [[ ! -e "${context}/apps/QuipslyStudio" ]]
 [[ ! -e "${context}/apps/mobile-capture" ]]
 [[ ! -e "${context}/node_modules" ]]
+
+ignore_probe="${test_root}/gcloud-ignore-probe"
+mkdir -p \
+  "${ignore_probe}/apps/quipsly/src/app/(app)/outputs/[outputId]" \
+  "${ignore_probe}/outputs"
+cp "${context}/.gcloudignore" "${ignore_probe}/.gitignore"
+touch \
+  "${ignore_probe}/apps/quipsly/src/app/(app)/outputs/page.tsx" \
+  "${ignore_probe}/apps/quipsly/src/app/(app)/outputs/[outputId]/page.tsx" \
+  "${ignore_probe}/outputs/generated.txt"
+git -C "${ignore_probe}" init --quiet
+
+if git -C "${ignore_probe}" check-ignore --quiet --no-index \
+  "apps/quipsly/src/app/(app)/outputs/page.tsx" \
+  "apps/quipsly/src/app/(app)/outputs/[outputId]/page.tsx"; then
+  echo "Cloud upload ignore rules remove a required Quipsly route." >&2
+  exit 1
+fi
+git -C "${ignore_probe}" check-ignore --quiet --no-index "outputs/generated.txt"
+
+if command -v gcloud >/dev/null 2>&1; then
+  upload_files="$(cd "${context}" && gcloud meta list-files-for-upload .)"
+  grep -Fqx "apps/quipsly/src/app/(app)/outputs/page.tsx" <<<"${upload_files}"
+  grep -Fqx "apps/quipsly/src/app/(app)/outputs/[outputId]/page.tsx" <<<"${upload_files}"
+fi
 
 node - "${context}/quipsly-release-source.json" "${expected_sha}" <<'NODE'
 const fs = require("node:fs");

@@ -51,26 +51,26 @@ pnpm-store/
 *.service-account.json
 *credentials*.json
 *.log
-logs/
+/logs/
 dev.db
 *.sqlite
 *.sqlite3
 
 # Local scratch, generated assets, and heavy non-build roots
-artifacts/
-scratch/
-DerivedData/
+/artifacts/
+/scratch/
+/DerivedData/
 **/DerivedData/
-tmp/
-.tmp/
-project_audit.json
-pathways/
-assets/
-output/
-outputs/
-downloads/
-Downloads/
-HighGroundMedia/
+/tmp/
+/.tmp/
+/project_audit.json
+/pathways/
+/assets/
+/output/
+/outputs/
+/downloads/
+/Downloads/
+/HighGroundMedia/
 apps/quipsly-mac/
 
 # Quipsly app source uses route-local `assets/` component folders. Keep those
@@ -98,7 +98,7 @@ apps/web/content/_inbox/
 apps/web/content/_staging/
 
 # Repo-local documents and imported diagnostics
-docs/
+/docs/
 *.har
 *.docx
 *.txt
