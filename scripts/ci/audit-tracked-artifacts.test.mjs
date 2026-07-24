@@ -15,6 +15,7 @@ test("rejects generated caches, local databases, runtime state, and backups", ()
     "apps/editor/DerivedData/build.log",
     "apps/studio/reports/render.pid",
     "apps/web/src/app/page.backup.tsx",
+    "apps/web/next-env.d.ts",
     "dev.db",
     "pnpm-workspace.yaml.save",
   ];

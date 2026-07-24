@@ -115,6 +115,19 @@ for project_config in "${project_configs[@]}"; do
     exit 1
   fi
 
+  uses_next_runtime="$(
+    node -e '
+      const manifest = require(`./${process.argv[1]}`);
+      const scripts = Object.values(manifest.scripts ?? {});
+      process.stdout.write(scripts.some((script) => /\bnext (?:dev|build|start)\b/.test(script)) ? "true" : "false");
+    ' "$package_manifest"
+  )"
+
+  if [[ "$uses_next_runtime" == "true" ]]; then
+    echo "Generating Next route types for $project_directory"
+    pnpm --dir "$project_directory" exec next typegen
+  fi
+
   echo "Checking $project_config with pinned TypeScript $typescript_version"
   pnpm --dir "$project_directory" exec tsc \
     -p "$project_filename" \

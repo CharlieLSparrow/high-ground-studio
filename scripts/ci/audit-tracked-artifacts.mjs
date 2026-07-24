@@ -13,6 +13,7 @@ const FORBIDDEN_SEGMENTS = new Set([
 
 const FORBIDDEN_BASENAMES = new Set([
   ".DS_Store",
+  "next-env.d.ts",
 ]);
 
 const FORBIDDEN_SUFFIXES = [

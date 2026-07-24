@@ -72,11 +72,11 @@ jobs:
 
       - name: Typecheck High Ground web with pinned TypeScript 7
         if: steps.changes.outputs.web == 'true'
-        run: pnpm --filter web exec tsc --noEmit --incremental false
+        run: pnpm --filter web typecheck
 
       - name: Typecheck Quipsly with pinned TypeScript 7
         if: steps.changes.outputs.quipsly == 'true'
-        run: pnpm --filter quipsly exec tsc --noEmit --incremental false
+        run: pnpm --filter quipsly typecheck
 
       - name: Run committed Quipsly contract suite
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'

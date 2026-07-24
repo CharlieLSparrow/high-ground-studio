@@ -23,7 +23,7 @@ bash scripts/ci/typecheck-typescript-7.sh
 ## Nest
 
 ```bash
-pnpm --filter quipsly exec tsc --noEmit --incremental false
+pnpm --filter quipsly typecheck
 pnpm quipsly:contracts:test
 pnpm quipsly:release:local
 ```

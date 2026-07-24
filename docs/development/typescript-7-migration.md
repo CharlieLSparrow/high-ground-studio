@@ -27,6 +27,11 @@ Run the compiler contract locally with:
 bash scripts/ci/typecheck-typescript-7.sh
 ```
 
+For a Next.js project, the gate runs `next typegen` before the pinned compiler
+so route-aware types and ignored `next-env.d.ts` are generated from the current
+source rather than inherited from a developer's last `next dev` or
+`next build`.
+
 List the projects currently protected by the gate with:
 
 ```bash
