@@ -60,7 +60,7 @@ type NestDashboardPageProps = {
   searchParams?: Promise<{ view?: string | string[] }>;
 };
 
-export function normalizeProjectView(value: string | string[] | undefined): ProjectView {
+function normalizeProjectView(value: string | string[] | undefined): ProjectView {
   return typeof value === "string" && PROJECT_VIEWS.includes(value as ProjectView)
     ? value as ProjectView
     : "overview";

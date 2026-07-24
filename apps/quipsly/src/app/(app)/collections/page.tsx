@@ -241,7 +241,11 @@ async function loadCollections(): Promise<CollectionsSnapshot> {
   }
 }
 
-export default async function CollectionsPage({ searchParams }: { searchParams?: Promise<{ capture?: string | string[] }> } = {}) {
+type CollectionsPageProps = {
+  searchParams?: Promise<{ capture?: string | string[] }>;
+};
+
+export default async function CollectionsPage({ searchParams }: CollectionsPageProps) {
   const snapshot = await loadCollections();
   const params = await (searchParams ?? Promise.resolve<{ capture?: string | string[] }>({}));
   const requestedCaptureId = typeof params.capture === "string" ? params.capture.trim().slice(0, 200) : "";

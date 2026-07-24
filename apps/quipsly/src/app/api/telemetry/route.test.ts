@@ -6,7 +6,8 @@ jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest:
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
-import { GET, findSharpRetentionDrop } from "./route";
+import { findSharpRetentionDrop } from "./retention";
+import { GET } from "./route";
 
 const mockedPrisma = jest.mocked(getPrismaClient);
 const mockedSession = jest.mocked(getQuipslySessionFromRequest);

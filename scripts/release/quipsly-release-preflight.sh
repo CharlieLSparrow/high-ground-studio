@@ -12,12 +12,22 @@ CONTEXT_MAX_MIB="${CONTEXT_MAX_MIB:-300}"
 ALLOW_DIRTY_RELEASE="${ALLOW_DIRTY_RELEASE:-0}"
 RELEASE_CONTEXT_DIR="${RELEASE_CONTEXT_DIR:-}"
 QUIPSLY_PREFLIGHT_PURPOSE="${QUIPSLY_PREFLIGHT_PURPOSE:-audit}"
+QUIPSLY_PREFLIGHT_BUILD="${QUIPSLY_PREFLIGHT_BUILD:-1}"
 
 case "${QUIPSLY_PREFLIGHT_PURPOSE}" in
   audit|preview)
     ;;
   *)
     echo "QUIPSLY_PREFLIGHT_PURPOSE must be audit or preview." >&2
+    exit 2
+    ;;
+esac
+
+case "${QUIPSLY_PREFLIGHT_BUILD}" in
+  0|1)
+    ;;
+  *)
+    echo "QUIPSLY_PREFLIGHT_BUILD must be 0 or 1." >&2
     exit 2
     ;;
 esac
@@ -49,6 +59,7 @@ if [[ -z "${RELEASE_CONTEXT_DIR}" ]]; then
   RELEASE_CONTEXT_DIR="${preflight_context}" \
     SOURCE_REF="${resolved_source_sha}" \
     QUIPSLY_PREFLIGHT_PURPOSE="${QUIPSLY_PREFLIGHT_PURPOSE}" \
+    QUIPSLY_PREFLIGHT_BUILD="${QUIPSLY_PREFLIGHT_BUILD}" \
     bash "${BASH_SOURCE[0]}"
   exit $?
 fi
@@ -222,6 +233,18 @@ PY
   fi
 else
   warn "Could not measure Cloud Build upload context with gcloud meta list-files-for-upload."
+fi
+
+print_step "Exact committed production build"
+
+if [[ "${QUIPSLY_PREFLIGHT_BUILD}" == "1" ]]; then
+  if bash "${release_source_root}/scripts/release/quipsly-verify-release-build.sh" "${release_source_root}"; then
+    pass "Strict Nest production build succeeded from the materialized commit."
+  else
+    fail "Strict Nest production build failed from the materialized commit. Cloud Build was not started."
+  fi
+else
+  warn "Exact committed production build was explicitly skipped with QUIPSLY_PREFLIGHT_BUILD=0."
 fi
 
 print_step "Cloud Run service"

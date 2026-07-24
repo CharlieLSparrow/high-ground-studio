@@ -26,6 +26,13 @@ test("standalone preflight materializes the committed Nest release context", () 
   assert.match(gcloudIgnore, /\*\*\/\.next-\*\//);
 });
 
+test("preflight compiles the exact committed production bundle before Cloud Build", () => {
+  assert.match(preflight, /QUIPSLY_PREFLIGHT_BUILD="\$\{QUIPSLY_PREFLIGHT_BUILD:-1\}"/);
+  assert.match(preflight, /quipsly-verify-release-build\.sh/);
+  assert.match(preflight, /Strict Nest production build succeeded from the materialized commit/);
+  assert.doesNotMatch(deploy, /QUIPSLY_PREFLIGHT_BUILD=0/);
+});
+
 test("no-traffic preview can repair drift without weakening candidate checks", () => {
   assert.match(deploy, /QUIPSLY_PREFLIGHT_PURPOSE=preview/);
   assert.match(
