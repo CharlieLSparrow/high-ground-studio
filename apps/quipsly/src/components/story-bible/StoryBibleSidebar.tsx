@@ -73,9 +73,14 @@ export function StoryBibleSidebar({
     return () => window.removeEventListener("quipsly:refresh-story-bible", handleRefresh);
   }, [fetchEntities, fetchActions]);
 
-  const handleProcessAction = async (actionId: string, status: "APPROVED" | "REJECTED") => {
+  const handleProcessAction = async (
+    actionId: string,
+    status: "proposed" | "approved" | "rejected" | "committed",
+  ) => {
     const previousActions = [...actions];
-    setActions((prev) => prev.filter((a) => a.id !== actionId));
+    setActions((prev) => status === "rejected" || status === "committed"
+      ? prev.filter((action) => action.id !== actionId)
+      : prev.map((action) => action.id === actionId ? { ...action, status } : action));
 
     try {
       const res = await fetch("/api/story-bible/actions", {
@@ -83,11 +88,15 @@ export function StoryBibleSidebar({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actionId, status }),
       });
-      if (!res.ok) throw new Error("Failed to process action");
-      if (status === "APPROVED") await fetchEntities();
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "The review decision was not recorded.");
+      }
+      if (status === "committed") await fetchEntities();
     } catch (error) {
       console.error("[StoryBibleSidebar] handleProcessAction rollback:", error);
       setActions(previousActions);
+      throw error;
     }
   };
 

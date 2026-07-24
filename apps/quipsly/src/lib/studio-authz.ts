@@ -30,9 +30,9 @@ export async function requireProjectAccess(
     throw new Error("Authorization failed: A valid projectId is required.");
   }
   
-  // NOTE: In production SaaS environments, this will resolve the user token
-  // from NextAuth/Clerk and query `StudioWorkspace` memberships.
-  // For the current local Alpha, we simply validate the ID exists in the db.
+  // NOTE: Project-level access should flow through the Firebase-backed
+  // Quipsly session actor and app-owned membership/access rows. This legacy
+  // helper only validates that the project exists for older Studio paths.
   
   const prisma = await import("@/lib/prisma").then(m => m.getPrismaClient());
   const project = await prisma.studioProject.findUnique({ where: { id: projectId } });

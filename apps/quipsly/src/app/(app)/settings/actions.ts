@@ -175,60 +175,22 @@ export async function updateOrgDetailsAction(orgId: string, name: string, descri
 }
 
 // 3. Invite Team Member
+//
+// Quipsly does not yet have a durable invitation record, expiring token, or
+// email delivery receipt. The former implementation created a User and granted
+// OrganizationMember access immediately, which made an invitation-shaped UI a
+// privilege-escalation endpoint. Keep this action fail-closed until the full
+// invitation lifecycle exists.
 export async function inviteTeamMemberAction(orgId: string, email: string, role: OrganizationRole) {
-  const user = await getSessionUser();
-  const prisma = getPrismaClient();
-
-  const callerMember = await prisma.organizationMember.findUnique({
-    where: { organizationId_userId: { organizationId: orgId, userId: user.id } },
-  });
-
-  if (!callerMember || (callerMember.role !== OrganizationRole.OWNER && callerMember.role !== OrganizationRole.ADMIN)) {
-    return { ok: false, error: "Unauthorized to invite team members." };
-  }
-
-  // Find or create target user
-  let targetUser = await prisma.user.findFirst({
-    where: { primaryEmail: email.trim().toLowerCase() },
-  });
-
-  if (!targetUser) {
-    targetUser = await prisma.user.create({
-      data: {
-        primaryEmail: email.trim().toLowerCase(),
-        name: email.split("@")[0],
-      },
-    });
-  }
-
-  // Check if already member
-  const existingMember = await prisma.organizationMember.findUnique({
-    where: { organizationId_userId: { organizationId: orgId, userId: targetUser.id } },
-  });
-
-  if (existingMember) {
-    return { ok: false, error: "User is already a member of this organization." };
-  }
-
-  await prisma.organizationMember.create({
-    data: {
-      organizationId: orgId,
-      userId: targetUser.id,
-      role,
-    },
-  });
-
-  await prisma.userEvent.create({
-    data: {
-      userId: user.id,
-      organizationId: orgId,
-      eventName: "Team Member Added",
-      payloadJson: JSON.stringify({ invitedEmail: email, role }),
-    },
-  });
-
-  revalidatePath("/settings");
-  return { ok: true };
+  void orgId;
+  void email;
+  void role;
+  return {
+    ok: false,
+    errorCode: "ORGANIZATION_INVITATION_UNAVAILABLE" as const,
+    error:
+      "Invitations are unavailable until Quipsly can issue an expiring invite, deliver it, and record acceptance. No account or membership was created.",
+  };
 }
 
 // 4. Remove Team Member
@@ -322,42 +284,20 @@ export async function updateMemberRoleAction(orgId: string, memberId: string, ro
   return { ok: true };
 }
 
-// 6. Update Subscription (Billing Engine simulation)
+// 6. Update Subscription
+//
+// A local plan row is not a provider checkout receipt. Never turn a simulated
+// form submission into an ACTIVE entitlement in the production data model.
 export async function updateSubscriptionAction(orgId: string, planId: string, status: SubscriptionStatus) {
-  const user = await getSessionUser();
-  const prisma = getPrismaClient();
-
-  const callerMember = await prisma.organizationMember.findUnique({
-    where: { organizationId_userId: { organizationId: orgId, userId: user.id } },
-  });
-
-  if (!callerMember || callerMember.role !== OrganizationRole.OWNER) {
-    return { ok: false, error: "Unauthorized: Only the Owner can modify subscriptions." };
-  }
-
-  const plan = await prisma.subscriptionPlan.findUnique({ where: { id: planId } });
-  if (!plan) return { ok: false, error: "Plan not found." };
-
-  await prisma.subscription.update({
-    where: { organizationId: orgId },
-    data: {
-      planId,
-      status,
-      currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // Extends 30 days
-    },
-  });
-
-  await prisma.userEvent.create({
-    data: {
-      userId: user.id,
-      organizationId: orgId,
-      eventName: "Subscription Modified",
-      payloadJson: JSON.stringify({ newPlan: plan.name, status }),
-    },
-  });
-
-  revalidatePath("/settings");
-  return { ok: true };
+  void orgId;
+  void planId;
+  void status;
+  return {
+    ok: false,
+    errorCode: "BILLING_PROVIDER_NOT_CONNECTED" as const,
+    error:
+      "Billing changes are unavailable until Quipsly has a receipt-backed checkout and provider webhook. No subscription was changed.",
+  };
 }
 
 // 7. Submit Feedback Ticket

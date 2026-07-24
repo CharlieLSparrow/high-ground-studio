@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity, BookOpen, Bot, Check, ChevronRight, ClipboardList, Download, Feather, HeartHandshake, Loader2, PackageCheck, RotateCcw, ShieldCheck, Sparkles, X } from "lucide-react";
 import type { DocumentBoundary, ViewDefinition } from "@/app/(app)/create/types";
-import { searchExamplesAction, searchQuotesAction, saveAssistantAction, undoSavedAssistantAction, syncEmbeddingsAction } from "@/app/(app)/create/actions";
+import { syncEmbeddingsAction } from "@/app/(app)/create/actions";
 import { StoryBibleSidebar } from "./story-bible";
 
 export type { AssistantAction, AssistantActionStatus, AssistantPreviewCard, AssistantChange, AssistantResponse, AssistantSuggestion, AssistantBlockContext } from "./assistant-types";
@@ -20,7 +20,8 @@ function summarizeRisk(riskLevel: AssistantAction["riskLevel"]) {
 }
 
 function actionStatusClass(status: AssistantActionStatus) {
-  if (status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (["approved", "applied", "committed"].includes(status)) return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (["applying", "committing"].includes(status)) return "border-sky-200 bg-sky-50 text-sky-800";
   if (status === "rejected") return "border-slate-200 bg-slate-50 text-slate-600";
   if (status === "undone") return "border-amber-200 bg-amber-50 text-amber-800";
   return "border-sky-200 bg-sky-50 text-sky-800";
@@ -66,6 +67,30 @@ function summarizeText(value: string) {
   return sentences.slice(0, 2).join(" ").trim().slice(0, 520);
 }
 
+function EntityProposalEvidence({ action }: { action: AssistantAction }) {
+  if (action.kind !== "PROPOSE_ENTITY" && action.kind !== "PROPOSE_ENTITY_UPDATE") return null;
+  const attributes = action.payload.attributes && typeof action.payload.attributes === "object"
+    ? action.payload.attributes as Record<string, unknown>
+    : {};
+  const excerpt = typeof attributes.sourceExcerpt === "string" ? attributes.sourceExcerpt : "";
+  const sourceBlockId = typeof action.payload.sourceBlockId === "string"
+    ? action.payload.sourceBlockId
+    : typeof attributes.sourceBlockId === "string"
+      ? attributes.sourceBlockId
+      : "";
+  return (
+    <div className="mt-3 overflow-hidden rounded-lg border border-sky-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-200 bg-sky-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-sky-900">
+        <span>Exact source evidence</span>
+        <span>{sourceBlockId ? "Block attached · rechecked at commit" : "Unique current match required at commit"}</span>
+      </div>
+      <div className="p-3 text-sm italic leading-6 text-slate-700">
+        {excerpt ? `“${excerpt}”` : "No exact excerpt was attached. This proposal cannot become canonical."}
+      </div>
+    </div>
+  );
+}
+
 export function QuipslyAssistantSidebar({
   projectId,
   projectSlug,
@@ -92,6 +117,7 @@ export function QuipslyAssistantSidebar({
   const [activeTab, setActiveTab] = useState<"CHAT" | "STORY_BIBLE">("CHAT");
   const [isOpen, setIsOpen] = useState(false);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [exportStatusIsError, setExportStatusIsError] = useState(false);
   const [syncingEmbeddings, setSyncingEmbeddings] = useState(false);
 
   const {
@@ -152,22 +178,27 @@ export function QuipslyAssistantSidebar({
     link.download = `quipsly-assistant-ledger-${projectSlug}-${Date.now()}.json`;
     link.click();
     URL.revokeObjectURL(url);
+    setExportStatusIsError(false);
     setExportStatus("Diagnostic JSON exported.");
     window.setTimeout(() => setExportStatus(null), 3000);
   };
 
   const handleSyncEmbeddings = async () => {
     setSyncingEmbeddings(true);
-    setExportStatus("Syncing embeddings...");
+    setExportStatusIsError(false);
+    setExportStatus("Refreshing the AI research index… Existing results remain available until this finishes.");
     try {
       const res = await syncEmbeddingsAction(projectId);
-      if (res.success && 'result' in res && res.result) {
-        setExportStatus(`Synced ${res.result.syncedBlocks} blocks & ${res.result.syncedQuotes} quotes!`);
+      if (res.success) {
+        setExportStatusIsError(false);
+        setExportStatus(`Research index refreshed: ${res.result.syncedBlocks} writing blocks and ${res.result.syncedQuotes} quotes via ${res.result.model}.`);
       } else {
-        setExportStatus(`Sync failed: ${res.error}`);
+        setExportStatusIsError(true);
+        setExportStatus(res.error);
       }
-    } catch (e: any) {
-      setExportStatus(`Sync failed: ${e.message}`);
+    } catch {
+      setExportStatusIsError(true);
+      setExportStatus("The research index refresh did not finish. The previous index remains available.");
     } finally {
       setSyncingEmbeddings(false);
       window.setTimeout(() => setExportStatus(null), 4000);
@@ -181,8 +212,9 @@ export function QuipslyAssistantSidebar({
       <button
         type="button"
         onClick={() => setIsOpen((value) => !value)}
-        className="fixed bottom-20 right-5 z-40 flex items-center gap-2 rounded-full border border-[#d3a24f] bg-[#3d3122] px-4 py-3 text-sm font-bold text-white shadow-xl transition-transform hover:scale-[1.02] md:bottom-6"
+        className="fixed bottom-[8.75rem] right-4 z-40 flex items-center gap-2 rounded-full border border-[#d3a24f] bg-[#3d3122] px-4 py-3 text-sm font-bold text-white shadow-xl transition-transform hover:scale-[1.02] md:bottom-20 md:right-6"
         aria-expanded={isOpen}
+        aria-label={isOpen ? "Close Quipsly assistant panel" : "Open Quipsly assistant"}
       >
         <img src="/quipsly-app-icon.png" alt="Quipsly" className="h-5 w-5 rounded object-cover shadow-sm ring-1 ring-amber-200/50" />
         Quipsly
@@ -347,7 +379,7 @@ export function QuipslyAssistantSidebar({
                     ) : null}
                   </div>
                   <p className="mt-1 text-xs leading-5 text-[#8a7356]">
-                    Approval is recorded locally in this first pass. Manuscript writes come later after project access and rollback are wired.
+                    Drafts and rewrites change the manuscript only after an authorized server receipt commits. Entity proposals remain proposals until you explicitly commit them to the canonical Story Bible.
                   </p>
                   <div className="mt-3 space-y-3">
                     {actions.length === 0 ? (
@@ -396,6 +428,7 @@ export function QuipslyAssistantSidebar({
                             <div className="text-[10px] font-bold uppercase tracking-widest text-[#a36f2e]">Why this suggestion?</div>
                             <p className="mt-1 text-xs leading-5 text-[#6b5b45]">{action.explanation.replace(/^Why this suggestion\?\s*/i, "")}</p>
                           </div>
+                          <EntityProposalEvidence action={action} />
                           {action.kind === "PROPOSE_DRAFT" && action.payload?.draftText ? (
                             <div className="mt-3 overflow-hidden rounded-lg border border-emerald-200">
                               <div className="bg-emerald-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-800 border-b border-emerald-200">
@@ -484,9 +517,11 @@ export function QuipslyAssistantSidebar({
                                 {action.kind === "find-examples" || action.kind === "search-quotes" 
                                   ? "Execute Search" 
                                   : action.kind === "PROPOSE_DRAFT" || action.kind === "PROPOSE_REWRITE" || action.kind === "PROPOSE_CONTINUITY_FIX"
-                                    ? "Apply to Manuscript"
+                                    ? "Apply persisted edit"
                                     : action.kind === "CHECK_CONTINUITY"
                                       ? "Acknowledge"
+                                      : action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE"
+                                        ? "Review proposal"
                                       : "Approve"}
                               </button>
                               <button
@@ -500,14 +535,16 @@ export function QuipslyAssistantSidebar({
                             </div>
                           ) : action.status === "approved" ? (
                             <div className="mt-3 flex gap-2">
+                              {action.kind === "PROPOSE_ENTITY" || action.kind === "PROPOSE_ENTITY_UPDATE" ? (
                                 <button
                                   type="button"
                                   onClick={() => saveAction(action)}
                                   className="flex items-center gap-1 rounded-lg bg-[#a36f2e] px-3 py-1.5 text-xs font-bold text-white hover:bg-[#8b5e27]"
                                 >
                                   <BookOpen className="h-3.5 w-3.5" />
-                                  Save to QuipLore
+                                  Commit to Story Bible
                                 </button>
+                              ) : null}
                               <button
                                 type="button"
                                 onClick={() => undoAction(action)}
@@ -517,15 +554,38 @@ export function QuipslyAssistantSidebar({
                                 {action.kind === "find-examples" || action.kind === "search-quotes" ? "Hide Search Results" : "Undo approval"}
                               </button>
                             </div>
-                          ) : action.status === "saved" ? (
+                          ) : action.status === "deciding" || action.status === "applying" || action.status === "committing" ? (
+                            <div className="mt-3 flex items-center gap-2 text-xs font-bold text-sky-800" role="status">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              {action.status === "deciding"
+                                ? "Recording the review decision…"
+                                : action.status === "applying"
+                                  ? "Saving the manuscript receipt…"
+                                  : "Committing the Story Bible receipt…"}
+                            </div>
+                          ) : action.status === "applied" ? (
+                            <div className="mt-3 flex flex-wrap items-center gap-2">
+                              <p className="text-xs font-bold text-emerald-800">Persisted manuscript edit · reversible operation recorded.</p>
+                              <button
+                                type="button"
+                                onClick={() => undoAction(action)}
+                                className="flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-900 hover:bg-amber-100"
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Undo persisted edit
+                              </button>
+                            </div>
+                          ) : action.status === "committed" ? (
                             <button
                               type="button"
                               onClick={() => undoSaveAction(action)}
                               className="mt-3 flex items-center gap-1 rounded-lg border border-[#d9c7a5] bg-white px-3 py-1.5 text-xs font-bold text-[#6b5b45] hover:bg-[#f8f1e3]"
                             >
                               <RotateCcw className="h-3.5 w-3.5" />
-                              Undo saved note
+                              Undo Story Bible commit
                             </button>
+                          ) : action.status === "saved" ? (
+                            <p className="mt-3 text-xs font-bold text-amber-800">Legacy assistant reference · not a canonical Story Bible entity.</p>
                           ) : null}
                         </div>
                       ))
@@ -545,13 +605,14 @@ export function QuipslyAssistantSidebar({
                     <div className="mt-3 space-y-3">
                       {previews.map((preview) => {
                         const isResearch = preview.kind === "find-examples" || preview.kind === "search-quotes";
+                        const isEntityProposal = preview.kind === "PROPOSE_ENTITY" || preview.kind === "PROPOSE_ENTITY_UPDATE";
                         return (
                           <div key={preview.id} className={`rounded-xl border p-3 ${isResearch ? 'border-sky-100 bg-sky-50/50' : 'border-amber-100 bg-amber-50/50'}`}>
                             <div className="flex items-start justify-between gap-2">
                               <div>
                                 <div className="text-sm font-bold text-[#342618]">{preview.title}</div>
                                 <div className={`mt-1 text-[11px] font-bold uppercase tracking-[0.12em] ${isResearch ? 'text-sky-700' : 'text-[#a36f2e]'}`}>
-                                  {isResearch ? "Research Result" : "Proposed Write Preview"} / {preview.kind}
+                                  {isResearch ? "Research Result" : isEntityProposal ? "Reviewed Entity Proposal" : "Reviewed Local Preview"} / {preview.kind}
                                 </div>
                               </div>
                             </div>
@@ -560,9 +621,13 @@ export function QuipslyAssistantSidebar({
                                 <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-bold text-sky-800 border border-sky-200">
                                   ℹ️ Research Result: No manuscript changes
                                 </span>
+                              ) : isEntityProposal ? (
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200">
+                                  Reviewed proposal · not committed to Story Bible
+                                </span>
                               ) : (
                                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 border border-amber-200 animate-pulse">
-                                  ⚠️ Proposed Outline: Needs approval to write
+                                  Reviewed browser preview · no manuscript write
                                 </span>
                               )}
                             </div>
@@ -573,6 +638,21 @@ export function QuipslyAssistantSidebar({
                                   <div key={`${preview.id}-${index}`} className="rounded-lg border border-white bg-white/80 px-3 py-2">
                                     <div className="text-xs font-black text-[#342618]">{item.label}</div>
                                     {item.detail ? <div className="mt-1 text-[11px] leading-5 text-[#6b5b45]">{item.detail}</div> : null}
+                                    {item.source ? (
+                                      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-sky-100 pt-2 text-[10px] font-bold text-sky-900">
+                                        <span>{item.source}</span>
+                                        {item.href ? (
+                                          <a
+                                            href={item.href}
+                                            className="rounded-full border border-sky-200 bg-sky-50 px-2 py-1 hover:bg-sky-100"
+                                          >
+                                            Open exact block
+                                          </a>
+                                        ) : (
+                                          <span className="text-slate-500">Identity shown · no direct route</span>
+                                        )}
+                                      </div>
+                                    ) : null}
                                   </div>
                                 ))}
                               </div>
@@ -594,6 +674,9 @@ export function QuipslyAssistantSidebar({
                       <p className="mt-1 text-xs leading-5 text-[#8a7356]">
                         Chronological record of approvals, rejections, and undos.
                       </p>
+                      <p className="mt-1 max-w-64 text-[11px] leading-4 text-sky-800">
+                        AI research indexing sends eligible writing blocks and quotes from this Nest to the configured embedding provider only when you press Refresh. A failed refresh keeps the previous index.
+                      </p>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -603,7 +686,7 @@ export function QuipslyAssistantSidebar({
                         className="shrink-0 flex items-center gap-1 rounded-full border border-sky-200 bg-sky-50 px-3 py-1.5 text-[11px] font-bold text-sky-800 hover:bg-sky-100 disabled:opacity-50"
                       >
                         {syncingEmbeddings ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                        {syncingEmbeddings ? "Syncing..." : "Sync Embeddings"}
+                        {syncingEmbeddings ? "Refreshing…" : "Refresh AI research index"}
                       </button>
                       <button
                         type="button"
@@ -616,7 +699,7 @@ export function QuipslyAssistantSidebar({
                     </div>
                   </div>
                   {exportStatus ? (
-                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800">
+                    <div className={`mt-2 rounded-lg border px-3 py-2 text-xs font-bold ${exportStatusIsError ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`} role="status">
                       {exportStatus}
                     </div>
                   ) : null}

@@ -1,145 +1,145 @@
 import React from "react";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+
 import CloudEditor from "./page";
-import { submitRenderJob } from "../render-queue/actions";
-import { useRouter } from "next/navigation";
 
-// Mock the router
 jest.mock("next/navigation", () => ({
-  useRouter: jest.fn(),
+  useSearchParams: jest.fn(() => new URLSearchParams()),
+}));
+jest.mock("@remotion/player", () => ({
+  Player: () => <div aria-label="Program preview" />,
 }));
 
-// Mock the server action
-jest.mock("../render-queue/actions", () => ({
-  submitRenderJob: jest.fn(),
-}));
+function response(payload: unknown, ok = false, status = ok ? 200 : 503) {
+  return Promise.resolve({
+    ok,
+    status,
+    json: async () => payload,
+    text: async () => JSON.stringify(payload),
+  } as Response);
+}
 
-describe("CloudEditor", () => {
-  const mockPush = jest.fn();
-
+describe("CloudEditor production truth UX", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    (useRouter as jest.Mock).mockReturnValue({ push: mockPush });
-  });
-
-  it("renders CloudEditor component in timeline mode by default", () => {
-    render(<CloudEditor />);
-    
-    // Header check
-    expect(screen.getByText("NLE // Editor")).toBeInTheDocument();
-    
-    // Toolbar checks
-    expect(screen.getByText("TIMELINE")).toBeInTheDocument();
-    expect(screen.getByText("TRANSCRIPT (DESCRIPT)")).toBeInTheDocument();
-    expect(screen.getByText("REFRAME (INSTA360)")).toBeInTheDocument();
-    
-    // Media Pool should show mock assets
-    expect(screen.getByText("A-Roll_Take_1.mp4")).toBeInTheDocument();
-    expect(screen.getByText("B-Roll_City.mp4")).toBeInTheDocument();
-    
-    // Timeline mode is active (TELEMETRY track should be visible)
-    expect(screen.getByText("TELEMETRY")).toBeInTheDocument();
-    expect(screen.getByText("24% Drop")).toBeInTheDocument();
-  });
-
-  it("switches out of timeline mode when clicking Transcript button", async () => {
-    const user = userEvent.setup();
-    render(<CloudEditor />);
-    
-    // Initially TELEMETRY is in document because we are in timeline mode
-    expect(screen.getByText("TELEMETRY")).toBeInTheDocument();
-    
-    // Click Transcript button
-    const transcriptBtn = screen.getByText("TRANSCRIPT (DESCRIPT)");
-    await user.click(transcriptBtn);
-    
-    // Timeline mode should be false, TELEMETRY should not be visible
-    expect(screen.queryByText("TELEMETRY")).not.toBeInTheDocument();
-  });
-
-  it("imports Studio Cut correctly and updates timeline clips and graphics track", async () => {
-    const user = userEvent.setup();
-    render(<CloudEditor />);
-    
-    // Click Import Studio Cut
-    const importBtn = screen.getByText("Import Studio Cut");
-    await user.click(importBtn);
-    
-    // After importing, the timeline clips should update to the parsed cut
-    expect(screen.getByText("[Beat] Source Mapping")).toBeInTheDocument();
-    expect(screen.getByText("[Beat] Shape Production")).toBeInTheDocument();
-    expect(screen.getByText("[Beat] Publish Stage")).toBeInTheDocument();
-    
-    // The graphics track should also update
-    expect(screen.getByText("🎙️ Charlie: Confirm the host framing")).toBeInTheDocument();
-    expect(screen.getByText("🎙️ Homer: Confirm what must be revised")).toBeInTheDocument();
-  });
-
-  it("calls submitRenderJob with correct payload when Export to Queue is clicked", async () => {
-    const user = userEvent.setup();
-    (submitRenderJob as jest.Mock).mockResolvedValue({ success: true, jobId: "mock_job_123" });
-    
-    render(<CloudEditor />);
-    
-    // Click Export to Queue
-    const exportBtn = screen.getByText("Export to Queue");
-    await user.click(exportBtn);
-    
-    // submitRenderJob should have been called with the EDL payload
-    expect(submitRenderJob).toHaveBeenCalledTimes(1);
-    
-    const expectedJobName = "The AI Revolution (Final Cut)";
-    
-    // Check the args passed to submitRenderJob
-    const args = (submitRenderJob as jest.Mock).mock.calls[0];
-    expect(args[0]).toBe(expectedJobName);
-    expect(args[1]).toHaveProperty("clips");
-    expect(args[1]).toHaveProperty("graphics");
-    expect(args[1]).toHaveProperty("transcript");
-    
-    // It should have the mock default transcript blocks
-    expect(args[1].transcript).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ text: "Welcome back to the podcast. Today we are talking about the AI revolution." })
-      ])
-    );
-    
-    // It should redirect to /render-queue after exporting
-    await waitFor(() => {
-      expect(mockPush).toHaveBeenCalledWith("/render-queue");
+    Object.defineProperty(globalThis, "fetch", {
+      configurable: true,
+      writable: true,
+      value: jest.fn((input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/api/ai-edit")) {
+          return response({
+            ok: true,
+            applied: false,
+            edits: [{ type: "deactivate", blockId: "t2" }],
+          }, true, 200);
+        }
+        if (url === "/api/episode-production") {
+          return response({
+            ok: true,
+            mode: "database",
+            id: "production-1",
+            projectSlug: "high-ground-odyssey-manuscript",
+            slug: "current-episode",
+            title: "Current Episode",
+            boundaryLabel: "Current Episode",
+            status: "active",
+            actorEmail: "editor@example.com",
+            accessRole: "EDITOR",
+            accessSource: "grant",
+            recordingRoomJson: null,
+            timelineJson: null,
+            transcriptJson: null,
+            productionJson: null,
+            updatedAt: "2026-07-19T00:00:00.000Z",
+          }, true, 200);
+        }
+        return response({ ok: false, error: "Persistence unavailable in component test" });
+      }),
     });
+    jest.spyOn(console, "warn").mockImplementation(() => undefined);
+    jest.spyOn(console, "error").mockImplementation(() => undefined);
   });
 
-  it("disables export button while exporting", async () => {
-    const user = userEvent.setup();
-    
-    // Make the submitRenderJob take some time so we can check the disabled state
-    let resolveSubmit: (value: any) => void;
-    (submitRenderJob as jest.Mock).mockImplementation(() => {
-      return new Promise((resolve) => {
-        resolveSubmit = resolve;
-      });
-    });
-    
+  afterEach(() => jest.restoreAllMocks());
+
+  it("renders the current editor modes and source/program distinction after access resolves", async () => {
     render(<CloudEditor />);
-    
-    const exportBtn = screen.getByRole("button", { name: "Export to Queue" });
-    expect(exportBtn).not.toBeDisabled();
-    
-    // Click Export
-    await user.click(exportBtn);
-    
-    // Button should change to Sending... and be disabled
-    const exportingBtn = screen.getByRole("button", { name: "Sending..." });
-    expect(exportingBtn).toBeDisabled();
-    
-    // Resolve the submission
-    resolveSubmit!({ success: true });
-    
-    // Wait for the button to go back to "Export to Queue"
-    await waitFor(() => {
-      expect(screen.getByRole("button", { name: "Export to Queue" })).not.toBeDisabled();
+
+    expect(await screen.findByRole("heading", { name: /Episode Editor/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "TIMELINE" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "TRANSCRIPT" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Source Monitor" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Program Monitor" })).toBeInTheDocument();
+  });
+
+  it("opens the paper edit from the transcript mode control", async () => {
+    const user = userEvent.setup();
+    render(<CloudEditor />);
+
+    await screen.findByRole("heading", { name: /Episode Editor/i });
+    await user.click(screen.getByRole("button", { name: "TRANSCRIPT" }));
+
+    expect(screen.getByRole("heading", { name: "Paper Edit" })).toBeInTheDocument();
+    expect(screen.getByText(/Shift\+Click a block/i)).toBeInTheDocument();
+  });
+
+  it("shows the honest render-worker boundary without queuing a fake job", async () => {
+    const user = userEvent.setup();
+    render(<CloudEditor />);
+
+    await screen.findByRole("heading", { name: /Episode Editor/i });
+    await user.click(screen.getByRole("button", { name: "Render & Export..." }));
+
+    expect(screen.getByRole("dialog", { name: "Web rendering is not connected yet" })).toBeInTheDocument();
+    expect(screen.getByText(/Quipsly will not pretend this timeline was packaged or rendered/i)).toBeInTheDocument();
+    expect(screen.getByText("No job queued")).toBeInTheDocument();
+    expect(screen.queryByText("Render Package Ready")).not.toBeInTheDocument();
+  });
+
+  it("discloses the provider handoff and returns proposals without auto-applying them", async () => {
+    const user = userEvent.setup();
+    render(<CloudEditor />);
+
+    await screen.findByRole("heading", { name: /Episode Editor/i });
+    await user.click(screen.getByRole("button", { name: "Suggest edits" }));
+
+    expect(screen.getByRole("alertdialog", { name: "Send this transcript for suggestions?" })).toBeInTheDocument();
+    expect(screen.getByText(/nothing changes until you apply one here/i)).toBeInTheDocument();
+    expect((globalThis.fetch as jest.Mock).mock.calls.some(([url]) => String(url).includes("/api/ai-edit"))).toBe(false);
+
+    await user.click(screen.getByRole("button", { name: "Send for suggestions" }));
+
+    await waitFor(() => expect(screen.getByRole("region", { name: "AI edit proposals" })).toBeInTheDocument());
+    expect(screen.getByText(/Nothing has been applied/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Apply proposal" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
+  });
+
+  it("does not paint a representative timeline when Nest access is denied", async () => {
+    jest.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
+      if (String(input) === "/api/episode-production") {
+        return response({
+          ok: true,
+          mode: "fallback",
+          id: "fallback-private",
+          projectSlug: "private-nest",
+          slug: "current-episode",
+          title: "Current Episode",
+          boundaryLabel: "Current Episode",
+          status: "access-denied",
+          message: "You do not have access to this Nest.",
+        }, true, 200);
+      }
+      return response({ ok: false, error: "Unavailable" });
     });
+
+    render(<CloudEditor />);
+
+    expect(await screen.findByRole("heading", { name: "This Nest editor is private." })).toBeInTheDocument();
+    expect(screen.getByText(/No timeline, transcript, media, or representative starter content was loaded/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /Episode Editor/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Episode 4 Intro Audio")).not.toBeInTheDocument();
   });
 });

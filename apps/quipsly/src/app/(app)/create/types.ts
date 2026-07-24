@@ -20,6 +20,12 @@ export type WorkbenchBlockPayload = {
   id: string;
   text: string;
   tags: string[];
+  sourceEvidence?: {
+    annotationId: string;
+    citationLabel: string;
+    sourcePath?: string;
+    immutable?: boolean;
+  };
   spans?: {
     tagSlug: string;
     label?: string;
@@ -39,7 +45,7 @@ export type WorkbenchScopeProjectSummary = {
   status: "connected" | "missing" | "denied" | "unavailable";
   documentId?: string;
   documentTitle?: string;
-  persistenceMode: "database" | "offline";
+  persistenceMode: "database" | "unavailable";
   reason?: string;
 };
 
@@ -61,7 +67,7 @@ export type WorkbenchBaseState = {
   projectDocuments?: WorkbenchProjectDocumentSummary[];
   projectNestKind?: string;
   workflowSystem?: "data-ingestion" | "knowledge-processing" | "content-creation" | "content-publishing";
-  persistenceMode: "database" | "offline";
+  persistenceMode: "database" | "unavailable";
 };
 
 export type WorkbenchScopedState = WorkbenchBaseState & {

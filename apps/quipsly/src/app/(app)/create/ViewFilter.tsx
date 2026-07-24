@@ -100,25 +100,6 @@ function formatNotebookUpdatedAt(value: string | Date) {
 
 type NotebookPageFilter = "all" | "writing" | "notes" | "sources";
 
-function notebookFloorStatus(kind: string, hasActiveDocument: boolean, hasActiveBoundary: boolean) {
-  const currentRole = hasActiveDocument ? kind : "No page open";
-  const actionHint = kind === "Study Source"
-    ? "Annotate the source; branch a draft before rewriting."
-    : kind === "Note"
-      ? "Capture the thought; promote it when it becomes writing."
-      : kind === "Draft"
-        ? "Draft freely; keep the original trail visible."
-        : kind === "Manuscript"
-          ? "Write the living manuscript with recovery available."
-          : "Write here, or use notes/drafts for experiments.";
-
-  return [
-    { label: "Current role", value: currentRole },
-    { label: "Safe next move", value: actionHint },
-    { label: "Current scope", value: hasActiveBoundary ? "Focused section" : "Whole page" },
-  ];
-}
-
 export default function ViewFilter({
   activeView,
   setActiveView,
@@ -513,8 +494,6 @@ export default function ViewFilter({
     }
   ];
   const activeShelf = pageFilterItems.find((item) => item.id === pageFilter) ?? pageFilterItems[0];
-  const notebookFloorItems = notebookFloorStatus(activeDocumentKind, Boolean(activeDocument), Boolean(activeBoundary));
-
   return (
     <>
       {isOpen && (
@@ -531,8 +510,8 @@ export default function ViewFilter({
         <Filter size={20} />
       </button>
 
-      <aside className={`fixed inset-y-0 left-0 z-50 flex h-full w-80 flex-col overflow-y-auto border-r border-[#e8dcc4] bg-white p-6 transition-transform duration-300 md:relative md:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="mb-8 flex items-center justify-between">
+      <aside className={`fixed inset-y-0 left-0 z-50 flex h-full w-80 flex-col overflow-y-auto border-r border-[#e8dcc4] bg-white p-4 transition-transform duration-300 md:relative md:w-72 md:translate-x-0 ${isOpen ? "translate-x-0" : "-translate-x-full"}`}>
+        <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="rounded-lg bg-[#3d3122] p-2 text-white shadow-sm">
               <Layers size={18} />
@@ -545,35 +524,6 @@ export default function ViewFilter({
           <button className="rounded-full p-1.5 text-[#8c6b4a] transition-colors hover:bg-[#ebdcc8] hover:text-[#3d3122] md:hidden" onClick={() => setIsOpen(false)}>
             <X size={20} />
           </button>
-        </div>
-
-        <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50/80 p-3 text-[#244536]">
-          <h3 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-900">Writing-first rule</h3>
-          <p className="mt-2 text-xs leading-5 text-emerald-900/80">
-            Organize like a notebook first. Quipsly tags, research, and publishing tools should help after the page is easy to find.
-          </p>
-        </div>
-
-        <div className="mb-6 rounded-2xl border border-[#d8e6cb] bg-[#fbfff3] p-3 text-[#314426]">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-xs font-black uppercase tracking-[0.16em] text-[#4f6f35]">OneNote floor</h3>
-              <p className="mt-2 text-xs leading-5 text-[#526b43]">
-                A writer should be able to capture, find, rename, branch, and export without understanding Quipsly internals.
-              </p>
-            </div>
-            <span className="rounded-full border border-[#b9d49f] bg-white px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#4f6f35]">
-              Daily desk
-            </span>
-          </div>
-          <div className="mt-3 grid gap-2">
-            {notebookFloorItems.map((item) => (
-              <div key={item.label} className="rounded-xl border border-[#d8e6cb] bg-white/80 px-3 py-2">
-                <div className="text-[9px] font-black uppercase tracking-[0.14em] text-[#6b8554]">{item.label}</div>
-                <div className="mt-1 text-[11px] leading-4 text-[#314426]">{item.value}</div>
-              </div>
-            ))}
-          </div>
         </div>
 
         <div className="mb-6 rounded-2xl border border-[#eadfca] bg-[#fffaf3] p-3">

@@ -43,7 +43,8 @@ const DOCUMENT_PRESETS: Record<CreateNestDocumentKind, {
   },
 };
 
-const HGO_PODCAST_YEAR_ONE_BASE = "apps/web/content/_inbox/EpisodePrepTests/Two Sparrows/Books/Podcast Year 1";
+const HGO_SOURCE_ROOT_ENV = "QUIPSLY_HGO_PODCAST_YEAR_ONE_SOURCE_ROOT";
+const DEFAULT_HGO_SOURCE_ROOT = path.join(process.cwd(), "data", "hgo-podcast-year-1");
 
 const HGO_SOURCE_CATALOG = [
   { key: "episode-1", label: "Episode 1 Source", relativePath: "1 - March 25 - Pilot/1.md" },
@@ -59,16 +60,13 @@ const HGO_SOURCE_CATALOG = [
 
 export type HgoSourceKey = typeof HGO_SOURCE_CATALOG[number]["key"];
 
-function repoRootCandidate() {
-  const candidates = [
-    process.env.QUIPSLY_REPO_ROOT,
-    process.cwd(),
-    path.resolve(/* turbopackIgnore: true */ process.cwd(), ".."),
-    path.resolve(/* turbopackIgnore: true */ process.cwd(), "../.."),
-    path.resolve(/* turbopackIgnore: true */ process.cwd(), "../../.."),
-  ].filter(Boolean) as string[];
+function hgoSourceRoot() {
+  const configuredRoot = process.env[HGO_SOURCE_ROOT_ENV]?.trim();
+  if (configuredRoot) {
+    return path.resolve(/* turbopackIgnore: true */ configuredRoot);
+  }
 
-  return candidates.find((candidate) => existsSync(/* turbopackIgnore: true */ path.join(candidate, "apps/web/content/_inbox"))) ?? process.cwd();
+  return DEFAULT_HGO_SOURCE_ROOT;
 }
 
 function resolveHgoSource(sourceKey: HgoSourceKey) {
@@ -77,11 +75,10 @@ function resolveHgoSource(sourceKey: HgoSourceKey) {
     throw new Error("Unknown HGO source.");
   }
 
-  const repoRoot = repoRootCandidate();
-  const sourceRoot = path.resolve(/* turbopackIgnore: true */ repoRoot, HGO_PODCAST_YEAR_ONE_BASE);
+  const sourceRoot = hgoSourceRoot();
   const sourcePath = path.resolve(/* turbopackIgnore: true */ sourceRoot, source.relativePath);
 
-  if (!sourcePath.startsWith(sourceRoot)) {
+  if (sourcePath !== sourceRoot && !sourcePath.startsWith(`${sourceRoot}${path.sep}`)) {
     throw new Error("Refusing to import a source outside the approved HGO source root.");
   }
 
@@ -449,10 +446,13 @@ export async function importHgoEpisodeSourceAction(projectSlug: string, sourceKe
   }
 
   if (!existsSync(/* turbopackIgnore: true */ source.sourcePath)) {
-    throw new Error(`HGO source file is missing: ${source.sourcePath}`);
+    throw new Error(`HGO source file is missing. Configure ${HGO_SOURCE_ROOT_ENV} or import source material through the normal upload path. Missing: ${source.sourcePath}`);
   }
 
-  const rawText = await readFile(/* turbopackIgnore: true */ source.sourcePath, "utf-8");
+  const rawText = await readFile(
+    /* turbopackIgnore: true */ source.sourcePath,
+    "utf-8",
+  );
   const stableDocumentId = randomUUID();
   const provenanceBlock = [
     `${source.label}`,

@@ -8,10 +8,25 @@ import {
 export async function POST(req: Request) {
   try {
     const authHeader = req.headers.get("authorization");
-    const secret = process.env.PATREON_RECONCILE_SECRET;
+    const secret = process.env.PATREON_RECONCILE_SECRET?.trim();
 
-    if (secret && authHeader !== `Bearer ${secret}`) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    if (!secret) {
+      return NextResponse.json(
+        {
+          ok: false,
+          errorCode: "PATREON_RECONCILE_SECRET_NOT_CONFIGURED",
+          error: "Patreon reconciliation is disabled until its dedicated scheduler secret is configured.",
+          persistenceChanged: false,
+        },
+        { status: 503, headers: { "Cache-Control": "private, no-store" } },
+      );
+    }
+
+    if (authHeader !== `Bearer ${secret}`) {
+      return NextResponse.json(
+        { ok: false, errorCode: "AUTH_REQUIRED", error: "Unauthorized", persistenceChanged: false },
+        { status: 401, headers: { "Cache-Control": "private, no-store" } },
+      );
     }
 
     const prisma = getPrismaClient();

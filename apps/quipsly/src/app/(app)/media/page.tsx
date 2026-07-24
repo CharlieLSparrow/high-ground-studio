@@ -257,7 +257,6 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
                 name="projectId"
                 className="px-4 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-sm font-medium focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 defaultValue={selectedProjectId}
-                onChange={(e) => e.currentTarget.form?.submit()}
               >
                 <option value="all">All accessible media</option>
                 {projects.map((project) => (
@@ -267,6 +266,12 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
                   </option>
                 ))}
               </select>
+              <button
+                type="submit"
+                className="ml-2 rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-black text-zinc-700 shadow-sm hover:bg-zinc-50"
+              >
+                Apply Nest filter
+              </button>
             </form>
 
             <Link

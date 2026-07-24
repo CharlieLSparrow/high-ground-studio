@@ -1,6 +1,7 @@
 import {
   listOutputsForNestKind,
   normalizeOutputNestKind,
+  QUIPSLY_OUTPUT_CATALOG_BOUNDARY,
 } from "@high-ground/quipsly-domain/output-catalog";
 
 export async function GET(
@@ -15,9 +16,10 @@ export async function GET(
     {
       ok: true,
       generatedAt: new Date().toISOString(),
+      catalogBoundary: QUIPSLY_OUTPUT_CATALOG_BOUNDARY,
       requestedNestKind: nestKind,
       nestKind: normalizedNestKind,
-      count: outputs.length,
+      definitionCount: outputs.length,
       outputs,
     },
     {

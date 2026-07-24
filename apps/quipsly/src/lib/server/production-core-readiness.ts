@@ -9,6 +9,10 @@ export const REQUIRED_PRODUCTION_CORE_TABLES = [
   "StudioAssetVariant",
   "StudioAssetProcessingJob",
   "StudioSourceUnit",
+  "StudioSourceAnnotation",
+  "StudioSourceAnnotationTag",
+  "StudioSourceAnnotationRevision",
+  "StudioSourceAnnotationUse",
   "StudioDocumentOperation",
   "StudioProductionRoom",
   "StudioTimelineVersion",
@@ -18,6 +22,15 @@ export const REQUIRED_PRODUCTION_CORE_TABLES = [
   "StudioWorkflowJob",
   "StudioNativeAuthCode",
   "StudioNativeDeviceSession",
+  "Goal",
+  "GoalTaskLink",
+  "GoalProgressReceipt",
+  "WorkPlanBlock",
+  "ActionItemTagLink",
+  "GoalTagLink",
+  "CallRoomTagLink",
+  "TranscriptCorrection",
+  "TranscriptCorrectionRevision",
 ] as const;
 
 export const PRODUCTION_CORE_FEATURE_GROUPS = [
@@ -34,7 +47,14 @@ export const PRODUCTION_CORE_FEATURE_GROUPS = [
   {
     id: "source-aware-documents",
     label: "Source-aware documents",
-    tables: ["StudioSourceUnit", "StudioDocumentOperation"],
+    tables: [
+      "StudioSourceUnit",
+      "StudioSourceAnnotation",
+      "StudioSourceAnnotationTag",
+      "StudioSourceAnnotationRevision",
+      "StudioSourceAnnotationUse",
+      "StudioDocumentOperation",
+    ],
   },
   {
     id: "production-publishing",
@@ -51,6 +71,21 @@ export const PRODUCTION_CORE_FEATURE_GROUPS = [
     id: "native-mac-auth",
     label: "Native Mac app sessions",
     tables: ["StudioNativeAuthCode", "StudioNativeDeviceSession"],
+  },
+  {
+    id: "goals-follow-through",
+    label: "Goals and follow-through",
+    tables: ["Goal", "GoalTaskLink", "GoalProgressReceipt", "WorkPlanBlock"],
+  },
+  {
+    id: "work-session-taxonomy",
+    label: "Canonical work and session tags",
+    tables: ["ActionItemTagLink", "GoalTagLink", "CallRoomTagLink"],
+  },
+  {
+    id: "transcript-evidence",
+    label: "Playback-reviewed transcript corrections",
+    tables: ["TranscriptCorrection", "TranscriptCorrectionRevision"],
   },
 ] as const;
 
@@ -77,7 +112,7 @@ function isNextBuildPhase() {
   return process.env.NEXT_PHASE === "phase-production-build" || process.env.npm_lifecycle_event === "build";
 }
 
-function readinessFromTables(existingTables: Set<string>, generatedAt: string): ProductionCoreReadiness {
+export function readinessFromTables(existingTables: Set<string>, generatedAt: string): ProductionCoreReadiness {
   const missingTables = REQUIRED_PRODUCTION_CORE_TABLES.filter((tableName) => !existingTables.has(tableName));
   const groups = PRODUCTION_CORE_FEATURE_GROUPS.map((group) => {
     const missingGroupTables = group.tables.filter((tableName) => !existingTables.has(tableName));

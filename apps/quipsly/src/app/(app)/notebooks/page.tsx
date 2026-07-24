@@ -288,7 +288,7 @@ export default async function NotebooksPage({
   const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
 
   if (!actorEmail) {
-    redirect("/api/auth/signin?callbackUrl=/notebooks");
+    redirect("/login?callbackUrl=/notebooks");
   }
 
   const prisma = getPrismaClient();

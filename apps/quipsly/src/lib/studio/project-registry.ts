@@ -263,15 +263,21 @@ export async function lookupStudioProjectDocument(
   projectSlug = DEFAULT_PROJECT_SLUG
 ) {
   const config = projectConfig(projectSlug);
-  const workspace = await ensureStudioWorkspace(prisma);
-
-  const existingProject = await prisma.studioProject.findUnique({
-    where: { workspaceId_slug: { workspaceId: workspace.id, slug: config.slug } },
+  // Nests are scoped to their owning workspace, but the public routing contract
+  // currently uses a slug. Resolve it the same way as the access layer instead
+  // of assuming every Nest belongs to the legacy `tonight-pack` workspace.
+  const existingProject = await prisma.studioProject.findFirst({
+    where: { slug: config.slug },
+    orderBy: { updatedAt: "desc" },
   });
 
   if (!existingProject) {
     throw new Error(`Project ${config.slug} not found. Please create it first.`);
   }
+
+  const workspace = prisma.studioWorkspace.findUnique
+    ? await prisma.studioWorkspace.findUnique({ where: { id: existingProject.workspaceId } })
+    : null;
 
   const document = await prisma.studioDocument.findUnique({
     where: { stableId: config.documentStableId },
