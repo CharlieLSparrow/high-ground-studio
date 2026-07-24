@@ -23,6 +23,7 @@ describe("Work Queue task decisions", () => {
     jest.clearAllMocks();
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([] as any);
   });
+  afterEach(() => jest.useRealTimers());
 
   it("fails before database access when signed out", async () => {
     jest.mocked(getQuipslySession).mockResolvedValue(null as any);
@@ -52,6 +53,8 @@ describe("Work Queue task decisions", () => {
   });
 
   it("creates canonical reminder intent with an append-only revision and no delivery claim", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-07-24T12:00:00.000Z"));
     signedIn();
     const reminderUpdatedAt = new Date("2026-07-18T18:00:02.000Z");
     const tx = {

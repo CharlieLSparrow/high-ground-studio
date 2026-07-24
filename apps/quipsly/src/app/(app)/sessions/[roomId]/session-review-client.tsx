@@ -16,6 +16,8 @@ import {
   type SessionReviewGoalCandidate,
   type SessionReviewPacket,
 } from "./session-review-model";
+import { SessionContinuityCard } from "./session-continuity-card";
+import type { SessionContinuityState } from "./session-continuity-model";
 import { TranscriptCorrectionDesk } from "./transcript-correction-desk";
 
 function humanize(value: string | null | undefined) {
@@ -435,7 +437,7 @@ function CandidateCard({
   );
 }
 
-export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness = null, sessionTaxonomy = null, studioHandoff = null, sessionQuickEntries = [], captureReceipts = { captures: [] } }: {
+export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness = null, sessionTaxonomy = null, studioHandoff = null, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
   roomId: string;
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
   contentReadiness?: SessionContentReadiness | null;
@@ -443,6 +445,7 @@ export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness 
   studioHandoff?: SessionStudioHandoff | null;
   sessionQuickEntries?: SessionQuickEntry[];
   captureReceipts?: SessionCaptureReceipts;
+  sessionContinuity?: SessionContinuityState | null;
 }) {
   const [packet, setPacket] = useState<SessionReviewPacket | null>(null);
   const [loading, setLoading] = useState(true);
@@ -566,6 +569,7 @@ export function SessionReviewClient({ roomId, consentSnapshot, contentReadiness 
       {sessionTaxonomy && <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} />}
       {contentReadiness && <SessionContentReadinessCard readiness={contentReadiness} />}
       <SessionQuickEntryCard entries={sessionQuickEntries} taxonomy={sessionTaxonomy} />
+      {sessionContinuity && <SessionContinuityCard roomId={roomId} initial={sessionContinuity} />}
       <SessionCaptureReceiptCard receipts={captureReceipts} />
       {studioHandoff && <SessionStudioHandoffCard handoff={studioHandoff} contentReadiness={contentReadiness} />}
 

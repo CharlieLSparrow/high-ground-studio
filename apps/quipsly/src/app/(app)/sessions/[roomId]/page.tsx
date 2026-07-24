@@ -7,23 +7,12 @@ import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { MOBILE_CAPTURE_QUICK_ENTRY_SCHEMA } from "@/lib/server/mobile-capture-quick-entry";
 import { recordingContentReadiness } from "@/lib/server/mobile-capture-content-readiness";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
+import { sessionAccessWhere } from "@/lib/server/session-access";
+import { loadSessionContinuityState } from "@/lib/server/session-continuity";
 
 import { SessionReviewClient } from "./session-review-client";
 
 export const dynamic = "force-dynamic";
-
-function accessibleRoomWhere(userId: string, email: string, isStaff: boolean, roomId: string) {
-  return isStaff ? { id: roomId } : {
-    id: roomId,
-    OR: [
-      { createdByUserId: userId },
-      { participants: { some: { userId } } },
-      { booking: { clientUserId: userId } },
-      { booking: { coachUserId: userId } },
-      ...(email ? [{ project: { accessGrants: { some: { email, status: "ACTIVE" } } } }] : []),
-    ],
-  };
-}
 
 function safeDatabaseMessage(error: unknown) {
   const message = error instanceof Error ? error.message : String(error ?? "");
@@ -52,7 +41,7 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
     const prisma = getPrismaClient() as any;
     const actorEmail = (session.user.primaryEmail || session.user.email || "").trim().toLowerCase();
     const room = await prisma.callRoom.findFirst({
-      where: accessibleRoomWhere(session.user.id, actorEmail, session.user.isStaff, roomId),
+      where: sessionAccessWhere(roomId, session.user),
       select: {
         id: true,
         purpose: true,
@@ -114,6 +103,11 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
         }))
         .sort((left, right) => right.lastReceivedAt.localeCompare(left.lastReceivedAt)),
     };
+    const sessionContinuity = await loadSessionContinuityState({
+      prisma,
+      actor: session.user,
+      roomId: room.id,
+    });
     const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
     const visibleProject = room.project ? visibleProjects.find((project) => project.id === room.project.id) : null;
     const tagCatalog = visibleProject ? await prisma.studioTag.findMany({
@@ -204,7 +198,7 @@ export default async function SessionReviewPage({ params }: { params: Promise<{ 
         };
       }),
     } : null;
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Schedule</Link><span aria-hidden="true"> / </span><span>Session review</span></nav><SessionReviewClient roomId={room.id} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Schedule</Link><span aria-hidden="true"> / </span><span>Session review</span></nav><SessionReviewClient roomId={room.id} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);
