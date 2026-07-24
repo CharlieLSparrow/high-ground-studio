@@ -1054,6 +1054,69 @@ struct MobileCaptureTodayMutationResponse: Codable {
     let reminder: MobileCaptureTodayReminderIntent?
 }
 
+struct MobileCaptureWorkProject: Codable, Identifiable, Hashable {
+    let id: String
+    let slug: String
+    let name: String
+    let role: String
+    let canWrite: Bool
+    let isHomeNest: Bool
+    let updatedAt: String
+}
+
+struct MobileCaptureWorkNote: Codable, Identifiable, Hashable {
+    let id: String
+    let stableId: String
+    let title: String
+    let excerpt: String
+    let updatedAt: String
+    let tagIds: [String]
+    let tagLabels: [String]
+    let webPath: String
+}
+
+struct MobileCaptureWorkTag: Codable, Identifiable, Hashable {
+    let id: String
+    let projectId: String
+    let slug: String
+    let label: String
+    let isActive: Bool
+    let usageCount: Int
+}
+
+struct MobileCaptureWorkWorkspace: Codable, Hashable {
+    let project: MobileCaptureWorkProject
+    let tasks: [MobileCaptureTodayTask]
+    let goals: [MobileCaptureTodayGoal]
+    let notes: [MobileCaptureWorkNote]
+    let tags: [MobileCaptureWorkTag]
+}
+
+struct MobileCaptureWorkBoundaries: Codable, Hashable {
+    let actorScoped: Bool?
+    let ownedGoalsOnly: Bool?
+    let explicitProjectGrantRequired: Bool?
+    let protectedOfflineSnapshotSupported: Bool?
+    let canonicalProjectRecords: Bool?
+    let canonicalProjectTags: Bool?
+    let unreviewedTranscriptCandidatesExcluded: Bool?
+    let mutationsUseExistingProtectedOutboxes: Bool?
+    let sourceMutated: Bool?
+    let externalSideEffects: Bool?
+}
+
+struct MobileCaptureWorkResponse: Codable, Hashable {
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let workspaceKind: String?
+    let generatedAt: String?
+    let projects: [MobileCaptureWorkProject]?
+    let selectedProjectId: String?
+    let workspace: MobileCaptureWorkWorkspace?
+    let boundaries: MobileCaptureWorkBoundaries?
+}
+
 struct MobileCaptureSessionCreateResponse: Codable {
     let ok: Bool
     let error: String?
@@ -3257,6 +3320,263 @@ final class CaptureTodayClient: ObservableObject {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appendingPathComponent("QuipslyCapture/ProtectedTodayCache", isDirectory: true)
             .appendingPathComponent("mobile-today-v1.json")
+    }
+}
+
+@MainActor
+final class CaptureWorkClient: ObservableObject {
+    @Published private(set) var brief: MobileCaptureWorkResponse?
+    @Published private(set) var isLoading = false
+    @Published private(set) var isUsingProtectedCache = false
+    @Published var errorMessage: String?
+
+    private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+
+    private struct ProtectedCache: Codable {
+        let schemaVersion: Int
+        let ownerEmail: String
+        let savedAt: Date
+        let brief: MobileCaptureWorkResponse
+    }
+
+    var projects: [MobileCaptureWorkProject] { brief?.projects ?? [] }
+    var workspace: MobileCaptureWorkWorkspace? { brief?.workspace }
+    var selectedProjectID: String? { brief?.selectedProjectId }
+
+    func loadPreview(projectID: String? = nil) {
+        let now = ISO8601DateFormatter().string(from: Date())
+        let projects = [
+            MobileCaptureWorkProject(
+                id: "preview-home",
+                slug: "preview-home",
+                name: "Charlie Home Nest",
+                role: "OWNER",
+                canWrite: true,
+                isHomeNest: true,
+                updatedAt: now
+            ),
+            MobileCaptureWorkProject(
+                id: "preview-high-ground",
+                slug: "preview-high-ground",
+                name: "High Ground Odyssey",
+                role: "EDITOR",
+                canWrite: true,
+                isHomeNest: false,
+                updatedAt: now
+            ),
+        ]
+        let selected = projects.first { $0.id == projectID } ?? projects[1]
+        let project = MobileCaptureTodayProject(id: selected.id, name: selected.name, slug: selected.slug)
+        brief = MobileCaptureWorkResponse(
+            ok: true,
+            code: nil,
+            error: nil,
+            workspaceKind: "quipsly-mobile-work-v1-preview",
+            generatedAt: now,
+            projects: projects,
+            selectedProjectId: selected.id,
+            workspace: MobileCaptureWorkWorkspace(
+                project: selected,
+                tasks: [
+                    MobileCaptureTodayTask(
+                        id: "preview-work-task",
+                        title: "Proof-listen the episode opening",
+                        detail: "Compare the first two minutes against the corrected transcript.",
+                        status: "OPEN",
+                        isOverdue: false,
+                        dueAt: now,
+                        updatedAt: now,
+                        roomId: nil,
+                        sessionTitle: nil,
+                        project: project,
+                        canEditTags: true,
+                        tagIds: ["preview-episode-4", "preview-proof-listen"],
+                        tagLabels: ["Episode 4", "Proof listen"],
+                        sourceAnchor: nil,
+                        todayReason: nil,
+                        recurrence: nil,
+                        reminder: nil
+                    ),
+                    MobileCaptureTodayTask(
+                        id: "preview-work-task-complete",
+                        title: "Lock the audio spine",
+                        detail: nil,
+                        status: "COMPLETED",
+                        isOverdue: false,
+                        dueAt: nil,
+                        updatedAt: now,
+                        roomId: nil,
+                        sessionTitle: nil,
+                        project: project,
+                        canEditTags: true,
+                        tagIds: ["preview-episode-4"],
+                        tagLabels: ["Episode 4"],
+                        sourceAnchor: nil,
+                        todayReason: nil,
+                        recurrence: nil,
+                        reminder: nil
+                    ),
+                ],
+                goals: [
+                    MobileCaptureTodayGoal(
+                        id: "preview-work-goal",
+                        title: "Publish an episode we trust",
+                        description: "Complete the human proof loop before delivery.",
+                        status: "ACTIVE",
+                        targetAt: nil,
+                        progressPercent: 60,
+                        progressNote: "The first proof-listen is complete.",
+                        updatedAt: now,
+                        roomId: nil,
+                        sessionTitle: nil,
+                        project: project,
+                        canEditTags: true,
+                        tagIds: ["preview-episode-4"],
+                        tagLabels: ["Episode 4"],
+                        sourceAnchor: nil
+                    ),
+                ],
+                notes: [
+                    MobileCaptureWorkNote(
+                        id: "preview-work-note",
+                        stableId: "preview-work-note",
+                        title: "Opening idea",
+                        excerpt: "Begin with the moment the obvious answer stopped being obvious.",
+                        updatedAt: now,
+                        tagIds: ["preview-episode-4"],
+                        tagLabels: ["Episode 4"],
+                        webPath: "/create?project=preview-high-ground&document=preview-work-note"
+                    ),
+                ],
+                tags: [
+                    MobileCaptureWorkTag(id: "preview-episode-4", projectId: selected.id, slug: "episode-4", label: "Episode 4", isActive: true, usageCount: 4),
+                    MobileCaptureWorkTag(id: "preview-proof-listen", projectId: selected.id, slug: "proof-listen", label: "Proof listen", isActive: true, usageCount: 1),
+                    MobileCaptureWorkTag(id: "preview-retired", projectId: selected.id, slug: "retired", label: "Retired tag", isActive: false, usageCount: 0),
+                ]
+            ),
+            boundaries: MobileCaptureWorkBoundaries(
+                actorScoped: true,
+                ownedGoalsOnly: true,
+                explicitProjectGrantRequired: true,
+                protectedOfflineSnapshotSupported: true,
+                canonicalProjectRecords: true,
+                canonicalProjectTags: true,
+                unreviewedTranscriptCandidatesExcluded: true,
+                mutationsUseExistingProtectedOutboxes: true,
+                sourceMutated: false,
+                externalSideEffects: false
+            )
+        )
+        isUsingProtectedCache = false
+        errorMessage = nil
+    }
+
+    func load(projectID: String? = nil) async {
+        guard !isLoading else { return }
+        if brief == nil {
+            _ = restoreProtectedCache()
+        }
+        isLoading = true
+        defer { isLoading = false }
+        errorMessage = nil
+
+        var components = URLComponents(string: "\(baseURL)/api/mobile/capture/work")
+        if let projectID, !projectID.isEmpty {
+            components?.queryItems = [URLQueryItem(name: "projectId", value: projectID)]
+        }
+        guard let url = components?.url else {
+            errorMessage = "The Nest Work URL is not valid."
+            return
+        }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request, allowOfflineRecovery: true)
+            let payload = try JSONDecoder().decode(MobileCaptureWorkResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureWork",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "Project work could not be loaded."]
+                )
+            }
+            brief = payload
+            isUsingProtectedCache = false
+            persist(payload)
+        } catch {
+            if brief == nil { _ = restoreProtectedCache() }
+            isUsingProtectedCache = brief != nil
+            errorMessage = isUsingProtectedCache
+                ? "Nest is unavailable. Showing the last protected project snapshot; changes stay disabled until the canonical records can be verified."
+                : error.localizedDescription
+        }
+    }
+
+    static func clearProtectedCache() {
+        guard let url = protectedCacheURL() else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private func restoreProtectedCache() -> Bool {
+        guard let ownerEmail = AuthManager.shared.userEmail?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !ownerEmail.isEmpty,
+              let url = Self.protectedCacheURL(),
+              let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return false }
+        do {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            let cache = try decoder.decode(ProtectedCache.self, from: data)
+            let age = Date().timeIntervalSince(cache.savedAt)
+            guard cache.schemaVersion == 1,
+                  cache.ownerEmail == ownerEmail,
+                  age >= 0,
+                  age <= 30 * 24 * 60 * 60 else {
+                Self.clearProtectedCache()
+                return false
+            }
+            brief = cache.brief
+            isUsingProtectedCache = true
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private func persist(_ brief: MobileCaptureWorkResponse) {
+        guard AuthManager.shared.networkActionsAllowed,
+              let ownerEmail = AuthManager.shared.userEmail?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
+              !ownerEmail.isEmpty,
+              let url = Self.protectedCacheURL() else { return }
+        do {
+            try FileManager.default.createDirectory(
+                at: url.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication]
+            )
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = [.sortedKeys]
+            try encoder.encode(
+                ProtectedCache(schemaVersion: 1, ownerEmail: ownerEmail, savedAt: Date(), brief: brief)
+            ).write(to: url, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            var mutableURL = url
+            try mutableURL.setResourceValues(values)
+        } catch {
+            print("Protected Work cache could not be updated: \(error.localizedDescription)")
+        }
+    }
+
+    nonisolated private static func protectedCacheURL() -> URL? {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("QuipslyCapture/ProtectedWorkCache", isDirectory: true)
+            .appendingPathComponent("mobile-work-v1.json")
     }
 }
 

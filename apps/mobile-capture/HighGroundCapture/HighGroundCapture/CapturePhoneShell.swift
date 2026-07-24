@@ -20,6 +20,12 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.record)
 
             NavigationStack {
+                CaptureWorkView(model: model)
+            }
+            .tabItem { Label(CaptureRootTab.work.title, systemImage: CaptureRootTab.work.systemImage) }
+            .tag(CaptureRootTab.work)
+
+            NavigationStack {
                 CaptureLibraryView(model: model)
             }
             .tabItem { Label(CaptureRootTab.library.title, systemImage: CaptureRootTab.library.systemImage) }
@@ -213,6 +219,534 @@ private struct CaptureTodayView: View {
             .first
             .map(String.init)
         return firstName.map { "\(salutation), \($0)" } ?? salutation
+    }
+}
+
+private struct CaptureWorkView: View {
+    @ObservedObject var model: CaptureExperienceModel
+    @ObservedObject private var client: CaptureWorkClient
+    @State private var selectedProjectID: String?
+    @State private var searchText = ""
+    @State private var selectedTagID: String?
+    @State private var showsCompletedTasks = false
+    @State private var quickEntryKind: MobileQuickEntryKind?
+
+    init(model: CaptureExperienceModel) {
+        self.model = model
+        client = model.workClient
+    }
+
+    private var workspace: MobileCaptureWorkWorkspace? {
+        client.workspace
+    }
+
+    private var selectedProject: MobileCaptureWorkProject? {
+        client.projects.first { $0.id == (selectedProjectID ?? client.selectedProjectID) }
+            ?? workspace?.project
+    }
+
+    private var captureDestination: MobileCaptureProjectDestination? {
+        guard let selectedProject else { return nil }
+        return model.captureProjects.first { $0.id == selectedProject.id }
+    }
+
+    private var normalizedQuery: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func matches(_ values: [String?], tagIDs: [String]) -> Bool {
+        if let selectedTagID, !tagIDs.contains(selectedTagID) { return false }
+        guard !normalizedQuery.isEmpty else { return true }
+        return values.compactMap { $0 }.contains {
+            $0.localizedCaseInsensitiveContains(normalizedQuery)
+        }
+    }
+
+    private var visibleTasks: [MobileCaptureTodayTask] {
+        (workspace?.tasks ?? []).filter { task in
+            (showsCompletedTasks || task.status == "OPEN")
+                && matches([task.title, task.detail] + (task.tagLabels ?? []), tagIDs: task.tagIds ?? [])
+        }
+    }
+
+    private var visibleGoals: [MobileCaptureTodayGoal] {
+        (workspace?.goals ?? []).filter { goal in
+            goal.status == "ACTIVE"
+                && matches([goal.title, goal.description, goal.progressNote] + (goal.tagLabels ?? []), tagIDs: goal.tagIds ?? [])
+        }
+    }
+
+    private var visibleNotes: [MobileCaptureWorkNote] {
+        (workspace?.notes ?? []).filter { note in
+            matches([note.title, note.excerpt] + note.tagLabels, tagIDs: note.tagIds)
+        }
+    }
+
+    private var activeTags: [MobileCaptureWorkTag] {
+        (workspace?.tags ?? []).filter(\.isActive)
+    }
+
+    private var retiredTags: [MobileCaptureWorkTag] {
+        (workspace?.tags ?? []).filter { !$0.isActive }
+    }
+
+    private var decisionsDisabled: Bool {
+        model.usesPreviewData || client.isUsingProtectedCache || !AuthManager.shared.networkActionsAllowed
+    }
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                header
+
+                if client.isUsingProtectedCache {
+                    Label("Protected offline snapshot · reconnect before changing canonical work", systemImage: "lock.iphone")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(.orange.opacity(0.12), in: Capsule())
+                        .accessibilityIdentifier("CaptureWorkProtectedSnapshot")
+                } else if model.usesPreviewData {
+                    Label("Preview data · no canonical work will change", systemImage: "hammer.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .background(.orange.opacity(0.12), in: Capsule())
+                }
+
+                if let errorMessage = client.errorMessage {
+                    Text(errorMessage)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("CaptureWorkStatus")
+                }
+
+                if let workspace {
+                    projectSummary(workspace)
+                    quickCapture
+                    if model.quickEntryOutbox.hasRetryableEntries || model.quickEntrySyncMessage != nil {
+                        CaptureQuickEntrySyncCard(model: model)
+                    }
+                    tagLens
+                    workSections
+                } else if client.isLoading {
+                    CaptureLoadingCard(label: "Loading your projects…")
+                } else {
+                    CaptureEmptyCard(
+                        systemImage: "square.grid.2x2",
+                        title: "No projects yet",
+                        detail: "Nest will create your private Home Nest when your account is ready.",
+                        actionTitle: "Try again",
+                        action: { Task { await client.load() } }
+                    )
+                }
+            }
+            .padding(.horizontal, 18)
+            .padding(.bottom, 96)
+        }
+        .background(CaptureCanvas())
+        .navigationTitle("Work")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, prompt: "Find work or a tag")
+        .refreshable {
+            await client.load(projectID: selectedProject?.id)
+        }
+        .sheet(item: $quickEntryKind) { kind in
+            CaptureQuickEntrySheet(
+                kind: kind,
+                session: nil,
+                model: model,
+                initialProject: captureDestination
+            )
+        }
+        .onAppear {
+            selectedProjectID = selectedProjectID ?? client.selectedProjectID
+        }
+        .onChange(of: client.selectedProjectID) { _, newValue in
+            selectedProjectID = newValue
+        }
+        .accessibilityIdentifier("CaptureWorkView")
+    }
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Your projects")
+                .font(.largeTitle.weight(.bold))
+            Text("Every task, goal, note, and tag stays attached to its canonical Nest.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+
+            if !client.projects.isEmpty {
+                Menu {
+                    ForEach(client.projects) { project in
+                        Button {
+                            selectedTagID = nil
+                            searchText = ""
+                            if model.usesPreviewData {
+                                selectedProjectID = project.id
+                                client.loadPreview(projectID: project.id)
+                            } else {
+                                Task {
+                                    await client.load(projectID: project.id)
+                                    selectedProjectID = client.selectedProjectID
+                                }
+                            }
+                        } label: {
+                            Label(
+                                project.name,
+                                systemImage: project.id == selectedProject?.id ? "checkmark.circle.fill" : "square.grid.2x2"
+                            )
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: selectedProject?.isHomeNest == true ? "house.fill" : "square.grid.2x2.fill")
+                        Text(selectedProject?.name ?? "Choose project")
+                            .fontWeight(.bold)
+                            .lineLimit(1)
+                        Spacer()
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.caption.weight(.bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 48)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 15))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 15)
+                            .stroke(.primary.opacity(0.12))
+                    }
+                }
+                .accessibilityIdentifier("CaptureWorkProjectPicker")
+            }
+        }
+        .padding(.top, 10)
+    }
+
+    private func projectSummary(_ workspace: MobileCaptureWorkWorkspace) -> some View {
+        let openTaskCount = workspace.tasks.filter { $0.status == "OPEN" }.count
+        let activeGoalCount = workspace.goals.filter { $0.status == "ACTIVE" }.count
+        return VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(workspace.project.isHomeNest ? "Private Home Nest" : "Project workspace")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    Text(workspace.project.name)
+                        .font(.title2.weight(.bold))
+                        .lineLimit(2)
+                }
+                Spacer()
+                Text(workspace.project.role.capitalized)
+                    .font(.caption2.weight(.bold))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(CapturePalette.accent.opacity(0.12), in: Capsule())
+            }
+            HStack(spacing: 0) {
+                workMetric(value: openTaskCount, label: "Open tasks")
+                Divider().frame(height: 34)
+                workMetric(value: activeGoalCount, label: "Active goals")
+                Divider().frame(height: 34)
+                workMetric(value: workspace.notes.count, label: "Notes")
+                Divider().frame(height: 34)
+                workMetric(value: activeTags.count, label: "Tags")
+            }
+        }
+        .padding(16)
+        .background(.background, in: RoundedRectangle(cornerRadius: 22))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22)
+                .stroke(.primary.opacity(0.09))
+        }
+        .accessibilityIdentifier("CaptureWorkProjectSummary")
+    }
+
+    private func workMetric(value: Int, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text("\(value)").font(.headline.weight(.bold))
+            Text(label)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private var quickCapture: some View {
+        if selectedProject?.canWrite == true, captureDestination != nil {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Add to this project")
+                    .font(.headline)
+                HStack(spacing: 9) {
+                    ForEach([MobileQuickEntryKind.task, .note, .goal]) { kind in
+                        Button {
+                            quickEntryKind = kind
+                        } label: {
+                            Label(kind.title, systemImage: kind.systemImage)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureWorkQuickEntry_\(kind.rawValue)")
+                    }
+                }
+                Text("The iPhone protects the complete capture first. Nest sync keeps this exact project, canonical ID, and selected tags.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            .padding(16)
+            .background(CapturePalette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 22))
+        } else if selectedProject?.canWrite == false {
+            Label("Read-only project · ask an owner for editor access to add or change work.", systemImage: "eye")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        }
+    }
+
+    @ViewBuilder
+    private var tagLens: some View {
+        if !activeTags.isEmpty || !retiredTags.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Tags").font(.headline)
+                    Spacer()
+                    if selectedTagID != nil {
+                        Button("Clear filter") { selectedTagID = nil }
+                            .font(.caption.weight(.bold))
+                    }
+                }
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(activeTags) { tag in
+                            Button {
+                                selectedTagID = selectedTagID == tag.id ? nil : tag.id
+                            } label: {
+                                HStack(spacing: 5) {
+                                    Text(tag.label)
+                                    Text("\(tag.usageCount)")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .font(.caption.weight(.semibold))
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 8)
+                                .background(
+                                    selectedTagID == tag.id ? CapturePalette.accent.opacity(0.2) : Color.primary.opacity(0.06),
+                                    in: Capsule()
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("CaptureWorkTag_\(tag.id)")
+                        }
+                    }
+                }
+                if !retiredTags.isEmpty {
+                    Text("\(retiredTags.count) retired tag\(retiredTags.count == 1 ? "" : "s") remain preserved for history.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(16)
+            .background(.background, in: RoundedRectangle(cornerRadius: 22))
+        }
+    }
+
+    private var workSections: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            workSectionHeader("Tasks", count: visibleTasks.count) {
+                Button(showsCompletedTasks ? "Hide done" : "Show done") {
+                    showsCompletedTasks.toggle()
+                }
+                .font(.caption.weight(.bold))
+            }
+            if visibleTasks.isEmpty {
+                compactEmpty("No matching tasks", systemImage: "checklist")
+            } else {
+                ForEach(visibleTasks) { task in
+                    workTaskRow(task)
+                }
+            }
+
+            workSectionHeader("Goals", count: visibleGoals.count)
+            if visibleGoals.isEmpty {
+                compactEmpty("No matching active goals", systemImage: "target")
+            } else {
+                ForEach(visibleGoals) { goal in
+                    workGoalRow(goal)
+                }
+            }
+
+            workSectionHeader("Notes", count: visibleNotes.count)
+            if visibleNotes.isEmpty {
+                compactEmpty("No matching notes", systemImage: "note.text")
+            } else {
+                ForEach(visibleNotes) { note in
+                    workNoteRow(note)
+                }
+            }
+        }
+    }
+
+    private func workSectionHeader<Trailing: View>(
+        _ title: String,
+        count: Int,
+        @ViewBuilder trailing: () -> Trailing
+    ) -> some View {
+        HStack {
+            Text(title).font(.title3.weight(.bold))
+            Text("\(count)")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            Spacer()
+            trailing()
+        }
+    }
+
+    private func workSectionHeader(_ title: String, count: Int) -> some View {
+        workSectionHeader(title, count: count) { EmptyView() }
+    }
+
+    private func workTaskRow(_ task: MobileCaptureTodayTask) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Button {
+                Task {
+                    if await model.todayClient.setTaskStatus(
+                        task,
+                        status: task.status == "OPEN" ? "COMPLETED" : "OPEN"
+                    ) {
+                        await client.load(projectID: selectedProject?.id)
+                    }
+                }
+            } label: {
+                Image(systemName: task.status == "OPEN" ? "circle" : "checkmark.circle.fill")
+                    .font(.title3)
+                    .foregroundStyle(task.status == "OPEN" ? CapturePalette.accent : .green)
+            }
+            .disabled(decisionsDisabled)
+            .accessibilityLabel(task.status == "OPEN" ? "Mark \(task.title) done" : "Reopen \(task.title)")
+            .accessibilityIdentifier("CaptureWorkTaskStatus_\(task.id)")
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(task.title)
+                    .font(.body.weight(.semibold))
+                    .strikethrough(task.status != "OPEN")
+                if let detail = task.detail, !detail.isEmpty {
+                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                }
+                workTagLabels(task.tagLabels ?? [])
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(task.isOverdue == true ? Color.orange.opacity(0.45) : Color.primary.opacity(0.07))
+        }
+        .accessibilityIdentifier("CaptureWorkTask_\(task.id)")
+    }
+
+    private func workGoalRow(_ goal: MobileCaptureTodayGoal) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack(alignment: .top) {
+                Image(systemName: "target")
+                    .foregroundStyle(CapturePalette.accent)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(goal.title).font(.body.weight(.semibold))
+                    if let description = goal.description, !description.isEmpty {
+                        Text(description).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                    }
+                }
+                Spacer()
+                TodayGoalCheckInControls(
+                    client: model.todayClient,
+                    goal: goal,
+                    decisionsDisabled: decisionsDisabled,
+                    onSaved: {
+                        Task { await client.load(projectID: selectedProject?.id) }
+                    }
+                )
+            }
+            if let progress = goal.progressPercent {
+                ProgressView(value: Double(progress), total: 100)
+                Text("\(progress)%\(goal.progressNote.map { " · \($0)" } ?? "")")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+            }
+            workTagLabels(goal.tagLabels ?? [])
+        }
+        .padding(14)
+        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.primary.opacity(0.07))
+        }
+        .accessibilityIdentifier("CaptureWorkGoal_\(goal.id)")
+    }
+
+    @ViewBuilder
+    private func workNoteRow(_ note: MobileCaptureWorkNote) -> some View {
+        let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+        if let url = URL(string: "\(baseURL)\(note.webPath)") {
+            Link(destination: url) {
+                workNoteContent(note)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(client.isUsingProtectedCache ? "Requires a connection to open the canonical Nest note." : "Opens the canonical note in Nest.")
+            .accessibilityIdentifier("CaptureWorkNote_\(note.id)")
+        } else {
+            workNoteContent(note)
+        }
+    }
+
+    private func workNoteContent(_ note: MobileCaptureWorkNote) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "note.text")
+                .font(.title3)
+                .foregroundStyle(CapturePalette.accent)
+            VStack(alignment: .leading, spacing: 5) {
+                Text(note.title).font(.body.weight(.semibold))
+                if !note.excerpt.isEmpty {
+                    Text(note.excerpt).font(.caption).foregroundStyle(.secondary).lineLimit(4)
+                }
+                workTagLabels(note.tagLabels)
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "arrow.up.right")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(14)
+        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.primary.opacity(0.07))
+        }
+    }
+
+    @ViewBuilder
+    private func workTagLabels(_ labels: [String]) -> some View {
+        if !labels.isEmpty {
+            Text(labels.map { "#\($0)" }.joined(separator: "  "))
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(CapturePalette.accent)
+                .lineLimit(2)
+        }
+    }
+
+    private func compactEmpty(_ title: String, systemImage: String) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 16))
     }
 }
 
@@ -1385,15 +1919,22 @@ private struct TodayGoalCheckInControls: View {
     @ObservedObject var client: CaptureTodayClient
     let goal: MobileCaptureTodayGoal
     let decisionsDisabled: Bool
+    let onSaved: (() -> Void)?
 
     @State private var isEditing = false
     @State private var progressPercent: Int
     @State private var note = ""
 
-    init(client: CaptureTodayClient, goal: MobileCaptureTodayGoal, decisionsDisabled: Bool) {
+    init(
+        client: CaptureTodayClient,
+        goal: MobileCaptureTodayGoal,
+        decisionsDisabled: Bool,
+        onSaved: (() -> Void)? = nil
+    ) {
         self.client = client
         self.goal = goal
         self.decisionsDisabled = decisionsDisabled
+        self.onSaved = onSaved
         _progressPercent = State(initialValue: goal.progressPercent ?? 0)
     }
 
@@ -1426,6 +1967,7 @@ private struct TodayGoalCheckInControls: View {
                             if await client.recordGoalProgress(goal, progressPercent: progressPercent, note: note) {
                                 note = ""
                                 isEditing = false
+                                onSaved?()
                             }
                         }
                     } label: {
@@ -2282,11 +2824,16 @@ struct CaptureQuickEntrySheet: View {
     @State private var noteVisibility = MobileSessionNoteVisibility.authorPrivate
     @FocusState private var focusedField: FocusedField?
 
-    init(kind: MobileQuickEntryKind, session: MobileCaptureSession?, model: CaptureExperienceModel) {
+    init(
+        kind: MobileQuickEntryKind,
+        session: MobileCaptureSession?,
+        model: CaptureExperienceModel,
+        initialProject: MobileCaptureProjectDestination? = nil
+    ) {
         self.kind = kind
         self.session = session
         self.model = model
-        _destination = State(initialValue: session == nil ? "HOME_NEST" : "SESSION")
+        _destination = State(initialValue: initialProject.map { "NEST:\($0.id)" } ?? (session == nil ? "HOME_NEST" : "SESSION"))
     }
 
     private var homeNest: MobileCaptureProjectDestination? {

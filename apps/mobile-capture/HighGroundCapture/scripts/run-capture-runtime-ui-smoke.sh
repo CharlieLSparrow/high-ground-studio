@@ -21,6 +21,9 @@ TEST_RECURRENCE_EDIT_FUTURE_TITLE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_FUT
 TEST_RECURRENCE_EDIT_TIMEZONE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_EDIT_TIMEZONE:-}"
 TEST_TAGGED_TASK_TITLE="${QUIPSLY_CAPTURE_UI_TEST_TAGGED_TASK_TITLE:-}"
 TEST_TAG_LABEL="${QUIPSLY_CAPTURE_UI_TEST_TAG_LABEL:-}"
+TEST_PROJECT_NAME="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_NAME:-}"
+TEST_PROJECT_TASK_TITLE="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_TASK_TITLE:-}"
+TEST_PROJECT_TAG_LABEL="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_TAG_LABEL:-}"
 TIMEOUT_SECONDS="${QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:-900}"
 TEST_MODE="${QUIPSLY_CAPTURE_UI_TEST_MODE:-surface}"
 
@@ -94,6 +97,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  project-work)
+    TEST_CASE="testIPhoneCapturesTaggedTaskDirectlyIntoWritableNest"
+    if [[ -z "$TEST_PROJECT_NAME" || -z "$TEST_PROJECT_TASK_TITLE" || -z "$TEST_PROJECT_TAG_LABEL" ]]; then
+      echo "Project Work mode requires one writable Nest name, unique Task title, and existing canonical tag label." >&2
+      exit 2
+    fi
+    ;;
   session-note-edit)
     TEST_CASE="testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox"
     if [[ -z "$TEST_SESSION_ID" ]]; then
@@ -102,7 +112,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
     exit 2
     ;;
 esac
@@ -154,11 +164,11 @@ cleanup_smoke_credentials() {
 trap cleanup_smoke_credentials EXIT
 
 umask 077
-python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" <<'PY'
+python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" <<'PY'
 import json
 import sys
 
-path, base_url, email, password, session_id, session_title, task_id, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label = sys.argv[1:16]
+path, base_url, email, password, session_id, session_title, task_id, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label = sys.argv[1:19]
 with open(path, "w", encoding="utf-8") as handle:
     json.dump(
         {
@@ -176,6 +186,9 @@ with open(path, "w", encoding="utf-8") as handle:
             "recurrenceEditTimezone": recurrence_edit_timezone or None,
             "taggedTaskTitle": tagged_task_title or None,
             "tagLabel": tag_label or None,
+            "projectName": project_name or None,
+            "projectTaskTitle": project_task_title or None,
+            "projectTagLabel": project_tag_label or None,
         },
         handle,
     )

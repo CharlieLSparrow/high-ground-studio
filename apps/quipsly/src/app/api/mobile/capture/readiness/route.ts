@@ -68,6 +68,7 @@ export async function GET(request: Request) {
       coachingCalendarReadiness: "/api/coaching/calendar/readiness",
       sessions: "/api/mobile/capture/sessions",
       today: "/api/mobile/capture/today",
+      work: "/api/mobile/capture/work",
       sessionContext: "/api/mobile/capture/sessions/context",
       consent: "/api/mobile/capture/consent",
       roomJoin: "/api/mobile/capture/rooms/join",

@@ -14,15 +14,15 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
-    func testCaptureFirstNavigationKeepsFourFocusedDestinations() {
+    func testCaptureFirstNavigationKeepsFiveFocusedDestinations() {
         let tabBar = app.tabBars.firstMatch
         XCTAssertTrue(tabBar.waitForExistence(timeout: 5))
 
-        for tab in ["Today", "Record", "Library", "Account"] {
+        for tab in ["Today", "Record", "Work", "Library", "Account"] {
             XCTAssertTrue(tabBar.buttons[tab].exists, "Expected the \(tab) capture destination.")
         }
 
-        XCTAssertEqual(tabBar.buttons.count, 4, "Capture should not expose editor, publishing, or diagnostics as primary iPhone destinations.")
+        XCTAssertEqual(tabBar.buttons.count, 5, "Capture should expose project work without exposing editor, publishing, or diagnostics as primary iPhone destinations.")
 
         XCTAssertTrue(app.descendants(matching: .any)["CaptureNextSessionCard"].exists)
         XCTAssertFalse(
@@ -44,6 +44,61 @@ final class CaptureExperienceUITests: XCTestCase {
 
         tabBar.buttons["Account"].tap()
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
+    }
+
+    func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
+        app.tabBars.buttons["Work"].tap()
+        let workScroll = app.scrollViews["CaptureWorkView"]
+        XCTAssertTrue(workScroll.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectPicker"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectSummary"].exists)
+        XCTAssertTrue(app.staticTexts["High Ground Odyssey"].exists)
+
+        let episodeTag = app.buttons["CaptureWorkTag_preview-episode-4"]
+        for _ in 0..<8 where !episodeTag.isHittable { workScroll.swipeUp() }
+        XCTAssertTrue(episodeTag.isHittable, "The Work tag lens must be visible and directly reachable in the project workspace.")
+        episodeTag.tap()
+
+        let taskTitle = app.staticTexts["Proof-listen the episode opening"]
+        reveal(taskTitle)
+        XCTAssertTrue(taskTitle.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "CaptureWorkTask_preview-work-task").firstMatch.exists)
+        let goalTitle = app.staticTexts["Publish an episode we trust"]
+        reveal(goalTitle)
+        XCTAssertTrue(goalTitle.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "CaptureWorkGoal_preview-work-goal").firstMatch.exists)
+
+        let noteTitle = app.staticTexts["Opening idea"]
+        reveal(noteTitle)
+        XCTAssertTrue(noteTitle.exists)
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "CaptureWorkNote_preview-work-note").firstMatch.exists)
+
+        let quickTask = app.buttons["CaptureWorkQuickEntry_TASK"]
+        for _ in 0..<8 where !quickTask.isHittable { app.swipeDown() }
+        XCTAssertTrue(quickTask.isHittable)
+        quickTask.tap()
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "High Ground Odyssey")
+        ).firstMatch.exists, "Work quick capture must arrive pre-bound to the selected canonical project.")
+        let title = app.textFields["CaptureQuickEntryTitle"]
+        title.tap()
+        title.typeText("Confirm the Work project destination")
+        let tag = app.buttons["CaptureQuickEntryTag_preview-episode-4"]
+        reveal(tag)
+        tag.tap()
+        XCTAssertTrue(app.buttons["CaptureQuickEntrySave"].isEnabled)
+        app.buttons["CaptureQuickEntrySave"].tap()
+        XCTAssertTrue(app.staticTexts["Preview only — no note, task, goal, or source was saved."].waitForExistence(timeout: 5))
+
+        app.tabBars.buttons["Work"].tap()
+        let picker = app.descendants(matching: .any)["CaptureWorkProjectPicker"]
+        reveal(picker)
+        picker.tap()
+        XCTAssertTrue(app.buttons["Charlie Home Nest"].waitForExistence(timeout: 3))
+        app.buttons["Charlie Home Nest"].tap()
+        XCTAssertTrue(app.staticTexts["Private Home Nest"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Charlie Home Nest"].exists)
     }
 
     func testRecordQuickCaptureMakesNoteTaskAndGoalImmediateWithoutFakingPreviewWrites() {

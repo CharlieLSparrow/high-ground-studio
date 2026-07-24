@@ -653,6 +653,7 @@ function checkTranscriptPacketContractSources() {
 
 function checkReviewDigestContractSources() {
   const digestRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/review-digest/route.ts");
+  const workRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/work/route.ts");
   const bridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift");
   const componentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const iPhoneText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/IPhoneQuipslySessionView.swift");
@@ -763,12 +764,32 @@ function checkReviewDigestContractSources() {
     iPhoneText.includes("CapturePhoneShell()")
       && capturePhoneShellText.includes("CaptureRootTab.today")
       && capturePhoneShellText.includes("CaptureRootTab.record")
+      && capturePhoneShellText.includes("CaptureRootTab.work")
       && capturePhoneShellText.includes("CaptureRootTab.library")
       && capturePhoneShellText.includes("CaptureRootTab.account")
       && capturePhoneShellText.includes("Local source is production truth")
       && iPadText.includes("MobileCaptureReviewDigestPanel()"),
     "nativeReviewDigestOnSessionSurfaces",
-    "The capture-first iPhone keeps Today, Record, Library, and Account focused while the legacy iPad studio retains its detailed review digest.",
+    "The capture-first iPhone keeps Today, Record, Work, Library, and Account focused while the legacy iPad studio retains its detailed review digest.",
+  );
+  expect(
+    workRouteText.includes('workspaceKind: "quipsly-mobile-work-v1"')
+      && workRouteText.includes("listProjectsVisibleToEmail")
+      && workRouteText.includes("nestProjectTaskWhere")
+      && workRouteText.includes("nestProjectGoalWhere")
+      && workRouteText.includes("document-kind:note")
+      && workRouteText.includes("explicitProjectGrantRequired: true")
+      && workRouteText.includes("unreviewedTranscriptCandidatesExcluded: true")
+      && workRouteText.includes("externalSideEffects: false")
+      && bridgeText.includes("final class CaptureWorkClient")
+      && bridgeText.includes("ProtectedWorkCache")
+      && bridgeText.includes("ownerEmail == ownerEmail")
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureWorkView")')
+      && capturePhoneShellText.includes("CaptureWorkQuickEntry_")
+      && capturePhoneShellText.includes("initialProject: captureDestination")
+      && capturePhoneShellText.includes("CaptureQuickEntrySyncCard(model: model)"),
+    "nativeCanonicalProjectWorkWorkspace",
+    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, and pre-binds protected quick capture to the selected writable Nest.",
   );
 }
 
@@ -1490,6 +1511,7 @@ async function checkProtectedRoutes() {
     { name: "sessions", method: "GET", path: "/api/mobile/capture/sessions" },
     { name: "reviewDigest", method: "GET", path: "/api/mobile/capture/review-digest" },
     { name: "todayRead", method: "GET", path: "/api/mobile/capture/today" },
+    { name: "workRead", method: "GET", path: "/api/mobile/capture/work" },
     { name: "todayMutation", method: "POST", path: "/api/mobile/capture/today", body: {} },
     { name: "consent", method: "POST", path: "/api/mobile/capture/consent", body: {} },
     { name: "roomJoin", method: "POST", path: "/api/mobile/capture/rooms/join", body: {} },

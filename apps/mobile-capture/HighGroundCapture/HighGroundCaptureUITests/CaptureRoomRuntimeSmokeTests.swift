@@ -433,27 +433,30 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
 
         let app = try launchSignedInCaptureApp()
-        tapRootTab("Record", in: app)
-        let taskButton = app.buttons.matching(
-            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureQuickEntry_TASK_")
-        ).firstMatch
+        tapRootTab("Work", in: app)
+        XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 20))
+        let projectPicker = app.descendants(matching: .any)["CaptureWorkProjectPicker"].firstMatch
+        XCTAssertTrue(projectPicker.waitForExistence(timeout: 10))
+        projectPicker.tap()
+        let projectChoice = app.buttons[projectName].firstMatch
+        XCTAssertTrue(projectChoice.waitForExistence(timeout: 6))
+        projectChoice.tap()
+        XCTAssertTrue(
+            app.staticTexts[projectName].firstMatch.waitForExistence(timeout: 15),
+            "Work should read the selected canonical Nest before capture."
+        )
+        let taskButton = app.buttons["CaptureWorkQuickEntry_TASK"].firstMatch
         XCTAssertTrue(
             waitForRuntimeElement(taskButton, in: app, timeout: 20, swipeAttempts: 8),
-            "Record should expose Quick Task for direct project capture."
+            "Work should expose Quick Task for the selected writable Nest."
         )
         taskButton.tap()
 
         let sheet = app.descendants(matching: .any)["CaptureQuickEntrySheet_TASK"].firstMatch
         XCTAssertTrue(sheet.waitForExistence(timeout: 6))
-        let destination = app.descendants(matching: .any)["CaptureQuickEntryDestination"].firstMatch
-        XCTAssertTrue(destination.waitForExistence(timeout: 4))
-        destination.tap()
-        let projectChoice = app.buttons[projectName].firstMatch
-        XCTAssertTrue(projectChoice.waitForExistence(timeout: 6))
-        projectChoice.tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS %@", "Destination, \(projectName)")
-        ).firstMatch.waitForExistence(timeout: 4))
+        ).firstMatch.waitForExistence(timeout: 4), "Work quick capture should arrive pre-bound to the selected project.")
         XCTAssertTrue(app.descendants(matching: .any).matching(
             NSPredicate(format: "label CONTAINS %@", "Project capture, No Session invented")
         ).firstMatch.exists)
@@ -484,12 +487,17 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(search.isHittable)
         search.tap()
         search.typeText(tagLabel)
+        let tagKeyboardDone = app.buttons["CaptureQuickEntryKeyboardDone"].firstMatch
+        XCTAssertTrue(tagKeyboardDone.waitForExistence(timeout: 4))
+        tagKeyboardDone.tap()
         let tag = app.buttons.matching(
             NSPredicate(format: "label CONTAINS %@", tagLabel)
         ).firstMatch
         XCTAssertTrue(tag.waitForExistence(timeout: 4))
+        XCTAssertTrue(tag.isHittable)
         tag.tap()
-        XCTAssertEqual(tag.value as? String, "Selected")
+        expectation(for: NSPredicate(format: "value == %@", "Selected"), evaluatedWith: tag)
+        waitForExpectations(timeout: 4)
 
         let save = app.buttons["CaptureQuickEntrySave"].firstMatch
         XCTAssertTrue(save.isEnabled)
@@ -503,6 +511,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             acknowledgement.waitForExistence(timeout: 30)
         )
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[taskTitle].firstMatch, in: app, timeout: 30, swipeAttempts: 10),
+            "The same signed iPhone Work surface should read the new canonical task back from Nest."
+        )
         attachRecordingIdentity(taskTitle, name: "Direct project iPhone task title")
     }
 

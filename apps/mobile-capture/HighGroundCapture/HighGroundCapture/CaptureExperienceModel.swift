@@ -4,6 +4,7 @@ import Foundation
 enum CaptureRootTab: String, CaseIterable, Identifiable {
     case today
     case record
+    case work
     case library
     case account
 
@@ -13,6 +14,7 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
         switch self {
         case .today: "Today"
         case .record: "Record"
+        case .work: "Work"
         case .library: "Library"
         case .account: "Account"
         }
@@ -22,6 +24,7 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
         switch self {
         case .today: "sun.max"
         case .record: "record.circle"
+        case .work: "square.grid.2x2"
         case .library: "waveform"
         case .account: "person.crop.circle"
         }
@@ -111,6 +114,7 @@ final class CaptureExperienceModel: ObservableObject {
 
     let sessionClient = CaptureSessionClient()
     let todayClient = CaptureTodayClient()
+    let workClient = CaptureWorkClient()
     let providerRoom = ProviderRoomController()
     let readinessClient = CaptureReadinessClient()
     let uploadManager = UploadManager.shared
@@ -142,6 +146,9 @@ final class CaptureExperienceModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         todayClient.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        workClient.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         providerRoom.objectWillChange
@@ -282,6 +289,7 @@ final class CaptureExperienceModel: ObservableObject {
                 ),
             ]
             todayClient.loadPreview()
+            workClient.loadPreview()
             sessionClient.status = "Preview ready"
             selectedSessionID = selectedSessionID ?? sessionClient.sessions.first?.id
             return
@@ -301,8 +309,9 @@ final class CaptureExperienceModel: ObservableObject {
         }
         async let sessionLoad = sessionClient.load()
         async let todayLoad: Void = todayClient.load()
+        async let workLoad: Void = workClient.load(projectID: workClient.selectedProjectID)
         async let readinessLoad: Void = readinessClient.load()
-        _ = await (sessionLoad, todayLoad, readinessLoad)
+        _ = await (sessionLoad, todayLoad, workLoad, readinessLoad)
         await taskReminderScheduler.reconcile(
             drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
         )
@@ -417,6 +426,7 @@ final class CaptureExperienceModel: ObservableObject {
         }
         if acknowledged > 0 {
             await todayClient.load()
+            await workClient.load(projectID: workClient.selectedProjectID)
             // A single retry already carries the most useful server-authored
             // acknowledgement (for example, the exact Home Nest note
             // destination). Preserve that message so reconnect does not turn a
@@ -463,7 +473,10 @@ final class CaptureExperienceModel: ObservableObject {
             if entry.kind == .note, let sessionID = entry.sessionID {
                 _ = await sessionClient.load(authoritativeSessionID: sessionID)
             }
-            if refreshToday { await todayClient.load() }
+            if refreshToday {
+                await todayClient.load()
+                await workClient.load(projectID: entry.destinationProjectID ?? workClient.selectedProjectID)
+            }
         case let .retryable(message):
             quickEntryOutbox.markRetryable(entry.id, message: message)
             quickEntrySyncMessage = message

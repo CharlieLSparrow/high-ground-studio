@@ -498,6 +498,7 @@ requireIncludes(iPadText, "AppReviewProofPanel", "iPad App Review proof panel");
 for (const needle of [
   "CaptureRootTab.today",
   "CaptureRootTab.record",
+  "CaptureRootTab.work",
   "CaptureRootTab.library",
   "CaptureRootTab.account",
   "CaptureRecorderHero",

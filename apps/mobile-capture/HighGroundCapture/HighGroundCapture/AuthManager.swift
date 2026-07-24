@@ -797,6 +797,7 @@ final class AuthManager: ObservableObject {
         deleteKeychainItem(account: "verifiedIdentityAtEpochSeconds")
         CaptureSessionClient.clearProtectedSessionCache()
         CaptureTodayClient.clearProtectedCache()
+        CaptureWorkClient.clearProtectedCache()
         CaptureTranscriptCorrectionClient.clearProtectedCache()
         CaptureTranscriptCorrectionDraftStore.clearAll()
         setSignedOutState()
