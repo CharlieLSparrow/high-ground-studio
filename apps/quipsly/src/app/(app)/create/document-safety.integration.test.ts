@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import {
+  addBlockComment,
   createNamedDocumentCheckpointAction,
   exportPortableDocumentAction,
   listNamedDocumentCheckpointsAction,
@@ -136,10 +137,28 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
 
   it("checkpoints, exports, restores, and preserves exact identity and citation anchors", async () => {
     signedInAs(writerEmail);
+    const noteBody = "Keep this exact coaching insight attached to its source passage.";
+    const passage = "deliberate coaching";
+    const passageStart = originalBody.indexOf(passage);
+    const commentResult = await addBlockComment(
+      firstBlockId,
+      passageStart,
+      passageStart + passage.length,
+      passage,
+      noteBody,
+    );
+    expect(commentResult).toMatchObject({
+      ok: true,
+      state: "persisted",
+      reused: false,
+    });
+    if (!commentResult.ok) throw new Error("Passage note failed.");
+    expect(commentResult.operationId).toBeTruthy();
+
     const checkpointResult = await createNamedDocumentCheckpointAction(documentId, "Coaching source pass approved");
     expect(checkpointResult).toMatchObject({
       ok: true,
-      checkpoint: { name: "Coaching source pass approved", blockCount: 2, spanCount: 1, citationCount: 1 },
+      checkpoint: { name: "Coaching source pass approved", blockCount: 2, spanCount: 2, citationCount: 1 },
     });
     if (!checkpointResult.ok || !checkpointResult.checkpoint) throw new Error("Checkpoint failed.");
 
@@ -150,9 +169,15 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     expect(exported).toMatchObject({
       schemaVersion: "quipsly-document-export-v1",
       snapshot: { document: { id: documentId } },
-      integrity: { blockCount: 2, spanCount: 1, citationCount: 1 },
+      integrity: { blockCount: 2, spanCount: 2, citationCount: 1 },
     });
-    expect(exported.snapshot.blocks[0]).toMatchObject({ id: firstBlockId, citations: [{ id: citationId }] });
+    expect(exported.snapshot.blocks[0]).toMatchObject({
+      id: firstBlockId,
+      spans: expect.arrayContaining([
+        expect.objectContaining({ id: commentResult.commentId, tagSlug: "comment", selectedText: passage, noteBody }),
+      ]),
+      citations: [{ id: citationId }],
+    });
 
     const laterBlockId = `document-later-${nonce}`;
     await prisma.studioDocumentBlock.update({ where: { id: firstBlockId }, data: { body: "A later edit that should be reversible." } });
@@ -163,7 +188,7 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     const restoreResult = await restoreNamedDocumentCheckpointAction(documentId, checkpointResult.checkpoint.id);
     expect(restoreResult).toMatchObject({
       ok: true,
-      receipt: { restoredFrom: "checkpoint", blockCount: 2, spanCount: 1, citationCount: 1 },
+      receipt: { restoredFrom: "checkpoint", blockCount: 2, spanCount: 2, citationCount: 1 },
     });
     const restoredBlocks = await prisma.studioDocumentBlock.findMany({ where: { documentId }, orderBy: { order: "asc" } });
     expect(restoredBlocks.find((block) => block.id === firstBlockId)?.body).toBe(originalBody);
@@ -177,6 +202,11 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     expect(await prisma.studioTaggedSpan.findUnique({ where: { id: spanId } })).toMatchObject({
       blockId: firstBlockId,
       selectedText: "Preserved evidence",
+    });
+    expect(await prisma.studioTaggedSpan.findUnique({ where: { id: commentResult.commentId } })).toMatchObject({
+      blockId: firstBlockId,
+      selectedText: passage,
+      noteBody,
     });
 
     await prisma.studioDocumentBlock.update({ where: { id: secondBlockId }, data: { body: "A second temporary mutation." } });

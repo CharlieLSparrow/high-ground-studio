@@ -40,6 +40,7 @@ function bundle(overrides: Record<string, unknown> = {}) {
         startOffset: 0,
         endOffset: 18,
         selectedText: "Preserved evidence",
+        noteBody: "Keep this exact passage beside the coaching follow-through.",
       }],
       citations: [{
         id: "use-1",
@@ -75,9 +76,37 @@ describe("writing document portability", () => {
     expect(validateDocumentBundle(bundle())).toMatchObject({
       ok: true,
       bundle: {
-        snapshot: { blocks: [{ id: "block-1", citations: [{ id: "use-1" }] }] },
+        snapshot: {
+          blocks: [{
+            id: "block-1",
+            spans: [{ id: "span-1", noteBody: "Keep this exact passage beside the coaching follow-through." }],
+            citations: [{ id: "use-1" }],
+          }],
+        },
         integrity: { blockCount: 1, spanCount: 1, citationCount: 1 },
       },
+    });
+  });
+
+  it("keeps version-one exports without passage notes backward compatible", () => {
+    const input = bundle();
+    delete (input.snapshot.blocks[0].spans[0] as { noteBody?: string }).noteBody;
+    input.integrity.snapshotSha256 = documentSha256(stableDocumentJson(input.snapshot));
+
+    const validation = validateDocumentBundle(input);
+    expect(validation).toMatchObject({ ok: true });
+    if (!validation.ok) throw new Error(validation.error);
+    expect(validation.bundle.snapshot.blocks[0].spans[0]).not.toHaveProperty("noteBody");
+  });
+
+  it("rejects a passage note beyond the bounded restore size", () => {
+    const input = bundle();
+    input.snapshot.blocks[0].spans[0].noteBody = "n".repeat(20_001);
+    input.integrity.snapshotSha256 = documentSha256(stableDocumentJson(input.snapshot));
+
+    expect(validateDocumentBundle(input)).toEqual({
+      ok: false,
+      error: "A tagged span no longer matches its writing block.",
     });
   });
 

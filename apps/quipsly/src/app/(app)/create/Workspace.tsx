@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import PublisherModePanel from "./PublisherModePanel";
-import Tagger from "./Tagger";
+import Tagger, { type Block } from "./Tagger";
 import { EditorExtensionProvider } from "./registry/EditorExtensionRegistry";
 import { coreBlockCards } from "./registry/coreBlockCards";
 import ViewFilter from "./ViewFilter";
@@ -193,7 +193,7 @@ export default function Workspace({
   isDefaultFallback = false,
   initialFocusBlockId,
 }: {
-  initialBlocks: any[],
+  initialBlocks: Block[],
   initialViews: ViewDefinition[],
   projectId: string,
   projectSlug?: string,
@@ -322,9 +322,8 @@ export default function Workspace({
     window.dispatchEvent(new CustomEvent("quipsly:show-recent-changes"));
   };
 
-  const handleDocumentBlocksChange = useCallback((blocks: any[]) => {
+  const handleDocumentBlocksChange = useCallback((blocks: Block[]) => {
     setDocumentBlocks(blocks);
-    setSaveState("unsaved");
   }, []);
 
   const assistant = useQuipslyAssistant({

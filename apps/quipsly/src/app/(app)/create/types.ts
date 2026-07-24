@@ -33,6 +33,7 @@ export type WorkbenchBlockPayload = {
     startOffset: number;
     endOffset: number;
     selectedText: string;
+    noteBody?: string;
   }[];
 };
 

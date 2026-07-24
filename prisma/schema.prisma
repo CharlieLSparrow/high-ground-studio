@@ -3215,6 +3215,7 @@ model StudioTaggedSpan {
   startOffset           Int
   endOffset             Int
   selectedText          String
+  noteBody              String?                @db.Text
   documentStableId      String
   documentTitleSnapshot String
   blockStableId         String

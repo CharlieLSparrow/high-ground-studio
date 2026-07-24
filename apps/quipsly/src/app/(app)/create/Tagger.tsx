@@ -60,6 +60,7 @@ type PersistedTagSpan = {
   startOffset: number;
   endOffset: number;
   selectedText: string;
+  noteBody?: string;
 };
 
 type BlockSnapshot = {
@@ -230,7 +231,8 @@ export default function Tagger({
           tagSlug: span.tagSlug,
           startOffset: Math.max(0, Math.min(span.startOffset, 0xffffffff)),
           endOffset: Math.max(0, Math.max(span.endOffset, span.startOffset)),
-          selectedText: span.selectedText
+          selectedText: span.selectedText,
+          noteBody: span.noteBody,
         }))
       : [];
   };
@@ -251,7 +253,8 @@ export default function Tagger({
       tagSlug: span.tagSlug,
       startOffset: span.startOffset,
       endOffset: span.endOffset,
-      selectedText: span.selectedText
+      selectedText: span.selectedText,
+      noteBody: span.noteBody,
     }))
   });
 
@@ -300,7 +303,8 @@ export default function Tagger({
             tagSlug: span.tagSlug,
             startOffset: span.startOffset,
             endOffset: span.endOffset,
-            selectedText: span.selectedText
+            selectedText: span.selectedText,
+            noteBody: span.noteBody,
           }))
         };
       });
@@ -1165,7 +1169,8 @@ export default function Tagger({
                 tagSlug: span.tagSlug,
                 startOffset: span.startOffset,
                 endOffset: span.endOffset,
-                selectedText: span.selectedText
+                selectedText: span.selectedText,
+                noteBody: span.noteBody,
               }))
             };
           });
@@ -1180,7 +1185,8 @@ export default function Tagger({
                   tagSlug: span.tagSlug,
                   startOffset: span.startOffset,
                   endOffset: span.endOffset,
-                  selectedText: span.selectedText
+                  selectedText: span.selectedText,
+                  noteBody: span.noteBody,
                 }))
               }
             ];

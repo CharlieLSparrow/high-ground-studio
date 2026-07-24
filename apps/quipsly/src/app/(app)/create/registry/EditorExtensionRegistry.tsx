@@ -45,6 +45,7 @@ const defaultTagDefinitions: TagDefinition[] = [
 
   { id: "chapter", label: "Chapter", category: "structure", icon: PlayCircle, color: "bg-cyan-100 text-cyan-900 border-cyan-200", mark: "bg-cyan-100 text-cyan-950 ring-cyan-200" },
   { id: "episode", label: "Episode", category: "structure", icon: PlayCircle, color: "bg-rose-100 text-rose-900 border-rose-200", mark: "bg-rose-100 text-rose-950 ring-rose-200" },
+  { id: "comment", label: "Comment", category: "review", icon: MessageSquare, color: "bg-amber-100 text-amber-900 border-amber-200", mark: "bg-amber-100 text-amber-950 ring-amber-200" },
   { id: "quote", label: "Quote", category: "quote", icon: MessageSquare, color: "bg-blue-100 text-blue-800 border-blue-200", mark: "bg-blue-100 text-blue-950 ring-blue-200" },
   { id: "social-clip", label: "Social Clip", category: "media", icon: Mic, color: "bg-purple-100 text-purple-800 border-purple-200", mark: "bg-purple-100 text-purple-950 ring-purple-200" },
   { id: "educational", label: "Educational", category: "educational", icon: List, color: "bg-green-100 text-green-800 border-green-200", mark: "bg-green-100 text-green-950 ring-green-200" },

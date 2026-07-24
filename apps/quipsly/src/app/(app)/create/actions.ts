@@ -796,7 +796,8 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
       category: quipslyCategoryForTag(ts.tag),
       startOffset: ts.startOffset,
       endOffset: ts.endOffset,
-      selectedText: ts.selectedText
+      selectedText: ts.selectedText,
+      noteBody: ts.noteBody ?? undefined,
     }))
   }));
 
@@ -1112,7 +1113,7 @@ export async function unarchiveBlock(blockId: string) {
 export async function restoreBlockState(
   blockId: string,
   rawText: string,
-  rawSpans: Array<{ tagSlug: string; startOffset: number; endOffset: number; selectedText: string }> = []
+  rawSpans: Array<{ tagSlug: string; startOffset: number; endOffset: number; selectedText: string; noteBody?: string }> = []
 ) {
   let prisma: ReturnType<typeof getPrismaClient>;
   try {
@@ -1154,11 +1155,15 @@ export async function restoreBlockState(
       const safeSelectedText = typeof span.selectedText === "string" && span.selectedText.length > 0
         ? span.selectedText
         : text.slice(safeStart, safeEnd);
+      const safeNoteBody = typeof span.noteBody === "string"
+        ? span.noteBody.trim().slice(0, 20_000)
+        : "";
       return {
         tagSlug: safeSlug,
         startOffset: safeStart,
         endOffset: safeEnd,
         selectedText: safeSelectedText,
+        noteBody: safeNoteBody || null,
         key: `${safeSlug}|${safeStart}|${safeEnd}`
       };
     })
@@ -1218,6 +1223,7 @@ export async function restoreBlockState(
         startOffset: span.startOffset,
         endOffset: span.endOffset,
         selectedText: span.selectedText.slice(0, 1600),
+        noteBody: span.noteBody,
         documentStableId: block.document.stableId,
         documentTitleSnapshot: block.document.title,
         blockStableId: block.stableId,
@@ -1520,7 +1526,8 @@ export async function splitBlockAtOffset(
             sourceExternalId: span.sourceExternalId,
             projectionStatus: span.projectionStatus,
             isPrivate: span.isPrivate,
-            createdByLabel: span.createdByLabel
+            createdByLabel: span.createdByLabel,
+            noteBody: span.noteBody,
           }
         });
       }
@@ -1655,7 +1662,8 @@ export async function mergeBlockWithPrevious(blockId: string) {
           sourceExternalId: span.sourceExternalId,
           projectionStatus: span.projectionStatus,
           isPrivate: span.isPrivate,
-          createdByLabel: span.createdByLabel
+          createdByLabel: span.createdByLabel,
+          noteBody: span.noteBody,
         }
       });
     }
@@ -3321,6 +3329,7 @@ async function capturePortableDocumentSnapshot(tx: Prisma.TransactionClient, doc
               startOffset: true,
               endOffset: true,
               selectedText: true,
+              noteBody: true,
               tag: { select: { slug: true, label: true, category: true } },
             },
           },
@@ -3376,6 +3385,7 @@ async function capturePortableDocumentSnapshot(tx: Prisma.TransactionClient, doc
         startOffset: span.startOffset,
         endOffset: span.endOffset,
         selectedText: span.selectedText,
+        ...(span.noteBody ? { noteBody: span.noteBody } : {}),
       })),
       citations: block.sourceAnnotationUses.map((citation) => ({
         id: citation.id,
@@ -3603,6 +3613,7 @@ async function restorePortableDocument(
             startOffset: span.startOffset,
             endOffset: span.endOffset,
             selectedText: span.selectedText,
+            noteBody: span.noteBody ?? null,
             documentStableId: target.document.stableId,
             documentTitleSnapshot: target.document.title,
             blockStableId: block.stableId,
@@ -3738,13 +3749,22 @@ export type BlockCommentActionResult =
       ok: true;
       state: "persisted";
       commentId: string;
+      operationId: string | null;
+      reused: boolean;
     }
   | {
       ok: false;
-      state: "unavailable";
-      code: "COMMENT_STORE_UNAVAILABLE";
+      state: "unavailable" | "rejected";
+      code: "AUTH_REQUIRED" | "INVALID_COMMENT" | "ACCESS_NOT_VERIFIED" | "COMMENT_CONFLICT" | "PERSISTENCE_UNAVAILABLE";
       error: string;
     };
+
+class BlockCommentConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BlockCommentConflictError";
+  }
+}
 
 class DocumentReorderError extends Error {
   constructor(
@@ -3928,18 +3948,198 @@ export async function addBlockComment(
   text: string,
   comment: string,
 ): Promise<BlockCommentActionResult> {
-  void blockId;
-  void start;
-  void end;
-  void text;
-  void comment;
+  const actorEmail = await getActorEmail();
+  if (!actorEmail) {
+    return {
+      ok: false,
+      state: "rejected",
+      code: "AUTH_REQUIRED",
+      error: "Sign in before adding a note to this passage.",
+    };
+  }
 
-  return {
-    ok: false,
-    state: "unavailable",
-    code: "COMMENT_STORE_UNAVAILABLE",
-    error: "Comments are not available yet because Quipsly has no canonical persisted comment store. Nothing was saved.",
-  };
+  const startOffset = Math.trunc(start);
+  const endOffset = Math.trunc(end);
+  const selectedText = typeof text === "string" ? text : "";
+  const noteBody = typeof comment === "string" ? comment.trim() : "";
+  if (
+    !blockId
+    || !Number.isSafeInteger(startOffset)
+    || !Number.isSafeInteger(endOffset)
+    || startOffset < 0
+    || endOffset <= startOffset
+    || !selectedText
+    || !noteBody
+    || noteBody.length > 20_000
+  ) {
+    return {
+      ok: false,
+      state: "rejected",
+      code: "INVALID_COMMENT",
+      error: "Select an exact passage and write a note of 20,000 characters or fewer.",
+    };
+  }
+
+  let prisma: ReturnType<typeof getPrismaClient>;
+  try {
+    prisma = getPrismaClient();
+  } catch (error) {
+    console.error("Writing note could not open persistence.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The writing database is unavailable. Your note was not saved.",
+    };
+  }
+
+  try {
+    await requireProjectAccessByBlockId(prisma, blockId, "write");
+  } catch (error) {
+    console.error("Writing note could not verify write access.", error);
+    return {
+      ok: false,
+      state: "rejected",
+      code: "ACCESS_NOT_VERIFIED",
+      error: "Write access is required to add a note to this passage.",
+    };
+  }
+
+  try {
+    const block = await prisma.studioDocumentBlock.findUnique({
+      where: { id: blockId },
+      select: {
+        id: true,
+        stableId: true,
+        title: true,
+        body: true,
+        sourceLabel: true,
+        sourcePath: true,
+        externalId: true,
+        projectionStatus: true,
+        isPrivate: true,
+        document: {
+          select: {
+            id: true,
+            stableId: true,
+            title: true,
+            projectId: true,
+          },
+        },
+      },
+    });
+    if (!block || endOffset > block.body.length || block.body.slice(startOffset, endOffset) !== selectedText) {
+      return {
+        ok: false,
+        state: "rejected",
+        code: "INVALID_COMMENT",
+        error: "The passage changed or the selection no longer matches. Select it again before saving.",
+      };
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const tag = await tx.studioTag.upsert({
+        where: { projectId_slug: { projectId: block.document.projectId, slug: "comment" } },
+        update: { label: "Comment", category: "review", isPrivate: true, isActive: true },
+        create: {
+          projectId: block.document.projectId,
+          slug: "comment",
+          label: "Comment",
+          category: "review",
+          isPrivate: true,
+        },
+        select: { id: true },
+      });
+      const existing = await tx.studioTaggedSpan.findUnique({
+        where: {
+          blockId_tagId_startOffset_endOffset: {
+            blockId,
+            tagId: tag.id,
+            startOffset,
+            endOffset,
+          },
+        },
+        select: { id: true, selectedText: true, noteBody: true },
+      });
+      if (existing) {
+        if (existing.selectedText === selectedText && existing.noteBody === noteBody) {
+          return { commentId: existing.id, operationId: null, reused: true };
+        }
+        throw new BlockCommentConflictError(
+          "A different note already exists on this exact passage. Remove it before replacing it.",
+        );
+      }
+
+      const saved = await tx.studioTaggedSpan.create({
+        data: {
+          documentId: block.document.id,
+          blockId,
+          tagId: tag.id,
+          startOffset,
+          endOffset,
+          selectedText,
+          noteBody,
+          documentStableId: block.document.stableId,
+          documentTitleSnapshot: block.document.title,
+          blockStableId: block.stableId,
+          blockTitleSnapshot: block.title,
+          sourceLabel: block.sourceLabel,
+          sourcePath: block.sourcePath,
+          sourceExternalId: block.externalId,
+          projectionStatus: block.projectionStatus,
+          isPrivate: true,
+          createdByLabel: actorEmail,
+        },
+        select: { id: true },
+      });
+      const operation = await tx.studioDocumentOperation.create({
+        data: {
+          projectId: block.document.projectId,
+          documentId: block.document.id,
+          actorEmail,
+          origin: "human",
+          operationType: "document-passage-note-add",
+          status: "applied",
+          beforeJson: toPrismaJson({ blockId, commentId: null }),
+          afterJson: toPrismaJson({
+            blockId,
+            commentId: saved.id,
+            startOffset,
+            endOffset,
+            selectedText,
+            noteBody,
+          }),
+          payloadJson: toPrismaJson({ blockId, commentId: saved.id, tagSlug: "comment" }),
+          reversible: true,
+        },
+        select: { id: true },
+      });
+      await tx.studioDocument.update({
+        where: { id: block.document.id },
+        data: { updatedAt: new Date() },
+      });
+      return { commentId: saved.id, operationId: operation.id, reused: false };
+    });
+
+    revalidatePath("/create");
+    return { ok: true, state: "persisted", ...result };
+  } catch (error) {
+    if (error instanceof BlockCommentConflictError) {
+      return {
+        ok: false,
+        state: "rejected",
+        code: "COMMENT_CONFLICT",
+        error: error.message,
+      };
+    }
+    console.error("Writing note persistence failed.", error);
+    return {
+      ok: false,
+      state: "unavailable",
+      code: "PERSISTENCE_UNAVAILABLE",
+      error: "The note could not be saved. The selected passage was not changed.",
+    };
+  }
 }
 export async function updateCandidatePacketAction(candidateId: string, packet: any): Promise<{ ok: boolean, error?: string }> {
   void candidateId;

@@ -15,6 +15,7 @@ export type PortableDocumentSpan = {
   startOffset: number;
   endOffset: number;
   selectedText: string;
+  noteBody?: string | null;
 };
 
 export type PortableDocumentCitation = {
@@ -190,11 +191,27 @@ export function validateDocumentBundle(input: unknown): DocumentBundleValidation
       const startOffset = typeof rawSpan.startOffset === "number" && Number.isSafeInteger(rawSpan.startOffset) && rawSpan.startOffset >= 0 ? rawSpan.startOffset : null;
       const endOffset = typeof rawSpan.endOffset === "number" && Number.isSafeInteger(rawSpan.endOffset) && rawSpan.endOffset >= 0 ? rawSpan.endOffset : null;
       const selectedText = stringValue(rawSpan.selectedText, MAX_TEXT_BYTES, true);
+      const hasNoteBody = Object.prototype.hasOwnProperty.call(rawSpan, "noteBody");
+      const noteBody = hasNoteBody ? nullableString(rawSpan.noteBody, 20_000) : undefined;
       if (!spanId || !tagSlug || !tagLabel || !tagCategory || startOffset == null || endOffset == null || endOffset < startOffset
-        || endOffset > body.length || selectedText == null || body.slice(startOffset, endOffset) !== selectedText) {
+        || endOffset > body.length || selectedText == null || body.slice(startOffset, endOffset) !== selectedText
+        || (hasNoteBody && noteBody === undefined)) {
         return { ok: false, error: "A tagged span no longer matches its writing block." };
       }
-      spans.push({ id: spanId, tagSlug, tagLabel, tagCategory, startOffset, endOffset, selectedText });
+      if (noteBody) {
+        textBytes += Buffer.byteLength(noteBody, "utf8");
+        if (textBytes > MAX_TEXT_BYTES) return { ok: false, error: "The writing export contains too much text for this restore lane." };
+      }
+      spans.push({
+        id: spanId,
+        tagSlug,
+        tagLabel,
+        tagCategory,
+        startOffset,
+        endOffset,
+        selectedText,
+        ...(hasNoteBody ? { noteBody: noteBody ?? null } : {}),
+      });
     }
     spanCount += spans.length;
     if (spanCount > MAX_SPANS) return { ok: false, error: "The writing export contains too many tagged spans." };

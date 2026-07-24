@@ -222,14 +222,15 @@ describe("writing desk persistence truth", () => {
     error.mockRestore();
   });
 
-  it("returns an explicit unavailable comment result and no fake persistence receipt", async () => {
+  it("rejects an unauthenticated passage note without a fake persistence receipt", async () => {
+    (auth as jest.Mock).mockResolvedValue(null);
     const result = await addBlockComment("block-a", 0, 4, "Text", "A comment");
 
     expect(result).toEqual({
       ok: false,
-      state: "unavailable",
-      code: "COMMENT_STORE_UNAVAILABLE",
-      error: "Comments are not available yet because Quipsly has no canonical persisted comment store. Nothing was saved.",
+      state: "rejected",
+      code: "AUTH_REQUIRED",
+      error: "Sign in before adding a note to this passage.",
     });
     expect(result).not.toHaveProperty("commentId");
   });
