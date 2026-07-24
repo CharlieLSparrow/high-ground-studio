@@ -118,6 +118,7 @@
       "prisma.config.ts",
       "release/manifests/nest.json",
       "scripts/quipsly-owner-override-retirement.test.mjs",
+      "scripts/prisma-generate-workspace-clients.mjs",
       "scripts/release",
       "scripts/scan-beta-blockers.mjs",
       "scripts/sync-prisma-pnpm-clients.mjs"

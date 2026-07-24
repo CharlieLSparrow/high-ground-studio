@@ -52,6 +52,49 @@ for release_id in "${release_ids[@]}"; do
   [[ ! -e "${context}/.git" ]]
   [[ ! -e "${context}/node_modules" ]]
 
+  if [[ "${release_id}" == "nest" ]]; then
+    node - "${context}" "${context}/apps/quipsly/Dockerfile" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const context = process.argv[2];
+const dockerfilePath = process.argv[3];
+const dockerfile = fs.readFileSync(dockerfilePath, "utf8");
+const missing = [];
+
+for (const [index, rawLine] of dockerfile.split(/\r?\n/).entries()) {
+  const line = rawLine.trim();
+  if (!line.startsWith("COPY ") || line.includes("--from=")) continue;
+  const instruction = line.slice("COPY ".length).trim();
+  let sources;
+  if (instruction.startsWith("[")) {
+    const values = JSON.parse(instruction);
+    sources = values.slice(0, -1);
+  } else {
+    const values = instruction.split(/\s+/);
+    sources = values.slice(0, -1).filter((value) => !value.startsWith("--"));
+  }
+  for (const source of sources) {
+    if (source === ".") continue;
+    if (/[*?[\]]/.test(source)) {
+      throw new Error(
+        `Dockerfile COPY glob needs explicit context validation at line ${index + 1}: ${source}`,
+      );
+    }
+    if (!fs.existsSync(path.join(context, source))) {
+      missing.push(`line ${index + 1}: ${source}`);
+    }
+  }
+}
+
+if (missing.length > 0) {
+  throw new Error(
+    `Materialized Nest context is missing Dockerfile COPY input(s):\n${missing.join("\n")}`,
+  );
+}
+NODE
+  fi
+
   node - \
     "${context}" \
     "${repo_root}/release/manifests/${release_id}.json" \
