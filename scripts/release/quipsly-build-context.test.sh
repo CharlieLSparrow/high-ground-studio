@@ -44,8 +44,9 @@ touch \
 git -C "${ignore_probe}" init --quiet
 
 if git -C "${ignore_probe}" check-ignore --quiet --no-index \
-  "apps/quipsly/src/app/(app)/outputs/page.tsx" \
-  "apps/quipsly/src/app/(app)/outputs/[outputId]/page.tsx"; then
+  "apps/quipsly/src/app/(app)/outputs/page.tsx" ||
+  git -C "${ignore_probe}" check-ignore --quiet --no-index \
+    "apps/quipsly/src/app/(app)/outputs/[outputId]/page.tsx"; then
   echo "Cloud upload ignore rules remove a required Quipsly route." >&2
   exit 1
 fi
