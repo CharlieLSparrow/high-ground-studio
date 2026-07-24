@@ -20,6 +20,14 @@ const app = initializeApp({
 });
 const dc = getDataConnect({ location: "us-central1", serviceId: "quiplore", connector: "default" });
 
+type QuoteMutationData = {
+  quote_insert: string;
+};
+
+type StoryTrailMutationData = {
+  storyTrail_insert: string;
+};
+
 async function main() {
   const queueDir = path.join(__dirname, 'ingest-queue');
   if (!fs.existsSync(queueDir)) {
@@ -40,7 +48,7 @@ async function main() {
 
     try {
       // Execute the InsertQuoteWithVector mutation
-      const quoteRes = await dc.executeMutation("InsertQuoteWithVector", {
+      const quoteVariables = {
         slug: data.slug,
         text: data.text,
         personId: data.personId || "system",
@@ -48,18 +56,26 @@ async function main() {
         verificationStatus: data.verificationStatus || "verified",
         confidence: data.confidence || 0.9,
         contextNote: data.contextNote || "Ingested by AI"
-      });
+      };
+      const quoteRes = await dc.executeMutation<QuoteMutationData, typeof quoteVariables>(
+        "InsertQuoteWithVector",
+        quoteVariables,
+      );
 
       const quoteId = quoteRes.data.quote_insert;
 
       if (data.storyTrail) {
         console.log(`Ingesting story trail for quote ${quoteId}...`);
-        const trailRes = await dc.executeMutation("InsertStoryTrail", {
+        const trailVariables = {
           quoteId: quoteId,
           slug: data.storyTrail.slug || (data.slug + "-story"),
           title: data.storyTrail.title,
           deck: data.storyTrail.deck
-        });
+        };
+        const trailRes = await dc.executeMutation<StoryTrailMutationData, typeof trailVariables>(
+          "InsertStoryTrail",
+          trailVariables,
+        );
 
         const trailId = trailRes.data.storyTrail_insert;
 

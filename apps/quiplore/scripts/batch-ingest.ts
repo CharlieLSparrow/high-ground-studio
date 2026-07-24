@@ -24,6 +24,16 @@ const QUEUE_DIR = path.join(__dirname, 'ingest-queue');
 const PROCESSED_DIR = path.join(__dirname, 'ingest-processed');
 const FAILED_DIR = path.join(__dirname, 'ingest-failed');
 
+type InsertResult = string | { id?: string };
+
+type QuoteMutationData = {
+  quote_insert?: InsertResult;
+};
+
+type StoryTrailMutationData = {
+  storyTrail_insert?: InsertResult;
+};
+
 if (!fs.existsSync(QUEUE_DIR)) fs.mkdirSync(QUEUE_DIR, { recursive: true });
 if (!fs.existsSync(PROCESSED_DIR)) fs.mkdirSync(PROCESSED_DIR, { recursive: true });
 if (!fs.existsSync(FAILED_DIR)) fs.mkdirSync(FAILED_DIR, { recursive: true });
@@ -100,7 +110,10 @@ async function processFile(filePath: string, fileName: string) {
       textEmbedding: textEmbedding
     };
 
-    const quoteRes = await dc.executeMutation("InsertQuoteWithRawVector", quoteVariables);
+    const quoteRes = await dc.executeMutation<QuoteMutationData, typeof quoteVariables>(
+      "InsertQuoteWithRawVector",
+      quoteVariables,
+    );
     const quoteInsertRes = quoteRes.data?.quote_insert;
     const quoteId = typeof quoteInsertRes === 'string' ? quoteInsertRes : quoteInsertRes?.id;
 
@@ -116,7 +129,10 @@ async function processFile(filePath: string, fileName: string) {
         deck: data.storyTrail.deck || ""
       };
 
-      const trailRes = await dc.executeMutation("InsertStoryTrail", trailVariables);
+      const trailRes = await dc.executeMutation<StoryTrailMutationData, typeof trailVariables>(
+        "InsertStoryTrail",
+        trailVariables,
+      );
       const trailInsertRes = trailRes.data?.storyTrail_insert;
       const trailId = typeof trailInsertRes === 'string' ? trailInsertRes : trailInsertRes?.id;
 

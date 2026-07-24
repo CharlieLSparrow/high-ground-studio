@@ -92,7 +92,11 @@ Format the output strictly as the provided JSON schema.
           contents: q.text
         });
 
-        q.textEmbedding = embedRes.embeddings[0].values;
+        const embedding = embedRes.embeddings?.[0]?.values;
+        if (!embedding) {
+          throw new Error(`No embedding returned for ${q.slug}`);
+        }
+        q.textEmbedding = embedding;
 
         const filePath = path.join(queueDir, `${q.slug}.json`);
         fs.writeFileSync(filePath, JSON.stringify(q, null, 2));
