@@ -9,6 +9,13 @@ declare global {
   }
 }
 
+type CroppingJob = {
+  progress: number;
+  status: 'SLICING' | 'COMPLETE' | 'ERROR';
+  outPath?: string;
+  error?: string;
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState<'status'|'cloud'|'ingest'|'migration'|'files'|'reports'>('files');
   const [wsStatus, setWsStatus] = useState<'connecting'|'online'|'offline'>('connecting');
@@ -27,6 +34,7 @@ export default function App() {
   const [availableProjects, setAvailableProjects] = useState<{id: string, name: string}[]>([]);
   const [selectedProjectIds, setSelectedProjectIds] = useState<string[]>([]);
   const [reports, setReports] = useState<any[]>([]);
+  const [croppingJobs, setCroppingJobs] = useState<Record<string, CroppingJob>>({});
 
   useEffect(() => {
     connectWebSocket();
@@ -86,6 +94,17 @@ export default function App() {
              setVerifiedHashes((prev: any) => ({ ...prev, [payload.fileName]: payload.md5 }));
           }
         }
+        if (type === 'CROP_PROGRESS' && typeof payload.file === 'string') {
+          setCroppingJobs((previous) => ({
+            ...previous,
+            [payload.file]: {
+              progress: Number(payload.progress) || 0,
+              status: payload.status,
+              outPath: payload.outPath,
+              error: payload.error,
+            },
+          }));
+        }
         if (type === 'PROJECTS_LIST') {
           setAvailableProjects(payload);
         }
@@ -129,6 +148,19 @@ export default function App() {
   const openGcsBucket = () => {
     if (wsRef.current && wsStatus === 'online') {
       wsRef.current.send(JSON.stringify({ type: 'OPEN_GCS_BUCKET' }));
+    }
+  };
+
+  const triggerSliceToVertical = (sourceFile: string) => {
+    if (wsRef.current && wsStatus === 'online') {
+      setCroppingJobs((previous) => ({
+        ...previous,
+        [sourceFile]: { progress: 0, status: 'SLICING' },
+      }));
+      wsRef.current.send(JSON.stringify({
+        type: 'SLICE_TO_VERTICAL',
+        payload: { sourceFile },
+      }));
     }
   };
 
@@ -712,6 +744,14 @@ export default function App() {
                                <div className="text-xs font-bold text-emerald-400 flex items-center gap-1 bg-emerald-500/10 px-3 py-2 rounded-lg border border-emerald-500/30">
                                  <CheckCircle2 className="w-4 h-4" /> Sliced to Vertical
                                </div>
+                            ) : cropJob && cropJob.status === 'ERROR' ? (
+                               <button
+                                 onClick={() => triggerSliceToVertical(report.sourceFile)}
+                                 title={cropJob.error || 'The vertical slice failed.'}
+                                 className="w-full px-3 py-2 bg-red-500/10 hover:bg-red-500/20 transition-colors text-red-300 text-xs font-bold rounded border border-red-500/30"
+                               >
+                                 Slice failed · Retry
+                               </button>
                             ) : (
                                <button 
                                  onClick={() => triggerSliceToVertical(report.sourceFile)}
