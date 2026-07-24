@@ -731,6 +731,9 @@ importers:
 
   packages/quipsly-document-kernel:
     devDependencies:
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
       typescript:
         specifier: ^5.5.4
         version: 5.9.3

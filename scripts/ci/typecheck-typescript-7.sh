@@ -15,6 +15,7 @@ readonly project_configs=(
   "packages/content-studio-domain/tsconfig.json"
   "packages/motion-engine/tsconfig.json"
   "packages/quipsly-document-kernel/tsconfig.json"
+  "packages/quipsly-document-kernel/tsconfig.test.json"
   "packages/quipsly-domain/tsconfig.json"
   "packages/studio-domain/tsconfig.json"
   "packages/worldhub-domain/tsconfig.json"
