@@ -41,7 +41,11 @@ COPY packages/worldhub-domain/package.json ./packages/worldhub-domain/package.js
 COPY packages/studio-domain/package.json ./packages/studio-domain/package.json
 COPY packages/motion-engine/package.json ./packages/motion-engine/package.json
 
-RUN pnpm install --frozen-lockfile
+# This image only needs Prisma's CLI/client payload. Repository postinstall
+# hooks synchronize every workspace client and require application-only files
+# that are intentionally excluded from this minimal schema context.
+RUN pnpm install --frozen-lockfile --ignore-scripts \
+  && pnpm prisma generate --schema=prisma/schema.prisma
 
 USER node
 

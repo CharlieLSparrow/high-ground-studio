@@ -28,6 +28,10 @@ materialized="$(
 [[ -f "${context_dir}/ops/quipsly-schema.Dockerfile" ]]
 [[ -f "${context_dir}/scripts/quipsly-coaching-capture-schema-sync.mjs" ]]
 [[ -f "${context_dir}/ops/quipsly-foundation-baseline-repair.sql" ]]
+grep -Fq "pnpm install --frozen-lockfile --ignore-scripts" \
+  "${context_dir}/ops/quipsly-schema.Dockerfile"
+grep -Fq "pnpm prisma generate --schema=prisma/schema.prisma" \
+  "${context_dir}/ops/quipsly-schema.Dockerfile"
 
 node - "${context_dir}/quipsly-schema-source.json" "${source_sha}" <<'NODE'
 const fs = require("node:fs");
