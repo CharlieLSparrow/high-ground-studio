@@ -22,6 +22,8 @@ test("production readback proves support and policy routes at canonical HTTPS UR
 test("production readback fails closed on the complete mobile contract", () => {
   assert.match(script, /quipsly-mobile-capture-contract-smoke\.mjs/);
   assert.match(script, /"--base-url=\$\{PRODUCTION_BASE_URL%\/\}"/);
+  assert.match(script, /JSON\.parse\(fs\.readFileSync\(process\.argv\[1\], "utf8"\)\)/);
+  assert.doesNotMatch(script, /require\(process\.argv\[1\]\)/);
   assert.match(script, /statusCounts\?\.fail/);
   assert.match(script, /fail "Production mobile Capture contract failed/);
 });

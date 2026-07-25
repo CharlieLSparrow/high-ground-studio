@@ -82,7 +82,8 @@ check_mobile_contract() {
     "--base-url=${PRODUCTION_BASE_URL%/}" \
     --json >"${report}"; then
     summary="$(node -e '
-      const report = require(process.argv[1]);
+      const fs = require("node:fs");
+      const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
       if (report?.ok !== true || Number(report?.statusCounts?.fail || 0) !== 0) {
         process.exit(1);
       }
@@ -95,7 +96,8 @@ check_mobile_contract() {
     fi
   else
     summary="$(node -e '
-      const report = require(process.argv[1]);
+      const fs = require("node:fs");
+      const report = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
       process.stdout.write(
         `${Number(report?.statusCounts?.pass || 0)} pass, `
         + `${Number(report?.statusCounts?.fail || 0)} fail`,
