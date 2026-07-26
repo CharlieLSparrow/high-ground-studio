@@ -28,6 +28,7 @@ The older manuscript, 360 editor, publishing, and reviewer-report prototypes are
 | Product UX | Four focused native SwiftUI destinations, concise sign-in, deterministic preview fixtures | Simulator visually reviewed; UI suite passes |
 | Consent | Honest recorder attestation plus independent receipts for every signed-in participant; live revocation/readiness changes pause capture | Automated gating proof passes; multi-account live proof pending |
 | Local audio | Seven-state lifecycle, 48 kHz / 192 kbps mono AAC, metering, projected storage reserve checks at start/resume/runtime, explicit interruption resume, delegate-confirmed finalization | Simulator build passes; device audio and forced low-storage proof pending |
+| Local video core | Actor-isolated front/rear capture, actual-device 1080p–4K/30 profile resolution, HEVC preference, ten-second MOV fragments, video-only podcast and camera-plus-mic solo source modes, controlled pause/camera-switch boundaries, thermal/storage/foreground/account interlocks, full-track EOF validation, and typed upload evidence | Simulator build and durability contracts pass; UI intentionally gated on long-source worker and physical-device matrix |
 | Local durability | Preallocated UUID, durable armed/START journals before recorder start, protected owner sidecars and last-known-good ledgers, decode-validated recovery vs. explicit needs-repair state, no automatic pruning, explicit user-only local-original deletion with a durable tombstone | Source/build proof passes; force-quit and damaged-container device drills pending |
 | Interruptions | Visible pause on interruption or route loss; never silently resumes after the interruption | Source/build proof passes; device drill pending |
 | Upload | Canonical direct-to-GCS resumable session, persisted SHA-256/size/phase, file-backed background transfer, bounded retry, exact verified finalize, durable actor/Nest byte and issuance reservations, and separate held/released processing truth; unsafe server-buffered legacy ingress disabled before body read | Backend contract proof passes; schema deployment and iOS live background transfer pending |
@@ -62,13 +63,20 @@ The local-original action and account deletion are intentionally different. Loca
 ## Sequenced production increments
 
 - Local camera/video recording is now the next production-source increment.
-  It follows the source/clock/editor contract in
-  `docs/quipsly/production-source-capture.md`; simulator camera demos do not
-  count as delivery.
+  Its capture controller and source-durability boundary are implemented under
+  the source/clock/editor contract in
+  `docs/quipsly/production-source-capture.md`. Preflight/live UX stays hidden
+  until the >2 GiB verification worker and real-device camera matrix pass;
+  simulator compilation alone does not count as delivery.
 - Simultaneous multicamera capture remains deferred until the single-camera
   source lane passes real-device 4K, thermal, storage, recovery, upload, and
   editor-alignment gates.
-- Async verification for future video sources above the current 2 GiB audio-first limit and cleanup of expired resumable control manifests.
+- A dedicated Cloud Run Job must verify one immutable GCS generation and commit
+  the same idempotent finalization receipt for video above the current 2 GiB
+  synchronous limit. The native controller explicitly holds those sources
+  locally instead of submitting a request the server cannot verify. Expired
+  resumable-control cleanup belongs in the same worker runtime, as a separately
+  invocable command.
 - Automatic local retention/pruning. The v1 app never silently deletes source recordings; its implemented deletion path is explicit, owner-only, one-original-at-a-time, and tombstoned.
 - End-user provider-egress controls.
 - Native editing, publishing, manuscript, and 360 reframing inside the Capture app.

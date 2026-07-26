@@ -786,6 +786,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             displayTitle: activeCallRoomLabel,
             mediaKind: .audio,
             captureGroupId: captureIntent.captureID,
+            roomStartReceiptId: captureIntent.startReceiptID,
             sourceProfile: LocalRecordingSourceProfile(
                 container: "m4a",
                 codec: "aac-lc",

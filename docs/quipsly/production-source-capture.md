@@ -5,9 +5,14 @@ Last reviewed: 2026-07-26
 
 Implementation checkpoint: the protected local ledger and canonical resumable
 manifest now carry a backward-compatible `audio | video` media kind,
-`captureGroupId`, exact source profile, and monotonic start/stop evidence. Old
-audio ledgers and v2 upload manifests normalize to one-source capture groups
-without gaining new processing authority. Camera capture UI is not enabled yet.
+`captureGroupId`, exact source profile, and monotonic start/stop evidence. The
+native camera core now resolves the actual front/rear format, records fragmented
+MOV sources behind an actor, makes pause/switch explicit source boundaries,
+closes room receipts across failures, storage, thermal, identity, and foreground
+changes, and decodes each finalized track through EOF before upload eligibility.
+Old audio ledgers and v2 upload manifests normalize to one-source capture groups
+without gaining new processing authority. Camera capture UI remains disabled
+until the long-source cloud verifier and physical-device acceptance gates exist.
 
 ## Outcome
 
@@ -86,6 +91,19 @@ survive process exit in a background session.
 
 - [Apple URLSession](https://developer.apple.com/documentation/foundation/urlsession)
 - [Apple background transfers](https://developer.apple.com/documentation/foundation/downloading-files-in-the-background)
+
+The current synchronous finalize request is intentionally limited to 2 GiB.
+Long-form 4K removes that limit by moving full-generation SHA-256 verification
+to a dedicated Cloud Run Job, not by extending an interactive HTTP request or
+weakening exact-byte evidence. Cloud Run Jobs can be executed through the API,
+accept per-execution argument/environment overrides, and support task timeouts
+up to seven days. Until that worker is deployed and read back, a source above
+2 GiB stays playable and protected on the iPhone in an explicit upload-held
+state.
+
+- [Google Cloud Run Jobs](https://cloud.google.com/run/docs/create-jobs)
+- [Execute Cloud Run Jobs](https://cloud.google.com/run/docs/execute/jobs)
+- [Cloud Storage checksum validation](https://cloud.google.com/storage/docs/data-validation)
 
 ## Product modes
 
@@ -229,8 +247,11 @@ mid-file.
 2. Generalize the protected local source ledger and upload metadata from audio
    wording to typed audio/video sources without changing audio behavior.
    **Complete through simulator build and immutable-manifest tests.**
-3. Add solo fragmented iPhone movie capture, front/rear choice, exact resolved
-   profile display, storage/thermal interlocks, recovery, and upload.
+3. Add the solo fragmented iPhone movie core, front/rear resolution, exact
+   source profile, storage/thermal interlocks, controlled pause/switch, complete
+   stream validation, and upload handoff. **Core complete through simulator
+   build and durability contracts; preflight/live UX, long-source worker, and
+   physical-device proof remain.**
 4. Add podcast-room video-only capture alongside LiveKit audio.
 5. Add controlled camera-switch source boundaries.
 6. Add cloud technical probe, proxy, alignment proposal, and Episode Room

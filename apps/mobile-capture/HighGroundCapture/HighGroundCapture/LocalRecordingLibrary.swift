@@ -135,6 +135,7 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     // captures always persist all three fields before media bytes begin.
     var mediaKind: LocalRecordingMediaKind? = nil
     var captureGroupId: UUID? = nil
+    var roomStartReceiptId: UUID? = nil
     var sourceProfile: LocalRecordingSourceProfile? = nil
     var recordingSegmentsJson: String?
 
@@ -460,6 +461,7 @@ final class LocalRecordingLibrary: ObservableObject {
         displayTitle: String? = nil,
         mediaKind: LocalRecordingMediaKind = .audio,
         captureGroupId: UUID? = nil,
+        roomStartReceiptId: UUID? = nil,
         sourceProfile: LocalRecordingSourceProfile? = nil
     ) throws -> LocalRecording {
         guard let ownerAccountID = normalizedOwnerID(expectedOwnerAccountID),
@@ -500,6 +502,7 @@ final class LocalRecordingLibrary: ObservableObject {
             capturePurpose: nonempty(context.capturePurpose),
             mediaKind: mediaKind,
             captureGroupId: captureGroupId ?? id,
+            roomStartReceiptId: roomStartReceiptId,
             sourceProfile: sourceProfile,
             recordingSegmentsJson: nil,
             uploadProgress: nil,
@@ -566,6 +569,50 @@ final class LocalRecordingLibrary: ObservableObject {
             recording.statusMessage = validation.isPlayable
                 ? self.nonempty(statusMessage)
                 : validation.failureMessage
+        }
+
+        guard let recording = storedRecordings.first(where: { $0.id == id }) else {
+            throw LibraryError.recordingNotFound
+        }
+        return recording
+    }
+
+    @discardableResult
+    func validateFinalizedSource(_ id: UUID) async throws -> LocalRecording {
+        guard let candidate = storedRecordings.first(where: { $0.id == id }) else {
+            throw LibraryError.recordingNotFound
+        }
+        let fileURL = sourceFileURL(for: candidate)
+        let mediaKind = candidate.effectiveMediaKind
+        let preservedMessage = candidate.statusMessage
+
+        try mutate(id, allowInactiveOwner: true) { recording in
+            guard recording.status == .saved else { return }
+            recording.status = .validatingRecovery
+            recording.statusMessage = "Quipsly is decoding the complete finalized \(mediaKind.sourceNoun) stream before enabling playback or upload."
+        }
+
+        let validation = await Task.detached(priority: .utility) {
+            Self.validateSource(
+                at: fileURL,
+                mediaKind: mediaKind,
+                readsToEnd: true
+            )
+        }.value
+
+        try mutate(id, allowInactiveOwner: true) { recording in
+            guard recording.status == .validatingRecovery else { return }
+            recording.byteCount = self.fileByteCount(at: fileURL)
+            if let durationSeconds = validation.durationSeconds {
+                recording.durationSeconds = durationSeconds
+            }
+            if validation.isPlayable {
+                recording.status = .saved
+                recording.statusMessage = preservedMessage
+            } else {
+                recording.status = .needsRepair
+                recording.statusMessage = validation.failureMessage
+            }
         }
 
         guard let recording = storedRecordings.first(where: { $0.id == id }) else {
@@ -934,6 +981,7 @@ final class LocalRecordingLibrary: ObservableObject {
                     capturePurpose: nil,
                     mediaKind: inferredMediaKind(for: fileURL),
                     captureGroupId: nil,
+                    roomStartReceiptId: nil,
                     sourceProfile: nil,
                     recordingSegmentsJson: nil,
                     uploadProgress: nil,

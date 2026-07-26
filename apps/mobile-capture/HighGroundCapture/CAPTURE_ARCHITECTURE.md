@@ -132,6 +132,16 @@ opens another in the same capture group rather than risking an unrecoverable
 mid-file input mutation. The full source/clock/editor contract is documented in
 `docs/quipsly/production-source-capture.md`.
 
+The actor-isolated capture service, controller, typed source ledger, controlled
+source boundaries, full-track finalized-file validation, and upload handoff are
+implemented. The product surface remains gated: the current HTTP finalizer
+streams SHA-256 synchronously and therefore accepts at most 2 GiB. A larger
+video stays in an explicit local upload-held state until a dedicated Cloud Run
+Job can stream one immutable GCS generation, commit the same idempotent
+verification/finalization evidence, and expose pollable status. Raising the
+request limit, trusting client metadata as server verification, or silently
+splitting a continuous master into short files are not acceptable substitutes.
+
 ### Local recording ledger
 
 `LocalRecordingLibrary` persists one record per source file with:

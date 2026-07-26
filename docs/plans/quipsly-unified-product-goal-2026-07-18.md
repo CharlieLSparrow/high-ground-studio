@@ -2081,3 +2081,42 @@ This is an active-goal checkpoint, not a completion claim.
   camera-recording claim; solo camera capture, real 4K device proof,
   interruption/thermal/storage operation, large-video asynchronous
   verification, and physical upload/readback remain required.
+
+### 2026-07-26 production iPhone camera-core checkpoint
+
+- Added one actor-isolated `AVCaptureSession` source lane shared by solo video
+  and the future podcast-room video-only mode. It requests only the required
+  permissions, resolves the actual front/rear device profile at 1080p–4K/30,
+  prefers HEVC when the movie output supports it, records portrait metadata,
+  enables stabilization where available, and writes ten-second fragmented MOV
+  sources. Failed session reconfiguration restores the prior inputs instead of
+  leaving an unreported partial camera graph.
+- The MainActor controller now performs a real production preflight: exact
+  video/audio consent, stable owner snapshot, resolved profile, thermal state,
+  and a conservative five-minute storage window above a protected 1.5 GB
+  reserve. A durable CallRoom START receipt precedes the protected source row,
+  and both precede `startRecording`; the immutable owner is rechecked
+  immediately before bytes. Any post-START setup failure writes STOP.
+- Pause and front/rear switching deliberately finalize one source and resume a
+  new file in the same capture group. Backgrounding, account changes, critical
+  thermal state, and storage pressure close the current source without changing
+  quality. A stop that races the asynchronous movie-start callback stays
+  pending and executes once AVFoundation confirms recording.
+- Finalization first performs a bounded container check, then decodes every
+  declared audio/video track through EOF on a utility task while playback and
+  upload remain disabled. Only the durable result can enter the existing typed
+  resumable upload lane. A complete video above the server's current 2 GiB
+  synchronous-verification limit is explicitly upload-held on the iPhone; it is
+  not sent into a request that cannot verify it and is never mislabeled cloud
+  safe.
+- Research selected a dedicated Cloud Run Job for long-source verification:
+  it will stream one immutable GCS generation, commit the existing idempotent
+  verification/database receipt, and expose pollable state. Cloud Run Jobs
+  support API execution and tasks up to seven days, which fits long media
+  verification better than an interactive Next/Cloud Run request.
+- The Xcode 26.2 generic iOS Simulator build succeeds. The expanded native
+  durability contract passes 67/67 assertions and the focused source
+  security/resumable suite passes 13/13 tests. This proves the hidden camera
+  engine and durability boundary, not user-facing camera UX, >2 GiB cloud
+  verification, physical iPhone 4K/thermal/lock operation, editor proxy/sync,
+  or TestFlight readiness.

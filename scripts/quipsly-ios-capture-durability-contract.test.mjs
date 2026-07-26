@@ -12,8 +12,20 @@ const captureRoot = path.join(
   "apps/mobile-capture/HighGroundCapture/HighGroundCapture",
 );
 
-const [audio, library, receipts, model, phoneShell, offlineView, playback] = await Promise.all([
+const [
+  audio,
+  videoController,
+  videoService,
+  library,
+  receipts,
+  model,
+  phoneShell,
+  offlineView,
+  playback,
+] = await Promise.all([
   readFile(path.join(captureRoot, "AudioCaptureController.swift"), "utf8"),
+  readFile(path.join(captureRoot, "VideoCaptureController.swift"), "utf8"),
+  readFile(path.join(captureRoot, "VideoCaptureService.swift"), "utf8"),
   readFile(path.join(captureRoot, "LocalRecordingLibrary.swift"), "utf8"),
   readFile(path.join(captureRoot, "CaptureRoomReceiptStore.swift"), "utf8"),
   readFile(path.join(captureRoot, "CaptureExperienceModel.swift"), "utf8"),
@@ -78,6 +90,92 @@ check("start and resume both check storage", (audio.match(/hasCaptureStorageHead
 check("runtime storage probe is periodic", audio.includes("storageCheckInterval") && audio.includes("checkStorageHeadroomDuringCapture()"));
 check("disk pressure auto-finalizes visibly", audio.includes("stopForStorageSafety") && audio.includes("automaticStopReason = message"));
 check("unavailable capacity fails closed", audio.includes("storageCapacityProbeFailed = true") && audio.includes("stopForStorageSafety(availableBytes: nil)"));
+
+const videoStart = videoController.slice(
+  videoController.indexOf("func start("),
+  videoController.indexOf("func stop() async"),
+);
+const videoStartReceipt = videoStart.indexOf("receiptStore.enqueueDurably(");
+const videoLedgerArm = videoStart.indexOf("library.beginRecording(");
+const videoOwnerRecheck = videoStart.lastIndexOf(
+  "AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot)",
+);
+const videoBytesStart = videoStart.indexOf("service.startRecording(to:");
+check("camera session mutations are actor isolated", videoService.includes("actor VideoCaptureService"));
+check(
+  "failed camera reconfiguration restores the previous inputs",
+  videoService.includes("if !configurationSucceeded")
+    && videoService.includes("captureSession.canAddInput(previousCameraInput)")
+    && videoService.includes("captureSession.canAddInput(previousMicrophoneInput)"),
+);
+check(
+  "camera movie files use ten-second recovery fragments",
+  videoService.includes("movieOutput.movieFragmentInterval = CMTime(seconds: 10"),
+);
+check(
+  "camera source profile is resolved from the actual device",
+  videoService.includes("device.activeFormat = selection.format")
+    && videoService.includes("movieOutput.availableVideoCodecTypes.contains(.hevc)")
+    && videoService.includes("VideoCaptureResolvedProfile("),
+);
+check(
+  "camera does not silently downgrade an active source",
+  videoController.includes("Quality will not silently change during a source.")
+    && videoController.includes("without changing quality"),
+);
+check(
+  "video START receipt and source ledger are durable before bytes",
+  videoStartReceipt >= 0
+    && videoStartReceipt < videoLedgerArm
+    && videoLedgerArm < videoBytesStart,
+);
+check(
+  "video rechecks immutable owner immediately before bytes",
+  videoOwnerRecheck > videoLedgerArm && videoOwnerRecheck < videoBytesStart,
+);
+check(
+  "every post-START setup failure closes the room boundary",
+  videoStart.includes("armedRecordingID = recordingID")
+    && videoStart.includes("if let recordingID = armedRecordingID")
+    && videoStart.includes("closeRoomBoundary("),
+);
+check(
+  "stop requested during camera arming survives the callback race",
+  videoController.includes("stopRequestedWhileArming")
+    && videoController.includes("if let requestedReason = stopRequestedWhileArming")
+    && videoController.includes("await stopIfActive(reason: requestedReason)"),
+);
+check(
+  "pause and camera switch create new files in the same capture group",
+  videoController.includes("case cameraSwitch")
+    && videoController.includes("captureGroupID: finishedCapture.captureGroupID")
+    && videoController.includes("Pause created an explicit source boundary"),
+);
+check(
+  "camera finalization decodes through EOF before upload eligibility",
+  videoController.includes("library.validateFinalizedSource(")
+    && library.includes("func validateFinalizedSource(")
+    && library.includes("readsToEnd: true"),
+);
+check(
+  "background, identity, thermal, and storage pressure close video safely",
+  videoController.includes("UIApplication.willResignActiveNotification")
+    && videoController.includes(".quipslyCaptureAccountIdentityDidChange")
+    && videoController.includes("ProcessInfo.thermalStateDidChangeNotification")
+    && videoController.includes("storageSafetyReserveBytes"),
+);
+check(
+  "stale camera profiles cannot arm after preview shutdown",
+  videoStart.includes("guard state == .ready")
+    && videoController.includes("shutdownPreviewAndClearProfile()")
+    && videoController.includes("resolvedProfile = nil"),
+);
+check(
+  "oversized video stays local until the long-source verifier exists",
+  videoController.includes("synchronousCloudVerificationLimitBytes")
+    && videoController.includes("library.markUploadHeld")
+    && videoController.includes("no partial or falsely verified copy was queued"),
+);
 
 check("local ledger has explicit armed status", library.includes("case armed"));
 check("local ledger uses caller preallocated UUID", library.includes("func beginRecording(\n        id: UUID,") && library.includes("id: id,"));
