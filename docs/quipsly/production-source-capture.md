@@ -105,6 +105,10 @@ state.
 - [Execute Cloud Run Jobs](https://cloud.google.com/run/docs/execute/jobs)
 - [Cloud Storage checksum validation](https://cloud.google.com/storage/docs/data-validation)
 
+The accepted state machine, queue receipt, IAM boundary, release sequence, and
+acceptance matrix are in
+[`long-source-verification-worker.md`](./long-source-verification-worker.md).
+
 ## Product modes
 
 ### Podcast room camera

@@ -76,7 +76,8 @@ The local-original action and account deletion are intentionally different. Loca
   synchronous limit. The native controller explicitly holds those sources
   locally instead of submitting a request the server cannot verify. Expired
   resumable-control cleanup belongs in the same worker runtime, as a separately
-  invocable command.
+  invocable command. The accepted design is
+  `docs/quipsly/long-source-verification-worker.md`.
 - Automatic local retention/pruning. The v1 app never silently deletes source recordings; its implemented deletion path is explicit, owner-only, one-original-at-a-time, and tombstoned.
 - End-user provider-egress controls.
 - Native editing, publishing, manuscript, and 360 reframing inside the Capture app.
