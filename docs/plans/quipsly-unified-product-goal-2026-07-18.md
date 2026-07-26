@@ -2051,3 +2051,33 @@ This is an active-goal checkpoint, not a completion claim.
   collaborative-watch seam, not physical-device source capture, provider
   egress, cloud upload/proxy/alignment, TestFlight operation, or production
   deployment.
+
+### 2026-07-26 typed production-source ledger checkpoint
+
+- Generalized the protected iPhone recording ledger without invalidating a
+  single historical audio row. `LocalRecording` now resolves an explicit
+  `audio | video` media kind, capture-group UUID, and versioned source profile;
+  optional on-disk fields preserve legacy decoding while every new audio take
+  writes them before `AVAudioRecorder.record()`.
+- Source profiles carry container, codec, dimensions/frame rate/color and
+  camera evidence where applicable, explicit audio inclusion/format, and
+  monotonic start/stop nanoseconds beside the existing wall clock. New audio
+  takes identify AAC-LC, M4A, 48 kHz mono, and use the preallocated Capture UUID
+  as both durable source and capture-group identity.
+- The library now allocates media-kind-confined filenames and reconciles audio
+  plus QuickTime/MP4 sources without widening legacy Documents discovery.
+  Recovery keeps the bounded header check on the main actor, then drains every
+  audio frame or every declared movie audio/video track through
+  `AVAssetReader` on a utility task before enabling playback or upload.
+- Canonical background upload jobs now fail closed when media kind disagrees
+  with the file content type. Capture-group and canonicalized source-profile
+  JSON are protected immutable retry fields, survive old manifest
+  normalization, enter upload-reservation evidence, and persist into
+  `RecordingAsset.localManifestJson` plus the episode attachment sync packet.
+- The iOS simulator target builds successfully on Xcode 26.2. Strict Quipsly
+  TypeScript passes, all 81 safety contracts pass, and the focused source
+  durability/security/resumable suite passes 13 tests including 53 native
+  durability assertions. This is the production ledger foundation, not a
+  camera-recording claim; solo camera capture, real 4K device proof,
+  interruption/thermal/storage operation, large-video asynchronous
+  verification, and physical upload/readback remain required.

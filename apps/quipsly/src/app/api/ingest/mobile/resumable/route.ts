@@ -42,6 +42,7 @@ export const runtime = "nodejs";
 // larger future video sources need the asynchronous verifier lane, not a longer request.
 const MAX_RECORDING_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_SEGMENTS_JSON_BYTES = 256 * 1024;
+const MAX_SOURCE_PROFILE_JSON_BYTES = 64 * 1024;
 const SAFE_PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/i;
 
 type CreatePayload = {
@@ -60,6 +61,8 @@ type CreatePayload = {
   recordingConsentId: string;
   recordingAssetId: string | null;
   capturePurpose: string | null;
+  captureGroupId: string;
+  sourceProfileJson: string | null;
   startedAt: string;
   stoppedAt: string;
   recordingSegmentsJson: string | null;
@@ -103,6 +106,21 @@ function segmentsJson(value: unknown) {
   return Buffer.byteLength(encoded, "utf8") <= MAX_SEGMENTS_JSON_BYTES ? encoded : null;
 }
 
+function sourceProfileJson(value: unknown) {
+  if (value == null || value === "") return null;
+  let encoded: string;
+  try {
+    const parsed = typeof value === "string" ? JSON.parse(value) : value;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    encoded = JSON.stringify(parsed);
+  } catch {
+    return null;
+  }
+  return Buffer.byteLength(encoded, "utf8") <= MAX_SOURCE_PROFILE_JSON_BYTES
+    ? encoded
+    : null;
+}
+
 function parseCreatePayload(value: unknown):
   | { ok: true; payload: CreatePayload }
   | { ok: false; error: string } {
@@ -127,6 +145,12 @@ function parseCreatePayload(value: unknown):
   const recordingConsentId = text(body.recordingConsentId, 256) || "";
   const recordingAssetId = optionalText(body.recordingAssetId, 256);
   const capturePurpose = optionalText(body.capturePurpose, 160);
+  const rawCaptureGroupId = optionalText(body.captureGroupId, 64)?.toLowerCase();
+  const captureGroupId = rawCaptureGroupId || uploadSessionId;
+  const hasSourceProfile = body.sourceProfileJson != null || body.sourceProfile != null;
+  const normalizedSourceProfile = sourceProfileJson(
+    body.sourceProfileJson ?? body.sourceProfile,
+  );
   const startedAt = normalizedDate(body.startedAt);
   const stoppedAt = normalizedDate(body.stoppedAt);
   const hasSegments = body.recordingSegmentsJson != null || body.recordingSegments != null;
@@ -135,6 +159,9 @@ function parseCreatePayload(value: unknown):
 
   if (!isSafeMobileCaptureUploadSessionId(uploadSessionId)) {
     return { ok: false, error: "uploadSessionId must be a UUID." };
+  }
+  if (!isSafeMobileCaptureUploadSessionId(captureGroupId)) {
+    return { ok: false, error: "captureGroupId must be a UUID." };
   }
   if (projectSlug && !SAFE_PROJECT_SLUG_PATTERN.test(projectSlug)) {
     return { ok: false, error: "projectSlug is invalid." };
@@ -166,6 +193,9 @@ function parseCreatePayload(value: unknown):
   if (hasSegments && normalizedSegments == null) {
     return { ok: false, error: `recordingSegmentsJson must be valid and no larger than ${MAX_SEGMENTS_JSON_BYTES} bytes.` };
   }
+  if (hasSourceProfile && normalizedSourceProfile == null) {
+    return { ok: false, error: `sourceProfileJson must be a JSON object no larger than ${MAX_SOURCE_PROFILE_JSON_BYTES} bytes.` };
+  }
 
   return {
     ok: true,
@@ -185,6 +215,8 @@ function parseCreatePayload(value: unknown):
       recordingConsentId,
       recordingAssetId,
       capturePurpose,
+      captureGroupId,
+      sourceProfileJson: normalizedSourceProfile,
       startedAt,
       stoppedAt,
       recordingSegmentsJson: normalizedSegments,
@@ -251,6 +283,8 @@ async function authorizeStoredManifest(
     recordingConsentId: stored.manifest.recordingConsentId,
     recordingAssetId: stored.manifest.recordingAssetId,
     capturePurpose: stored.manifest.capturePurpose,
+    captureGroupId: stored.manifest.captureGroupId,
+    sourceProfileJson: stored.manifest.sourceProfileJson,
     startedAt: stored.manifest.startedAt,
     stoppedAt: stored.manifest.stoppedAt,
     segmentsJson: stored.manifest.recordingSegmentsJson,
@@ -352,6 +386,7 @@ async function reserveForManifest(
     metadataJson: {
       callRoomId: manifest.callRoomId,
       captureId: manifest.captureId,
+      captureGroupId: manifest.captureGroupId,
       source: "mobile-capture-resumable",
     },
   });
@@ -463,6 +498,8 @@ export async function POST(request: Request) {
       recordingConsentId: payload.recordingConsentId,
       recordingAssetId: payload.recordingAssetId,
       capturePurpose: payload.capturePurpose,
+      captureGroupId: payload.captureGroupId,
+      sourceProfileJson: payload.sourceProfileJson,
       startedAt: payload.startedAt,
       stoppedAt: payload.stoppedAt,
       segmentsJson: payload.recordingSegmentsJson,
@@ -500,6 +537,8 @@ export async function POST(request: Request) {
       recordingConsentId: references.consent.id,
       recordingAssetId: references.recordingAsset?.id ?? null,
       capturePurpose: payload.capturePurpose,
+      captureGroupId: payload.captureGroupId,
+      sourceProfileJson: payload.sourceProfileJson,
       startedAt: payload.startedAt,
       stoppedAt: payload.stoppedAt,
       recordingSegmentsJson: payload.recordingSegmentsJson,
@@ -560,6 +599,7 @@ export async function POST(request: Request) {
       metadataJson: {
         callRoomId: binding.callRoomId,
         captureId: binding.captureId,
+        captureGroupId: binding.captureGroupId,
         source: "mobile-capture-resumable",
       },
     });

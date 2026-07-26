@@ -2,6 +2,79 @@ import Foundation
 import Combine
 import AVFoundation
 
+enum LocalRecordingMediaKind: String, Codable, CaseIterable {
+    case audio
+    case video
+
+    var uploadSourceType: String { rawValue }
+
+    var defaultFileExtension: String {
+        switch self {
+        case .audio: "m4a"
+        case .video: "mov"
+        }
+    }
+
+    var sourceNoun: String {
+        switch self {
+        case .audio: "audio"
+        case .video: "video"
+        }
+    }
+}
+
+struct LocalRecordingSourceProfile: Codable, Equatable {
+    let schemaVersion: Int
+    var container: String
+    var codec: String?
+    var width: Int?
+    var height: Int?
+    var nominalFrameRate: Double?
+    var colorSpace: String?
+    var orientation: String?
+    var cameraPosition: String?
+    var cameraDeviceUniqueID: String?
+    var includesAudio: Bool
+    var audioSampleRate: Double?
+    var audioChannelCount: Int?
+    var monotonicStartedNanoseconds: UInt64?
+    var monotonicStoppedNanoseconds: UInt64?
+
+    init(
+        schemaVersion: Int = 1,
+        container: String,
+        codec: String? = nil,
+        width: Int? = nil,
+        height: Int? = nil,
+        nominalFrameRate: Double? = nil,
+        colorSpace: String? = nil,
+        orientation: String? = nil,
+        cameraPosition: String? = nil,
+        cameraDeviceUniqueID: String? = nil,
+        includesAudio: Bool,
+        audioSampleRate: Double? = nil,
+        audioChannelCount: Int? = nil,
+        monotonicStartedNanoseconds: UInt64? = nil,
+        monotonicStoppedNanoseconds: UInt64? = nil
+    ) {
+        self.schemaVersion = schemaVersion
+        self.container = container
+        self.codec = codec
+        self.width = width
+        self.height = height
+        self.nominalFrameRate = nominalFrameRate
+        self.colorSpace = colorSpace
+        self.orientation = orientation
+        self.cameraPosition = cameraPosition
+        self.cameraDeviceUniqueID = cameraDeviceUniqueID
+        self.includesAudio = includesAudio
+        self.audioSampleRate = audioSampleRate
+        self.audioChannelCount = audioChannelCount
+        self.monotonicStartedNanoseconds = monotonicStartedNanoseconds
+        self.monotonicStoppedNanoseconds = monotonicStoppedNanoseconds
+    }
+}
+
 struct LocalRecording: Codable, Identifiable, Equatable {
     enum Status: String, Codable, CaseIterable {
         case armed
@@ -58,6 +131,11 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var recordingConsentGranted: Bool
     var recordingAssetId: String?
     var capturePurpose: String?
+    // Optional on disk so every pre-video ledger remains decodable. New
+    // captures always persist all three fields before media bytes begin.
+    var mediaKind: LocalRecordingMediaKind? = nil
+    var captureGroupId: UUID? = nil
+    var sourceProfile: LocalRecordingSourceProfile? = nil
     var recordingSegmentsJson: String?
 
     var uploadProgress: Double?
@@ -70,6 +148,26 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var localBytesDeletedAt: Date? = nil
     var localBytesDeletedByteCount: Int64? = nil
     var localDeletionCloudVerificationStatus: String? = nil
+
+    var effectiveMediaKind: LocalRecordingMediaKind {
+        if let mediaKind { return mediaKind }
+        switch URL(fileURLWithPath: fileName).pathExtension.lowercased() {
+        case "mov", "mp4", "m4v":
+            return .video
+        default:
+            return .audio
+        }
+    }
+
+    var encodedSourceProfileJSON: String? {
+        guard let sourceProfile else {
+            return nil
+        }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        guard let data = try? encoder.encode(sourceProfile) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
 
     var statusLabel: String {
         switch status {
@@ -101,9 +199,9 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         case .recovered:
             return "Recovered locally"
         case .validatingRecovery:
-            return "Validating preserved audio"
+            return "Validating preserved \(effectiveMediaKind.sourceNoun)"
         case .needsRepair:
-            return "Audio needs repair"
+            return "\(effectiveMediaKind.sourceNoun.capitalized) needs repair"
         case .captureFailed:
             return "Capture needs review"
         case .missingFile:
@@ -120,13 +218,13 @@ struct LocalRecording: Codable, Identifiable, Equatable {
 
         switch status {
         case .armed:
-            return "Quipsly durably journaled this take before opening the microphone. No playable audio is claimed yet."
+            return "Quipsly durably journaled this take before opening the \(effectiveMediaKind.sourceNoun) source. No playable media is claimed yet."
         case .recording:
-            return "High-quality audio is being written to this iPhone."
+            return "High-quality \(effectiveMediaKind.sourceNoun) is being written to this iPhone."
         case .paused:
             return "The local file is open and preserved; recording can resume."
         case .finalizing:
-            return "Quipsly is closing the audio file and updating its local ledger."
+            return "Quipsly is closing the \(effectiveMediaKind.sourceNoun) file and updating its local ledger."
         case .saved:
             return "The source file is stored locally and has not been deleted."
         case .queued:
@@ -147,9 +245,9 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         case .recovered:
             return "Quipsly found and decoded this source file on launch. Review it before relying on upload."
         case .validatingRecovery:
-            return "Quipsly is validating this preserved audio stream through its declared end. Playback and upload remain disabled until that recovery check finishes."
+            return "Quipsly is validating this preserved \(effectiveMediaKind.sourceNoun) stream through its declared end. Playback and upload remain disabled until that recovery check finishes."
         case .needsRepair:
-            return "The source bytes are preserved, but Quipsly could not decode a complete audio stream. Do not treat this file as playable until it is repaired or recovered externally."
+            return "The source bytes are preserved, but Quipsly could not decode the complete \(effectiveMediaKind.sourceNoun) stream. Do not treat this file as playable until it is repaired or recovered externally."
         case .captureFailed:
             return "Capture did not finish cleanly. Any local source bytes remain preserved."
         case .missingFile:
@@ -222,7 +320,7 @@ final class LocalRecordingLibrary: ObservableObject {
         let recording: LocalRecording
     }
 
-    private struct AudioSourceValidation: Sendable {
+    private struct SourceValidation: Sendable {
         let isPlayable: Bool
         let durationSeconds: TimeInterval?
         let failureMessage: String?
@@ -231,6 +329,7 @@ final class LocalRecordingLibrary: ObservableObject {
     private struct PendingDeepValidation: Sendable {
         let recordingID: UUID
         let fileURL: URL
+        let mediaKind: LocalRecordingMediaKind
         let playableMessage: String
     }
 
@@ -263,6 +362,9 @@ final class LocalRecordingLibrary: ObservableObject {
     }()
 
     private static let supportedAudioFileExtensions = Set(["m4a", "aac", "caf", "wav"])
+    private static let supportedVideoFileExtensions = Set(["mov", "mp4", "m4v"])
+    private static let supportedSourceFileExtensions =
+        supportedAudioFileExtensions.union(supportedVideoFileExtensions)
 
     private init(fileManager: FileManager = .default) {
         self.fileManager = fileManager
@@ -317,7 +419,24 @@ final class LocalRecordingLibrary: ObservableObject {
     }
 
     func makeUniqueRecordingURL(startedAt: Date = Date()) throws -> URL {
+        try makeUniqueSourceURL(mediaKind: .audio, startedAt: startedAt)
+    }
+
+    func makeUniqueSourceURL(
+        mediaKind: LocalRecordingMediaKind,
+        fileExtension: String? = nil,
+        startedAt: Date = Date()
+    ) throws -> URL {
         try ensureRecordingsDirectory()
+        let resolvedExtension = (fileExtension ?? mediaKind.defaultFileExtension)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let allowedExtensions = mediaKind == .video
+            ? Self.supportedVideoFileExtensions
+            : Self.supportedAudioFileExtensions
+        guard allowedExtensions.contains(resolvedExtension) else {
+            throw LibraryError.unsupportedSourceContainer
+        }
 
         var candidate: URL
         repeat {
@@ -325,7 +444,7 @@ final class LocalRecordingLibrary: ObservableObject {
             let suffix = UUID().uuidString.lowercased()
             candidate = recordingsDirectoryURL
                 .appendingPathComponent("quipsly-\(stamp)-\(suffix)")
-                .appendingPathExtension("m4a")
+                .appendingPathExtension(resolvedExtension)
         } while fileManager.fileExists(atPath: candidate.path)
 
         return candidate
@@ -338,7 +457,10 @@ final class LocalRecordingLibrary: ObservableObject {
         startedAt: Date,
         context: LocalRecordingSessionContext,
         expectedOwnerAccountID: String,
-        displayTitle: String? = nil
+        displayTitle: String? = nil,
+        mediaKind: LocalRecordingMediaKind = .audio,
+        captureGroupId: UUID? = nil,
+        sourceProfile: LocalRecordingSourceProfile? = nil
     ) throws -> LocalRecording {
         guard let ownerAccountID = normalizedOwnerID(expectedOwnerAccountID),
               ownerAccountID == normalizedOwnerID(activeOwnerAccountID),
@@ -348,7 +470,7 @@ final class LocalRecordingLibrary: ObservableObject {
         guard fileURL.deletingLastPathComponent().standardizedFileURL == recordingsDirectoryURL.standardizedFileURL else {
             throw LibraryError.recordingOutsideLibrary
         }
-        guard isSafeRecordingFileName(fileURL.lastPathComponent),
+        guard isSafeRecordingFileName(fileURL.lastPathComponent, expectedMediaKind: mediaKind),
               !storedRecordings.contains(where: { $0.id == id || $0.fileName == fileURL.lastPathComponent }) else {
             throw LibraryError.invalidOrDuplicateRecordingIdentity
         }
@@ -376,6 +498,9 @@ final class LocalRecordingLibrary: ObservableObject {
             recordingConsentGranted: context.recordingConsentGranted,
             recordingAssetId: nonempty(context.recordingAssetId),
             capturePurpose: nonempty(context.capturePurpose),
+            mediaKind: mediaKind,
+            captureGroupId: captureGroupId ?? id,
+            sourceProfile: sourceProfile,
             recordingSegmentsJson: nil,
             uploadProgress: nil,
             uploadedSourceId: nil,
@@ -423,11 +548,20 @@ final class LocalRecordingLibrary: ObservableObject {
     ) throws -> LocalRecording {
         try mutate(id, allowInactiveOwner: true) { recording in
             let fileURL = self.sourceFileURL(for: recording)
-            let validation = Self.validateAudioSource(at: fileURL, readsToEnd: false)
+            let validation = Self.validateSource(
+                at: fileURL,
+                mediaKind: recording.effectiveMediaKind,
+                readsToEnd: false
+            )
             recording.stoppedAt = stoppedAt
             recording.durationSeconds = validation.durationSeconds ?? max(0, durationSeconds)
             recording.byteCount = self.fileByteCount(at: fileURL)
             recording.recordingSegmentsJson = recordingSegmentsJson
+            if var profile = recording.sourceProfile {
+                profile.monotonicStoppedNanoseconds = profile.monotonicStoppedNanoseconds
+                    ?? DispatchTime.now().uptimeNanoseconds
+                recording.sourceProfile = profile
+            }
             recording.status = validation.isPlayable ? .saved : .needsRepair
             recording.statusMessage = validation.isPlayable
                 ? self.nonempty(statusMessage)
@@ -711,7 +845,7 @@ final class LocalRecordingLibrary: ObservableObject {
             at: recordingsDirectoryURL,
             includingPropertiesForKeys: [.isRegularFileKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey],
             options: [.skipsHiddenFiles]
-        ).filter { Self.supportedAudioFileExtensions.contains($0.pathExtension.lowercased()) }
+        ).filter { Self.supportedSourceFileExtensions.contains($0.pathExtension.lowercased()) }
         let legacyFileURLs = (try? fileManager.contentsOfDirectory(
             at: documentsDirectoryURL,
             includingPropertiesForKeys: [.isRegularFileKey, .creationDateKey, .contentModificationDateKey, .fileSizeKey],
@@ -798,6 +932,9 @@ final class LocalRecordingLibrary: ObservableObject {
                     recordingConsentGranted: false,
                     recordingAssetId: nil,
                     capturePurpose: nil,
+                    mediaKind: inferredMediaKind(for: fileURL),
+                    captureGroupId: nil,
+                    sourceProfile: nil,
                     recordingSegmentsJson: nil,
                     uploadProgress: nil,
                     uploadedSourceId: nil,
@@ -856,7 +993,7 @@ final class LocalRecordingLibrary: ObservableObject {
             throw LibraryError.ledgerQuarantined
         }
 
-        let ledger = Ledger(schemaVersion: 4, recordings: recordings)
+        let ledger = Ledger(schemaVersion: 5, recordings: recordings)
         let data = try encoder.encode(ledger)
         do {
             // Owner/source identity is written independently before the aggregate
@@ -882,7 +1019,7 @@ final class LocalRecordingLibrary: ObservableObject {
                 // not mint owner evidence that the app cannot actually prove.
                 continue
             }
-            let sidecar = SourceSidecar(schemaVersion: 1, recording: recording)
+            let sidecar = SourceSidecar(schemaVersion: 2, recording: recording)
             let data = try encoder.encode(sidecar)
             try data.write(
                 to: sourceSidecarURL(forFileName: recording.fileName),
@@ -898,22 +1035,28 @@ final class LocalRecordingLibrary: ObservableObject {
     private func applyCrashRecoveryValidation(
         to recording: inout LocalRecording,
         fileURL: URL,
-        playableMessage: String = "Capture was open when Quipsly last saved its journal. The audio stream was decoded before being labeled recovered."
+        playableMessage: String = "Capture was open when Quipsly last saved its journal. The complete media stream was decoded before being labeled recovered."
     ) {
         // Header/duration validation is intentionally bounded on MainActor. A
         // source stays non-playable while a utility task reads through EOF.
-        let validation = Self.validateAudioSource(at: fileURL, readsToEnd: false)
+        let mediaKind = recording.effectiveMediaKind
+        let validation = Self.validateSource(
+            at: fileURL,
+            mediaKind: mediaKind,
+            readsToEnd: false
+        )
         recording.byteCount = fileByteCount(at: fileURL)
         if let durationSeconds = validation.durationSeconds {
             recording.durationSeconds = durationSeconds
         }
         if validation.isPlayable {
             recording.status = .validatingRecovery
-            recording.statusMessage = "Quipsly is validating this preserved audio stream through its declared end. Playback and upload remain disabled until that recovery check finishes."
+            recording.statusMessage = "Quipsly is validating this preserved \(mediaKind.sourceNoun) stream through its declared end. Playback and upload remain disabled until that recovery check finishes."
             if !pendingDeepValidations.contains(where: { $0.recordingID == recording.id }) {
                 pendingDeepValidations.append(PendingDeepValidation(
                     recordingID: recording.id,
                     fileURL: fileURL,
+                    mediaKind: mediaKind,
                     playableMessage: playableMessage
                 ))
             }
@@ -931,7 +1074,11 @@ final class LocalRecordingLibrary: ObservableObject {
         Task { [weak self] in
             for candidate in candidates {
                 let validation = await Task.detached(priority: .utility) {
-                    Self.validateAudioSource(at: candidate.fileURL, readsToEnd: true)
+                    Self.validateSource(
+                        at: candidate.fileURL,
+                        mediaKind: candidate.mediaKind,
+                        readsToEnd: true
+                    )
                 }.value
                 guard let self else { return }
                 do {
@@ -955,13 +1102,26 @@ final class LocalRecordingLibrary: ObservableObject {
         }
     }
 
+    nonisolated private static func validateSource(
+        at fileURL: URL,
+        mediaKind: LocalRecordingMediaKind,
+        readsToEnd: Bool
+    ) -> SourceValidation {
+        switch mediaKind {
+        case .audio:
+            return validateAudioSource(at: fileURL, readsToEnd: readsToEnd)
+        case .video:
+            return validateVideoSource(at: fileURL, readsToEnd: readsToEnd)
+        }
+    }
+
     nonisolated private static func validateAudioSource(
         at fileURL: URL,
         readsToEnd: Bool
-    ) -> AudioSourceValidation {
+    ) -> SourceValidation {
         let byteCount = fileByteCountForValidation(at: fileURL)
         guard byteCount > 0 else {
-            return AudioSourceValidation(
+            return SourceValidation(
                 isPlayable: false,
                 durationSeconds: nil,
                 failureMessage: "Quipsly preserved the file path and journal evidence, but the source has no audio bytes. It needs repair and is not claimed playable."
@@ -973,7 +1133,7 @@ final class LocalRecordingLibrary: ObservableObject {
             let sampleRate = audioFile.processingFormat.sampleRate
             let frameCount = audioFile.length
             guard sampleRate.isFinite, sampleRate > 0, frameCount > 0 else {
-                return AudioSourceValidation(
+                return SourceValidation(
                     isPlayable: false,
                     durationSeconds: nil,
                     failureMessage: "Quipsly preserved the source bytes, but the audio header has no decodable frames. It needs repair and is not claimed playable."
@@ -981,7 +1141,7 @@ final class LocalRecordingLibrary: ObservableObject {
             }
             let duration = Double(frameCount) / sampleRate
             guard duration.isFinite, duration > 0 else {
-                return AudioSourceValidation(
+                return SourceValidation(
                     isPlayable: false,
                     durationSeconds: nil,
                     failureMessage: "Quipsly preserved the source bytes, but could not prove a positive audio duration. It needs repair and is not claimed playable."
@@ -996,7 +1156,7 @@ final class LocalRecordingLibrary: ObservableObject {
                     pcmFormat: audioFile.processingFormat,
                     frameCapacity: bufferCapacity
                 ) else {
-                    return AudioSourceValidation(
+                    return SourceValidation(
                         isPlayable: false,
                         durationSeconds: nil,
                         failureMessage: "Quipsly preserved the source bytes, but could not allocate a recovery-validation buffer. It needs repair and is not claimed playable."
@@ -1015,19 +1175,102 @@ final class LocalRecordingLibrary: ObservableObject {
                     decodedFrames += AVAudioFramePosition(buffer.frameLength)
                 }
                 guard decodedFrames == frameCount else {
-                    return AudioSourceValidation(
+                    return SourceValidation(
                         isPlayable: false,
                         durationSeconds: nil,
                         failureMessage: "Quipsly preserved the source bytes, but could not decode the audio stream through its declared end. It needs repair and is not claimed playable."
                     )
                 }
             }
-            return AudioSourceValidation(isPlayable: true, durationSeconds: duration, failureMessage: nil)
+            return SourceValidation(isPlayable: true, durationSeconds: duration, failureMessage: nil)
         } catch {
-            return AudioSourceValidation(
+            return SourceValidation(
                 isPlayable: false,
                 durationSeconds: nil,
                 failureMessage: "Quipsly preserved the source bytes, but iOS could not decode a complete audio stream. It needs repair and is not claimed playable."
+            )
+        }
+    }
+
+    nonisolated private static func validateVideoSource(
+        at fileURL: URL,
+        readsToEnd: Bool
+    ) -> SourceValidation {
+        let byteCount = fileByteCountForValidation(at: fileURL)
+        guard byteCount > 0 else {
+            return SourceValidation(
+                isPlayable: false,
+                durationSeconds: nil,
+                failureMessage: "Quipsly preserved the file path and journal evidence, but the source has no video bytes. It needs repair and is not claimed playable."
+            )
+        }
+
+        let asset = AVURLAsset(url: fileURL)
+        let videoTracks = asset.tracks(withMediaType: .video)
+        let duration = asset.duration.seconds
+        guard asset.isReadable,
+              asset.isPlayable,
+              !videoTracks.isEmpty,
+              duration.isFinite,
+              duration > 0 else {
+            return SourceValidation(
+                isPlayable: false,
+                durationSeconds: nil,
+                failureMessage: "Quipsly preserved the source bytes, but could not prove a readable video track and positive duration. It needs repair and is not claimed playable."
+            )
+        }
+
+        guard readsToEnd else {
+            return SourceValidation(
+                isPlayable: true,
+                durationSeconds: duration,
+                failureMessage: nil
+            )
+        }
+
+        do {
+            let tracks = videoTracks + asset.tracks(withMediaType: .audio)
+            for track in tracks {
+                let reader = try AVAssetReader(asset: asset)
+                let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+                output.alwaysCopiesSampleData = false
+                guard reader.canAdd(output) else {
+                    throw NSError(
+                        domain: "QuipslySourceValidation",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "The media track could not be attached to its validation reader."]
+                    )
+                }
+                reader.add(output)
+                guard reader.startReading() else {
+                    throw reader.error ?? NSError(
+                        domain: "QuipslySourceValidation",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "The media validation reader could not start."]
+                    )
+                }
+                var sampleCount = 0
+                while output.copyNextSampleBuffer() != nil {
+                    sampleCount += 1
+                }
+                guard reader.status == .completed, sampleCount > 0 else {
+                    throw reader.error ?? NSError(
+                        domain: "QuipslySourceValidation",
+                        code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: "The media validation reader did not reach the declared end."]
+                    )
+                }
+            }
+            return SourceValidation(
+                isPlayable: true,
+                durationSeconds: duration,
+                failureMessage: nil
+            )
+        } catch {
+            return SourceValidation(
+                isPlayable: false,
+                durationSeconds: duration,
+                failureMessage: "Quipsly preserved the source bytes, but iOS could not decode every recorded video sample through the declared end. It needs repair and is not claimed playable."
             )
         }
     }
@@ -1072,16 +1315,28 @@ final class LocalRecordingLibrary: ObservableObject {
             && (fileName.hasPrefix("quipsly_recording_") || fileName.hasPrefix("quipsly-recording-"))
     }
 
-    private func isSafeRecordingFileName(_ fileName: String) -> Bool {
+    private func inferredMediaKind(for fileURL: URL) -> LocalRecordingMediaKind {
+        Self.supportedVideoFileExtensions.contains(fileURL.pathExtension.lowercased())
+            ? .video
+            : .audio
+    }
+
+    private func isSafeRecordingFileName(
+        _ fileName: String,
+        expectedMediaKind: LocalRecordingMediaKind? = nil
+    ) -> Bool {
         guard !fileName.isEmpty,
               fileName != ".",
               fileName != "..",
               URL(fileURLWithPath: fileName).lastPathComponent == fileName else {
             return false
         }
-        return Self.supportedAudioFileExtensions.contains(
-            URL(fileURLWithPath: fileName).pathExtension.lowercased()
-        )
+        let fileExtension = URL(fileURLWithPath: fileName).pathExtension.lowercased()
+        guard Self.supportedSourceFileExtensions.contains(fileExtension) else { return false }
+        guard let expectedMediaKind else { return true }
+        return expectedMediaKind == .video
+            ? Self.supportedVideoFileExtensions.contains(fileExtension)
+            : Self.supportedAudioFileExtensions.contains(fileExtension)
     }
 
     private func nonempty(_ value: String?) -> String? {
@@ -1117,6 +1372,7 @@ final class LocalRecordingLibrary: ObservableObject {
         case localDeletionFailed(String)
         case ledgerQuarantined
         case invalidOrDuplicateRecordingIdentity
+        case unsupportedSourceContainer
 
         var errorDescription: String? {
             switch self {
@@ -1134,6 +1390,8 @@ final class LocalRecordingLibrary: ObservableObject {
                 return "The canonical recording index is quarantined read-only. Quipsly will not overwrite it or start a new take until its evidence is repaired."
             case .invalidOrDuplicateRecordingIdentity:
                 return "Quipsly refused an unsafe or duplicate local recording identity."
+            case .unsupportedSourceContainer:
+                return "Quipsly refused a source container that does not match the selected audio or video recording mode."
             }
         }
     }

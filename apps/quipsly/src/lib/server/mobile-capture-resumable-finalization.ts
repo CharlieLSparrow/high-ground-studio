@@ -286,6 +286,10 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
         recordingConsentGranted: captureRecords.consentStatus === "GRANTED",
         recordingAssetId: captureRecords.recordingAssetId,
         capturePurpose: manifest.capturePurpose,
+        captureGroupId: manifest.captureGroupId,
+        reportedSourceProfile: manifest.sourceProfileJson
+          ? JSON.parse(manifest.sourceProfileJson)
+          : null,
       },
       proxy: { status: "not-required" },
     });
@@ -344,6 +348,8 @@ function captureRecordInput(args: {
     recordingConsentId: manifest.recordingConsentId,
     recordingAssetId: manifest.recordingAssetId,
     capturePurpose: manifest.capturePurpose,
+    captureGroupId: manifest.captureGroupId,
+    sourceProfileJson: manifest.sourceProfileJson,
     startedAt: manifest.startedAt,
     stoppedAt: manifest.stoppedAt,
     segmentsJson: manifest.recordingSegmentsJson,

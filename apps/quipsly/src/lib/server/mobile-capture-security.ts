@@ -84,6 +84,8 @@ export type MobileCaptureResumableImmutableBinding = MobileCaptureUploadManifest
   recordingConsentId: string;
   recordingAssetId: string | null;
   capturePurpose: string | null;
+  captureGroupId: string;
+  sourceProfileJson: string | null;
   startedAt: string | null;
   stoppedAt: string | null;
   recordingSegmentsJson: string | null;
@@ -111,6 +113,8 @@ export function mobileCaptureResumableBindingMismatch(
     "recordingConsentId",
     "recordingAssetId",
     "capturePurpose",
+    "captureGroupId",
+    "sourceProfileJson",
     "startedAt",
     "stoppedAt",
     "recordingSegmentsJson",

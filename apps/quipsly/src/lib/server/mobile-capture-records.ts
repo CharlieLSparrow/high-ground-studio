@@ -22,6 +22,8 @@ type MobileCaptureRecordInput = {
   recordingConsentGranted?: boolean;
   recordingAssetId?: string | null;
   capturePurpose?: string | null;
+  captureGroupId?: string | null;
+  sourceProfileJson?: string | null;
   startedAt?: string | null;
   stoppedAt?: string | null;
   segmentsJson?: string | null;
@@ -108,6 +110,8 @@ function metadataFor(input: MobileCaptureRecordInput) {
     recordingConsentId: input.recordingConsentId || null,
     actorUserId: input.actorUserId,
     capturePurpose: input.capturePurpose || null,
+    captureGroupId: input.captureGroupId || input.sessionId,
+    reportedSourceProfile: parsedSourceProfile(input.sourceProfileJson),
     mediaAssetId: input.mediaAssetId || null,
     sourceId: input.sourceId || null,
     checksumSha256: input.checksumSha256 || null,
@@ -130,6 +134,15 @@ function safeJson(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function parsedSourceProfile(value?: string | null) {
+  if (!value) return null;
+  try {
+    return safeJson(JSON.parse(value));
+  } catch {
+    return null;
+  }
 }
 
 function immutableReceiptBindingMatchesInput(receipt: any, input: MobileCaptureReferenceInput) {

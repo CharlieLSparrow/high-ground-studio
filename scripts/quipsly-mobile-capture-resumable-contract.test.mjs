@@ -33,6 +33,8 @@ test("canonical upload creation is authenticated, room-project-bound, consent-bo
     "mobileCaptureResumableBindingMismatch",
     "evaluateMobileCaptureRoomReadiness",
     "preservation-only",
+    "captureGroupId",
+    "sourceProfileJson",
   ]) {
     assert.ok(createRoute.includes(required), required);
   }
@@ -71,6 +73,9 @@ test("legacy v2 manifests normalize to preservation-only while quarantining hist
   }, uploadSessionId);
 
   assert.equal(normalized.captureId, uploadSessionId);
+  assert.equal(normalized.captureGroupId, uploadSessionId,
+    "legacy sources receive a stable one-source capture group without gaining authority");
+  assert.equal(normalized.sourceProfileJson, null);
   assert.equal(normalized.roomReadinessBindingVersion, 0);
   assert.equal(normalized.processingDisposition, "preservation-only");
   assert.equal(normalized.startReceiptId, null);

@@ -783,7 +783,17 @@ final class AudioCaptureController: NSObject, ObservableObject {
             startedAt: startedAt,
             context: context,
             expectedOwnerAccountID: captureIntent.ownerSnapshot.ownerAccountID,
-            displayTitle: activeCallRoomLabel
+            displayTitle: activeCallRoomLabel,
+            mediaKind: .audio,
+            captureGroupId: captureIntent.captureID,
+            sourceProfile: LocalRecordingSourceProfile(
+                container: "m4a",
+                codec: "aac-lc",
+                includesAudio: true,
+                audioSampleRate: 48_000,
+                audioChannelCount: 1,
+                monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds
+            )
         )
 
         currentRecordingURL = audioFilename
@@ -1233,6 +1243,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
             recordingConsentGranted: recording.recordingConsentGranted,
             recordingAssetId: recording.recordingAssetId,
             capturePurpose: recording.capturePurpose,
+            sourceType: recording.effectiveMediaKind.uploadSourceType,
+            captureGroupId: recording.captureGroupId,
+            sourceProfileJson: recording.encodedSourceProfileJSON,
             startedAt: ISO8601DateFormatter().string(from: recording.startedAt),
             stoppedAt: ISO8601DateFormatter().string(from: stoppedAt),
             recordingSegmentsJson: segmentsJson,

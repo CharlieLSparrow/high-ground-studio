@@ -97,6 +97,8 @@ export function normalizeMobileCaptureResumableManifestForRead(
     gcsUri: value.storageBackend === "local-development" ? null : value.gcsUri ?? value.storageUri ?? null,
     localUploadTokenSha256: value.localUploadTokenSha256 ?? null,
     captureId,
+    captureGroupId: value.captureGroupId || captureId,
+    sourceProfileJson: value.sourceProfileJson ?? null,
     initialRoomReadiness: hasHardenedRoomBinding
       ? {
           ...value.initialRoomReadiness!,

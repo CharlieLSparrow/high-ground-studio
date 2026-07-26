@@ -88,6 +88,8 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         let recordingAssetId: String?
         let capturePurpose: String?
         let sourceType: String
+        let captureGroupId: UUID?
+        let sourceProfileJson: String?
         let trackId: String?
         let startedAt: String?
         let stoppedAt: String?
@@ -243,6 +245,8 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             recordingAssetId: String?,
             capturePurpose: String?,
             sourceType: String,
+            captureGroupId: UUID?,
+            sourceProfileJson: String?,
             trackId: String?,
             startedAt: String?,
             stoppedAt: String?,
@@ -269,6 +273,8 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             self.recordingAssetId = recordingAssetId
             self.capturePurpose = capturePurpose
             self.sourceType = sourceType
+            self.captureGroupId = captureGroupId
+            self.sourceProfileJson = sourceProfileJson
             self.trackId = trackId
             self.startedAt = startedAt
             self.stoppedAt = stoppedAt
@@ -411,6 +417,8 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         recordingAssetId: String? = nil,
         capturePurpose: String? = nil,
         sourceType: String = "audio",
+        captureGroupId: UUID? = nil,
+        sourceProfileJson: String? = nil,
         trackId: String? = nil,
         startedAt: String? = nil,
         stoppedAt: String? = nil,
@@ -465,6 +473,15 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             // the canonical server manifest.
             let sessionId = (localRecordingID ?? UUID()).uuidString.lowercased()
             let sourceContentType = contentType(for: fileUrl)
+            let normalizedSourceType = sourceType
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            guard ["audio", "video"].contains(normalizedSourceType),
+                  (normalizedSourceType == "video") == sourceContentType.hasPrefix("video/") else {
+                completion?(false, nil, "Recording media type and file container disagree")
+                statusText = "Upload held because the protected source type does not match its file container."
+                return
+            }
             let session = UploadSession(
                 fileUrl: fileUrl,
                 projectSlug: projectSlug,
@@ -475,7 +492,9 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
                 recordingConsentGranted: recordingConsentGranted,
                 recordingAssetId: recordingAssetId,
                 capturePurpose: capturePurpose,
-                sourceType: sourceType,
+                sourceType: normalizedSourceType,
+                captureGroupId: captureGroupId ?? localRecordingID,
+                sourceProfileJson: sourceProfileJson,
                 trackId: trackId,
                 startedAt: startedAt,
                 stoppedAt: stoppedAt,
@@ -1036,6 +1055,12 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         if let value = nonempty(uploadSession.participantId) { body["participantId"] = value }
         if let value = nonempty(uploadSession.recordingAssetId) { body["recordingAssetId"] = value }
         if let value = nonempty(uploadSession.capturePurpose) { body["capturePurpose"] = value }
+        if let value = uploadSession.captureGroupId?.uuidString.lowercased() {
+            body["captureGroupId"] = value
+        }
+        if let value = nonempty(uploadSession.sourceProfileJson) {
+            body["sourceProfileJson"] = value
+        }
         if let value = nonempty(uploadSession.trackId) { body["trackId"] = value }
         if let value = nonempty(uploadSession.recordingSegmentsJson) { body["recordingSegmentsJson"] = value }
         if uploadSession.requiresFreshUploadSession == true { body["restartUploadSession"] = true }

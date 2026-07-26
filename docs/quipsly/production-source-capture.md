@@ -3,6 +3,12 @@
 Status: architecture decision and delivery contract
 Last reviewed: 2026-07-26
 
+Implementation checkpoint: the protected local ledger and canonical resumable
+manifest now carry a backward-compatible `audio | video` media kind,
+`captureGroupId`, exact source profile, and monotonic start/stop evidence. Old
+audio ledgers and v2 upload manifests normalize to one-source capture groups
+without gaining new processing authority. Camera capture UI is not enabled yet.
+
 ## Outcome
 
 Quipsly records a low-latency **audio room** for conversation and one or more
@@ -219,9 +225,10 @@ mid-file.
 ## Delivery order
 
 1. Bind Episode Room to a server-validated CallRoom recording clock and repair
-   iPhone episode routing.
+   iPhone episode routing. **Complete locally.**
 2. Generalize the protected local source ledger and upload metadata from audio
    wording to typed audio/video sources without changing audio behavior.
+   **Complete through simulator build and immutable-manifest tests.**
 3. Add solo fragmented iPhone movie capture, front/rear choice, exact resolved
    profile display, storage/thermal interlocks, recovery, and upload.
 4. Add podcast-room video-only capture alongside LiveKit audio.

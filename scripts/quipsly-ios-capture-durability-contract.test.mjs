@@ -87,10 +87,29 @@ check(
     && library.includes("ownerAccountID == AuthManager.currentStoredOwnerID()"),
 );
 check("source metadata writes owner sidecars", library.includes("persistSourceSidecars") && library.includes(".quipsly-source.json"));
+check(
+  "source ledger distinguishes audio and video without breaking legacy rows",
+  library.includes("enum LocalRecordingMediaKind")
+    && library.includes("var mediaKind: LocalRecordingMediaKind? = nil")
+    && library.includes("var effectiveMediaKind: LocalRecordingMediaKind"),
+);
+check(
+  "new sources persist capture-group and resolved profile evidence",
+  library.includes("var captureGroupId: UUID? = nil")
+    && library.includes("var sourceProfile: LocalRecordingSourceProfile? = nil")
+    && audio.includes("captureGroupId: captureIntent.captureID")
+    && audio.includes("monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds"),
+);
 check("source ledger keeps a last-known-good copy", library.includes("recordings-index.last-known-good.json"));
 check("corrupt source ledger becomes read-only", library.includes("ledgerIsWritable = false") && library.includes("throw LibraryError.ledgerQuarantined"));
 check("corrupt source ledger is never reset empty", !library.includes("persist([])"));
 check("crash recovery decodes through declared EOF", library.includes("AVAudioFile(forReading:") && library.includes("readsToEnd: true") && library.includes("decodedFrames == frameCount"));
+check(
+  "video recovery reads every declared track through EOF",
+  library.includes("AVAssetReaderTrackOutput")
+    && library.includes("while output.copyNextSampleBuffer() != nil")
+    && library.includes("reader.status == .completed"),
+);
 check("deep crash recovery decoding runs off MainActor", library.includes("Task.detached(priority: .utility)") && library.includes("scheduleDeepRecoveryValidation()"));
 check("recovery has a durable non-playable pending state", library.includes("case validatingRecovery") && library.includes("recording.status = .validatingRecovery") && library.includes("Playback and upload remain disabled until that recovery check finishes"));
 check("pending recovery is requeued after relaunch", library.includes("case .armed, .recording, .paused, .finalizing, .validatingRecovery:") && library.includes("applyCrashRecoveryValidation(to: &storedRecordings[index]"));
