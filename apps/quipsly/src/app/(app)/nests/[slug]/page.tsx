@@ -180,7 +180,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
     ],
   };
 
-  const [documents, grants, assets, mediaBins, projectFollowThrough, tags, rooms] = await Promise.all([
+  const [documents, grants, assets, mediaBins, projectFollowThrough, tags, rooms, episodeProductions] = await Promise.all([
     prisma.studioDocument.findMany({
       where: { projectId: project.id },
       select: {
@@ -245,6 +245,18 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
       orderBy: [{ scheduledStart: "desc" }, { updatedAt: "desc" }],
       take: 24,
     }),
+    prisma.studioEpisodeProduction.findMany({
+      where: { projectId: project.id },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        status: true,
+        updatedAt: true,
+      },
+      orderBy: [{ updatedAt: "desc" }, { slug: "asc" }],
+      take: 24,
+    }),
   ]);
 
   const nestKind = nestKindFromSourceLabel(project.sourceLabel);
@@ -261,6 +273,8 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
   const nextRoom = rooms.find((room) => room.scheduledStart && room.scheduledStart >= new Date()) ?? rooms[0];
   const latestDocument = documents[0];
   const episodeSlug = defaultEpisodeForNest(project.slug);
+  const activeEpisode = episodeProductions.find((episode) => episode.slug === episodeSlug)
+    ?? episodeProductions[0];
   const outputs = listOutputsForNestKind(nestKind === "home" ? "study" : nestKind).slice(0, 6);
   const hasVisualResearchLab = project.slug === "marine-biology-research" || nestKind === "gallery";
 
@@ -346,6 +360,14 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                   <p className="text-xs font-semibold text-[#806a4d]">These are links to canonical records, never copies.</p>
                 </div>
                 <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  {activeEpisode ? (
+                    <Link href={`/nests/${encodeURIComponent(project.slug)}/episodes/${encodeURIComponent(activeEpisode.slug)}`} className="rounded-2xl border border-orange-200 bg-orange-50/60 p-4 outline-none hover:border-orange-400 focus-visible:ring-4 focus-visible:ring-orange-100">
+                      <Film className="text-orange-800" size={19} aria-hidden="true" />
+                      <span className="mt-3 block text-[10px] font-black uppercase tracking-wide text-orange-800">Episode Room</span>
+                      <span className="mt-1 block font-black">{activeEpisode.title}</span>
+                      <span className="mt-2 block text-xs font-semibold text-[#806a4d]">Text, shared clips, recording clock, timeline, and chat</span>
+                    </Link>
+                  ) : null}
                   {latestDocument ? (
                     <Link href={`/create?project=${encodeURIComponent(project.slug)}&document=${encodeURIComponent(latestDocument.id)}`} className="rounded-2xl border border-amber-200 bg-amber-50/60 p-4 outline-none hover:border-amber-400 focus-visible:ring-4 focus-visible:ring-amber-100">
                       <FileText className="text-amber-800" size={19} aria-hidden="true" />
@@ -378,7 +400,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                       <span className="mt-2 block text-xs font-semibold text-[#806a4d]">{nextRoom.scheduledStart ? nextRoom.scheduledStart.toLocaleString() : nextRoom.status.toLowerCase()}</span>
                     </Link>
                   ) : null}
-                  {!latestDocument && !nextTask && !activeGoal && !nextRoom ? (
+                  {!activeEpisode && !latestDocument && !nextTask && !activeGoal && !nextRoom ? (
                     <div className="md:col-span-2 xl:col-span-4">
                       <EmptyState title="This project has a clean slate." body="Capture the first note, task, or goal above. Quipsly will keep it attached to this project." />
                     </div>
@@ -530,6 +552,7 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
                 <h2 id="tools-heading" className="mt-1 inline-flex items-center gap-2 font-serif text-3xl font-black"><Wrench size={22} aria-hidden="true" />Tools</h2>
                 <p className="mt-2 max-w-3xl text-sm font-semibold leading-6 text-[#765f40]">Open a specialized surface when the work needs it. Each tool keeps this project identity instead of creating a second project.</p>
                 <div className="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                  {activeEpisode ? <ToolCard href={`/nests/${encodeURIComponent(project.slug)}/episodes/${encodeURIComponent(activeEpisode.slug)}`} title="Episode Room" description="Bring the episode text, shared watch clips, recording clock, timeline alignment, and collaboration thread into one live workspace." icon={Radio} /> : null}
                   {project.slug === "high-ground-odyssey-manuscript" ? <ToolCard href={`/nests/${project.slug}/episode-editor?episode=${episodeSlug}`} title="Episode editing desk" description="Switch episodes, watch synchronized angles, and make attributable display decisions without changing the protected sync baseline." icon={Film} /> : null}
                   <ToolCard href={`/create?project=${encodeURIComponent(project.slug)}`} title={documentActionLabel(nestKind)} description="Write, study, structure, tag, annotate, and work with transparent assistance." icon={BookOpen} />
                   {hasVisualResearchLab ? <ToolCard href={`/nests/${encodeURIComponent(project.slug)}/visual-research`} title="Visual research lab" description="Review image batches, source metadata, visual labels, masks, and model-ready exports." icon={Microscope} /> : null}

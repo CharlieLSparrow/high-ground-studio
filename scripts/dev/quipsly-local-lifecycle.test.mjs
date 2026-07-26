@@ -37,6 +37,11 @@ test("machine-wide services use machine-wide ownership state", () => {
   assert.match(up, /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}"/);
   assert.doesNotMatch(up, /source "\$\{local_env_file\}"/);
   assert.match(up, /"Nest projects shell"/);
+  assert.equal(
+    up.match(/QUIPSLY_LOCAL_MEDIA_UPLOADS=true/g)?.length,
+    2,
+    "both local Nest launch paths must opt in to the development-only media vault",
+  );
 });
 
 test("the state-directory override remains deterministic for isolated tests", () => {

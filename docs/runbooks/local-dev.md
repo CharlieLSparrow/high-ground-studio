@@ -84,6 +84,8 @@ Derived from source usage:
 - `RESEND_WEBHOOK_SECRET`
 - `HGO_SITE_URL`
 - `ENABLE_EPISODES_FUMADOCS`
+- `QUIPSLY_LOCAL_MEDIA_UPLOADS`
+- `QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT`
 
 Notes:
 - use the checked-in `.env.example` as the starting point
@@ -118,6 +120,13 @@ Notes:
 - Affiliate and sponsor env vars are readiness metadata. Public affiliate links
   should still carry visible disclosure text near the link.
 - `ENABLE_EPISODES_FUMADOCS` should default to unset unless you are explicitly testing the Fumadocs-backed episodes loader
+- `scripts/dev/quipsly-local-up.sh` sets
+  `QUIPSLY_LOCAL_MEDIA_UPLOADS=true` for the isolated local Nest so Episode
+  Room media imports do not depend on a cloud bucket. The server rejects this
+  mode in production, with a non-loopback PostgreSQL database, or when
+  `QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT` escapes the operating-system temporary
+  directory. Keep both variables false/unset in shared, preview, and
+  production environments.
 - `apps/web/src/lib/server/sms.ts` reads Twilio env vars if called, but SMS/Twilio is not wired into the active coaching request flow and those vars are not required for local development today
 
 ## Install

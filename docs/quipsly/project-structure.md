@@ -58,6 +58,8 @@ The production room should not require the manuscript to carry video-specific st
 
 Production routes should call the shared project registry before creating `StudioEpisodeProduction`. This prevents `/create`, `/recorder`, `/call`, `/editor`, and AI media endpoints from accidentally creating different documents for the same project slug.
 
+The canonical collaborative surface for an existing production is `/nests/:slug/episodes/:episodeSlug`. It reads bounded text from the production document, reuses `productionJson.importedMedia`, stores the shared watch protocol under `productionJson.episodeRoom`, and uses the Nest chat key `episode:<episodeSlug>`. See [episode-room.md](./episode-room.md).
+
 6. Media assets
 
 Media assets are project-scoped first. They can optionally attach to an episode production room.

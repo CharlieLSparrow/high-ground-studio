@@ -20,6 +20,7 @@ if [[ "${1:-}" == "--run-nest" ]]; then
     FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099
     NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099
     QUIPSLY_OWNER_OVERRIDE=false
+    QUIPSLY_LOCAL_MEDIA_UPLOADS=true
     GCLOUD_PROJECT=quipsly-reef
     GOOGLE_CLOUD_PROJECT=quipsly-reef
   )
@@ -278,6 +279,7 @@ else
         FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
         NEXT_PUBLIC_QUIPSLY_FIREBASE_AUTH_EMULATOR_URL=http://127.0.0.1:9099 \
         QUIPSLY_OWNER_OVERRIDE=false \
+        QUIPSLY_LOCAL_MEDIA_UPLOADS=true \
         GCLOUD_PROJECT=quipsly-reef \
         GOOGLE_CLOUD_PROJECT=quipsly-reef \
         pnpm dev \

@@ -1980,3 +1980,34 @@ This is an active-goal checkpoint, not a completion claim.
 - The ambiguity-safe retry created no durable record: 30 vocabulary routes, 4 Tasks, and 2 Goals were reused; 2 alias/canonical collisions remained explicitly deferred; and the plan retained 0 overwrites, 0 source mutations, and 0 external effects. Independent database readback matched 1 restored Note/2 blocks, 29 tags/1 alias, 4 Tasks, 2 Goals, 1 progress receipt, 2 Goal/Task links, 3 canceled focus blocks, 0 reminder rows, and 0 recurrence series.
 - The lifecycle survives shell exit, records exact source SHA, refuses to certify a dirty worktree, and checks runtime worktree, migrations, Auth, database label, and isolation. `down` verifies exact launchd/process and Docker ownership, then permanently removes only the lab database and synthetic state. The canonical Nest, Auth emulator, and PostgreSQL remained healthy before and after shutdown.
 - This closes local second-environment disaster recovery for the included Nest knowledge-work package, not the active product goal. Production deployment/privacy/readback, physical-iPhone and TestFlight-installed operation, genuine HGO/coaching completion, Missing Compliance authorization, media/provider recovery, and App Store submission remain explicit gates.
+
+### 2026-07-26 collaborative Episode Room foundation
+
+- Established `/nests/:projectSlug/episodes/:episodeSlug` as the canonical episode workflow surface instead of adding an isolated media player. The first vertical slice places episode-bounded manuscript text, attached watch media, shared playback, recording-clock state, deterministic timeline projection, workflow handoffs, and an episode-scoped collaboration thread in one responsive room.
+- Added revisioned `quipsly-episode-room.v1` playback state inside the existing `StudioEpisodeProduction.productionJson` aggregate. Every command carries an authenticated actor, client request identity, expected revision, and server acceptance time. A serializable row-locked transaction prevents silent concurrent overwrite; exact retries converge; stale commands refresh and retry once from the client.
+- `PLAY` opens an append-only watch segment. `PAUSE`, `SEEK`, clip selection/removal, and media end close the segment with source time, episode-clock time, session identity, actors, and receipt IDs. `SYNC_TIMELINE` is explicit, is blocked during playback, replaces only prior `quipsly-episode-room-watch.v1` derivatives, and leaves source media plus unrelated timeline clips untouched.
+- The room reuses the canonical episode import/media-vault path. Uploaded direct audio/video is ready for shared playback; non-materialized web sources remain visibly attached as references instead of pretending a generic page URL is playable media. Browser autoplay denial is surfaced as a deliberate per-device join control while remote Pause remains authoritative.
+- Generalized Nest chat from one hard-coded default thread to safe project-scoped keys and introduced `episode:<episodeSlug>`. Owner/Editor can post; Viewer can read. Episode Room embeds that thread and suppresses the redundant floating default-chat panel.
+- Official Riverside research informed prepared Media Board playback, multi-operator control, and raw-versus-aligned ownership. Official Descript research informed adjacent text/media/timeline collaboration. The product decisions and physical-device acceptance path are recorded in `docs/quipsly/episode-room.md`.
+- Closed a real import ownership defect found only by operating the UI: the
+  canonical media route authorized the editor correctly but omitted that actor
+  when attaching the resulting asset, falling back to a legacy default
+  workspace lookup. Both file and URL imports now carry the authenticated actor
+  through the attachment boundary. A development-only exact-byte media vault
+  keeps local work independent of cloud billing while remaining fail-closed in
+  production, against remote databases, outside the OS temporary root, and on
+  path traversal.
+- Operated the real local Episode 4 production in two independently
+  authenticated browser profiles. `codex@dev.test` played the uploaded
+  six-second audio/video clip; `charlie.local@quipsly.test` observed that state
+  and paused it. Both players stopped, the authoritative room advanced to
+  revision 10 with Charlie Local's actor receipt and source position
+  `1.891518`, and the second participant synchronized revision 11 into three
+  receipt-backed V9 timeline clips. Both accounts posted and observed distinct
+  messages in `episode:episode-4-part-2`.
+- Focused Episode Room, route, chat, local-vault, dashboard, lifecycle, and
+  attachment tests pass; strict Quipsly TypeScript, 80 repository safety
+  contracts plus the new attachment contract, and the 149-route production
+  build pass. This checkpoint proves two-account local web operation, not
+  physical-iPhone clock comparison, sample-accurate recorded A/V alignment,
+  production deployment, or a completed/published High Ground Odyssey episode.

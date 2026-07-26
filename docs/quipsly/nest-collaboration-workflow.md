@@ -1,6 +1,6 @@
 # Quipsly Nest collaboration workflow
 
-Last updated: 2026-06-06
+Last updated: 2026-07-26
 
 Status: first working foundation
 
@@ -37,6 +37,8 @@ Key routes:
 - `/projects`: Nest hub and collaboration overview.
 - `/nests/[slug]/access`: Nest access state and invite/revoke panel.
 - `/api/nest-chat?projectSlug=<slug>`: one default Nest chat thread per project, seeded with the Ted Lasso "Believe" GIF and readable from any app surface with Nest access.
+- `/api/nest-chat?projectSlug=<slug>&threadKey=episode:<episodeSlug>`: an episode-scoped thread used by the canonical Episode Room.
+- `/nests/<slug>/episodes/<episodeSlug>`: the collaborative Episode Room for bounded text, shared watched media, revisioned playback, timeline receipts, and episode chat.
 - `/fiction-tools/private/my-heart-is-a-junkyard-starship/issue-001-tenderness-of-unlawful-design`: private comic packet.
 - `/create?project=<slug>`: living document editor. It now requires read access before loading a project.
 
@@ -65,11 +67,11 @@ The access-grant model avoids forcing every collaborator into an organization to
 
 - No email invite delivery yet.
 - No accepting/declining invite flow yet.
-- No real-time presence or comment threads tied to grants yet.
+- No real-time presence or anchored inline comment threads tied to grants yet. Episode chat and the shared playback clock use short polling.
 - No per-document or per-block access inside a Nest yet.
 - No UI for changing an existing active grant's role; currently re-granting updates it.
 - No collaborator activity feed yet.
-- Nest chat is first-pass async only: one thread per Nest, no thread splitting, no live websocket updates, and no GIF search yet. Pasted GIF URLs render inline.
+- Nest chat has a default project thread plus episode-scoped threads. It has no live websocket updates, typing presence, or GIF search yet. Pasted GIF URLs render inline in the default panel.
 
 ## Next hardening pass
 

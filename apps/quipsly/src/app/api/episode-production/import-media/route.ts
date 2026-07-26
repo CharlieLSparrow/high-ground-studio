@@ -626,6 +626,7 @@ export async function POST(request: Request) {
         prisma,
         nestSlug: projectSlug,
         assetId: mediaAsset.id,
+        actorEmail: access.actor.email,
         role: importRole,
         source: "episode-import-media.external-url",
         metadataJson: {
@@ -787,6 +788,7 @@ export async function POST(request: Request) {
       prisma,
       nestSlug: projectSlug,
       assetId: mediaAsset.id,
+      actorEmail: access.actor.email,
       role: importRole,
       source: "episode-import-media.upload",
       metadataJson: {

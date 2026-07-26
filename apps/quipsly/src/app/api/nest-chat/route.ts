@@ -14,6 +14,7 @@ const BELIEVE_GIF_PAGE_URL = "https://giphy.com/gifs/AppleTV-apple-tv-app-DEZA7F
 const BELIEVE_GIF_URL = "https://media.giphy.com/media/DEZA7FlHbMesUF1jm9/giphy.gif";
 const LEGACY_BELIEVE_GIF_ID = "5B925WaCAIWojy3KMG";
 const MAX_MESSAGE_LENGTH = 4_000;
+const MAX_THREAD_KEY_LENGTH = 120;
 
 type ChatMessageRow = {
   id: string;
@@ -34,6 +35,29 @@ function cleanMessage(input: unknown) {
 
 function normalizeProjectSlug(input: string | null) {
   return String(input ?? "").trim().toLowerCase();
+}
+
+function normalizeThreadKey(input: unknown) {
+  const raw = String(input ?? "").trim().toLowerCase();
+  if (!raw) return DEFAULT_THREAD_KEY;
+  const safe = raw
+    .replace(/[^a-z0-9:_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, MAX_THREAD_KEY_LENGTH);
+  return safe || DEFAULT_THREAD_KEY;
+}
+
+function threadTitle(projectName: string, key: string) {
+  if (key === DEFAULT_THREAD_KEY) return `${projectName} Chat`;
+  if (key.startsWith("episode:")) {
+    const episode = key
+      .slice("episode:".length)
+      .replace(/[-_]+/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+    return `${episode || "Episode"} Chat`;
+  }
+  return `${projectName} · ${key.replace(/[-_:]+/g, " ")}`;
 }
 
 function normalizeGifUrl(input: unknown) {
@@ -151,15 +175,15 @@ async function normalizeBelieveSeedMessages(projectId?: string) {
   });
 }
 
-async function ensureDefaultThread(projectId: string, projectName: string) {
+async function ensureThread(projectId: string, projectName: string, key: string) {
   const prisma = getPrismaClient();
   const thread = await prisma.studioNestChatThread.upsert({
-    where: { projectId_key: { projectId, key: DEFAULT_THREAD_KEY } },
+    where: { projectId_key: { projectId, key } },
     update: {},
     create: {
       projectId,
-      key: DEFAULT_THREAD_KEY,
-      title: `${projectName} Chat`,
+      key,
+      title: threadTitle(projectName, key),
     },
     select: {
       id: true,
@@ -200,12 +224,17 @@ async function ensureDefaultThread(projectId: string, projectName: string) {
   return thread;
 }
 
-async function loadThread(projectSlug: string, actorEmail: string) {
+async function loadThread(
+  projectSlug: string,
+  actorEmail: string,
+  key: string,
+  action: "read" | "write",
+) {
   const prisma = getPrismaClient();
   const access = await resolveStudioProjectAccess({
     projectSlug,
     email: actorEmail,
-    action: "read",
+    action,
     prisma,
   });
 
@@ -218,12 +247,13 @@ async function loadThread(projectSlug: string, actorEmail: string) {
     return { ok: false as const, status: 404, error: "Nest not found." };
   }
 
-  const thread = await ensureDefaultThread(project.id, project.name);
+  const thread = await ensureThread(project.id, project.name, key);
   return { ok: true as const, project, thread, access };
 }
 
 export async function GET(request: NextRequest) {
   const projectSlug = normalizeProjectSlug(request.nextUrl.searchParams.get("projectSlug"));
+  const key = normalizeThreadKey(request.nextUrl.searchParams.get("threadKey"));
   const actor = await resolveActor(request);
 
   if (!projectSlug) {
@@ -235,7 +265,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const loaded = await loadThread(projectSlug, actor.email);
+    const loaded = await loadThread(projectSlug, actor.email, key, "read");
     if (!loaded.ok) {
       return NextResponse.json({ ok: false, error: loaded.error }, { status: loaded.status });
     }
@@ -275,6 +305,7 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const projectSlug = normalizeProjectSlug(String(body.projectSlug || request.nextUrl.searchParams.get("projectSlug") || ""));
+  const key = normalizeThreadKey(body.threadKey || request.nextUrl.searchParams.get("threadKey"));
   const message = cleanMessage(body.body);
   const explicitGifUrl = normalizeGifUrl(body.gifUrl);
   const gifUrl = explicitGifUrl || firstGifUrlFromText(message);
@@ -293,7 +324,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const loaded = await loadThread(projectSlug, actor.email);
+    const loaded = await loadThread(projectSlug, actor.email, key, "write");
     if (!loaded.ok) {
       return NextResponse.json({ ok: false, error: loaded.error }, { status: loaded.status });
     }
@@ -310,6 +341,8 @@ export async function POST(request: NextRequest) {
         metadataJson: {
           source: "nest-chat-panel",
           pastedGif: Boolean(gifUrl),
+          threadKey: key,
+          ...(key.startsWith("episode:") ? { episodeSlug: key.slice("episode:".length) } : {}),
         },
       },
     });

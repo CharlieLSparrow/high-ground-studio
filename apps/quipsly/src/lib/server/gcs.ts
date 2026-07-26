@@ -1,4 +1,7 @@
 import { Storage } from "@google-cloud/storage";
+import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
   buildMediaVaultObjectName,
   chooseConfiguredMediaVaultBucket,
@@ -12,6 +15,7 @@ import {
 const storage = new Storage();
 
 const MEDIA_UPLOAD_RESUMABLE_THRESHOLD_BYTES = 8 * 1024 * 1024;
+const DEFAULT_LOCAL_MEDIA_INGEST_ROOT = path.join(tmpdir(), "quipsly-media-ingest");
 
 export const MEDIA_BUCKET_ENV_NAMES = [
   ...MEDIA_VAULT_BUCKET_ENV_NAMES,
@@ -23,6 +27,56 @@ export const requireMediaBucketName = requireMediaVaultBucketName;
 
 export function mockMediaUploadsAllowed() {
   return process.env.QUIPSLY_ALLOW_MOCK_UPLOADS === "true" && process.env.NODE_ENV !== "production";
+}
+
+export function localMediaUploadsAllowed() {
+  return process.env.QUIPSLY_LOCAL_MEDIA_UPLOADS === "true"
+    && process.env.NODE_ENV !== "production";
+}
+
+export function getLocalMediaIngestRoot() {
+  if (!localMediaUploadsAllowed()) {
+    throw new Error(
+      "Local media uploads are disabled. Set QUIPSLY_LOCAL_MEDIA_UPLOADS=true only for an isolated local Nest.",
+    );
+  }
+
+  const databaseUrl = String(process.env.DATABASE_URL ?? "").trim();
+  let databaseHost = "";
+  try {
+    const parsed = new URL(databaseUrl);
+    if (parsed.protocol !== "postgres:" && parsed.protocol !== "postgresql:") {
+      throw new Error("not PostgreSQL");
+    }
+    databaseHost = parsed.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+  } catch {
+    throw new Error(
+      "Local media uploads require a valid loopback PostgreSQL DATABASE_URL.",
+    );
+  }
+  if (!["127.0.0.1", "localhost", "::1"].includes(databaseHost)) {
+    throw new Error(
+      "Local media uploads require a loopback PostgreSQL database.",
+    );
+  }
+
+  const temporaryRoot = path.resolve(/* turbopackIgnore: true */ tmpdir());
+  const configuredRoot = path.resolve(
+    /* turbopackIgnore: true */
+    process.env.QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT
+      || DEFAULT_LOCAL_MEDIA_INGEST_ROOT,
+  );
+  const relativeToTemporaryRoot = path.relative(temporaryRoot, configuredRoot);
+  if (
+    !relativeToTemporaryRoot
+    || relativeToTemporaryRoot.startsWith("..")
+    || path.isAbsolute(relativeToTemporaryRoot)
+  ) {
+    throw new Error(
+      "QUIPSLY_LOCAL_MEDIA_UPLOAD_ROOT must be below the operating-system temporary directory.",
+    );
+  }
+  return configuredRoot;
 }
 
 export function getMediaBucket(bucketName = requireMediaBucketName()) {
@@ -51,6 +105,45 @@ export async function uploadMediaBuffer(args: {
   contentType: string;
   metadata?: Record<string, string | null | undefined>;
 }) {
+  const configuredBucket = chooseConfiguredMediaVaultBucket();
+  if (!configuredBucket.bucketName && localMediaUploadsAllowed()) {
+    const localMediaIngestRoot = getLocalMediaIngestRoot();
+    const safeObjectName = args.objectName
+      .split("/")
+      .map((segment) => segment.replace(/[^a-zA-Z0-9._-]+/g, "-"))
+      .filter(Boolean)
+      .join("/");
+    const localPath = path.resolve(
+      /* turbopackIgnore: true */
+      localMediaIngestRoot,
+      safeObjectName,
+    );
+    const relative = path.relative(localMediaIngestRoot, localPath);
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+      throw new Error("Local media destination escaped the authorized ingest root.");
+    }
+    await fs.mkdir(
+      /* turbopackIgnore: true */ path.dirname(localPath),
+      { recursive: true, mode: 0o700 },
+    );
+    await fs.writeFile(
+      /* turbopackIgnore: true */ localPath,
+      args.buffer,
+      { mode: 0o600 },
+    );
+    const stat = await fs.stat(/* turbopackIgnore: true */ localPath);
+    return {
+      bucketName: "",
+      objectName: localPath,
+      uri: localPath,
+      sizeBytes: stat.size,
+      contentType: args.contentType,
+      generation: "",
+      metageneration: "",
+      localOnly: true as const,
+    };
+  }
+
   const bucketName = requireMediaBucketName();
   const bucket = getMediaBucket(bucketName);
   const file = bucket.file(args.objectName);

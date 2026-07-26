@@ -100,6 +100,10 @@ export function NestChatPanel() {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const routeSupportsChat = useMemo(() => routeCanUseNestChat(pathname), [pathname]);
+  const episodeRoomEmbedsChat = useMemo(
+    () => /^\/nests\/[^/]+\/episodes\/[^/]+/.test(pathname),
+    [pathname],
+  );
   const projectSlug = useMemo(() => {
     if (!routeSupportsChat) return "";
     return projectSlugFromSearchParams(searchParams) || projectSlugFromPath(pathname);
@@ -190,7 +194,7 @@ export function NestChatPanel() {
     }
   }
 
-  if (!projectSlug) return null;
+  if (!projectSlug || episodeRoomEmbedsChat) return null;
 
   return (
     <div className="fixed bottom-20 right-4 z-[70] md:bottom-6 md:right-6">

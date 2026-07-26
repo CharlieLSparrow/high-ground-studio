@@ -43,6 +43,7 @@ describe("Nest project follow-through", () => {
       mediaBin: { findMany: jest.fn().mockResolvedValue([]) },
       studioTag: { findMany: jest.fn().mockResolvedValue([]) },
       callRoom: { findMany: jest.fn().mockResolvedValue([]) },
+      studioEpisodeProduction: { findMany: jest.fn().mockResolvedValue([]) },
       goal: { findMany: goalFindMany },
       actionItem: { findMany: taskFindMany },
     } as any);
