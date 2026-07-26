@@ -9,6 +9,7 @@ import {
   FileText,
   Film,
   Loader2,
+  Mic2,
   Pause,
   Play,
   Plus,
@@ -36,6 +37,7 @@ import {
 import type {
   EpisodeRoomDeskPayload,
   EpisodeRoomImportedCandidate,
+  EpisodeRoomRecordingSession,
 } from "@/lib/server/episode-room-store";
 
 import EpisodeRoomChat from "./EpisodeRoomChat";
@@ -48,6 +50,7 @@ type RoomResponse = {
   desk?: EpisodeRoomDeskPayload;
   room?: EpisodeRoomState;
   importedCandidates?: EpisodeRoomImportedCandidate[];
+  recordingSessions?: EpisodeRoomRecordingSession[];
   timelineClipCount?: number;
   updatedAt?: string;
 };
@@ -65,6 +68,7 @@ type CommandDraft = {
     | "SYNC_TIMELINE";
   assetId?: string;
   clipId?: string;
+  recordingRoomId?: string;
   positionSeconds?: number;
   fromPositionSeconds?: number;
 };
@@ -115,6 +119,12 @@ export default function EpisodeRoomClient({
   const [room, setRoom] = useState(initialPayload.room);
   const roomRef = useRef(initialPayload.room);
   const [candidates, setCandidates] = useState(initialPayload.importedCandidates);
+  const [recordingSessions, setRecordingSessions] = useState(initialPayload.recordingSessions);
+  const [selectedRecordingRoomId, setSelectedRecordingRoomId] = useState(
+    initialPayload.recordingSessions.find((session) => session.status === "RECORDING")?.id
+      || initialPayload.recordingSessions[0]?.id
+      || "",
+  );
   const [timelineClipCount, setTimelineClipCount] = useState(initialPayload.timelineClipCount);
   const [status, setStatus] = useState<"idle" | "saving" | "uploading" | "error">("idle");
   const [error, setError] = useState("");
@@ -146,6 +156,16 @@ export default function EpisodeRoomClient({
       roomRef.current = payload.room;
       setRoom(payload.room);
       if (payload.importedCandidates) setCandidates(payload.importedCandidates);
+      if (payload.recordingSessions) {
+        setRecordingSessions(payload.recordingSessions);
+        setSelectedRecordingRoomId((current) => (
+          payload.recordingSessions?.some((session) => session.id === current)
+            ? current
+            : payload.recordingSessions?.find((session) => session.status === "RECORDING")?.id
+              || payload.recordingSessions?.[0]?.id
+              || ""
+        ));
+      }
       if (typeof payload.timelineClipCount === "number") setTimelineClipCount(payload.timelineClipCount);
       if (!quiet) {
         setError("");
@@ -198,6 +218,7 @@ export default function EpisodeRoomClient({
       roomRef.current = payload.room;
       setRoom(payload.room);
       if (payload.importedCandidates) setCandidates(payload.importedCandidates);
+      if (payload.recordingSessions) setRecordingSessions(payload.recordingSessions);
       if (typeof payload.timelineClipCount === "number") setTimelineClipCount(payload.timelineClipCount);
       setStatus("idle");
       if (options.success) setNotice(options.success);
@@ -329,6 +350,39 @@ export default function EpisodeRoomClient({
     window.location.reload();
   }
 
+  async function prepareRecordingSession() {
+    if (!canEdit) return;
+    setStatus("saving");
+    setError("");
+    setNotice("");
+    const response = await fetch("/api/mobile/capture/sessions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        projectSlug,
+        episodeSlug,
+        purpose: "PODCAST",
+        title: initialPayload.episode.title,
+        provider: "livekit",
+        deviceLabel: "Nest Episode Room",
+      }),
+    });
+    const payload = await response.json().catch(() => ({})) as {
+      ok?: boolean;
+      error?: string;
+      session?: { id?: string };
+    };
+    if (!response.ok || !payload.ok || !payload.session?.id) {
+      setError(payload.error || "The podcast recording session could not be prepared.");
+      setStatus("error");
+      return;
+    }
+    setSelectedRecordingRoomId(payload.session.id);
+    setNotice("Podcast session prepared. Open it in Quipsly Capture, confirm consent, and start recording; this room will see the authoritative clock.");
+    setStatus("idle");
+    await refresh(true);
+  }
+
   async function seek(position: number) {
     const media = mediaRef.current;
     const fromPositionSeconds = media?.currentTime ?? projectedEpisodeRoomPosition(roomRef.current);
@@ -345,6 +399,13 @@ export default function EpisodeRoomClient({
   const duration = Math.max(0, localDuration || clip?.durationSeconds || room.durationSeconds || 0);
   const sliderPosition = Math.min(duration || Number.MAX_SAFE_INTEGER, dragPosition ?? displayPosition);
   const unattachedCandidates = candidates.filter((candidate) => !candidate.attached);
+  const recordingSession = recordingSessions.find((session) => session.id === selectedRecordingRoomId)
+    || recordingSessions.find((session) => session.status === "RECORDING")
+    || recordingSessions[0]
+    || null;
+  const boundRecordingSession = room.session?.recordingRoomId
+    ? recordingSessions.find((session) => session.id === room.session?.recordingRoomId) || null
+    : null;
 
   return (
     <main className="min-h-screen bg-[#07110d] px-3 py-4 text-[#f4eedf] sm:px-5 md:px-7 md:py-7">
@@ -470,14 +531,88 @@ export default function EpisodeRoomClient({
               <button
                 type="button"
                 disabled={!canEdit || status === "saving"}
-                onClick={() => void sendCommand({ type: "START_SESSION" }, { success: "A fresh episode clock is running." })}
+                onClick={() => void sendCommand({ type: "START_SESSION" }, { success: "A rehearsal clock is running. It is not recording evidence." })}
                 className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8ad56]/60 bg-[#d8ad56]/10 px-4 text-xs font-black text-[#f6d68f] hover:bg-[#d8ad56]/20 disabled:opacity-40"
               >
-                <Clock3 size={16} /> {room.session ? "Restart episode clock" : "Start episode clock"}
+                <Clock3 size={16} /> Start rehearsal clock
               </button>
             </header>
 
             <div className="p-4 md:p-5">
+              <section aria-labelledby="recording-clock-heading" className="mb-5 rounded-3xl border border-[#30483d] bg-[#17251e] p-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d8ad56]">Production clock</p>
+                    <h3 id="recording-clock-heading" className="mt-1 font-serif text-2xl font-black">Anchor Watch to the real recording</h3>
+                    <p className="mt-2 max-w-2xl text-xs font-semibold leading-5 text-[#aab9af]">
+                      Quipsly Capture owns consent and Start/Stop receipts. Episode Room reads that server clock; this page never fabricates or silently starts a recording.
+                    </p>
+                  </div>
+                  {boundRecordingSession ? (
+                    <span className="inline-flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 text-[10px] font-black uppercase tracking-wide text-emerald-100">
+                      <Mic2 size={14} /> Bound to {boundRecordingSession.title}
+                    </span>
+                  ) : null}
+                </div>
+
+                {recordingSessions.length ? (
+                  <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+                    <label className="block">
+                      <span className="text-[10px] font-black uppercase tracking-wide text-[#91a298]">Podcast session</span>
+                      <select
+                        value={recordingSession?.id || ""}
+                        onChange={(event) => setSelectedRecordingRoomId(event.target.value)}
+                        className="mt-1 min-h-11 w-full rounded-xl border border-[#40584c] bg-[#07110d] px-3 text-sm font-bold text-[#f4eedf] outline-none focus:border-[#d8ad56]"
+                      >
+                        {recordingSessions.map((session) => (
+                          <option key={session.id} value={session.id}>
+                            {session.title} · {session.status.toLowerCase()}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      disabled={
+                        !canEdit
+                        || !recordingSession?.canUseRecordingClock
+                        || room.session?.recordingRoomId === recordingSession?.id
+                        || status === "saving"
+                      }
+                      onClick={() => recordingSession && void sendCommand({
+                        type: "START_SESSION",
+                        recordingRoomId: recordingSession.id,
+                      }, { success: "Shared playback is anchored to the authoritative recording clock." })}
+                      className="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-[#d8ad56] px-4 text-xs font-black text-[#172018] disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Clock3 size={16} /> Use recording clock
+                    </button>
+                    <div className="text-xs font-semibold leading-5 text-[#aab9af] md:col-span-2">
+                      {recordingSession?.recordingStartedAt
+                        ? `${recordingSession.status === "RECORDING" ? "Recording now" : "Recorded"} · started ${new Date(recordingSession.recordingStartedAt).toLocaleString()} · ${recordingSession.provider}`
+                        : "Recording has not started. Open this session in Quipsly Capture, confirm consent, and tap Record."}
+                      {recordingSession ? (
+                        <Link href={`/sessions/${encodeURIComponent(recordingSession.id)}?mode=prepare`} className="ml-2 font-black text-[#f6d68f] hover:underline">
+                          Open session
+                        </Link>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex flex-col gap-3 rounded-2xl border border-dashed border-[#40584c] p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-xs font-semibold leading-5 text-[#aab9af]">No podcast capture session is bound to this episode yet.</p>
+                    <button
+                      type="button"
+                      disabled={!canEdit || status === "saving"}
+                      onClick={() => void prepareRecordingSession()}
+                      className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#d8ad56] px-4 text-xs font-black text-[#172018] disabled:opacity-40"
+                    >
+                      <Plus size={16} /> Prepare podcast session
+                    </button>
+                  </div>
+                )}
+              </section>
+
               <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-3xl border border-[#30483d] bg-black">
                 {!clip ? (
                   <div className="max-w-md px-6 text-center">

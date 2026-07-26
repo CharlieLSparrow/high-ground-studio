@@ -76,7 +76,7 @@ describe("Episode Room command route", () => {
       status: 403,
       code: "episode-production-access-denied",
       error: "No write access.",
-      actor: { id: "", email: "", name: "", source: "none" },
+      actor: { id: "", email: "", name: "", isStaff: false, source: "none" },
       access: null,
     } as never);
 
@@ -99,6 +99,7 @@ describe("Episode Room command route", () => {
         id: "user-1",
         email: "editor@example.test",
         name: "Episode Editor",
+        isStaff: false,
         source: "embedded-cookie",
       },
       access: {
@@ -136,6 +137,7 @@ describe("Episode Room command route", () => {
         userId: "user-1",
         email: "editor@example.test",
         label: "Episode Editor",
+        isStaff: false,
       },
     });
   });
@@ -147,6 +149,7 @@ describe("Episode Room command route", () => {
         id: "user-1",
         email: "editor@example.test",
         name: "Episode Editor",
+        isStaff: false,
         source: "embedded-cookie",
       },
       access: {
@@ -173,5 +176,49 @@ describe("Episode Room command route", () => {
       code: "episode-room-revision-conflict",
       currentRevision: 9,
     });
+  });
+
+  it("never accepts a client-authored recording start timestamp", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: true,
+      actor: {
+        id: "user-1",
+        email: "editor@example.test",
+        name: "Episode Editor",
+        isStaff: false,
+        source: "embedded-cookie",
+      },
+      access: {
+        allowed: true,
+        projectId: "project-1",
+        role: "EDITOR",
+      },
+    } as never);
+    jest.mocked(applyEpisodeRoomStoreCommand).mockResolvedValue({
+      room: { revision: 2 },
+      updatedAt: "2026-07-26T21:51:14.772Z",
+      timelineClipCount: 0,
+      importedCandidates: [],
+      recordingSessions: [],
+    } as never);
+
+    const response = await POST(request({
+      episodeSlug: "episode-4-part-2",
+      type: "START_SESSION",
+      recordingRoomId: "call-room-1",
+      recordingStartedAt: "1999-01-01T00:00:00.000Z",
+      clientRequestId: "bind:request-1",
+      expectedRevision: 1,
+    }), params);
+
+    expect(response.status).toBe(200);
+    expect(applyEpisodeRoomStoreCommand).toHaveBeenCalledWith(expect.objectContaining({
+      input: {
+        type: "START_SESSION",
+        recordingRoomId: "call-room-1",
+        clientRequestId: "bind:request-1",
+        expectedRevision: 1,
+      },
+    }));
   });
 });

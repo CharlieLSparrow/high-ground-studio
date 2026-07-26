@@ -7,7 +7,10 @@ jest.mock("@high-ground/quipsly-domain/coaching-packet", () => ({
 }), { virtual: true });
 
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
-import { canonicalMobileSessionProject } from "./mobile-capture-sessions";
+import {
+  canonicalMobileSessionEpisodeSlug,
+  canonicalMobileSessionProject,
+} from "./mobile-capture-sessions";
 
 describe("mobile Session canonical project projection", () => {
   it("uses the relational project and reports legacy slug drift", () => {
@@ -43,6 +46,24 @@ describe("mobile Session canonical project projection", () => {
       bindingSource: "unfiled-session",
       legacySlugDrift: false,
     });
+  });
+});
+
+describe("mobile Session canonical episode projection", () => {
+  it("uses the explicit CallRoom episode binding before an offering fallback", () => {
+    expect(canonicalMobileSessionEpisodeSlug({
+      id: "room-1",
+      metadataJson: { episodeSlug: "episode-4-part-2" },
+      booking: { offering: { slug: "podcast-offering" } },
+    })).toBe("episode-4-part-2");
+  });
+
+  it("retains legacy offering and room fallbacks", () => {
+    expect(canonicalMobileSessionEpisodeSlug({
+      id: "room-1",
+      booking: { offering: { slug: "legacy-offering" } },
+    })).toBe("legacy-offering");
+    expect(canonicalMobileSessionEpisodeSlug({ id: "room-2" })).toBe("room-2");
   });
 });
 

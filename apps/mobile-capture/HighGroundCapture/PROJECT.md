@@ -59,9 +59,15 @@ The local-original action and account deletion are intentionally different. Loca
 - No reachable physical iPhone is available for microphone, route/interruption, lock/background, and background-transfer acceptance testing.
 - The account-deletion route records a request but the approved retention matrix, disclosed completion timeframe, executor/anonymizer, and completion confirmation are incomplete. Production Terms and Privacy surfaces must be finalized and reachable.
 
-## Explicitly deferred
+## Sequenced production increments
 
-- Local camera/video recording and multicamera capture.
+- Local camera/video recording is now the next production-source increment.
+  It follows the source/clock/editor contract in
+  `docs/quipsly/production-source-capture.md`; simulator camera demos do not
+  count as delivery.
+- Simultaneous multicamera capture remains deferred until the single-camera
+  source lane passes real-device 4K, thermal, storage, recovery, upload, and
+  editor-alignment gates.
 - Async verification for future video sources above the current 2 GiB audio-first limit and cleanup of expired resumable control manifests.
 - Automatic local retention/pruning. The v1 app never silently deletes source recordings; its implemented deletion path is explicit, owner-only, one-original-at-a-time, and tombstoned.
 - End-user provider-egress controls.

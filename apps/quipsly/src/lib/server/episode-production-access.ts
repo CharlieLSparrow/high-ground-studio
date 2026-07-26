@@ -15,6 +15,7 @@ export type EpisodeProductionActor = {
   id: string;
   email: string;
   name: string;
+  isStaff: boolean;
   source: "embedded-cookie" | "mac-access-token" | "mac-session-token" | "mac-web-session" | "none";
 };
 
@@ -47,6 +48,7 @@ export async function resolveEpisodeProductionActor(request: Request): Promise<E
     id: cleanString(session?.user?.id),
     email,
     name: cleanString(session?.user?.name || email),
+    isStaff: session?.user?.isStaff === true,
     source: session?.user?.id ? "embedded-cookie" : "none",
   };
 }

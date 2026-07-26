@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import { requireProjectAccess } from "@/lib/server/access";
 import { loadEpisodeRoomDesk } from "@/lib/server/episode-room-store";
+import { getQuipslySession } from "@/lib/server/quipsly-session";
 
 import EpisodeRoomClient from "./EpisodeRoomClient";
 
@@ -23,7 +24,18 @@ export default async function EpisodeRoomPage({
     canEdit = false;
   }
 
-  const payload = await loadEpisodeRoomDesk(slug, episodeSlug, canEdit);
+  const session = await getQuipslySession();
+  const payload = await loadEpisodeRoomDesk(
+    slug,
+    episodeSlug,
+    canEdit,
+    session?.user ? {
+      userId: session.user.id,
+      email: session.user.primaryEmail,
+      label: session.user.name || session.user.primaryEmail,
+      isStaff: session.user.isStaff,
+    } : undefined,
+  );
   if (!payload) notFound();
 
   if (!payload.episode) {

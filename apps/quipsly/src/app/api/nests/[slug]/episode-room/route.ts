@@ -45,7 +45,6 @@ function parseCommand(body: Record<string, unknown>): EpisodeRoomCommandInput | 
       clientRequestId,
       expectedRevision: revision,
       ...(text(body.recordingRoomId) ? { recordingRoomId: text(body.recordingRoomId) } : {}),
-      ...(text(body.recordingStartedAt) ? { recordingStartedAt: text(body.recordingStartedAt) } : {}),
     };
   }
   if (type === "ADD_CLIP") {
@@ -122,7 +121,12 @@ export async function GET(
     }, { status: readAccess.status });
   }
   if (request.nextUrl.searchParams.get("runtime") === "1") {
-    const runtime = await loadEpisodeRoomRuntime(slug, episodeSlug);
+    const runtime = await loadEpisodeRoomRuntime(slug, episodeSlug, {
+      ...(readAccess.actor.id ? { userId: readAccess.actor.id } : {}),
+      email: readAccess.actor.email,
+      label: readAccess.actor.name || readAccess.actor.email,
+      isStaff: readAccess.actor.isStaff,
+    });
     if (!runtime) {
       return NextResponse.json({ ok: false, error: "Episode production not found." }, { status: 404 });
     }
@@ -131,7 +135,12 @@ export async function GET(
   const canEdit = readAccess.access.role
     ? roleAllowsAction(readAccess.access.role, "write")
     : false;
-  const desk = await loadEpisodeRoomDesk(slug, episodeSlug, canEdit);
+  const desk = await loadEpisodeRoomDesk(slug, episodeSlug, canEdit, {
+    ...(readAccess.actor.id ? { userId: readAccess.actor.id } : {}),
+    email: readAccess.actor.email,
+    label: readAccess.actor.name || readAccess.actor.email,
+    isStaff: readAccess.actor.isStaff,
+  });
   if (!desk) {
     return NextResponse.json({ ok: false, error: "Episode production not found." }, { status: 404 });
   }
@@ -171,6 +180,7 @@ export async function POST(
         ...(access.actor.id ? { userId: access.actor.id } : {}),
         email: access.actor.email,
         label: access.actor.name || access.actor.email,
+        isStaff: access.actor.isStaff,
       },
     });
     return NextResponse.json({ ok: true, ...result });
@@ -231,6 +241,7 @@ export async function PUT(
         ...(access.actor.id ? { userId: access.actor.id } : {}),
         email: access.actor.email,
         label: access.actor.name || access.actor.email,
+        isStaff: access.actor.isStaff,
       },
     });
     return NextResponse.json({ ok: true, ...result });

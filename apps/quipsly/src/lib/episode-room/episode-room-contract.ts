@@ -7,6 +7,7 @@ export type EpisodeRoomActor = {
   userId?: string;
   email: string;
   label: string;
+  isStaff?: boolean;
 };
 
 export type EpisodeRoomClip = {
@@ -32,6 +33,8 @@ export type EpisodeRoomSession = {
 export type EpisodeRoomActiveSegment = {
   id: string;
   sessionId: string;
+  recordingRoomId?: string;
+  recordingStartedAt?: string;
   clipId: string;
   startedAt: string;
   sourceStartSeconds: number;
@@ -222,6 +225,10 @@ function normalizeActiveSegment(value: unknown, session?: EpisodeRoomSession): E
   return {
     id,
     sessionId,
+    ...(text(row.recordingRoomId) ? { recordingRoomId: text(row.recordingRoomId) } : {}),
+    ...(text(row.recordingStartedAt)
+      ? { recordingStartedAt: isoOr(row.recordingStartedAt, session?.recordingStartedAt ?? session?.startedAt ?? new Date(0).toISOString()) }
+      : {}),
     clipId,
     startedAt: isoOr(row.startedAt, session?.startedAt ?? new Date(0).toISOString()),
     sourceStartSeconds: nonNegative(row.sourceStartSeconds),
@@ -399,6 +406,12 @@ function openSegment(
   return {
     id: context.segmentId,
     sessionId: state.session.id,
+    ...(state.session.recordingRoomId
+      ? { recordingRoomId: state.session.recordingRoomId }
+      : {}),
+    ...(state.session.recordingStartedAt
+      ? { recordingStartedAt: state.session.recordingStartedAt }
+      : {}),
     clipId: state.selectedClipId,
     startedAt: at,
     sourceStartSeconds: positionSeconds,
@@ -611,6 +624,8 @@ export type EpisodeRoomTimelineClip = {
   generatedFrom: typeof EPISODE_ROOM_TIMELINE_SOURCE;
   recordingSync: {
     episodeRoomSessionId: string;
+    recordingRoomId?: string;
+    recordingStartedAt?: string;
     watchSegmentId: string;
     startReceiptId: string;
     endReceiptId: string;
@@ -641,6 +656,8 @@ export function episodeRoomTimelineClips(state: EpisodeRoomState): EpisodeRoomTi
       generatedFrom: EPISODE_ROOM_TIMELINE_SOURCE,
       recordingSync: {
         episodeRoomSessionId: segment.sessionId,
+        ...(segment.recordingRoomId ? { recordingRoomId: segment.recordingRoomId } : {}),
+        ...(segment.recordingStartedAt ? { recordingStartedAt: segment.recordingStartedAt } : {}),
         watchSegmentId: segment.id,
         startReceiptId: segment.startReceiptId,
         endReceiptId: segment.endReceiptId,

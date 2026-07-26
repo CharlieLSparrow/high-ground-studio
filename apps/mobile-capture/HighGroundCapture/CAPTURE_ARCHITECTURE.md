@@ -3,7 +3,7 @@
 Status: implementation baseline
 Last reviewed: 2026-07-23
 Minimum OS: iOS 17
-Primary product: local-first, consent-aware audio capture for coaching, podcasts, and research interviews
+Primary product: local-first, consent-aware audio and production-source capture for coaching, podcasts, research interviews, and creator video
 
 ## Product promise
 
@@ -120,7 +120,17 @@ Audio interruption or any loss of the selected external route pauses visibly, ev
 
 The current source is one AAC/M4A container, not independently finalized segments or a CAF/ALAC stream. After process death, launch reconciliation first performs a bounded header/duration check and durably leaves the source in the non-playable `Validating preserved audio` state. That persisted state is requeued after another termination or relaunch. A sequential utility task then opens the file through `AVAudioFile` and reads decoded frames through the declared end without blocking `MainActor`; only a successful, durable result promotes it to `Recovered locally`. An open, zero-frame, truncated, or corrupt container moves to `Audio needs repair`; its bytes, path, UUID, and owner evidence stay preserved, but the app disables playback and upload retry and never claims the file is playable. Moving capture to independently finalized segments or CAF/ALAC remains deferred until physical-device lock/background, long-take, and ingestion compatibility have been proved.
 
-Future local video capture should be a separate `AVCaptureSession` implementation using a serial actor/executor, `AVCaptureMovieFileOutput`, movie fragments, storage limits, and foreground-only camera behavior. It must write the same local recording ledger and upload contract rather than adding another product truth path.
+Local video is the next production increment. It is a separate
+`AVCaptureSession` implementation behind a serial actor/executor, using
+`AVCaptureMovieFileOutput`, ten-second movie fragments, storage and thermal
+interlocks, and foreground-only camera behavior. It writes the same protected
+local source ledger and direct resumable-upload contract instead of adding a
+second product-truth path. Podcast-room mode records a video-only master while
+LiveKit owns realtime audio; solo mode may record the explicitly selected
+microphone with the movie. Front/rear switching closes one valid source and
+opens another in the same capture group rather than risking an unrecoverable
+mid-file input mutation. The full source/clock/editor contract is documented in
+`docs/quipsly/production-source-capture.md`.
 
 ### Local recording ledger
 

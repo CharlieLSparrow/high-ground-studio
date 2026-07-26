@@ -139,6 +139,46 @@ describe("Episode Room contract", () => {
     expect(state.segments[1]?.startReceiptId).toBe("receipt-seek");
   });
 
+  test("preserves the authoritative recording room anchor on every timeline segment", () => {
+    let state = createEmptyEpisodeRoomState("2026-07-26T12:00:00.000Z");
+    state = apply(state, {
+      type: "ADD_CLIP",
+      clip,
+      clientRequestId: "add-recording-clock",
+      expectedRevision: 0,
+    }, "2026-07-26T12:00:01.000Z", "add-recording-clock");
+    state = apply(state, {
+      type: "START_SESSION",
+      recordingRoomId: "call-room-episode-4",
+      recordingStartedAt: "2026-07-26T12:00:30.000Z",
+      clientRequestId: "bind-recording-clock",
+      expectedRevision: 1,
+    }, "2026-07-26T12:01:00.000Z", "bind-recording-clock");
+    state = apply(state, {
+      type: "PLAY",
+      positionSeconds: 3,
+      clientRequestId: "play-recording-clock",
+      expectedRevision: 2,
+    }, "2026-07-26T12:01:05.000Z", "play-recording-clock");
+    state = apply(state, {
+      type: "PAUSE",
+      positionSeconds: 8,
+      clientRequestId: "pause-recording-clock",
+      expectedRevision: 3,
+    }, "2026-07-26T12:01:10.000Z", "pause-recording-clock");
+
+    expect(state.segments[0]).toMatchObject({
+      recordingRoomId: "call-room-episode-4",
+      recordingStartedAt: "2026-07-26T12:00:30.000Z",
+      episodeStartSeconds: 35,
+      episodeEndSeconds: 40,
+    });
+    expect(episodeRoomTimelineClips(state)[0]?.recordingSync).toMatchObject({
+      recordingRoomId: "call-room-episode-4",
+      recordingStartedAt: "2026-07-26T12:00:30.000Z",
+    });
+  });
+
   test("is idempotent by client request id and rejects a stale revision", () => {
     const initial = createEmptyEpisodeRoomState("2026-07-26T12:00:00.000Z");
     const command: EpisodeRoomCommand = {

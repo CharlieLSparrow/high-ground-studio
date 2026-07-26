@@ -2011,3 +2011,43 @@ This is an active-goal checkpoint, not a completion claim.
   build pass. This checkpoint proves two-account local web operation, not
   physical-iPhone clock comparison, sample-accurate recorded A/V alignment,
   production deployment, or a completed/published High Ground Odyssey episode.
+
+### 2026-07-26 production-source architecture and recording-clock checkpoint
+
+- Chose the mature first recording topology: LiveKit carries the low-latency
+  audio conversation while iPhone, Canon, Shure, and provider egress remain
+  independent production sources. Podcast iPhone capture records a video-only
+  camera master beside room audio; solo mode records the explicitly selected
+  camera and microphone. Canon R8 USB is treated as a 1080p30 call preview, not
+  a substitute for its internal 4K master.
+- Defined one protected source contract for `LOCAL_AUDIO` and `LOCAL_VIDEO`,
+  including immutable source and capture-group identities, exact device/media
+  profile, wall and monotonic clocks, Capture receipts, file-backed resumable
+  upload, byte verification, proxy/probe state, and reviewed alignment
+  evidence. A camera switch closes and validates one fragmented movie before
+  arming the next source in the same capture group; the editor preserves the
+  honest gap instead of hiding an unverified seam.
+- Episode Room now lists only accessible podcast `CallRoom` rows in the exact
+  Nest and episode, can prepare one through the real Capture route, and binds
+  playback only after the server owns `recordingStartedAt`. Client-provided
+  recording timestamps are discarded. Staff access is explicit rather than
+  inferred from broad project membership.
+- Operated the complete local boundary on the rendered Episode 4 Part 2 room.
+  Current-policy consent with separate audio/video/transcription choices and
+  the audible-participant attestation produced a granted consent record.
+  `START_RECORDING` receipt
+  `episode-room-local-dogfood` moved CallRoom
+  `cms2cybai000kfixlx7z738do` to `RECORDING` at
+  `2026-07-26T22:22:47.000Z`; Episode Room bound revision 12 to that exact
+  room/timestamp.
+- Played the attached MP4 through the shared player, closed a fourth
+  receipt-backed watch segment, and explicitly synchronized revision 15.
+  PostgreSQL retained four derived clips; the newest `V9` clip carries the
+  exact CallRoom ID, recording-start timestamp, watch receipt IDs, source range
+  `1.892–6.000`, and episode placement `44.124–48.232`. The matching
+  `STOP_RECORDING` receipt applied and returned the room to `OPEN`.
+- Focused contract, route, and mobile-session projection suites pass 22/22 and
+  strict Quipsly TypeScript passes. This proves the local server-clock and
+  collaborative-watch seam, not physical-device source capture, provider
+  egress, cloud upload/proxy/alignment, TestFlight operation, or production
+  deployment.

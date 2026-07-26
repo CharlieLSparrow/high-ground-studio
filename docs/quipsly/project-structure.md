@@ -60,6 +60,10 @@ Production routes should call the shared project registry before creating `Studi
 
 The canonical collaborative surface for an existing production is `/nests/:slug/episodes/:episodeSlug`. It reads bounded text from the production document, reuses `productionJson.importedMedia`, stores the shared watch protocol under `productionJson.episodeRoom`, and uses the Nest chat key `episode:<episodeSlug>`. See [episode-room.md](./episode-room.md).
 
+Independent iPhone, Mac, camera, microphone, room-audio, and watched-media
+masters all enter through one source ledger and non-destructive alignment
+contract. See [production-source-capture.md](./production-source-capture.md).
+
 6. Media assets
 
 Media assets are project-scoped first. They can optionally attach to an episode production room.

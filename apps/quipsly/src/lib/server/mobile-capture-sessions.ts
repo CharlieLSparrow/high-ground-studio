@@ -45,6 +45,13 @@ export function canonicalMobileSessionProject(room: any) {
   };
 }
 
+export function canonicalMobileSessionEpisodeSlug(room: any) {
+  const metadata = sourceJson(room?.metadataJson);
+  return label(metadata.episodeSlug)
+    || label(room?.booking?.offering?.slug)
+    || room?.id;
+}
+
 function consentNextAction(status: string | null | undefined) {
   if (status === "GRANTED") return "Ready for consented capture.";
   if (status === "DECLINED") return "Consent declined. Do not record this session.";
@@ -756,7 +763,7 @@ export function mapMobileCaptureSessionsForUser(input: {
         : [],
       projectBindingSource: sessionProject.bindingSource,
       projectLegacySlugDrift: sessionProject.legacySlugDrift,
-      episodeSlug: booking?.offering?.slug || room.id,
+      episodeSlug: canonicalMobileSessionEpisodeSlug(room),
       scheduledStart: room.scheduledStart?.toISOString?.() ?? null,
       scheduledEnd: room.scheduledEnd?.toISOString?.() ?? null,
       participantId: participant?.id ?? null,

@@ -89,7 +89,14 @@ Browser autoplay policies can block remote audio playback. A blocked participant
 
 ## Timeline alignment
 
-Starting the episode clock establishes the recording/session epoch. `PLAY` opens a watch segment. `PAUSE`, `SEEK`, `SELECT_CLIP`, `REMOVE_CLIP`, and `ENDED` close the current segment with:
+Binding an Episode Room to an accessible podcast `CallRoom` establishes the
+recording epoch from that room's server-owned `recordingStartedAt`. The room
+selector is project- and episode-scoped, and the Episode Room cannot accept a
+client-invented recording timestamp. A rehearsal clock remains available for
+non-recording preparation, but it is visibly labeled and is not recording
+evidence.
+
+`PLAY` opens a watch segment. `PAUSE`, `SEEK`, `SELECT_CLIP`, `REMOVE_CLIP`, and `ENDED` close the current segment with:
 
 - source-media start and end seconds;
 - episode-clock start and end seconds;
@@ -121,11 +128,26 @@ On 2026-07-26 the local app was operated against the real
 - both authenticated accounts posted into
   `episode:episode-4-part-2`, and each browser observed the other account's
   message.
+- the rendered Episode Room prepared podcast `CallRoom`
+  `cms2cybai000kfixlx7z738do` through the real mobile Capture session route;
+- the current consent policy, separate audio/video/transcription choices, and
+  audible-participant attestation were accepted through the Capture consent
+  API before an app-owned `START_RECORDING` receipt changed the room to
+  `RECORDING`;
+- Episode Room bound revision 12 to that exact room and its authoritative
+  `2026-07-26T22:22:47.000Z` recording timestamp;
+- a real shared-media run then ended at revision 14, closed a fourth watched
+  span, and explicit sync advanced revision 15 to four derived timeline clips;
+- PostgreSQL readback retained the exact `recordingRoomId`,
+  `recordingStartedAt`, source and end receipt IDs, and immutable source-media
+  coordinates on the fourth `V9` timeline clip;
+- the matching `STOP_RECORDING` receipt applied successfully and returned the
+  dogfood room to `OPEN`.
 
 These are local synthetic-media and test-account receipts kept in the local
-dogfood database. They prove the multi-account web contract, not physical
-iPhone alignment, provider recording, production deployment, or episode
-publication.
+dogfood database. They prove the multi-account web contract and the
+Capture-to-Episode-Room server-clock seam. They do not prove physical iPhone
+alignment, provider egress, production deployment, or episode publication.
 
 ## Access and collaboration
 
@@ -153,14 +175,19 @@ Real workflow:
 1. open a real High Ground Odyssey episode;
 2. upload a short MP4 or audio clip;
 3. open the room in two authenticated accounts;
-4. start the episode clock;
-5. play from account A and pause from account B;
-6. verify both players stop and the actor receipt is visible;
-7. seek and resume;
-8. post messages from both accounts and verify they remain episode-scoped;
-9. sync watched spans;
-10. open Edit and verify the source plus receipt-backed timeline derivatives;
-11. confirm unrelated timeline clips and source media remain unchanged.
+4. prepare or select the exact podcast Capture room;
+5. grant current-policy consent in Capture and apply a real recording-start
+   receipt;
+6. bind the Episode Room to that server recording clock;
+7. play from account A and pause from account B;
+8. verify both players stop and the actor receipt is visible;
+9. seek and resume;
+10. post messages from both accounts and verify they remain episode-scoped;
+11. sync watched spans;
+12. open Edit and verify the source plus receipt-backed timeline derivatives;
+13. confirm unrelated timeline clips and source media remain unchanged;
+14. apply the matching recording-stop receipt and verify the room is no longer
+    recording.
 
 TestFlight and physical-iPhone proof add:
 
