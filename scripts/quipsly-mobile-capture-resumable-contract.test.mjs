@@ -6,6 +6,7 @@ import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { normalizeMobileCaptureResumableManifestForRead } from "../apps/quipsly/src/lib/server/mobile-capture-resumable-manifest.ts";
+import { newLongSourceQueuedState } from "../packages/quipsly-capture-verification/src/index.ts";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const read = (relativePath) => fs.readFileSync(path.join(root, relativePath), "utf8");
@@ -21,6 +22,8 @@ const canonicalWrapper = read("apps/quipsly/src/app/api/mobile/capture/uploads/r
 const canonicalFinalizeWrapper = read("apps/quipsly/src/app/api/mobile/capture/uploads/resumable/finalize/route.ts");
 const readiness = read("apps/quipsly/src/app/api/mobile/capture/readiness/route.ts");
 const sessionsRoute = read("apps/quipsly/src/app/api/mobile/capture/sessions/route.ts");
+const longVerification = read("apps/quipsly/src/lib/server/mobile-capture-long-verification.ts");
+const longWorker = read("apps/quipsly-media-verifier/src/worker.ts");
 
 test("canonical upload creation is authenticated, room-project-bound, consent-bound, and immutable", () => {
   for (const required of [
@@ -107,6 +110,53 @@ test("legacy v2 manifests normalize to preservation-only while quarantining hist
     "a verified legacy manifest without DB evidence remains visibly unfinished so finalize can create a HELD receipt");
 });
 
+test("long-source verification state is optional for legacy reads and fail-closed when present", () => {
+  const uploadSessionId = "9d8c0c81-847f-4e16-96d0-26b494c890aa";
+  const legacy = {
+    kind: "quipsly-mobile-capture-gcs-resumable-v2",
+    version: 2,
+    status: "uploading",
+    uploadSessionId,
+    actorUserId: "legacy-actor",
+    callRoomId: "legacy-room",
+    recordingConsentId: "legacy-consent",
+    createdAt: "2026-07-17T00:00:00.000Z",
+  };
+  assert.equal(
+    normalizeMobileCaptureResumableManifestForRead(
+      legacy,
+      uploadSessionId,
+    ).longSourceVerification,
+    null,
+  );
+
+  const queued = newLongSourceQueuedState({
+    uploadSessionId,
+    objectGeneration: "19",
+    queuedAt: "2026-07-26T22:00:00.000Z",
+  });
+  assert.equal(
+    normalizeMobileCaptureResumableManifestForRead(
+      { ...legacy, longSourceVerification: queued },
+      uploadSessionId,
+    ).longSourceVerification?.status,
+    "queued",
+  );
+  assert.throws(
+    () => normalizeMobileCaptureResumableManifestForRead(
+      {
+        ...legacy,
+        longSourceVerification: {
+          ...queued,
+          queueObjectName: "../unsafe.json",
+        },
+      },
+      uploadSessionId,
+    ),
+    /invalid/,
+  );
+});
+
 test("recording bytes go directly to a preconditioned private GCS resumable session", () => {
   for (const required of [
     "createResumableUpload",
@@ -155,6 +205,56 @@ test("finalization streams and verifies one immutable storage generation before 
   );
 });
 
+test("large videos use a configured GCS-only worker and exact evidence before app finalization", () => {
+  for (const required of [
+    "MAX_LONG_VIDEO_SOURCE_BYTES",
+    "SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES",
+    "longSourceVerifierEnabled()",
+    'storageTarget.storageBackend !== "gcs"',
+  ]) {
+    assert.ok(createRoute.includes(required), required);
+  }
+  for (const required of [
+    "QUIPSLY_LONG_SOURCE_VERIFIER_ENABLED",
+    "QUIPSLY_LONG_SOURCE_VERIFIER_PROJECT_ID",
+    "QUIPSLY_LONG_SOURCE_VERIFIER_REGION",
+    "QUIPSLY_LONG_SOURCE_VERIFIER_JOB",
+    "manifestGeneration !== receipt.manifestGeneration",
+    "run.googleapis.com/v2/projects",
+    'method: "POST"',
+  ]) {
+    assert.ok(longVerification.includes(required), required);
+  }
+  assert.equal(longVerification.includes("overrides"), false,
+    "Nest may run only the preconfigured generic job");
+  for (const required of [
+    "ensureLongSourceVerificationQueued",
+    "longSourceByteEvidenceMatchesManifest",
+    'uploadStage: "verifying"',
+    'status === "failed-terminal"',
+  ]) {
+    assert.ok(finalizeRoute.includes(required), required);
+  }
+  assert.ok(
+    finalizeRoute.indexOf("if (!longSourceByteEvidenceMatchesManifest")
+      < finalizeRoute.lastIndexOf("const claim = await claimVerification"),
+    "exact worker byte evidence must be consumed before the app-owned finalization claim",
+  );
+  assert.ok(
+    finalizeRoute.lastIndexOf("const claim = await claimVerification")
+      < finalizeRoute.lastIndexOf("finalizeMobileCaptureDatabaseEvidence"),
+    "the authenticated Nest finalizer remains the sole database writer",
+  );
+  for (const forbidden of [
+    "@prisma",
+    "lib/prisma",
+    "finalizeMobileCaptureDatabaseEvidence",
+  ]) {
+    assert.equal(longWorker.includes(forbidden), false,
+      `the storage worker must have no database authority: ${forbidden}`);
+  }
+});
+
 test("verified bytes create idempotent source, asset, receipt, checksum, and transcript evidence", () => {
   for (const required of [
     "studioVideoSource.findFirst",
@@ -194,4 +294,7 @@ test("legacy server-buffered ingress is terminal and advertises resumable v2", (
   assert.ok(readiness.includes('uploadsResumable: "/api/mobile/capture/uploads/resumable"'));
   assert.ok(readiness.includes("mediaBytesTransitAppServer: false"));
   assert.ok(readiness.includes("serverSha256RequiredBeforeReceipt: true"));
+  assert.ok(readiness.includes("longSourceVerifierEnabled: longVideoVerificationEnabled"));
+  assert.ok(readiness.includes("synchronousVerificationLimitBytes"));
+  assert.ok(readiness.includes("maximumVideoSourceBytes"));
 });

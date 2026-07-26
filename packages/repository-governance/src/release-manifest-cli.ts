@@ -68,6 +68,7 @@ function writeGitHubOutput(outputPath: string, plan: ChangedSurfacePlan): void {
       `schema=${plan.schema}`,
       `capture=${plan.capture}`,
       `native_studio=${plan.nativeStudio}`,
+      `media_verifier=${plan.mediaVerifier}`,
       `quipsly=${plan.quipsly}`,
       `changed_path_count=${plan.changedPathCount}`,
       `summary=${plan.summary}`,

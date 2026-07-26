@@ -35,12 +35,16 @@ import {
 } from "@/lib/server/mobile-capture-security";
 import { getQuipslySessionFromRequest, type QuipslySession } from "@/lib/server/quipsly-session";
 import { buildMobileCaptureLocalRetention } from "@high-ground/quipsly-domain/mobile-capture-upload";
+import {
+  MAX_LONG_VIDEO_SOURCE_BYTES,
+  SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES,
+} from "@high-ground/quipsly-capture-verification";
+import {
+  longSourceVerifierEnabled,
+} from "@/lib/server/mobile-capture-long-verification";
 
 export const runtime = "nodejs";
 
-// Canonical Capture is audio-first. Bound synchronous verification to 2 GiB;
-// larger future video sources need the asynchronous verifier lane, not a longer request.
-const MAX_RECORDING_BYTES = 2 * 1024 * 1024 * 1024;
 const MAX_SEGMENTS_JSON_BYTES = 256 * 1024;
 const MAX_SOURCE_PROFILE_JSON_BYTES = 64 * 1024;
 const SAFE_PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/i;
@@ -178,8 +182,12 @@ function parseCreatePayload(value: unknown):
   if ((rawSourceType === "video") !== rawContentType.startsWith("video/")) {
     return { ok: false, error: "sourceType and contentType disagree." };
   }
-  if (!Number.isSafeInteger(expectedSizeBytes) || expectedSizeBytes <= 0 || expectedSizeBytes > MAX_RECORDING_BYTES) {
-    return { ok: false, error: `expectedSizeBytes must be between 1 and ${MAX_RECORDING_BYTES}.` };
+  const maximumBytes =
+    rawSourceType === "video" && longSourceVerifierEnabled()
+      ? MAX_LONG_VIDEO_SOURCE_BYTES
+      : SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES;
+  if (!Number.isSafeInteger(expectedSizeBytes) || expectedSizeBytes <= 0 || expectedSizeBytes > maximumBytes) {
+    return { ok: false, error: `expectedSizeBytes must be between 1 and ${maximumBytes}.` };
   }
   if (!sha256) {
     return { ok: false, error: "sha256 must be a 64-character hexadecimal SHA-256 digest." };
@@ -582,6 +590,17 @@ export async function POST(request: Request) {
       filename: binding.fileName,
     });
     const storageTarget = mobileCaptureResumableStorageTarget(objectName);
+    if (
+      binding.expectedSizeBytes
+        > SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES
+      && storageTarget.storageBackend !== "gcs"
+    ) {
+      return jsonNoStore({
+        ok: false,
+        error:
+          "Long video requires the production GCS verifier. The local development vault accepts only synchronously verifiable sources.",
+      }, 409);
+    }
     const { bucketName } = storageTarget;
     const reservation = await reserveMediaVaultUploadCapacity({
       prisma,

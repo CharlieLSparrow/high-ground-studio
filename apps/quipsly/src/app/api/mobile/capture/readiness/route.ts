@@ -6,6 +6,11 @@ import { getMediaVaultReadiness } from "@/lib/server/media-vault";
 import { getCoachingCalendarReadiness } from "@/lib/server/coaching-google-calendar";
 import { getQuipslyLiveKitEgressReadiness } from "@/lib/server/coaching-livekit-egress";
 import { getMobileCaptureLocalVaultConfig } from "@/lib/server/mobile-capture-local-vault";
+import { longSourceVerifierEnabled } from "@/lib/server/mobile-capture-long-verification";
+import {
+  MAX_LONG_VIDEO_SOURCE_BYTES,
+  SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES,
+} from "@high-ground/quipsly-capture-verification";
 
 export const runtime = "nodejs";
 
@@ -47,6 +52,11 @@ export async function GET(request: Request) {
     : mediaVaultReadiness.configured
       ? "gcs"
       : "unavailable";
+  const longVideoVerificationEnabled =
+    activeUploadBackend === "gcs" && longSourceVerifierEnabled();
+  const maximumVideoSourceBytes = longVideoVerificationEnabled
+    ? MAX_LONG_VIDEO_SOURCE_BYTES
+    : SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES;
 
   return NextResponse.json({
     ok: true,
@@ -148,6 +158,12 @@ export async function GET(request: Request) {
       canonicalUploadContract: "quipsly-mobile-capture-gcs-resumable-v2",
       mediaBytesTransitAppServer: false,
       serverSha256RequiredBeforeReceipt: true,
+      longSourceVerifierEnabled: longVideoVerificationEnabled,
+      synchronousVerificationLimitBytes:
+        SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES,
+      maximumVideoSourceBytes,
+      longSourceVerificationBoundary:
+        "A video larger than the synchronous verification limit may leave the iPhone only when Nest advertises the GCS worker capability. The phone must preserve the local original until the final server byte-and-SHA receipt is verified.",
       transcriptConfigured,
       transcriptBoundary:
         "Transcript work should start only after upload or provider egress evidence is verified.",

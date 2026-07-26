@@ -333,6 +333,9 @@ importers:
       '@high-ground/content-studio-domain':
         specifier: workspace:*
         version: link:../../packages/content-studio-domain
+      '@high-ground/quipsly-capture-verification':
+        specifier: workspace:*
+        version: link:../../packages/quipsly-capture-verification
       '@high-ground/quipsly-document-kernel':
         specifier: workspace:*
         version: link:../../packages/quipsly-document-kernel
@@ -558,6 +561,28 @@ importers:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
 
+  apps/quipsly-media-verifier:
+    dependencies:
+      '@google-cloud/storage':
+        specifier: ^7.19.0
+        version: 7.19.0(encoding@0.1.13)
+      '@high-ground/quipsly-capture-verification':
+        specifier: workspace:*
+        version: link:../../packages/quipsly-capture-verification
+    devDependencies:
+      '@types/node':
+        specifier: 25.3.3
+        version: 25.3.3
+      '@typescript/native':
+        specifier: npm:typescript@7.0.2
+        version: typescript@7.0.2
+      esbuild:
+        specifier: 0.27.3
+        version: 0.27.3
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
   apps/render-engine:
     dependencies:
       react:
@@ -773,6 +798,15 @@ importers:
       '@types/three':
         specifier: ^0.183.1
         version: 0.183.1
+      '@typescript/native':
+        specifier: npm:typescript@7.0.2
+        version: typescript@7.0.2
+      typescript:
+        specifier: npm:@typescript/typescript6@6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
+  packages/quipsly-capture-verification:
+    devDependencies:
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
@@ -14460,7 +14494,7 @@ snapshots:
 
   ecdsa-sig-formatter@1.0.11:
     dependencies:
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
 
   effect@3.20.0:
     dependencies:
@@ -16251,7 +16285,7 @@ snapshots:
     dependencies:
       buffer-equal-constant-time: 1.0.1
       ecdsa-sig-formatter: 1.0.11
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
 
   jwks-rsa@4.0.1:
     dependencies:
@@ -16266,7 +16300,7 @@ snapshots:
   jws@4.0.1:
     dependencies:
       jwa: 2.0.1
-      safe-buffer: 5.1.2
+      safe-buffer: 5.2.1
 
   keyv@4.5.4:
     dependencies:

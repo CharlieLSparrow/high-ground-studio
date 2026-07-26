@@ -37,6 +37,13 @@ import {
   buildMobileCaptureLocalRetention,
   buildMobileCaptureServerVerification,
 } from "@high-ground/quipsly-domain/mobile-capture-upload";
+import {
+  SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES,
+} from "@high-ground/quipsly-capture-verification";
+import {
+  ensureLongSourceVerificationQueued,
+  longSourceByteEvidenceMatchesManifest,
+} from "@/lib/server/mobile-capture-long-verification";
 
 export const runtime = "nodejs";
 export const maxDuration = 3600;
@@ -423,6 +430,57 @@ export async function POST(request: Request) {
       return failureResponse(stored.manifest);
     }
 
+    const usesLongSourceVerifier =
+      stored.manifest.sourceType === "video"
+      && stored.manifest.expectedSizeBytes
+        > SYNCHRONOUS_CAPTURE_VERIFICATION_LIMIT_BYTES;
+    if (usesLongSourceVerifier) {
+      const longState = stored.manifest.longSourceVerification;
+      if (longState?.status === "failed-terminal") {
+        stored = await persistFailure(
+          stored,
+          longState.failure!.code,
+          longState.failure!.message,
+          false,
+        );
+        return failureResponse(stored.manifest);
+      }
+      if (longState?.status !== "bytes-verified") {
+        try {
+          const queued = await ensureLongSourceVerificationQueued({
+            stored,
+            objectGeneration: object.generation,
+          });
+          stored = queued.stored;
+        } catch (error) {
+          console.error("[Mobile Capture Resumable] Long-source queue failed", {
+            uploadSessionId,
+            reason: error instanceof Error ? error.message : "unknown",
+          });
+          return jsonNoStore({
+            ok: false,
+            canonical: true,
+            contractKind: MOBILE_CAPTURE_RESUMABLE_CONTRACT_KIND,
+            uploadSessionId,
+            uploadStage: "verification-queue-failed",
+            error:
+              "The immutable video is safe in storage, but its verification job could not be queued. Retry finalization and keep the local source.",
+            localRetention: buildMobileCaptureLocalRetention(),
+          }, 503, { "Retry-After": "15" });
+        }
+        return verifyingResponse(stored.manifest);
+      }
+      if (!longSourceByteEvidenceMatchesManifest(stored.manifest)) {
+        stored = await persistFailure(
+          stored,
+          "long-source-evidence-mismatch",
+          "Long-source verification evidence does not match the immutable upload manifest.",
+          false,
+        );
+        return failureResponse(stored.manifest);
+      }
+    }
+
     const claim = await claimVerification(stored);
     stored = claim.stored;
     if (
@@ -445,7 +503,14 @@ export async function POST(request: Request) {
       return verifyingResponse(stored.manifest);
     }
 
-    const hashed = await computeMobileCaptureObjectSha256(object);
+    const hashed = usesLongSourceVerifier
+      ? {
+          sha256:
+            stored.manifest.longSourceVerification!.evidence!.computedSha256,
+          streamedBytes:
+            stored.manifest.longSourceVerification!.evidence!.streamedSizeBytes,
+        }
+      : await computeMobileCaptureObjectSha256(object);
     if (hashed.streamedBytes !== stored.manifest.expectedSizeBytes) {
       stored = await persistFailure(
         stored,

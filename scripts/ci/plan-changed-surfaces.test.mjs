@@ -29,6 +29,17 @@ test("Capture workflow changes remain inside the Capture surface", () => {
   assert.equal(plan.quipsly, false);
 });
 
+test("media verifier changes stay manual and do not deploy web services", () => {
+  const plan = planChangedSurfaces([
+    "apps/quipsly-media-verifier/src/worker.ts",
+  ]);
+  assert.equal(plan.mediaVerifier, true);
+  assert.equal(plan.web, false);
+  assert.equal(plan.studio, false);
+  assert.deepEqual(plan.deployTargets, []);
+  assert.deepEqual(plan.changedSurfaces, ["media-verifier"]);
+});
+
 test("Capture listing changes validate Capture without deploying web apps", () => {
   const plan = planChangedSurfaces([
     "release/app-store/quipsly-capture/en-US.json",

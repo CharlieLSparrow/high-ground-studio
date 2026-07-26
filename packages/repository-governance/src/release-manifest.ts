@@ -11,12 +11,21 @@ export const RELEASE_MANIFEST_IDS = [
   "nest",
   "hgo-web",
   "quipsly-studio",
+  "quipsly-media-verifier",
 ] as const;
 
 export type ReleaseManifestId = (typeof RELEASE_MANIFEST_IDS)[number];
 export type ReleaseStatus = "active" | "operator-only";
-export type ReleaseArtifactKind = "ios-ipa" | "cloud-run-image" | "macos-application";
-export type ReleaseDeliveryChannel = "app-store-connect" | "cloud-run" | "operator";
+export type ReleaseArtifactKind =
+  | "ios-ipa"
+  | "cloud-run-image"
+  | "cloud-run-job-image"
+  | "macos-application";
+export type ReleaseDeliveryChannel =
+  | "app-store-connect"
+  | "cloud-run"
+  | "cloud-run-job"
+  | "operator";
 
 export interface ReleasePathSet {
   readonly prefixes: readonly string[];
@@ -83,9 +92,12 @@ export interface ChangedSurfacePlan {
   readonly schema: boolean;
   readonly capture: boolean;
   readonly nativeStudio: boolean;
+  readonly mediaVerifier: boolean;
   readonly quipsly: boolean;
   readonly deployTargets: readonly ("web" | "studio")[];
-  readonly changedSurfaces: readonly ("web" | "studio" | "capture" | "native-studio")[];
+  readonly changedSurfaces: readonly (
+    "web" | "studio" | "capture" | "native-studio" | "media-verifier"
+  )[];
   readonly changedPathCount: number;
   readonly paths: readonly string[];
   readonly matchedManifestIds: readonly ReleaseManifestId[];
@@ -320,7 +332,12 @@ export function validateReleaseManifest(
     errors.push(`${manifestPath}.artifact: expected an object`);
   } else {
     errors.push(...unknownKeyErrors(input.artifact, ARTIFACT_KEYS, `${manifestPath}.artifact`));
-    if (!["ios-ipa", "cloud-run-image", "macos-application"].includes(String(input.artifact.kind))) {
+    if (![
+      "ios-ipa",
+      "cloud-run-image",
+      "cloud-run-job-image",
+      "macos-application",
+    ].includes(String(input.artifact.kind))) {
       errors.push(`${manifestPath}.artifact.kind: unsupported artifact kind`);
     }
     stringValue(input.artifact.identifier, `${manifestPath}.artifact.identifier`, errors);
@@ -371,7 +388,12 @@ export function validateReleaseManifest(
     errors.push(`${manifestPath}.delivery: expected an object`);
   } else {
     errors.push(...unknownKeyErrors(input.delivery, DELIVERY_KEYS, `${manifestPath}.delivery`));
-    if (!["app-store-connect", "cloud-run", "operator"].includes(String(input.delivery.channel))) {
+    if (![
+      "app-store-connect",
+      "cloud-run",
+      "cloud-run-job",
+      "operator",
+    ].includes(String(input.delivery.channel))) {
       errors.push(`${manifestPath}.delivery.channel: unsupported delivery channel`);
     }
     stringValue(input.delivery.target, `${manifestPath}.delivery.target`, errors);
@@ -571,6 +593,10 @@ export function planChangedSurfaces(
   const nestManifest = manifestById(manifests, "nest");
   const webManifest = manifestById(manifests, "hgo-web");
   const nativeStudioManifest = manifestById(manifests, "quipsly-studio");
+  const mediaVerifierManifest = manifestById(
+    manifests,
+    "quipsly-media-verifier",
+  );
 
   const web = anyPathMatches(deployPaths, webManifest.changeDetection.deploy);
   const studio = anyPathMatches(deployPaths, nestManifest.changeDetection.deploy);
@@ -583,22 +609,32 @@ export function planChangedSurfaces(
     deployPaths,
     nativeStudioManifest.changeDetection.deploy,
   );
+  const mediaVerifier =
+    anyPathMatches(deployPaths, mediaVerifierManifest.changeDetection.deploy)
+    || anyPathMatches(
+      paths,
+      mediaVerifierManifest.changeDetection.validation,
+    );
   const quipsly = studio || anyPathMatches(paths, nestManifest.changeDetection.validation);
 
   const deployTargets: ("web" | "studio")[] = [
     ...(web ? ["web" as const] : []),
     ...(studio ? ["studio" as const] : []),
   ];
-  const changedSurfaces: ("web" | "studio" | "capture" | "native-studio")[] = [
+  const changedSurfaces: (
+    "web" | "studio" | "capture" | "native-studio" | "media-verifier"
+  )[] = [
     ...deployTargets,
     ...(capture ? ["capture" as const] : []),
     ...(nativeStudio ? ["native-studio" as const] : []),
+    ...(mediaVerifier ? ["media-verifier" as const] : []),
   ];
   const matchedManifestIds = [
     ...(capture ? ["capture" as const] : []),
     ...(quipsly ? ["nest" as const] : []),
     ...(web ? ["hgo-web" as const] : []),
     ...(nativeStudio ? ["quipsly-studio" as const] : []),
+    ...(mediaVerifier ? ["quipsly-media-verifier" as const] : []),
   ];
 
   return {
@@ -607,6 +643,7 @@ export function planChangedSurfaces(
     schema,
     capture,
     nativeStudio,
+    mediaVerifier,
     quipsly,
     deployTargets,
     changedSurfaces,
@@ -615,6 +652,8 @@ export function planChangedSurfaces(
     matchedManifestIds,
     summary: deployTargets.length
       ? `Auto deploy planned for ${deployTargets.join(" and ")} from validated release manifests.`
-      : "No deployable app changes detected.",
+      : mediaVerifier
+        ? "Manual Quipsly media-verifier release validation is required."
+        : "No deployable app changes detected.",
   };
 }

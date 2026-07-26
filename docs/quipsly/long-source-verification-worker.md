@@ -1,6 +1,6 @@
 # Quipsly long-source verification worker
 
-Status: accepted production design; implementation next
+Status: implemented behind a fail-closed capability flag; deployment and synthetic production proof pending
 Last reviewed: 2026-07-26
 
 ## Decision
@@ -34,16 +34,15 @@ granting the Nest service permission to run arbitrary job overrides.
 
 ```text
 uploading
-  -> verification-queued
+  -> queued
   -> verifying
   -> bytes-verified
   -> verified
 
-verification-queued | verifying
-  -> failed-retryable
-  -> verification-queued
+verifying
+  -> queued
 
-verification-queued | verifying | bytes-verified
+queued | verifying
   -> failed-terminal
 ```
 
@@ -51,12 +50,11 @@ verification-queued | verifying | bytes-verified
 database evidence. `bytes-verified` is deliberately not a playback, processing,
 transcription, or local-deletion authorization.
 
-Legacy v2 manifests continue to decode. New worker fields are optional on read
-and required only after a manifest enters the long-source lane:
+Legacy v2 manifests continue to decode. `longSourceVerification` is optional on
+read and strictly parsed once present. It carries:
 
-- verification mode: `synchronous | job`;
-- queue receipt object and immutable generation;
-- claimed worker execution, claim time, expiry, and attempt;
+- queue object name, enqueue time, and immutable source generation;
+- claimed worker execution, claim ID, claim time, expiry, and attempt;
 - exact object generation being verified;
 - expected and streamed byte counts;
 - expected and computed SHA-256;
@@ -77,25 +75,30 @@ generation, enqueue time, and contract version. It contains no signed URL,
 credential, email, title, or mutable authorization claim.
 
 Nest then calls `jobs.run` without overrides. Invocation failure does not lose
-work: the queue object is durable, and a scheduled execution sweeps the same
-prefix. Concurrent executions may discover the same receipt, but only one can
-claim the manifest generation. Duplicate hashing after an expired lease is
-allowed; duplicate authority or divergent finalization is not.
+work: the queue object is durable, and Cloud Scheduler sweeps the same prefix
+every 15 minutes as a backstop. Concurrent executions may discover the same
+receipt, but only one can claim the manifest generation. Duplicate hashing
+after an expired lease is allowed; duplicate authority or divergent
+finalization is not.
 
 The worker processes a bounded number of receipts per execution and exits.
-Poison receipts move to a private dead-letter prefix only after a durable
-terminal failure is written to the manifest. Queue deletion occurs after the
-manifest write and is recoverably idempotent.
+Source verification failures move to a private dead-letter prefix only after a
+durable terminal failure is written to the manifest. A malformed or stale
+queue envelope is separately quarantined without mutating an untrusted
+manifest; the authenticated finalizer can recreate a correct create-only
+receipt. Queue deletion occurs after the durable result and is recoverably
+idempotent.
 
 ## Verification algorithm
 
 1. Validate the queue filename and JSON before constructing any storage path.
-2. Load the manifest by exact generation and verify its contract kind, upload
-   session, actor/project binding fields, expected bytes/hash, object path, and
-   long-source state.
-3. Read immutable object metadata and require the declared bucket, name,
+2. Load the current manifest, strictly validate its contract and hardened
+   authority fields, and require a newly queued receipt to identify that exact
+   manifest generation. Expired-lease retries intentionally load the later
+   claimed generation.
+3. Claim the manifest with `ifGenerationMatch`.
+4. Read immutable object metadata and require the declared bucket, name,
    generation, size, type, and custom binding metadata.
-4. Claim the manifest with `ifGenerationMatch`.
 5. Open a generation-pinned GCS stream with CRC32C transport validation.
 6. Update SHA-256 and streamed byte count incrementally with bounded memory.
 7. Require stream completion, exact byte count, exact SHA-256, and unchanged
@@ -103,6 +106,11 @@ manifest write and is recoverably idempotent.
 8. Commit `bytes-verified` evidence with another manifest-generation
    precondition.
 9. Remove the queue receipt only after the durable result exists.
+
+A transient metadata, stream, or storage failure returns the owned claim to
+`queued` with a generation precondition before the job exits nonzero. Platform
+retry can therefore resume immediately rather than waiting for a day-long
+lease to expire.
 
 The worker never downloads to local disk, rewrites the source, creates a proxy,
 or treats client metadata alone as verification.
@@ -138,18 +146,22 @@ It receives only:
 
 It receives no Cloud SQL access, Secret Manager access, job administration,
 service invocation, Firebase administration, or broad bucket administration.
-Use IAM Conditions on `resource.name` where Cloud Storage role granularity
-would otherwise exceed these prefixes.
+Production provisioning creates managed folders for the recording, manifest,
+queue, and dead-letter prefixes and grants the service identity the minimum
+predefined role on each. This is intentional: bucket-level
+`storage.objects.list` cannot be safely narrowed to an object prefix with a
+`resource.name` condition.
 
-The Nest runtime identity receives `run.jobs.run` for this one job, not job
-update or override permission. Deployment identities remain separate.
+The Nest and Scheduler identities receive `roles/run.jobsExecutor` on this one
+job. Neither receives `roles/run.jobsExecutorWithOverrides`, job update, or job
+administration permission. Deployment identities remain separate.
 
 ## Runtime and deployment
 
 Build a small dedicated Node image from a committed SHA. It contains only the
 worker entrypoint, storage client, hash/state contracts, CA certificates, and
-source/build identity. It runs as a non-root user with a read-only root
-filesystem and no listening port.
+source/build identity. It runs as a non-root user, does not write source media
+or scratch files, and has no listening port.
 
 Initial production settings:
 
@@ -162,13 +174,33 @@ Initial production settings:
 - structured logs containing session ID, object generation, byte counts,
   attempt, timings, and safe failure codes but no user content or capabilities.
 
+The committed release scripts split deployment from authority:
+
+- `quipsly-media-verifier-deploy.sh` materializes one committed SHA, builds and
+  reads back an immutable image digest, and deploys the job without executing
+  it;
+- `quipsly-media-verifier-access.sh` defaults to read-only audit. `APPLY=1`
+  with `PHASE=prepare` creates the dedicated identities/managed folders when
+  missing and applies prefix-scoped storage IAM before deployment. After the
+  job exists, `APPLY=1 PHASE=activate` grants no-override job execution and
+  creates the scheduled sweep. The default `PHASE=all` performs exact
+  read-only production readback.
+
+Nest advertises long-video upload only when the feature flag, job project,
+region, name, production GCS backend, and absolute byte ceiling are all
+present. The iPhone carries that readiness snapshot through capture
+finalization and otherwise holds files larger than the synchronous limit.
+
 Release order:
 
-1. land backward-compatible manifest normalization and tests;
-2. land the shared byte-verification state reducer;
-3. build worker image from the exact release SHA;
-4. deploy job with zero production queue receipts;
-5. apply/read back IAM;
+1. land backward-compatible manifest normalization and tests (implemented);
+2. land the shared byte-verification state reducer (implemented);
+3. run `APPLY=1 PHASE=prepare` to create/read back the worker identities,
+   managed folders, and prefix-scoped storage IAM;
+4. build the worker image from the exact release SHA and deploy the job with
+   zero production queue receipts;
+5. run `APPLY=1 PHASE=activate`, then the default read-only audit, to grant and
+   read back no-override invocation and the scheduled sweep;
 6. run synthetic small, >2 GiB sparse/test, corrupt-hash, wrong-generation,
    duplicate-execution, killed-worker, and expired-lease cases;
 7. enable creation for staff-owned test sources only;

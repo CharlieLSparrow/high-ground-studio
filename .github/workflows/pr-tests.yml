@@ -68,7 +68,7 @@ jobs:
             --github-output "${GITHUB_OUTPUT}"
 
       - name: Install dependencies
-        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true' || steps.changes.outputs.media_verifier == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck High Ground web with pinned TypeScript 7
@@ -79,6 +79,13 @@ jobs:
         if: steps.changes.outputs.quipsly == 'true'
         run: pnpm --filter quipsly typecheck
 
+      - name: Build and fault-test Quipsly media verifier
+        if: steps.changes.outputs.media_verifier == 'true'
+        run: |
+          pnpm --filter @high-ground/quipsly-capture-verification typecheck
+          pnpm quipsly:media-verifier:build
+          pnpm quipsly:media-verifier:test
+
       - name: Run committed Quipsly contract suite
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
         run: pnpm quipsly:contracts:test
@@ -88,7 +95,7 @@ jobs:
         run: pnpm quipsly:release:local
 
       - name: Validate release scripts and workflows
-        if: steps.changes.outputs.quipsly == 'true'
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.media_verifier == 'true'
         run: |
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/deploy-cloud-run.yml"); YAML.load_file(".github/workflows/pr-tests.yml"); puts "YAML OK"'
           node --test scripts/ci/audit-binary-assets.test.mjs
@@ -100,6 +107,9 @@ jobs:
           bash -n scripts/release/materialize-release-context.sh
           bash -n scripts/release/materialize-release-context.test.sh
           bash -n scripts/release/quipsly-normalize-context-metadata.sh
+          bash -n scripts/release/quipsly-media-verifier-access.sh
+          bash -n scripts/release/quipsly-media-verifier-context.test.sh
+          bash -n scripts/release/quipsly-media-verifier-deploy.sh
           bash -n scripts/release/quipsly-release-preflight.sh
           bash -n scripts/release/quipsly-smoke-preview.sh
           bash -n scripts/release/quipsly-production-status.sh
@@ -113,6 +123,10 @@ jobs:
           bash -n scripts/release/quipsly-deploy-preview.sh
           bash -n scripts/release/quipsly-promote-preview.sh
           bash scripts/release/materialize-release-context.test.sh nest
+
+      - name: Validate committed media-verifier release context
+        if: steps.changes.outputs.media_verifier == 'true'
+        run: bash scripts/release/quipsly-media-verifier-context.test.sh
 
       - name: Validate committed Quipsly release context
         if: steps.changes.outputs.quipsly == 'true'

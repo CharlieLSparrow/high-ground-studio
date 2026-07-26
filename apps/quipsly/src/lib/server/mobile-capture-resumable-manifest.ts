@@ -4,6 +4,9 @@ import type {
   MobileCaptureResumableFinalizationEvidence,
   MobileCaptureResumableManifest,
 } from "@/lib/server/mobile-capture-resumable-store";
+import {
+  parseLongSourceVerificationState,
+} from "@high-ground/quipsly-capture-verification";
 
 const MOBILE_CAPTURE_ROOM_READINESS_VERSION = 1 as const;
 
@@ -71,6 +74,12 @@ export function normalizeMobileCaptureResumableManifestForRead(
       } as MobileCaptureResumableFinalizationEvidence
     : null;
   const captureId = value.captureId || expectedSessionId;
+  const longSourceVerification = value.longSourceVerification == null
+    ? null
+    : parseLongSourceVerificationState(
+        value.longSourceVerification,
+        expectedSessionId,
+      );
   const legacyReadiness = {
     version: MOBILE_CAPTURE_ROOM_READINESS_VERSION,
     eligibleForProcessing: false,
@@ -113,5 +122,6 @@ export function normalizeMobileCaptureResumableManifestForRead(
       ? value.processingDisposition as "eligible" | "preservation-only"
       : "preservation-only",
     finalization: normalizedFinalization,
+    longSourceVerification,
   } as MobileCaptureResumableManifest;
 }

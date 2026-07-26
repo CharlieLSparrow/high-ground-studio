@@ -31,6 +31,8 @@ struct VideoCaptureContext: Equatable {
     let displayTitle: String
     let consentAllowsVideo: Bool
     let consentAllowsAudio: Bool
+    let longSourceUploadEnabled: Bool
+    let maximumVideoSourceBytes: Int64
 }
 
 enum VideoCaptureControllerError: LocalizedError {
@@ -533,10 +535,21 @@ final class VideoCaptureController: ObservableObject {
         durationSeconds = duration
 
         if let finalized, finalized.status.isUploadEligible {
-            if finalized.byteCount <= synchronousCloudVerificationLimitBytes {
+            if finalized.byteCount <= synchronousCloudVerificationLimitBytes
+                || (
+                    finishedCapture.context.longSourceUploadEnabled
+                        && finalized.byteCount
+                            <= finishedCapture.context.maximumVideoSourceBytes
+                ) {
                 queueUpload(recording: finalized)
             } else {
-                let message = "The complete video is safe on this iPhone. Its \(ByteCountFormatter.string(fromByteCount: finalized.byteCount, countStyle: .file)) size requires Quipsly's long-source verification worker before cloud upload can begin; no partial or falsely verified copy was queued."
+                let limit = ByteCountFormatter.string(
+                    fromByteCount: finishedCapture.context.maximumVideoSourceBytes,
+                    countStyle: .file
+                )
+                let message = finishedCapture.context.longSourceUploadEnabled
+                    ? "The complete video is safe on this iPhone. Its \(ByteCountFormatter.string(fromByteCount: finalized.byteCount, countStyle: .file)) size exceeds Nest's advertised \(limit) protected-video limit; no partial or falsely verified copy was queued."
+                    : "The complete video is safe on this iPhone. Nest did not advertise its long-source verification worker, so this \(ByteCountFormatter.string(fromByteCount: finalized.byteCount, countStyle: .file)) source remains held; no partial or falsely verified copy was queued."
                 do {
                     try library.markUploadHeld(finalized.id, message: message)
                 } catch {

@@ -23,6 +23,7 @@ expected_sha="$(git -C "${repo_root}" rev-parse "${source_ref}^{commit}")"
 [[ -f "${context}/apps/quipsly/src/app/(app)/outputs/page.tsx" ]]
 [[ -f "${context}/apps/quipsly/src/app/(app)/outputs/[outputId]/page.tsx" ]]
 [[ -f "${context}/packages/quipsly-domain/package.json" ]]
+[[ -f "${context}/packages/quipsly-capture-verification/package.json" ]]
 [[ -f "${context}/prisma/schema.prisma" ]]
 [[ -f "${context}/release/manifests/nest.json" ]]
 [[ -f "${context}/quipsly-release-source.json" ]]

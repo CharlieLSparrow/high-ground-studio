@@ -25,14 +25,14 @@
       "const": 1
     },
     "id": {
-      "enum": ["capture", "nest", "hgo-web", "quipsly-studio"]
+      "enum": ["capture", "nest", "hgo-web", "quipsly-studio", "quipsly-media-verifier"]
     },
     "displayName": {
       "type": "string",
       "minLength": 1
     },
     "ownerSurface": {
-      "enum": ["capture", "nest", "hgo-web", "quipsly-studio"]
+      "enum": ["capture", "nest", "hgo-web", "quipsly-studio", "quipsly-media-verifier"]
     },
     "status": {
       "enum": ["active", "operator-only"]
@@ -68,7 +68,7 @@
       ],
       "properties": {
         "kind": {
-          "enum": ["ios-ipa", "cloud-run-image", "macos-application"]
+          "enum": ["ios-ipa", "cloud-run-image", "cloud-run-job-image", "macos-application"]
         },
         "identifier": {
           "type": "string",
@@ -127,7 +127,7 @@
       "required": ["channel", "target", "promotion"],
       "properties": {
         "channel": {
-          "enum": ["app-store-connect", "cloud-run", "operator"]
+          "enum": ["app-store-connect", "cloud-run", "cloud-run-job", "operator"]
         },
         "target": {
           "type": "string",

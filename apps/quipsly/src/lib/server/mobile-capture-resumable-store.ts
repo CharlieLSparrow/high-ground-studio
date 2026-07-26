@@ -12,6 +12,9 @@ import {
   type MobileCaptureRoomReadinessEvaluation,
 } from "@/lib/server/mobile-capture-room-readiness";
 import { normalizeMobileCaptureResumableManifestForRead } from "@/lib/server/mobile-capture-resumable-manifest";
+import type {
+  LongSourceVerificationState,
+} from "@high-ground/quipsly-capture-verification";
 import {
   createLocalMobileCaptureUploadCapability,
   getMobileCaptureLocalVaultConfig,
@@ -100,6 +103,7 @@ export type MobileCaptureResumableManifest =
     uploadUriExpiresAt: string;
     createdAt: string;
     updatedAt: string;
+    longSourceVerification?: LongSourceVerificationState | null;
     finalizeLease?: {
       id: string;
       claimedAt: string;

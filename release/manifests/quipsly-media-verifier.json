@@ -1,0 +1,86 @@
+{
+  "$schema": "./schema.json",
+  "schemaVersion": 1,
+  "id": "quipsly-media-verifier",
+  "displayName": "Quipsly Long-Source Verifier",
+  "ownerSurface": "quipsly-media-verifier",
+  "status": "active",
+  "applicationRoot": "apps/quipsly-media-verifier",
+  "changeDetection": {
+    "deploy": {
+      "prefixes": [
+        "apps/quipsly-media-verifier/",
+        "packages/quipsly-capture-verification/"
+      ],
+      "files": [
+        ".dockerignore",
+        ".gcloudignore",
+        ".npmrc",
+        "cloudbuild.quipsly-media-verifier.yaml",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "release/manifests/quipsly-media-verifier.json"
+      ]
+    },
+    "validation": {
+      "prefixes": [
+        "scripts/quipsly-long-source-verification",
+        "scripts/release/quipsly-media-verifier"
+      ],
+      "files": []
+    },
+    "schema": {
+      "prefixes": [],
+      "files": []
+    }
+  },
+  "artifact": {
+    "kind": "cloud-run-job-image",
+    "identifier": "us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/quipsly-media-verifier",
+    "sourceRevision": "git-commit-sha",
+    "materializer": "scripts/release/materialize-release-context.sh",
+    "provenanceReceipt": "quipsly-media-verifier-source.json"
+  },
+  "proofs": {
+    "source": [
+      "scripts/release/quipsly-media-verifier-context.test.sh"
+    ],
+    "deterministic": [
+      "pnpm --filter quipsly-media-verifier build",
+      "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-long-source-verification-worker.test.mjs"
+    ],
+    "localRuntime": [
+      "Run fault-injected fake-storage claim, mismatch, retry, and exact-evidence tests."
+    ],
+    "credentialedRuntime": [
+      "Verify a generation-pinned private GCS fixture and inspect the queue, manifest, dead-letter, and structured logs.",
+      "APPLY=1 bash scripts/release/quipsly-media-verifier-access.sh, then rerun without APPLY for managed-folder IAM, no-override invoker, and scheduler readback."
+    ],
+    "deliveryReadback": [
+      "Read back job image digest, service account, task timeout, retries, environment, IAM, execution logs, and exact manifest evidence."
+    ]
+  },
+  "delivery": {
+    "channel": "cloud-run-job",
+    "target": "high-ground-odyssey/us-central1/quipsly-media-verifier",
+    "promotion": "manual"
+  },
+  "releaseContext": {
+    "maxMiB": 25,
+    "requiredPaths": [
+      ".dockerignore",
+      ".gcloudignore",
+      ".npmrc",
+      "apps/quipsly-media-verifier",
+      "cloudbuild.quipsly-media-verifier.yaml",
+      "package.json",
+      "packages/quipsly-capture-verification",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "release/manifests/quipsly-media-verifier.json",
+      "release/manifests/schema.json"
+    ],
+    "optionalPaths": []
+  }
+}

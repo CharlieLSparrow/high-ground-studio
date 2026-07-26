@@ -1698,6 +1698,10 @@ struct MobileCaptureCalendarReadiness: Codable {
 
 struct MobileCaptureUploadTranscriptReadiness: Codable {
     let cloudStorageConfigured: Bool?
+    let longSourceVerifierEnabled: Bool?
+    let synchronousVerificationLimitBytes: Int64?
+    let maximumVideoSourceBytes: Int64?
+    let longSourceVerificationBoundary: String?
     let transcriptConfigured: Bool?
     let transcriptBoundary: String?
 }

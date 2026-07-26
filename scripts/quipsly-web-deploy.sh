@@ -119,6 +119,7 @@ mkdir -p "$CTX/packages"
 for package_dir in \
   packages/content-studio-domain \
   packages/quipsly-domain \
+  packages/quipsly-capture-verification \
   packages/quipsly-document-kernel \
   packages/worldhub-domain \
   packages/studio-domain \

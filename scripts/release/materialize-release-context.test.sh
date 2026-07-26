@@ -7,13 +7,13 @@ requested_release="${1:-all}"
 
 case "${requested_release}" in
   all)
-    release_ids=(nest hgo-web)
+    release_ids=(nest hgo-web quipsly-media-verifier)
     ;;
-  nest|hgo-web)
+  nest|hgo-web|quipsly-media-verifier)
     release_ids=("${requested_release}")
     ;;
   *)
-    echo "Expected release id nest, hgo-web, or all." >&2
+    echo "Expected release id nest, hgo-web, quipsly-media-verifier, or all." >&2
     exit 2
     ;;
 esac
@@ -178,6 +178,13 @@ NODE
         docker image rm "${image_tag}" >/dev/null
         echo "PASS HGO web container embeds exact source ${expected_sha}."
       fi
+      ;;
+    quipsly-media-verifier)
+      [[ -f "${context}/apps/quipsly-media-verifier/Dockerfile" ]]
+      [[ -f "${context}/packages/quipsly-capture-verification/src/index.ts" ]]
+      [[ -f "${context}/release/manifests/schema.json" ]]
+      [[ ! -e "${context}/apps/quipsly" ]]
+      [[ ! -e "${context}/prisma" ]]
       ;;
   esac
 
