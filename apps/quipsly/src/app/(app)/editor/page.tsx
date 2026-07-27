@@ -4306,6 +4306,7 @@ function CloudEditorContent() {
           action: "approve-alignment",
           projectSlug: resolvedProjectSlug,
           episodeSlug,
+          expectedUpdatedAt: productionState?.updatedAt,
           assetId: syncWizardTargetAsset.id,
           spineAssetId: syncWizardSpineAsset.id,
           status: "synced",
@@ -4347,6 +4348,7 @@ function CloudEditorContent() {
     episodeSlug,
     parsedSyncReviewIntervalSeconds,
     parsedSyncReviewResidualMilliseconds,
+    productionState?.updatedAt,
     resolvedProjectSlug,
     selectedClip,
     syncReviewDriftConfirmed,
@@ -4370,6 +4372,7 @@ function CloudEditorContent() {
           action: "undo-last-sync",
           projectSlug: resolvedProjectSlug,
           episodeSlug,
+          expectedUpdatedAt: productionState?.updatedAt,
         }),
       });
       const payload = await response.json();
@@ -4399,7 +4402,12 @@ function CloudEditorContent() {
       console.warn("Could not undo sync change.", error);
       setMediaImportStatus(error instanceof Error ? error.message : "Could not undo sync change.");
     }
-  }, [episodeSlug, resolvedProjectSlug, updateClipSource]);
+  }, [
+    episodeSlug,
+    productionState?.updatedAt,
+    resolvedProjectSlug,
+    updateClipSource,
+  ]);
 
   const refreshEpisodeProductionState = useCallback(() => {
     setMediaImportStatus("Refreshing episode production state from the database...");

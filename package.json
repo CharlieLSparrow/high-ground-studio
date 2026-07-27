@@ -60,6 +60,7 @@
     "quipsly:local:down": "bash scripts/dev/quipsly-local-down.sh",
     "quipsly:local:doctor": "bash scripts/dev/quipsly-local-doctor.sh",
     "quipsly:local:smoke": "bash scripts/dev/quipsly-local-smoke.sh",
+    "quipsly:alignment:dogfood": "bash scripts/dev/quipsly-alignment-dogfood.sh",
     "quipsly:recovery-lab:up": "bash scripts/dev/quipsly-recovery-lab-up.sh",
     "quipsly:recovery-lab:doctor": "bash scripts/dev/quipsly-recovery-lab-doctor.sh",
     "quipsly:recovery-lab:down": "bash scripts/dev/quipsly-recovery-lab-down.sh",

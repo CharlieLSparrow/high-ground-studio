@@ -204,3 +204,29 @@ reported as observed and are not promoted to physical-master status.
    processing and reviewed alignment remain.
 6. Pass the long-take, route-loss, storage, interruption, recovery, physical
    iPhone, TestFlight, and real episode rehearsal matrices.
+
+## July 27 protected alignment revision
+
+The editor-side review boundary now matches the capture system's immutable
+evidence posture:
+
+- approval and undo require the exact Episode Production revision the browser
+  reviewed;
+- an existing reviewed receipt cannot be silently replaced, including a
+  retained but malformed receipt;
+- undo proceeds only while current state exactly matches the recorded
+  post-change snapshot;
+- revision-qualified writes atomically return their own new revision; and
+- unchanged episode lookup does not manufacture a revision change.
+
+Focused tests pass 23/23, the route/client contract passes 3/3, strict Quipsly
+TypeScript, all 109 Quipsly safety contracts, six release manifests, and
+repository health pass; the complete Nest suite passes 150 suites / 722
+runnable tests. `pnpm quipsly:alignment:dogfood` then passed against local Firebase Auth,
+Nest HTTP, and PostgreSQL: repeated reads kept one revision, stale approval and
+undo were denied, replacement required exact undo, exact undo restored the
+source, stale replay was denied, and all disposable records read back at zero
+after cleanup. The next operated proof is still the human-present signed Mac
+MOV+WAV take, followed by real editor review and a deliberate
+stale-second-rendered-browser collision. No physical-source, cloud-worker,
+TestFlight, or publication claim is made by this checkpoint.

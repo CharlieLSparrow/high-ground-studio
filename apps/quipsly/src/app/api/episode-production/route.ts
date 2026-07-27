@@ -3,6 +3,9 @@ import { getPrismaClient } from "@/lib/prisma";
 import {
   canonicalEpisodeProductionJson,
 } from "@/lib/episode-production/imported-media";
+import {
+  planExistingEpisodeProductionEnsure,
+} from "@/lib/episode-production/episode-production-ensure";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { lookupStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../../(app)/episode-production/episodeArtifact";
@@ -132,27 +135,43 @@ async function ensureProduction(body: any, request: Request) {
     const where = { projectId_slug: { projectId: project.id, slug: episodeSlug } };
     const existing = await prisma.studioEpisodeProduction.findUnique({ where });
 
-    async function updateExistingProduction(id: string, currentProductionJson: unknown) {
-      return prisma.studioEpisodeProduction.update({
-          where: { id },
-          data: {
+    async function updateExistingProduction(
+      current: typeof existing,
+    ) {
+      if (!current) {
+        throw new Error(
+          "Cannot ensure a missing episode production.",
+        );
+      }
+      const identityPatch =
+        planExistingEpisodeProductionEnsure(
+          current,
+          {
             title,
             boundaryLabel,
-            boundaryKind: body.boundaryKind ?? "episode",
-            boundaryStartBlockId: body.boundaryStartBlockId ?? undefined,
-            boundaryEndBlockId: body.boundaryEndBlockId ?? undefined,
-            boundaryStartOrder: body.boundaryStartOrder ?? undefined,
-            boundaryEndOrder: body.boundaryEndOrder ?? undefined,
-            productionJson: {
-              ...(asRecord(currentProductionJson) ?? {}),
-              ...(body.productionJson ?? {}),
-              source: "quipsly-api-episode-production.ensure",
-              projectSlug,
-              episodeSlug,
-              title,
-            },
+            boundaryKind:
+              body.boundaryKind ?? "episode",
+            boundaryStartBlockId:
+              body.boundaryStartBlockId
+              ?? undefined,
+            boundaryEndBlockId:
+              body.boundaryEndBlockId
+              ?? undefined,
+            boundaryStartOrder:
+              body.boundaryStartOrder
+              ?? undefined,
+            boundaryEndOrder:
+              body.boundaryEndOrder
+              ?? undefined,
           },
-        });
+        );
+      if (!identityPatch) {
+        return current;
+      }
+      return prisma.studioEpisodeProduction.update({
+        where: { id: current.id },
+        data: identityPatch,
+      });
     }
 
     async function createProduction() {
@@ -181,7 +200,7 @@ async function ensureProduction(body: any, request: Request) {
 
     let production = existing
       ? action === "ensure"
-        ? await updateExistingProduction(existing.id, existing.productionJson)
+        ? await updateExistingProduction(existing)
         : existing
       : null;
 
@@ -199,7 +218,7 @@ async function ensureProduction(body: any, request: Request) {
         }
 
         production = action === "ensure"
-          ? await updateExistingProduction(racedExisting.id, racedExisting.productionJson)
+          ? await updateExistingProduction(racedExisting)
           : racedExisting;
       }
     }

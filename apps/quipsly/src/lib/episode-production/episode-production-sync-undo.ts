@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 type JsonRecord = Record<string, unknown>;
 
 export type EpisodeProductionSyncUndoPlan =
@@ -10,7 +12,10 @@ export type EpisodeProductionSyncUndoPlan =
     }
   | {
       ok: false;
-      code: "sync-undo-empty" | "sync-undo-unsupported";
+      code:
+        | "sync-undo-empty"
+        | "sync-undo-unsupported"
+        | "sync-undo-stale";
       message: string;
       snapshot: JsonRecord | null;
     };
@@ -66,6 +71,37 @@ export function planEpisodeProductionSyncUndo(
         snapshot,
       };
     }
+    const afterSync = record(snapshot.afterSync);
+    if (!Object.keys(afterSync).length) {
+      return {
+        ok: false,
+        code: "sync-undo-unsupported",
+        message:
+          "The latest sync history entry does not contain a verifiable post-change snapshot. The history was preserved.",
+        snapshot,
+      };
+    }
+    const matchedAsset = importedMedia
+      .map((item) => record(item))
+      .find((asset) => (
+        asset.id === assetId
+        || asset.sourceId === assetId
+      ));
+    if (
+      !matchedAsset
+      || !isDeepStrictEqual(
+        record(matchedAsset.sync),
+        afterSync,
+      )
+    ) {
+      return {
+        ok: false,
+        code: "sync-undo-stale",
+        message:
+          "The source changed after this undo point was recorded. Refresh and use a dedicated reviewed recovery instead of overwriting newer sync evidence.",
+        snapshot,
+      };
+    }
     return {
       ok: true,
       snapshot,
@@ -86,6 +122,32 @@ export function planEpisodeProductionSyncUndo(
 
   if (type === "set-spine-audio") {
     const before = record(snapshot.beforeSync);
+    const after = record(snapshot.afterSync);
+    if (!Object.keys(after).length) {
+      return {
+        ok: false,
+        code: "sync-undo-unsupported",
+        message:
+          "The latest spine history entry does not contain a verifiable post-change snapshot. The history was preserved.",
+        snapshot,
+      };
+    }
+    const spineStillMatches = Object.entries(after)
+      .every(([key, value]) => (
+        isDeepStrictEqual(
+          productionJson[key] ?? null,
+          value ?? null,
+        )
+      ));
+    if (!spineStillMatches) {
+      return {
+        ok: false,
+        code: "sync-undo-stale",
+        message:
+          "The episode spine changed after this undo point was recorded. Refresh and review the newer spine decision before attempting recovery.",
+        snapshot,
+      };
+    }
     return {
       ok: true,
       snapshot,

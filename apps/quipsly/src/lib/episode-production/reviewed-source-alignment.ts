@@ -436,3 +436,15 @@ export function reviewedSourceAlignment(
   }
   return review as ReviewedSourceAlignment;
 }
+
+export function hasProtectedReviewedAlignment(
+  importedAsset: unknown,
+) {
+  const sync = record(record(importedAsset).sync);
+  return (
+    sync.source === "editor-reviewed-alignment-v1"
+    && Object.keys(
+      record(sync.alignmentReview),
+    ).length > 0
+  );
+}

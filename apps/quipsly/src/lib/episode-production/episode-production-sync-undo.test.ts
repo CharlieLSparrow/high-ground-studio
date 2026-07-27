@@ -8,15 +8,18 @@ describe("episode production sync undo", () => {
       status: "ready-to-sync",
       alignment: { schema: "quipsly-capture-alignment-proposal-v1" },
     };
+    const afterSync = {
+      status: "synced",
+      alignmentReview: {
+        status: "placement-approved",
+      },
+    };
     const plan = planEpisodeProductionSyncUndo({
       importedMedia: [
         { id: "spine", sync: { status: "ready-to-sync" } },
         {
           id: "target",
-          sync: {
-            status: "synced",
-            alignmentReview: { status: "placement-approved" },
-          },
+          sync: afterSync,
         },
       ],
       syncHistory: [
@@ -24,6 +27,7 @@ describe("episode production sync undo", () => {
           type: "alignment-review",
           assetId: "target",
           beforeSync,
+          afterSync,
         },
         { type: "older-entry" },
       ],
@@ -44,12 +48,20 @@ describe("episode production sync undo", () => {
 
   it("restores all recorded spine fields", () => {
     const plan = planEpisodeProductionSyncUndo({
+      spineAudioAssetId: "new-spine",
+      spineAudioLabel: "New spine",
+      spineAudioSetBy: "editor",
       syncHistory: [{
         type: "set-spine-audio",
         beforeSync: {
           spineAudioAssetId: "old-spine",
           spineAudioLabel: "Old spine",
           spineAudioSetAt: "2026-07-27T18:00:00.000Z",
+          spineAudioSetBy: "editor",
+        },
+        afterSync: {
+          spineAudioAssetId: "new-spine",
+          spineAudioLabel: "New spine",
           spineAudioSetBy: "editor",
         },
       }],
@@ -88,6 +100,57 @@ describe("episode production sync undo", () => {
       code: "sync-undo-unsupported",
       message: "The latest history entry (promote-premiere-draft-edit) needs its dedicated recovery workflow and was not removed.",
       snapshot: { type: "promote-premiere-draft-edit" },
+    });
+  });
+
+  it("refuses to undo over newer source sync evidence", () => {
+    const plan = planEpisodeProductionSyncUndo({
+      importedMedia: [{
+        id: "target",
+        sync: {
+          status: "held",
+          changedBy: "newer-editor",
+        },
+      }],
+      syncHistory: [{
+        type: "alignment-review",
+        assetId: "target",
+        beforeSync: {
+          status: "ready-to-sync",
+        },
+        afterSync: {
+          status: "synced",
+          alignmentReview: {
+            status: "placement-approved",
+          },
+        },
+      }],
+    });
+
+    expect(plan).toMatchObject({
+      ok: false,
+      code: "sync-undo-stale",
+    });
+  });
+
+  it("refuses unverifiable legacy undo instead of guessing", () => {
+    expect(planEpisodeProductionSyncUndo({
+      importedMedia: [{
+        id: "target",
+        sync: {
+          status: "synced",
+        },
+      }],
+      syncHistory: [{
+        type: "alignment-review",
+        assetId: "target",
+        beforeSync: {
+          status: "ready-to-sync",
+        },
+      }],
+    })).toMatchObject({
+      ok: false,
+      code: "sync-undo-unsupported",
     });
   });
 

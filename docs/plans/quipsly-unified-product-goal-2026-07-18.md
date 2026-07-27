@@ -2462,3 +2462,37 @@ This is an active-goal checkpoint, not a completion claim.
   QuipslyMac build. Physical permission, real camera/MV7i capture, playback,
   Canon internal-4K import, and editor readback remain open human-present
   production gates.
+
+### 2026-07-27 protected alignment-revision checkpoint
+
+- Reviewed placement is now a protected decision, not a mutable status field.
+  The editor sends the exact Episode Production `updatedAt` it reviewed for
+  both approval and undo. The server rejects missing or stale revisions before
+  constructing a change.
+- An existing `editor-reviewed-alignment-v1` receipt cannot be replaced by
+  another approval, even when the retained receipt is damaged. The exact
+  recorded review must first be undone; ambiguous history is preserved for a
+  dedicated recovery instead of being guessed through.
+- Undo now verifies that the current source sync or spine fields still equal
+  the recorded post-change snapshot. A newer editor decision makes undo fail
+  closed, so an old browser cannot restore state over newer evidence.
+- Consequential sync writes compare both production ID and persisted revision
+  in one database update and atomically return the revision produced by that
+  exact write. Unchanged production lookup no longer performs a metadata
+  update, so opening or refreshing an episode does not invalidate its own
+  revision token.
+- Focused ensure, revision, reviewed-receipt, and undo tests pass 23/23; the
+  route/client ownership contract passes 3/3; all 109 Quipsly safety contracts,
+  strict Quipsly TypeScript, six release manifests, and repository health pass;
+  and the complete Nest run passes 150 suites / 722 runnable tests with 26
+  suites / 71 tests intentionally environment-gated.
+- Operated the reusable `pnpm quipsly:alignment:dogfood` path through local
+  Firebase Auth, Nest HTTP routes, and PostgreSQL. Two independent reads kept
+  one revision; the first approval persisted; stale approval and stale undo
+  both returned revision conflicts; a fresh replacement required undo; exact
+  undo restored `ready-to-sync`; stale replay failed; and the final read kept
+  the undo revision. Cleanup removed the disposable Nest, user, membership,
+  two assets, two sources, and two workflow jobs, with zero matching database
+  rows on readback. This is a real local route/database collision rehearsal,
+  not physical media, two rendered browsers, or real Episode Room acceptance
+  proof.

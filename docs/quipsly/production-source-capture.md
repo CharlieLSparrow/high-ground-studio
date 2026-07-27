@@ -935,3 +935,34 @@ cross-take identity, clock divergence, media-shape, and duration-drift
 fixtures. The Apple Development signed QuipslyMac build also passes. This is
 machine acceptance of fixture media, not physical-camera or MV7i qualification;
 the real MOV+WAV operation and human watch/listen gate remain open.
+
+## Implementation checkpoint — July 27, 2026 (protected reviewed placement)
+
+The proposal-to-timeline boundary now refuses both silent replacement and stale
+undo:
+
+- Guided Sync approval and `Undo last sync` carry the exact persisted Episode
+  Production revision shown to the reviewer. Missing and stale revisions return
+  a conflict before any review state is changed.
+- Any nonempty authenticated reviewed-alignment packet is protected, including
+  a damaged packet that cannot be trusted for readback. A new approval requires
+  first undoing the exact retained post-change snapshot.
+- Undo compares the current source sync or spine decision against the complete
+  recorded `afterSync` state. A later edit, replacement, or partial legacy
+  history fails closed while leaving evidence intact.
+- Writes use one revision-qualified database compare-and-swap that returns its
+  own updated revision atomically. An unrelated later write cannot be
+  misreported as the revision produced by the earlier review.
+- Routine episode lookup no longer touches the production row when canonical
+  title, document, and boundary metadata already match. Revision tokens now
+  represent real aggregate changes rather than reads.
+
+Focused behavioral proof passes 23/23, the route/client contract passes 3/3,
+all 109 Quipsly safety contracts, strict Quipsly TypeScript, six release
+manifests, and repository health pass; the complete Nest suite passes 150
+suites and 722 runnable tests. The reusable alignment dogfood also passed through real
+local Firebase Auth, Nest HTTP, and PostgreSQL: stable repeated reads, one exact
+approval, stale approval/undo refusal, protected replacement refusal, exact
+undo restoration, stale replay refusal, and zero-row cleanup readback. A real
+Mac MOV+WAV review and two rendered-browser collision rehearsal remain
+required; this local API/database proof does not satisfy either gate.

@@ -3,6 +3,7 @@
 import {
   ReviewedSourceAlignmentError,
   buildReviewedSourceAlignment,
+  hasProtectedReviewedAlignment,
   reviewedSourceAlignment,
 } from "./reviewed-source-alignment";
 
@@ -214,5 +215,24 @@ describe("reviewed source alignment", () => {
         },
       },
     })).toBeNull();
+  });
+
+  it("protects even a damaged reviewed receipt from silent replacement", () => {
+    expect(hasProtectedReviewedAlignment({
+      sync: {
+        source: "editor-reviewed-alignment-v1",
+        alignmentReview: {
+          schema: "damaged-but-preserved",
+        },
+      },
+    })).toBe(true);
+    expect(hasProtectedReviewedAlignment({
+      sync: {
+        source: "editor-sync-bench",
+        alignmentReview: {
+          schema: "untrusted",
+        },
+      },
+    })).toBe(false);
   });
 });

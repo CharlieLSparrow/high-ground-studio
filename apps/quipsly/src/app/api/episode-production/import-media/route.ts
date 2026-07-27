@@ -7,8 +7,12 @@ import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-
 import {
   ReviewedSourceAlignmentError,
   buildReviewedSourceAlignment,
+  hasProtectedReviewedAlignment,
 } from "@/lib/episode-production/reviewed-source-alignment";
 import { planEpisodeProductionSyncUndo } from "@/lib/episode-production/episode-production-sync-undo";
+import {
+  requireCurrentEpisodeProductionRevision,
+} from "@/lib/episode-production/episode-production-revision";
 import { uploadMediaBuffer } from "@/lib/server/gcs";
 import { MEDIA_VAULT_PREFIXES, buildMediaVaultObjectName } from "@/lib/server/media-vault";
 import { attachAssetToNest, createWorkflowJob } from "@/lib/server/quipsly-core";
@@ -23,6 +27,10 @@ import {
 
 function asRecord(value: unknown) {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function isUniqueConstraintError(error: unknown) {
+  return asRecord(error).code === "P2002";
 }
 
 function sanitizeSegment(value: string) {
@@ -453,28 +461,60 @@ async function ensureProjectAndProduction(prisma: ReturnType<typeof getPrismaCli
   const title = episodeSlug
     .replace(/[-_]+/g, " ")
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
-  const production = await prisma.studioEpisodeProduction.upsert({
-    where: { projectId_slug: { projectId: project.id, slug: episodeSlug } },
-    update: {
-      title,
-      boundaryLabel: title,
-      boundaryKind: "episode",
-    },
-    create: {
+  const where = {
+    projectId_slug: {
       projectId: project.id,
-      documentId: document.id,
       slug: episodeSlug,
-      title,
-      boundaryLabel: title,
-      boundaryKind: "episode",
-      productionJson: {
-        source: "quipsly-api-import-media.create",
-        projectSlug: project.slug,
-        episodeSlug,
-        importedMedia: [],
-      },
     },
-  });
+  };
+  let production =
+    await prisma.studioEpisodeProduction
+      .findUnique({ where });
+  if (!production) {
+    try {
+      production =
+        await prisma.studioEpisodeProduction.create({
+          data: {
+            projectId: project.id,
+            documentId: document.id,
+            slug: episodeSlug,
+            title,
+            boundaryLabel: title,
+            boundaryKind: "episode",
+            productionJson: {
+              source: "quipsly-api-import-media.create",
+              projectSlug: project.slug,
+              episodeSlug,
+              importedMedia: [],
+            },
+          },
+        });
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+      production =
+        await prisma.studioEpisodeProduction
+          .findUniqueOrThrow({ where });
+    }
+  }
+  if (
+    production.title !== title
+    || production.boundaryLabel !== title
+    || production.boundaryKind !== "episode"
+    || production.documentId !== document.id
+  ) {
+    production =
+      await prisma.studioEpisodeProduction.update({
+        where: { id: production.id },
+        data: {
+          documentId: document.id,
+          title,
+          boundaryLabel: title,
+          boundaryKind: "episode",
+        },
+      });
+  }
   const productionRoom = await prisma.studioProductionRoom.upsert({
     where: { projectId_slug: { projectId: project.id, slug: episodeSlug } },
     update: {
@@ -947,6 +987,25 @@ export async function PATCH(request: Request) {
     }
 
     const { production } = await ensureProjectAndProduction(prisma, projectSlug, episodeSlug);
+    const requiresExactRevision =
+      action === "approve-alignment"
+      || action === "undo-last-sync";
+    if (requiresExactRevision) {
+      const revision =
+        requireCurrentEpisodeProductionRevision(
+          body.expectedUpdatedAt,
+          production.updatedAt,
+        );
+      if (!revision.ok) {
+        return NextResponse.json({
+          ok: false,
+          code: revision.code,
+          error: revision.message,
+          actualUpdatedAt:
+            revision.actualUpdatedAt,
+        }, { status: 409 });
+      }
+    }
     const currentJson = asRecord(production.productionJson) ?? {};
     const importedMedia = Array.isArray(currentJson.importedMedia) ? currentJson.importedMedia : [];
     const syncedAt = new Date().toISOString();
@@ -993,15 +1052,29 @@ export async function PATCH(request: Request) {
             spineAudioClipId: spineAudioClipId ?? null,
             spineAudioSource: spineAudioSource ?? null,
             spineAudioLabel: spineAudioLabel ?? (spineAudioAssetId ?? spineAudioClipId),
+            spineAudioSetAt: syncedAt,
+            spineAudioSetBy: "editor",
           },
         }),
         lastImportSyncUpdatedAt: syncedAt,
       });
 
-      const updated = await prisma.studioEpisodeProduction.update({
-        where: { id: production.id },
+      const [updated] = await prisma.studioEpisodeProduction.updateManyAndReturn({
+        where: {
+          id: production.id,
+          updatedAt: production.updatedAt,
+        },
         data: { productionJson },
+        select: { updatedAt: true },
       });
+      if (!updated) {
+        return NextResponse.json({
+          ok: false,
+          code: "episode-production-revision-stale",
+          error:
+            "Episode production changed while Quipsly prepared the spine change. Refresh before replacing the episode spine.",
+        }, { status: 409 });
+      }
 
       return NextResponse.json({
         ok: true,
@@ -1026,10 +1099,22 @@ export async function PATCH(request: Request) {
         lastSyncHistoryUpdatedAt: syncedAt,
       });
 
-      const updated = await prisma.studioEpisodeProduction.update({
-        where: { id: production.id },
+      const [updated] = await prisma.studioEpisodeProduction.updateManyAndReturn({
+        where: {
+          id: production.id,
+          updatedAt: production.updatedAt,
+        },
         data: { productionJson },
+        select: { updatedAt: true },
       });
+      if (!updated) {
+        return NextResponse.json({
+          ok: false,
+          code: "episode-production-revision-stale",
+          error:
+            "Episode production changed while Quipsly recorded sync history. Refresh before recording another recovery point.",
+        }, { status: 409 });
+      }
 
       return NextResponse.json({
         ok: true,
@@ -1301,10 +1386,22 @@ export async function PATCH(request: Request) {
         lastSyncUndoAt: syncedAt,
       });
 
-      const updated = await prisma.studioEpisodeProduction.update({
-        where: { id: production.id },
+      const [updated] = await prisma.studioEpisodeProduction.updateManyAndReturn({
+        where: {
+          id: production.id,
+          updatedAt: production.updatedAt,
+        },
         data: { productionJson },
+        select: { updatedAt: true },
       });
+      if (!updated) {
+        return NextResponse.json({
+          ok: false,
+          code: "episode-production-revision-stale",
+          error:
+            "Episode production changed while Quipsly prepared the undo. Refresh before restoring any prior alignment state.",
+        }, { status: 409 });
+      }
 
       return NextResponse.json({
         ok: true,
@@ -1410,6 +1507,19 @@ export async function PATCH(request: Request) {
       .find((asset) => asset.id === assetId || asset.sourceId === assetId);
     let alignmentReview: ReturnType<typeof buildReviewedSourceAlignment> | null = null;
     if (isAlignmentApproval) {
+      if (
+        targetAsset
+        && hasProtectedReviewedAlignment(
+          targetAsset,
+        )
+      ) {
+        return NextResponse.json({
+          ok: false,
+          code: "reviewed-alignment-undo-required",
+          error:
+            "This source already has protected reviewed alignment evidence. Undo that exact review before recording a replacement.",
+        }, { status: 409 });
+      }
       const spineAsset = importedMedia
         .map((item) => asRecord(item))
         .find((asset) => (
@@ -1483,12 +1593,12 @@ export async function PATCH(request: Request) {
         error: "Use Guided sync to review waveforms, later-take drift, and the final placement before marking a source synced.",
       }, { status: 400 });
     }
-    const existingReviewedSync = asRecord(targetAsset?.sync);
     if (
       !isAlignmentApproval
-      && existingReviewedSync.status === "synced"
-      && existingReviewedSync.source === "editor-reviewed-alignment-v1"
-      && Object.keys(asRecord(existingReviewedSync.alignmentReview)).length > 0
+      && targetAsset
+      && hasProtectedReviewedAlignment(
+        targetAsset,
+      )
     ) {
       return NextResponse.json({
         ok: false,
@@ -1554,10 +1664,22 @@ export async function PATCH(request: Request) {
       lastImportSyncUpdatedAt: syncedAt,
     });
 
-    const updated = await prisma.studioEpisodeProduction.update({
-      where: { id: production.id },
+    const [updated] = await prisma.studioEpisodeProduction.updateManyAndReturn({
+      where: {
+        id: production.id,
+        updatedAt: production.updatedAt,
+      },
       data: { productionJson },
+      select: { updatedAt: true },
     });
+    if (!updated) {
+      return NextResponse.json({
+        ok: false,
+        code: "episode-production-revision-stale",
+        error:
+          "Episode production changed while Quipsly prepared this sync decision. Refresh before replacing any alignment evidence.",
+      }, { status: 409 });
+    }
 
     return NextResponse.json({
       ok: true,
