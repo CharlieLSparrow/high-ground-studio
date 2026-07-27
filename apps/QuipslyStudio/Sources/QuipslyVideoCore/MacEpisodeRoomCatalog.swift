@@ -56,6 +56,7 @@ public struct MacEpisodeRoomSummary:
     public let episodeSlug: String?
     public let scheduledStart: String?
     public let participantId: String?
+    public let recordingConsentId: String?
     public let recordingConsentStatus: String?
     public let recordingConsentGranted: Bool
     public let canRecordNow: Bool
@@ -78,6 +79,7 @@ public struct MacEpisodeRoomSummary:
         episodeSlug: String? = nil,
         scheduledStart: String? = nil,
         participantId: String? = nil,
+        recordingConsentId: String? = nil,
         recordingConsentStatus: String? = nil,
         recordingConsentGranted: Bool,
         canRecordNow: Bool,
@@ -99,6 +101,7 @@ public struct MacEpisodeRoomSummary:
         self.episodeSlug = episodeSlug
         self.scheduledStart = scheduledStart
         self.participantId = participantId
+        self.recordingConsentId = recordingConsentId
         self.recordingConsentStatus = recordingConsentStatus
         self.recordingConsentGranted = recordingConsentGranted
         self.canRecordNow = canRecordNow
@@ -155,6 +158,29 @@ public struct MacEpisodeRoomSummary:
     }
 }
 
+public struct MacEpisodeRoomCatalogUser:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let id: String
+    public let email: String
+    public let name: String?
+    public let isStaff: Bool?
+
+    public init(
+        id: String,
+        email: String,
+        name: String? = nil,
+        isStaff: Bool? = nil
+    ) {
+        self.id = id
+        self.email = email
+        self.name = name
+        self.isStaff = isStaff
+    }
+}
+
 public struct MacEpisodeRoomCatalogResponse:
     Codable,
     Equatable,
@@ -162,15 +188,18 @@ public struct MacEpisodeRoomCatalogResponse:
 {
     public let ok: Bool
     public let error: String?
+    public let user: MacEpisodeRoomCatalogUser?
     public let sessions: [MacEpisodeRoomSummary]?
 
     public init(
         ok: Bool,
         error: String? = nil,
+        user: MacEpisodeRoomCatalogUser? = nil,
         sessions: [MacEpisodeRoomSummary]? = nil
     ) {
         self.ok = ok
         self.error = error
+        self.user = user
         self.sessions = sessions
     }
 }

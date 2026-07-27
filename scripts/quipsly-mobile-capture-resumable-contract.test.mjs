@@ -247,6 +247,14 @@ test("finalization streams and verifies one immutable storage generation before 
   assert.ok(finalizeRoute.includes("normalizedReceiptMatchesFinalization"),
     "verified manifests may short-circuit only when exact normalized DB evidence matches");
   assert.ok(finalizeRoute.includes("immutableUploadBinding"));
+  for (const responseIdentity of [
+    "captureId: manifest.captureId",
+    "captureGroupId: manifest.captureGroupId",
+    "verification: manifest.verification",
+    "finalization: manifest.finalization",
+  ]) {
+    assert.ok(finalizeRoute.includes(responseIdentity), responseIdentity);
+  }
   assert.ok(finalizeRoute.includes("immutableBinding.sha256 === manifest.verification.computedSha256"));
   assert.ok(
     finalizeRoute.indexOf("computeMobileCaptureObjectSha256") <

@@ -14,23 +14,44 @@ public enum ProductionAudioRecordingState: String, Codable, Equatable, Sendable 
 }
 
 public struct ProductionAudioRecordingConfiguration: Equatable, Sendable {
+    public let recordingID: UUID
     public let captureGroupID: UUID
     public let episodeSpaceID: String
     public let participantID: String
+    public let callRoomID: String?
+    public let recordingConsentID: String?
+    public let startReceiptID: UUID?
+    public let projectSlug: String?
+    public let episodeSlug: String?
+    public let capturePurpose: String?
     public let inputDevice: CaptureAudioDeviceSnapshot
     public let rootDirectory: URL
 
     public init(
+        recordingID: UUID = UUID(),
         captureGroupID: UUID = UUID(),
         episodeSpaceID: String,
         participantID: String,
+        callRoomID: String? = nil,
+        recordingConsentID: String? = nil,
+        startReceiptID: UUID? = nil,
+        projectSlug: String? = nil,
+        episodeSlug: String? = nil,
+        capturePurpose: String? = nil,
         inputDevice: CaptureAudioDeviceSnapshot,
         rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
     ) {
+        self.recordingID = recordingID
         self.captureGroupID = captureGroupID
         self.episodeSpaceID = episodeSpaceID
         self.participantID = participantID
+        self.callRoomID = callRoomID
+        self.recordingConsentID = recordingConsentID
+        self.startReceiptID = startReceiptID
+        self.projectSlug = projectSlug
+        self.episodeSlug = episodeSlug
+        self.capturePurpose = capturePurpose
         self.inputDevice = inputDevice
         self.rootDirectory = rootDirectory
     }
@@ -42,6 +63,12 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
     public let captureGroupID: UUID
     public let episodeSpaceID: String
     public let participantID: String
+    public let callRoomID: String?
+    public let recordingConsentID: String?
+    public let startReceiptID: UUID?
+    public let projectSlug: String?
+    public let episodeSlug: String?
+    public let capturePurpose: String?
     public let clientKind: String
     public let sourceKind: String
     public let state: ProductionAudioRecordingState
@@ -85,6 +112,12 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
         self.captureGroupID = configuration.captureGroupID
         self.episodeSpaceID = configuration.episodeSpaceID
         self.participantID = configuration.participantID
+        self.callRoomID = configuration.callRoomID
+        self.recordingConsentID = configuration.recordingConsentID
+        self.startReceiptID = configuration.startReceiptID
+        self.projectSlug = configuration.projectSlug
+        self.episodeSlug = configuration.episodeSlug
+        self.capturePurpose = configuration.capturePurpose
         self.clientKind = "macos"
         self.sourceKind = "local_audio_master"
         self.state = state
@@ -234,7 +267,7 @@ public final class ProductionAudioRecorder {
             )
         }
 
-        let recordingID = UUID()
+        let recordingID = configuration.recordingID
         let startedAt = Date()
         let startedMonotonic = DispatchTime.now().uptimeNanoseconds
         let directory = Self.recordingDirectory(

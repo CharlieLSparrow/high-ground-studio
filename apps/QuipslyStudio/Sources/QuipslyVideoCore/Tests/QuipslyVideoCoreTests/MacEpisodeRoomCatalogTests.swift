@@ -118,7 +118,12 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
         let payload = """
         {
           "ok": true,
-          "user": {"id": "user-1"},
+          "user": {
+            "id": "user-1",
+            "email": "charlie@example.com",
+            "name": "Charlie",
+            "isStaff": true
+          },
           "sessions": [{
             "id": "room-1",
             "callRoomId": "room-1",
@@ -130,6 +135,7 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
             "projectName": "High Ground Odyssey",
             "episodeSlug": "episode-5",
             "participantId": "participant-1",
+            "recordingConsentId": "consent-1",
             "recordingConsentStatus": "GRANTED",
             "recordingConsentGranted": true,
             "canRecordNow": true,
@@ -153,7 +159,9 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
         )
 
         XCTAssertTrue(catalog.ok)
+        XCTAssertEqual(catalog.user?.email, "charlie@example.com")
         let episode = try XCTUnwrap(catalog.sessions?.first)
+        XCTAssertEqual(episode.recordingConsentId, "consent-1")
         XCTAssertTrue(episode.safeToRecordLocally)
         XCTAssertEqual(episode.canonicalEpisodeSpaceID, "episode-5")
         XCTAssertEqual(

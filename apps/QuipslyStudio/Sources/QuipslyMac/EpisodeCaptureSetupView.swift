@@ -22,6 +22,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var isFinalizing = false
     @Published private(set) var recordingError: String?
     @Published private(set) var captureGroupID = UUID()
+    @Published private(set) var captureGroupIsClosed = false
     @Published private(set) var isImportingCanon = false
     @Published private(set) var canonImportProgress: CanonCardImportProgress?
     @Published private(set) var canonImportMessage = "No camera-card originals imported."
@@ -36,15 +37,48 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var episodeRoomError: String?
     @Published private(set) var isLocalOnlyCapture = false
     @Published private(set) var episodeRoomCatalogIsFresh = false
+    @Published private(set) var episodeRoomOwnerAccountID: String?
+    @Published private(set) var roomReceiptMessage =
+        "No Nest recording boundary is active."
+    @Published private(set) var roomReceiptError: String?
+    @Published private(set) var pendingRoomReceiptCount = 0
+    @Published private(set) var isRecoveringRoomReceipts = false
+    @Published private(set) var activeUploadJob:
+        MacCaptureUploadJob?
+    @Published private(set) var isUploadingMaster = false
+    @Published private(set) var uploadProgress = 0.0
+    @Published private(set) var uploadMessage =
+        "Finalized Episode Room masters can be uploaded directly to Quipsly's private media vault."
+    @Published private(set) var uploadError: String?
 
     let captureRoot = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
 
     private let recorder = ProductionAudioRecorder()
+    private let roomReceiptOutbox = MacCaptureRoomReceiptOutbox()
+    private let uploadJobStore = MacCaptureUploadJobStore()
+    private lazy var canonicalUploader = MacCanonicalCaptureUploader(
+        jobStore: uploadJobStore
+    )
     private let projectStore: ProjectStore
     private let playbackEngine: PlaybackEngine
     let nativeAccountStore: QuipslyNativeAccountStore
     private var elapsedTask: Task<Void, Never>?
+    private var activeRoomCapture: ActiveRoomCapture?
+    private var didAttemptLaunchReceiptRecovery = false
+    private var didAttemptLaunchUploadRecovery = false
+
+    private struct ActiveRoomCapture {
+        let ownerAccountID: String
+        let captureID: UUID
+        let sessionID: String
+        let callRoomID: String
+        let recordingConsentID: String
+        let projectSlug: String?
+        let episodeSlug: String?
+        let capturePurpose: String?
+        let startReceipt: MacCaptureRoomReceipt
+    }
 
     init(
         projectStore: ProjectStore,
@@ -54,6 +88,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         self.projectStore = projectStore
         self.playbackEngine = playbackEngine
         self.nativeAccountStore = nativeAccountStore
+        if !roomReceiptOutbox.isWritable {
+            roomReceiptError =
+                roomReceiptOutbox.persistenceError
+                    ?? "The Nest receipt outbox is locked read-only."
+        }
+        if !uploadJobStore.isWritable {
+            uploadError =
+                uploadJobStore.persistenceError
+                    ?? "The canonical upload outbox is locked read-only."
+        }
     }
 
     var isRecording: Bool { recorder.isRecording }
@@ -76,6 +120,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
               !isFinalizing,
               !isImportingCanon,
               !isRefreshingEpisodeRooms,
+              !isUploadingMaster,
+              !captureGroupIsClosed,
               !episodeSpaceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !participantID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               inventory?.microphoneAuthorization == .authorized,
@@ -87,13 +133,31 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         if !isLocalOnlyCapture {
             guard let selectedEpisodeRoom,
                   episodeRoomCatalogIsFresh,
-                  selectedEpisodeRoom.safeToRecordLocally else {
+                  selectedEpisodeRoom.safeToRecordLocally,
+                  episodeRoomOwnerAccountID != nil,
+                  selectedEpisodeRoom.recordingConsentId != nil,
+                  roomReceiptOutbox.isWritable else {
                 return false
             }
         } else if selectedEpisodeRoom != nil {
             return false
         }
         return abs(sampleRate - ProductionAudioRecorder.targetSampleRate) < 1
+    }
+
+    var canUploadLastFinalizedMaster: Bool {
+        guard !isUploadingMaster,
+              uploadJobStore.isWritable,
+              let receipt = lastFinalizedReceipt,
+              receipt.state == .finalized,
+              receipt.callRoomID != nil,
+              receipt.recordingConsentID != nil,
+              receipt.startReceiptID != nil,
+              episodeRoomOwnerAccountID != nil else {
+            return false
+        }
+        return activeUploadJob?.phase != .verified
+            || activeUploadJob?.id != receipt.recordingID
     }
 
     var plan: ProductionCapturePlan? {
@@ -169,8 +233,24 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     ]
                 )
             }
+            guard let serverOwner = normalizedOwnerAccountID(
+                catalog.user?.email
+            ) else {
+                throw NSError(
+                    domain: "QuipslyEpisodeRoomCatalog",
+                    code: response.statusCode,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "Nest did not return the verified account identity required for durable recording receipts.",
+                    ]
+                )
+            }
 
             episodeRooms = catalog.sessions ?? []
+            episodeRoomOwnerAccountID = serverOwner
+            updatePendingRoomReceiptCount(
+                ownerAccountID: serverOwner
+            )
             episodeRoomCatalogIsFresh = true
             if !isLocalOnlyCapture {
                 let preferredID =
@@ -189,8 +269,12 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 : selectedEpisodeRoom.map {
                     "\(episodeRooms.count) authorized session(s) loaded · \($0.title) selected · \($0.readinessLabel)."
                 } ?? "\(episodeRooms.count) authorized session(s) loaded from Nest."
+            if !didAttemptLaunchReceiptRecovery, !isRecording {
+                await recoverRoomReceiptsAfterLaunch()
+            }
         } catch {
             episodeRoomCatalogIsFresh = false
+            episodeRoomOwnerAccountID = nil
             episodeRoomError = error.localizedDescription
             episodeRoomMessage =
                 "Episode Room refresh needs attention. Existing local sources were not changed."
@@ -213,6 +297,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     }
 
     func startRecording() async {
+        roomReceiptError = nil
+        var roomCapture: ActiveRoomCapture?
         if !isLocalOnlyCapture {
             guard let intendedRoomID = selectedEpisodeRoomID else {
                 recordingError =
@@ -229,15 +315,109 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 message = "Local master did not start."
                 return
             }
+            guard let room = selectedEpisodeRoom,
+                  let ownerAccountID = episodeRoomOwnerAccountID,
+                  let recordingConsentID = nonempty(
+                    room.recordingConsentId
+                  ) else {
+                recordingError =
+                    "Nest did not return the verified account and consent identity required to arm this take."
+                message = "Local master did not start."
+                return
+            }
+            do {
+                let startReceipt = try roomReceiptOutbox
+                    .enqueueStart(
+                        ownerAccountID: ownerAccountID,
+                        captureID: captureGroupID,
+                        sessionID: room.id,
+                        callRoomID: room.callRoomId
+                    )
+                updatePendingRoomReceiptCount(
+                    ownerAccountID: ownerAccountID
+                )
+                roomReceiptMessage =
+                    "START is durable locally. Waiting for Nest to apply it before opening the microphone master…"
+                let delivery = await deliverRoomReceipt(
+                    startReceipt
+                )
+                switch delivery {
+                case .accepted(let stateApplied):
+                    guard stateApplied else {
+                        try roomReceiptOutbox.markAcknowledged(
+                            startReceipt.id,
+                            stateApplied: false
+                        )
+                        updatePendingRoomReceiptCount(
+                            ownerAccountID: ownerAccountID
+                        )
+                        captureGroupID = UUID()
+                        recordingError =
+                            "Nest preserved START but did not apply it. Quipsly rotated to a new take identity; refresh the room before trying again."
+                        roomReceiptMessage =
+                            "START was not applied. No audio engine was opened."
+                        message = "Local master did not start."
+                        return
+                    }
+                    roomReceiptMessage =
+                        "Nest applied START. Opening the local microphone master…"
+                    roomCapture = ActiveRoomCapture(
+                        ownerAccountID: ownerAccountID,
+                        captureID: captureGroupID,
+                        sessionID: room.id,
+                        callRoomID: room.callRoomId,
+                        recordingConsentID: recordingConsentID,
+                        projectSlug: room.projectSlug,
+                        episodeSlug: room.episodeSlug,
+                        capturePurpose: room.purpose,
+                        startReceipt: startReceipt
+                    )
+                case .terminallyRejected(
+                    let message,
+                    let errorCode
+                ):
+                    try roomReceiptOutbox.markRejectedByNest(
+                        startReceipt.id,
+                        errorCode: errorCode,
+                        message: message
+                    )
+                    updatePendingRoomReceiptCount(
+                        ownerAccountID: ownerAccountID
+                    )
+                    captureGroupID = UUID()
+                    recordingError = message
+                    roomReceiptMessage =
+                        "Nest preserved and rejected START. No audio engine was opened; a new take identity is ready."
+                    self.message = "Local master did not start."
+                    return
+                case .retryable(let detail):
+                    recordingError =
+                        "START is safe in the local outbox but Nest has not acknowledged it: \(detail)"
+                    roomReceiptMessage =
+                        "START is waiting in the durable outbox. No audio engine was opened."
+                    message = "Local master did not start."
+                    return
+                }
+            } catch {
+                recordingError =
+                    "Quipsly could not durably arm the Episode Room boundary: \(error.localizedDescription)"
+                roomReceiptError = error.localizedDescription
+                roomReceiptMessage =
+                    "No audio engine was opened because START was not durably armed."
+                message = "Local master did not start."
+                return
+            }
         }
         guard let input = selectedAudioInput else {
             recordingError = "Select the exact microphone/interface that will own this local master."
             return
         }
         recordingError = nil
+        let recordingID = UUID()
         do {
             let receipt = try recorder.start(
                 configuration: ProductionAudioRecordingConfiguration(
+                    recordingID: recordingID,
                     captureGroupID: captureGroupID,
                     episodeSpaceID: episodeSpaceID.trimmingCharacters(
                         in: .whitespacesAndNewlines
@@ -245,15 +425,37 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     participantID: participantID.trimmingCharacters(
                         in: .whitespacesAndNewlines
                     ),
+                    callRoomID: roomCapture?.callRoomID,
+                    recordingConsentID:
+                        roomCapture?.recordingConsentID,
+                    startReceiptID: roomCapture?.startReceipt.id,
+                    projectSlug: roomCapture?.projectSlug,
+                    episodeSlug: roomCapture?.episodeSlug,
+                    capturePurpose: roomCapture?.capturePurpose,
                     inputDevice: input,
                     rootDirectory: captureRoot
                 )
             )
+            activeRoomCapture = roomCapture
             activeReceipt = receipt
             elapsedSeconds = 0
-            message = "Writing an untouched local microphone master from \(input.name)…"
+            message =
+                "Writing an untouched local microphone master from \(input.name)…"
+            roomReceiptMessage = roomCapture == nil
+                ? "Local-only source: no Nest recording boundary was inferred."
+                : "Nest START is applied · local source receipt \(recordingID.uuidString.lowercased()) is recording."
             startElapsedClock(startedAt: receipt.startedAt)
         } catch {
+            if let roomCapture {
+                let closureError =
+                    await closeRoomBoundaryAfterLocalStop(
+                        roomCapture
+                    )
+                captureGroupIsClosed = true
+                if let closureError {
+                    roomReceiptError = closureError
+                }
+            }
             recordingError = error.localizedDescription
             message = "Local master did not start."
             refreshInterruptedRecordings()
@@ -262,6 +464,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 
     func stopRecording() async {
         guard isRecording, !isFinalizing else { return }
+        let roomCapture = activeRoomCapture
         elapsedTask?.cancel()
         elapsedTask = nil
         isFinalizing = true
@@ -269,31 +472,74 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         message = "Finalizing WAV and computing its SHA-256 receipt…"
         defer { isFinalizing = false }
 
+        var finalizedReceipt: ProductionAudioRecordingReceipt?
         do {
             let receipt = try await recorder.stop()
             activeReceipt = receipt
             lastFinalizedReceipt = receipt
+            activeUploadJob =
+                episodeRoomOwnerAccountID.flatMap {
+                    uploadJobStore.job(
+                        id: receipt.recordingID,
+                        ownerAccountID: $0
+                    )
+                }
+            uploadProgress =
+                activeUploadJob?.phase == .verified ? 1 : 0
+            uploadError = nil
+            uploadMessage =
+                "Finalized master is ready for direct private-vault upload. The local WAV will be retained."
             elapsedSeconds = receipt.durationSeconds
-            do {
-                let laneID = try attachAudioMasterToEditor(receipt)
-                attachedLaneIDs.append(laneID)
-                message = "Local microphone master finalized, verified, and attached to the editor."
-            } catch {
-                recordingError =
-                    "The local master is finalized and safe, but its editor attachment receipt failed: \(error.localizedDescription)"
-                message = "Local microphone master is safe; editor attachment needs retry."
-            }
+            finalizedReceipt = receipt
+            message =
+                "Local microphone master finalized and verified. Closing the Nest recording boundary…"
         } catch {
             activeReceipt = recorder.activeReceipt
             recordingError = error.localizedDescription
             message = "The take was preserved but needs recovery review."
         }
+
+        if let roomCapture {
+            if let boundaryError =
+                await closeRoomBoundaryAfterLocalStop(roomCapture) {
+                roomReceiptError = boundaryError
+                recordingError = [
+                    recordingError,
+                    "The local source is safe, but Nest STOP needs attention: \(boundaryError)",
+                ]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            }
+        } else {
+            roomReceiptMessage =
+                "Local-only source finalized without creating a Nest recording boundary."
+        }
+        captureGroupIsClosed = true
+        activeRoomCapture = nil
+
+        if let receipt = finalizedReceipt {
+            do {
+                let laneID = try attachAudioMasterToEditor(receipt)
+                attachedLaneIDs.append(laneID)
+                message = roomReceiptError == nil
+                    ? "Local microphone master finalized, verified, attached to the editor, and closed in Nest."
+                    : "Local microphone master finalized, verified, and attached; Nest boundary sync needs retry."
+            } catch {
+                recordingError =
+                    "The local master is finalized and safe, but its editor attachment receipt failed: \(error.localizedDescription)"
+                message = "Local microphone master is safe; editor attachment needs retry."
+            }
+        }
         refreshInterruptedRecordings()
     }
 
     func beginNewCaptureGroup() {
-        guard !isRecording, !isFinalizing, !isImportingCanon else { return }
+        guard !isRecording,
+              !isFinalizing,
+              !isImportingCanon,
+              !isUploadingMaster else { return }
         captureGroupID = UUID()
+        captureGroupIsClosed = false
         activeReceipt = nil
         lastFinalizedReceipt = nil
         importedCanonReceipts = []
@@ -306,7 +552,11 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     }
 
     func importCanonOriginals(_ urls: [URL]) async {
-        guard !urls.isEmpty, !isRecording, !isFinalizing, !isImportingCanon else {
+        guard !urls.isEmpty,
+              !isRecording,
+              !isFinalizing,
+              !isImportingCanon,
+              !isUploadingMaster else {
             return
         }
         let cleanEpisode = episodeSpaceID.trimmingCharacters(
@@ -373,10 +623,370 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         }
     }
 
+    func recoverRoomReceiptsAfterLaunch() async {
+        guard !didAttemptLaunchReceiptRecovery else { return }
+        guard !isRecording,
+              let ownerAccountID = episodeRoomOwnerAccountID else {
+            updatePendingRoomReceiptCount(
+                ownerAccountID: episodeRoomOwnerAccountID
+            )
+            if !roomReceiptOutbox.isWritable {
+                roomReceiptError =
+                    roomReceiptOutbox.persistenceError
+                        ?? "The Nest receipt outbox is locked read-only."
+            }
+            return
+        }
+        didAttemptLaunchReceiptRecovery = true
+
+        isRecoveringRoomReceipts = true
+        roomReceiptError = nil
+        defer { isRecoveringRoomReceipts = false }
+        do {
+            _ = try roomReceiptOutbox.closeOrphanedStarts(
+                ownerAccountID: ownerAccountID
+            )
+            var blockedCaptureIDs: Set<UUID> = []
+            for receipt in roomReceiptOutbox.pendingReceipts(
+                ownerAccountID: ownerAccountID
+            ) {
+                if blockedCaptureIDs.contains(receipt.captureID) {
+                    continue
+                }
+                let delivery = await deliverRoomReceipt(receipt)
+                switch delivery {
+                case .accepted(let stateApplied):
+                    try roomReceiptOutbox.markAcknowledged(
+                        receipt.id,
+                        stateApplied: stateApplied
+                    )
+                case .terminallyRejected(
+                    let message,
+                    let errorCode
+                ):
+                    try roomReceiptOutbox.markRejectedByNest(
+                        receipt.id,
+                        errorCode: errorCode,
+                        message: message
+                    )
+                case .retryable(let detail):
+                    blockedCaptureIDs.insert(receipt.captureID)
+                    roomReceiptError = detail
+                }
+            }
+            updatePendingRoomReceiptCount(
+                ownerAccountID: ownerAccountID
+            )
+            roomReceiptMessage = pendingRoomReceiptCount == 0
+                ? "Recovered Nest recording boundaries are synchronized."
+                : "\(pendingRoomReceiptCount) Nest recording boundary receipt(s) remain safely queued."
+        } catch {
+            updatePendingRoomReceiptCount(
+                ownerAccountID: ownerAccountID
+            )
+            roomReceiptError = error.localizedDescription
+            roomReceiptMessage =
+                "Protected room-boundary recovery needs attention; existing receipt bytes were preserved."
+        }
+    }
+
+    func uploadLastFinalizedMaster() async {
+        guard let receipt = lastFinalizedReceipt,
+              let ownerAccountID = episodeRoomOwnerAccountID else {
+            uploadError =
+                "A finalized Episode Room source and verified Nest account are required before upload."
+            return
+        }
+        do {
+            let job = try uploadJobStore.enqueueFinalizedAudio(
+                receipt: receipt,
+                ownerAccountID: ownerAccountID
+            )
+            activeUploadJob = job
+            await runCanonicalUpload(jobID: job.id)
+        } catch {
+            uploadError = error.localizedDescription
+            uploadMessage =
+                "The source remains local; its canonical upload was not armed."
+        }
+    }
+
+    func recoverUploadsAfterLaunch() async {
+        guard !didAttemptLaunchUploadRecovery,
+              let ownerAccountID = episodeRoomOwnerAccountID else {
+            return
+        }
+        didAttemptLaunchUploadRecovery = true
+        let ownerJobs = uploadJobStore.jobs(
+            ownerAccountID: ownerAccountID
+        )
+        activeUploadJob = ownerJobs.last
+        if lastFinalizedReceipt == nil,
+           let latestJob = ownerJobs.last,
+           let data = try? Data(
+               contentsOf: URL(
+                   fileURLWithPath:
+                       latestJob.sourceReceiptPath
+               )
+           ) {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            lastFinalizedReceipt = try? decoder.decode(
+                ProductionAudioRecordingReceipt.self,
+                from: data
+            )
+        }
+        guard let pending = ownerJobs.last(where: {
+            $0.phase != .verified
+        }) else {
+            if let verified = ownerJobs.last {
+                uploadMessage =
+                    verified.userFacingVerificationSummary
+            }
+            return
+        }
+        uploadMessage =
+            "Recovering the previously authorized canonical upload from its durable job receipt…"
+        await runCanonicalUpload(jobID: pending.id)
+    }
+
+    private func runCanonicalUpload(jobID: UUID) async {
+        guard !isUploadingMaster,
+              let ownerAccountID = episodeRoomOwnerAccountID,
+              let baseURL = nativeAccountStore.normalizedBaseURL else {
+            uploadError =
+                "The configured Nest base URL is invalid."
+            return
+        }
+        isUploadingMaster = true
+        uploadError = nil
+        uploadProgress = 0.04
+        defer { isUploadingMaster = false }
+
+        do {
+            let verified = try await canonicalUploader.upload(
+                jobID: jobID,
+                ownerAccountID: ownerAccountID,
+                baseURL: baseURL,
+                authenticatedData: { [nativeAccountStore] request in
+                    try await nativeAccountStore.authenticatedData(
+                        for: request
+                    )
+                },
+                onUpdate: { [weak self] update in
+                    guard let self else { return }
+                    uploadProgress = update.progress
+                    uploadMessage = update.message
+                    activeUploadJob = uploadJobStore.job(
+                        id: jobID,
+                        ownerAccountID: ownerAccountID
+                    )
+                }
+            )
+            activeUploadJob = verified
+            uploadProgress = 1
+            uploadMessage =
+                verified.userFacingVerificationSummary
+        } catch {
+            activeUploadJob =
+                uploadJobStore.job(
+                    id: jobID,
+                    ownerAccountID: ownerAccountID
+                )
+            uploadError = error.localizedDescription
+            uploadMessage =
+                "Upload held for explicit retry. The finalized WAV and its source receipt remain untouched."
+        }
+    }
+
     func refreshInterruptedRecordings() {
         interruptedRecordings = ProductionAudioRecorder.interruptedRecordings(
             in: captureRoot
         )
+    }
+
+    private enum RoomReceiptDelivery {
+        case accepted(stateApplied: Bool)
+        case terminallyRejected(
+            message: String,
+            errorCode: String?
+        )
+        case retryable(message: String)
+    }
+
+    private struct RoomReceiptRequest: Encodable {
+        let callRoomId: String
+        let action: String
+        let receiptId: String
+        let captureId: String
+        let occurredAt: Date
+        let source: String
+
+        init(receipt: MacCaptureRoomReceipt) {
+            callRoomId = receipt.callRoomID
+            action = receipt.action.rawValue
+            receiptId = receipt.id.uuidString.lowercased()
+            captureId =
+                receipt.captureID.uuidString.lowercased()
+            occurredAt = receipt.occurredAt
+            source = "macos-studio-capture-outbox"
+        }
+    }
+
+    private func deliverRoomReceipt(
+        _ receipt: MacCaptureRoomReceipt
+    ) async -> RoomReceiptDelivery {
+        guard receipt.ownerAccountID == episodeRoomOwnerAccountID else {
+            return .retryable(
+                message:
+                    "The durable receipt belongs to a different verified Quipsly account and was not sent."
+            )
+        }
+        guard let baseURL = nativeAccountStore.normalizedBaseURL else {
+            return .retryable(
+                message: "The configured Nest base URL is invalid."
+            )
+        }
+        do {
+            var request = URLRequest(
+                url: baseURL.appending(
+                    path: "/api/mobile/capture/rooms/state"
+                )
+            )
+            request.httpMethod = "POST"
+            request.setValue(
+                "application/json",
+                forHTTPHeaderField: "Content-Type"
+            )
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            request.httpBody = try encoder.encode(
+                RoomReceiptRequest(receipt: receipt)
+            )
+            let (data, response) =
+                try await nativeAccountStore.authenticatedData(
+                    for: request
+                )
+            let payload = try JSONDecoder().decode(
+                MacCaptureRoomStateResponse.self,
+                from: data
+            )
+            if payload.receiptPersisted == true, !payload.ok {
+                return .terminallyRejected(
+                    message:
+                        payload.error
+                            ?? "Nest preserved the receipt but held the requested room-state change.",
+                    errorCode: payload.errorCode
+                )
+            }
+            guard (200 ..< 300).contains(response.statusCode),
+                  payload.ok,
+                  payload.receiptPersisted == true else {
+                return .retryable(
+                    message:
+                        payload.error
+                            ?? "Nest did not confirm durable receipt persistence."
+                )
+            }
+            return .accepted(
+                stateApplied: payload.stateApplied == true
+            )
+        } catch {
+            return .retryable(message: error.localizedDescription)
+        }
+    }
+
+    private func closeRoomBoundaryAfterLocalStop(
+        _ capture: ActiveRoomCapture
+    ) async -> String? {
+        do {
+            let stopReceipt = try roomReceiptOutbox.enqueueStop(
+                ownerAccountID: capture.ownerAccountID,
+                captureID: capture.captureID,
+                sessionID: capture.sessionID,
+                callRoomID: capture.callRoomID
+            )
+            updatePendingRoomReceiptCount(
+                ownerAccountID: capture.ownerAccountID
+            )
+            roomReceiptMessage =
+                "Local source is closed. STOP is durable locally and synchronizing with Nest…"
+            let delivery = await deliverRoomReceipt(stopReceipt)
+            switch delivery {
+            case .accepted(let stateApplied):
+                try roomReceiptOutbox.markAcknowledged(
+                    capture.startReceipt.id,
+                    stateApplied: true
+                )
+                try roomReceiptOutbox.markAcknowledged(
+                    stopReceipt.id,
+                    stateApplied: stateApplied
+                )
+                updatePendingRoomReceiptCount(
+                    ownerAccountID: capture.ownerAccountID
+                )
+                roomReceiptMessage =
+                    "Nest START and STOP are durably acknowledged for this local source."
+                roomReceiptError = nil
+                return nil
+            case .terminallyRejected(
+                let message,
+                let errorCode
+            ):
+                try roomReceiptOutbox.markAcknowledged(
+                    capture.startReceipt.id,
+                    stateApplied: true
+                )
+                try roomReceiptOutbox.markRejectedByNest(
+                    stopReceipt.id,
+                    errorCode: errorCode,
+                    message: message
+                )
+                updatePendingRoomReceiptCount(
+                    ownerAccountID: capture.ownerAccountID
+                )
+                roomReceiptMessage =
+                    "Nest preserved STOP but held its state transition. The local source remains safe."
+                return message
+            case .retryable(let detail):
+                roomReceiptMessage =
+                    "STOP is waiting in the durable outbox. The local source remains safe."
+                return detail
+            }
+        } catch {
+            updatePendingRoomReceiptCount(
+                ownerAccountID: capture.ownerAccountID
+            )
+            roomReceiptMessage =
+                "The local source is closed, but its Nest STOP boundary needs recovery."
+            return error.localizedDescription
+        }
+    }
+
+    private func updatePendingRoomReceiptCount(
+        ownerAccountID: String?
+    ) {
+        guard let ownerAccountID else {
+            pendingRoomReceiptCount = 0
+            return
+        }
+        pendingRoomReceiptCount = roomReceiptOutbox
+            .pendingReceipts(ownerAccountID: ownerAccountID)
+            .count
+    }
+
+    private func normalizedOwnerAccountID(
+        _ value: String?
+    ) -> String? {
+        guard let clean = nonempty(value) else { return nil }
+        return clean.lowercased()
+    }
+
+    private func nonempty(_ value: String?) -> String? {
+        let clean = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return clean?.isEmpty == false ? clean : nil
     }
 
     private func startElapsedClock(startedAt: Date) {
@@ -589,6 +1199,8 @@ struct EpisodeCaptureSetupView: View {
         .task {
             await model.refresh()
             await model.refreshEpisodeRooms()
+            await model.recoverRoomReceiptsAfterLaunch()
+            await model.recoverUploadsAfterLaunch()
         }
         .onDisappear {
             if model.isRecording {
@@ -621,13 +1233,19 @@ struct EpisodeCaptureSetupView: View {
                             ? "Refreshing…"
                             : "Refresh rooms"
                     ) {
-                        Task { await model.refreshEpisodeRooms() }
+                        Task {
+                            await model.refreshEpisodeRooms()
+                            await model
+                                .recoverRoomReceiptsAfterLaunch()
+                            await model.recoverUploadsAfterLaunch()
+                        }
                     }
                     .disabled(
                         model.isRefreshingEpisodeRooms
                             || model.isRecording
                             || model.isFinalizing
                             || model.isImportingCanon
+                            || model.isUploadingMaster
                             || audioRoom.isActive
                     )
                     .accessibilityIdentifier(
@@ -652,6 +1270,7 @@ struct EpisodeCaptureSetupView: View {
                     model.isRecording
                         || model.isFinalizing
                         || model.isImportingCanon
+                        || model.isUploadingMaster
                         || audioRoom.isActive
                 )
                 .accessibilityIdentifier(
@@ -838,6 +1457,13 @@ struct EpisodeCaptureSetupView: View {
                                 .textSelection(.enabled)
                         }
                     }
+                    if let consentID = room.recordingConsentId {
+                        GridRow {
+                            Text("Consent")
+                            Text(consentID)
+                                .textSelection(.enabled)
+                        }
+                    }
                 }
                 .font(.caption.monospaced())
                 .foregroundStyle(.secondary)
@@ -883,6 +1509,7 @@ struct EpisodeCaptureSetupView: View {
                         || model.isRecording
                         || model.isFinalizing
                         || model.isImportingCanon
+                        || model.isUploadingMaster
                         || audioRoom.isActive
                 )
                 .accessibilityIdentifier("EpisodeCaptureRefreshHardware")
@@ -909,6 +1536,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || model.isUploadingMaster
                                 || audioRoom.isActive
                         )
                         .accessibilityIdentifier("EpisodeCaptureCameraPicker")
@@ -926,6 +1554,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || model.isUploadingMaster
                                 || audioRoom.isActive
                         )
                         .accessibilityIdentifier("EpisodeCaptureAudioInputPicker")
@@ -943,6 +1572,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || model.isUploadingMaster
                                 || audioRoom.isActive
                         )
                         .accessibilityIdentifier("EpisodeCaptureAudioOutputPicker")
@@ -972,6 +1602,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || model.isUploadingMaster
                                 || audioRoom.isActive
                                 || model.selectedEpisodeRoom != nil
                         )
@@ -983,6 +1614,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || model.isUploadingMaster
                                 || audioRoom.isActive
                                 || model.selectedEpisodeRoom != nil
                         )
@@ -1004,9 +1636,20 @@ struct EpisodeCaptureSetupView: View {
                         model.isRecording
                             || model.isFinalizing
                             || model.isImportingCanon
+                            || model.isUploadingMaster
                             || audioRoom.isActive
                     )
                     .accessibilityIdentifier("EpisodeCaptureNewGroup")
+                }
+
+                if model.captureGroupIsClosed {
+                    Label(
+                        "This take is closed. Canon/iPhone sources may still join this capture group, but another recording requires New capture group.",
+                        systemImage: "lock.circle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
 
                 HStack(spacing: 12) {
@@ -1062,6 +1705,51 @@ struct EpisodeCaptureSetupView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
+                HStack(alignment: .top, spacing: 8) {
+                    Image(
+                        systemName:
+                            model.pendingRoomReceiptCount > 0
+                                ? "arrow.triangle.2.circlepath.circle.fill"
+                                : "checkmark.shield.fill"
+                    )
+                    .foregroundStyle(
+                        model.pendingRoomReceiptCount > 0
+                            ? .orange
+                            : .green
+                    )
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(model.roomReceiptMessage)
+                            .font(.caption)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                        if model.pendingRoomReceiptCount > 0 {
+                            Text(
+                                "\(model.pendingRoomReceiptCount) protected receipt(s) pending · local source bytes are never deleted."
+                            )
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    if model.isRecoveringRoomReceipts {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                if let error = model.roomReceiptError {
+                    Label(
+                        error,
+                        systemImage:
+                            "arrow.triangle.2.circlepath.circle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
                 if !model.canStartRecording,
                    !model.isRecording,
                    !model.isFinalizing {
@@ -1073,6 +1761,58 @@ struct EpisodeCaptureSetupView: View {
                 if let receipt = model.lastFinalizedReceipt {
                     Divider()
                     finalizedReceiptRow(receipt)
+                    VStack(alignment: .leading, spacing: 7) {
+                        if model.isUploadingMaster {
+                            ProgressView(
+                                value: model.uploadProgress
+                            )
+                        }
+                        HStack(alignment: .top, spacing: 8) {
+                            Label(
+                                model.uploadMessage,
+                                systemImage:
+                                    model.activeUploadJob?.phase
+                                        == .verified
+                                        ? "checkmark.icloud.fill"
+                                        : model.uploadError == nil
+                                            ? "icloud.and.arrow.up.fill"
+                                            : "exclamationmark.icloud.fill"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(
+                                model.uploadError == nil
+                                    ? Color.secondary
+                                    : Color.orange
+                            )
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                            Spacer()
+                            if model.canUploadLastFinalizedMaster {
+                                Button(
+                                    model.activeUploadJob == nil
+                                        ? "Upload to Episode Room"
+                                        : "Retry upload"
+                                ) {
+                                    Task {
+                                        await model
+                                            .uploadLastFinalizedMaster()
+                                    }
+                                }
+                                .disabled(model.isUploadingMaster)
+                                .accessibilityIdentifier(
+                                    "EpisodeCaptureUploadAudioMaster"
+                                )
+                            }
+                        }
+                        if let error = model.uploadError {
+                            Text(error)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.orange)
+                                .textSelection(.enabled)
+                        }
+                    }
                 }
 
                 if !model.interruptedRecordings.isEmpty {
@@ -1343,6 +2083,7 @@ struct EpisodeCaptureSetupView: View {
                         model.isRecording
                             || model.isFinalizing
                             || model.isImportingCanon
+                            || model.isUploadingMaster
                     )
                     .accessibilityIdentifier("EpisodeCaptureChooseCanonOriginals")
                 }
@@ -1430,22 +2171,43 @@ struct EpisodeCaptureSetupView: View {
                     .textSelection(.enabled)
             }
             Spacer()
-            Button("Reveal take") {
-                NSWorkspace.shared.activateFileViewerSelecting([
-                    URL(fileURLWithPath: receipt.audioPath)
-                ])
+            VStack(alignment: .trailing, spacing: 8) {
+                if let phase = model.activeUploadJob?.phase,
+                   model.activeUploadJob?.id == receipt.recordingID {
+                    Text(phase.rawValue.uppercased())
+                        .font(.caption2.weight(.black))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.quaternary, in: Capsule())
+                }
+                Button("Reveal take") {
+                    NSWorkspace.shared.activateFileViewerSelecting([
+                        URL(fileURLWithPath: receipt.audioPath)
+                    ])
+                }
+                .accessibilityIdentifier(
+                    "EpisodeCaptureRevealFinalizedTake"
+                )
             }
-            .accessibilityIdentifier("EpisodeCaptureRevealFinalizedTake")
         }
     }
 
     private var recordingReadinessMessage: String {
+        if model.captureGroupIsClosed {
+            return "This take already has a STOP boundary. Use New capture group before starting another recording."
+        }
         if !model.isLocalOnlyCapture {
             guard let room = model.selectedEpisodeRoom else {
                 return "Choose an authorized Episode Room or explicitly select Local-only / solo source."
             }
             guard model.episodeRoomCatalogIsFresh else {
                 return "Refresh Episode Rooms successfully before recording this authorized session."
+            }
+            guard model.episodeRoomOwnerAccountID != nil else {
+                return "Nest must return the verified account identity before Quipsly can journal START."
+            }
+            guard room.recordingConsentId != nil else {
+                return "Nest must return the exact recording-consent receipt before Quipsly can journal START."
             }
             guard room.safeToRecordLocally else {
                 return "\(room.readinessLabel): \(room.readinessDetail)"

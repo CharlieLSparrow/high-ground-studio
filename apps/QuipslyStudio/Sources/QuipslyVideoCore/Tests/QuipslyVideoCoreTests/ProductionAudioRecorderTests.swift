@@ -111,6 +111,9 @@ final class ProductionAudioRecorderTests: XCTestCase {
     }
 
     func testFinalizedReceiptCarriesSyncAndIntegrityBoundaries() {
+        let recordingID = UUID()
+        let captureGroupID = UUID()
+        let startReceiptID = UUID()
         let input = CaptureAudioDeviceSnapshot(
             id: "shure-mv7i-uid",
             name: "Shure MV7i",
@@ -120,14 +123,21 @@ final class ProductionAudioRecorderTests: XCTestCase {
             nominalSampleRate: 48_000
         )
         let configuration = ProductionAudioRecordingConfiguration(
-            captureGroupID: UUID(),
+            recordingID: recordingID,
+            captureGroupID: captureGroupID,
             episodeSpaceID: "episode-5",
             participantID: "charlie",
+            callRoomID: "room-5",
+            recordingConsentID: "consent-5",
+            startReceiptID: startReceiptID,
+            projectSlug: "high-ground-odyssey",
+            episodeSlug: "episode-5",
+            capturePurpose: "PODCAST",
             inputDevice: input,
             rootDirectory: URL(fileURLWithPath: "/tmp")
         )
         let receipt = ProductionAudioRecordingReceipt(
-            recordingID: UUID(),
+            recordingID: recordingID,
             configuration: configuration,
             state: .finalized,
             channelCount: 2,
@@ -148,6 +158,20 @@ final class ProductionAudioRecorderTests: XCTestCase {
         XCTAssertEqual(receipt.targetSampleRate, 48_000)
         XCTAssertEqual(receipt.targetBitDepth, 24)
         XCTAssertEqual(receipt.sourceKind, "local_audio_master")
+        XCTAssertEqual(receipt.recordingID, recordingID)
+        XCTAssertEqual(receipt.captureGroupID, captureGroupID)
+        XCTAssertEqual(receipt.callRoomID, "room-5")
+        XCTAssertEqual(
+            receipt.recordingConsentID,
+            "consent-5"
+        )
+        XCTAssertEqual(receipt.startReceiptID, startReceiptID)
+        XCTAssertEqual(
+            receipt.projectSlug,
+            "high-ground-odyssey"
+        )
+        XCTAssertEqual(receipt.episodeSlug, "episode-5")
+        XCTAssertEqual(receipt.capturePurpose, "PODCAST")
         XCTAssertNil(receipt.partialAudioPath)
         XCTAssertTrue(receipt.truth.contains("finalized"))
     }
