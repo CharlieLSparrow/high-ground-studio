@@ -2312,6 +2312,13 @@ This is an active-goal checkpoint, not a completion claim.
   simulator build with LiveKit for arm64 and x86_64, the QuipslyMac unsigned
   Debug build, and 20/20 focused Mac route/source/receipt tests including a real
   48 kHz/24-bit PCM WAV.
+- Added an exact-commit full-preflight boundary after a detached-worktree
+  rehearsal proved that reusing the caller's `node_modules` cannot recreate
+  pnpm workspace links safely. The new runner resolves one commit, creates a
+  disposable detached worktree, installs the frozen dependency graph, runs the
+  complete Capture/Nest/LiveKit preflight there, rejects dependency drift, and
+  cleans up on success or failure. Its regression test proves uncommitted
+  caller files cannot enter either dependency bootstrap or preflight.
 - This is not physical-camera or physical-audio proof. The loop-back gates are
   front/rear iPhone recording through interruption, background, storage,
   thermal, long-take, upload, proxy, and editor readback; direct MV7i

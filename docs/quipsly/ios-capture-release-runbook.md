@@ -106,6 +106,8 @@ and Share Capture extension. Do not let automation silently increment it.
 Run the complete TypeScript 7 authority and Quipsly release gates:
 
 ```bash
+bash scripts/release/quipsly-capture-preflight-from-commit.sh \
+  --revision "$candidate_sha"
 bash scripts/ci/typecheck-typescript-7.sh
 pnpm quipsly:contracts:test
 pnpm quipsly:release:local
@@ -113,8 +115,15 @@ node scripts/quipsly-mobile-capture-contract-smoke.mjs \
   --base-url=http://127.0.0.1:3012
 node scripts/quipsly-ios-capture-app-store-static-smoke.mjs
 apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
+scripts/release/quipsly-capture-preflight-from-commit.test.sh
 scripts/release/quipsly-capture-release-from-commit.test.sh
 ```
+
+The isolated preflight creates a detached worktree at the candidate SHA and
+recreates the frozen pnpm workspace graph there before running TypeScript,
+contracts, privacy checks, and the LiveKit-linked iOS simulator build. Use
+`--offline` only when the local pnpm store already contains the complete lock
+graph. A caller's `node_modules` tree is never reused as release evidence.
 
 The TypeScript gate is repository-wide and pinned to TypeScript 7.0.2. Every
 tracked `apps/**/tsconfig*.json` and `packages/**/tsconfig*.json` must be

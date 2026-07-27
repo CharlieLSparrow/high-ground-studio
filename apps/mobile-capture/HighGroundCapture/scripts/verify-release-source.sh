@@ -17,6 +17,7 @@ ruby_version_file="$capture_root/.ruby-version"
 fastlane_runner="$capture_root/scripts/run-fastlane.sh"
 testflight_runner="$capture_root/../../../scripts/deploy-testflight.sh"
 isolated_release_runner="$capture_root/../../../scripts/release/quipsly-capture-release-from-commit.sh"
+isolated_preflight_runner="$capture_root/../../../scripts/release/quipsly-capture-preflight-from-commit.sh"
 developer_dir="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 fail() {
@@ -112,6 +113,10 @@ require_text "$isolated_release_runner" 'worktree add --detach "$worktree_path" 
 require_text "$isolated_release_runner" 'export QUIPSLY_CAPTURE_RELEASE_ISOLATED=1' "Capture release marks the isolated source boundary"
 require_text "$isolated_release_runner" 'export QUIPSLY_CAPTURE_RELEASE_RUN_ID=' "Capture release isolates each invocation's evidence"
 require_text "$isolated_release_runner" '"$capture_runner" "$lane"' "Isolated release invokes the pinned Capture runner"
+require_text "$isolated_preflight_runner" 'worktree add --detach "$worktree_path" "$source_revision"' "Full Capture preflight uses a detached committed worktree"
+require_text "$isolated_preflight_runner" 'pnpm install --frozen-lockfile' "Full Capture preflight recreates the locked pnpm workspace graph"
+require_text "$isolated_preflight_runner" 'export QUIPSLY_CAPTURE_PREFLIGHT_ISOLATED=1' "Full Capture preflight marks the isolated source boundary"
+require_text "$isolated_preflight_runner" '"$preflight"' "Full Capture preflight invokes the committed contract runner"
 require_text "$testflight_runner" 'exec "${release_runner}" beta "$@"' "TestFlight entry point uses committed-source isolation"
 require_absent_text "$testflight_runner" "gem install bundler" "TestFlight entry point never mutates Apple system Ruby"
 
