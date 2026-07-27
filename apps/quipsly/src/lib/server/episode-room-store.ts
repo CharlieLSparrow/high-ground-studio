@@ -21,6 +21,7 @@ import {
   type EpisodeRoomState,
 } from "@/lib/episode-room/episode-room-contract";
 import { getPrismaClient } from "@/lib/prisma";
+import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -377,6 +378,22 @@ function blockOrderWhere(start?: number | null, end?: number | null) {
   };
 }
 
+async function reconcileEpisodeCaptureProxies(
+  prisma: ReturnType<typeof getPrismaClient>,
+  projectSlug: string,
+) {
+  const project = await prisma.studioProject.findFirst({
+    where: { slug: projectSlug },
+    select: { id: true },
+  });
+  if (!project) return;
+  await reconcileCaptureProxyResults({
+    prisma,
+    projectIds: [project.id],
+    limit: 4,
+  });
+}
+
 export async function loadEpisodeRoomDesk(
   projectSlug: string,
   episodeSlug: string,
@@ -384,6 +401,7 @@ export async function loadEpisodeRoomDesk(
   actor?: EpisodeRoomActor,
 ): Promise<EpisodeRoomDeskPayload | null> {
   const prisma = getPrismaClient();
+  await reconcileEpisodeCaptureProxies(prisma, projectSlug);
   const production = await prisma.studioEpisodeProduction.findFirst({
     where: {
       slug: episodeSlug,
@@ -488,6 +506,7 @@ export async function loadEpisodeRoomRuntime(
   actor?: EpisodeRoomActor,
 ): Promise<EpisodeRoomRuntimePayload | null> {
   const prisma = getPrismaClient();
+  await reconcileEpisodeCaptureProxies(prisma, projectSlug);
   const production = await prisma.studioEpisodeProduction.findFirst({
     where: {
       slug: episodeSlug,

@@ -7,6 +7,7 @@ import {
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
 } from "@/lib/mobile-capture-consent-policy.js";
 import { getPrismaClient } from "@/lib/prisma";
+import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
 import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
 import { mapMobileCaptureSessionsForUser } from "@/lib/server/mobile-capture-sessions";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -178,6 +179,16 @@ export async function GET(request: Request) {
       },
     },
   });
+  const accessibleCaptureProjects =
+    await listAccessibleStudioProjectSummariesForEmail(
+      session.user.primaryEmail,
+      prisma,
+    );
+  await reconcileCaptureProxyResults({
+    prisma,
+    projectIds: accessibleCaptureProjects.map((project) => project.id),
+    limit: 6,
+  });
   const recordingAssetIds = rooms.flatMap((room: any) => room.recordingAssets.map((asset: any) => asset.id));
   const finalizationReceipts = recordingAssetIds.length
     ? await prisma.mobileCaptureFinalizationReceipt.findMany({
@@ -219,10 +230,9 @@ export async function GET(request: Request) {
       (proxy: any) => proxy.rawAssetId === asset.id,
     ),
   }));
-  const captureProjects = (await listAccessibleStudioProjectSummariesForEmail(
-    session.user.primaryEmail,
-    prisma,
-  )).filter((project) => project.role === "OWNER" || project.role === "EDITOR");
+  const captureProjects = accessibleCaptureProjects.filter(
+    (project) => project.role === "OWNER" || project.role === "EDITOR",
+  );
   const captureProjectTags = captureProjects.length > 0
     ? await prisma.studioTag.findMany({
         where: {

@@ -91,11 +91,30 @@ alignment and non-destructive editorial decisions.
   the Mac setup screen and Episode Room without claiming sample-accurate sync;
 - fail-closed shared Watch admission: a verified video is visibly **Proxying**
   until a registered playback derivative is ready.
+- a strict shared capture-proxy manifest/queue/result contract with
+  generation-pinned source authority and deterministic proxy targets;
+- a complete database workflow outbox that repairs the commit-to-GCS dispatch
+  gap on later bounded Nest reads;
+- a non-root FFmpeg Cloud Run Job worker that re-verifies exact original bytes,
+  creates H.264/AAC fast-start collaboration proxies, records technical
+  evidence, retries transient faults, and dead-letters terminal drift;
+- crash recovery that adopts a prior execution's create-once proxy only after
+  validating its immutable job/source/profile/output metadata;
+- bounded Nest reconciliation that repeats media authorization and atomically
+  creates the proxy source, asset, variant, project attachment, canonical
+  Episode Production projection, and completed workflow;
+- a sixth professional release boundary for the media processor, with
+  exact-commit materialization, pinned Cloud Build input, digest readback,
+  least-privilege managed-folder IAM, and a no-override recovery scheduler.
 
 ## Verification
 
 - `pnpm --filter quipsly typecheck`
-- Quipsly contracts: 95/95
+- Quipsly contracts: 105/105
+- capture-proxy focused control/worker/resumable contracts: 19/19
+- real FFmpeg portrait acceptance: 720x1280, 30 fps, H.264/AAC, `yuv420p`,
+  fast-start
+- release-governance and changed-surface planning: 24/24 across six manifests
 - canonical imported-media and mobile-session Jest: 14/14
 - canonical upload/security/long-video identity contract tests: 24/24
 - QuipslyVideoCore: 43/43, including protected room-boundary and canonical
@@ -137,9 +156,14 @@ reported as observed and are not promoted to physical-master status.
    verify a consent hold locks Record, grant every required participant's
    consent, refresh, and verify the same room unlocks without changing source
    identity.
-4. Attach finalized Mac/iPhone sources to one Episode Room capture group, build
-   proxies, propose alignment with uncertainty and drift, and review the result
-   in the Studio timeline. Canonical source projection and proxy admission gates
-   now pass; executable proxy processing and reviewed alignment remain.
-5. Pass the long-take, route-loss, storage, interruption, recovery, physical
+4. Commit and deploy the media processor, apply/read back managed-folder and
+   no-override invoker IAM, drive one private generation-pinned video fixture
+   through queue, worker, Nest reconciliation, Episode Room Watch, and Studio,
+   then rerun it to prove zero overwrite or duplication.
+5. Attach finalized Mac/iPhone sources to one Episode Room capture group,
+   propose alignment with uncertainty and drift, and review the result in the
+   Studio timeline. Canonical source projection, proxy admission, executable
+   local processing, and reconciliation contracts now pass; credentialed cloud
+   processing and reviewed alignment remain.
+6. Pass the long-take, route-loss, storage, interruption, recovery, physical
    iPhone, TestFlight, and real episode rehearsal matrices.

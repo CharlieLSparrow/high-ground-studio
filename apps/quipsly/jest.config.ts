@@ -24,6 +24,7 @@ const config: Config = {
     '^react-dom$': '<rootDir>/../../node_modules/react-dom',
     '^react-dom/(.*)$': '<rootDir>/../../node_modules/react-dom/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
+    '^@high-ground/quipsly-media-processing$': '<rootDir>/../../packages/quipsly-media-processing/src/index.ts',
     '^@high-ground/quipsly-domain/art-recipes$': '<rootDir>/../../packages/quipsly-domain/src/art-recipes.ts',
     '^@high-ground/quipsly-domain/generated-art$': '<rootDir>/../../packages/quipsly-domain/src/generated-art.ts',
     '^@high-ground/quipsly-domain/output-catalog$': '<rootDir>/../../packages/quipsly-domain/src/output-catalog.ts',

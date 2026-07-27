@@ -12,6 +12,7 @@ export const RELEASE_MANIFEST_IDS = [
   "hgo-web",
   "quipsly-studio",
   "quipsly-media-verifier",
+  "quipsly-media-processor",
 ] as const;
 
 export type ReleaseManifestId = (typeof RELEASE_MANIFEST_IDS)[number];
@@ -93,10 +94,16 @@ export interface ChangedSurfacePlan {
   readonly capture: boolean;
   readonly nativeStudio: boolean;
   readonly mediaVerifier: boolean;
+  readonly mediaProcessor: boolean;
   readonly quipsly: boolean;
   readonly deployTargets: readonly ("web" | "studio")[];
   readonly changedSurfaces: readonly (
-    "web" | "studio" | "capture" | "native-studio" | "media-verifier"
+    | "web"
+    | "studio"
+    | "capture"
+    | "native-studio"
+    | "media-verifier"
+    | "media-processor"
   )[];
   readonly changedPathCount: number;
   readonly paths: readonly string[];
@@ -597,6 +604,10 @@ export function planChangedSurfaces(
     manifests,
     "quipsly-media-verifier",
   );
+  const mediaProcessorManifest = manifestById(
+    manifests,
+    "quipsly-media-processor",
+  );
 
   const web = anyPathMatches(deployPaths, webManifest.changeDetection.deploy);
   const studio = anyPathMatches(deployPaths, nestManifest.changeDetection.deploy);
@@ -615,6 +626,12 @@ export function planChangedSurfaces(
       paths,
       mediaVerifierManifest.changeDetection.validation,
     );
+  const mediaProcessor =
+    anyPathMatches(deployPaths, mediaProcessorManifest.changeDetection.deploy)
+    || anyPathMatches(
+      paths,
+      mediaProcessorManifest.changeDetection.validation,
+    );
   const quipsly = studio || anyPathMatches(paths, nestManifest.changeDetection.validation);
 
   const deployTargets: ("web" | "studio")[] = [
@@ -622,12 +639,18 @@ export function planChangedSurfaces(
     ...(studio ? ["studio" as const] : []),
   ];
   const changedSurfaces: (
-    "web" | "studio" | "capture" | "native-studio" | "media-verifier"
+    | "web"
+    | "studio"
+    | "capture"
+    | "native-studio"
+    | "media-verifier"
+    | "media-processor"
   )[] = [
     ...deployTargets,
     ...(capture ? ["capture" as const] : []),
     ...(nativeStudio ? ["native-studio" as const] : []),
     ...(mediaVerifier ? ["media-verifier" as const] : []),
+    ...(mediaProcessor ? ["media-processor" as const] : []),
   ];
   const matchedManifestIds = [
     ...(capture ? ["capture" as const] : []),
@@ -635,6 +658,7 @@ export function planChangedSurfaces(
     ...(web ? ["hgo-web" as const] : []),
     ...(nativeStudio ? ["quipsly-studio" as const] : []),
     ...(mediaVerifier ? ["quipsly-media-verifier" as const] : []),
+    ...(mediaProcessor ? ["quipsly-media-processor" as const] : []),
   ];
 
   return {
@@ -644,6 +668,7 @@ export function planChangedSurfaces(
     capture,
     nativeStudio,
     mediaVerifier,
+    mediaProcessor,
     quipsly,
     deployTargets,
     changedSurfaces,
@@ -652,8 +677,12 @@ export function planChangedSurfaces(
     matchedManifestIds,
     summary: deployTargets.length
       ? `Auto deploy planned for ${deployTargets.join(" and ")} from validated release manifests.`
-      : mediaVerifier
-        ? "Manual Quipsly media-verifier release validation is required."
-        : "No deployable app changes detected.",
+      : mediaVerifier && mediaProcessor
+        ? "Manual Quipsly media-verifier and media-processor release validation is required."
+        : mediaVerifier
+          ? "Manual Quipsly media-verifier release validation is required."
+          : mediaProcessor
+            ? "Manual Quipsly media-processor release validation is required."
+            : "No deployable app changes detected.",
   };
 }

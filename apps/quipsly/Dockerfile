@@ -25,6 +25,7 @@ COPY apps/quipsly/package.json ./apps/quipsly/package.json
 COPY packages/content-studio-domain/package.json ./packages/content-studio-domain/package.json
 COPY packages/quipsly-domain/package.json ./packages/quipsly-domain/package.json
 COPY packages/quipsly-capture-verification/package.json ./packages/quipsly-capture-verification/package.json
+COPY packages/quipsly-media-processing/package.json ./packages/quipsly-media-processing/package.json
 COPY packages/quipsly-document-kernel/package.json ./packages/quipsly-document-kernel/package.json
 COPY packages/studio-domain/package.json ./packages/studio-domain/package.json
 

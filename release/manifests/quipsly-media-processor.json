@@ -1,0 +1,86 @@
+{
+  "$schema": "./schema.json",
+  "schemaVersion": 1,
+  "id": "quipsly-media-processor",
+  "displayName": "Quipsly Capture Proxy Processor",
+  "ownerSurface": "quipsly-media-processor",
+  "status": "active",
+  "applicationRoot": "apps/quipsly-media-processor",
+  "changeDetection": {
+    "deploy": {
+      "prefixes": [
+        "apps/quipsly-media-processor/",
+        "packages/quipsly-media-processing/"
+      ],
+      "files": [
+        ".dockerignore",
+        ".gcloudignore",
+        ".npmrc",
+        "cloudbuild.quipsly-media-processor.yaml",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "release/manifests/quipsly-media-processor.json"
+      ]
+    },
+    "validation": {
+      "prefixes": [
+        "scripts/quipsly-capture-proxy",
+        "scripts/release/quipsly-media-processor"
+      ],
+      "files": []
+    },
+    "schema": {
+      "prefixes": [],
+      "files": []
+    }
+  },
+  "artifact": {
+    "kind": "cloud-run-job-image",
+    "identifier": "us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/quipsly-media-processor",
+    "sourceRevision": "git-commit-sha",
+    "materializer": "scripts/release/materialize-release-context.sh",
+    "provenanceReceipt": "quipsly-media-processor-source.json"
+  },
+  "proofs": {
+    "source": [
+      "scripts/release/quipsly-media-processor-context.test.sh"
+    ],
+    "deterministic": [
+      "pnpm --filter quipsly-media-processor build",
+      "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-capture-proxy-worker.test.mjs scripts/quipsly-capture-proxy-control-plane.test.mjs"
+    ],
+    "localRuntime": [
+      "Run the real FFmpeg portrait-video acceptance and fault-injected immutable-storage worker tests."
+    ],
+    "credentialedRuntime": [
+      "Verify one generation-pinned private GCS source fixture through queue, manifest, output, result, and Nest reconciliation.",
+      "Apply and read back managed-folder IAM plus no-override Cloud Run Jobs execution authority."
+    ],
+    "deliveryReadback": [
+      "Read back job image digest, service account, resources, timeout, retries, environment, IAM, execution logs, and exact proxy evidence."
+    ]
+  },
+  "delivery": {
+    "channel": "cloud-run-job",
+    "target": "high-ground-odyssey/us-central1/quipsly-media-processor",
+    "promotion": "manual"
+  },
+  "releaseContext": {
+    "maxMiB": 25,
+    "requiredPaths": [
+      ".dockerignore",
+      ".gcloudignore",
+      ".npmrc",
+      "apps/quipsly-media-processor",
+      "cloudbuild.quipsly-media-processor.yaml",
+      "package.json",
+      "packages/quipsly-media-processing",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "release/manifests/quipsly-media-processor.json",
+      "release/manifests/schema.json"
+    ],
+    "optionalPaths": []
+  }
+}

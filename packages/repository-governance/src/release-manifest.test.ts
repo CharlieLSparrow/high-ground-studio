@@ -20,6 +20,7 @@ test("loads one validated manifest for every supported release surface", () => {
     "capture",
     "hgo-web",
     "nest",
+    "quipsly-media-processor",
     "quipsly-media-verifier",
     "quipsly-studio",
   ]);
@@ -76,6 +77,19 @@ test("media verifier changes require their own manual release proof", () => {
   assert.deepEqual(plan.changedSurfaces, ["media-verifier"]);
   assert.deepEqual(plan.matchedManifestIds, ["quipsly-media-verifier"]);
   assert.match(plan.summary, /Manual Quipsly media-verifier/);
+});
+
+test("media processor changes require their own manual release proof", () => {
+  const plan = planChangedSurfaces([
+    "apps/quipsly-media-processor/src/worker.ts",
+  ], audit.manifests);
+  assert.equal(plan.mediaProcessor, true);
+  assert.equal(plan.web, false);
+  assert.equal(plan.studio, false);
+  assert.deepEqual(plan.deployTargets, []);
+  assert.deepEqual(plan.changedSurfaces, ["media-processor"]);
+  assert.deepEqual(plan.matchedManifestIds, ["quipsly-media-processor"]);
+  assert.match(plan.summary, /Manual Quipsly media-processor/);
 });
 
 test("validation-only ownership overrides unrelated broad deploy prefixes", () => {

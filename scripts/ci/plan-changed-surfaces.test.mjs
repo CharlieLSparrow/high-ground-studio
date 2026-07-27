@@ -40,6 +40,24 @@ test("media verifier changes stay manual and do not deploy web services", () => 
   assert.deepEqual(plan.changedSurfaces, ["media-verifier"]);
 });
 
+test("media processor changes stay manual and shared contracts also validate Nest", () => {
+  const worker = planChangedSurfaces([
+    "apps/quipsly-media-processor/src/worker.ts",
+  ]);
+  assert.equal(worker.mediaProcessor, true);
+  assert.equal(worker.web, false);
+  assert.equal(worker.studio, false);
+  assert.deepEqual(worker.deployTargets, []);
+  assert.deepEqual(worker.changedSurfaces, ["media-processor"]);
+
+  const contract = planChangedSurfaces([
+    "packages/quipsly-media-processing/src/index.ts",
+  ]);
+  assert.equal(contract.mediaProcessor, true);
+  assert.equal(contract.studio, true);
+  assert.deepEqual(contract.deployTargets, ["studio"]);
+});
+
 test("Capture listing changes validate Capture without deploying web apps", () => {
   const plan = planChangedSurfaces([
     "release/app-store/quipsly-capture/en-US.json",

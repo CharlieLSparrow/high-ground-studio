@@ -21,6 +21,7 @@
     "@high-ground/quipsly-document-kernel": "workspace:*",
     "@high-ground/quipsly-domain": "workspace:*",
     "@high-ground/quipsly-capture-verification": "workspace:*",
+    "@high-ground/quipsly-media-processing": "workspace:*",
     "@high-ground/studio-domain": "workspace:*",
     "@hocuspocus/provider": "^4.1.0",
     "@js-temporal/polyfill": "^0.5.1",

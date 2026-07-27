@@ -26,6 +26,21 @@ and native Mac catalog all consume the same merged projection. A byte-verified
 video remains visible as **Proxying** and cannot enter shared Watch until a
 registered playback derivative exists.
 
+The collaboration-proxy path is now executable rather than a placeholder:
+released, exact-byte-verified video finalization creates a generation-bound
+transactional workflow outbox, generation-bound manifest, and durable queue
+receipt; a non-root FFmpeg Cloud Run Job creates an
+immutable H.264/AAC fast-start MP4 without mutating the original; and Nest
+reconciles the signed result into a proxy source, asset, variant, Nest
+attachment, and canonical Episode Production projection. Episode Room and
+mobile-session reads reconcile bounded completed work before rendering. The
+worker release, least-privilege IAM, recovery scheduler, and exact-commit
+materialization are implemented but must still be deployed and exercised
+against a private GCS fixture before this checkpoint is called cloud-qualified.
+
+The executable worker and operator contract are documented in
+[`capture-proxy-worker.md`](./capture-proxy-worker.md).
+
 ## Outcome
 
 Quipsly records a low-latency **audio room** for conversation and one or more
@@ -114,6 +129,23 @@ used for low-latency collaborative playback.
 - [Riverside recording architecture](https://riverside.fm/blog/what-is-riverside)
 - [Riverside progressive uploading](https://riverside.fm/blog/progressive-video-uploading)
 - [Riverside recording product](https://riverside.fm/recording)
+
+The proxy worker follows two current cloud/runtime boundaries:
+
+- Cloud Run Jobs are finite tasks, not HTTP services; timeout and retry policy
+  belong to the job template.
+- Cloud Storage generation preconditions provide the create-once and
+  compare-and-swap boundary. A retry reads the immutable object already written
+  by a prior execution instead of overwriting it.
+- FFmpeg's `libx264` wrapper provides the H.264 encoding surface, and MP4
+  `faststart` moves the metadata atom ahead of media data for collaboration
+  playback.
+
+- [Create Cloud Run Jobs](https://cloud.google.com/run/docs/create-jobs)
+- [Cloud Run Job retries](https://docs.cloud.google.com/run/docs/jobs-retries)
+- [Cloud Storage request preconditions](https://docs.cloud.google.com/storage/docs/request-preconditions)
+- [FFmpeg codecs](https://ffmpeg.org/ffmpeg-codecs.html)
+- [FFmpeg formats](https://ffmpeg.org/ffmpeg-formats.html)
 
 The current synchronous finalize request is intentionally limited to 2 GiB.
 Long-form 4K removes that limit by moving full-generation SHA-256 verification

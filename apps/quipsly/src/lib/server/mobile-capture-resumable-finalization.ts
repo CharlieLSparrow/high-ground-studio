@@ -3,6 +3,9 @@ import "server-only";
 import {
   canonicalEpisodeImportedMedia,
 } from "@/lib/episode-production/imported-media";
+import {
+  ensureCaptureProxyProcessingQueued,
+} from "@/lib/server/capture-proxy-processing";
 import { isRetryableCaptureRoomTransactionError } from "@/lib/server/capture-room-state-ledger";
 import { toGcsUri } from "@/lib/server/gcs";
 import { recordMobileCaptureIngestion } from "@/lib/server/mobile-capture-records";
@@ -475,6 +478,28 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
     },
   });
 
+  const workflowInput = {
+    uploadSessionId: manifest.uploadSessionId,
+    captureId: manifest.captureId,
+    captureGroupId: manifest.captureGroupId,
+    callRoomId: manifest.callRoomId,
+    actorUserId: manifest.actorUserId,
+    actorEmail: manifest.actorEmail,
+    recordingAssetId: captureRecords.recordingAssetId,
+    sourceId: source.id,
+    projectSlug: manifest.projectSlug,
+    episodeSlug: manifest.episodeSlug,
+    mediaKind: isVideo ? "video" : "audio",
+    bucketName: manifest.bucketName,
+    objectName: manifest.objectName,
+    objectGeneration: object.generation,
+    sourceSha256: manifest.sha256,
+    sourceSizeBytes: object.sizeBytes,
+    sourceContentType: manifest.contentType,
+    proxyPolicy: isVideo
+      ? "proxy-required-before-collaborative-playback"
+      : "audio-source-registered",
+  };
   const existingWorkflow = await transaction.studioWorkflowJob.findFirst({
     where: {
       projectId: manifest.projectId,
@@ -482,7 +507,7 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
       type: isVideo ? "asset-proxy" : "asset-register",
       source: "mobile-capture-finalization",
     },
-    select: { id: true },
+    select: { id: true, inputJson: true },
   });
   if (!existingWorkflow) {
     await transaction.studioWorkflowJob.create({
@@ -493,19 +518,17 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
         status: "queued",
         source: "mobile-capture-finalization",
         requestedByEmail: manifest.actorEmail,
+        inputJson: workflowInput,
+      },
+    });
+  } else {
+    await transaction.studioWorkflowJob.update({
+      where: { id: existingWorkflow.id },
+      data: {
+        requestedByEmail: manifest.actorEmail,
         inputJson: {
-          uploadSessionId: manifest.uploadSessionId,
-          captureId: manifest.captureId,
-          captureGroupId: manifest.captureGroupId,
-          callRoomId: manifest.callRoomId,
-          recordingAssetId: captureRecords.recordingAssetId,
-          sourceId: source.id,
-          projectSlug: manifest.projectSlug,
-          episodeSlug: manifest.episodeSlug,
-          mediaKind: isVideo ? "video" : "audio",
-          proxyPolicy: isVideo
-            ? "proxy-required-before-collaborative-playback"
-            : "audio-source-registered",
+          ...asObject(existingWorkflow.inputJson),
+          ...workflowInput,
         },
       },
     });
@@ -649,7 +672,9 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
 }): Promise<MobileCaptureResumableFinalizationEvidence> {
   const { prisma, manifest, object, processingDecision } = input;
 
-  return serializableFinalizationTransaction(prisma, async (transaction) => {
+  const evidence = await serializableFinalizationTransaction(
+    prisma,
+    async (transaction) => {
     await lockUploadFinalization(transaction, manifest.uploadSessionId);
 
     const priorReceipt = await transaction.mobileCaptureFinalizationReceipt.findUnique({
@@ -840,5 +865,29 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
       },
     });
     return evidence;
-  });
+    },
+  );
+  if (
+    evidence.processingDisposition === "RELEASED"
+    && (
+      manifest.sourceType === "video"
+      || manifest.contentType.toLowerCase().startsWith("video/")
+    )
+  ) {
+    try {
+      await ensureCaptureProxyProcessingQueued({
+        prisma,
+        manifest,
+        object,
+        finalization: evidence,
+      });
+    } catch (error) {
+      console.error("[Capture Proxy] Unable to queue verified video", {
+        uploadSessionId: manifest.uploadSessionId,
+        mediaAssetId: evidence.mediaAssetId,
+        reason: error instanceof Error ? error.message : "unknown",
+      });
+    }
+  }
+  return evidence;
 }

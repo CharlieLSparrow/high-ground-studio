@@ -16,7 +16,7 @@ Each manifest declares:
 - the external delivery target and promotion policy;
 - a bounded release context when the current pipeline materializes one.
 
-The four required manifests are:
+The six required manifests are:
 
 | ID | Product | Artifact | Delivery |
 | --- | --- | --- | --- |
@@ -24,6 +24,8 @@ The four required manifests are:
 | `nest` | Quipsly Nest | container image | Cloud Run `studio` service |
 | `hgo-web` | High Ground Odyssey web | container image | Cloud Run `web` service |
 | `quipsly-studio` | native production editor | macOS application/operator artifact | operator workflow |
+| `quipsly-media-verifier` | long-capture byte verifier | container image | Cloud Run Job |
+| `quipsly-media-processor` | collaboration-proxy processor | FFmpeg container image | Cloud Run Job |
 
 ## Validate
 
@@ -50,7 +52,7 @@ another manifest, even when it also falls under that manifest's older, broader
 deploy prefix. Use this precedence for release checks and operator tooling; do
 not use it to hide a real shared runtime dependency.
 
-Nest and HGO web use the shared exact-SHA materializer. It reads
+Nest, HGO web, and both media workers use the shared exact-SHA materializer. It reads
 `releaseContext` from the owning manifest stored in the selected commit. Source
 allowlists, size ceilings, and provenance receipt names therefore cannot drift
 from a second shell-script list. HGO deterministic checks also run inside that
