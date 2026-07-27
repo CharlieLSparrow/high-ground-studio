@@ -43,6 +43,11 @@ assert.match(schema, /@@unique\(\[productionId, mediaAssetId\]\)/);
 assert.match(additiveSql, /MobileCaptureEpisodeAttachment_productionId_mediaAssetId_key/);
 assert.match(finalization, /isRetryableCaptureRoomTransactionError/,
   "serialization and unique conflicts must retry the whole finalizer");
+assert.doesNotMatch(
+  finalization,
+  /processingDisposition === "RELEASED"[\s\S]{0,500}return priorEvidence/,
+  "released retries must repair canonical source projections instead of returning from receipt evidence alone",
+);
 
 const heldBranch = finalization.slice(
   finalization.indexOf('if (processingDecision.disposition === "HELD")'),

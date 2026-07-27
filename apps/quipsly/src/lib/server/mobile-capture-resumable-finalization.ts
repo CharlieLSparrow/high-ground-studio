@@ -656,13 +656,6 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
       where: { uploadSessionId: manifest.uploadSessionId },
     });
     const priorEvidence = evidenceFromReceipt(priorReceipt);
-    if (priorReceipt?.processingDisposition === "RELEASED" && priorEvidence) {
-      const transcriptUpgradeRequested =
-        priorEvidence.transcriptDisposition === "HELD"
-        && processingDecision.transcriptDisposition === "RELEASED"
-        && Boolean(processingDecision.transcriptReleaseAudit);
-      if (!transcriptUpgradeRequested) return priorEvidence;
-    }
     if (
       priorReceipt?.processingDisposition === "HELD"
       && processingDecision.disposition === "HELD"
