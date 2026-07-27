@@ -423,6 +423,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
 				INFOPLIST_KEY_CFBundleName = "Quipsly Studio";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Quipsly Studio uses the camera you explicitly select for episode framing and locally recorded source media.";
+				INFOPLIST_KEY_NSCameraUseContinuityCameraDeviceType = YES;
 				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Quipsly Studio can read legacy media or export packets from Desktop when you explicitly grant access.";
 				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Quipsly Studio can import documents you choose for writing, research, and production work.";
 				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Quipsly Studio can import downloaded media or research files that you choose.";
@@ -449,6 +450,7 @@
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
 				INFOPLIST_KEY_CFBundleName = "Quipsly Studio";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Quipsly Studio uses the camera you explicitly select for episode framing and locally recorded source media.";
+				INFOPLIST_KEY_NSCameraUseContinuityCameraDeviceType = YES;
 				INFOPLIST_KEY_NSDesktopFolderUsageDescription = "Quipsly Studio can read legacy media or export packets from Desktop when you explicitly grant access.";
 				INFOPLIST_KEY_NSDocumentsFolderUsageDescription = "Quipsly Studio can import documents you choose for writing, research, and production work.";
 				INFOPLIST_KEY_NSDownloadsFolderUsageDescription = "Quipsly Studio can import downloaded media or research files that you choose.";

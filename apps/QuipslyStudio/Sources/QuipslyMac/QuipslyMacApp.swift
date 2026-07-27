@@ -39,7 +39,18 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
         if ProcessInfo.processInfo.arguments.contains(
             "--episode-capture-setup-only"
         ) {
-            showEpisodeCaptureSetup(nil)
+            if ProcessInfo.processInfo.arguments.contains(
+                "--episode-capture-request-access"
+            ) {
+                Task { @MainActor in
+                    _ = await ProductionCaptureInventoryProbe.snapshot(
+                        requestAccess: true
+                    )
+                    showEpisodeCaptureSetup(nil)
+                }
+            } else {
+                showEpisodeCaptureSetup(nil)
+            }
         } else {
             ensureMainWindow(reason: "launch")
         }

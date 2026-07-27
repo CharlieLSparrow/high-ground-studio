@@ -105,5 +105,97 @@ final class ProjectStoreTests: XCTestCase {
         XCTAssertTrue(receipt.truth.contains("non-destructive editor lane"))
         XCTAssertTrue(receipt.truth.contains("does not prove cloud upload"))
     }
+
+    func testCaptureClockAttachmentPersistsTimelinePlacement() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        let sourceReceiptPath = directory
+            .appendingPathComponent("camera-reference-receipt.json")
+            .path
+        let store = ProjectStore(
+            project: VideoProject(title: "New Project")
+        )
+
+        let receipt = try store.attachVerifiedCaptureSource(
+            VerifiedCaptureSourceAttachment(
+                sourceAssetID: "camera-reference-1",
+                captureGroupID: UUID(),
+                episodeSpaceID: "hgo-episode-5",
+                mediaURL: directory
+                    .appendingPathComponent("reference.mov"),
+                originalURL: directory
+                    .appendingPathComponent("reference.mov"),
+                duration: 30,
+                name: "Charlie camera reference",
+                role: "charlie_camera_reference",
+                ingestKind: "mac_local_video_reference",
+                sha256: String(repeating: "b", count: 64),
+                sourceReceiptPath: sourceReceiptPath,
+                timelineOffsetSeconds: 0.237,
+                alignmentStatus: "capture-clock-aligned"
+            )
+        )
+
+        let lane = try XCTUnwrap(store.activeSequence?.lanes.first)
+        XCTAssertEqual(
+            lane.sourceVideo?.offset ?? -1,
+            0.237,
+            accuracy: 0.000_001
+        )
+        XCTAssertEqual(
+            lane.metadata?.alignmentStatus,
+            "capture-clock-aligned"
+        )
+        XCTAssertEqual(
+            receipt.timelineOffsetSeconds ?? -1,
+            0.237,
+            accuracy: 0.000_001
+        )
+        XCTAssertTrue(receipt.truth.contains("monotonic clock"))
+        XCTAssertTrue(receipt.truth.contains("does not prove content-level lip sync"))
+    }
+
+    func testAttachmentEvidenceFailsClosedOnInvalidAlignmentClaims() {
+        let source = VerifiedCaptureSourceAttachment(
+            sourceAssetID: "source-1",
+            captureGroupID: UUID(),
+            episodeSpaceID: "hgo-episode-5",
+            mediaURL: URL(fileURLWithPath: "/tmp/source.mov"),
+            originalURL: URL(fileURLWithPath: "/tmp/source.mov"),
+            duration: 10,
+            name: "Unreviewed source",
+            role: "camera_reference",
+            ingestKind: "mac_local_video_reference",
+            sha256: nil,
+            sourceReceiptPath: "/tmp/source-receipt.json",
+            timelineOffsetSeconds: .infinity,
+            alignmentStatus: "sample-accurate"
+        )
+
+        XCTAssertEqual(source.timelineOffsetSeconds, 0)
+        XCTAssertEqual(source.alignmentStatus, "needs-alignment")
+
+        let receipt = LocalEditorSourceAttachmentReceipt(
+            sourceAssetID: source.sourceAssetID,
+            captureGroupID: source.captureGroupID,
+            episodeSpaceID: source.episodeSpaceID,
+            projectID: UUID(),
+            sequenceID: UUID(),
+            laneID: UUID(),
+            mediaPath: source.mediaURL.path,
+            sourceReceiptPath: source.sourceReceiptPath,
+            alignmentStatus: "sample-accurate",
+            timelineOffsetSeconds: .nan
+        )
+
+        XCTAssertEqual(receipt.alignmentStatus, "needs-alignment")
+        XCTAssertNil(receipt.timelineOffsetSeconds)
+        XCTAssertTrue(receipt.truth.contains("does not prove cloud upload"))
+    }
     #endif
 }

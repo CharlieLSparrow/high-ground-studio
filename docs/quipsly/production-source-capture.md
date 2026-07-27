@@ -571,10 +571,13 @@ mid-file.
 7. Build the native Mac Shure master lane and Canon import manifest.
    **The Core Audio inventory, truthful route policy, crash-recoverable
    48 kHz/24-bit WAV master, SHA-256 source receipt, and Episode Capture Setup
-   controls are complete locally. Camera-card originals now copy into managed
-   storage without mutating the card, are independently rehashed, and attach to
-   non-destructive editor lanes with durable receipts. Direct MV7i hardware
-   qualification and the audio-only LiveKit branch remain.**
+   controls are complete locally. The selected macOS camera route now has a
+   live native preview and can record an independently recoverable, silent
+   camera-reference MOV in the same capture group. Camera-card originals copy
+   into managed storage without mutating the card, are independently rehashed,
+   and attach to non-destructive editor lanes with durable receipts. Direct
+   MV7i hardware qualification, Canon internal-4K operation, and authenticated
+   audio-only LiveKit coexistence remain.**
 8. Run the physical-device and real-episode acceptance matrix before TestFlight
    scope expands to video.
 
@@ -755,3 +758,50 @@ acceptance gates, not claimed passes.
   governance tests, and an exact eight-path Nest-only planner result. Cloud,
   physical hardware, and real-episode gates remain separate and are not implied
   by this checkpoint.
+
+## Implementation checkpoint — July 27, 2026 (native Mac camera reference)
+
+The Mac endpoint now records the production mic master and the camera reference
+as separate local sources rather than baking a browser-processed call track
+into either one:
+
+- Episode Capture Setup displays a real `AVCaptureVideoPreviewLayer` for the
+  exact selected macOS camera route before the take. Camera inclusion is an
+  explicit opt-in and recording remains locked if that exact route cannot be
+  prepared.
+- The camera recorder chooses the best landscape format no larger than
+  1920x1080/30, records no audio, writes five-second QuickTime fragments, and
+  preserves at least 1 GB of free disk. `AVCaptureSession` configuration and
+  startup run on a dedicated serial queue rather than blocking SwiftUI.
+- An in-progress receipt is written atomically before `startRecording`. The
+  partial MOV is retained after interruption and becomes
+  `local-camera-reference.mov` only after AVFoundation's finish delegate,
+  duration probe, byte count, and streaming SHA-256 succeed. A reused recording
+  identity or any protected output-path collision fails closed; no older movie
+  or receipt is removed. Recovery also finds a movie that was moved into its
+  final path if the final receipt write did not complete.
+- An authorized Nest START receipt is applied before either local source opens.
+  The camera reference starts before the WAV so both delegate-confirmed
+  monotonic starts can be projected from one capture-group origin. Stop begins
+  both finalizations, closes Nest only after the local stop boundary, and
+  attaches every successfully finalized source even when its partner needs
+  recovery.
+- The editor writes the measured per-source monotonic offset and labels a
+  two-source pair `capture-clock-aligned`. The receipt explicitly says this is
+  deterministic first placement, not content-level lip-sync, waveform/drift
+  review, or proof of the Canon camera-card 4K master. A surviving single
+  source remains `needs-alignment`. Non-finite offsets and stronger, unknown
+  alignment labels fail closed rather than entering lane metadata or JSON.
+- EOS Webcam Utility therefore remains a silent 1080 reference. The
+  authoritative Charlie video source is still the internally recorded Canon R8
+  4K file imported and independently hashed after the take. MOTIV Mix Virtual
+  remains rehearsal-only until Core Audio exposes and the app operates the
+  direct physical MV7i input/headphone UIDs.
+
+Automated verification covers finalized receipt truth, interrupted-partial
+discovery, capture-clock timeline placement, and the existing audio, route,
+room-boundary, upload, Canon-import, and editor-attachment contracts. The
+physical acceptance gate is still a human-present short take followed by MOV
+and WAV playback/probe/hash readback, direct MV7i headphone monitoring,
+Canon-card 4K import, waveform/drift review, route-loss recovery, and a
+long-take rehearsal.

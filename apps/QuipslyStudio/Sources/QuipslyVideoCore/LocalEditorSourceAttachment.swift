@@ -12,6 +12,8 @@ public struct VerifiedCaptureSourceAttachment: Equatable, Sendable {
     public let ingestKind: String
     public let sha256: String?
     public let sourceReceiptPath: String
+    public let timelineOffsetSeconds: Double
+    public let alignmentStatus: String
 
     public init(
         sourceAssetID: String,
@@ -24,7 +26,9 @@ public struct VerifiedCaptureSourceAttachment: Equatable, Sendable {
         role: String,
         ingestKind: String,
         sha256: String?,
-        sourceReceiptPath: String
+        sourceReceiptPath: String,
+        timelineOffsetSeconds: Double = 0,
+        alignmentStatus: String = "needs-alignment"
     ) {
         self.sourceAssetID = sourceAssetID
         self.captureGroupID = captureGroupID
@@ -37,6 +41,17 @@ public struct VerifiedCaptureSourceAttachment: Equatable, Sendable {
         self.ingestKind = ingestKind
         self.sha256 = sha256
         self.sourceReceiptPath = sourceReceiptPath
+        let safeTimelineOffset = max(
+            0,
+            timelineOffsetSeconds.isFinite
+                ? timelineOffsetSeconds
+                : 0
+        )
+        self.timelineOffsetSeconds = safeTimelineOffset
+        self.alignmentStatus =
+            alignmentStatus == "capture-clock-aligned"
+                ? "capture-clock-aligned"
+                : "needs-alignment"
     }
 }
 
@@ -52,6 +67,7 @@ public struct LocalEditorSourceAttachmentReceipt: Codable, Equatable, Sendable {
     public let mediaPath: String
     public let sourceReceiptPath: String
     public let alignmentStatus: String
+    public let timelineOffsetSeconds: Double?
     public let attachedAt: Date
     public let truth: String
 
@@ -66,6 +82,7 @@ public struct LocalEditorSourceAttachmentReceipt: Codable, Equatable, Sendable {
         mediaPath: String,
         sourceReceiptPath: String,
         alignmentStatus: String = "needs-alignment",
+        timelineOffsetSeconds: Double? = nil,
         attachedAt: Date = Date()
     ) {
         protocolVersion = 1
@@ -78,10 +95,22 @@ public struct LocalEditorSourceAttachmentReceipt: Codable, Equatable, Sendable {
         self.laneID = laneID
         self.mediaPath = mediaPath
         self.sourceReceiptPath = sourceReceiptPath
-        self.alignmentStatus = alignmentStatus
+        self.alignmentStatus =
+            alignmentStatus == "capture-clock-aligned"
+                ? "capture-clock-aligned"
+                : "needs-alignment"
+        self.timelineOffsetSeconds = timelineOffsetSeconds.flatMap {
+            $0.isFinite && $0 >= 0 ? $0 : nil
+        }
         self.attachedAt = attachedAt
-        truth =
-            "This receipt proves that Quipsly attached the verified managed source to one local non-destructive editor lane. It does not prove cloud upload, proxy readiness, synchronization, transcription, or publication."
+        if self.alignmentStatus == "capture-clock-aligned",
+           self.timelineOffsetSeconds != nil {
+            truth =
+                "This receipt proves that Quipsly attached the verified managed source to one local non-destructive editor lane and placed it from a shared capture-group monotonic clock. It does not prove content-level lip sync, cloud upload, proxy readiness, transcription, or publication."
+        } else {
+            truth =
+                "This receipt proves that Quipsly attached the verified managed source to one local non-destructive editor lane. It does not prove cloud upload, proxy readiness, synchronization, transcription, or publication."
+        }
     }
 }
 

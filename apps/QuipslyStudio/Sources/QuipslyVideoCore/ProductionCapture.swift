@@ -462,8 +462,23 @@ public enum ProductionCaptureInventoryProbe {
             }
         }
 
+        #if os(macOS)
+        let videoDeviceTypes: [AVCaptureDevice.DeviceType] = [
+            .builtInWideAngleCamera,
+            .continuityCamera,
+            .external,
+        ]
+        #else
+        let videoDeviceTypes: [AVCaptureDevice.DeviceType] = [
+            .builtInWideAngleCamera,
+            .builtInUltraWideCamera,
+            .builtInTelephotoCamera,
+            .builtInTrueDepthCamera,
+        ]
+        #endif
+
         let videoDevices = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.builtInWideAngleCamera, .external],
+            deviceTypes: videoDeviceTypes,
             mediaType: .video,
             position: .unspecified
         ).devices.map { device in

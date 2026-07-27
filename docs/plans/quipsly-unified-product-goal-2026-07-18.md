@@ -2359,3 +2359,49 @@ This is an active-goal checkpoint, not a completion claim.
   earlier two-account playback/chat authorization proof. Physical iPhone
   source qualification, direct Canon/MV7i masters, cloud worker qualification,
   production deployment, TestFlight, and App Store readback remain open gates.
+
+### 2026-07-27 native Mac camera-reference checkpoint
+
+- Extended the canonical Quipsly Studio Episode Capture Setup rather than
+  creating a browser recorder or another desktop shell. The selected exact
+  AVFoundation camera route now renders a live preview and may opt into an
+  independent silent local MOV beside the existing 48 kHz/24-bit WAV master
+  and audio-only LiveKit conversation.
+- The camera recorder is crash-conscious: session startup stays off the UI
+  thread; the negotiated route is capped at landscape 1080p/30; QuickTime
+  fragments land every five seconds; an atomic in-progress receipt precedes
+  bytes; partial media is preserved; and only AVFoundation finish, duration,
+  byte-count, and SHA-256 verification can produce a finalized receipt.
+  Protected-path collisions fail closed rather than overwriting an older take,
+  and recovery includes a movie already moved to its final path when its final
+  receipt write was interrupted.
+- Camera and mic retain unique source IDs inside one capture group. Their
+  delegate-confirmed monotonic starts create explicit timeline offsets; paired
+  lanes are labeled `capture-clock-aligned`, with a receipt warning that this
+  is deterministic first placement rather than content-level lip sync,
+  waveform/drift review, or a sample-accuracy claim. A lone surviving source is
+  still attached but remains `needs-alignment`; non-finite offsets and unknown
+  stronger alignment labels fail closed.
+- Stop finalizes both local sources before closing the Nest boundary. Failure
+  isolation is source-specific: a safe MOV is not discarded merely because the
+  WAV needs recovery, nor vice versa. Interrupted camera fragments remain
+  visible for deliberate recovery review.
+- EOS Webcam Utility remains a silent 1080 reference, never the Canon
+  camera-card master. Canon internal 4K import and the exact direct MV7i
+  input/headphone route remain separate physical-hardware gates; MOTIV Mix
+  Virtual continues to be labeled rehearsal-only.
+- The unsigned arm64 QuipslyMac build succeeds. QuipslyVideoCore now contains
+  48 tests including new finalized-receipt, partial/final-path recovery, and exact
+  timeline-placement coverage. Native UI/device operation, real MOV/WAV
+  playback and probe, direct MV7i headphone monitoring, Canon internal-4K
+  import, authenticated LiveKit coexistence, and long-take/route-loss proof
+  remain required before physical production qualification.
+- `HighGroundCapture` remains the canonical iPhone application and release
+  target. The legacy `QuipslyiOS` Studio scheme still compiles the entire
+  desktop `SharedUI` workspace, including macOS process and window-geometry
+  code; it is intentionally not being papered over with scattered platform
+  conditionals or used as Capture release evidence. Reviving a mobile Studio
+  surface requires a deliberate shared-kernel/mobile-surface split.
+- Current automated gates pass: 48/48 QuipslyVideoCore tests, 107/107
+  Capture/Nest contracts, the unsigned arm64 QuipslyMac build, and the
+  canonical HighGroundCapture universal simulator build with LiveKit linked.

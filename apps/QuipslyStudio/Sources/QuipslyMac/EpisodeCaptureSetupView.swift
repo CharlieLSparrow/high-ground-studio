@@ -1,4 +1,5 @@
 import AppKit
+import AVFoundation
 import Combine
 import QuipslyVideoCore
 import SwiftUI
@@ -10,6 +11,18 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published var selectedVideoDeviceID: String?
     @Published var selectedAudioInputID: String?
     @Published var selectedAudioOutputID: String?
+    @Published var includeCameraReference = false
+    @Published private(set) var cameraPreviewFormat:
+        CaptureVideoFormatSnapshot?
+    @Published private(set) var cameraPreviewMessage =
+        "Choose a camera route to prepare a silent local reference."
+    @Published private(set) var cameraPreviewError: String?
+    @Published private(set) var activeVideoReceipt:
+        ProductionVideoReferenceReceipt?
+    @Published private(set) var lastFinalizedVideoReceipt:
+        ProductionVideoReferenceReceipt?
+    @Published private(set) var interruptedVideoReferences:
+        [InterruptedProductionVideoReference] = []
     @Published private(set) var isRefreshing = false
     @Published private(set) var message = "Inspecting connected production sources…"
     @Published var episodeSpaceID = "high-ground-odyssey"
@@ -55,6 +68,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
 
     private let recorder = ProductionAudioRecorder()
+    let videoRecorder = ProductionVideoReferenceRecorder()
     private let roomReceiptOutbox = MacCaptureRoomReceiptOutbox()
     private let uploadJobStore = MacCaptureUploadJobStore()
     private lazy var canonicalUploader = MacCanonicalCaptureUploader(
@@ -100,7 +114,15 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         }
     }
 
-    var isRecording: Bool { recorder.isRecording }
+    var isRecording: Bool {
+        recorder.isRecording || videoRecorder.isRecording
+    }
+
+    var selectedVideoDevice: CaptureVideoDeviceSnapshot? {
+        inventory?.videoDevices.first {
+            $0.id == selectedVideoDeviceID
+        }
+    }
 
     var selectedAudioInput: CaptureAudioDeviceSnapshot? {
         inventory?.audioDevices.first { $0.id == selectedAudioInputID }
@@ -142,6 +164,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         } else if selectedEpisodeRoom != nil {
             return false
         }
+        if includeCameraReference {
+            guard inventory?.cameraAuthorization == .authorized,
+                  selectedVideoDevice != nil,
+                  cameraPreviewFormat != nil,
+                  videoRecorder.preparedDeviceID
+                    == selectedVideoDeviceID,
+                  cameraPreviewError == nil else {
+                return false
+            }
+        }
         return abs(sampleRate - ProductionAudioRecorder.targetSampleRate) < 1
     }
 
@@ -182,8 +214,42 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         inventory = next
         resolveSelections(in: next)
         refreshInterruptedRecordings()
-        message = "\(next.videoDevices.count) camera route(s) · \(next.audioDevices.count) Core Audio device(s)"
         isRefreshing = false
+        await prepareSelectedCameraReference()
+        message =
+            "\(next.videoDevices.count) camera route(s) · \(next.audioDevices.count) Core Audio device(s)"
+    }
+
+    func prepareSelectedCameraReference() async {
+        guard !isRecording, !isFinalizing else { return }
+        guard let device = selectedVideoDevice else {
+            videoRecorder.stopPreview()
+            cameraPreviewFormat = nil
+            cameraPreviewError = nil
+            cameraPreviewMessage =
+                "No camera reference selected. The Canon card master can still be imported after the take."
+            return
+        }
+        cameraPreviewError = nil
+        cameraPreviewMessage =
+            "Preparing the exact \(device.name) route off the UI thread…"
+        do {
+            let format = try await videoRecorder.preparePreview(
+                deviceID: device.id
+            )
+            cameraPreviewFormat = format
+            cameraPreviewMessage =
+                "\(device.name) is live at \(format.label). Quipsly will record a silent reference only when Include camera reference is on."
+        } catch {
+            cameraPreviewFormat = nil
+            cameraPreviewError = error.localizedDescription
+            cameraPreviewMessage =
+                "The selected camera route is not ready."
+        }
+    }
+
+    func stopCameraPreview() {
+        videoRecorder.stopPreview()
     }
 
     func refreshEpisodeRooms() async {
@@ -298,6 +364,26 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 
     func startRecording() async {
         roomReceiptError = nil
+        if includeCameraReference {
+            guard selectedVideoDevice != nil else {
+                recordingError =
+                    "Choose the exact camera route or turn off Include camera reference."
+                return
+            }
+            await prepareSelectedCameraReference()
+            guard cameraPreviewError == nil,
+                  cameraPreviewFormat != nil else {
+                recordingError =
+                    cameraPreviewError
+                        ?? "The selected camera reference is not ready."
+                return
+            }
+        }
+        guard let input = selectedAudioInput else {
+            recordingError =
+                "Select the exact microphone/interface that will own this local master."
+            return
+        }
         var roomCapture: ActiveRoomCapture?
         if !isLocalOnlyCapture {
             guard let intendedRoomID = selectedEpisodeRoomID else {
@@ -408,13 +494,42 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 return
             }
         }
-        guard let input = selectedAudioInput else {
-            recordingError = "Select the exact microphone/interface that will own this local master."
-            return
-        }
         recordingError = nil
         let recordingID = UUID()
+        let videoRecordingID = UUID()
         do {
+            if includeCameraReference,
+               let videoDevice = selectedVideoDevice {
+                let videoReceipt = try await videoRecorder.start(
+                    configuration:
+                        ProductionVideoReferenceConfiguration(
+                            recordingID: videoRecordingID,
+                            captureGroupID: captureGroupID,
+                            episodeSpaceID:
+                                episodeSpaceID.trimmingCharacters(
+                                    in: .whitespacesAndNewlines
+                                ),
+                            participantID:
+                                participantID.trimmingCharacters(
+                                    in: .whitespacesAndNewlines
+                                ),
+                            callRoomID: roomCapture?.callRoomID,
+                            recordingConsentID:
+                                roomCapture?.recordingConsentID,
+                            startReceiptID:
+                                roomCapture?.startReceipt.id,
+                            projectSlug:
+                                roomCapture?.projectSlug,
+                            episodeSlug:
+                                roomCapture?.episodeSlug,
+                            capturePurpose:
+                                roomCapture?.capturePurpose,
+                            videoDevice: videoDevice,
+                            rootDirectory: captureRoot
+                        )
+                )
+                activeVideoReceipt = videoReceipt
+            }
             let receipt = try recorder.start(
                 configuration: ProductionAudioRecordingConfiguration(
                     recordingID: recordingID,
@@ -439,13 +554,32 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             activeRoomCapture = roomCapture
             activeReceipt = receipt
             elapsedSeconds = 0
-            message =
-                "Writing an untouched local microphone master from \(input.name)…"
+            message = includeCameraReference
+                ? "Writing the untouched microphone master and silent camera reference…"
+                : "Writing an untouched local microphone master from \(input.name)…"
             roomReceiptMessage = roomCapture == nil
                 ? "Local-only source: no Nest recording boundary was inferred."
-                : "Nest START is applied · local source receipt \(recordingID.uuidString.lowercased()) is recording."
+                : "Nest START is applied · capture group \(captureGroupID.uuidString.lowercased()) is recording."
             startElapsedClock(startedAt: receipt.startedAt)
         } catch {
+            let startFailure = error.localizedDescription
+            if videoRecorder.isRecording {
+                do {
+                    let videoReceipt =
+                        try await videoRecorder.stop()
+                    activeVideoReceipt = videoReceipt
+                    if videoReceipt.state == .finalized {
+                        lastFinalizedVideoReceipt =
+                            videoReceipt
+                    }
+                } catch {
+                    activeVideoReceipt =
+                        videoRecorder.activeReceipt
+                }
+            }
+            if activeVideoReceipt != nil {
+                captureGroupIsClosed = true
+            }
             if let roomCapture {
                 let closureError =
                     await closeRoomBoundaryAfterLocalStop(
@@ -456,8 +590,33 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     roomReceiptError = closureError
                 }
             }
-            recordingError = error.localizedDescription
-            message = "Local master did not start."
+            if let videoReceipt =
+                lastFinalizedVideoReceipt {
+                do {
+                    let videoLaneID =
+                        try attachVideoReferenceToEditor(
+                            videoReceipt,
+                            timelineOffsetSeconds: 0,
+                            alignmentStatus:
+                                "needs-alignment"
+                        )
+                    attachedLaneIDs.append(videoLaneID)
+                    recordingError =
+                        "The microphone master did not start: \(startFailure)"
+                    message =
+                        "The silent camera reference is finalized, verified, and attached; the microphone master did not start."
+                } catch {
+                    recordingError =
+                        "The microphone master did not start: \(startFailure) The camera reference is finalized and safe, but its editor attachment needs retry: \(error.localizedDescription)"
+                    message =
+                        "The camera reference is safe; microphone start and editor attachment need attention."
+                }
+            } else {
+                recordingError = startFailure
+                message = activeVideoReceipt == nil
+                    ? "Local master did not start."
+                    : "The camera reference is preserved; microphone start failed and recovery review is required."
+            }
             refreshInterruptedRecordings()
         }
     }
@@ -469,34 +628,88 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         elapsedTask = nil
         isFinalizing = true
         recordingError = nil
-        message = "Finalizing WAV and computing its SHA-256 receipt…"
+        message =
+            "Stopping every local source, then hashing finalized media off the UI thread…"
         defer { isFinalizing = false }
 
-        var finalizedReceipt: ProductionAudioRecordingReceipt?
-        do {
-            let receipt = try await recorder.stop()
-            activeReceipt = receipt
-            lastFinalizedReceipt = receipt
-            activeUploadJob =
-                episodeRoomOwnerAccountID.flatMap {
-                    uploadJobStore.job(
-                        id: receipt.recordingID,
-                        ownerAccountID: $0
-                    )
-                }
-            uploadProgress =
-                activeUploadJob?.phase == .verified ? 1 : 0
-            uploadError = nil
-            uploadMessage =
-                "Finalized master is ready for direct private-vault upload. The local WAV will be retained."
-            elapsedSeconds = receipt.durationSeconds
-            finalizedReceipt = receipt
+        let videoStopTask:
+            Task<ProductionVideoReferenceReceipt, Error>? =
+                videoRecorder.isRecording
+                    ? Task { @MainActor in
+                        try await videoRecorder.stop()
+                    }
+                    : nil
+
+        var finalizedAudioReceipt:
+            ProductionAudioRecordingReceipt?
+        if recorder.isRecording {
+            do {
+                let receipt = try await recorder.stop()
+                activeReceipt = receipt
+                lastFinalizedReceipt = receipt
+                finalizedAudioReceipt = receipt
+                activeUploadJob =
+                    episodeRoomOwnerAccountID.flatMap {
+                        uploadJobStore.job(
+                            id: receipt.recordingID,
+                            ownerAccountID: $0
+                        )
+                    }
+                uploadProgress =
+                    activeUploadJob?.phase == .verified ? 1 : 0
+                uploadError = nil
+                uploadMessage =
+                    "Finalized microphone master is ready for direct private-vault upload. The local WAV will be retained."
+                elapsedSeconds = receipt.durationSeconds
+            } catch {
+                activeReceipt = recorder.activeReceipt
+                recordingError = error.localizedDescription
+            }
+        }
+
+        var finalizedVideoReceipt:
+            ProductionVideoReferenceReceipt?
+        if let videoStopTask {
+            do {
+                let receipt = try await videoStopTask.value
+                activeVideoReceipt = receipt
+                lastFinalizedVideoReceipt = receipt
+                finalizedVideoReceipt = receipt
+                elapsedSeconds = max(
+                    elapsedSeconds,
+                    receipt.durationSeconds
+                )
+            } catch {
+                activeVideoReceipt = videoRecorder.activeReceipt
+                recordingError = [
+                    recordingError,
+                    error.localizedDescription,
+                ]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            }
+        }
+
+        if finalizedAudioReceipt != nil || finalizedVideoReceipt != nil {
+            switch (
+                finalizedAudioReceipt != nil,
+                finalizedVideoReceipt != nil
+            ) {
+            case (true, true):
+                message =
+                    "Local microphone master and camera reference finalized and verified. Closing the Nest recording boundary…"
+            case (true, false):
+                message =
+                    "Local microphone master finalized and verified. Closing the Nest recording boundary…"
+            case (false, true):
+                message =
+                    "Camera reference finalized and verified; microphone master needs recovery review. Closing the Nest recording boundary…"
+            case (false, false):
+                break
+            }
+        } else {
             message =
-                "Local microphone master finalized and verified. Closing the Nest recording boundary…"
-        } catch {
-            activeReceipt = recorder.activeReceipt
-            recordingError = error.localizedDescription
-            message = "The take was preserved but needs recovery review."
+                "The take was preserved but needs recovery review."
         }
 
         if let roomCapture {
@@ -517,17 +730,78 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         captureGroupIsClosed = true
         activeRoomCapture = nil
 
-        if let receipt = finalizedReceipt {
+        if finalizedAudioReceipt != nil || finalizedVideoReceipt != nil {
             do {
-                let laneID = try attachAudioMasterToEditor(receipt)
-                attachedLaneIDs.append(laneID)
+                let anchor = [
+                    finalizedAudioReceipt?
+                        .startedMonotonicNanoseconds,
+                    finalizedVideoReceipt?
+                        .startedMonotonicNanoseconds,
+                ]
+                .compactMap { $0 }
+                .min() ?? 0
+                let isCaptureClockPair =
+                    finalizedAudioReceipt != nil
+                        && finalizedVideoReceipt != nil
+                let alignmentStatus = isCaptureClockPair
+                    ? "capture-clock-aligned"
+                    : "needs-alignment"
+
+                if let audioReceipt = finalizedAudioReceipt {
+                    let audioLaneID = try attachAudioMasterToEditor(
+                        audioReceipt,
+                        timelineOffsetSeconds:
+                            monotonicOffsetSeconds(
+                                audioReceipt
+                                    .startedMonotonicNanoseconds,
+                                from: anchor
+                            ),
+                        alignmentStatus: alignmentStatus
+                    )
+                    attachedLaneIDs.append(audioLaneID)
+                }
+
+                if let videoReceipt = finalizedVideoReceipt {
+                    let videoLaneID =
+                        try attachVideoReferenceToEditor(
+                            videoReceipt,
+                            timelineOffsetSeconds:
+                                monotonicOffsetSeconds(
+                                    videoReceipt
+                                        .startedMonotonicNanoseconds,
+                                    from: anchor
+                                ),
+                            alignmentStatus: alignmentStatus
+                        )
+                    attachedLaneIDs.append(videoLaneID)
+                }
+                let sourceSummary: String
+                switch (
+                    finalizedAudioReceipt != nil,
+                    finalizedVideoReceipt != nil
+                ) {
+                case (true, true):
+                    sourceSummary =
+                        "Microphone master and silent camera reference"
+                case (true, false):
+                    sourceSummary = "Local microphone master"
+                case (false, true):
+                    sourceSummary = "Silent camera reference"
+                case (false, false):
+                    sourceSummary = "Local source"
+                }
                 message = roomReceiptError == nil
-                    ? "Local microphone master finalized, verified, attached to the editor, and closed in Nest."
-                    : "Local microphone master finalized, verified, and attached; Nest boundary sync needs retry."
+                    ? "\(sourceSummary) finalized, verified, attached to the editor, and closed in Nest."
+                    : "\(sourceSummary) finalized, verified, and attached; Nest boundary sync needs retry."
             } catch {
-                recordingError =
-                    "The local master is finalized and safe, but its editor attachment receipt failed: \(error.localizedDescription)"
-                message = "Local microphone master is safe; editor attachment needs retry."
+                recordingError = [
+                    recordingError,
+                    "The local sources are finalized and safe, but an editor attachment receipt failed: \(error.localizedDescription)",
+                ]
+                .compactMap { $0 }
+                .joined(separator: " ")
+                message =
+                    "Local sources are safe; editor attachment needs retry."
             }
         }
         refreshInterruptedRecordings()
@@ -542,6 +816,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         captureGroupIsClosed = false
         activeReceipt = nil
         lastFinalizedReceipt = nil
+        activeVideoReceipt = nil
+        lastFinalizedVideoReceipt = nil
         importedCanonReceipts = []
         attachedLaneIDs = []
         canonImportProgress = nil
@@ -803,6 +1079,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         interruptedRecordings = ProductionAudioRecorder.interruptedRecordings(
             in: captureRoot
         )
+        interruptedVideoReferences =
+            ProductionVideoReferenceRecorder.interruptedRecordings(
+                in: captureRoot
+            )
     }
 
     private enum RoomReceiptDelivery {
@@ -1001,7 +1281,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     }
 
     private func attachAudioMasterToEditor(
-        _ receipt: ProductionAudioRecordingReceipt
+        _ receipt: ProductionAudioRecordingReceipt,
+        timelineOffsetSeconds: Double = 0,
+        alignmentStatus: String = "needs-alignment"
     ) throws -> UUID {
         let receiptPath = URL(fileURLWithPath: receipt.recordingDirectoryPath)
             .appendingPathComponent(ProductionAudioRecorder.receiptFilename)
@@ -1017,7 +1299,41 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             role: "\(receipt.participantID.lowercased())_microphone_master",
             ingestKind: "mac_local_audio_master",
             sha256: receipt.sha256,
-            sourceReceiptPath: receiptPath
+            sourceReceiptPath: receiptPath,
+            timelineOffsetSeconds: timelineOffsetSeconds,
+            alignmentStatus: alignmentStatus
+        )
+    }
+
+    private func attachVideoReferenceToEditor(
+        _ receipt: ProductionVideoReferenceReceipt,
+        timelineOffsetSeconds: Double,
+        alignmentStatus: String
+    ) throws -> UUID {
+        let receiptPath = URL(
+            fileURLWithPath: receipt.recordingDirectoryPath
+        )
+        .appendingPathComponent(
+            ProductionVideoReferenceRecorder.receiptFilename
+        )
+        .path
+        return try attachManagedSourceToEditor(
+            sourceAssetID:
+                receipt.recordingID.uuidString.lowercased(),
+            captureGroupID: receipt.captureGroupID,
+            episodeSpaceID: receipt.episodeSpaceID,
+            mediaURL: URL(fileURLWithPath: receipt.videoPath),
+            originalURL: URL(fileURLWithPath: receipt.videoPath),
+            duration: receipt.durationSeconds,
+            name:
+                "\(receipt.participantID) local camera reference",
+            role:
+                "\(receipt.participantID.lowercased())_camera_reference",
+            ingestKind: "mac_local_video_reference",
+            sha256: receipt.sha256,
+            sourceReceiptPath: receiptPath,
+            timelineOffsetSeconds: timelineOffsetSeconds,
+            alignmentStatus: alignmentStatus
         )
     }
 
@@ -1050,7 +1366,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         role: String,
         ingestKind: String,
         sha256: String?,
-        sourceReceiptPath: String
+        sourceReceiptPath: String,
+        timelineOffsetSeconds: Double = 0,
+        alignmentStatus: String = "needs-alignment"
     ) throws -> UUID {
         let attachment = VerifiedCaptureSourceAttachment(
             sourceAssetID: sourceAssetID,
@@ -1063,7 +1381,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             role: role,
             ingestKind: ingestKind,
             sha256: sha256,
-            sourceReceiptPath: sourceReceiptPath
+            sourceReceiptPath: sourceReceiptPath,
+            timelineOffsetSeconds: timelineOffsetSeconds,
+            alignmentStatus: alignmentStatus
         )
         let receipt = try projectStore.attachVerifiedCaptureSource(attachment)
         if let sequence = projectStore.activeSequence {
@@ -1072,12 +1392,25 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         return receipt.laneID
     }
 
+    private func monotonicOffsetSeconds(
+        _ value: UInt64,
+        from origin: UInt64
+    ) -> Double {
+        guard value >= origin else { return 0 }
+        return Double(value - origin) / 1_000_000_000
+    }
+
     private func resolveSelections(in inventory: ProductionCaptureInventory) {
         if !inventory.videoDevices.contains(where: { $0.id == selectedVideoDeviceID }) {
             selectedVideoDeviceID =
                 inventory.videoDevices.first {
                     $0.name.localizedCaseInsensitiveContains("Canon")
                         && $0.name.localizedCaseInsensitiveContains("R8")
+                }?.id
+                ?? inventory.videoDevices.first {
+                    $0.name.localizedCaseInsensitiveContains(
+                        "EOS Webcam"
+                    )
                 }?.id
                 ?? inventory.videoDevices.first?.id
         }
@@ -1146,6 +1479,46 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     }
 }
 
+private final class CameraPreviewNSView: NSView {
+    let previewLayer = AVCaptureVideoPreviewLayer()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        previewLayer.videoGravity = .resizeAspectFill
+        layer = previewLayer
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func layout() {
+        super.layout()
+        previewLayer.frame = bounds
+    }
+}
+
+private struct CameraPreviewView: NSViewRepresentable {
+    let session: AVCaptureSession
+
+    func makeNSView(context: Context) -> CameraPreviewNSView {
+        let view = CameraPreviewNSView(frame: .zero)
+        view.previewLayer.session = session
+        return view
+    }
+
+    func updateNSView(
+        _ nsView: CameraPreviewNSView,
+        context: Context
+    ) {
+        if nsView.previewLayer.session !== session {
+            nsView.previewLayer.session = session
+        }
+    }
+}
+
 struct EpisodeCaptureSetupView: View {
     private static let localOnlyRoomSelectionID =
         "__quipsly-local-only-source__"
@@ -1180,6 +1553,7 @@ struct EpisodeCaptureSetupView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     episodeRoomCard
                     routeSelectors
+                    cameraReferenceCard
                     localMasterCard
                     audioOnlyRoomCard
                     canonCardMasterCard
@@ -1202,15 +1576,186 @@ struct EpisodeCaptureSetupView: View {
             await model.recoverRoomReceiptsAfterLaunch()
             await model.recoverUploadsAfterLaunch()
         }
+        .task(id: model.selectedVideoDeviceID) {
+            await model.prepareSelectedCameraReference()
+        }
         .onDisappear {
-            if model.isRecording {
-                Task { await model.stopRecording() }
-            }
-            if audioRoom.isActive {
-                Task { await audioRoom.disconnect() }
+            Task {
+                if model.isRecording {
+                    await model.stopRecording()
+                }
+                if audioRoom.isActive {
+                    await audioRoom.disconnect()
+                }
+                model.stopCameraPreview()
             }
         }
         .accessibilityIdentifier("EpisodeCaptureSetup")
+    }
+
+    private var cameraReferenceCard: some View {
+        GroupBox("Local camera reference") {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .top, spacing: 16) {
+                    ZStack(alignment: .topTrailing) {
+                        CameraPreviewView(
+                            session:
+                                model.videoRecorder.captureSession
+                        )
+                        .frame(
+                            minWidth: 320,
+                            idealWidth: 400,
+                            maxWidth: 460,
+                            minHeight: 180,
+                            idealHeight: 225,
+                            maxHeight: 260
+                        )
+                        .background(Color.black)
+                        .clipShape(
+                            RoundedRectangle(cornerRadius: 12)
+                        )
+
+                        Text(
+                            model.videoRecorder.isRecording
+                                ? "REC · REFERENCE"
+                                : "LOCAL PREVIEW"
+                        )
+                        .font(.caption2.weight(.black))
+                        .foregroundStyle(
+                            model.videoRecorder.isRecording
+                                ? Color.white
+                                : Color.primary
+                        )
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 5)
+                        .background(
+                            model.videoRecorder.isRecording
+                                ? Color.red
+                                : Color.primary.opacity(0.12),
+                            in: Capsule()
+                        )
+                        .padding(9)
+                    }
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(
+                            "Keep framing visible and write a recoverable sync reference"
+                        )
+                        .font(.headline)
+                        Text(
+                            "This is a silent local movie from the selected macOS camera route. With the Canon R8 USB feed it is a 1080p/30 framing and sync reference; the internally recorded camera-card file remains the authoritative 4K master."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+
+                        Toggle(
+                            "Include camera reference when recording",
+                            isOn: $model.includeCameraReference
+                        )
+                        .disabled(
+                            model.isRecording
+                                || model.isFinalizing
+                                || model.selectedVideoDevice == nil
+                                || model.cameraPreviewFormat == nil
+                        )
+                        .accessibilityIdentifier(
+                            "EpisodeCaptureIncludeCameraReference"
+                        )
+
+                        if let format =
+                            model.cameraPreviewFormat {
+                            Label(
+                                "\(format.width)×\(format.height) · \(format.maximumFrameRate.formatted(.number.precision(.fractionLength(0...2)))) fps · silent MOV",
+                                systemImage:
+                                    "checkmark.circle.fill"
+                            )
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.green)
+                        }
+
+                        Text(model.cameraPreviewMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+
+                        if let error = model.cameraPreviewError {
+                            Label(
+                                error,
+                                systemImage:
+                                    "exclamationmark.octagon.fill"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                        }
+                    }
+                    .frame(
+                        maxWidth: .infinity,
+                        alignment: .topLeading
+                    )
+                }
+
+                if let receipt =
+                    model.lastFinalizedVideoReceipt {
+                    Divider()
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .font(.title2)
+                            .foregroundStyle(.green)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Verified camera reference")
+                                .font(.headline)
+                            Text(
+                                "\(formatDuration(receipt.durationSeconds)) · \(receipt.negotiatedFormat.width)×\(receipt.negotiatedFormat.height) · \(ByteCountFormatter.string(fromByteCount: receipt.byteCount ?? 0, countStyle: .file))"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            Text(
+                                "SHA-256 \(receipt.sha256?.prefix(16) ?? "missing")… · no audio · monotonic start preserved"
+                            )
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                        }
+                        Spacer()
+                        Button("Reveal reference") {
+                            NSWorkspace.shared
+                                .activateFileViewerSelecting([
+                                    URL(
+                                        fileURLWithPath:
+                                            receipt.videoPath
+                                    ),
+                                ])
+                        }
+                        .accessibilityIdentifier(
+                            "EpisodeCaptureRevealCameraReference"
+                        )
+                    }
+                }
+
+                if !model.interruptedVideoReferences.isEmpty {
+                    Label(
+                        "\(model.interruptedVideoReferences.count) interrupted camera reference(s) remain preserved as partial fragmented MOV files for explicit recovery review.",
+                        systemImage: "lifepreserver.fill"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                }
+            }
+            .padding(10)
+        }
+        .accessibilityIdentifier(
+            "EpisodeCaptureLocalCameraReference"
+        )
     }
 
     private var episodeRoomCard: some View {
@@ -1547,7 +2092,7 @@ struct EpisodeCaptureSetupView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Episode Capture Setup")
                     .font(.title2.weight(.bold))
-                Text("Verify the exact local masters, call route, and Canon handoff before recording.")
+                Text("Verify the exact local masters, camera reference, call route, and Canon handoff before recording.")
                     .foregroundStyle(.secondary)
             }
             Spacer()
@@ -1647,7 +2192,7 @@ struct EpisodeCaptureSetupView: View {
     }
 
     private var localMasterCard: some View {
-        GroupBox("Local microphone master") {
+        GroupBox("Local take") {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 14) {
                     TextField("Episode space ID", text: $model.episodeSpaceID)
@@ -1711,7 +2256,10 @@ struct EpisodeCaptureSetupView: View {
                         Button(role: .destructive) {
                             Task { await model.stopRecording() }
                         } label: {
-                            Label("Stop and finalize", systemImage: "stop.fill")
+                            Label(
+                                "Stop and finalize every source",
+                                systemImage: "stop.fill"
+                            )
                         }
                         .buttonStyle(.borderedProminent)
                         .accessibilityIdentifier("EpisodeCaptureStopAudioMaster")
@@ -1719,7 +2267,12 @@ struct EpisodeCaptureSetupView: View {
                         Button {
                             Task { await model.startRecording() }
                         } label: {
-                            Label("Record local master", systemImage: "record.circle")
+                            Label(
+                                model.includeCameraReference
+                                    ? "Record mic + camera reference"
+                                    : "Record microphone master",
+                                systemImage: "record.circle"
+                            )
                         }
                         .buttonStyle(.borderedProminent)
                         .tint(.red)
@@ -1743,7 +2296,11 @@ struct EpisodeCaptureSetupView: View {
                         Text("Finalizing and hashing off the UI thread…")
                             .foregroundStyle(.secondary)
                     } else {
-                        Text("48 kHz · 24-bit PCM WAV · pre-call local source")
+                        Text(
+                            model.includeCameraReference
+                                ? "48 kHz · 24-bit WAV master + silent camera-reference MOV"
+                                : "48 kHz · 24-bit PCM WAV · pre-call local source"
+                        )
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -2276,6 +2833,19 @@ struct EpisodeCaptureSetupView: View {
         guard let sampleRate = input.nominalSampleRate,
               abs(sampleRate - ProductionAudioRecorder.targetSampleRate) < 1 else {
             return "\(input.name) must be configured for exactly 48 kHz before Quipsly will record."
+        }
+        if model.includeCameraReference {
+            guard model.inventory?.cameraAuthorization
+                    == .authorized else {
+                return "Grant camera access with Refresh hardware before including a camera reference."
+            }
+            guard model.selectedVideoDevice != nil else {
+                return "Choose a camera route or turn off Include camera reference."
+            }
+            guard model.cameraPreviewFormat != nil,
+                  model.cameraPreviewError == nil else {
+                return "Wait for the exact camera preview to become ready before recording."
+            }
         }
         return "Enter both the episode space and participant identity."
     }

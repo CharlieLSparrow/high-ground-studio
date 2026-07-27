@@ -201,7 +201,7 @@ public class ProjectStore: ObservableObject {
         let media = SourceVideo(
             mediaURL: source.mediaURL,
             duration: source.duration,
-            offset: 0
+            offset: source.timelineOffsetSeconds
         )
         let metadata = VideoLaneMetadata(
             sourceAssetId: source.sourceAssetID,
@@ -217,7 +217,7 @@ public class ProjectStore: ObservableObject {
             captureGroupID: source.captureGroupID.uuidString.lowercased(),
             episodeSpaceID: source.episodeSpaceID,
             ingestKind: source.ingestKind,
-            alignmentStatus: "needs-alignment",
+            alignmentStatus: source.alignmentStatus,
             declaredExists: true,
             sourceLabel: source.name
         )
@@ -242,7 +242,9 @@ public class ProjectStore: ObservableObject {
             sequenceID: sequenceID,
             laneID: laneID,
             mediaPath: source.mediaURL.path,
-            sourceReceiptPath: source.sourceReceiptPath
+            sourceReceiptPath: source.sourceReceiptPath,
+            alignmentStatus: source.alignmentStatus,
+            timelineOffsetSeconds: source.timelineOffsetSeconds
         )
         try LocalEditorSourceAttachmentWriter.write(
             receipt,

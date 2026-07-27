@@ -36,6 +36,7 @@ targets:
         INFOPLIST_KEY_CFBundleName: Quipsly Studio
         INFOPLIST_KEY_NSPrincipalClass: NSApplication
         INFOPLIST_KEY_NSCameraUsageDescription: Quipsly Studio uses the camera you explicitly select for episode framing and locally recorded source media.
+        INFOPLIST_KEY_NSCameraUseContinuityCameraDeviceType: true
         INFOPLIST_KEY_NSMicrophoneUsageDescription: Quipsly Studio records the microphone you explicitly select as an untouched local episode master and call source.
         INFOPLIST_KEY_NSDocumentsFolderUsageDescription: Quipsly Studio can import documents you choose for writing, research, and production work.
         INFOPLIST_KEY_NSDownloadsFolderUsageDescription: Quipsly Studio can import downloaded media or research files that you choose.
