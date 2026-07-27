@@ -25,6 +25,7 @@ public struct ProductionAudioRecordingConfiguration: Equatable, Sendable {
     public let projectSlug: String?
     public let episodeSlug: String?
     public let capturePurpose: String?
+    public let clockSamples: [ProductionCaptureClockSample]
     public let inputDevice: CaptureAudioDeviceSnapshot
     public let rootDirectory: URL
 
@@ -40,6 +41,7 @@ public struct ProductionAudioRecordingConfiguration: Equatable, Sendable {
         projectSlug: String? = nil,
         episodeSlug: String? = nil,
         capturePurpose: String? = nil,
+        clockSamples: [ProductionCaptureClockSample] = [],
         inputDevice: CaptureAudioDeviceSnapshot,
         rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
@@ -55,6 +57,7 @@ public struct ProductionAudioRecordingConfiguration: Equatable, Sendable {
         self.projectSlug = projectSlug
         self.episodeSlug = episodeSlug
         self.capturePurpose = capturePurpose
+        self.clockSamples = clockSamples
         self.inputDevice = inputDevice
         self.rootDirectory = rootDirectory
     }
@@ -73,6 +76,7 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
     public let projectSlug: String?
     public let episodeSlug: String?
     public let capturePurpose: String?
+    public let clockSamples: [ProductionCaptureClockSample]?
     public let clientKind: String
     public let sourceKind: String
     public let state: ProductionAudioRecordingState
@@ -123,6 +127,7 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
         self.projectSlug = configuration.projectSlug
         self.episodeSlug = configuration.episodeSlug
         self.capturePurpose = configuration.capturePurpose
+        self.clockSamples = configuration.clockSamples
         self.clientKind = "macos"
         self.sourceKind = "local_audio_master"
         self.state = state
@@ -491,7 +496,9 @@ public final class ProductionAudioRecorder {
         ) else { return [] }
 
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom(
+            ProductionCaptureDateCoding.decode
+        )
         var results: [InterruptedProductionAudioRecording] = []
         for episodeDirectory in episodeDirectories {
             guard let recordingDirectories = try? FileManager.default.contentsOfDirectory(
@@ -603,7 +610,9 @@ public final class ProductionAudioRecorder {
         to url: URL
     ) throws {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom(
+            ProductionCaptureDateCoding.encode
+        )
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let data = try encoder.encode(receipt)
         try data.write(to: url, options: [.atomic])

@@ -18,6 +18,10 @@ alignment and non-destructive editorial decisions.
 - authenticated, room-authorized capture-clock endpoint in Nest;
 - bounded three-sample iPhone clock burst stored with audio/video source
   profiles;
+- bounded three-sample Mac clock burst measured after the accepted START and
+  before local media opens, stored identically with the WAV and silent MOV;
+- fractional receipt dates and lossless decimal-string monotonic nanoseconds,
+  with backward-compatible decoding for earlier Swift receipts;
 - native Mac camera/Core Audio inventory and production route policy;
 - crash-recoverable Mac 48 kHz/24-bit PCM WAV recorder;
 - in-progress, interrupted, failed, and finalized source receipts;
@@ -136,6 +140,9 @@ alignment and non-destructive editorial decisions.
   inconsistent-consent fail-closed behavior
 - HighGroundCapture generic iOS Simulator build
 - QuipslyMac debug build with LiveKit 2.15.1 linked
+- signed QuipslyMac build with the capture-clock bridge
+- focused server alignment: 7/7, including long-uptime Mac monotonic values
+- current QuipslyVideoCore: 55/55
 - real QuipslyMac launch and menu-command execution
 
 The current Computer Use run could open the Episode Capture Setup command, but
@@ -153,9 +160,11 @@ reported as observed and are not promoted to physical-master status.
 
 ## Next acceptance gates
 
-1. With the MV7i attached and visible directly, grant Quipsly Studio microphone
-   permission, record at least 60 seconds, stop, reopen the WAV, inspect both
-   channels, read back the JSON receipt, and listen through MV7i headphones.
+1. In the visible Episode Capture Setup window, grant Quipsly Studio camera and
+   microphone permission, record a short MOV+WAV take, stop, reopen both files,
+   probe and hash them, and inspect both receipts and their shared clock
+   samples. Then repeat for at least 60 seconds with the MV7i attached directly,
+   inspect both WAV channels, and listen through MV7i headphones.
 2. With a second participant, join a real Nest/LiveKit room, record the local
    master concurrently, exercise mute/unmute/leave, compare the WAV against the
    call feed, and prove realtime voice processing did not alter the local

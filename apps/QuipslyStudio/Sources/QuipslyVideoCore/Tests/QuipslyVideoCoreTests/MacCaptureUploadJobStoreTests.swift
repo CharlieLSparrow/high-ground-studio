@@ -34,6 +34,21 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
         XCTAssertTrue(
             job.sourceProfileJSON.contains("shure-mv7i-uid")
         )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"monotonicStartedNanoseconds\" : \"1000\""
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"deviceMonotonicSentNanoseconds\" : \"500\""
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"sampleId\" : \"00000000-0000-0000-0000-000000000101\""
+            )
+        )
         let evidence =
             try MacCaptureUploadJobStore.exactSourceEvidence(
                 for: job
@@ -147,7 +162,17 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
         )
         XCTAssertTrue(
             job.sourceProfileJSON.contains(
-                "\"monotonicStartedNanoseconds\" : 1000"
+                "\"monotonicStartedNanoseconds\" : \"1000\""
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"deviceMonotonicSentNanoseconds\" : \"500\""
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"sampleId\" : \"00000000-0000-0000-0000-000000000101\""
             )
         )
         let evidence =
@@ -385,6 +410,12 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
                 projectSlug: "high-ground-odyssey",
                 episodeSlug: "episode-5",
                 capturePurpose: "PODCAST",
+                clockSamples: [
+                    captureClockSample(
+                        callRoomID: "room-5",
+                        captureGroupID: captureGroupID
+                    ),
+                ],
                 inputDevice: input,
                 rootDirectory: root
             ),
@@ -463,6 +494,12 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
                 projectSlug: "high-ground-odyssey",
                 episodeSlug: "episode-5",
                 capturePurpose: "PODCAST",
+                clockSamples: [
+                    captureClockSample(
+                        callRoomID: "room-5",
+                        captureGroupID: captureGroupID
+                    ),
+                ],
                 videoDevice: device,
                 rootDirectory: root
             )
@@ -492,12 +529,44 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
         return receipt
     }
 
+    private func captureClockSample(
+        callRoomID: String,
+        captureGroupID: UUID
+    ) -> ProductionCaptureClockSample {
+        ProductionCaptureClockSample(
+            protocolVersion: 1,
+            sampleId: UUID(
+                uuidString:
+                    "00000000-0000-0000-0000-000000000101"
+            )!,
+            callRoomId: callRoomID,
+            captureGroupId: captureGroupID,
+            clientKind: "macos",
+            deviceWallSentAt:
+                Date(timeIntervalSince1970: 99.5),
+            deviceMonotonicSentNanoseconds: 500,
+            serverReceivedAt:
+                Date(timeIntervalSince1970: 99.51),
+            serverSentAt:
+                Date(timeIntervalSince1970: 99.511),
+            deviceWallReceivedAt:
+                Date(timeIntervalSince1970: 99.521),
+            deviceMonotonicReceivedNanoseconds: 521,
+            networkRoundTripMilliseconds: 20,
+            serverOffsetMilliseconds: 0.5,
+            uncertaintyMilliseconds: 10,
+            wallClockDiscontinuityMilliseconds: 0
+        )
+    }
+
     private func writeReceipt<T: Encodable>(
         _ receipt: T,
         to url: URL
     ) throws {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom(
+            ProductionCaptureDateCoding.encode
+        )
         encoder.outputFormatting = [
             .prettyPrinted,
             .sortedKeys,

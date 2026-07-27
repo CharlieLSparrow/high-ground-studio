@@ -75,6 +75,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 
     private let recorder = ProductionAudioRecorder()
     let videoRecorder = ProductionVideoReferenceRecorder()
+    private let captureClockClient =
+        ProductionCaptureClockClient(clientKind: "macos")
     private let roomReceiptOutbox = MacCaptureRoomReceiptOutbox()
     private let uploadJobStore = MacCaptureUploadJobStore()
     private lazy var canonicalUploader = MacCanonicalCaptureUploader(
@@ -455,6 +457,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             return
         }
         var roomCapture: ActiveRoomCapture?
+        var clockSamples: [ProductionCaptureClockSample] = []
         if !isLocalOnlyCapture {
             guard let intendedRoomID = selectedEpisodeRoomID else {
                 recordingError =
@@ -564,6 +567,63 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 return
             }
         }
+        if let roomCapture {
+            roomReceiptMessage =
+                "Nest applied START. Measuring the Mac source clock before opening either media engine…"
+            if let baseURL = nativeAccountStore.normalizedBaseURL {
+                clockSamples = await captureClockClient
+                    .measureBurst(
+                        baseURL: baseURL,
+                        callRoomID: roomCapture.callRoomID,
+                        captureGroupID: captureGroupID,
+                        authenticatedData: {
+                            [nativeAccountStore] request in
+                            try await nativeAccountStore
+                                .authenticatedData(for: request)
+                        }
+                    )
+            }
+            let expectedOwner = normalizedOwnerAccountID(
+                roomCapture.ownerAccountID
+            )
+            let currentVerifiedOwner =
+                normalizedOwnerAccountID(
+                    nativeAccountStore.userEmail
+                )
+            let accountStillMatches =
+                nativeAccountStore.hasSavedSession
+                    && expectedOwner != nil
+                    && normalizedOwnerAccountID(
+                        episodeRoomOwnerAccountID
+                    ) == expectedOwner
+                    && (
+                        currentVerifiedOwner == nil
+                            || currentVerifiedOwner
+                                == expectedOwner
+                    )
+            guard accountStillMatches else {
+                let boundaryError =
+                    await closeRoomBoundaryAfterLocalStop(
+                        roomCapture,
+                        localSourceWasOpened: false
+                    )
+                captureGroupID = UUID()
+                captureGroupIsClosed = false
+                recordingError = [
+                    "The Quipsly account changed during source-clock measurement. No media engine was opened.",
+                    boundaryError.map {
+                        "Nest STOP needs attention: \($0)"
+                    },
+                ]
+                .compactMap { $0 }
+                .joined(separator: " ")
+                message = "Local master did not start."
+                return
+            }
+            roomReceiptMessage = clockSamples.isEmpty
+                ? "Nest START is applied. Clock evidence was unavailable, so this source will require waveform alignment review."
+                : "Nest START is applied · \(clockSamples.count) Mac clock sample(s) preserved for reviewed alignment."
+        }
         recordingError = nil
         let recordingID = UUID()
         let videoRecordingID = UUID()
@@ -596,6 +656,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                                 roomCapture?.episodeSlug,
                             capturePurpose:
                                 roomCapture?.capturePurpose,
+                            clockSamples: clockSamples,
                             videoDevice: videoDevice,
                             rootDirectory: captureRoot
                         )
@@ -621,6 +682,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     projectSlug: roomCapture?.projectSlug,
                     episodeSlug: roomCapture?.episodeSlug,
                     capturePurpose: roomCapture?.capturePurpose,
+                    clockSamples: clockSamples,
                     inputDevice: input,
                     rootDirectory: captureRoot
                 )
@@ -1389,7 +1451,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     }
 
     private func closeRoomBoundaryAfterLocalStop(
-        _ capture: ActiveRoomCapture
+        _ capture: ActiveRoomCapture,
+        localSourceWasOpened: Bool = true
     ) async -> String? {
         do {
             let stopReceipt = try roomReceiptOutbox.enqueueStop(
@@ -1401,8 +1464,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             updatePendingRoomReceiptCount(
                 ownerAccountID: capture.ownerAccountID
             )
-            roomReceiptMessage =
-                "Local source is closed. STOP is durable locally and synchronizing with Nest…"
+            roomReceiptMessage = localSourceWasOpened
+                ? "Local source is closed. STOP is durable locally and synchronizing with Nest…"
+                : "No media engine was opened. STOP is durable locally and closing the armed Nest boundary…"
             let delivery = await deliverRoomReceipt(stopReceipt)
             switch delivery {
             case .accepted(let stateApplied):
@@ -1418,7 +1482,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     ownerAccountID: capture.ownerAccountID
                 )
                 roomReceiptMessage =
-                    "Nest START and STOP are durably acknowledged for this local source."
+                    localSourceWasOpened
+                        ? "Nest START and STOP are durably acknowledged for this local source."
+                        : "Nest START and STOP are durably acknowledged; no local media was opened."
                 roomReceiptError = nil
                 return nil
             case .terminallyRejected(
@@ -1438,11 +1504,15 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     ownerAccountID: capture.ownerAccountID
                 )
                 roomReceiptMessage =
-                    "Nest preserved STOP but held its state transition. The local source remains safe."
+                    localSourceWasOpened
+                        ? "Nest preserved STOP but held its state transition. The local source remains safe."
+                        : "Nest preserved STOP but held its state transition. No local media was opened."
                 return message
             case .retryable(let detail):
                 roomReceiptMessage =
-                    "STOP is waiting in the durable outbox. The local source remains safe."
+                    localSourceWasOpened
+                        ? "STOP is waiting in the durable outbox. The local source remains safe."
+                        : "STOP is waiting in the durable outbox. No local media was opened."
                 return detail
             }
         } catch {
@@ -1450,7 +1520,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 ownerAccountID: capture.ownerAccountID
             )
             roomReceiptMessage =
-                "The local source is closed, but its Nest STOP boundary needs recovery."
+                localSourceWasOpened
+                    ? "The local source is closed, but its Nest STOP boundary needs recovery."
+                    : "No local media was opened, but the armed Nest STOP boundary needs recovery."
             return error.localizedDescription
         }
     }

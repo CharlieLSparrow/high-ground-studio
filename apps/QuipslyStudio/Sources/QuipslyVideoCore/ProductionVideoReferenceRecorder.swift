@@ -23,6 +23,7 @@ public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
     public let projectSlug: String?
     public let episodeSlug: String?
     public let capturePurpose: String?
+    public let clockSamples: [ProductionCaptureClockSample]
     public let videoDevice: CaptureVideoDeviceSnapshot
     public let rootDirectory: URL
 
@@ -38,6 +39,7 @@ public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
         projectSlug: String? = nil,
         episodeSlug: String? = nil,
         capturePurpose: String? = nil,
+        clockSamples: [ProductionCaptureClockSample] = [],
         videoDevice: CaptureVideoDeviceSnapshot,
         rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(
@@ -56,6 +58,7 @@ public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
         self.projectSlug = projectSlug
         self.episodeSlug = episodeSlug
         self.capturePurpose = capturePurpose
+        self.clockSamples = clockSamples
         self.videoDevice = videoDevice
         self.rootDirectory = rootDirectory
     }
@@ -74,6 +77,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
     public let projectSlug: String?
     public let episodeSlug: String?
     public let capturePurpose: String?
+    public let clockSamples: [ProductionCaptureClockSample]?
     public let clientKind: String
     public let sourceKind: String
     public let state: ProductionVideoReferenceState
@@ -121,6 +125,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
         projectSlug = configuration.projectSlug
         episodeSlug = configuration.episodeSlug
         capturePurpose = configuration.capturePurpose
+        clockSamples = configuration.clockSamples
         clientKind = "macos"
         sourceKind = "local_video_reference"
         self.state = state
@@ -508,7 +513,9 @@ public final class ProductionVideoReferenceRecorder:
         }
 
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom(
+            ProductionCaptureDateCoding.decode
+        )
         var results: [InterruptedProductionVideoReference] = []
         for episodeDirectory in episodeDirectories {
             guard let recordingDirectories =
@@ -939,7 +946,9 @@ public final class ProductionVideoReferenceRecorder:
         to url: URL
     ) throws {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom(
+            ProductionCaptureDateCoding.encode
+        )
         encoder.outputFormatting = [
             .prettyPrinted,
             .sortedKeys,

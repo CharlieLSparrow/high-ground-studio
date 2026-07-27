@@ -276,12 +276,18 @@ public final class MacCaptureUploadJobStore {
                 .sourceIsNotFinalized
         }
         let profile = MacAudioUploadSourceProfile(
+            schemaVersion: 1,
             inputDevice: receipt.inputDevice,
             sampleRate: receipt.targetSampleRate,
             bitDepth: receipt.targetBitDepth,
             channelCount: receipt.channelCount,
             clientKind: receipt.clientKind,
-            sourceKind: receipt.sourceKind
+            sourceKind: receipt.sourceKind,
+            monotonicStartedNanoseconds:
+                String(receipt.startedMonotonicNanoseconds),
+            monotonicStoppedNanoseconds:
+                receipt.stoppedMonotonicNanoseconds.map(String.init),
+            clockSamples: receipt.clockSamples
         )
         let profileData = try Self.encoder.encode(profile)
         guard let profileJSON = String(
@@ -356,10 +362,10 @@ public final class MacCaptureUploadJobStore {
             audioSampleRate: nil,
             audioChannelCount: nil,
             monotonicStartedNanoseconds:
-                receipt.startedMonotonicNanoseconds,
+                String(receipt.startedMonotonicNanoseconds),
             monotonicStoppedNanoseconds:
-                receipt.stoppedMonotonicNanoseconds,
-            clockSamples: nil,
+                receipt.stoppedMonotonicNanoseconds.map(String.init),
+            clockSamples: receipt.clockSamples,
             cameraDevice: receipt.videoDevice,
             referenceKind: receipt.sourceKind
         )
@@ -759,6 +765,7 @@ public final class MacCaptureUploadJobStore {
         persisted.projectSlug == receipt.projectSlug,
         persisted.episodeSlug == receipt.episodeSlug,
         persisted.capturePurpose == receipt.capturePurpose,
+        persisted.clockSamples == receipt.clockSamples,
         persisted.inputDevice == receipt.inputDevice,
         persisted.channelCount == receipt.channelCount,
         persisted.startedMonotonicNanoseconds
@@ -807,6 +814,7 @@ public final class MacCaptureUploadJobStore {
         persisted.projectSlug == receipt.projectSlug,
         persisted.episodeSlug == receipt.episodeSlug,
         persisted.capturePurpose == receipt.capturePurpose,
+        persisted.clockSamples == receipt.clockSamples,
         persisted.videoDevice == receipt.videoDevice,
         persisted.negotiatedFormat
             == receipt.negotiatedFormat,
@@ -871,12 +879,16 @@ public final class MacCaptureUploadJobStore {
         Equatable,
         Sendable
     {
+        let schemaVersion: Int
         let inputDevice: CaptureAudioDeviceSnapshot
         let sampleRate: Double
         let bitDepth: Int
         let channelCount: Int
         let clientKind: String
         let sourceKind: String
+        let monotonicStartedNanoseconds: String
+        let monotonicStoppedNanoseconds: String?
+        let clockSamples: [ProductionCaptureClockSample]?
     }
 
     private struct MacVideoReferenceUploadSourceProfile:
@@ -897,23 +909,27 @@ public final class MacCaptureUploadJobStore {
         let includesAudio: Bool
         let audioSampleRate: Double?
         let audioChannelCount: Int?
-        let monotonicStartedNanoseconds: UInt64
-        let monotonicStoppedNanoseconds: UInt64?
-        let clockSamples: [String]?
+        let monotonicStartedNanoseconds: String
+        let monotonicStoppedNanoseconds: String?
+        let clockSamples: [ProductionCaptureClockSample]?
         let cameraDevice: CaptureVideoDeviceSnapshot
         let referenceKind: String
     }
 
     private static var encoder: JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom(
+            ProductionCaptureDateCoding.encode
+        )
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         return encoder
     }
 
     private static var decoder: JSONDecoder {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom(
+            ProductionCaptureDateCoding.decode
+        )
         return decoder
     }
 }

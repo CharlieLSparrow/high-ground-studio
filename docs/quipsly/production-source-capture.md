@@ -840,3 +840,43 @@ imports are byte-verified and locally attached, but their import receipt does
 not yet carry the immutable account, CallRoom, consent, and applied-START
 binding required by this outbox. That boundary must be added explicitly rather
 than inferred from whichever Episode Room happens to be selected later.
+
+## Implementation checkpoint — July 27, 2026 (Mac capture-clock bridge)
+
+The native Mac WAV and camera-reference MOV now enter Nest with the same
+uncertainty-bearing capture-clock evidence as iPhone sources:
+
+- After Nest applies the exact room START and before either media engine opens,
+  Quipsly Studio sends a bounded three-sample authenticated burst to the
+  room-authorized capture-clock endpoint. Every request carries the same room
+  and capture-group identity that will own the media.
+- Each accepted sample records device wall and monotonic send/receive
+  boundaries, server receive/send boundaries, measured network round trip,
+  estimated offset, uncertainty, and wall-clock discontinuity. The same
+  immutable sample set is written to both the WAV and MOV receipts and upload
+  source profiles.
+- A clock-network failure does not destroy or block an otherwise safe local
+  take. It leaves explicit missing evidence, so Nest keeps the source in
+  waveform/drift review instead of manufacturing clock alignment.
+- An account, room, or capture-group mismatch closes the accepted START and
+  refuses to open local media. It never lets clock evidence cross an identity
+  boundary.
+- Receipt dates preserve fractional ISO-8601 milliseconds while retaining
+  backward-compatible decoding of whole-second ISO and earlier Swift
+  reference-date numbers.
+- Monotonic nanoseconds use lossless decimal strings at the Nest JSON boundary.
+  This avoids JavaScript precision loss on a Mac with more than roughly
+  104 days of uptime; local Swift receipts still read both prior numeric and
+  current string encodings.
+- Nest validates the exact room, take, capture group, actor, and applied START,
+  selects the lowest-RTT valid sample, and creates only an alignment proposal.
+  Waveform correlation, drift review, playback, and explicit editor approval
+  remain mandatory before a source may be called aligned.
+
+Verification for this checkpoint passes the complete 55-test
+`QuipslyVideoCore` suite, the signed QuipslyMac build, strict Nest typecheck,
+and seven focused server-alignment tests including the long-uptime integer
+boundary. The physical gate remains unchanged: macOS camera and microphone
+permission must be granted through the visible Episode Capture Setup control,
+then an actual MOV+WAV take must be recorded, played, probed, hashed, and read
+back in the Episode Room/editor.

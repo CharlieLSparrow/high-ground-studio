@@ -23,6 +23,290 @@ public enum CaptureAuthorizationState: String, Codable, Equatable, Sendable {
     }
 }
 
+/// One uncertainty-bearing bridge between an immutable local source clock and
+/// the Episode Room server clock. Source media timestamps remain authoritative;
+/// this evidence may only seed reviewed alignment.
+public struct ProductionCaptureClockSample:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    public let protocolVersion: Int
+    public let sampleId: UUID
+    public let callRoomId: String
+    public let captureGroupId: UUID
+    public let clientKind: String
+    public let deviceWallSentAt: Date
+    public let deviceMonotonicSentNanoseconds: UInt64
+    public let serverReceivedAt: Date
+    public let serverSentAt: Date
+    public let deviceWallReceivedAt: Date
+    public let deviceMonotonicReceivedNanoseconds: UInt64
+    public let networkRoundTripMilliseconds: Double
+    public let serverOffsetMilliseconds: Double
+    public let uncertaintyMilliseconds: Double
+    public let wallClockDiscontinuityMilliseconds: Double
+
+    public var id: UUID { sampleId }
+
+    public init(
+        protocolVersion: Int,
+        sampleId: UUID,
+        callRoomId: String,
+        captureGroupId: UUID,
+        clientKind: String,
+        deviceWallSentAt: Date,
+        deviceMonotonicSentNanoseconds: UInt64,
+        serverReceivedAt: Date,
+        serverSentAt: Date,
+        deviceWallReceivedAt: Date,
+        deviceMonotonicReceivedNanoseconds: UInt64,
+        networkRoundTripMilliseconds: Double,
+        serverOffsetMilliseconds: Double,
+        uncertaintyMilliseconds: Double,
+        wallClockDiscontinuityMilliseconds: Double
+    ) {
+        self.protocolVersion = protocolVersion
+        self.sampleId = sampleId
+        self.callRoomId = callRoomId
+        self.captureGroupId = captureGroupId
+        self.clientKind = clientKind
+        self.deviceWallSentAt = deviceWallSentAt
+        self.deviceMonotonicSentNanoseconds =
+            deviceMonotonicSentNanoseconds
+        self.serverReceivedAt = serverReceivedAt
+        self.serverSentAt = serverSentAt
+        self.deviceWallReceivedAt = deviceWallReceivedAt
+        self.deviceMonotonicReceivedNanoseconds =
+            deviceMonotonicReceivedNanoseconds
+        self.networkRoundTripMilliseconds =
+            networkRoundTripMilliseconds
+        self.serverOffsetMilliseconds = serverOffsetMilliseconds
+        self.uncertaintyMilliseconds = uncertaintyMilliseconds
+        self.wallClockDiscontinuityMilliseconds =
+            wallClockDiscontinuityMilliseconds
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case protocolVersion
+        case sampleId
+        case callRoomId
+        case captureGroupId
+        case clientKind
+        case deviceWallSentAt
+        case deviceMonotonicSentNanoseconds
+        case serverReceivedAt
+        case serverSentAt
+        case deviceWallReceivedAt
+        case deviceMonotonicReceivedNanoseconds
+        case networkRoundTripMilliseconds
+        case serverOffsetMilliseconds
+        case uncertaintyMilliseconds
+        case wallClockDiscontinuityMilliseconds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(
+            keyedBy: CodingKeys.self
+        )
+        protocolVersion = try container.decode(
+            Int.self,
+            forKey: .protocolVersion
+        )
+        sampleId = try container.decode(
+            UUID.self,
+            forKey: .sampleId
+        )
+        callRoomId = try container.decode(
+            String.self,
+            forKey: .callRoomId
+        )
+        captureGroupId = try container.decode(
+            UUID.self,
+            forKey: .captureGroupId
+        )
+        clientKind = try container.decode(
+            String.self,
+            forKey: .clientKind
+        )
+        deviceWallSentAt = try container.decode(
+            Date.self,
+            forKey: .deviceWallSentAt
+        )
+        deviceMonotonicSentNanoseconds = try Self.decodeNanoseconds(
+            from: container,
+            forKey: .deviceMonotonicSentNanoseconds
+        )
+        serverReceivedAt = try container.decode(
+            Date.self,
+            forKey: .serverReceivedAt
+        )
+        serverSentAt = try container.decode(
+            Date.self,
+            forKey: .serverSentAt
+        )
+        deviceWallReceivedAt = try container.decode(
+            Date.self,
+            forKey: .deviceWallReceivedAt
+        )
+        deviceMonotonicReceivedNanoseconds =
+            try Self.decodeNanoseconds(
+                from: container,
+                forKey: .deviceMonotonicReceivedNanoseconds
+            )
+        networkRoundTripMilliseconds = try container.decode(
+            Double.self,
+            forKey: .networkRoundTripMilliseconds
+        )
+        serverOffsetMilliseconds = try container.decode(
+            Double.self,
+            forKey: .serverOffsetMilliseconds
+        )
+        uncertaintyMilliseconds = try container.decode(
+            Double.self,
+            forKey: .uncertaintyMilliseconds
+        )
+        wallClockDiscontinuityMilliseconds = try container.decode(
+            Double.self,
+            forKey: .wallClockDiscontinuityMilliseconds
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(
+            keyedBy: CodingKeys.self
+        )
+        try container.encode(
+            protocolVersion,
+            forKey: .protocolVersion
+        )
+        try container.encode(sampleId, forKey: .sampleId)
+        try container.encode(callRoomId, forKey: .callRoomId)
+        try container.encode(
+            captureGroupId,
+            forKey: .captureGroupId
+        )
+        try container.encode(clientKind, forKey: .clientKind)
+        try container.encode(
+            deviceWallSentAt,
+            forKey: .deviceWallSentAt
+        )
+        try container.encode(
+            String(deviceMonotonicSentNanoseconds),
+            forKey: .deviceMonotonicSentNanoseconds
+        )
+        try container.encode(
+            serverReceivedAt,
+            forKey: .serverReceivedAt
+        )
+        try container.encode(
+            serverSentAt,
+            forKey: .serverSentAt
+        )
+        try container.encode(
+            deviceWallReceivedAt,
+            forKey: .deviceWallReceivedAt
+        )
+        try container.encode(
+            String(deviceMonotonicReceivedNanoseconds),
+            forKey: .deviceMonotonicReceivedNanoseconds
+        )
+        try container.encode(
+            networkRoundTripMilliseconds,
+            forKey: .networkRoundTripMilliseconds
+        )
+        try container.encode(
+            serverOffsetMilliseconds,
+            forKey: .serverOffsetMilliseconds
+        )
+        try container.encode(
+            uncertaintyMilliseconds,
+            forKey: .uncertaintyMilliseconds
+        )
+        try container.encode(
+            wallClockDiscontinuityMilliseconds,
+            forKey: .wallClockDiscontinuityMilliseconds
+        )
+    }
+
+    private static func decodeNanoseconds(
+        from container: KeyedDecodingContainer<CodingKeys>,
+        forKey key: CodingKeys
+    ) throws -> UInt64 {
+        if let value = try? container.decode(
+            UInt64.self,
+            forKey: key
+        ) {
+            return value
+        }
+        let encoded = try container.decode(
+            String.self,
+            forKey: key
+        )
+        guard let value = UInt64(encoded) else {
+            throw DecodingError.dataCorruptedError(
+                forKey: key,
+                in: container,
+                debugDescription:
+                    "Expected unsigned nanoseconds as a decimal string."
+            )
+        }
+        return value
+    }
+}
+
+/// Shared receipt date coding preserves millisecond clock evidence while
+/// continuing to read Quipsly's earlier whole-second ISO and Foundation-date
+/// receipts.
+public enum ProductionCaptureDateCoding {
+    public static let encode:
+        @Sendable (Date, Encoder) throws -> Void =
+    { date, encoder in
+        var container = encoder.singleValueContainer()
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [
+            .withInternetDateTime,
+            .withFractionalSeconds,
+        ]
+        try container.encode(formatter.string(from: date))
+    }
+
+    public static let decode:
+        @Sendable (Decoder) throws -> Date =
+    { decoder in
+        let container = try decoder.singleValueContainer()
+        if let value = try? container.decode(String.self) {
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [
+                .withInternetDateTime,
+                .withFractionalSeconds,
+            ]
+            if let date = fractional.date(from: value) {
+                return date
+            }
+            let wholeSeconds = ISO8601DateFormatter()
+            wholeSeconds.formatOptions = [.withInternetDateTime]
+            if let date = wholeSeconds.date(from: value) {
+                return date
+            }
+        }
+        if let referenceSeconds =
+            try? container.decode(Double.self),
+           referenceSeconds.isFinite {
+            return Date(
+                timeIntervalSinceReferenceDate:
+                    referenceSeconds
+            )
+        }
+        throw DecodingError.dataCorruptedError(
+            in: container,
+            debugDescription:
+                "Expected a Quipsly ISO-8601 or legacy Foundation date."
+        )
+    }
+}
+
 public struct CaptureVideoFormatSnapshot: Codable, Equatable, Sendable {
     public let width: Int
     public let height: Int

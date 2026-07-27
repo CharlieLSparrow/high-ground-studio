@@ -123,6 +123,43 @@ describe("capture source alignment proposal", () => {
     expect(proposal.sampleAccurateClaimed).toBe(false);
   });
 
+  it("accepts lossless Mac monotonic strings after more than 104 days of uptime", () => {
+    const proposal = buildCaptureSourceAlignmentProposal({
+      sourceProfile: {
+        schemaVersion: 1,
+        monotonicStartedNanoseconds: "10000000500000000",
+        monotonicStoppedNanoseconds: "10000002500000000",
+        clockSamples: [{
+          ...isoSample({
+            clientKind: "macos",
+            deviceMonotonicSentNanoseconds: "10000000000000000",
+            deviceMonotonicReceivedNanoseconds: "10000000110000000",
+            networkRoundTripMilliseconds: 100,
+            uncertaintyMilliseconds: 50,
+          }),
+        }],
+      },
+      callRoomId: "room-1",
+      captureId: "capture-1",
+      captureGroupId: "group-1",
+      actorUserId: "user-1",
+      startReceiptId: "receipt-1",
+      startReceipt: receipt,
+    });
+
+    expect(proposal).toMatchObject({
+      status: "proposal-ready",
+      estimatedServerStartedAt: "2026-07-27T18:00:00.520Z",
+      sourceClockEvidence: "lowest-rtt-monotonic-projection",
+      sampleAccurateClaimed: false,
+      reviewRequired: true,
+      selectedClockSample: {
+        clientKind: "macos",
+        sourceProfileDateEncoding: "iso8601",
+      },
+    });
+  });
+
   it("refuses a room/take mismatch and never upgrades it to aligned", () => {
     const proposal = buildCaptureSourceAlignmentProposal({
       sourceProfile: {
