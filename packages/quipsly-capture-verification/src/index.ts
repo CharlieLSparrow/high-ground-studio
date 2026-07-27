@@ -145,6 +145,9 @@ export function parseLongSourceWorkerManifest(
     expectedUploadSessionId,
   );
   const sha256 = string(candidate.sha256)?.toLowerCase() ?? "";
+  const captureId = normalizeUploadSessionId(
+    string(candidate.captureId)?.toLowerCase() ?? "",
+  );
   const size = Number(candidate.expectedSizeBytes);
   const objectName = string(candidate.objectName) ?? "";
   const contentType = string(candidate.contentType)?.toLowerCase() ?? "";
@@ -165,7 +168,8 @@ export function parseLongSourceWorkerManifest(
     !nonempty(string(candidate.projectId)) ||
     !nonempty(string(candidate.projectSlug)) ||
     !nonempty(string(candidate.recordingConsentId)) ||
-    candidate.captureId !== uploadSessionId ||
+    !captureId ||
+    candidate.captureId !== captureId ||
     !["eligible", "preservation-only"].includes(
       string(candidate.processingDisposition) ?? "",
     ) ||
@@ -189,7 +193,7 @@ export function parseLongSourceWorkerManifest(
     projectId: string(candidate.projectId)!,
     projectSlug: string(candidate.projectSlug)!,
     recordingConsentId: string(candidate.recordingConsentId)!,
-    captureId: uploadSessionId,
+    captureId,
     startReceiptId: string(candidate.startReceiptId)!,
     consentVersion: string(candidate.consentVersion)!,
     processingDisposition: candidate.processingDisposition as

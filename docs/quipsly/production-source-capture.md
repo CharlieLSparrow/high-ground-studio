@@ -318,6 +318,11 @@ pass a thermal/storage compatibility matrix.
 Every independent file has:
 
 - `sourceId`: one immutable local/server source identity;
+- `uploadSessionId`: one immutable resumable-transfer identity for exactly one
+  file; retries reuse it, while a second audio or video file receives another;
+- `captureId`: the actor-owned recording interval bound to the Episode Room's
+  applied START receipt; every source intentionally recorded in that interval
+  may share it;
 - `captureGroupId`: one participant's continuous recording intention;
 - `callRoomId`, `participantId`, `projectSlug`, and `episodeSlug`;
 - media kind, camera position/device unique ID, codec, dimensions, frame rate,
@@ -364,6 +369,16 @@ contracts remain the authoritative server path. A `captureGroupId` starts in
 the immutable source manifest so video can ship without a destructive schema
 rewrite; it becomes a relational indexed field only with an additive migration
 and backfill/readback gate.
+
+The canonical resumable contract now keeps transfer identity separate from
+recording identity. Existing clients that omit `captureId` continue to default
+it—and then `captureGroupId`—to `uploadSessionId`. Production multi-source
+clients send a unique `uploadSessionId` per file and the same explicit
+`captureId`/`captureGroupId` for the take. Nest accepts that shared identity only
+when the manifest's room, actor, and capture ID exactly match the stored
+room-readiness evidence; disagreement is normalized to preservation-only rather
+than inheriting processing authority. The long-video verifier independently
+preserves and validates the same distinct capture ID.
 
 ## Recording UX
 

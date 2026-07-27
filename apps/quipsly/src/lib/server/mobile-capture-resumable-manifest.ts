@@ -8,6 +8,8 @@ import {
   parseLongSourceVerificationState,
 } from "@high-ground/quipsly-capture-verification";
 
+import { isSafeMobileCaptureUploadSessionId } from "@/lib/server/mobile-capture-security";
+
 const MOBILE_CAPTURE_ROOM_READINESS_VERSION = 1 as const;
 
 /**
@@ -19,10 +21,26 @@ export function normalizeMobileCaptureResumableManifestForRead(
   value: Partial<MobileCaptureResumableManifest>,
   expectedSessionId: string,
 ): MobileCaptureResumableManifest {
+  const declaredCaptureId = value.captureId?.trim().toLowerCase() || "";
+  const captureId = isSafeMobileCaptureUploadSessionId(declaredCaptureId)
+    ? declaredCaptureId
+    : expectedSessionId;
+  const declaredCaptureGroupId =
+    value.captureGroupId?.trim().toLowerCase() || "";
+  const captureGroupId = isSafeMobileCaptureUploadSessionId(
+    declaredCaptureGroupId,
+  )
+    ? declaredCaptureGroupId
+    : captureId;
   const hasHardenedRoomBinding =
-    value.captureId === expectedSessionId
+    isSafeMobileCaptureUploadSessionId(declaredCaptureId)
     && value.initialRoomReadiness?.version === MOBILE_CAPTURE_ROOM_READINESS_VERSION
-    && typeof value.processingDisposition === "string";
+    && value.initialRoomReadiness.captureId === captureId
+    && value.initialRoomReadiness.roomId === value.callRoomId
+    && value.initialRoomReadiness.actorUserId === value.actorUserId
+    && ["eligible", "preservation-only"].includes(
+      value.processingDisposition || "",
+    );
   const legacyFinalization = value.finalization as Partial<MobileCaptureResumableFinalizationEvidence> | null | undefined;
   const normalizedFinalization = legacyFinalization
     ? hasHardenedRoomBinding
@@ -73,7 +91,6 @@ export function normalizeMobileCaptureResumableManifestForRead(
         },
       } as MobileCaptureResumableFinalizationEvidence
     : null;
-  const captureId = value.captureId || expectedSessionId;
   const longSourceVerification = value.longSourceVerification == null
     ? null
     : parseLongSourceVerificationState(
@@ -106,7 +123,7 @@ export function normalizeMobileCaptureResumableManifestForRead(
     gcsUri: value.storageBackend === "local-development" ? null : value.gcsUri ?? value.storageUri ?? null,
     localUploadTokenSha256: value.localUploadTokenSha256 ?? null,
     captureId,
-    captureGroupId: value.captureGroupId || captureId,
+    captureGroupId,
     sourceProfileJson: value.sourceProfileJson ?? null,
     initialRoomReadiness: hasHardenedRoomBinding
       ? {

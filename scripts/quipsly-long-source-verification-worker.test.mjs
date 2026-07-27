@@ -18,6 +18,7 @@ import {
 } from "../apps/quipsly-media-verifier/src/worker.ts";
 
 const uploadSessionId = "9d8c0c81-847f-4e16-96d0-26b494c890aa";
+const captureId = "11111111-1111-4111-8111-111111111111";
 const manifestObjectName =
   `media-vault/control/mobile-capture-resumable/${uploadSessionId}.json`;
 const queueObjectName = buildLongSourceQueueObjectName(uploadSessionId);
@@ -55,7 +56,7 @@ function manifest() {
     projectId: "project-1",
     projectSlug: "high-ground-odyssey",
     recordingConsentId: "consent-1",
-    captureId: uploadSessionId,
+    captureId,
     startReceiptId: "start-1",
     consentVersion,
     processingDisposition: "eligible",
@@ -85,7 +86,7 @@ function sourceEvidence(overrides = {}) {
       quipslyProjectId: "project-1",
       quipslyProjectSlug: "high-ground-odyssey",
       quipslyRecordingConsentId: "consent-1",
-      quipslyCaptureId: uploadSessionId,
+      quipslyCaptureId: captureId,
       quipslyStartReceiptId: "start-1",
       quipslyConsentVersion: consentVersion,
       quipslyProcessingDisposition: "eligible",
@@ -202,9 +203,21 @@ test("queue and manifest parsers reject path and authority drift", () => {
     /invalid/,
   );
   assert.equal(
+    parseLongSourceWorkerManifest(manifest(), uploadSessionId).captureId,
+    captureId,
+  );
+  assert.equal(
     parseLongSourceWorkerManifest(manifest(), uploadSessionId)
       .roomReadinessBindingVersion,
     1,
+  );
+  assert.throws(
+    () =>
+      parseLongSourceWorkerManifest(
+        { ...manifest(), captureId: "not-a-uuid" },
+        uploadSessionId,
+      ),
+    /invalid/,
   );
   assert.throws(
     () =>

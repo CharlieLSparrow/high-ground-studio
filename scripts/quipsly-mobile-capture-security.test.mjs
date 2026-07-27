@@ -9,11 +9,13 @@ import {
   isSafeMobileCaptureUploadSessionId,
   mobileCaptureManifestBindingMismatch,
   mobileCaptureResumableBindingMismatch,
+  normalizeMobileCaptureUploadIdentity,
   normalizeMobileCaptureSha256,
   resolveMobileCaptureUploadSessionDirectory,
 } from "../apps/quipsly/src/lib/server/mobile-capture-security.ts";
 
 const validSessionId = "9d8c0c81-847f-4e16-96d0-26b494c890aa";
+const sharedCaptureId = "11111111-1111-4111-8111-111111111111";
 
 test("mobile upload session IDs are UUID-shaped and stay inside the ingest root", () => {
   const root = path.resolve("/tmp/quipsly-mobile-chunk-ingest-test");
@@ -87,10 +89,36 @@ test("resumable manifests use a private deterministic control path and strict SH
   assert.equal(normalizeMobileCaptureSha256(`${"a".repeat(64)}/escape`), null);
 });
 
+test("one capture identity can bind multiple independent upload sessions", () => {
+  assert.deepEqual(
+    normalizeMobileCaptureUploadIdentity({
+      uploadSessionId: validSessionId.toUpperCase(),
+    }),
+    {
+      uploadSessionId: validSessionId,
+      captureId: validSessionId,
+      captureGroupId: validSessionId,
+    },
+    "legacy clients retain one-source identity defaults",
+  );
+  assert.deepEqual(
+    normalizeMobileCaptureUploadIdentity({
+      uploadSessionId: validSessionId,
+      captureId: sharedCaptureId,
+    }),
+    {
+      uploadSessionId: validSessionId,
+      captureId: sharedCaptureId,
+      captureGroupId: sharedCaptureId,
+    },
+    "new clients may give a source upload the shared take identity",
+  );
+});
+
 test("resumable upload recovery rejects any mutation to consent, session, bytes, or checksum", () => {
   const binding = {
     uploadSessionId: validSessionId,
-    captureId: validSessionId,
+    captureId: sharedCaptureId,
     actorUserId: "user-a",
     actorEmail: "user-a@example.com",
     projectId: "project-a",
@@ -107,7 +135,7 @@ test("resumable upload recovery rejects any mutation to consent, session, bytes,
     recordingConsentId: "consent-a",
     recordingAssetId: null,
     capturePurpose: "podcast",
-    captureGroupId: "11111111-1111-4111-8111-111111111111",
+    captureGroupId: sharedCaptureId,
     sourceProfileJson: "{\"codec\":\"aac-lc\",\"container\":\"m4a\"}",
     startedAt: "2026-07-18T01:00:00.000Z",
     stoppedAt: "2026-07-18T01:10:00.000Z",
@@ -117,7 +145,7 @@ test("resumable upload recovery rejects any mutation to consent, session, bytes,
   assert.equal(mobileCaptureResumableBindingMismatch(binding, binding), null);
   for (const [field, value] of [
     ["recordingConsentId", "consent-b"],
-    ["captureId", "11111111-1111-4111-8111-111111111111"],
+    ["captureId", "22222222-2222-4222-8222-222222222222"],
     ["callRoomId", "room-b"],
     ["expectedSizeBytes", 4097],
     ["sha256", "c".repeat(64)],

@@ -30,6 +30,7 @@ import {
   isSafeMobileCaptureUploadSessionId,
   mobileCaptureManifestBindingMismatch,
   mobileCaptureResumableBindingMismatch,
+  normalizeMobileCaptureUploadIdentity,
   normalizeMobileCaptureSha256,
   type MobileCaptureResumableImmutableBinding,
 } from "@/lib/server/mobile-capture-security";
@@ -51,6 +52,7 @@ const SAFE_PROJECT_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,127}$/i;
 
 type CreatePayload = {
   uploadSessionId: string;
+  captureId: string;
   projectId: string | null;
   projectSlug: string | null;
   fileName: string;
@@ -132,7 +134,18 @@ function parseCreatePayload(value: unknown):
     return { ok: false, error: "Send a JSON mobile capture upload manifest." };
   }
   const body = value as Record<string, unknown>;
-  const uploadSessionId = text(body.uploadSessionId, 64)?.toLowerCase() || "";
+  const rawUploadSessionId = text(body.uploadSessionId, 64) || "";
+  const captureIdWasProvided = body.captureId != null && body.captureId !== "";
+  const rawCaptureId = optionalText(body.captureId, 64);
+  const captureGroupIdWasProvided =
+    body.captureGroupId != null && body.captureGroupId !== "";
+  const rawCaptureGroupId = optionalText(body.captureGroupId, 64);
+  const { uploadSessionId, captureId, captureGroupId } =
+    normalizeMobileCaptureUploadIdentity({
+      uploadSessionId: rawUploadSessionId,
+      captureId: rawCaptureId,
+      captureGroupId: rawCaptureGroupId,
+    });
   const projectId = optionalText(body.projectId, 128);
   const projectSlug = optionalText(body.projectSlug, 128);
   const fileName = text(body.fileName, 200) || "";
@@ -149,8 +162,6 @@ function parseCreatePayload(value: unknown):
   const recordingConsentId = text(body.recordingConsentId, 256) || "";
   const recordingAssetId = optionalText(body.recordingAssetId, 256);
   const capturePurpose = optionalText(body.capturePurpose, 160);
-  const rawCaptureGroupId = optionalText(body.captureGroupId, 64)?.toLowerCase();
-  const captureGroupId = rawCaptureGroupId || uploadSessionId;
   const hasSourceProfile = body.sourceProfileJson != null || body.sourceProfile != null;
   const normalizedSourceProfile = sourceProfileJson(
     body.sourceProfileJson ?? body.sourceProfile,
@@ -163,6 +174,15 @@ function parseCreatePayload(value: unknown):
 
   if (!isSafeMobileCaptureUploadSessionId(uploadSessionId)) {
     return { ok: false, error: "uploadSessionId must be a UUID." };
+  }
+  if (captureIdWasProvided && !rawCaptureId) {
+    return { ok: false, error: "captureId must be a UUID." };
+  }
+  if (!isSafeMobileCaptureUploadSessionId(captureId)) {
+    return { ok: false, error: "captureId must be a UUID." };
+  }
+  if (captureGroupIdWasProvided && !rawCaptureGroupId) {
+    return { ok: false, error: "captureGroupId must be a UUID." };
   }
   if (!isSafeMobileCaptureUploadSessionId(captureGroupId)) {
     return { ok: false, error: "captureGroupId must be a UUID." };
@@ -209,6 +229,7 @@ function parseCreatePayload(value: unknown):
     ok: true,
     payload: {
       uploadSessionId,
+      captureId,
       projectId,
       projectSlug,
       fileName,
@@ -325,6 +346,8 @@ function responseFor(
     created,
     contractKind: MOBILE_CAPTURE_RESUMABLE_CONTRACT_KIND,
     uploadSessionId: manifest.uploadSessionId,
+    captureId: manifest.captureId,
+    captureGroupId: manifest.captureGroupId,
     uploadStage,
     readyToFinalize: objectExists || manifest.status === "verified",
     objectName: manifest.objectName,
@@ -528,7 +551,7 @@ export async function POST(request: Request) {
     }
     const binding: MobileCaptureResumableImmutableBinding = {
       uploadSessionId: payload.uploadSessionId,
-      captureId: payload.uploadSessionId,
+      captureId: payload.captureId,
       actorUserId: session.user.id,
       actorEmail: session.user.primaryEmail.trim().toLowerCase(),
       projectId: resolvedProject.id,

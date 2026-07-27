@@ -20,6 +20,18 @@ export function isSafeMobileCaptureUploadSessionId(value: string) {
   return MOBILE_CAPTURE_UPLOAD_SESSION_ID_PATTERN.test(value.trim());
 }
 
+export function normalizeMobileCaptureUploadIdentity(input: {
+  uploadSessionId: string;
+  captureId?: string | null;
+  captureGroupId?: string | null;
+}) {
+  const uploadSessionId = input.uploadSessionId.trim().toLowerCase();
+  const captureId = input.captureId?.trim().toLowerCase() || uploadSessionId;
+  const captureGroupId =
+    input.captureGroupId?.trim().toLowerCase() || captureId;
+  return { uploadSessionId, captureId, captureGroupId };
+}
+
 export function normalizeMobileCaptureSha256(value: string) {
   const normalized = value.trim().toLowerCase();
   return MOBILE_CAPTURE_SHA256_PATTERN.test(normalized) ? normalized : null;

@@ -36,6 +36,8 @@ test("canonical upload creation is authenticated, room-project-bound, consent-bo
     "mobileCaptureResumableBindingMismatch",
     "evaluateMobileCaptureRoomReadiness",
     "preservation-only",
+    "normalizeMobileCaptureUploadIdentity",
+    "captureId: payload.captureId",
     "captureGroupId",
     "sourceProfileJson",
   ]) {
@@ -54,6 +56,54 @@ test("canonical upload creation is authenticated, room-project-bound, consent-bo
   assert.ok(sessionsRoute.includes("projectId: captureProjectId"));
   assert.equal(sessionsRoute.includes('nestSlug: text(body.nestSlug) || "home"'), false,
     "quick sessions must bind the real actor Home Nest instead of a non-existent literal alias");
+});
+
+test("hardened manifests allow unique uploads to share one take identity only with exact room evidence", () => {
+  const firstUploadSessionId = "9d8c0c81-847f-4e16-96d0-26b494c890aa";
+  const secondUploadSessionId = "f6f9d5ad-8d6b-4924-8d93-53ddde6ff286";
+  const captureId = "11111111-1111-4111-8111-111111111111";
+  const base = {
+    kind: "quipsly-mobile-capture-gcs-resumable-v2",
+    version: 2,
+    actorUserId: "actor-1",
+    callRoomId: "room-1",
+    recordingConsentId: "consent-1",
+    captureId,
+    captureGroupId: captureId,
+    processingDisposition: "eligible",
+    createdAt: "2026-07-27T00:00:00.000Z",
+    initialRoomReadiness: {
+      version: 1,
+      captureId,
+      roomId: "room-1",
+      actorUserId: "actor-1",
+    },
+  };
+
+  for (const uploadSessionId of [firstUploadSessionId, secondUploadSessionId]) {
+    const normalized = normalizeMobileCaptureResumableManifestForRead(
+      { ...base, uploadSessionId },
+      uploadSessionId,
+    );
+    assert.equal(normalized.captureId, captureId);
+    assert.equal(normalized.captureGroupId, captureId);
+    assert.equal(normalized.roomReadinessBindingVersion, 1);
+    assert.equal(normalized.processingDisposition, "eligible");
+  }
+
+  const mismatched = normalizeMobileCaptureResumableManifestForRead(
+    {
+      ...base,
+      uploadSessionId: firstUploadSessionId,
+      initialRoomReadiness: {
+        ...base.initialRoomReadiness,
+        captureId: secondUploadSessionId,
+      },
+    },
+    firstUploadSessionId,
+  );
+  assert.equal(mismatched.roomReadinessBindingVersion, 0);
+  assert.equal(mismatched.processingDisposition, "preservation-only");
 });
 
 test("legacy v2 manifests normalize to preservation-only while quarantining historical authority claims", () => {

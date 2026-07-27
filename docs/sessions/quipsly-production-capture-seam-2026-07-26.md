@@ -51,6 +51,13 @@ alignment and non-destructive editorial decisions.
 - separate call-event receipts that contain exact routes and capture-group
   identity but never contain a participant token, bearer token, or provider
   secret;
+- a backward-compatible canonical upload identity contract: each file owns a
+  unique resumable `uploadSessionId`, while Mac audio, Canon/iPhone video, and
+  later source boundaries may share the one applied-START `captureId` and
+  `captureGroupId`;
+- fail-closed manifest normalization that recognizes a distinct capture ID only
+  when room, actor, and capture readiness evidence agree exactly, plus
+  long-video worker verification of that independent identity;
 - explicit UX that joining sends no video, starts no recording, and leaves the
   local WAV recorder independent;
 - background loading for the large source-aware waveform map;
@@ -61,6 +68,7 @@ alignment and non-destructive editorial decisions.
 
 - `pnpm --filter quipsly typecheck`
 - mobile-session canonical identity/readiness Jest: 11/11
+- canonical upload/security/long-video identity contract tests: 24/24
 - clock route Jest: 4/4
 - QuipslyVideoCore: 34/34, including exact LiveKit/Core Audio UID routing,
   physical-versus-virtual MV7i truth, secret-free room receipts, real-MP4
