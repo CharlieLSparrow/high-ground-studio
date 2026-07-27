@@ -296,6 +296,14 @@ final class VideoCaptureController: ObservableObject {
             state = .arming
             let recordingID = UUID()
             let groupID = captureGroupID ?? UUID()
+            let clockSamples = await CaptureClockClient.shared.measureBurst(
+                callRoomID: context.callRoomID,
+                captureGroupID: groupID,
+                expectedOwnerAccountID: ownerSnapshot.ownerAccountID
+            )
+            guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+                throw VideoCaptureControllerError.ownerChanged
+            }
             let startReceipt = try receiptStore.enqueueDurably(
                 captureID: recordingID,
                 sessionID: context.sessionID,
@@ -325,7 +333,8 @@ final class VideoCaptureController: ObservableObject {
                 includesAudio: profile.includesAudio,
                 audioSampleRate: profile.audioSampleRate,
                 audioChannelCount: profile.audioChannelCount,
-                monotonicStartedNanoseconds: monotonicStarted
+                monotonicStartedNanoseconds: monotonicStarted,
+                clockSamples: clockSamples.isEmpty ? nil : clockSamples
             )
             let localContext = LocalRecordingSessionContext(
                 projectSlug: context.projectSlug,

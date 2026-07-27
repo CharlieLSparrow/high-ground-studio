@@ -84,6 +84,7 @@ export async function GET(request: Request) {
       roomJoin: "/api/mobile/capture/rooms/join",
       roomJoinDiagnostics: "/api/mobile/capture/rooms/join/diagnostics",
       roomState: "/api/mobile/capture/rooms/state",
+      clockSample: "/api/mobile/capture/clock-sample",
       providerRecording: "/api/mobile/capture/rooms/provider-recording",
       promoteRecording: "/api/mobile/capture/recordings/promote",
       transcriptRun: "/api/mobile/capture/transcripts/run",

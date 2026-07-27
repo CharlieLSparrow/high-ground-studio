@@ -27,7 +27,15 @@ targets:
         SWIFT_VERSION: "5.9"
         PRODUCT_BUNDLE_IDENTIFIER: com.highground.QuipslyMac
         GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Quipsly Studio
+        INFOPLIST_KEY_CFBundleName: Quipsly Studio
         INFOPLIST_KEY_NSPrincipalClass: NSApplication
+        INFOPLIST_KEY_NSCameraUsageDescription: Quipsly Studio uses the camera you explicitly select for episode framing and locally recorded source media.
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Quipsly Studio records the microphone you explicitly select as an untouched local episode master and call source.
+        INFOPLIST_KEY_NSDocumentsFolderUsageDescription: Quipsly Studio can import documents you choose for writing, research, and production work.
+        INFOPLIST_KEY_NSDownloadsFolderUsageDescription: Quipsly Studio can import downloaded media or research files that you choose.
+        INFOPLIST_KEY_NSRemovableVolumesUsageDescription: Quipsly Studio needs access to external media drives so it can read originals, build proxies, and export episodes without mutating source files.
+        INFOPLIST_KEY_NSDesktopFolderUsageDescription: Quipsly Studio can read legacy media or export packets from Desktop when you explicitly grant access.
 
   QuipslyiOS:
     type: application

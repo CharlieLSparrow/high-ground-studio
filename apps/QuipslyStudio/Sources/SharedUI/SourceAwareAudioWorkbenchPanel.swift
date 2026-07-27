@@ -61,14 +61,15 @@ struct SourceAwareAudioWorkbenchPanel: View {
     var onOpenPath: (String, String) -> Void
     var onCopyText: (String, String) -> Void
 
-    @State private var snapshot = SourceAwareAudioWorkbenchSnapshot.load()
+    @State private var snapshot = SourceAwareAudioWorkbenchSnapshot.loading
+    @State private var isLoadingSnapshot = false
     @State private var playingPath = ""
     @State private var playingLabel = ""
     @State private var sequenceTime = 0.0
     @State private var audioRoomClock = AudioRoomLiveClock()
     @State private var selectedTrackRoleId = "charlie"
-    @State private var showListeningRoom = true
-    @State private var statusNote = "Ready to listen from source-aware truth."
+    @State private var showListeningRoom = false
+    @State private var statusNote = "Loading source-aware audio truth without blocking the editor…"
 
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
@@ -84,7 +85,7 @@ struct SourceAwareAudioWorkbenchPanel: View {
         }
         .background(QuipslyStudioTheme.sidePanelGradient)
         .task(id: activeSessionName) {
-            snapshot = SourceAwareAudioWorkbenchSnapshot.load()
+            await reloadSnapshot()
             sequenceTime = playbackEngine.playhead
             audioRoomClock.sequenceTime = playbackEngine.playhead
         }
@@ -422,11 +423,18 @@ struct SourceAwareAudioWorkbenchPanel: View {
                     .foregroundStyle(QuipslyStudioTheme.creekMist)
                 Spacer()
                 Button {
-                    snapshot = SourceAwareAudioWorkbenchSnapshot.load()
-                    statusNote = "Refreshed source-aware audio truth."
+                    Task {
+                        await reloadSnapshot()
+                    }
                 } label: {
-                    Image(systemName: "arrow.clockwise")
+                    if isLoadingSnapshot {
+                        ProgressView()
+                            .controlSize(.mini)
+                    } else {
+                        Image(systemName: "arrow.clockwise")
+                    }
                 }
+                .disabled(isLoadingSnapshot)
                 .buttonStyle(.bordered)
                 .controlSize(.mini)
                 .help("Reload the current source-aware audio workbench files from disk.")
@@ -436,6 +444,25 @@ struct SourceAwareAudioWorkbenchPanel: View {
                 audioTrackCard(track)
             }
         }
+    }
+
+    @MainActor
+    private func reloadSnapshot() async {
+        guard !isLoadingSnapshot else { return }
+        isLoadingSnapshot = true
+        statusNote = "Loading source-aware audio truth in the background…"
+        let loaded = await Task.detached(priority: .utility) {
+            SourceAwareAudioWorkbenchSnapshot.load()
+        }.value
+        guard !Task.isCancelled else {
+            isLoadingSnapshot = false
+            return
+        }
+        snapshot = loaded
+        isLoadingSnapshot = false
+        statusNote = loaded.isReady
+            ? "Source-aware audio truth loaded. Ready to listen."
+            : loaded.loadError
     }
 
     private func audioTrackCard(_ track: SourceAwareAudioTrackSnapshot) -> some View {
@@ -5812,7 +5839,7 @@ private struct ProAudioStemComparisonLegend: View {
     }
 }
 
-private struct SourceAwareAudioWorkbenchSnapshot {
+private struct SourceAwareAudioWorkbenchSnapshot: @unchecked Sendable {
     static let baselineDir = "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Sync_Producer_Takes/20260709-episode4-conformed-audio-baseline-v005-20260709-183059/work/conformed-production-baseline/profile-promotion-v005-to-v006-homer-preserving-clean-20260710-030310"
     static let workbenchPath = "\(baselineDir)/AUDIO_SOURCE_AWARE_LISTEN_WORKBENCH.json"
     static let segmentMapPath = "\(baselineDir)/AUDIO_SEGMENT_LOUDNESS_MAP.json"
@@ -5829,6 +5856,19 @@ private struct SourceAwareAudioWorkbenchSnapshot {
     let tracks: [SourceAwareAudioTrackSnapshot]
     let reviewWindows: [SourceAwareAudioReviewWindowSnapshot]
     let loadError: String
+
+    static let loading = SourceAwareAudioWorkbenchSnapshot(
+        status: "loading",
+        approvalStatus: "loading",
+        branchRenderReady: false,
+        readyStemCount: 0,
+        htmlPath: "",
+        masterListenPath: "",
+        masterDurationSeconds: 0,
+        tracks: [],
+        reviewWindows: [],
+        loadError: "Loading source-aware audio evidence…"
+    )
 
     var isReady: Bool {
         loadError.isEmpty && !tracks.isEmpty

@@ -81,6 +81,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         let requiresDurableRoomReceipt: Bool
         let startReceiptID: UUID?
         let ownerSnapshot: AuthManager.StableOwnerSnapshot
+        let clockSamples: [LocalRecordingClockSample]
     }
 
     private var pendingCaptureIntent: CaptureIntent?
@@ -122,7 +123,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
         sessionID: String?,
         callRoomID: String?,
         requiresDurableRoomReceipt: Bool,
-        expectedOwnerSnapshot: AuthManager.StableOwnerSnapshot
+        expectedOwnerSnapshot: AuthManager.StableOwnerSnapshot,
+        clockSamples: [LocalRecordingClockSample] = []
     ) throws {
         guard !captureState.isCaptureActive, captureState != .preparing,
               pendingCaptureIntent == nil else {
@@ -155,7 +157,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
             callRoomID: normalizedCallRoomID,
             requiresDurableRoomReceipt: requiresDurableRoomReceipt,
             startReceiptID: startReceiptID,
-            ownerSnapshot: expectedOwnerSnapshot
+            ownerSnapshot: expectedOwnerSnapshot,
+            clockSamples: clockSamples
         )
         captureOwnerAuthorityLost = false
     }
@@ -620,7 +623,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
             callRoomID: nil,
             requiresDurableRoomReceipt: false,
             startReceiptID: nil,
-            ownerSnapshot: ownerSnapshot
+            ownerSnapshot: ownerSnapshot,
+            clockSamples: []
         )
         captureOwnerAuthorityLost = false
     }
@@ -793,7 +797,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 includesAudio: true,
                 audioSampleRate: 48_000,
                 audioChannelCount: 1,
-                monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds
+                monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds,
+                clockSamples: captureIntent.clockSamples.isEmpty
+                    ? nil
+                    : captureIntent.clockSamples
             )
         )
 

@@ -39,6 +39,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable {
     var audioChannelCount: Int?
     var monotonicStartedNanoseconds: UInt64?
     var monotonicStoppedNanoseconds: UInt64?
+    var clockSamples: [LocalRecordingClockSample]?
 
     init(
         schemaVersion: Int = 1,
@@ -55,7 +56,8 @@ struct LocalRecordingSourceProfile: Codable, Equatable {
         audioSampleRate: Double? = nil,
         audioChannelCount: Int? = nil,
         monotonicStartedNanoseconds: UInt64? = nil,
-        monotonicStoppedNanoseconds: UInt64? = nil
+        monotonicStoppedNanoseconds: UInt64? = nil,
+        clockSamples: [LocalRecordingClockSample]? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.container = container
@@ -72,6 +74,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable {
         self.audioChannelCount = audioChannelCount
         self.monotonicStartedNanoseconds = monotonicStartedNanoseconds
         self.monotonicStoppedNanoseconds = monotonicStoppedNanoseconds
+        self.clockSamples = clockSamples
     }
 }
 

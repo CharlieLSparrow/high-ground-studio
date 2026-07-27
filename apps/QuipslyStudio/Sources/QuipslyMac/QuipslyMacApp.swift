@@ -28,6 +28,7 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
     private let audioRoomMenuCommandController = AudioRoomMenuCommandController()
     private var keyboardEventMonitor: Any?
     private var mainWindow: NSWindow?
+    private var episodeCaptureSetupWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
@@ -101,6 +102,13 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
             action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)),
             keyEquivalent: ""
         )
+        let captureSetup = applicationMenu.addItem(
+            withTitle: "Episode Capture Setup…",
+            action: #selector(showEpisodeCaptureSetup(_:)),
+            keyEquivalent: "r"
+        )
+        captureSetup.target = self
+        captureSetup.keyEquivalentModifierMask = [.command, .shift]
         applicationMenu.addItem(.separator())
         applicationMenu.addItem(
             withTitle: "Hide Quipsly Studio",
@@ -168,6 +176,29 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
         addAudioRoomCommand("Copy Agent-Readable State", command: .copyAgentState, key: "c", modifiers: [.command, .shift], to: audioRoomMenu)
 
         NSApp.mainMenu = mainMenu
+    }
+
+    @objc private func showEpisodeCaptureSetup(_ sender: Any?) {
+        if let episodeCaptureSetupWindow {
+            episodeCaptureSetupWindow.makeKeyAndOrderFront(sender)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 220, y: 150, width: 940, height: 760),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Episode Capture Setup"
+        window.contentView = NSHostingView(rootView: EpisodeCaptureSetupView())
+        window.setFrameAutosaveName("QuipslyStudioEpisodeCaptureSetup")
+        window.isReleasedWhenClosed = false
+        window.center()
+        window.makeKeyAndOrderFront(sender)
+        episodeCaptureSetupWindow = window
+        NSApp.activate(ignoringOtherApps: true)
     }
 
     private func addAudioRoomCommand(

@@ -1115,8 +1115,11 @@ struct WorkspaceView: View {
     @State private var publishConnectorWorkerResultJson: String = ""
     @State private var publishConnectorWorkerErrorMessage: String = ""
     @State private var publishConnectorWorkerUpdatedAt: Date? = nil
-    @State private var prefersLeanAgentStatus: Bool = false
-    @State private var leanAgentStatusReason: String = ""
+    // Full publication/delivery status walks several external-media roots. Keep
+    // launch and session recovery on the bounded state contract; explicit
+    // workflows can calculate their detailed packets when the user opens them.
+    @State private var prefersLeanAgentStatus: Bool = true
+    @State private var leanAgentStatusReason: String = "workspace_launch"
     @StateObject private var externalMediaAccess = ExternalMediaAccess.shared
     #if os(macOS)
     @State private var keyMonitor: Any? = nil

@@ -223,12 +223,117 @@ public struct NestBlock: Identifiable, Codable, Equatable, Sendable {
     }
 }
 
+public enum ClipFocusPlacement: String, Codable, CaseIterable, Identifiable, Sendable {
+    case cornerSquares
+    case clipAbove
+    case sideRail
+    case hostWings
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .cornerSquares: return "Corners"
+        case .clipAbove: return "Clip Above"
+        case .sideRail: return "Side Rail"
+        case .hostWings: return "Host Wings"
+        }
+    }
+}
+
+public enum ClipFocusContentMode: String, Codable, CaseIterable, Identifiable, Sendable {
+    case fit
+    case fill
+
+    public var id: String { rawValue }
+
+    public var title: String {
+        switch self {
+        case .fit: return "Whole Clip"
+        case .fill: return "Crop to Fill"
+        }
+    }
+}
+
+public struct ClipFocusLayoutSettings: Codable, Equatable, Sendable {
+    public var placement: ClipFocusPlacement
+    public var reactionSize: Double
+    public var clipContentMode: ClipFocusContentMode
+    /// Normalized point in the source clip that should remain emphasized when
+    /// zoom or Crop to Fill creates overflow. -1 is left/top; +1 is right/bottom.
+    public var focusX: Double
+    public var focusY: Double
+
+    public init(
+        placement: ClipFocusPlacement = .clipAbove,
+        reactionSize: Double = 0.18,
+        clipContentMode: ClipFocusContentMode = .fit,
+        focusX: Double = 0,
+        focusY: Double = 0
+    ) {
+        self.placement = placement
+        self.reactionSize = reactionSize
+        self.clipContentMode = clipContentMode
+        self.focusX = focusX
+        self.focusY = focusY
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case placement
+        case reactionSize
+        case clipContentMode
+        case focusX
+        case focusY
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        placement = try container.decodeIfPresent(ClipFocusPlacement.self, forKey: .placement) ?? .clipAbove
+        reactionSize = try container.decodeIfPresent(Double.self, forKey: .reactionSize) ?? 0.18
+        clipContentMode = try container.decodeIfPresent(ClipFocusContentMode.self, forKey: .clipContentMode) ?? .fit
+        focusX = try container.decodeIfPresent(Double.self, forKey: .focusX) ?? 0
+        focusY = try container.decodeIfPresent(Double.self, forKey: .focusY) ?? 0
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(placement, forKey: .placement)
+        try container.encode(reactionSize, forKey: .reactionSize)
+        try container.encode(clipContentMode, forKey: .clipContentMode)
+        try container.encode(focusX, forKey: .focusX)
+        try container.encode(focusY, forKey: .focusY)
+    }
+
+    public static let horizontalDefault = ClipFocusLayoutSettings(
+        placement: .cornerSquares,
+        reactionSize: 0.28,
+        clipContentMode: .fit
+    )
+
+    public static let verticalDefault = ClipFocusLayoutSettings(
+        placement: .clipAbove,
+        reactionSize: 0.22,
+        clipContentMode: .fit
+    )
+
+    public func normalized() -> ClipFocusLayoutSettings {
+        ClipFocusLayoutSettings(
+            placement: placement,
+            reactionSize: min(0.40, max(0.10, reactionSize)),
+            clipContentMode: clipContentMode,
+            focusX: min(1, max(-1, focusX)),
+            focusY: min(1, max(-1, focusY))
+        )
+    }
+}
+
 public struct MediaSequence: Identifiable, Codable, Equatable {
     public let id: UUID
     public var title: String
     public var orientationTrack: OrientationTrack
     public var verticalOrientationTrack: OrientationTrack
     public var lanes: [VideoLane]
+    public var programDecisions: [ProgramDecisionEvent]
     public var shortClipQueue: [ShortClipCandidate]
     public var transcriptSegments: [TranscriptSegment]
     public var transcriptJobs: [TranscriptJobRecord]
@@ -236,17 +341,39 @@ public struct MediaSequence: Identifiable, Codable, Equatable {
     public var editActionLedger: [EditActionLedgerRecord]
     public var publishReceipts: [PublishReceiptRecord]
     public var editPassContext: EditPassContext
+    public var branchMetadata: EditBranchMetadata
+    public var audioSpineRegistryPath: String
+    public var audioSpineCandidates: [AudioSpineCandidate]
+    public var selectedAudioSpineCandidateID: String?
+    public var audioSpineBranchRenderingLocked: Bool
+    public var clipFocusLayout16x9: ClipFocusLayoutSettings
+    public var clipFocusLayout9x16: ClipFocusLayoutSettings
 
     public var duration: Double {
         lanes.map { $0.duration }.max() ?? 0
     }
 
-    public init(id: UUID = UUID(), title: String, orientationTrack: OrientationTrack = OrientationTrack(), verticalOrientationTrack: OrientationTrack = OrientationTrack(), lanes: [VideoLane] = [], shortClipQueue: [ShortClipCandidate] = [], transcriptSegments: [TranscriptSegment] = [], transcriptJobs: [TranscriptJobRecord] = [], editCorrectionNotes: [EditCorrectionNoteRecord] = [], editActionLedger: [EditActionLedgerRecord] = [], publishReceipts: [PublishReceiptRecord] = [], editPassContext: EditPassContext = EditPassContext()) {
+    public var selectedAudioSpineCandidate: AudioSpineCandidate? {
+        guard let selectedAudioSpineCandidateID, !selectedAudioSpineCandidateID.isEmpty else { return nil }
+        return audioSpineCandidates.first { $0.id == selectedAudioSpineCandidateID }
+    }
+
+    public var selectedFullSourceAudioSpineCandidate: AudioSpineCandidate? {
+        guard let candidate = selectedAudioSpineCandidate, candidate.isFullSourceMaster else { return nil }
+        return candidate
+    }
+
+    public var selectedAudioSpineRequiresHumanListenBeforeBranchRendering: Bool {
+        audioSpineBranchRenderingLocked || (selectedAudioSpineCandidate?.requiresHumanListenBeforeBranchRendering ?? false)
+    }
+
+    public init(id: UUID = UUID(), title: String, orientationTrack: OrientationTrack = OrientationTrack(), verticalOrientationTrack: OrientationTrack = OrientationTrack(), lanes: [VideoLane] = [], programDecisions: [ProgramDecisionEvent] = [], shortClipQueue: [ShortClipCandidate] = [], transcriptSegments: [TranscriptSegment] = [], transcriptJobs: [TranscriptJobRecord] = [], editCorrectionNotes: [EditCorrectionNoteRecord] = [], editActionLedger: [EditActionLedgerRecord] = [], publishReceipts: [PublishReceiptRecord] = [], editPassContext: EditPassContext = EditPassContext(), branchMetadata: EditBranchMetadata = EditBranchMetadata(), audioSpineRegistryPath: String = "", audioSpineCandidates: [AudioSpineCandidate] = [], selectedAudioSpineCandidateID: String? = nil, audioSpineBranchRenderingLocked: Bool = false, clipFocusLayout16x9: ClipFocusLayoutSettings = .horizontalDefault, clipFocusLayout9x16: ClipFocusLayoutSettings = .verticalDefault) {
         self.id = id
         self.title = title
         self.orientationTrack = orientationTrack
         self.verticalOrientationTrack = verticalOrientationTrack
         self.lanes = lanes
+        self.programDecisions = programDecisions
         self.shortClipQueue = shortClipQueue
         self.transcriptSegments = transcriptSegments
         self.transcriptJobs = transcriptJobs
@@ -254,6 +381,13 @@ public struct MediaSequence: Identifiable, Codable, Equatable {
         self.editActionLedger = editActionLedger
         self.publishReceipts = publishReceipts
         self.editPassContext = editPassContext
+        self.branchMetadata = branchMetadata
+        self.audioSpineRegistryPath = audioSpineRegistryPath
+        self.audioSpineCandidates = audioSpineCandidates
+        self.selectedAudioSpineCandidateID = selectedAudioSpineCandidateID
+        self.audioSpineBranchRenderingLocked = audioSpineBranchRenderingLocked
+        self.clipFocusLayout16x9 = clipFocusLayout16x9.normalized()
+        self.clipFocusLayout9x16 = clipFocusLayout9x16.normalized()
     }
 
     enum CodingKeys: String, CodingKey {
@@ -262,6 +396,7 @@ public struct MediaSequence: Identifiable, Codable, Equatable {
         case orientationTrack
         case verticalOrientationTrack
         case lanes
+        case programDecisions
         case shortClipQueue
         case transcriptSegments
         case transcriptJobs
@@ -269,6 +404,13 @@ public struct MediaSequence: Identifiable, Codable, Equatable {
         case editActionLedger
         case publishReceipts
         case editPassContext
+        case branchMetadata
+        case audioSpineRegistryPath
+        case audioSpineCandidates
+        case selectedAudioSpineCandidateID
+        case audioSpineBranchRenderingLocked
+        case clipFocusLayout16x9
+        case clipFocusLayout9x16
     }
 
     public init(from decoder: Decoder) throws {
@@ -278,6 +420,7 @@ public struct MediaSequence: Identifiable, Codable, Equatable {
         orientationTrack = try container.decodeIfPresent(OrientationTrack.self, forKey: .orientationTrack) ?? OrientationTrack()
         verticalOrientationTrack = try container.decodeIfPresent(OrientationTrack.self, forKey: .verticalOrientationTrack) ?? OrientationTrack()
         lanes = try container.decodeIfPresent([VideoLane].self, forKey: .lanes) ?? []
+        programDecisions = try container.decodeIfPresent([ProgramDecisionEvent].self, forKey: .programDecisions) ?? []
         shortClipQueue = try container.decodeIfPresent([ShortClipCandidate].self, forKey: .shortClipQueue) ?? []
         transcriptSegments = try container.decodeIfPresent([TranscriptSegment].self, forKey: .transcriptSegments) ?? []
         transcriptJobs = try container.decodeIfPresent([TranscriptJobRecord].self, forKey: .transcriptJobs) ?? []
@@ -285,12 +428,118 @@ public struct MediaSequence: Identifiable, Codable, Equatable {
         editActionLedger = try container.decodeIfPresent([EditActionLedgerRecord].self, forKey: .editActionLedger) ?? []
         publishReceipts = try container.decodeIfPresent([PublishReceiptRecord].self, forKey: .publishReceipts) ?? []
         editPassContext = try container.decodeIfPresent(EditPassContext.self, forKey: .editPassContext) ?? EditPassContext()
+        branchMetadata = try container.decodeIfPresent(EditBranchMetadata.self, forKey: .branchMetadata) ?? EditBranchMetadata(branchName: title)
+        audioSpineRegistryPath = try container.decodeIfPresent(String.self, forKey: .audioSpineRegistryPath) ?? ""
+        audioSpineCandidates = try container.decodeIfPresent([AudioSpineCandidate].self, forKey: .audioSpineCandidates) ?? []
+        selectedAudioSpineCandidateID = try container.decodeIfPresent(String.self, forKey: .selectedAudioSpineCandidateID)
+        audioSpineBranchRenderingLocked = try container.decodeIfPresent(Bool.self, forKey: .audioSpineBranchRenderingLocked) ?? false
+        clipFocusLayout16x9 = (try container.decodeIfPresent(ClipFocusLayoutSettings.self, forKey: .clipFocusLayout16x9) ?? .horizontalDefault).normalized()
+        clipFocusLayout9x16 = (try container.decodeIfPresent(ClipFocusLayoutSettings.self, forKey: .clipFocusLayout9x16) ?? .verticalDefault).normalized()
     }
 
     /// Applies an array of imported VideoTags to a specific lane, replacing existing tags.
     public mutating func importTags(_ newTags: [VideoTag], toLaneWithID laneID: UUID) {
         guard let index = lanes.firstIndex(where: { $0.id == laneID }) else { return }
         lanes[index].tags = newTags
+    }
+
+    /// Attaches a normalized audio-spine registry without changing approval,
+    /// rendering, upload, publication, or source-media state.
+    public mutating func attachAudioSpineRegistry(_ registry: AudioSpineRegistry, registryPath: String = "") {
+        audioSpineRegistryPath = registryPath
+        audioSpineCandidates = registry.candidates
+        selectedAudioSpineCandidateID = registry.selectionPolicy.fullSourceDefault
+        audioSpineBranchRenderingLocked = registry.selectionPolicy.branchRenderingLockedUntilHumanListenApproval
+    }
+}
+
+public struct EditBranchProgramRange: Codable, Equatable, Sendable {
+    public var startTime: Double
+    public var endTime: Double
+    public var reason: String
+
+    public init(startTime: Double, endTime: Double, reason: String = "") {
+        self.startTime = startTime
+        self.endTime = endTime
+        self.reason = reason
+    }
+
+    public var duration: Double {
+        max(0, endTime - startTime)
+    }
+}
+
+public struct EditBranchMetadata: Codable, Equatable, Sendable {
+    public var branchId: UUID
+    public var branchName: String
+    public var branchRole: String
+    public var parentSequenceId: UUID?
+    public var sourceBaselineSequenceId: UUID?
+    public var branchStatus: String
+    public var branchPurpose: String
+    public var createdBy: String
+    public var createdAt: Date
+    public var updatedAt: Date
+    public var programKeepRanges: [EditBranchProgramRange]?
+    public var renderManifestPath: String?
+    public var renderArtifactPaths: [String]?
+    public var renderVersion: String?
+    public var renderTarget: String?
+    public var renderEditorialTradeoff: String?
+
+    public init(
+        branchId: UUID = UUID(),
+        branchName: String = "Working edit",
+        branchRole: String = "episode-edit",
+        parentSequenceId: UUID? = nil,
+        sourceBaselineSequenceId: UUID? = nil,
+        branchStatus: String = "active",
+        branchPurpose: String = "",
+        createdBy: String = "Quipsly Studio",
+        createdAt: Date = Date(),
+        updatedAt: Date = Date(),
+        programKeepRanges: [EditBranchProgramRange]? = nil,
+        renderManifestPath: String? = nil,
+        renderArtifactPaths: [String]? = nil,
+        renderVersion: String? = nil,
+        renderTarget: String? = nil,
+        renderEditorialTradeoff: String? = nil
+    ) {
+        self.branchId = branchId
+        self.branchName = branchName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Working edit" : branchName
+        self.branchRole = branchRole.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "episode-edit" : branchRole
+        self.parentSequenceId = parentSequenceId
+        self.sourceBaselineSequenceId = sourceBaselineSequenceId
+        self.branchStatus = branchStatus.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "active" : branchStatus
+        self.branchPurpose = branchPurpose
+        self.createdBy = createdBy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Quipsly Studio" : createdBy
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.programKeepRanges = programKeepRanges
+        self.renderManifestPath = renderManifestPath
+        self.renderArtifactPaths = renderArtifactPaths
+        self.renderVersion = renderVersion
+        self.renderTarget = renderTarget
+        self.renderEditorialTradeoff = renderEditorialTradeoff
+    }
+
+    public func renamed(_ name: String, status: String? = nil, purpose: String? = nil, at date: Date = Date()) -> EditBranchMetadata {
+        var copy = self
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanName.isEmpty {
+            copy.branchName = cleanName
+        }
+        if let status {
+            let cleanStatus = status.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleanStatus.isEmpty {
+                copy.branchStatus = cleanStatus
+            }
+        }
+        if let purpose {
+            copy.branchPurpose = purpose
+        }
+        copy.updatedAt = date
+        return copy
     }
 }
 
@@ -1546,6 +1795,7 @@ public struct ShortClipCandidate: Identifiable, Codable, Equatable {
     public var sourceLaneId: UUID?
     public var sourceTagId: UUID?
     public var notes: String
+    public var reviewEvents: [ShortReviewEventRecord]
     public var createdAt: Date
     public var updatedAt: Date
 
@@ -1568,6 +1818,7 @@ public struct ShortClipCandidate: Identifiable, Codable, Equatable {
         sourceLaneId: UUID? = nil,
         sourceTagId: UUID? = nil,
         notes: String = "",
+        reviewEvents: [ShortReviewEventRecord] = [],
         createdAt: Date = Date(),
         updatedAt: Date = Date()
     ) {
@@ -1600,6 +1851,7 @@ public struct ShortClipCandidate: Identifiable, Codable, Equatable {
         self.sourceLaneId = sourceLaneId
         self.sourceTagId = sourceTagId
         self.notes = notes
+        self.reviewEvents = reviewEvents
         self.createdAt = createdAt
         self.updatedAt = updatedAt
     }
@@ -1623,6 +1875,7 @@ public struct ShortClipCandidate: Identifiable, Codable, Equatable {
         case sourceLaneId
         case sourceTagId
         case notes
+        case reviewEvents
         case createdAt
         case updatedAt
     }
@@ -1661,8 +1914,43 @@ public struct ShortClipCandidate: Identifiable, Codable, Equatable {
             )]
             : decodedSegments
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
+        reviewEvents = try container.decodeIfPresent([ShortReviewEventRecord].self, forKey: .reviewEvents) ?? []
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? createdAt
+    }
+}
+
+public struct ShortReviewEventRecord: Identifiable, Codable, Equatable {
+    public let id: UUID
+    public var status: String
+    public var note: String
+    public var actor: String
+    public var actorType: String
+    public var reviewRead: String
+    public var primaryQuestion: String
+    public var signals: [String: String]
+    public var createdAt: Date
+
+    public init(
+        id: UUID = UUID(),
+        status: String,
+        note: String = "",
+        actor: String = "Codex",
+        actorType: String = "agent",
+        reviewRead: String = "",
+        primaryQuestion: String = "",
+        signals: [String: String] = [:],
+        createdAt: Date = Date()
+    ) {
+        self.id = id
+        self.status = status
+        self.note = note
+        self.actor = actor
+        self.actorType = actorType
+        self.reviewRead = reviewRead
+        self.primaryQuestion = primaryQuestion
+        self.signals = signals
+        self.createdAt = createdAt
     }
 }
 
@@ -2244,17 +2532,409 @@ public enum TagType: String, Codable, Equatable, CaseIterable {
     }
 }
 
+public struct EditDecisionRevision: Codable, Equatable, Sendable, Identifiable {
+    public var id: UUID
+    public var createdAt: Date
+    public var actor: String
+    public var actorType: String
+    public var action: String
+    public var note: String
+    public var evidence: [String]
+    public var previousStatus: String
+    public var nextStatus: String
+    public var confidenceBefore: Double?
+    public var confidenceAfter: Double?
+
+    public init(
+        id: UUID = UUID(),
+        createdAt: Date = Date(),
+        actor: String = "Codex",
+        actorType: String = "agent",
+        action: String,
+        note: String,
+        evidence: [String] = [],
+        previousStatus: String = "",
+        nextStatus: String = "",
+        confidenceBefore: Double? = nil,
+        confidenceAfter: Double? = nil
+    ) {
+        self.id = id
+        self.createdAt = createdAt
+        self.actor = actor.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Unknown" : actor
+        self.actorType = actorType.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : actorType
+        self.action = action.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "noted" : action
+        self.note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.evidence = evidence
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        self.previousStatus = previousStatus.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.nextStatus = nextStatus.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.confidenceBefore = confidenceBefore
+        self.confidenceAfter = confidenceAfter
+    }
+
+    public var agentPayload: [String: Any] {
+        [
+            "id": id.uuidString,
+            "createdAt": ISO8601DateFormatter().string(from: createdAt),
+            "actor": actor,
+            "actorType": actorType,
+            "action": action,
+            "note": note,
+            "evidence": evidence,
+            "previousStatus": previousStatus,
+            "nextStatus": nextStatus,
+            "confidenceBefore": confidenceBefore ?? NSNull(),
+            "confidenceAfter": confidenceAfter ?? NSNull(),
+            "truth": "Structured review provenance. This records why a decision changed; it does not mutate source media."
+        ]
+    }
+}
+
+public struct EditDecisionIntent: Codable, Equatable, Sendable {
+    public var cutStyle: String
+    public var audioLeadSeconds: Double
+    public var audioTailSeconds: Double
+    public var coverStrategy: String
+    public var reactionCoverLaneId: UUID?
+    public var reactionCoverLaneName: String
+    public var cadenceMode: String
+    public var humanRhythmNote: String
+    public var whyThisCutExists: String
+    public var tradeoffExplanation: String
+    public var confidence: Double
+    public var revisionHistory: [String]
+    public var revisionLedger: [EditDecisionRevision]
+    public var humanAgentNotes: [String]
+    public var reviewEvidence: [String]
+    public var nextReviewAction: String
+    public var risk: String
+    public var status: String
+    public var createdAt: Date
+    public var updatedAt: Date
+
+    public init(
+        cutStyle: String = "straight-cut",
+        audioLeadSeconds: Double = 0,
+        audioTailSeconds: Double = 0,
+        coverStrategy: String = "none",
+        reactionCoverLaneId: UUID? = nil,
+        reactionCoverLaneName: String = "",
+        cadenceMode: String = "warm-conversation",
+        humanRhythmNote: String = "",
+        whyThisCutExists: String = "",
+        tradeoffExplanation: String = "",
+        confidence: Double = 0,
+        revisionHistory: [String] = [],
+        revisionLedger: [EditDecisionRevision] = [],
+        humanAgentNotes: [String] = [],
+        reviewEvidence: [String] = [],
+        nextReviewAction: String = "",
+        risk: String = "unknown",
+        status: String = "suggested",
+        createdAt: Date = Date(),
+        updatedAt: Date = Date()
+    ) {
+        self.cutStyle = cutStyle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "straight-cut" : cutStyle
+        self.audioLeadSeconds = max(-5, min(5, audioLeadSeconds.isFinite ? audioLeadSeconds : 0))
+        self.audioTailSeconds = max(-5, min(5, audioTailSeconds.isFinite ? audioTailSeconds : 0))
+        self.coverStrategy = coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "none" : coverStrategy
+        self.reactionCoverLaneId = reactionCoverLaneId
+        self.reactionCoverLaneName = reactionCoverLaneName
+        self.cadenceMode = cadenceMode.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "warm-conversation" : cadenceMode
+        self.humanRhythmNote = humanRhythmNote
+        self.whyThisCutExists = whyThisCutExists
+        self.tradeoffExplanation = tradeoffExplanation
+        self.confidence = min(1, max(0, confidence.isFinite ? confidence : 0))
+        self.revisionHistory = revisionHistory
+        self.revisionLedger = revisionLedger
+        self.humanAgentNotes = humanAgentNotes
+        self.reviewEvidence = reviewEvidence
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        self.nextReviewAction = nextReviewAction.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.risk = risk.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "unknown" : risk
+        self.status = status.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "suggested" : status
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case cutStyle
+        case audioLeadSeconds
+        case audioTailSeconds
+        case coverStrategy
+        case reactionCoverLaneId
+        case reactionCoverLaneName
+        case cadenceMode
+        case humanRhythmNote
+        case whyThisCutExists
+        case tradeoffExplanation
+        case confidence
+        case revisionHistory
+        case revisionLedger
+        case humanAgentNotes
+        case reviewEvidence
+        case nextReviewAction
+        case risk
+        case status
+        case createdAt
+        case updatedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let created = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        self.init(
+            cutStyle: try container.decodeIfPresent(String.self, forKey: .cutStyle) ?? "straight-cut",
+            audioLeadSeconds: try container.decodeIfPresent(Double.self, forKey: .audioLeadSeconds) ?? 0,
+            audioTailSeconds: try container.decodeIfPresent(Double.self, forKey: .audioTailSeconds) ?? 0,
+            coverStrategy: try container.decodeIfPresent(String.self, forKey: .coverStrategy) ?? "none",
+            reactionCoverLaneId: try container.decodeIfPresent(UUID.self, forKey: .reactionCoverLaneId),
+            reactionCoverLaneName: try container.decodeIfPresent(String.self, forKey: .reactionCoverLaneName) ?? "",
+            cadenceMode: try container.decodeIfPresent(String.self, forKey: .cadenceMode) ?? "warm-conversation",
+            humanRhythmNote: try container.decodeIfPresent(String.self, forKey: .humanRhythmNote) ?? "",
+            whyThisCutExists: try container.decodeIfPresent(String.self, forKey: .whyThisCutExists) ?? "",
+            tradeoffExplanation: try container.decodeIfPresent(String.self, forKey: .tradeoffExplanation) ?? "",
+            confidence: try container.decodeIfPresent(Double.self, forKey: .confidence) ?? 0,
+            revisionHistory: try container.decodeIfPresent([String].self, forKey: .revisionHistory) ?? [],
+            revisionLedger: try container.decodeIfPresent([EditDecisionRevision].self, forKey: .revisionLedger) ?? [],
+            humanAgentNotes: try container.decodeIfPresent([String].self, forKey: .humanAgentNotes) ?? [],
+            reviewEvidence: try container.decodeIfPresent([String].self, forKey: .reviewEvidence) ?? [],
+            nextReviewAction: try container.decodeIfPresent(String.self, forKey: .nextReviewAction) ?? "",
+            risk: try container.decodeIfPresent(String.self, forKey: .risk) ?? "unknown",
+            status: try container.decodeIfPresent(String.self, forKey: .status) ?? "suggested",
+            createdAt: created,
+            updatedAt: try container.decodeIfPresent(Date.self, forKey: .updatedAt) ?? created
+        )
+    }
+
+    public var agentPayload: [String: Any] {
+        let hasSplitEditTiming = abs(audioLeadSeconds) > 0.03 || abs(audioTailSeconds) > 0.03
+        let hasCover = coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() != "none"
+        let confidenceInterpretation = confidence >= 0.75
+            ? "strong-candidate"
+            : (confidence >= 0.50 ? "needs-listening-pass" : "low-confidence-review")
+        let storedEvidence = reviewEvidence
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        var generatedEvidence: [String] = []
+        if !whyThisCutExists.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            generatedEvidence.append("Reason: \(whyThisCutExists)")
+        }
+        if !tradeoffExplanation.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            generatedEvidence.append("Tradeoff: \(tradeoffExplanation)")
+        }
+        if hasSplitEditTiming {
+            generatedEvidence.append(String(format: "Split edit timing: audio lead %+.2fs, tail %+.2fs.", audioLeadSeconds, audioTailSeconds))
+        }
+        if hasCover {
+            generatedEvidence.append(reactionCoverLaneName.isEmpty
+                ? "Cover strategy: \(coverStrategy)."
+                : "Cover strategy: \(coverStrategy) using \(reactionCoverLaneName).")
+        }
+        if confidence < 0.50 {
+            generatedEvidence.append("Low confidence: this needs human or agent listen-through before it becomes training-quality evidence.")
+        } else if confidence < 0.75 {
+            generatedEvidence.append("Medium confidence: review cadence, reaction timing, and jump-cut feel before export.")
+        }
+        let reviewEvidencePacket = Array((storedEvidence + generatedEvidence).prefix(8))
+        let resolvedNextReviewAction: String
+        if !nextReviewAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            resolvedNextReviewAction = nextReviewAction
+        } else if confidence < 0.50 || risk.lowercased().contains("high") {
+            resolvedNextReviewAction = "Listen through this boundary, then mark Hold or Refine before using it as training evidence."
+        } else if hasSplitEditTiming || hasCover {
+            resolvedNextReviewAction = "Review whether the cover or J/L timing feels human, then mark Keep, Refine, or Hold."
+        } else {
+            resolvedNextReviewAction = "Listen for cadence and visual jumpiness, then mark Keep, Refine, or Hold."
+        }
+        let normalizedCutStyle = cutStyle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedCoverStrategy = coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let recommendedTechnique: String
+        let timingIntent: String
+        let visualTreatment: String
+        let audioTreatment: String
+        let reviewQuestion: String
+        let doNotAutomate: String
+        if normalizedCutStyle.contains("j-cut") || audioLeadSeconds > 0.03 {
+            recommendedTechnique = "j-cut"
+            timingIntent = "Let the next speaker's audio lead the visual cut by a small amount."
+            visualTreatment = "Keep the visual change at the decision boundary unless the reaction reads better slightly later."
+            audioTreatment = String(format: "Try next-speaker audio lead around %.2fs; keep it subtle.", max(0.12, abs(audioLeadSeconds)))
+            reviewQuestion = "Does the reply gain momentum, or does it feel like the next speaker is stepping on the previous thought?"
+            doNotAutomate = "Do not increase the lead just to remove silence; protect interruption timing and emotional beats."
+        } else if normalizedCutStyle.contains("l-cut") || audioTailSeconds > 0.03 {
+            recommendedTechnique = "l-cut"
+            timingIntent = "Let the previous speaker's audio tail continue under the next visual source."
+            visualTreatment = hasCover ? "Use the cover/reaction only while it clarifies the moment." : "Try a reaction or alternate source while the prior thought lands."
+            audioTreatment = String(format: "Try previous-speaker audio tail around %.2fs; review by ear.", max(0.18, abs(audioTailSeconds)))
+            reviewQuestion = "Does the audio tail preserve warmth and thought, or does it hide a timing problem too neatly?"
+            doNotAutomate = "Do not smooth every boundary; some straight cuts and pauses should stay honest."
+        } else if normalizedCoverStrategy.contains("reaction") {
+            recommendedTechnique = "reaction-cover"
+            timingIntent = "Hold the conversation timing while covering a visual jump with a reaction or listening shot."
+            visualTreatment = reactionCoverLaneName.isEmpty ? "Find the best listening/reaction source at this sequence time." : "Try \(reactionCoverLaneName) as the cover source."
+            audioTreatment = "Keep source audio continuous unless a tiny J/L offset makes the exchange feel more natural."
+            reviewQuestion = "Does the reaction add human context, or is it only hiding a cut?"
+            doNotAutomate = "Do not use a reaction cover if it distracts from the speaker or feels emotionally false."
+        } else if normalizedCoverStrategy.contains("b-roll") || normalizedCoverStrategy.contains("clip") || normalizedCutStyle.contains("b-roll") {
+            recommendedTechnique = "b-roll-or-clip-cover"
+            timingIntent = "Use a relevant clip or B-roll span as reversible visual cover while preserving the dialogue spine."
+            visualTreatment = reactionCoverLaneName.isEmpty ? "Choose a source clip that clarifies the sentence being spoken." : "Try \(reactionCoverLaneName) only if it supports the spoken point."
+            audioTreatment = "Keep the podcast dialogue as the spine unless the inserted clip's audio is explicitly part of the story."
+            reviewQuestion = "Does this insert teach, clarify, or delight, or is it just busy wallpaper?"
+            doNotAutomate = "Do not insert clips simply because a cut is awkward; the clip must earn its place."
+        } else if normalizedCutStyle.contains("pause") || normalizedCutStyle.contains("over-tightened") || normalizedCutStyle.contains("cadence") {
+            recommendedTechnique = "preserve-or-gently-shape-air"
+            timingIntent = "Classify the pause before deleting it."
+            visualTreatment = "Leave the visual source stable unless a reaction or reframe helps the pause read as intentional."
+            audioTreatment = "Preserve breath, laugh, thinking, comic timing, or emotional reset when it carries meaning."
+            reviewQuestion = "Is this dead air, or is it doing social, comic, or emotional work?"
+            doNotAutomate = "Do not treat silence as waste until transcript, listening, and reaction context agree."
+        } else {
+            recommendedTechnique = "straight-cut-review"
+            timingIntent = "Start with a straight cut and only add split timing if the boundary feels stiff."
+            visualTreatment = "Use the selected source decision as-is unless the monitor wall reveals a better reaction."
+            audioTreatment = "Keep audio aligned unless a small lead/tail improves human flow."
+            reviewQuestion = "Does the boundary disappear, or does it need a tiny timing or cover adjustment?"
+            doNotAutomate = "Do not decorate clean cuts; invisible is often better than clever."
+        }
+        let splitEditRecommendation: [String: Any] = [
+            "recommendedTechnique": recommendedTechnique,
+            "timingIntent": timingIntent,
+            "audioLeadSeconds": audioLeadSeconds,
+            "audioTailSeconds": audioTailSeconds,
+            "visualTreatment": visualTreatment,
+            "audioTreatment": audioTreatment,
+            "coverStrategy": coverStrategy,
+            "reactionCoverLaneName": reactionCoverLaneName,
+            "reviewQuestion": reviewQuestion,
+            "doNotAutomate": doNotAutomate,
+            "safeToTryAsMetadata": confidence >= 0.45 && !risk.lowercased().contains("blocked"),
+            "truth": "This is a reversible edit-intent recommendation over whole source lanes. It is not an instruction to cut source media."
+        ]
+        let normalizedCadenceMode = cadenceMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        var preserveAirTriggers: [String] = []
+        if normalizedCutStyle.contains("pause")
+            || normalizedCutStyle.contains("cadence")
+            || normalizedCutStyle.contains("over-tightened")
+            || normalizedCoverStrategy.contains("pause")
+            || normalizedCoverStrategy.contains("skip") {
+            preserveAirTriggers.append("This decision touches silence, pause, cadence, or a quiet gap.")
+        }
+        if hasSplitEditTiming {
+            preserveAirTriggers.append("This decision changes audio/visual timing, so proof-listen for stepped-on speech or lost breath.")
+        }
+        if hasCover {
+            preserveAirTriggers.append("This decision uses cover strategy; confirm the cover adds meaning instead of hiding an awkward seam.")
+        }
+        if normalizedCadenceMode.contains("warm") || normalizedCadenceMode.contains("documentary") || normalizedCadenceMode.contains("thoughtful") {
+            preserveAirTriggers.append("Cadence mode favors human warmth; speed is not the only success metric.")
+        }
+        if preserveAirTriggers.isEmpty {
+            preserveAirTriggers.append("No explicit preserve-air trigger is attached yet. Listen before treating this as training-quality cleanup.")
+        }
+        let preserveAirProtocol: [String: Any] = [
+            "title": "Preserve air before tightening",
+            "stance": "Useful silence, breath, laughter, hesitation, awkward warmth, and reaction timing are content until review proves otherwise.",
+            "triggers": preserveAirTriggers,
+            "listenFor": [
+                "breath before a reply",
+                "laugh timing or joke landing",
+                "thinking pause that makes the next line feel intentional",
+                "emotional reset",
+                "listener reaction that carries meaning",
+                "jump-cut harshness that needs an honest cover rather than more shaving"
+            ],
+            "safeAction": "Compare Play Through and Play Edit at normal speed, then mark Keep, Refine, Hold, or needs-listen with a note.",
+            "doNot": [
+                "Do not compress silence only because it is visible in a gap.",
+                "Do not use reaction or B-roll cover if it feels emotionally false.",
+                "Do not let a clean-looking waveform override human cadence.",
+                "Do not turn this into training evidence until the tradeoff is written down."
+            ],
+            "metadataOnly": true,
+            "truth": "This protocol guides reversible decision metadata. It never deletes, trims, or mutates source media."
+        ]
+
+        return [
+            "cutStyle": cutStyle,
+            "audioLeadSeconds": audioLeadSeconds,
+            "audioTailSeconds": audioTailSeconds,
+            "coverStrategy": coverStrategy,
+            "reactionCoverLaneId": reactionCoverLaneId?.uuidString ?? "",
+            "reactionCoverLaneName": reactionCoverLaneName,
+            "cadenceMode": cadenceMode,
+            "humanRhythmNote": humanRhythmNote,
+            "whyThisCutExists": whyThisCutExists,
+            "tradeoffExplanation": tradeoffExplanation,
+            "confidence": confidence,
+            "revisionHistory": revisionHistory,
+            "revisionLedger": revisionLedger.map(\.agentPayload),
+            "reviewProvenance": [
+                "structuredRevisionCount": revisionLedger.count,
+                "legacyRevisionCount": revisionHistory.count,
+                "latestStructuredRevision": revisionLedger.last?.agentPayload ?? [:],
+                "truth": "Use revisionLedger for machine-readable review history. revisionHistory remains a legacy human-readable trail."
+            ],
+            "humanAgentNotes": humanAgentNotes,
+            "splitEditRecommendation": splitEditRecommendation,
+            "preserveAirProtocol": preserveAirProtocol,
+            "reviewEvidence": reviewEvidencePacket.isEmpty
+                ? ["No concrete review evidence yet. Listen before treating this cut as approved or training-quality."]
+                : reviewEvidencePacket,
+            "nextReviewAction": resolvedNextReviewAction,
+            "risk": risk,
+            "status": status,
+            "cutCraftReview": [
+                "humanRhythm": humanRhythmNote.isEmpty
+                    ? "No cadence note yet. Listen for breath, laugh, hesitation, and whether the pause is doing useful work."
+                    : humanRhythmNote,
+                "splitEditTiming": [
+                    "hasSplitEditTiming": hasSplitEditTiming,
+                    "audioLeadSeconds": audioLeadSeconds,
+                    "audioTailSeconds": audioTailSeconds,
+                    "reviewInstruction": hasSplitEditTiming
+                        ? "Review for J/L-cut smoothness without making the exchange feel fake."
+                        : "If the visual switch feels stiff, consider a small audio lead or tail instead of chopping harder."
+                ],
+                "coverStrategyReview": [
+                    "hasCover": hasCover,
+                    "coverStrategy": coverStrategy,
+                    "reactionCoverLaneName": reactionCoverLaneName,
+                    "reviewInstruction": hasCover
+                        ? "Check whether the cover clarifies the moment or becomes visual noise."
+                        : "If this is a same-speaker jump, look for reaction, reframing, b-roll, or let the jump stand if it feels honest."
+                ],
+                "confidenceInterpretation": confidenceInterpretation,
+                "truth": "This is edit-review metadata over whole source lanes. It does not approve, publish, export, or mutate source media."
+            ],
+            "createdAt": ISO8601DateFormatter().string(from: createdAt),
+            "updatedAt": ISO8601DateFormatter().string(from: updatedAt)
+        ]
+    }
+}
+
 public struct VideoTag: Identifiable, Codable, Equatable {
     public let id: UUID
     public var type: TagType
     public var startTime: Double
     public var duration: Double
+    public var editIntent: EditDecisionIntent?
 
-    public init(id: UUID = UUID(), type: TagType = .highlight, startTime: Double, duration: Double) {
+    public init(
+        id: UUID = UUID(),
+        type: TagType = .highlight,
+        startTime: Double,
+        duration: Double,
+        editIntent: EditDecisionIntent? = nil
+    ) {
         self.id = id
         self.type = type
         self.startTime = startTime
         self.duration = duration
+        self.editIntent = editIntent
     }
 
     enum CodingKeys: String, CodingKey {
@@ -2262,6 +2942,7 @@ public struct VideoTag: Identifiable, Codable, Equatable {
         case type
         case startTime
         case duration
+        case editIntent
     }
 
     public init(from decoder: Decoder) throws {
@@ -2270,7 +2951,8 @@ public struct VideoTag: Identifiable, Codable, Equatable {
             id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
             type: try container.decodeIfPresent(TagType.self, forKey: .type) ?? .highlight,
             startTime: try container.decodeIfPresent(Double.self, forKey: .startTime) ?? 0,
-            duration: try container.decodeIfPresent(Double.self, forKey: .duration) ?? 0
+            duration: try container.decodeIfPresent(Double.self, forKey: .duration) ?? 0,
+            editIntent: try container.decodeIfPresent(EditDecisionIntent.self, forKey: .editIntent)
         )
     }
 }

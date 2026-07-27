@@ -19,16 +19,37 @@ public class ProjectStore: ObservableObject {
 
     /// Updates the project state and registers the inverse operation with the undo manager
     public func updateProject(_ newProject: VideoProject, undoManager: UndoManager?, actionName: String) {
-        let oldProject = project
-        let oldSequenceId = activeSequenceId
+        applyProject(
+            newProject,
+            activeSequenceId: activeSequenceId,
+            undoManager: undoManager,
+            actionName: actionName
+        )
+    }
 
-        undoManager?.registerUndo(withTarget: self) { store in
-            store.replaceProject(oldProject, activeSequenceId: oldSequenceId, publish: true)
+    /// Applies one project snapshot and registers its inverse. Calling the same
+    /// method from the undo closure lets UndoManager build a real redo stack.
+    private func applyProject(
+        _ newProject: VideoProject,
+        activeSequenceId newActiveSequenceId: UUID?,
+        undoManager: UndoManager?,
+        actionName: String
+    ) {
+        let previousProject = project
+        let previousSequenceId = activeSequenceId
+
+        undoManager?.registerUndo(withTarget: self) { [weak undoManager] store in
+            store.applyProject(
+                previousProject,
+                activeSequenceId: previousSequenceId,
+                undoManager: undoManager,
+                actionName: actionName
+            )
         }
-
         undoManager?.setActionName(actionName)
 
-        self.project = newProject
+        project = newProject
+        activeSequenceId = newActiveSequenceId ?? newProject.sequences.first?.id
         objectWillChange.send()
     }
 
@@ -39,6 +60,62 @@ public class ProjectStore: ObservableObject {
             modifiedProject.sequences[index] = newSequence
             updateProject(modifiedProject, undoManager: undoManager, actionName: actionName)
         }
+    }
+
+    @discardableResult
+    public func duplicateActiveSequenceAsBranch(
+        name: String,
+        role: String = "experiment",
+        purpose: String = "",
+        createdBy: String = "Quipsly Studio",
+        undoManager: UndoManager?,
+        actionName: String = "Create Edit Branch"
+    ) -> UUID? {
+        guard let sourceSequence = activeSequence else { return nil }
+
+        let cleanName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let branchTitle = cleanName.isEmpty ? "\(sourceSequence.title) Branch" : cleanName
+        let now = Date()
+        let sourceBaselineId = sourceSequence.branchMetadata.sourceBaselineSequenceId ?? sourceSequence.id
+        let branchMetadata = EditBranchMetadata(
+            branchName: branchTitle,
+            branchRole: role,
+            parentSequenceId: sourceSequence.id,
+            sourceBaselineSequenceId: sourceBaselineId,
+            branchStatus: "active",
+            branchPurpose: purpose,
+            createdBy: createdBy,
+            createdAt: now,
+            updatedAt: now,
+            programKeepRanges: sourceSequence.branchMetadata.programKeepRanges
+        )
+
+        let branchSequence = MediaSequence(
+            title: branchTitle,
+            orientationTrack: sourceSequence.orientationTrack,
+            verticalOrientationTrack: sourceSequence.verticalOrientationTrack,
+            lanes: sourceSequence.lanes,
+            programDecisions: sourceSequence.programDecisions,
+            shortClipQueue: sourceSequence.shortClipQueue,
+            transcriptSegments: sourceSequence.transcriptSegments,
+            transcriptJobs: sourceSequence.transcriptJobs,
+            editCorrectionNotes: sourceSequence.editCorrectionNotes,
+            editActionLedger: sourceSequence.editActionLedger,
+            publishReceipts: [],
+            editPassContext: sourceSequence.editPassContext,
+            branchMetadata: branchMetadata,
+            audioSpineRegistryPath: sourceSequence.audioSpineRegistryPath,
+            audioSpineCandidates: sourceSequence.audioSpineCandidates,
+            selectedAudioSpineCandidateID: sourceSequence.selectedAudioSpineCandidateID,
+            audioSpineBranchRenderingLocked: sourceSequence.audioSpineBranchRenderingLocked
+        )
+
+        var modifiedProject = project
+        modifiedProject.sequences.append(branchSequence)
+        updateProject(modifiedProject, undoManager: undoManager, actionName: actionName)
+        activeSequenceId = branchSequence.id
+        objectWillChange.send()
+        return branchSequence.id
     }
 
     public func saveNativeSession(named name: String) async throws -> URL {
@@ -65,6 +142,18 @@ public class ProjectStore: ObservableObject {
         if publish {
             objectWillChange.send()
         }
+    }
+
+    @discardableResult
+    public func selectSequence(id: UUID, publish: Bool = true) -> Bool {
+        guard project.sequences.contains(where: { $0.id == id }) else {
+            return false
+        }
+        activeSequenceId = id
+        if publish {
+            objectWillChange.send()
+        }
+        return true
     }
 
     public func publishChanges() {

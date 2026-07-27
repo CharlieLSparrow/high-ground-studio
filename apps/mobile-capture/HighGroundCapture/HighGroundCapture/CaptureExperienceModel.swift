@@ -889,13 +889,26 @@ final class CaptureExperienceModel: ObservableObject {
 
         let contextSlugs = MobileContextManager.shared.getTargetSlugs()
         let captureID = UUID()
+        let clockSamples = usesPreviewData
+            ? []
+            : await CaptureClockClient.shared.measureBurst(
+                callRoomID: session.callRoomId,
+                captureGroupID: captureID,
+                expectedOwnerAccountID: ownerSnapshot.ownerAccountID
+            )
+        guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+            isChangingCapture = false
+            errorMessage = captureOwnerChangedBeforeStartMessage
+            return
+        }
         do {
             try audioCapture.armNextCapture(
                 captureID: captureID,
                 sessionID: session.id,
                 callRoomID: session.callRoomId,
                 requiresDurableRoomReceipt: !usesPreviewData,
-                expectedOwnerSnapshot: ownerSnapshot
+                expectedOwnerSnapshot: ownerSnapshot,
+                clockSamples: clockSamples
             )
         } catch {
             isChangingCapture = false

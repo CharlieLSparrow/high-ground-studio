@@ -1487,13 +1487,23 @@ struct RecorderControlBoard: View {
         }
 
         let captureID = UUID()
+        let clockSamples = await CaptureClockClient.shared.measureBurst(
+            callRoomID: recordingSession.callRoomId,
+            captureGroupID: captureID,
+            expectedOwnerAccountID: ownerSnapshot.ownerAccountID
+        )
+        guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
+            roomJoinMessage = "The account changed during source-clock measurement. Nothing was recorded."
+            return
+        }
         do {
             try audioCapture.armNextCapture(
                 captureID: captureID,
                 sessionID: recordingSession.id,
                 callRoomID: recordingSession.callRoomId,
                 requiresDurableRoomReceipt: true,
-                expectedOwnerSnapshot: ownerSnapshot
+                expectedOwnerSnapshot: ownerSnapshot,
+                clockSamples: clockSamples
             )
         } catch {
             roomJoinMessage = "Quipsly could not durably arm this take. Nothing was recorded: \(error.localizedDescription)"

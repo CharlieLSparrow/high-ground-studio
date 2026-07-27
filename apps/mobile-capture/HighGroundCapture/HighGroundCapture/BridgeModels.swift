@@ -1363,6 +1363,7 @@ struct MobileCaptureRoutes: Codable, Hashable {
     let roomJoin: String?
     let roomJoinDiagnostics: String?
     let roomState: String?
+    let clockSample: String?
     let providerRecording: String?
     let promoteRecording: String?
     let transcriptRun: String?

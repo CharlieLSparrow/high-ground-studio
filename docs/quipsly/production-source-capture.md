@@ -11,8 +11,11 @@ MOV sources behind an actor, makes pause/switch explicit source boundaries,
 closes room receipts across failures, storage, thermal, identity, and foreground
 changes, and decodes each finalized track through EOF before upload eligibility.
 Old audio ledgers and v2 upload manifests normalize to one-source capture groups
-without gaining new processing authority. Camera capture UI remains disabled
-until the long-source cloud verifier and physical-device acceptance gates exist.
+without gaining new processing authority. The long-source verifier, durable GCS
+queue, scoped Cloud Run Job release, IAM/scheduler setup, and fail-closed Nest
+capability are implemented and container-proved from committed source. Camera
+capture UI remains disabled in environments where Nest does not advertise that
+capability and until the physical-device acceptance gates exist.
 
 ## Outcome
 
@@ -144,6 +147,143 @@ The mature Mac endpoint is a native Capture companion using AVFoundation and
 the same ledger/upload protocol as iPhone. A browser-only recorder is a fallback,
 not the master-source architecture.
 
+## Coordinated product architecture
+
+This is one capture system with five explicit planes:
+
+| Plane | Owner | What it is allowed to claim |
+| --- | --- | --- |
+| Episode control | Nest Episode Room | identity, access, consent links, participants, chat, prepared clips, shared commands, accepted server time, and capture status |
+| Realtime conversation | Native LiveKit audio room | low-latency talk/listen state and a recoverable network-quality reference; never camera-master quality |
+| Local production | Quipsly Capture on iPhone and Quipsly Studio on Mac | immutable camera/audio source bytes, actual device/format, device clock, interruptions, and local retention |
+| Preservation | private GCS plus verifier job | exact object generation, byte count, digest, durable receipts, retries, and dead letter evidence |
+| Editorial | Quipsly Studio | proxies, waveform correlation, drift model, reviewed alignment, transcript, and non-destructive timeline decisions |
+
+The Episode Room coordinates the take; it does not record a 4K camera through a
+web request. LiveKit carries the conversation; it does not replace the raw mic
+or camera masters. Studio aligns sources; it never rewrites an original to hide
+a clock or capture failure.
+
+### Mac ownership decision
+
+The production Mac path lives in **Quipsly Studio**, not in an additional
+browser recorder or another legacy desktop shell.
+
+Quipsly Studio owns one native audio graph:
+
+1. select and read back the exact MV7i input and headphone output;
+2. capture the MV7i source once at its hardware clock and preserve a local
+   48 kHz lossless master;
+3. send a realtime copy through LiveKit's manual/application-audio path;
+4. render remote room audio to the selected MV7i headphone output;
+5. keep voice processing on the realtime branch, not baked into the master;
+6. write device loss, route change, overload, and reconnect as explicit source
+   events.
+
+LiveKit's Swift `AudioManager` exposes input/output device selection and manual
+rendering/application-audio hooks. The web platform can enumerate devices, but
+explicit output routing such as `AudioContext.setSinkId()` is not consistently
+available across major browsers. That makes a browser useful as an Episode Room
+controller and recovery call, but not the canonical MV7i owner.
+
+- [LiveKit Swift AudioManager](https://docs.livekit.io/reference/client-sdk-swift/documentation/livekit/audiomanager/)
+- [MDN device enumeration](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/enumerateDevices)
+- [MDN AudioContext output selection](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/setSinkId)
+
+The preflight must show `Shure MV7i` twice when selected: once as **Call mic +
+local master** and once as **Headphones**. A meter, ten-second record/playback
+check, negotiated sample rate/channels, available disk time, and route-loss test
+must pass before Record is enabled. Hardware monitoring remains available at
+the MV7i; Quipsly must not create a delayed software sidetone.
+
+### Canon R8 decision
+
+The first supported Canon workflow has two distinct sources:
+
+- **Canon R8 USB preview**: UVC 1920x1080 at 30 fps for framing and an optional
+  call/backup reference. Canon documents that USB power is not supplied in this
+  mode, so preflight must show external-power/battery evidence.
+- **Canon R8 4K master**: record internally to the camera card, then import the
+  untouched original into the active capture group with camera time, filename,
+  byte digest, card/import receipt, and sync anchors.
+
+Quipsly never labels the USB preview as 4K. HDMI capture becomes a supported
+third source only after a named capture device, cable, negotiated 4K format,
+storage throughput, heat, long-take, and dropped-frame matrix passes.
+
+### iPhone ownership decision
+
+For a podcast room, Quipsly Capture runs the native audio-only LiveKit room and
+a local camera master in the same app, but the camera movie does not include
+the echo-cancelled call microphone. Both pipelines share a coordinator for
+consent, route changes, foreground interruptions, source receipts, and Stop.
+
+For a solo video, no room is required and the selected microphone is included
+in the local movie. Switching cameras closes one source and starts another in
+the same capture group. It is a visible boundary, not a fake seamless file.
+
+### Shared clip playback
+
+Prepared watch media is a source, not merely pixels on two screens.
+
+1. Nest materializes and probes the exact clip before the take.
+2. An editor issues a revisioned `PLAY`, `PAUSE`, `SEEK`, or `ENDED` command.
+3. The server records acceptance time and a stable receipt ID.
+4. Each device applies the command against its monotonic clock and acknowledges
+   the actual local media time, apply time, blocked/autoplay state, and error.
+5. Every local recorder stores the receipt/acknowledgement as a source marker.
+6. Studio initially places the watched clip from the server receipt, then
+   refines participant sources with waveform correlation and a drift model.
+
+Either authorized editor can always pause. A device that cannot play reports
+`blocked` instead of pretending to be synchronized. The editor preserves the
+source clip as its own track, including when the room itself is audio-only.
+
+### Clock and drift contract
+
+Each capture endpoint periodically records a four-time clock sample:
+
+- device monotonic send;
+- server receive/accept;
+- server send;
+- device monotonic receive.
+
+The lowest-round-trip samples estimate the initial device/server offset. Source
+sample timestamps and the capture session's AVFoundation synchronization clock
+remain authoritative within a device. The alignment record stores offset,
+uncertainty, measured drift in parts per million, method, source hashes, and
+review state. A single wall-clock timestamp is never described as
+sample-accurate.
+
+Apple guarantees capture output timestamps on the capture session's
+synchronization clock and provides synchronized-data and timecode APIs for
+stronger local/external alignment.
+
+- [AVCaptureSession synchronization clock](https://developer.apple.com/documentation/avfoundation/avcapturesession/synchronizationclock)
+- [AVCapture synchronized data timestamp](https://developer.apple.com/documentation/avfoundation/avcapturesynchronizeddata/timestamp)
+- [AVCapture timecode generator](https://developer.apple.com/documentation/avfoundation/avcapturetimecodegenerator)
+
+### Failure and recovery UX
+
+The live surface has independent state rows for `Room`, `Camera master`,
+`Audio master`, `Watch clip`, and `Upload`. Network loss may degrade the room
+and stop progressive upload, but it does not stop healthy local sources.
+Device/route loss closes only the affected source. Stop is complete only after
+each armed local source has a durable close receipt or a visible recovery task.
+
+After recording, the room shows every participant/source as:
+
+- safe locally;
+- uploading with exact bytes;
+- upload held/retryable;
+- byte verified;
+- attached to episode;
+- proxy ready;
+- aligned/review needed.
+
+Nobody is told to leave until the application has either verified the source or
+made the recovery location and next action explicit.
+
 ## Camera switching
 
 The first production release does not mutate the active camera inside one
@@ -247,7 +387,8 @@ mid-file.
 ## Delivery order
 
 1. Bind Episode Room to a server-validated CallRoom recording clock and repair
-   iPhone episode routing. **Complete locally.**
+   iPhone episode routing. **Complete locally through an authenticated,
+   room-authorized, side-effect-free four-time sample contract.**
 2. Generalize the protected local source ledger and upload metadata from audio
    wording to typed audio/video sources without changing audio behavior.
    **Complete through simulator build and immutable-manifest tests.**
@@ -261,7 +402,65 @@ mid-file.
 6. Add cloud technical probe, proxy, alignment proposal, and Episode Room
    readback.
 7. Build the native Mac Shure master lane and Canon import manifest.
+   **The Core Audio inventory, truthful route policy, crash-recoverable
+   48 kHz/24-bit WAV master, SHA-256 source receipt, and Episode Capture Setup
+   controls are complete locally. Direct MV7i hardware qualification, the
+   audio-only LiveKit branch, and Canon card import remain.**
 8. Run the physical-device and real-episode acceptance matrix before TestFlight
    scope expands to video.
 
 No step is accepted from a simulator-only green build.
+
+## Implementation checkpoint — July 26, 2026
+
+The first coordinated Mac/iPhone source-clock slice is now implemented:
+
+- Nest exposes an authenticated, CallRoom-authorized capture-clock sample
+  route. It echoes device identity and brackets server work without persisting
+  a false server-side source event.
+- iPhone audio and video capture collect three bounded samples concurrently,
+  retain the lowest-round-trip results with the immutable source profile, and
+  continue recording with explicit missing evidence when Nest is unavailable.
+- Quipsly Studio inventories exact AVFoundation camera IDs and Core Audio input
+  and output UIDs. The policy distinguishes Canon's virtual webcam reference
+  from a direct R8 route and distinguishes MOTIV Mix Virtual from a proven
+  physical MV7i master.
+- `Episode Capture Setup…` can write an untouched local microphone master to
+  `~/Movies/QuipslyCaptures/<episode>/<recording-id>/`.
+- The recorder writes `source-receipt.json` before starting, keeps
+  `local-mic-master.partial.wav` after interruption, and only renames it to
+  `local-mic-master.wav` after a clean stop. Finalization records actual frames,
+  duration, bytes, device UID, wall/monotonic boundaries, and a streaming
+  SHA-256 digest.
+- Long-file hashing runs away from the UI actor. The setup screen shows elapsed
+  time, finalization state, the verified receipt, capture-folder access, and
+  preserved interrupted takes.
+- Studio launch no longer synchronously loads the external 11 MB audio waveform
+  map or walks the large publication/delivery state graph. Both operations are
+  deferred so an empty project opens responsively.
+
+The current Mac hardware readback is deliberately not overstated:
+
+- visible cameras: MacBook Pro Camera, EOS Webcam Utility, and the iPhone
+  Continuity Camera;
+- visible audio: MacBook Pro input/output, iPhone microphone, Microsoft Teams
+  virtual audio, and MOTIV Mix Virtual at 48 kHz;
+- not visible yet: a direct physical MV7i Core Audio route or a direct Canon R8
+  UVC route.
+
+Local verification passed:
+
+- Quipsly TypeScript 7 typecheck;
+- capture-clock route tests: 4/4;
+- QuipslyVideoCore tests: 19/19, including writing and reopening an actual
+  48 kHz/24-bit PCM WAV and proving that a MOTIV virtual-route receipt cannot
+  claim direct physical MV7i provenance;
+- HighGroundCapture unsigned simulator build;
+- QuipslyMac unsigned debug build;
+- real QuipslyMac launch and responsive main editor readback.
+
+The permission boundary was reached in an isolated copy of the exact Mac build,
+but the Mac UI automation bridge lost accessibility to the second SwiftUI
+window. The temporary app was terminated before any permission choice. A
+physical MV7i recording/playback receipt therefore remains a human-present
+acceptance gate, not a claimed pass.
