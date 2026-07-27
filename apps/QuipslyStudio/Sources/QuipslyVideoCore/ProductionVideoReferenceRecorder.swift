@@ -660,32 +660,35 @@ public final class ProductionVideoReferenceRecorder:
 
         let selected = Self.preferredFormat(for: device)
         try device.lockForConfiguration()
-        defer { device.unlockForConfiguration() }
-        device.activeFormat = selected.format
-        let frameDurationPlan = Self.frameDurationPlan(
-            frameRate: selected.frameRate,
-            supportedRanges: selected.format
-                .videoSupportedFrameRateRanges
-                .map {
-                    (
-                        minimum: $0.minFrameRate,
-                        maximum: $0.maxFrameRate
-                    )
-                }
-        )
-        switch frameDurationPlan {
-        case .formatDefault:
-            // Fixed-rate external drivers already own the only legal
-            // duration. Reading activeVideoMinFrameDuration back from some
-            // DAL devices returns invalid 0/0 even after a successful set, so
-            // do not manufacture a second assignment from that getter.
-            break
-        case .explicit(let frameDuration):
-            device.activeVideoMinFrameDuration = frameDuration
-            device.activeVideoMaxFrameDuration = frameDuration
-        case .unsupported:
-            throw ProductionVideoReferenceRecorderError
-                .unsupportedFrameRate(device.localizedName)
+        do {
+            defer { device.unlockForConfiguration() }
+            device.activeFormat = selected.format
+            let frameDurationPlan = Self.frameDurationPlan(
+                frameRate: selected.frameRate,
+                supportedRanges: selected.format
+                    .videoSupportedFrameRateRanges
+                    .map {
+                        (
+                            minimum: $0.minFrameRate,
+                            maximum: $0.maxFrameRate
+                        )
+                    }
+            )
+            switch frameDurationPlan {
+            case .formatDefault:
+                // Fixed-rate external drivers already own the only legal
+                // duration. Reading activeVideoMinFrameDuration back from
+                // some DAL devices returns invalid 0/0 even after a
+                // successful set, so do not manufacture a second assignment
+                // from that getter.
+                break
+            case .explicit(let frameDuration):
+                device.activeVideoMinFrameDuration = frameDuration
+                device.activeVideoMaxFrameDuration = frameDuration
+            case .unsupported:
+                throw ProductionVideoReferenceRecorderError
+                    .unsupportedFrameRate(device.localizedName)
+            }
         }
 
         let input = try AVCaptureDeviceInput(device: device)
