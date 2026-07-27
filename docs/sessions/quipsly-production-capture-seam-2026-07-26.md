@@ -23,6 +23,10 @@ alignment and non-destructive editorial decisions.
 - in-progress, interrupted, failed, and finalized source receipts;
 - streamed SHA-256 and byte-count finalization off the UI actor;
 - Episode Capture Setup recording/recovery UI;
+- immutable multi-file Canon card ingest with independent source/copy hashes;
+- technical media probe and durable card-import receipts;
+- automatic local editor attachment for finalized Mac audio and verified Canon
+  masters, with capture-group provenance and a separate attachment receipt;
 - background loading for the large source-aware waveform map;
 - bounded Studio launch status instead of an automatic external-root walk;
 - a real playable fixture for the AV composition layering test.
@@ -31,10 +35,12 @@ alignment and non-destructive editorial decisions.
 
 - `pnpm --filter quipsly typecheck`
 - clock route Jest: 4/4
-- QuipslyVideoCore: 19/19, including physical-versus-virtual MV7i receipt truth
+- QuipslyVideoCore: 22/22, including physical-versus-virtual MV7i receipt
+  truth, real-MP4 byte-identical card ingest, and provenance-bearing editor
+  attachment
 - HighGroundCapture generic iOS Simulator build
 - QuipslyMac debug build
-- real QuipslyMac launch/readback
+- real QuipslyMac launch/readback and one-window capture-setup visual smoke
 
 ## Hardware truth on this Mac
 
@@ -50,9 +56,8 @@ reported as observed and are not promoted to physical-master status.
    channels, read back the JSON receipt, and listen through MV7i headphones.
 2. Add the separate LiveKit call branch and prove that its voice processing does
    not alter the local master.
-3. Add Canon R8 card-original import and immutable receipt generation.
-4. Attach finalized Mac/iPhone sources to one Episode Room capture group, build
+3. Attach finalized Mac/iPhone sources to one Episode Room capture group, build
    proxies, propose alignment with uncertainty and drift, and review the result
    in the Studio timeline.
-5. Pass the long-take, route-loss, storage, interruption, recovery, physical
+4. Pass the long-take, route-loss, storage, interruption, recovery, physical
    iPhone, TestFlight, and real episode rehearsal matrices.

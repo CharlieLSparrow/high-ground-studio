@@ -404,8 +404,10 @@ mid-file.
 7. Build the native Mac Shure master lane and Canon import manifest.
    **The Core Audio inventory, truthful route policy, crash-recoverable
    48 kHz/24-bit WAV master, SHA-256 source receipt, and Episode Capture Setup
-   controls are complete locally. Direct MV7i hardware qualification, the
-   audio-only LiveKit branch, and Canon card import remain.**
+   controls are complete locally. Camera-card originals now copy into managed
+   storage without mutating the card, are independently rehashed, and attach to
+   non-destructive editor lanes with durable receipts. Direct MV7i hardware
+   qualification and the audio-only LiveKit branch remain.**
 8. Run the physical-device and real-episode acceptance matrix before TestFlight
    scope expands to video.
 
@@ -435,6 +437,16 @@ The first coordinated Mac/iPhone source-clock slice is now implemented:
 - Long-file hashing runs away from the UI actor. The setup screen shows elapsed
   time, finalization state, the verified receipt, capture-folder access, and
   preserved interrupted takes.
+- Canon card import accepts multiple movie files in one capture group, writes
+  an in-progress receipt before copying, preserves a partial on failure,
+  verifies the managed copy with an independent second SHA-256 pass, probes
+  duration/dimensions/frame rate/codec/audio/timecode tracks, and explicitly
+  keeps the declared R8 model separate from proven byte identity.
+- Finalized Mac audio and verified Canon copies attach to the active Studio
+  source timeline through one core operation. The lane stores its source
+  receipt, capture group, episode, ingest kind, hash, and `needs-alignment`
+  state; a second durable receipt proves local editor attachment without
+  claiming upload, proxy, sync, transcription, or publication.
 - Studio launch no longer synchronously loads the external 11 MB audio waveform
   map or walks the large publication/delivery state graph. Both operations are
   deferred so an empty project opens responsively.
@@ -452,15 +464,21 @@ Local verification passed:
 
 - Quipsly TypeScript 7 typecheck;
 - capture-clock route tests: 4/4;
-- QuipslyVideoCore tests: 19/19, including writing and reopening an actual
-  48 kHz/24-bit PCM WAV and proving that a MOTIV virtual-route receipt cannot
-  claim direct physical MV7i provenance;
+- QuipslyVideoCore tests: 22/22, including writing and reopening an actual
+  48 kHz/24-bit PCM WAV, proving that a MOTIV virtual-route receipt cannot
+  claim direct physical MV7i provenance, importing a real playable MP4 without
+  modifying it, matching independent source/destination digests, and attaching
+  the verified source to a provenance-bearing editor lane;
 - HighGroundCapture unsigned simulator build;
 - QuipslyMac unsigned debug build;
-- real QuipslyMac launch and responsive main editor readback.
+- real QuipslyMac launch, responsive main editor readback, and visual readback
+  of the one-window Episode Capture Setup smoke mode.
 
-The permission boundary was reached in an isolated copy of the exact Mac build,
-but the Mac UI automation bridge lost accessibility to the second SwiftUI
-window. The temporary app was terminated before any permission choice. A
-physical MV7i recording/playback receipt therefore remains a human-present
-acceptance gate, not a claimed pass.
+The permission boundary was reached in an isolated copy of the exact Mac build.
+The capture window rendered with route selectors, capture-group identity, local
+master controls, and Canon import controls, but Codex Computer Use requested a
+new macOS screen/audio inspection permission before it could drive the file
+picker. The temporary app was terminated without accepting that permission.
+The real-file importer and attachment path are core-tested; file-picker
+automation and a physical MV7i recording/playback receipt remain human-present
+acceptance gates, not claimed passes.

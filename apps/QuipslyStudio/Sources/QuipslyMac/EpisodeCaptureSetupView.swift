@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import QuipslyVideoCore
 import SwiftUI
+import UniformTypeIdentifiers
 
 @MainActor
 final class EpisodeCaptureSetupModel: ObservableObject {
@@ -19,12 +20,26 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var elapsedSeconds = 0.0
     @Published private(set) var isFinalizing = false
     @Published private(set) var recordingError: String?
+    @Published private(set) var captureGroupID = UUID()
+    @Published private(set) var isImportingCanon = false
+    @Published private(set) var canonImportProgress: CanonCardImportProgress?
+    @Published private(set) var canonImportMessage = "No camera-card originals imported."
+    @Published private(set) var canonImportError: String?
+    @Published private(set) var importedCanonReceipts: [CanonCardImportReceipt] = []
+    @Published private(set) var attachedLaneIDs: [UUID] = []
 
     let captureRoot = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
 
     private let recorder = ProductionAudioRecorder()
+    private let projectStore: ProjectStore
+    private let playbackEngine: PlaybackEngine
     private var elapsedTask: Task<Void, Never>?
+
+    init(projectStore: ProjectStore, playbackEngine: PlaybackEngine) {
+        self.projectStore = projectStore
+        self.playbackEngine = playbackEngine
+    }
 
     var isRecording: Bool { recorder.isRecording }
 
@@ -35,6 +50,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     var canStartRecording: Bool {
         guard !isRecording,
               !isFinalizing,
+              !isImportingCanon,
               !episodeSpaceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !participantID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               inventory?.microphoneAuthorization == .authorized,
@@ -81,7 +97,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         do {
             let receipt = try recorder.start(
                 configuration: ProductionAudioRecordingConfiguration(
-                    captureGroupID: UUID(),
+                    captureGroupID: captureGroupID,
                     episodeSpaceID: episodeSpaceID.trimmingCharacters(
                         in: .whitespacesAndNewlines
                     ),
@@ -117,13 +133,103 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             activeReceipt = receipt
             lastFinalizedReceipt = receipt
             elapsedSeconds = receipt.durationSeconds
-            message = "Local microphone master finalized and verified."
+            do {
+                let laneID = try attachAudioMasterToEditor(receipt)
+                attachedLaneIDs.append(laneID)
+                message = "Local microphone master finalized, verified, and attached to the editor."
+            } catch {
+                recordingError =
+                    "The local master is finalized and safe, but its editor attachment receipt failed: \(error.localizedDescription)"
+                message = "Local microphone master is safe; editor attachment needs retry."
+            }
         } catch {
             activeReceipt = recorder.activeReceipt
             recordingError = error.localizedDescription
             message = "The take was preserved but needs recovery review."
         }
         refreshInterruptedRecordings()
+    }
+
+    func beginNewCaptureGroup() {
+        guard !isRecording, !isFinalizing, !isImportingCanon else { return }
+        captureGroupID = UUID()
+        activeReceipt = nil
+        lastFinalizedReceipt = nil
+        importedCanonReceipts = []
+        attachedLaneIDs = []
+        canonImportProgress = nil
+        canonImportError = nil
+        canonImportMessage = "New capture group ready."
+        elapsedSeconds = 0
+        message = "New episode capture group ready."
+    }
+
+    func importCanonOriginals(_ urls: [URL]) async {
+        guard !urls.isEmpty, !isRecording, !isFinalizing, !isImportingCanon else {
+            return
+        }
+        let cleanEpisode = episodeSpaceID.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let cleanParticipant = participantID.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !cleanEpisode.isEmpty, !cleanParticipant.isEmpty else {
+            canonImportError = "Enter the episode space and participant before importing camera masters."
+            return
+        }
+
+        isImportingCanon = true
+        canonImportError = nil
+        defer {
+            isImportingCanon = false
+            canonImportProgress = nil
+        }
+
+        var failures: [String] = []
+        for (index, url) in urls.enumerated() {
+            canonImportMessage =
+                "Importing \(index + 1) of \(urls.count): \(url.lastPathComponent)"
+            let securityScope = url.startAccessingSecurityScopedResource()
+            defer {
+                if securityScope {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+
+            do {
+                let receipt = try await CanonCardImporter.importOriginal(
+                    configuration: CanonCardImportConfiguration(
+                        captureGroupID: captureGroupID,
+                        episodeSpaceID: cleanEpisode,
+                        participantID: cleanParticipant,
+                        sourceURL: url,
+                        rootDirectory: captureRoot
+                    ),
+                    onProgress: { [weak self] progress in
+                        Task { @MainActor in
+                            self?.canonImportProgress = progress
+                        }
+                    }
+                )
+                let laneID = try attachCanonMasterToEditor(receipt)
+                importedCanonReceipts.append(receipt)
+                attachedLaneIDs.append(laneID)
+                canonImportMessage =
+                    "Verified and attached \(index + 1) of \(urls.count): \(receipt.sourceFileName)"
+            } catch {
+                failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
+            }
+        }
+
+        if failures.isEmpty {
+            canonImportMessage =
+                "\(urls.count) camera-card original(s) are byte verified and attached to the editor. Alignment and proxy review remain."
+        } else {
+            canonImportError = failures.joined(separator: "\n")
+            canonImportMessage =
+                "\(urls.count - failures.count) of \(urls.count) camera-card original(s) imported."
+        }
     }
 
     func refreshInterruptedRecordings() {
@@ -141,6 +247,78 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 try? await Task.sleep(for: .milliseconds(200))
             }
         }
+    }
+
+    private func attachAudioMasterToEditor(
+        _ receipt: ProductionAudioRecordingReceipt
+    ) throws -> UUID {
+        let receiptPath = URL(fileURLWithPath: receipt.recordingDirectoryPath)
+            .appendingPathComponent(ProductionAudioRecorder.receiptFilename)
+            .path
+        return try attachManagedSourceToEditor(
+            sourceAssetID: receipt.recordingID.uuidString.lowercased(),
+            captureGroupID: receipt.captureGroupID,
+            episodeSpaceID: receipt.episodeSpaceID,
+            mediaURL: URL(fileURLWithPath: receipt.audioPath),
+            originalURL: URL(fileURLWithPath: receipt.audioPath),
+            duration: receipt.durationSeconds,
+            name: "\(receipt.participantID) local mic master",
+            role: "\(receipt.participantID.lowercased())_microphone_master",
+            ingestKind: "mac_local_audio_master",
+            sha256: receipt.sha256,
+            sourceReceiptPath: receiptPath
+        )
+    }
+
+    private func attachCanonMasterToEditor(
+        _ receipt: CanonCardImportReceipt
+    ) throws -> UUID {
+        try attachManagedSourceToEditor(
+            sourceAssetID: receipt.importID.uuidString.lowercased(),
+            captureGroupID: receipt.captureGroupID,
+            episodeSpaceID: receipt.episodeSpaceID,
+            mediaURL: URL(fileURLWithPath: receipt.managedOriginalPath),
+            originalURL: URL(fileURLWithPath: receipt.sourcePath),
+            duration: receipt.technicalProbe.durationSeconds,
+            name: "\(receipt.participantID) Canon card · \(receipt.sourceFileName)",
+            role: "\(receipt.participantID.lowercased())_camera",
+            ingestKind: "canon_card_verified_managed_original",
+            sha256: receipt.managedOriginalSHA256,
+            sourceReceiptPath: receipt.receiptPath
+        )
+    }
+
+    private func attachManagedSourceToEditor(
+        sourceAssetID: String,
+        captureGroupID: UUID,
+        episodeSpaceID: String,
+        mediaURL: URL,
+        originalURL: URL,
+        duration: Double,
+        name: String,
+        role: String,
+        ingestKind: String,
+        sha256: String?,
+        sourceReceiptPath: String
+    ) throws -> UUID {
+        let attachment = VerifiedCaptureSourceAttachment(
+            sourceAssetID: sourceAssetID,
+            captureGroupID: captureGroupID,
+            episodeSpaceID: episodeSpaceID,
+            mediaURL: mediaURL,
+            originalURL: originalURL,
+            duration: duration,
+            name: name,
+            role: role,
+            ingestKind: ingestKind,
+            sha256: sha256,
+            sourceReceiptPath: sourceReceiptPath
+        )
+        let receipt = try projectStore.attachVerifiedCaptureSource(attachment)
+        if let sequence = projectStore.activeSequence {
+            playbackEngine.updateSourcePlayers(for: sequence)
+        }
+        return receipt.laneID
     }
 
     private func resolveSelections(in inventory: ProductionCaptureInventory) {
@@ -186,7 +364,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 }
 
 struct EpisodeCaptureSetupView: View {
-    @StateObject private var model = EpisodeCaptureSetupModel()
+    @StateObject private var model: EpisodeCaptureSetupModel
+
+    init(projectStore: ProjectStore, playbackEngine: PlaybackEngine) {
+        _model = StateObject(
+            wrappedValue: EpisodeCaptureSetupModel(
+                projectStore: projectStore,
+                playbackEngine: playbackEngine
+            )
+        )
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -196,6 +383,7 @@ struct EpisodeCaptureSetupView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     routeSelectors
                     localMasterCard
+                    canonCardMasterCard
                     if let plan = model.plan {
                         planSummary(plan)
                         assessmentGrid(plan)
@@ -240,7 +428,10 @@ struct EpisodeCaptureSetupView: View {
                     Task { await model.refresh(requestAccess: true) }
                 }
                 .disabled(
-                    model.isRefreshing || model.isRecording || model.isFinalizing
+                    model.isRefreshing
+                        || model.isRecording
+                        || model.isFinalizing
+                        || model.isImportingCanon
                 )
                 .accessibilityIdentifier("EpisodeCaptureRefreshHardware")
             }
@@ -262,7 +453,11 @@ struct EpisodeCaptureSetupView: View {
                             }
                         }
                         .labelsHidden()
-                        .disabled(model.isRecording || model.isFinalizing)
+                        .disabled(
+                            model.isRecording
+                                || model.isFinalizing
+                                || model.isImportingCanon
+                        )
                         .accessibilityIdentifier("EpisodeCaptureCameraPicker")
                     }
                     GridRow {
@@ -274,7 +469,11 @@ struct EpisodeCaptureSetupView: View {
                             }
                         }
                         .labelsHidden()
-                        .disabled(model.isRecording || model.isFinalizing)
+                        .disabled(
+                            model.isRecording
+                                || model.isFinalizing
+                                || model.isImportingCanon
+                        )
                         .accessibilityIdentifier("EpisodeCaptureAudioInputPicker")
                     }
                     GridRow {
@@ -286,7 +485,11 @@ struct EpisodeCaptureSetupView: View {
                             }
                         }
                         .labelsHidden()
-                        .disabled(model.isRecording || model.isFinalizing)
+                        .disabled(
+                            model.isRecording
+                                || model.isFinalizing
+                                || model.isImportingCanon
+                        )
                         .accessibilityIdentifier("EpisodeCaptureAudioOutputPicker")
                     }
                 }
@@ -310,13 +513,40 @@ struct EpisodeCaptureSetupView: View {
                 HStack(spacing: 14) {
                     TextField("Episode space ID", text: $model.episodeSpaceID)
                         .textFieldStyle(.roundedBorder)
-                        .disabled(model.isRecording || model.isFinalizing)
+                        .disabled(
+                            model.isRecording
+                                || model.isFinalizing
+                                || model.isImportingCanon
+                        )
                         .accessibilityIdentifier("EpisodeCaptureEpisodeSpaceID")
                     TextField("Participant ID", text: $model.participantID)
                         .textFieldStyle(.roundedBorder)
                         .frame(maxWidth: 220)
-                        .disabled(model.isRecording || model.isFinalizing)
+                        .disabled(
+                            model.isRecording
+                                || model.isFinalizing
+                                || model.isImportingCanon
+                        )
                         .accessibilityIdentifier("EpisodeCaptureParticipantID")
+                }
+
+                HStack(spacing: 10) {
+                    Text("Capture group")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(model.captureGroupID.uuidString.lowercased())
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                    Spacer()
+                    Button("New capture group") {
+                        model.beginNewCaptureGroup()
+                    }
+                    .disabled(
+                        model.isRecording
+                            || model.isFinalizing
+                            || model.isImportingCanon
+                    )
+                    .accessibilityIdentifier("EpisodeCaptureNewGroup")
                 }
 
                 HStack(spacing: 12) {
@@ -398,6 +628,103 @@ struct EpisodeCaptureSetupView: View {
             .padding(10)
         }
         .accessibilityIdentifier("EpisodeCaptureLocalMaster")
+    }
+
+    private var canonCardMasterCard: some View {
+        GroupBox("Canon R8 camera-card masters") {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Import the internally recorded camera files after the take.")
+                            .font(.headline)
+                        Text(
+                            "Quipsly never edits the card. It copies each selected MP4 or MOV to managed capture storage, hashes the card stream and managed copy independently, then attaches only verified files to the source timeline."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button {
+                        chooseCanonCardOriginals()
+                    } label: {
+                        Label(
+                            model.isImportingCanon
+                                ? "Importing…"
+                                : "Choose card originals…",
+                            systemImage: "sdcard.fill"
+                        )
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        model.isRecording
+                            || model.isFinalizing
+                            || model.isImportingCanon
+                    )
+                    .accessibilityIdentifier("EpisodeCaptureChooseCanonOriginals")
+                }
+
+                if let progress = model.canonImportProgress {
+                    VStack(alignment: .leading, spacing: 5) {
+                        ProgressView(value: progress.fractionCompleted)
+                        HStack {
+                            Text(progress.phase.rawValue.capitalized)
+                            Spacer()
+                            Text(
+                                "\(ByteCountFormatter.string(fromByteCount: progress.completedBytes, countStyle: .file)) / \(ByteCountFormatter.string(fromByteCount: progress.totalBytes, countStyle: .file))"
+                            )
+                        }
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                    }
+                }
+
+                Text(model.canonImportMessage)
+                    .font(.callout)
+                    .foregroundStyle(
+                        model.canonImportError == nil
+                            ? Color.secondary
+                            : Color.orange
+                    )
+
+                if let error = model.canonImportError {
+                    Label(error, systemImage: "exclamationmark.octagon.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                ForEach(model.importedCanonReceipts, id: \.importID) { receipt in
+                    Divider()
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundStyle(.green)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(receipt.sourceFileName)
+                                .font(.headline)
+                            Text(
+                                "\(receipt.technicalProbe.width)×\(receipt.technicalProbe.height) · \(String(format: "%.2f", receipt.technicalProbe.nominalFrameRate)) fps · \(receipt.technicalProbe.videoCodec) · \(formatDuration(receipt.technicalProbe.durationSeconds))"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            Text(
+                                "SHA-256 \(receipt.managedOriginalSHA256?.prefix(16) ?? "missing")… · attached, alignment needed"
+                            )
+                            .font(.caption.monospaced())
+                            .textSelection(.enabled)
+                        }
+                        Spacer()
+                        Button("Reveal managed original") {
+                            NSWorkspace.shared.activateFileViewerSelecting([
+                                URL(fileURLWithPath: receipt.managedOriginalPath)
+                            ])
+                        }
+                    }
+                }
+            }
+            .padding(10)
+        }
+        .accessibilityIdentifier("EpisodeCaptureCanonCardMasters")
     }
 
     private func finalizedReceiptRow(
@@ -622,5 +949,23 @@ struct EpisodeCaptureSetupView: View {
             )
         }
         return String(format: "%02d:%02d", minutes, remainingSeconds)
+    }
+
+    private func chooseCanonCardOriginals() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Canon R8 camera-card originals"
+        panel.prompt = "Verify and import"
+        panel.message =
+            "Select every internally recorded file for this take. Quipsly copies and verifies them; the card originals remain untouched."
+        panel.allowedContentTypes = [.movie]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.resolvesAliases = true
+
+        guard panel.runModal() == .OK else { return }
+        Task {
+            await model.importCanonOriginals(panel.urls)
+        }
     }
 }

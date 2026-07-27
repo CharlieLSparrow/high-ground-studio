@@ -2231,6 +2231,11 @@ public struct VideoLaneMetadata: Codable, Equatable {
     public var vaultRawPath: String?
     public var vaultProxyPath: String?
     public var assetFingerprint: String?
+    public var sourceReceiptPath: String?
+    public var captureGroupID: String?
+    public var episodeSpaceID: String?
+    public var ingestKind: String?
+    public var alignmentStatus: String?
     public var declaredExists: Bool?
     public var sourceLabel: String?
     public var isPremiereRescue: Bool
@@ -2250,6 +2255,11 @@ public struct VideoLaneMetadata: Codable, Equatable {
         vaultRawPath: String? = nil,
         vaultProxyPath: String? = nil,
         assetFingerprint: String? = nil,
+        sourceReceiptPath: String? = nil,
+        captureGroupID: String? = nil,
+        episodeSpaceID: String? = nil,
+        ingestKind: String? = nil,
+        alignmentStatus: String? = nil,
         declaredExists: Bool? = nil,
         sourceLabel: String? = nil,
         isPremiereRescue: Bool = false,
@@ -2268,6 +2278,11 @@ public struct VideoLaneMetadata: Codable, Equatable {
         self.vaultRawPath = vaultRawPath
         self.vaultProxyPath = vaultProxyPath
         self.assetFingerprint = assetFingerprint
+        self.sourceReceiptPath = sourceReceiptPath
+        self.captureGroupID = captureGroupID
+        self.episodeSpaceID = episodeSpaceID
+        self.ingestKind = ingestKind
+        self.alignmentStatus = alignmentStatus
         self.declaredExists = declaredExists
         self.sourceLabel = sourceLabel
         self.isPremiereRescue = isPremiereRescue
@@ -2288,6 +2303,11 @@ public struct VideoLaneMetadata: Codable, Equatable {
         case vaultRawPath
         case vaultProxyPath
         case assetFingerprint
+        case sourceReceiptPath
+        case captureGroupID
+        case episodeSpaceID
+        case ingestKind
+        case alignmentStatus
         case declaredExists
         case sourceLabel
         case isPremiereRescue
@@ -2310,6 +2330,11 @@ public struct VideoLaneMetadata: Codable, Equatable {
             vaultRawPath: try container.decodeIfPresent(String.self, forKey: .vaultRawPath),
             vaultProxyPath: try container.decodeIfPresent(String.self, forKey: .vaultProxyPath),
             assetFingerprint: try container.decodeIfPresent(String.self, forKey: .assetFingerprint),
+            sourceReceiptPath: try container.decodeIfPresent(String.self, forKey: .sourceReceiptPath),
+            captureGroupID: try container.decodeIfPresent(String.self, forKey: .captureGroupID),
+            episodeSpaceID: try container.decodeIfPresent(String.self, forKey: .episodeSpaceID),
+            ingestKind: try container.decodeIfPresent(String.self, forKey: .ingestKind),
+            alignmentStatus: try container.decodeIfPresent(String.self, forKey: .alignmentStatus),
             declaredExists: try container.decodeIfPresent(Bool.self, forKey: .declaredExists),
             sourceLabel: try container.decodeIfPresent(String.self, forKey: .sourceLabel),
             isPremiereRescue: try container.decodeIfPresent(Bool.self, forKey: .isPremiereRescue) ?? false,

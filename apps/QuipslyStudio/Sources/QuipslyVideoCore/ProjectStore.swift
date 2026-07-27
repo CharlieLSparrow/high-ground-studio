@@ -160,6 +160,97 @@ public class ProjectStore: ObservableObject {
         objectWillChange.send()
     }
 
+    @discardableResult
+    public func attachVerifiedCaptureSource(
+        _ source: VerifiedCaptureSourceAttachment
+    ) throws -> LocalEditorSourceAttachmentReceipt {
+        var nextProject = project
+        if nextProject.title == "New Project" {
+            nextProject.title = source.episodeSpaceID
+        }
+        if !nextProject.mediaBin.contains(where: {
+            $0.url == source.mediaURL
+        }) {
+            nextProject.mediaBin.append(
+                MediaItem(
+                    url: source.mediaURL,
+                    name: source.mediaURL.lastPathComponent
+                )
+            )
+        }
+
+        let sequenceIndex: Int
+        if let activeSequenceId,
+           let activeIndex = nextProject.sequences.firstIndex(where: {
+               $0.id == activeSequenceId
+           }) {
+            sequenceIndex = activeIndex
+        } else if !nextProject.sequences.isEmpty {
+            sequenceIndex = 0
+        } else {
+            nextProject.sequences.append(
+                MediaSequence(
+                    title: "\(source.episodeSpaceID) source timeline"
+                )
+            )
+            sequenceIndex = nextProject.sequences.count - 1
+        }
+
+        let laneID = UUID()
+        let sequenceID = nextProject.sequences[sequenceIndex].id
+        let media = SourceVideo(
+            mediaURL: source.mediaURL,
+            duration: source.duration,
+            offset: 0
+        )
+        let metadata = VideoLaneMetadata(
+            sourceAssetId: source.sourceAssetID,
+            mediaKind: source.mediaURL.pathExtension.lowercased() == "wav"
+                ? "audio"
+                : "video",
+            role: source.role,
+            sourcePath: source.mediaURL.path,
+            originalPath: source.originalURL.path,
+            vaultRawPath: source.mediaURL.path,
+            assetFingerprint: source.sha256,
+            sourceReceiptPath: source.sourceReceiptPath,
+            captureGroupID: source.captureGroupID.uuidString.lowercased(),
+            episodeSpaceID: source.episodeSpaceID,
+            ingestKind: source.ingestKind,
+            alignmentStatus: "needs-alignment",
+            declaredExists: true,
+            sourceLabel: source.name
+        )
+        nextProject.sequences[sequenceIndex].lanes.append(
+            VideoLane(
+                id: laneID,
+                name: source.name,
+                sourceVideo: media,
+                metadata: metadata
+            )
+        )
+        replaceProject(
+            nextProject,
+            activeSequenceId: sequenceID
+        )
+
+        let receipt = LocalEditorSourceAttachmentReceipt(
+            sourceAssetID: source.sourceAssetID,
+            captureGroupID: source.captureGroupID,
+            episodeSpaceID: source.episodeSpaceID,
+            projectID: nextProject.id,
+            sequenceID: sequenceID,
+            laneID: laneID,
+            mediaPath: source.mediaURL.path,
+            sourceReceiptPath: source.sourceReceiptPath
+        )
+        try LocalEditorSourceAttachmentWriter.write(
+            receipt,
+            besideSourceReceipt: source.sourceReceiptPath
+        )
+        return receipt
+    }
+
     public func loadNativeSession(named name: String) async throws -> URL {
         let loaded = try await readNativeSession(named: name)
         applyNativeSession(loaded.session)

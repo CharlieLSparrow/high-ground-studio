@@ -35,7 +35,13 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
         installAudioRoomKeyboardBridge()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        ensureMainWindow(reason: "launch")
+        if ProcessInfo.processInfo.arguments.contains(
+            "--episode-capture-setup-only"
+        ) {
+            showEpisodeCaptureSetup(nil)
+        } else {
+            ensureMainWindow(reason: "launch")
+        }
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
@@ -192,7 +198,12 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
             defer: false
         )
         window.title = "Episode Capture Setup"
-        window.contentView = NSHostingView(rootView: EpisodeCaptureSetupView())
+        window.contentView = NSHostingView(
+            rootView: EpisodeCaptureSetupView(
+                projectStore: projectStore,
+                playbackEngine: playbackEngine
+            )
+        )
         window.setFrameAutosaveName("QuipslyStudioEpisodeCaptureSetup")
         window.isReleasedWhenClosed = false
         window.center()
