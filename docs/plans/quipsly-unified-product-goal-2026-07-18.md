@@ -2236,3 +2236,32 @@ This is an active-goal checkpoint, not a completion claim.
   human review of real High Ground Odyssey media, physical iPhone capture,
   direct MV7i/Canon qualification, cloud-worker qualification, TestFlight, or
   App Store readiness.
+
+### 2026-07-27 media-vault and native-preflight recovery checkpoint
+
+- The full Capture preflight uncovered three policy documents that its own
+  contracts required but the product repository did not contain. The only
+  copies were untracked legacy-checkout work, so a clean collaborator clone
+  could not satisfy the release lane. The product repo now owns a current
+  media-vault policy, non-destructive consolidation work order, and
+  capture-to-editor promotion flow with explicit authority, immutability,
+  consent, retention, recovery, and acceptance rules.
+- The missing documentation exposed a more serious implementation defect:
+  `scripts/verify-cloud-bucket.sh` still created a missing bucket and applied
+  wildcard CORS during a default “verify” invocation. It is now read-only by
+  default, reads only the two supported `.env` keys instead of sourcing
+  arbitrary shell, refuses non-primary buckets without an explicit exception,
+  requires `--create` or `--apply-cors` for mutation, rejects wildcard/invalid
+  origins, preserves the create-only upload header, excludes browser DELETE,
+  and reads the bucket back after a CORS update.
+- Five behavioral tests prove default non-mutation, missing-bucket fail-closed
+  behavior, explicit creation, wildcard rejection before update, and safe CORS
+  generation/readback. The 18-surface media-vault contract and nine-surface
+  recording-to-podcast contract pass.
+- The complete Quipsly Capture preflight now passes: privacy manifest, Quipsly
+  TypeScript, admin/reviewer/coaching/calendar/payment/media/session/provider
+  contracts, capture ingestion and session evidence, LiveKit dependency
+  validation, and the unsigned universal iPhone simulator build. The build
+  links LiveKit and succeeds for arm64 and x86_64. This is not a signed archive,
+  physical-device operation, TestFlight upload/install, or App Store
+  submission claim.
