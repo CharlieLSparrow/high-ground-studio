@@ -18,6 +18,7 @@ public struct ProductionAudioRecordingConfiguration: Equatable, Sendable {
     public let captureGroupID: UUID
     public let episodeSpaceID: String
     public let participantID: String
+    public let ownerAccountID: String?
     public let callRoomID: String?
     public let recordingConsentID: String?
     public let startReceiptID: UUID?
@@ -32,6 +33,7 @@ public struct ProductionAudioRecordingConfiguration: Equatable, Sendable {
         captureGroupID: UUID = UUID(),
         episodeSpaceID: String,
         participantID: String,
+        ownerAccountID: String? = nil,
         callRoomID: String? = nil,
         recordingConsentID: String? = nil,
         startReceiptID: UUID? = nil,
@@ -46,6 +48,7 @@ public struct ProductionAudioRecordingConfiguration: Equatable, Sendable {
         self.captureGroupID = captureGroupID
         self.episodeSpaceID = episodeSpaceID
         self.participantID = participantID
+        self.ownerAccountID = ownerAccountID
         self.callRoomID = callRoomID
         self.recordingConsentID = recordingConsentID
         self.startReceiptID = startReceiptID
@@ -63,6 +66,7 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
     public let captureGroupID: UUID
     public let episodeSpaceID: String
     public let participantID: String
+    public let ownerAccountID: String?
     public let callRoomID: String?
     public let recordingConsentID: String?
     public let startReceiptID: UUID?
@@ -112,6 +116,7 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
         self.captureGroupID = configuration.captureGroupID
         self.episodeSpaceID = configuration.episodeSpaceID
         self.participantID = configuration.participantID
+        self.ownerAccountID = configuration.ownerAccountID
         self.callRoomID = configuration.callRoomID
         self.recordingConsentID = configuration.recordingConsentID
         self.startReceiptID = configuration.startReceiptID

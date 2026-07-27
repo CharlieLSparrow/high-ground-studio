@@ -228,6 +228,7 @@ public final class MacCanonicalCaptureUploader {
         let callRoomId: String
         let participantId: String
         let recordingConsentId: String
+        let startReceiptId: String?
         let capturePurpose: String?
         let sourceProfileJson: String
         let startedAt: Date
@@ -250,6 +251,8 @@ public final class MacCanonicalCaptureUploader {
             callRoomId = job.callRoomID
             participantId = job.participantID
             recordingConsentId = job.recordingConsentID
+            startReceiptId =
+                job.startReceiptID?.uuidString.lowercased()
             capturePurpose = job.capturePurpose
             sourceProfileJson = job.sourceProfileJSON
             startedAt = job.startedAt
@@ -281,6 +284,10 @@ public final class MacCanonicalCaptureUploader {
             let holdReason: String?
         }
 
+        struct RoomReadiness: Decodable {
+            let startReceiptId: String?
+        }
+
         let ok: Bool?
         let canonical: Bool?
         let error: String?
@@ -298,6 +305,7 @@ public final class MacCanonicalCaptureUploader {
         let finalization: Finalization?
         let processingDisposition: String?
         let holdReason: String?
+        let originalRoomReadiness: RoomReadiness?
     }
 
     private struct FinalizeRequest: Encodable {
@@ -341,6 +349,18 @@ public final class MacCanonicalCaptureUploader {
                         ?? "Nest could not create the canonical upload."
             )
         }
+        let startReceiptMatches: Bool
+        if let startReceiptID = job.startReceiptID {
+            startReceiptMatches =
+                envelope.originalRoomReadiness?
+                    .startReceiptId?.lowercased()
+                == startReceiptID.uuidString.lowercased()
+        } else {
+            // Protocol-v1 jobs created before the client persisted this
+            // evidence remain recoverable under Nest's server-owned
+            // capture/readiness binding.
+            startReceiptMatches = true
+        }
         guard envelope.uploadSessionId?.lowercased()
                 == job.id.uuidString.lowercased(),
               envelope.captureId?.lowercased()
@@ -350,11 +370,12 @@ public final class MacCanonicalCaptureUploader {
               envelope.expectedSizeBytes
                 == job.expectedSizeBytes,
               envelope.expectedSha256?.lowercased()
-                == job.expectedSHA256 else {
+                == job.expectedSHA256,
+              startReceiptMatches else {
             throw uploadError(
                 code: 5,
                 message:
-                    "Nest returned an upload binding that does not match this source, take, size, or SHA-256 receipt."
+                    "Nest returned an upload binding that does not match this source, take, START receipt, size, or SHA-256 receipt."
             )
         }
         return envelope

@@ -16,6 +16,7 @@ public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
     public let captureGroupID: UUID
     public let episodeSpaceID: String
     public let participantID: String
+    public let ownerAccountID: String?
     public let callRoomID: String?
     public let recordingConsentID: String?
     public let startReceiptID: UUID?
@@ -30,6 +31,7 @@ public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
         captureGroupID: UUID = UUID(),
         episodeSpaceID: String,
         participantID: String,
+        ownerAccountID: String? = nil,
         callRoomID: String? = nil,
         recordingConsentID: String? = nil,
         startReceiptID: UUID? = nil,
@@ -47,6 +49,7 @@ public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
         self.captureGroupID = captureGroupID
         self.episodeSpaceID = episodeSpaceID
         self.participantID = participantID
+        self.ownerAccountID = ownerAccountID
         self.callRoomID = callRoomID
         self.recordingConsentID = recordingConsentID
         self.startReceiptID = startReceiptID
@@ -64,6 +67,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
     public let captureGroupID: UUID
     public let episodeSpaceID: String
     public let participantID: String
+    public let ownerAccountID: String?
     public let callRoomID: String?
     public let recordingConsentID: String?
     public let startReceiptID: UUID?
@@ -110,6 +114,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
         captureGroupID = configuration.captureGroupID
         episodeSpaceID = configuration.episodeSpaceID
         participantID = configuration.participantID
+        ownerAccountID = configuration.ownerAccountID
         callRoomID = configuration.callRoomID
         recordingConsentID = configuration.recordingConsentID
         startReceiptID = configuration.startReceiptID

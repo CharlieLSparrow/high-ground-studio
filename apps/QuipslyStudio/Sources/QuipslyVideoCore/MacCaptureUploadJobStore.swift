@@ -36,6 +36,7 @@ public struct MacCaptureUploadJob:
     public let callRoomID: String
     public let participantID: String
     public let recordingConsentID: String
+    public let startReceiptID: UUID?
     public let capturePurpose: String?
     public let sourceProfileJSON: String
     public let startedAt: Date
@@ -73,6 +74,7 @@ public struct MacCaptureUploadJob:
         callRoomID: String,
         participantID: String,
         recordingConsentID: String,
+        startReceiptID: UUID? = nil,
         capturePurpose: String?,
         sourceProfileJSON: String,
         startedAt: Date,
@@ -92,7 +94,7 @@ public struct MacCaptureUploadJob:
         serverTranscriptJobID: String? = nil,
         lastError: String? = nil
     ) {
-        self.protocolVersion = 1
+        self.protocolVersion = 2
         self.id = id
         self.ownerAccountID = ownerAccountID
         self.captureID = captureID
@@ -110,6 +112,7 @@ public struct MacCaptureUploadJob:
         self.callRoomID = callRoomID
         self.participantID = participantID
         self.recordingConsentID = recordingConsentID
+        self.startReceiptID = startReceiptID
         self.capturePurpose = capturePurpose
         self.sourceProfileJSON = sourceProfileJSON
         self.startedAt = startedAt
@@ -158,6 +161,9 @@ public enum MacCaptureUploadJobStoreError:
     case sourceFileMissing
     case sourceFileSizeChanged
     case sourceDigestMissing
+    case sourceReceiptMissing
+    case sourceReceiptMismatch
+    case sourceOwnerMismatch
     case immutableBindingChanged
     case ledgerQuarantined
 
@@ -173,6 +179,12 @@ public enum MacCaptureUploadJobStoreError:
             "The local source size no longer matches its finalized receipt."
         case .sourceDigestMissing:
             "The finalized source receipt does not contain a valid SHA-256 digest."
+        case .sourceReceiptMissing:
+            "The finalized source has no durable local receipt. Its upload was not armed."
+        case .sourceReceiptMismatch:
+            "The durable local receipt no longer matches the finalized source and Episode Room binding."
+        case .sourceOwnerMismatch:
+            "The finalized source belongs to a different verified Quipsly account. Switch back to that account before arming its upload."
         case .immutableBindingChanged:
             "The upload job's immutable source or Episode Room binding changed after it was created."
         case .ledgerQuarantined:
@@ -263,48 +275,6 @@ public final class MacCaptureUploadJobStore {
             throw MacCaptureUploadJobStoreError
                 .sourceIsNotFinalized
         }
-        let owner = ownerAccountID.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        ).lowercased()
-        guard !owner.isEmpty,
-              let callRoomID = nonempty(receipt.callRoomID),
-              let recordingConsentID = nonempty(
-                receipt.recordingConsentID
-              ),
-              receipt.startReceiptID != nil,
-              !receipt.participantID.trimmingCharacters(
-                in: .whitespacesAndNewlines
-              ).isEmpty else {
-            throw MacCaptureUploadJobStoreError
-                .uploadIdentityIncomplete
-        }
-        let sourceURL = URL(fileURLWithPath: receipt.audioPath)
-        guard fileManager.fileExists(atPath: sourceURL.path) else {
-            throw MacCaptureUploadJobStoreError.sourceFileMissing
-        }
-        guard let byteCount = receipt.byteCount, byteCount > 0,
-              (
-                try sourceURL.resourceValues(
-                    forKeys: [.fileSizeKey]
-                ).fileSize
-              ).map(Int64.init) == byteCount else {
-            throw MacCaptureUploadJobStoreError
-                .sourceFileSizeChanged
-        }
-        guard let sha256 = receipt.sha256?.lowercased(),
-              sha256.range(
-                of: "^[0-9a-f]{64}$",
-                options: .regularExpression
-              ) != nil else {
-            throw MacCaptureUploadJobStoreError
-                .sourceDigestMissing
-        }
-        if let existing = job(
-            id: receipt.recordingID,
-            ownerAccountID: owner
-        ) {
-            return existing
-        }
         let profile = MacAudioUploadSourceProfile(
             inputDevice: receipt.inputDevice,
             sampleRate: receipt.targetSampleRate,
@@ -328,34 +298,116 @@ public final class MacCaptureUploadJobStore {
             ProductionAudioRecorder.receiptFilename
         )
         .path
-        let created = MacCaptureUploadJob(
+        try validateDurableAudioReceipt(
+            receipt,
+            at: sourceReceiptPath
+        )
+        return try enqueueFinalizedSource(
             id: receipt.recordingID,
-            ownerAccountID: owner,
-            captureID: receipt.captureGroupID,
             captureGroupID: receipt.captureGroupID,
-            filePath: sourceURL.path,
+            fileURL: URL(fileURLWithPath: receipt.audioPath),
             sourceReceiptPath: sourceReceiptPath,
-            fileName: sourceURL.lastPathComponent,
             contentType: "audio/wav",
             sourceType: "audio",
-            expectedSizeBytes: byteCount,
-            expectedSHA256: sha256,
-            projectSlug: nonempty(receipt.projectSlug),
-            episodeSlug:
-                nonempty(receipt.episodeSlug)
-                    ?? nonempty(receipt.episodeSpaceID),
+            byteCount: receipt.byteCount,
+            sha256: receipt.sha256,
+            projectSlug: receipt.projectSlug,
+            episodeSlug: receipt.episodeSlug
+                ?? receipt.episodeSpaceID,
             trackID:
                 "\(safeToken(receipt.participantID))-microphone-master",
-            callRoomID: callRoomID,
+            callRoomID: receipt.callRoomID,
             participantID: receipt.participantID,
-            recordingConsentID: recordingConsentID,
-            capturePurpose: nonempty(receipt.capturePurpose),
+            recordingConsentID: receipt.recordingConsentID,
+            startReceiptID: receipt.startReceiptID,
+            capturePurpose: receipt.capturePurpose,
             sourceProfileJSON: profileJSON,
             startedAt: receipt.startedAt,
-            stoppedAt: stoppedAt
+            stoppedAt: stoppedAt,
+            expectedOwnerAccountID:
+                receipt.ownerAccountID,
+            ownerAccountID: ownerAccountID
         )
-        try commit(jobs + [created])
-        return created
+    }
+
+    @discardableResult
+    public func enqueueFinalizedVideoReference(
+        receipt: ProductionVideoReferenceReceipt,
+        ownerAccountID: String
+    ) throws -> MacCaptureUploadJob {
+        guard receipt.state == .finalized,
+              let stoppedAt = receipt.stoppedAt else {
+            throw MacCaptureUploadJobStoreError
+                .sourceIsNotFinalized
+        }
+        let profile = MacVideoReferenceUploadSourceProfile(
+            schemaVersion: 1,
+            container: "mov",
+            codec: nil,
+            width: receipt.negotiatedFormat.width,
+            height: receipt.negotiatedFormat.height,
+            nominalFrameRate:
+                receipt.negotiatedFormat.maximumFrameRate,
+            colorSpace: nil,
+            orientation: nil,
+            cameraPosition: nil,
+            cameraDeviceUniqueID: receipt.videoDevice.id,
+            includesAudio: receipt.containsAudio,
+            audioSampleRate: nil,
+            audioChannelCount: nil,
+            monotonicStartedNanoseconds:
+                receipt.startedMonotonicNanoseconds,
+            monotonicStoppedNanoseconds:
+                receipt.stoppedMonotonicNanoseconds,
+            clockSamples: nil,
+            cameraDevice: receipt.videoDevice,
+            referenceKind: receipt.sourceKind
+        )
+        let profileData = try Self.encoder.encode(profile)
+        guard let profileJSON = String(
+            data: profileData,
+            encoding: .utf8
+        ) else {
+            throw MacCaptureUploadJobStoreError
+                .uploadIdentityIncomplete
+        }
+        let sourceReceiptPath = URL(
+            fileURLWithPath: receipt.recordingDirectoryPath
+        )
+        .appendingPathComponent(
+            ProductionVideoReferenceRecorder.receiptFilename
+        )
+        .path
+        try validateDurableVideoReceipt(
+            receipt,
+            at: sourceReceiptPath
+        )
+        return try enqueueFinalizedSource(
+            id: receipt.recordingID,
+            captureGroupID: receipt.captureGroupID,
+            fileURL: URL(fileURLWithPath: receipt.videoPath),
+            sourceReceiptPath: sourceReceiptPath,
+            contentType: "video/quicktime",
+            sourceType: "video",
+            byteCount: receipt.byteCount,
+            sha256: receipt.sha256,
+            projectSlug: receipt.projectSlug,
+            episodeSlug: receipt.episodeSlug
+                ?? receipt.episodeSpaceID,
+            trackID:
+                "\(safeToken(receipt.participantID))-camera-reference",
+            callRoomID: receipt.callRoomID,
+            participantID: receipt.participantID,
+            recordingConsentID: receipt.recordingConsentID,
+            startReceiptID: receipt.startReceiptID,
+            capturePurpose: receipt.capturePurpose,
+            sourceProfileJSON: profileJSON,
+            startedAt: receipt.startedAt,
+            stoppedAt: stoppedAt,
+            expectedOwnerAccountID:
+                receipt.ownerAccountID,
+            ownerAccountID: ownerAccountID
+        )
     }
 
     public func save(_ job: MacCaptureUploadJob) throws {
@@ -535,6 +587,14 @@ public final class MacCaptureUploadJobStore {
         _ lhs: MacCaptureUploadJob,
         _ rhs: MacCaptureUploadJob
     ) -> Bool {
+        sourceBindingMatches(lhs, rhs)
+            && lhs.createdAt == rhs.createdAt
+    }
+
+    private func sourceBindingMatches(
+        _ lhs: MacCaptureUploadJob,
+        _ rhs: MacCaptureUploadJob
+    ) -> Bool {
         lhs.id == rhs.id
             && lhs.ownerAccountID == rhs.ownerAccountID
             && lhs.captureID == rhs.captureID
@@ -552,11 +612,117 @@ public final class MacCaptureUploadJobStore {
             && lhs.callRoomID == rhs.callRoomID
             && lhs.participantID == rhs.participantID
             && lhs.recordingConsentID == rhs.recordingConsentID
+            && lhs.startReceiptID == rhs.startReceiptID
             && lhs.capturePurpose == rhs.capturePurpose
             && lhs.sourceProfileJSON == rhs.sourceProfileJSON
             && lhs.startedAt == rhs.startedAt
             && lhs.stoppedAt == rhs.stoppedAt
-            && lhs.createdAt == rhs.createdAt
+    }
+
+    private func enqueueFinalizedSource(
+        id: UUID,
+        captureGroupID: UUID,
+        fileURL: URL,
+        sourceReceiptPath: String,
+        contentType: String,
+        sourceType: String,
+        byteCount: Int64?,
+        sha256: String?,
+        projectSlug: String?,
+        episodeSlug: String?,
+        trackID: String,
+        callRoomID: String?,
+        participantID: String,
+        recordingConsentID: String?,
+        startReceiptID: UUID?,
+        capturePurpose: String?,
+        sourceProfileJSON: String,
+        startedAt: Date,
+        stoppedAt: Date,
+        expectedOwnerAccountID: String?,
+        ownerAccountID: String
+    ) throws -> MacCaptureUploadJob {
+        let owner = ownerAccountID.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).lowercased()
+        let cleanParticipant = participantID.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let expectedOwner = expectedOwnerAccountID?
+            .trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            .lowercased()
+        guard expectedOwner == owner else {
+            throw MacCaptureUploadJobStoreError
+                .sourceOwnerMismatch
+        }
+        guard !owner.isEmpty,
+              let callRoomID = nonempty(callRoomID),
+              let recordingConsentID = nonempty(
+                recordingConsentID
+              ),
+              startReceiptID != nil,
+              !cleanParticipant.isEmpty else {
+            throw MacCaptureUploadJobStoreError
+                .uploadIdentityIncomplete
+        }
+        guard fileManager.fileExists(atPath: fileURL.path) else {
+            throw MacCaptureUploadJobStoreError.sourceFileMissing
+        }
+        guard let byteCount, byteCount > 0,
+              (
+                try fileURL.resourceValues(
+                    forKeys: [.fileSizeKey]
+                ).fileSize
+              ).map(Int64.init) == byteCount else {
+            throw MacCaptureUploadJobStoreError
+                .sourceFileSizeChanged
+        }
+        guard let sha256 = sha256?.lowercased(),
+              sha256.range(
+                of: "^[0-9a-f]{64}$",
+                options: .regularExpression
+              ) != nil else {
+            throw MacCaptureUploadJobStoreError
+                .sourceDigestMissing
+        }
+        let created = MacCaptureUploadJob(
+            id: id,
+            ownerAccountID: owner,
+            captureID: captureGroupID,
+            captureGroupID: captureGroupID,
+            filePath: fileURL.path,
+            sourceReceiptPath: sourceReceiptPath,
+            fileName: fileURL.lastPathComponent,
+            contentType: contentType,
+            sourceType: sourceType,
+            expectedSizeBytes: byteCount,
+            expectedSHA256: sha256,
+            projectSlug: nonempty(projectSlug),
+            episodeSlug: nonempty(episodeSlug),
+            trackID: trackID,
+            callRoomID: callRoomID,
+            participantID: cleanParticipant,
+            recordingConsentID: recordingConsentID,
+            startReceiptID: startReceiptID,
+            capturePurpose: nonempty(capturePurpose),
+            sourceProfileJSON: sourceProfileJSON,
+            startedAt: startedAt,
+            stoppedAt: stoppedAt
+        )
+        if let existing = job(
+            id: id,
+            ownerAccountID: owner
+        ) {
+            guard sourceBindingMatches(existing, created) else {
+                throw MacCaptureUploadJobStoreError
+                    .immutableBindingChanged
+            }
+            return existing
+        }
+        try commit(jobs + [created])
+        return created
     }
 
     private func nonempty(_ value: String?) -> String? {
@@ -564,6 +730,117 @@ public final class MacCaptureUploadJobStore {
             in: .whitespacesAndNewlines
         )
         return clean?.isEmpty == false ? clean : nil
+    }
+
+    private func validateDurableAudioReceipt(
+        _ receipt: ProductionAudioRecordingReceipt,
+        at path: String
+    ) throws {
+        let url = URL(fileURLWithPath: path)
+        guard fileManager.fileExists(atPath: path) else {
+            throw MacCaptureUploadJobStoreError
+                .sourceReceiptMissing
+        }
+        guard let persisted = try? Self.decoder.decode(
+            ProductionAudioRecordingReceipt.self,
+            from: Data(contentsOf: url)
+        ),
+        persisted.state == .finalized,
+        persisted.recordingID == receipt.recordingID,
+        persisted.captureGroupID == receipt.captureGroupID,
+        persisted.episodeSpaceID == receipt.episodeSpaceID,
+        persisted.participantID == receipt.participantID,
+        normalizedOwner(persisted.ownerAccountID)
+            == normalizedOwner(receipt.ownerAccountID),
+        persisted.callRoomID == receipt.callRoomID,
+        persisted.recordingConsentID
+            == receipt.recordingConsentID,
+        persisted.startReceiptID == receipt.startReceiptID,
+        persisted.projectSlug == receipt.projectSlug,
+        persisted.episodeSlug == receipt.episodeSlug,
+        persisted.capturePurpose == receipt.capturePurpose,
+        persisted.inputDevice == receipt.inputDevice,
+        persisted.channelCount == receipt.channelCount,
+        persisted.startedMonotonicNanoseconds
+            == receipt.startedMonotonicNanoseconds,
+        persisted.stoppedMonotonicNanoseconds
+            == receipt.stoppedMonotonicNanoseconds,
+        persisted.frameCount == receipt.frameCount,
+        persisted.audioPath == receipt.audioPath,
+        persisted.partialAudioPath == nil,
+        persisted.byteCount == receipt.byteCount,
+        persisted.sha256?.lowercased()
+            == receipt.sha256?.lowercased(),
+        persisted.failure == nil,
+        datesMatch(persisted.startedAt, receipt.startedAt),
+        datesMatch(persisted.stoppedAt, receipt.stoppedAt)
+        else {
+            throw MacCaptureUploadJobStoreError
+                .sourceReceiptMismatch
+        }
+    }
+
+    private func validateDurableVideoReceipt(
+        _ receipt: ProductionVideoReferenceReceipt,
+        at path: String
+    ) throws {
+        let url = URL(fileURLWithPath: path)
+        guard fileManager.fileExists(atPath: path) else {
+            throw MacCaptureUploadJobStoreError
+                .sourceReceiptMissing
+        }
+        guard let persisted = try? Self.decoder.decode(
+            ProductionVideoReferenceReceipt.self,
+            from: Data(contentsOf: url)
+        ),
+        persisted.state == .finalized,
+        persisted.recordingID == receipt.recordingID,
+        persisted.captureGroupID == receipt.captureGroupID,
+        persisted.episodeSpaceID == receipt.episodeSpaceID,
+        persisted.participantID == receipt.participantID,
+        normalizedOwner(persisted.ownerAccountID)
+            == normalizedOwner(receipt.ownerAccountID),
+        persisted.callRoomID == receipt.callRoomID,
+        persisted.recordingConsentID
+            == receipt.recordingConsentID,
+        persisted.startReceiptID == receipt.startReceiptID,
+        persisted.projectSlug == receipt.projectSlug,
+        persisted.episodeSlug == receipt.episodeSlug,
+        persisted.capturePurpose == receipt.capturePurpose,
+        persisted.videoDevice == receipt.videoDevice,
+        persisted.negotiatedFormat
+            == receipt.negotiatedFormat,
+        persisted.startedMonotonicNanoseconds
+            == receipt.startedMonotonicNanoseconds,
+        persisted.stoppedMonotonicNanoseconds
+            == receipt.stoppedMonotonicNanoseconds,
+        persisted.videoPath == receipt.videoPath,
+        persisted.partialVideoPath == nil,
+        persisted.byteCount == receipt.byteCount,
+        persisted.sha256?.lowercased()
+            == receipt.sha256?.lowercased(),
+        persisted.failure == nil,
+        datesMatch(persisted.startedAt, receipt.startedAt),
+        datesMatch(persisted.stoppedAt, receipt.stoppedAt)
+        else {
+            throw MacCaptureUploadJobStoreError
+                .sourceReceiptMismatch
+        }
+    }
+
+    private func datesMatch(_ lhs: Date?, _ rhs: Date?) -> Bool {
+        switch (lhs, rhs) {
+        case (.none, .none):
+            true
+        case (.some(let lhs), .some(let rhs)):
+            abs(lhs.timeIntervalSince(rhs)) < 1
+        default:
+            false
+        }
+    }
+
+    private func normalizedOwner(_ value: String?) -> String? {
+        nonempty(value)?.lowercased()
     }
 
     private func safeToken(_ value: String) -> String {
@@ -600,6 +877,31 @@ public final class MacCaptureUploadJobStore {
         let channelCount: Int
         let clientKind: String
         let sourceKind: String
+    }
+
+    private struct MacVideoReferenceUploadSourceProfile:
+        Codable,
+        Equatable,
+        Sendable
+    {
+        let schemaVersion: Int
+        let container: String
+        let codec: String?
+        let width: Int
+        let height: Int
+        let nominalFrameRate: Double
+        let colorSpace: String?
+        let orientation: String?
+        let cameraPosition: String?
+        let cameraDeviceUniqueID: String
+        let includesAudio: Bool
+        let audioSampleRate: Double?
+        let audioChannelCount: Int?
+        let monotonicStartedNanoseconds: UInt64
+        let monotonicStoppedNanoseconds: UInt64?
+        let clockSamples: [String]?
+        let cameraDevice: CaptureVideoDeviceSnapshot
+        let referenceKind: String
     }
 
     private static var encoder: JSONEncoder {

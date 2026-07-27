@@ -805,3 +805,38 @@ physical acceptance gate is still a human-present short take followed by MOV
 and WAV playback/probe/hash readback, direct MV7i headphone monitoring,
 Canon-card 4K import, waveform/drift review, route-loss recovery, and a
 long-take rehearsal.
+
+## Implementation checkpoint — July 27, 2026 (Mac camera cloud preservation)
+
+The silent Mac camera reference can now cross the same canonical boundary as
+the local WAV without inventing a second upload system:
+
+- `MacCaptureUploadJobStore` owns one durable, account-partitioned source
+  descriptor for audio and video. A finalized MOV is rechecked against its
+  receipt size and SHA-256 before a private upload capability can be issued.
+- Audio and video source receipts preserve the verified Nest account that
+  owned the recording action. Local-only and historical receipts with no owner
+  cannot be armed later merely because somebody is currently signed in.
+- New upload jobs preserve the exact applied START receipt as immutable
+  evidence. The Mac accepts Nest's create/recovery response only when its
+  returned room-readiness START matches that receipt. Protocol-v1 jobs remain
+  recoverable under Nest's existing server-owned capture binding, but the
+  stronger evidence cannot be retroactively invented.
+- The MOV job uses `video/quicktime`, `sourceType=video`, an independent
+  per-file upload-session ID, the shared capture-group ID, exact participant,
+  consent, room, device UID, negotiated dimensions/frame rate, monotonic
+  boundaries, and explicit `includesAudio=false`. Orientation and codec remain
+  unknown until probed; they are not guessed from the preview.
+- Relaunch recovery handles every pending WAV and MOV job for the active
+  account, not only the newest file. Source-specific progress, hold, retry, and
+  verified states are shown beside the corresponding local master.
+- Exact-byte verification projects the video into canonical Episode
+  Production and queues eligible proxy work. The UI explicitly does not equate
+  this with proxy completion, transcription, reviewed alignment, or
+  publication, and it never removes the local MOV.
+
+This does not yet authorize Canon camera-card originals for cloud upload. Those
+imports are byte-verified and locally attached, but their import receipt does
+not yet carry the immutable account, CallRoom, consent, and applied-START
+binding required by this outbox. That boundary must be added explicitly rather
+than inferred from whichever Episode Room happens to be selected later.

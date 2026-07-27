@@ -58,11 +58,17 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var isRecoveringRoomReceipts = false
     @Published private(set) var activeUploadJob:
         MacCaptureUploadJob?
+    @Published private(set) var activeVideoUploadJob:
+        MacCaptureUploadJob?
     @Published private(set) var isUploadingMaster = false
     @Published private(set) var uploadProgress = 0.0
     @Published private(set) var uploadMessage =
         "Finalized Episode Room masters can be uploaded directly to Quipsly's private media vault."
     @Published private(set) var uploadError: String?
+    @Published private(set) var videoUploadProgress = 0.0
+    @Published private(set) var videoUploadMessage =
+        "Authorized camera references can be preserved in Quipsly and projected into the Episode Room after exact-byte verification."
+    @Published private(set) var videoUploadError: String?
 
     let captureRoot = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
@@ -177,19 +183,83 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         return abs(sampleRate - ProductionAudioRecorder.targetSampleRate) < 1
     }
 
-    var canUploadLastFinalizedMaster: Bool {
-        guard !isUploadingMaster,
-              uploadJobStore.isWritable,
-              let receipt = lastFinalizedReceipt,
+    var lastFinalizedMasterIsRoomBound: Bool {
+        guard let receipt = lastFinalizedReceipt,
               receipt.state == .finalized,
               receipt.callRoomID != nil,
               receipt.recordingConsentID != nil,
               receipt.startReceiptID != nil,
-              episodeRoomOwnerAccountID != nil else {
+              normalizedOwnerAccountID(
+                  receipt.ownerAccountID
+              ) == normalizedOwnerAccountID(
+                    episodeRoomOwnerAccountID
+                ) else {
+            return false
+        }
+        return true
+    }
+
+    var canUploadLastFinalizedMaster: Bool {
+        guard !isUploadingMaster,
+              uploadJobStore.isWritable,
+              let receipt = lastFinalizedReceipt,
+              lastFinalizedMasterIsRoomBound else {
             return false
         }
         return activeUploadJob?.phase != .verified
             || activeUploadJob?.id != receipt.recordingID
+    }
+
+    var audioUploadSystemImage: String {
+        if activeUploadJob?.phase == .verified {
+            return "checkmark.icloud.fill"
+        }
+        if !lastFinalizedMasterIsRoomBound {
+            return "externaldrive.fill"
+        }
+        return uploadError == nil
+            ? "icloud.and.arrow.up.fill"
+            : "exclamationmark.icloud.fill"
+    }
+
+    var lastFinalizedVideoReferenceIsRoomBound: Bool {
+        guard let receipt = lastFinalizedVideoReceipt,
+              receipt.state == .finalized,
+              receipt.callRoomID != nil,
+              receipt.recordingConsentID != nil,
+              receipt.startReceiptID != nil,
+              normalizedOwnerAccountID(
+                  receipt.ownerAccountID
+              ) == normalizedOwnerAccountID(
+                    episodeRoomOwnerAccountID
+                ) else {
+            return false
+        }
+        return true
+    }
+
+    var canUploadLastFinalizedVideoReference: Bool {
+        guard !isUploadingMaster,
+              uploadJobStore.isWritable,
+              let receipt = lastFinalizedVideoReceipt,
+              lastFinalizedVideoReferenceIsRoomBound else {
+            return false
+        }
+        return activeVideoUploadJob?.phase != .verified
+            || activeVideoUploadJob?.id
+                != receipt.recordingID
+    }
+
+    var videoUploadSystemImage: String {
+        if activeVideoUploadJob?.phase == .verified {
+            return "checkmark.icloud.fill"
+        }
+        if !lastFinalizedVideoReferenceIsRoomBound {
+            return "externaldrive.fill"
+        }
+        return videoUploadError == nil
+            ? "icloud.and.arrow.up.fill"
+            : "exclamationmark.icloud.fill"
     }
 
     var plan: ProductionCapturePlan? {
@@ -513,6 +583,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                                 participantID.trimmingCharacters(
                                     in: .whitespacesAndNewlines
                                 ),
+                            ownerAccountID:
+                                roomCapture?.ownerAccountID,
                             callRoomID: roomCapture?.callRoomID,
                             recordingConsentID:
                                 roomCapture?.recordingConsentID,
@@ -540,6 +612,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     participantID: participantID.trimmingCharacters(
                         in: .whitespacesAndNewlines
                     ),
+                    ownerAccountID:
+                        roomCapture?.ownerAccountID,
                     callRoomID: roomCapture?.callRoomID,
                     recordingConsentID:
                         roomCapture?.recordingConsentID,
@@ -649,7 +723,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 lastFinalizedReceipt = receipt
                 finalizedAudioReceipt = receipt
                 activeUploadJob =
-                    episodeRoomOwnerAccountID.flatMap {
+                    receipt.ownerAccountID.flatMap {
                         uploadJobStore.job(
                             id: receipt.recordingID,
                             ownerAccountID: $0
@@ -659,7 +733,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     activeUploadJob?.phase == .verified ? 1 : 0
                 uploadError = nil
                 uploadMessage =
-                    "Finalized microphone master is ready for direct private-vault upload. The local WAV will be retained."
+                    receipt.ownerAccountID == nil
+                    ? "Finalized local-only microphone master will remain on this Mac; Quipsly will not infer Episode Room authority later."
+                    : "Finalized microphone master is ready for direct private-vault upload. The local WAV will be retained."
                 elapsedSeconds = receipt.durationSeconds
             } catch {
                 activeReceipt = recorder.activeReceipt
@@ -675,6 +751,21 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 activeVideoReceipt = receipt
                 lastFinalizedVideoReceipt = receipt
                 finalizedVideoReceipt = receipt
+                activeVideoUploadJob =
+                    receipt.ownerAccountID.flatMap {
+                        uploadJobStore.job(
+                            id: receipt.recordingID,
+                            ownerAccountID: $0
+                        )
+                    }
+                videoUploadProgress =
+                    activeVideoUploadJob?.phase
+                        == .verified ? 1 : 0
+                videoUploadError = nil
+                videoUploadMessage =
+                    receipt.ownerAccountID == nil
+                    ? "Finalized local-only camera reference will remain on this Mac; Quipsly will not infer Episode Room authority later."
+                    : "Finalized camera reference is ready for direct private-vault upload. The local MOV will be retained."
                 elapsedSeconds = max(
                     elapsedSeconds,
                     receipt.durationSeconds
@@ -818,6 +909,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         lastFinalizedReceipt = nil
         activeVideoReceipt = nil
         lastFinalizedVideoReceipt = nil
+        activeUploadJob = nil
+        activeVideoUploadJob = nil
+        uploadProgress = 0
+        videoUploadProgress = 0
+        uploadError = nil
+        videoUploadError = nil
+        uploadMessage =
+            "Finalized Episode Room masters can be uploaded directly to Quipsly's private media vault."
+        videoUploadMessage =
+            "Authorized camera references can be preserved in Quipsly and projected into the Episode Room after exact-byte verification."
         importedCanonReceipts = []
         attachedLaneIDs = []
         canonImportProgress = nil
@@ -979,11 +1080,39 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 ownerAccountID: ownerAccountID
             )
             activeUploadJob = job
-            await runCanonicalUpload(jobID: job.id)
+            await runCanonicalUpload(
+                jobID: job.id,
+                expectedSourceType: "audio"
+            )
         } catch {
             uploadError = error.localizedDescription
             uploadMessage =
                 "The source remains local; its canonical upload was not armed."
+        }
+    }
+
+    func uploadLastFinalizedVideoReference() async {
+        guard let receipt = lastFinalizedVideoReceipt,
+              let ownerAccountID = episodeRoomOwnerAccountID else {
+            videoUploadError =
+                "A finalized Episode Room camera reference and verified Nest account are required before upload."
+            return
+        }
+        do {
+            let job = try uploadJobStore
+                .enqueueFinalizedVideoReference(
+                    receipt: receipt,
+                    ownerAccountID: ownerAccountID
+            )
+            activeVideoUploadJob = job
+            await runCanonicalUpload(
+                jobID: job.id,
+                expectedSourceType: "video"
+            )
+        } catch {
+            videoUploadError = error.localizedDescription
+            videoUploadMessage =
+                "The camera reference remains local; its canonical upload was not armed."
         }
     }
 
@@ -996,9 +1125,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         let ownerJobs = uploadJobStore.jobs(
             ownerAccountID: ownerAccountID
         )
-        activeUploadJob = ownerJobs.last
+        let audioJobs = ownerJobs.filter {
+            $0.sourceType == "audio"
+        }
+        let videoJobs = ownerJobs.filter {
+            $0.sourceType == "video"
+        }
+        activeUploadJob = audioJobs.last
+        activeVideoUploadJob = videoJobs.last
         if lastFinalizedReceipt == nil,
-           let latestJob = ownerJobs.last,
+           let latestJob = audioJobs.last,
            let data = try? Data(
                contentsOf: URL(
                    fileURLWithPath:
@@ -1012,31 +1148,84 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 from: data
             )
         }
-        guard let pending = ownerJobs.last(where: {
+        if lastFinalizedVideoReceipt == nil,
+           let latestJob = videoJobs.last,
+           let data = try? Data(
+               contentsOf: URL(
+                   fileURLWithPath:
+                       latestJob.sourceReceiptPath
+               )
+           ) {
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            lastFinalizedVideoReceipt = try? decoder.decode(
+                ProductionVideoReferenceReceipt.self,
+                from: data
+            )
+        }
+        if let verified = audioJobs.last,
+           verified.phase == .verified {
+            uploadMessage =
+                verified.userFacingVerificationSummary
+            uploadProgress = 1
+        }
+        if let verified = videoJobs.last,
+           verified.phase == .verified {
+            videoUploadMessage =
+                verified.userFacingVerificationSummary
+            videoUploadProgress = 1
+        }
+        let pendingJobs = ownerJobs.filter {
             $0.phase != .verified
-        }) else {
-            if let verified = ownerJobs.last {
+        }
+        guard !pendingJobs.isEmpty else {
+            return
+        }
+        for pending in pendingJobs {
+            if pending.sourceType == "video" {
+                videoUploadMessage =
+                    "Recovering the previously authorized camera-reference upload from its durable job receipt…"
+            } else {
                 uploadMessage =
-                    verified.userFacingVerificationSummary
+                    "Recovering the previously authorized microphone-master upload from its durable job receipt…"
+            }
+            await runCanonicalUpload(
+                jobID: pending.id,
+                expectedSourceType: pending.sourceType
+            )
+        }
+    }
+
+    private func runCanonicalUpload(
+        jobID: UUID,
+        expectedSourceType: String
+    ) async {
+        guard !isUploadingMaster,
+              let ownerAccountID = episodeRoomOwnerAccountID,
+              let baseURL = nativeAccountStore.normalizedBaseURL,
+              let sourceJob = uploadJobStore.job(
+                id: jobID,
+                ownerAccountID: ownerAccountID
+              ),
+              sourceJob.sourceType == expectedSourceType else {
+            let error =
+                "The configured Nest account, URL, or protected upload job is unavailable."
+            if expectedSourceType == "video" {
+                videoUploadError = error
+            } else {
+                uploadError = error
             }
             return
         }
-        uploadMessage =
-            "Recovering the previously authorized canonical upload from its durable job receipt…"
-        await runCanonicalUpload(jobID: pending.id)
-    }
-
-    private func runCanonicalUpload(jobID: UUID) async {
-        guard !isUploadingMaster,
-              let ownerAccountID = episodeRoomOwnerAccountID,
-              let baseURL = nativeAccountStore.normalizedBaseURL else {
-            uploadError =
-                "The configured Nest base URL is invalid."
-            return
-        }
+        let isVideo = sourceJob.sourceType == "video"
         isUploadingMaster = true
-        uploadError = nil
-        uploadProgress = 0.04
+        if isVideo {
+            videoUploadError = nil
+            videoUploadProgress = 0.04
+        } else {
+            uploadError = nil
+            uploadProgress = 0.04
+        }
         defer { isUploadingMaster = false }
 
         do {
@@ -1051,27 +1240,50 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 },
                 onUpdate: { [weak self] update in
                     guard let self else { return }
-                    uploadProgress = update.progress
-                    uploadMessage = update.message
-                    activeUploadJob = uploadJobStore.job(
+                    let current = uploadJobStore.job(
                         id: jobID,
                         ownerAccountID: ownerAccountID
                     )
+                    if isVideo {
+                        videoUploadProgress =
+                            update.progress
+                        videoUploadMessage = update.message
+                        activeVideoUploadJob = current
+                    } else {
+                        uploadProgress = update.progress
+                        uploadMessage = update.message
+                        activeUploadJob = current
+                    }
                 }
             )
-            activeUploadJob = verified
-            uploadProgress = 1
-            uploadMessage =
-                verified.userFacingVerificationSummary
+            if isVideo {
+                activeVideoUploadJob = verified
+                videoUploadProgress = 1
+                videoUploadMessage =
+                    verified.userFacingVerificationSummary
+            } else {
+                activeUploadJob = verified
+                uploadProgress = 1
+                uploadMessage =
+                    verified.userFacingVerificationSummary
+            }
         } catch {
-            activeUploadJob =
-                uploadJobStore.job(
-                    id: jobID,
-                    ownerAccountID: ownerAccountID
-                )
-            uploadError = error.localizedDescription
-            uploadMessage =
-                "Upload held for explicit retry. The finalized WAV and its source receipt remain untouched."
+            let current = uploadJobStore.job(
+                id: jobID,
+                ownerAccountID: ownerAccountID
+            )
+            if isVideo {
+                activeVideoUploadJob = current
+                videoUploadError =
+                    error.localizedDescription
+                videoUploadMessage =
+                    "Upload held for explicit retry. The finalized MOV and its source receipt remain untouched."
+            } else {
+                activeUploadJob = current
+                uploadError = error.localizedDescription
+                uploadMessage =
+                    "Upload held for explicit retry. The finalized WAV and its source receipt remain untouched."
+            }
         }
     }
 
@@ -1740,6 +1952,65 @@ struct EpisodeCaptureSetupView: View {
                             "EpisodeCaptureRevealCameraReference"
                         )
                     }
+                    VStack(alignment: .leading, spacing: 7) {
+                        if model.isUploadingMaster,
+                           model.activeVideoUploadJob?.id
+                            == receipt.recordingID {
+                            ProgressView(
+                                value: model.videoUploadProgress
+                            )
+                        }
+                        HStack(alignment: .top, spacing: 8) {
+                            Label(
+                                model.videoUploadMessage,
+                                systemImage:
+                                    model.videoUploadSystemImage
+                            )
+                            .font(.caption)
+                            .foregroundStyle(
+                                model.videoUploadError == nil
+                                    ? Color.secondary
+                                    : Color.orange
+                            )
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                            Spacer()
+                            if model
+                                .canUploadLastFinalizedVideoReference {
+                                Button(
+                                    model.activeVideoUploadJob == nil
+                                        ? "Upload camera reference"
+                                        : "Retry camera upload"
+                                ) {
+                                    Task {
+                                        await model
+                                            .uploadLastFinalizedVideoReference()
+                                    }
+                                }
+                                .disabled(model.isUploadingMaster)
+                                .accessibilityIdentifier(
+                                    "EpisodeCaptureUploadCameraReference"
+                                )
+                            }
+                        }
+                        if let error = model.videoUploadError {
+                            Text(error)
+                                .font(.caption.monospaced())
+                                .foregroundStyle(.orange)
+                                .textSelection(.enabled)
+                        }
+                        Text(
+                            "Quipsly retains the local MOV. Exact-byte cloud verification and Episode Room projection do not claim that a proxy, transcript, or timeline alignment is already ready."
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+                    }
                 }
 
                 if !model.interruptedVideoReferences.isEmpty {
@@ -2382,12 +2653,7 @@ struct EpisodeCaptureSetupView: View {
                             Label(
                                 model.uploadMessage,
                                 systemImage:
-                                    model.activeUploadJob?.phase
-                                        == .verified
-                                        ? "checkmark.icloud.fill"
-                                        : model.uploadError == nil
-                                            ? "icloud.and.arrow.up.fill"
-                                            : "exclamationmark.icloud.fill"
+                                    model.audioUploadSystemImage
                             )
                             .font(.caption)
                             .foregroundStyle(

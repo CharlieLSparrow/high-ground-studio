@@ -127,6 +127,7 @@ final class ProductionAudioRecorderTests: XCTestCase {
             captureGroupID: captureGroupID,
             episodeSpaceID: "episode-5",
             participantID: "charlie",
+            ownerAccountID: "charlie@example.com",
             callRoomID: "room-5",
             recordingConsentID: "consent-5",
             startReceiptID: startReceiptID,
@@ -160,6 +161,10 @@ final class ProductionAudioRecorderTests: XCTestCase {
         XCTAssertEqual(receipt.sourceKind, "local_audio_master")
         XCTAssertEqual(receipt.recordingID, recordingID)
         XCTAssertEqual(receipt.captureGroupID, captureGroupID)
+        XCTAssertEqual(
+            receipt.ownerAccountID,
+            "charlie@example.com"
+        )
         XCTAssertEqual(receipt.callRoomID, "room-5")
         XCTAssertEqual(
             receipt.recordingConsentID,

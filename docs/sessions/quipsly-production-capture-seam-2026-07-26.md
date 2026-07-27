@@ -70,6 +70,14 @@ alignment and non-destructive editorial decisions.
   identity, direct file-backed private-storage PUT, strict capability host
   validation, exact Nest verification readback, and unconditional local
   retention;
+- the same protected outbox now accepts finalized silent camera-reference MOVs
+  without a parallel protocol, preserves the receipt's verified account and
+  exact applied START identity, and rejects owner, source, room, consent,
+  START, byte-count, or digest drift;
+- source-specific relaunch recovery and Episode Capture Setup controls for WAV
+  and MOV uploads, with explicit separation between exact-byte preservation,
+  canonical Episode Room projection, proxy readiness, alignment, transcript,
+  and publication state;
 - explicit UX that joining sends no video, starts no recording, and leaves the
   local WAV recorder independent;
 - an agent-state responsiveness repair found by launching the real app:

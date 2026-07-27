@@ -69,6 +69,7 @@ final class MacCanonicalCaptureUploaderTests: XCTestCase {
         )
         let sourceURL = root.appendingPathComponent("master.wav")
         try Data("verified-wave-bytes".utf8).write(to: sourceURL)
+        let startReceiptID = UUID()
         let job = MacCaptureUploadJob(
             id: UUID(),
             ownerAccountID: "charlie@example.com",
@@ -90,6 +91,7 @@ final class MacCanonicalCaptureUploaderTests: XCTestCase {
             callRoomID: "room-5",
             participantID: "participant-5",
             recordingConsentID: "consent-5",
+            startReceiptID: startReceiptID,
             capturePurpose: "PODCAST",
             sourceProfileJSON: #"{"sampleRate":48000}"#,
             startedAt: Date(timeIntervalSince1970: 100),
@@ -116,6 +118,18 @@ final class MacCanonicalCaptureUploaderTests: XCTestCase {
                 let body: String
                 if path
                     == "/api/mobile/capture/uploads/resumable" {
+                    let requestBody = try XCTUnwrap(
+                        request.httpBody
+                    )
+                    let requestJSON = try XCTUnwrap(
+                        JSONSerialization.jsonObject(
+                            with: requestBody
+                        ) as? [String: Any]
+                    )
+                    XCTAssertEqual(
+                        requestJSON["startReceiptId"] as? String,
+                        startReceiptID.uuidString.lowercased()
+                    )
                     body = """
                     {
                       "ok": true,
@@ -127,7 +141,10 @@ final class MacCanonicalCaptureUploaderTests: XCTestCase {
                       "expectedSizeBytes": \(job.expectedSizeBytes),
                       "expectedSha256": "\(job.expectedSHA256)",
                       "objectName": "capture/original.wav",
-                      "finalizeUrl": "/api/mobile/capture/uploads/resumable/finalize"
+                      "finalizeUrl": "/api/mobile/capture/uploads/resumable/finalize",
+                      "originalRoomReadiness": {
+                        "startReceiptId": "\(startReceiptID.uuidString.lowercased())"
+                      }
                     }
                     """
                 } else {

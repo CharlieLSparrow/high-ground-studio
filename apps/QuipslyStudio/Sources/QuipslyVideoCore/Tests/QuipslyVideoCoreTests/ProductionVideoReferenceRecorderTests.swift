@@ -33,6 +33,7 @@ final class ProductionVideoReferenceRecorderTests: XCTestCase {
             captureGroupID: captureGroupID,
             episodeSpaceID: "hgo-episode-5",
             participantID: "charlie",
+            ownerAccountID: "charlie@example.com",
             callRoomID: "livekit-room-5",
             recordingConsentID: "consent-5",
             startReceiptID: UUID(),
@@ -62,6 +63,10 @@ final class ProductionVideoReferenceRecorderTests: XCTestCase {
 
         XCTAssertEqual(receipt.recordingID, recordingID)
         XCTAssertEqual(receipt.captureGroupID, captureGroupID)
+        XCTAssertEqual(
+            receipt.ownerAccountID,
+            "charlie@example.com"
+        )
         XCTAssertEqual(receipt.recordingConsentID, "consent-5")
         XCTAssertEqual(receipt.sourceKind, "local_video_reference")
         XCTAssertEqual(receipt.state, .finalized)
