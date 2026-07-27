@@ -268,6 +268,84 @@ export function addCaptureGroupAlignmentOffsets<
   return sources;
 }
 
+export function addCaptureGroupOffsetsToImportedMedia(
+  entries: unknown[],
+): Record<string, unknown>[] {
+  const rows = entries.map((entry) => object(entry));
+  const candidates = rows.flatMap((row, index) => {
+    const sync = object(row.sync);
+    const metadata = object(row.metadata);
+    const recordingSync = {
+      ...object(metadata.recordingSync),
+      ...object(sync.recordingSync),
+    };
+    const alignment = object(
+      Object.keys(object(sync.alignment)).length > 0
+        ? sync.alignment
+        : recordingSync.alignment,
+    ) as CaptureSourceAlignmentProposal;
+    const recordingAssetId = text(recordingSync.recordingAssetId);
+    const captureGroupId = text(recordingSync.captureGroupId)
+      || text(alignment.captureGroupId);
+    if (
+      alignment.schema !== ALIGNMENT_SCHEMA
+      || !recordingAssetId
+      || !captureGroupId
+    ) {
+      return [];
+    }
+    return [{
+      index,
+      recordingAssetId,
+      captureGroupId,
+      alignment: {
+        ...alignment,
+        reviewGate: {
+          ...alignment.reviewGate,
+        },
+        selectedClockSample: alignment.selectedClockSample
+          ? { ...alignment.selectedClockSample }
+          : null,
+        startBoundary: alignment.startBoundary
+          ? { ...alignment.startBoundary }
+          : null,
+      },
+    }];
+  });
+  addCaptureGroupAlignmentOffsets(candidates);
+  const alignmentByIndex = new Map(
+    candidates.map((candidate) => [
+      candidate.index,
+      candidate.alignment,
+    ]),
+  );
+
+  return rows.map((row, index) => {
+    const alignment = alignmentByIndex.get(index);
+    if (!alignment) return row;
+    const sync = object(row.sync);
+    const metadata = object(row.metadata);
+    return {
+      ...row,
+      metadata: {
+        ...metadata,
+        recordingSync: {
+          ...object(metadata.recordingSync),
+          alignment,
+        },
+      },
+      sync: {
+        ...sync,
+        alignment,
+        recordingSync: {
+          ...object(sync.recordingSync),
+          alignment,
+        },
+      },
+    };
+  });
+}
+
 function validClockSample(input: {
   sample: unknown;
   schemaVersion: number;

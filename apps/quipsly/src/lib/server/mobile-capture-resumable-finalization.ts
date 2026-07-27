@@ -7,6 +7,7 @@ import {
   ensureCaptureProxyProcessingQueued,
 } from "@/lib/server/capture-proxy-processing";
 import {
+  addCaptureGroupOffsetsToImportedMedia,
   buildCaptureSourceAlignmentProposal,
 } from "@/lib/server/capture-source-alignment";
 import { isRetryableCaptureRoomTransactionError } from "@/lib/server/capture-room-state-ledger";
@@ -441,6 +442,9 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
   } else {
     importedMedia.unshift(canonicalImportedSource);
   }
+  const groupedImportedMedia = addCaptureGroupOffsetsToImportedMedia(
+    importedMedia,
+  );
 
   await transaction.studioEpisodeProduction.update({
     where: { id: production.id },
@@ -450,7 +454,7 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
         episodeProductionPayloadVersion: 1,
         projectSlug: manifest.projectSlug,
         episodeSlug: manifest.episodeSlug,
-        importedMedia,
+        importedMedia: groupedImportedMedia,
         importedMediaOwnership: {
           schema: "quipsly-episode-imported-media-v1",
           canonicalField:

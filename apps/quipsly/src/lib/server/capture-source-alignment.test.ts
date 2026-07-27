@@ -2,6 +2,7 @@
 
 import {
   addCaptureGroupAlignmentOffsets,
+  addCaptureGroupOffsetsToImportedMedia,
   buildCaptureSourceAlignmentProposal,
 } from "./capture-source-alignment";
 
@@ -210,5 +211,84 @@ describe("capture source alignment proposal", () => {
     expect(sources[1].alignment.captureGroup?.estimatedOffsetMilliseconds)
       .toBe(500);
     expect(sources[1].alignment.status).toBe("proposal-ready");
+  });
+
+  it("persists the same group proposal into canonical Episode Production sync packets", () => {
+    const first = buildCaptureSourceAlignmentProposal({
+      sourceProfile: {
+        schemaVersion: 1,
+        monotonicStartedNanoseconds: "1500000000",
+        clockSamples: [isoSample()],
+      },
+      callRoomId: "room-1",
+      captureId: "capture-1",
+      captureGroupId: "group-1",
+      actorUserId: "user-1",
+      startReceiptId: "receipt-1",
+      startReceipt: receipt,
+    });
+    const second = {
+      ...structuredClone(first),
+      estimatedServerStartedAt: "2026-07-27T18:00:01.020Z",
+    };
+    const rows = addCaptureGroupOffsetsToImportedMedia([
+      {
+        id: "media-a",
+        metadata: {
+          recordingSync: {
+            recordingAssetId: "recording-a",
+            captureGroupId: "group-1",
+            alignment: first,
+          },
+        },
+        sync: {
+          recordingSync: {
+            recordingAssetId: "recording-a",
+            captureGroupId: "group-1",
+            alignment: first,
+          },
+          alignment: first,
+        },
+      },
+      {
+        id: "media-b",
+        metadata: {
+          recordingSync: {
+            recordingAssetId: "recording-b",
+            captureGroupId: "group-1",
+            alignment: second,
+          },
+        },
+        sync: {
+          recordingSync: {
+            recordingAssetId: "recording-b",
+            captureGroupId: "group-1",
+            alignment: second,
+          },
+          alignment: second,
+        },
+      },
+      {
+        id: "unrelated-manual-source",
+        sync: { status: "manual" },
+      },
+    ]);
+
+    expect(
+      (rows[0].sync as any).alignment.captureGroup,
+    ).toMatchObject({
+      baselineRecordingAssetId: "recording-a",
+      estimatedOffsetMilliseconds: 0,
+      proposalSourceCount: 2,
+      sampleAccurateClaimed: false,
+    });
+    expect(
+      (rows[1].metadata as any).recordingSync.alignment.captureGroup
+        .estimatedOffsetMilliseconds,
+    ).toBe(500);
+    expect(rows[2]).toEqual({
+      id: "unrelated-manual-source",
+      sync: { status: "manual" },
+    });
   });
 });

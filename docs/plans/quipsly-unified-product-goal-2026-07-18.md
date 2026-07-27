@@ -2137,8 +2137,10 @@ This is an active-goal checkpoint, not a completion claim.
 - Released finalization now writes that proposal into the canonical imported
   source, recording-sync packet, Nest attachment, workflow outbox, and local
   promotion receipt. Mobile Session readback derives deterministic
-  capture-group-relative millisecond offsets; Quipsly Studio decodes them and
-  labels the source **Alignment proposal ready**.
+  capture-group-relative millisecond offsets; finalization persists the same
+  group projection across affected canonical Episode Production sources
+  without touching unrelated media; Quipsly Studio decodes it and labels the
+  source **Alignment proposal ready**.
 - The proposal deliberately sets `sampleAccurateClaimed:false` and
   `reviewRequired:true`. It cannot transition itself to `aligned`, `reviewed`,
   or `locked`; waveform correlation, long-take drift measurement, and explicit

@@ -533,8 +533,11 @@ The first coordinated Mac/iPhone source-clock slice is now implemented:
   Episode Production source record.
 - Mobile Session and native Mac readback group valid proposals by
   `captureGroupId` and expose relative millisecond offsets from the earliest
-  source. The state is **Alignment proposal ready**, never `aligned`: waveform
-  correlation, drift review, and explicit human approval remain hard gates.
+  source. Finalization writes the same group projection back into every
+  affected canonical Episode Production sync packet while leaving unrelated
+  imported media untouched. The state is **Alignment proposal ready**, never
+  `aligned`: waveform correlation, drift review, and explicit human approval
+  remain hard gates.
 - Quipsly Studio inventories exact AVFoundation camera IDs and Core Audio input
   and output UIDs. The policy distinguishes Canon's virtual webcam reference
   from a direct R8 route and distinguishes MOTIV Mix Virtual from a proven
