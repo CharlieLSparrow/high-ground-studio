@@ -29,6 +29,8 @@ import type { EpisodeArtifact } from "../episode-production/episodeArtifact";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../episode-production/episodeArtifact";
 import type { TimelineClip, TimelineState, TranscriptBlock } from "./useTimelineState";
 import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
+import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
+import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 const EDITOR_LEGACY_VERSION = 0;
@@ -122,6 +124,7 @@ type ImportedMediaAsset = {
   kind: "audio" | "video" | "unknown";
   is360?: boolean;
   originalFormat?: string;
+  sha256?: string;
   bucketName?: string;
   objectName?: string;
   gcsUri: string;
@@ -142,6 +145,10 @@ type ImportedMediaAsset = {
     suggestionReason?: string;
     suggestionAppliedAt?: string;
     suggestionSource?: string;
+    recordingAssetId?: string;
+    recordingSync?: Record<string, unknown>;
+    alignment?: Record<string, unknown>;
+    alignmentReview?: Record<string, unknown>;
   };
   proxy?: {
     status?: string;
@@ -367,7 +374,7 @@ type EditorCoPilotRevertPayload = {
   clipId?: string;
   clip?: TimelineClip | null;
   clipSourceAssetId?: string;
-  previousSyncStatus?: "ready-to-sync" | "synced" | "held";
+  previousSyncStatus?: "ready-to-sync" | "held";
   previousSyncAnchorTimelineSeconds?: number | null;
   previousSyncTargetClipId?: string | null;
   spineAudioAssetId?: string | null;
@@ -1046,14 +1053,22 @@ function importedAssetTimelinePercent(asset: ImportedMediaAsset, totalDuration: 
 
 function importedAssetSyncLabel(asset: ImportedMediaAsset) {
   const status = asset.sync?.status ?? "ready-to-sync";
-  if (status === "synced") return "Synced";
+  if (status === "synced") {
+    return reviewedSourceAlignment(asset)
+      ? "Reviewed placement"
+      : "Legacy sync";
+  }
   if (status === "held") return "Held";
   return "Safe to test";
 }
 
 function importedAssetSyncTone(asset: ImportedMediaAsset) {
   const status = asset.sync?.status ?? "ready-to-sync";
-  if (status === "synced") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  if (status === "synced") {
+    return reviewedSourceAlignment(asset)
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+      : "border-amber-200 bg-amber-50 text-amber-900";
+  }
   if (status === "held") return "border-slate-200 bg-slate-50 text-slate-700";
   return "border-amber-200 bg-amber-50 text-amber-900";
 }
@@ -1080,11 +1095,18 @@ function importedAssetConfidenceStatus(asset: ImportedMediaAsset, health: MediaS
   }
 
   if (syncStatus === "synced") {
+    const review = reviewedSourceAlignment(asset);
     return {
-      label: "Synced",
-      tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
-      meaning: "This file has been lined up or accepted for the current edit.",
-      next: "Keep editing, or save the timeline if you just changed it.",
+      label: review ? "Reviewed placement" : "Legacy sync",
+      tone: review
+        ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+        : "border-amber-200 bg-amber-50 text-amber-900",
+      meaning: review
+        ? "A named editor approved this reversible placement after waveform and later-take drift review."
+        : "This older file says synced, but it has no complete reviewer or evidence receipt.",
+      next: review
+        ? "Keep editing; reopen Guided sync if new evidence changes the placement."
+        : "Run Guided sync once to replace the legacy flag with a reviewed placement receipt.",
     };
   }
 
@@ -1102,7 +1124,7 @@ function importedAssetConfidenceStatus(asset: ImportedMediaAsset, health: MediaS
       label: "Safe to test",
       tone: "border-sky-200 bg-sky-50 text-sky-900",
       meaning: "Nothing here should stop you from trying it in the edit.",
-      next: "Add it to the timeline, line it up at the playhead, or mark it synced when it feels right.",
+      next: "Add it to the timeline or use Guided sync to create a reviewed placement receipt.",
     };
   }
 
@@ -1126,6 +1148,17 @@ function importedAssetRoleLabel(asset: ImportedMediaAsset) {
   if (asset.kind === "audio") return "Audio";
   if (asset.kind === "video") return "Video";
   return "Episode media";
+}
+
+function importedAssetRecordingAssetId(asset: ImportedMediaAsset | null) {
+  if (!asset) return null;
+  const recordingSync = asset.sync?.recordingSync ?? {};
+  const value =
+    asset.sync?.recordingAssetId
+    ?? recordingSync.recordingAssetId;
+  return typeof value === "string" && value.trim()
+    ? value.trim()
+    : null;
 }
 
 const EPISODE_IMPORT_LANES: EpisodeImportLane[] = [
@@ -1169,7 +1202,7 @@ const SYNC_STATUS_GUIDE = [
   {
     label: "Synced",
     tone: "border-emerald-200 bg-emerald-50 text-emerald-900",
-    meaning: "The file has been lined up or accepted for this edit.",
+    meaning: "A reviewer compared opening and later events and accepted a reversible placement.",
   },
   {
     label: "Held",
@@ -1205,10 +1238,9 @@ function normalizeSuggestedTrackId(value: unknown) {
   return "";
 }
 
-function normalizeSuggestedSyncStatus(value: unknown): "ready-to-sync" | "synced" | "held" {
+function normalizeSuggestedSyncStatus(value: unknown): "ready-to-sync" | "held" {
   const raw = coerceString(value, "").trim();
-  if (raw === "synced" || raw === "held" || raw === "ready-to-sync") return raw;
-  return "ready-to-sync";
+  return raw === "held" ? "held" : "ready-to-sync";
 }
 
 function recommendationApplySummary(recommendation: AiIngestRecommendation) {
@@ -1742,6 +1774,20 @@ function formatClock(seconds: number) {
   const minutes = Math.floor(safeSeconds / 60);
   const remainingSeconds = safeSeconds % 60;
   return `${minutes.toString().padStart(2, "0")}:${remainingSeconds.toString().padStart(2, "0")}`;
+}
+
+function formatSyncClock(seconds: number) {
+  const totalMilliseconds = Math.max(
+    0,
+    Math.round((Number.isFinite(seconds) ? seconds : 0) * 1_000),
+  );
+  const minutes = Math.floor(totalMilliseconds / 60_000);
+  const remainingMilliseconds = totalMilliseconds % 60_000;
+  const remainingSeconds = Math.floor(remainingMilliseconds / 1_000);
+  const milliseconds = remainingMilliseconds % 1_000;
+  return `${minutes.toString().padStart(2, "0")}:${remainingSeconds
+    .toString()
+    .padStart(2, "0")}.${milliseconds.toString().padStart(3, "0")}`;
 }
 
 function humanizeSlug(value: string) {
@@ -2826,6 +2872,13 @@ function CloudEditorContent() {
   const [syncWizardPreviousAnchorSeconds, setSyncWizardPreviousAnchorSeconds] = useState<number | null>(null);
   const [syncPreviewState, setSyncPreviewState] = useState<"idle" | "ready" | "playing" | "paused" | "error">("idle");
   const [syncPreviewMessage, setSyncPreviewMessage] = useState("Pick a spine and target, then preview the current anchor.");
+  const [syncReviewWaveformConfirmed, setSyncReviewWaveformConfirmed] = useState(false);
+  const [syncReviewDriftConfirmed, setSyncReviewDriftConfirmed] = useState(false);
+  const [syncReviewHumanApproved, setSyncReviewHumanApproved] = useState(false);
+  const [syncReviewIntervalSeconds, setSyncReviewIntervalSeconds] = useState("");
+  const [syncReviewResidualMilliseconds, setSyncReviewResidualMilliseconds] = useState("");
+  const [syncReviewNotes, setSyncReviewNotes] = useState("");
+  const [isSavingAlignmentReview, setIsSavingAlignmentReview] = useState(false);
   const [timelineSaveState, setTimelineSaveState] = useState<TimelineSaveState>("idle");
   const [timelineLastSavedAt, setTimelineLastSavedAt] = useState<string | null>(null);
   const [timelineHydrationSource, setTimelineHydrationSource] = useState<TimelineHydrationSource>("loading");
@@ -3510,6 +3563,48 @@ function CloudEditorContent() {
     return importedMediaAssets.find((asset) => asset.id === syncWizardTargetAssetId || asset.sourceId === syncWizardTargetAssetId) ?? null;
   }, [importedMediaAssets, syncWizardTargetAssetId]);
 
+  const syncWizardCaptureAlignment = useMemo(
+    () => episodeRoomCaptureAlignment(syncWizardTargetAsset),
+    [syncWizardTargetAsset],
+  );
+
+  const syncWizardSavedReview = useMemo(
+    () => reviewedSourceAlignment(syncWizardTargetAsset),
+    [syncWizardTargetAsset],
+  );
+
+  const clockProposalMatchesSpine =
+    Boolean(syncWizardCaptureAlignment?.baselineRecordingAssetId)
+    && syncWizardCaptureAlignment?.baselineRecordingAssetId
+      === importedAssetRecordingAssetId(syncWizardSpineAsset);
+  const canUseClockProposal =
+    syncWizardCaptureAlignment?.status === "proposal-ready"
+    && clockProposalMatchesSpine
+    && syncWizardCaptureAlignment.estimatedOffsetMilliseconds !== null
+    && syncWizardCaptureAlignment.estimatedOffsetMilliseconds >= 0;
+
+  const parsedSyncReviewIntervalSeconds = Number(syncReviewIntervalSeconds);
+  const parsedSyncReviewResidualMilliseconds = Number(
+    syncReviewResidualMilliseconds,
+  );
+  const syncReviewObservedPartsPerMillion =
+    Number.isFinite(parsedSyncReviewIntervalSeconds)
+    && parsedSyncReviewIntervalSeconds > 0
+    && Number.isFinite(parsedSyncReviewResidualMilliseconds)
+      ? parsedSyncReviewResidualMilliseconds
+        * 1_000
+        / parsedSyncReviewIntervalSeconds
+      : null;
+  const syncReviewEvidenceComplete =
+    syncReviewWaveformConfirmed
+    && syncReviewDriftConfirmed
+    && syncReviewHumanApproved
+    && Boolean(syncReviewIntervalSeconds.trim())
+    && Boolean(syncReviewResidualMilliseconds.trim())
+    && Number.isFinite(parsedSyncReviewIntervalSeconds)
+    && parsedSyncReviewIntervalSeconds > 0
+    && Number.isFinite(parsedSyncReviewResidualMilliseconds);
+
   const syncWizardTargetOptions = useMemo(() => {
     return importedMediaAssets.filter((asset) => asset.id !== syncWizardSpineAsset?.id);
   }, [importedMediaAssets, syncWizardSpineAsset]);
@@ -3636,6 +3731,15 @@ function CloudEditorContent() {
       if (firstTarget) setSyncWizardTargetAssetId(firstTarget.id);
     }
   }, [importedMediaAssets, syncWizardSpineAssetId, syncWizardTargetAssetId]);
+
+  useEffect(() => {
+    setSyncReviewWaveformConfirmed(false);
+    setSyncReviewDriftConfirmed(false);
+    setSyncReviewHumanApproved(false);
+    setSyncReviewIntervalSeconds("");
+    setSyncReviewResidualMilliseconds("");
+    setSyncReviewNotes("");
+  }, [syncWizardSpineAssetId, syncWizardTargetAssetId]);
 
   const handleSessionImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -4067,10 +4171,10 @@ function CloudEditorContent() {
 
   const updateImportedAssetSyncStatus = useCallback(async (
     asset: ImportedMediaAsset,
-    status: "ready-to-sync" | "synced" | "held",
+    status: "ready-to-sync" | "held",
     options?: { anchorTimelineSeconds?: number; targetClipId?: string | null },
   ) => {
-    const label = status === "synced" ? "synced" : status === "held" ? "held for later sync" : "ready to sync";
+    const label = status === "held" ? "held for later sync" : "ready to sync";
     setMediaImportStatus(`Marking ${asset.originalName} ${label} at ${formatClock(currentTime)}...`);
     const anchorTimelineSeconds = options?.anchorTimelineSeconds ?? roundSeconds(currentTime);
     const targetClipId = options?.targetClipId ?? selectedClip?.id;
@@ -4129,7 +4233,7 @@ function CloudEditorContent() {
     if (spine) spine.currentTime = Math.max(0, roundSeconds(syncWizardAnchorSeconds));
     if (target) target.currentTime = 0;
     setSyncPreviewState("ready");
-    setSyncPreviewMessage(`Reset to spine ${formatClock(syncWizardAnchorSeconds)} + target 00:00.`);
+    setSyncPreviewMessage(`Reset to spine ${formatSyncClock(syncWizardAnchorSeconds)} + target 00:00.000.`);
   }, [syncWizardAnchorSeconds]);
 
   const previewSyncFromAnchor = useCallback(async () => {
@@ -4168,7 +4272,7 @@ function CloudEditorContent() {
 
       setSyncPreviewState("playing");
       setSyncPreviewMessage(
-        `Previewing spine at ${formatClock(syncWizardAnchorSeconds)} against target at 00:00. If the target feels early or late, use the nudge buttons.`
+        `Previewing spine at ${formatSyncClock(syncWizardAnchorSeconds)} against target at 00:00.000. If the target feels early or late, use the nudge buttons.`
       );
     } catch (error) {
       console.warn("Sync preview failed.", error);
@@ -4182,20 +4286,41 @@ function CloudEditorContent() {
       setMediaImportStatus("Pick a target media file before saving sync.");
       return;
     }
+    if (!syncWizardSpineAsset) {
+      setMediaImportStatus("Pick an imported audio spine before reviewing sync.");
+      return;
+    }
+    if (!syncReviewEvidenceComplete) {
+      setMediaImportStatus("Confirm the waveform, record a later drift check, and approve the reversible placement before saving.");
+      return;
+    }
 
-    setMediaImportStatus(`Saving ${syncWizardTargetAsset.originalName} synced at ${formatClock(syncWizardAnchorSeconds)}...`);
+    setIsSavingAlignmentReview(true);
+    setMediaImportStatus(`Saving the reviewed placement for ${syncWizardTargetAsset.originalName} at ${formatSyncClock(syncWizardAnchorSeconds)}...`);
 
     try {
       const response = await fetch("/api/episode-production/import-media", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          action: "approve-alignment",
           projectSlug: resolvedProjectSlug,
           episodeSlug,
           assetId: syncWizardTargetAsset.id,
+          spineAssetId: syncWizardSpineAsset.id,
           status: "synced",
           anchorTimelineSeconds: roundSeconds(syncWizardAnchorSeconds),
           targetClipId: selectedClip?.id,
+          alignmentReview: {
+            waveformCorrelationConfirmed: syncReviewWaveformConfirmed,
+            driftReviewConfirmed: syncReviewDriftConfirmed,
+            humanApprovalConfirmed: syncReviewHumanApproved,
+            driftObservationIntervalSeconds:
+              parsedSyncReviewIntervalSeconds,
+            residualDriftMilliseconds:
+              parsedSyncReviewResidualMilliseconds,
+            notes: syncReviewNotes,
+          },
         }),
       });
       const payload = await response.json();
@@ -4211,12 +4336,28 @@ function CloudEditorContent() {
         }
         : previous);
       setCurrentTime(roundSeconds(syncWizardAnchorSeconds));
-      setMediaImportStatus(`${syncWizardTargetAsset.originalName} is saved as synced at ${formatClock(syncWizardAnchorSeconds)}.`);
+      setMediaImportStatus(`${syncWizardTargetAsset.originalName} has a reviewer-bound, reversible placement at ${formatSyncClock(syncWizardAnchorSeconds)}.`);
     } catch (error) {
       console.warn("Could not save guided sync alignment.", error);
       setMediaImportStatus(error instanceof Error ? error.message : "Could not save guided sync alignment.");
+    } finally {
+      setIsSavingAlignmentReview(false);
     }
-  }, [episodeSlug, resolvedProjectSlug, selectedClip, syncWizardAnchorSeconds, syncWizardTargetAsset]);
+  }, [
+    episodeSlug,
+    parsedSyncReviewIntervalSeconds,
+    parsedSyncReviewResidualMilliseconds,
+    resolvedProjectSlug,
+    selectedClip,
+    syncReviewDriftConfirmed,
+    syncReviewEvidenceComplete,
+    syncReviewHumanApproved,
+    syncReviewNotes,
+    syncReviewWaveformConfirmed,
+    syncWizardAnchorSeconds,
+    syncWizardSpineAsset,
+    syncWizardTargetAsset,
+  ]);
 
   const undoLastSyncChange = useCallback(async () => {
     setMediaImportStatus("Undoing last sync change...");
@@ -4781,10 +4922,21 @@ function CloudEditorContent() {
         if (!parsed.parsed.assetRef || !parsed.parsed.status) return markFailed("Tell me which asset to mark and what status.");
         const asset = findAssetByReference(parsed.parsed.assetRef, importedMediaAssets);
         if (!asset) return markFailed(`Could not find imported asset "${parsed.parsed.assetRef}".`);
-        const previousStatus = (asset.sync?.status ?? "ready-to-sync") as
-          | "ready-to-sync"
-          | "synced"
-          | "held";
+        if (parsed.parsed.status === "synced") {
+          setSyncWizardTargetAssetId(asset.id);
+          setMediaImportStatus(`Selected ${asset.originalName} for reviewed alignment.`);
+          document
+            .getElementById("guided-sync-wizard")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+          markSuccess(`Opened Guided sync for ${asset.originalName}. No sync claim was saved.`, { kind: "none" }, [
+            "A synced claim requires waveform, later-take drift, and human approval evidence.",
+          ]);
+          break;
+        }
+        if (asset.sync?.status === "synced") {
+          return markFailed("This source has a reviewed alignment. Undo that recorded sync decision before changing its status.");
+        }
+        const previousStatus = asset.sync?.status === "held" ? "held" : "ready-to-sync";
         const previousAnchor = asset.sync?.anchorTimelineSeconds ?? null;
         const previousTargetClipId = asset.sync?.targetClipId ?? null;
         await updateImportedAssetSyncStatus(asset, parsed.parsed.status);
@@ -5704,16 +5856,16 @@ function CloudEditorContent() {
   }
 
   return (
-    <div className="flex flex-col h-screen overflow-hidden">
-      <header className="flex justify-between items-center p-4 border-b border-[#e8dcc4] bg-[#fdfaf6]">
-        <div className="flex flex-col">
-          <h1 className="text-xl font-black tracking-tight text-[#3d3122] flex items-center gap-3">
+    <div className="flex min-h-screen min-w-0 flex-col overflow-x-hidden lg:h-screen lg:overflow-hidden">
+      <header className="flex shrink-0 flex-col gap-3 border-b border-[#e8dcc4] bg-[#fdfaf6] p-3 sm:p-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="min-w-0">
+          <h1 className="flex min-w-0 flex-wrap items-center gap-2 text-xl font-black tracking-tight text-[#3d3122] sm:gap-3">
             Episode Editor {projectId && <span className="text-[#8c6b4a] font-medium text-sm">Nest: {projectId}</span>}
           </h1>
           {activeSpineAudioLabel && (
-            <div className="mt-1 flex items-center gap-2 text-xs font-bold text-[#8c6b4a]">
+            <div className="mt-1 flex min-w-0 items-center gap-2 text-xs font-bold text-[#8c6b4a]">
               <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[9px] uppercase tracking-widest text-indigo-800">Spine</span>
-              <span className="truncate max-w-[400px]" title={activeSpineAudioLabel}>{activeSpineAudioLabel}</span>
+              <span className="min-w-0 truncate xl:max-w-[400px]" title={activeSpineAudioLabel}>{activeSpineAudioLabel}</span>
             </div>
           )}
         </div>
@@ -5722,34 +5874,34 @@ function CloudEditorContent() {
             Real editing session
           </div>
         ) : (
-          <div className="flex bg-[#f8f3e6] rounded-lg p-1 border border-[#e8dcc4]">
+          <div className="flex w-full max-w-full overflow-x-auto rounded-lg border border-[#e8dcc4] bg-[#f8f3e6] p-1 xl:w-auto">
             <button
               onClick={() => setViewMode("timeline")}
-              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'timeline' ? 'bg-[#8c6b4a] text-white shadow-sm' : 'text-[#8c6b4a] hover:text-[#3d3122]'}`}
+              className={`shrink-0 px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'timeline' ? 'bg-[#8c6b4a] text-white shadow-sm' : 'text-[#8c6b4a] hover:text-[#3d3122]'}`}
             >
               TIMELINE
             </button>
             <button
               onClick={() => setViewMode("transcript")}
-              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'transcript' ? 'bg-[#8c6b4a] text-white shadow-sm' : 'text-[#8c6b4a] hover:text-[#3d3122]'}`}
+              className={`shrink-0 px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'transcript' ? 'bg-[#8c6b4a] text-white shadow-sm' : 'text-[#8c6b4a] hover:text-[#3d3122]'}`}
             >
               TRANSCRIPT
             </button>
             <button
               onClick={() => setViewMode("segmenter")}
-              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'segmenter' ? 'bg-[#8c6b4a] text-white shadow-sm' : 'text-[#8c6b4a] hover:text-[#3d3122]'}`}
+              className={`shrink-0 px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'segmenter' ? 'bg-[#8c6b4a] text-white shadow-sm' : 'text-[#8c6b4a] hover:text-[#3d3122]'}`}
             >
               SEGMENT DESK
             </button>
             <button
               onClick={() => setViewMode("reframe")}
-              className={`px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'reframe' ? 'bg-[#8c6b4a] text-white shadow-sm' : 'text-[#8c6b4a] hover:text-[#3d3122]'}`}
+              className={`shrink-0 px-4 py-1.5 text-xs font-bold rounded-md transition-all ${viewMode === 'reframe' ? 'bg-[#8c6b4a] text-white shadow-sm' : 'text-[#8c6b4a] hover:text-[#3d3122]'}`}
             >
               REMOTION PLAYER
             </button>
           </div>
         )}
-        <div className="flex gap-2">
+        <div className="flex w-full flex-wrap items-center gap-2 xl:w-auto xl:justify-end">
           <button
             onClick={() => setRealEditingMode((enabled) => !enabled)}
             className={`px-4 py-1.5 text-xs font-bold shadow-sm rounded-md transition-colors ${
@@ -5882,9 +6034,9 @@ function CloudEditorContent() {
         timelineState={timelineState}
       />
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex min-w-0 flex-1 flex-col overflow-visible lg:min-h-0 lg:flex-row lg:overflow-hidden">
         {/* Media Pool Panel */}
-        <aside className="w-64 bg-[#f8f3e6] border-r border-[#e8dcc4] p-4 flex flex-col gap-3 overflow-y-auto">
+        <aside className="flex w-full min-w-0 shrink-0 flex-col gap-3 overflow-visible border-b border-[#e8dcc4] bg-[#f8f3e6] p-3 sm:p-4 lg:w-64 lg:overflow-y-auto lg:border-b-0 lg:border-r">
           <h2 className="text-xs font-bold text-[#8c6b4a] uppercase tracking-wider mb-2">
             Media Pool
           </h2>
@@ -5924,8 +6076,8 @@ function CloudEditorContent() {
                 : productionState?.message ?? "Local-only production room until Nest sync is available"}
             </div>
             <div className={`mt-2 rounded-lg border px-3 py-2 font-bold leading-5 ${productionAccessTone}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <div className="font-black">Nest access</div>
                   <div className="mt-1">{productionAccessLabel}</div>
                   {productionState?.actorEmail && (
@@ -6951,15 +7103,18 @@ function CloudEditorContent() {
                 </div>
               </div>
             )}
-            <div className={`mt-3 rounded-lg border border-[#3d3122] bg-[#fffdf7] p-3 shadow-sm ${realEditingMode ? "hidden" : ""}`}>
-              <div className="flex items-start justify-between gap-3">
-                <div>
+            <div
+              id="guided-sync-wizard"
+              className={`mt-3 rounded-lg border border-[#3d3122] bg-[#fffdf7] p-3 shadow-sm ${realEditingMode ? "hidden" : ""}`}
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0">
                   <div className="font-black uppercase tracking-[0.18em] text-[#3d3122]">Guided sync wizard</div>
                   <p className="mt-1 leading-5 text-[#6f5336]">
-                    One safe pass: choose the spine, choose what to line up, set a rough anchor, preview, nudge, then save.
+                    One safe pass: choose the spine and target, inspect any clock proposal, preview two moments, then approve a reversible placement.
                   </p>
                 </div>
-                <div className="flex shrink-0 flex-col gap-2">
+                <div className="flex w-full flex-col gap-2 sm:w-auto sm:shrink-0">
                   <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-1 text-center font-mono text-[10px] uppercase tracking-[0.14em] text-emerald-800">
                     {syncHistory.length} undo point{syncHistory.length === 1 ? "" : "s"}
                   </span>
@@ -7065,12 +7220,99 @@ function CloudEditorContent() {
                   })()}
                 </label>
 
+                {syncWizardCaptureAlignment && (
+                  <div
+                    className={`rounded-xl border p-3 ${
+                      syncWizardCaptureAlignment.status === "proposal-ready"
+                        ? "border-sky-200 bg-sky-50"
+                        : "border-red-200 bg-red-50"
+                    }`}
+                    data-testid="guided-sync-clock-proposal"
+                  >
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className={`font-black ${
+                          syncWizardCaptureAlignment.status === "proposal-ready"
+                            ? "text-sky-950"
+                            : "text-red-950"
+                        }`}>
+                          Capture clock proposal — evidence, not an edit
+                        </div>
+                        <p className={`mt-1 text-[11px] font-bold leading-5 ${
+                          syncWizardCaptureAlignment.status === "proposal-ready"
+                            ? "text-sky-900"
+                            : "text-red-900"
+                        }`}>
+                          {syncWizardCaptureAlignment.reason}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded-full border border-current bg-white/70 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+                        {syncWizardCaptureAlignment.status === "proposal-ready"
+                          ? "clock proposal ready"
+                          : "proposal unsafe"}
+                      </span>
+                    </div>
+
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <div className="min-w-0 rounded-lg border border-white/80 bg-white/70 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">Proposed offset</div>
+                        <div className="mt-1 break-words font-mono text-lg font-black text-slate-950">
+                          {syncWizardCaptureAlignment.estimatedOffsetMilliseconds === null
+                            ? "Unavailable"
+                            : `${(syncWizardCaptureAlignment.estimatedOffsetMilliseconds / 1_000).toFixed(3)} s`}
+                        </div>
+                      </div>
+                      <div className="min-w-0 rounded-lg border border-white/80 bg-white/70 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">Clock uncertainty</div>
+                        <div className="mt-1 break-words font-mono text-lg font-black text-slate-950">
+                          {syncWizardCaptureAlignment.uncertaintyMilliseconds === null
+                            ? "Unknown"
+                            : `±${Math.round(syncWizardCaptureAlignment.uncertaintyMilliseconds)} ms`}
+                        </div>
+                      </div>
+                      <div className="min-w-0 rounded-lg border border-white/80 bg-white/70 p-3">
+                        <div className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-600">Projected start</div>
+                        <div className="mt-1 break-words font-mono text-[11px] font-black leading-5 text-slate-950">
+                          {syncWizardCaptureAlignment.estimatedServerStartedAt
+                            ? new Date(syncWizardCaptureAlignment.estimatedServerStartedAt).toLocaleString()
+                            : "Unavailable"}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-lg border border-white/80 bg-white/70 px-3 py-2 text-[11px] font-bold leading-5 text-slate-700">
+                      Baseline recording: <span className="break-all font-mono">{syncWizardCaptureAlignment.baselineRecordingAssetId ?? "not recorded"}</span>.
+                      {" "}This proposal never claims sample accuracy and will not move anything until you explicitly use it and complete waveform and drift review.
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (syncWizardCaptureAlignment.estimatedOffsetMilliseconds === null) return;
+                        setSyncWizardPreviousAnchorSeconds(syncWizardAnchorSeconds);
+                        setSyncWizardAnchorSeconds(roundSeconds(
+                          syncWizardCaptureAlignment.estimatedOffsetMilliseconds / 1_000,
+                        ));
+                      }}
+                      disabled={!canUseClockProposal}
+                      className="mt-3 w-full rounded-lg border border-sky-300 bg-white px-3 py-2 font-black text-sky-950 shadow-sm hover:bg-sky-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-500"
+                    >
+                      Use clock proposal as rough anchor
+                    </button>
+                    {!clockProposalMatchesSpine && (
+                      <p className="mt-2 text-[11px] font-bold leading-5 text-slate-700">
+                        Choose the exact baseline recording above before this offset can be copied into the rough anchor.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="rounded-lg border border-[#e8dcc4] bg-white p-3">
                   <div className="flex items-center justify-between gap-3">
                     <div>
                       <div className="font-black text-[#3d3122]">3. Rough timeline anchor</div>
                       <div className="mt-1 font-mono text-[11px] text-[#8c6b4a]">
-                        Target starts at {formatClock(syncWizardAnchorSeconds)}. Playhead is {formatClock(currentTime)}.
+                        Target starts at {formatSyncClock(syncWizardAnchorSeconds)}. Playhead is {formatSyncClock(currentTime)}.
                       </div>
                     </div>
                     <button
@@ -7118,23 +7360,23 @@ function CloudEditorContent() {
                     </span>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] p-3">
                       <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Spine starts</div>
-                      <div className="mt-1 font-mono text-xl font-black text-[#3d3122]">{formatClock(syncWizardAnchorSeconds)}</div>
+                      <div className="mt-1 font-mono text-xl font-black text-[#3d3122]">{formatSyncClock(syncWizardAnchorSeconds)}</div>
                     </div>
                     <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] p-3">
                       <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Target starts</div>
-                      <div className="mt-1 font-mono text-xl font-black text-[#3d3122]">{formatClock(0)}</div>
+                      <div className="mt-1 font-mono text-xl font-black text-[#3d3122]">{formatSyncClock(0)}</div>
                     </div>
                     <div className="rounded-lg border border-sky-200 bg-sky-50 p-3">
                       <div className="text-[10px] font-black uppercase tracking-[0.16em] text-sky-800">Current offset</div>
-                      <div className="mt-1 font-mono text-xl font-black text-sky-950">+{formatClock(syncWizardAnchorSeconds)}</div>
+                      <div className="mt-1 font-mono text-xl font-black text-sky-950">+{formatSyncClock(syncWizardAnchorSeconds)}</div>
                     </div>
                   </div>
 
                   <div className="mt-2 rounded-lg border border-[#e8dcc4] bg-[#fffdf7] px-3 py-2 text-[11px] font-bold leading-5 text-[#6f5336]">
-                    Translation: when you click preview, the spine jumps to {formatClock(syncWizardAnchorSeconds)} and the target starts at 00:00. If the target moment sounds late, move it earlier. If it sounds early, move it later.
+                    Translation: when you click preview, the spine jumps to {formatSyncClock(syncWizardAnchorSeconds)} and the target starts at 00:00.000. If the target moment sounds late, move it earlier. If it sounds early, move it later.
                   </div>
 
                   <div className="mt-3 grid gap-2 md:grid-cols-2">
@@ -7189,7 +7431,7 @@ function CloudEditorContent() {
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     <button
                       type="button"
                       onClick={() => void previewSyncFromAnchor()}
@@ -7242,18 +7484,18 @@ function CloudEditorContent() {
                     <div className="rounded-lg border border-[#e8dcc4] bg-[#fffaf0] p-3">
                       <div className="text-[10px] font-black uppercase tracking-[0.16em] text-[#8c6b4a]">Before</div>
                       <div className="mt-1 font-mono text-2xl font-black text-[#3d3122]">
-                        {formatClock(syncWizardPreviousAnchorSeconds ?? syncWizardAnchorSeconds)}
+                        {formatSyncClock(syncWizardPreviousAnchorSeconds ?? syncWizardAnchorSeconds)}
                       </div>
                     </div>
                     <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
                       <div className="text-[10px] font-black uppercase tracking-[0.16em] text-emerald-800">After</div>
                       <div className="mt-1 font-mono text-2xl font-black text-emerald-950">
-                        {formatClock(syncWizardAnchorSeconds)}
+                        {formatSyncClock(syncWizardAnchorSeconds)}
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2">
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
                     {[
                       { delta: -10, label: "10 sec earlier", value: "-10s" },
                       { delta: -1, label: "1 sec earlier", value: "-1s" },
@@ -7280,14 +7522,142 @@ function CloudEditorContent() {
                   </div>
 
                   <div className="mt-3 rounded-lg border border-[#e8dcc4] bg-white px-3 py-2 text-[11px] font-bold leading-5 text-[#6f5336]">
-                    If the target sound happens too late, use an earlier button. If it happens too soon, use a later button. Then save the synced alignment.
+                    If the target sound happens too late, use an earlier button. If it happens too soon, use a later button. Then check a later moment before approving the placement.
                   </div>
+                </div>
+
+                <div className="rounded-xl border border-violet-200 bg-violet-50 p-3 shadow-sm" data-testid="guided-sync-review-evidence">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-black text-violet-950">6. Record the review evidence</div>
+                      <p className="mt-1 text-[11px] font-bold leading-5 text-violet-900">
+                        “Synced” is a human-reviewed timeline decision. Originals stay untouched, and this receipt can be audited or undone.
+                      </p>
+                    </div>
+                    <span className="shrink-0 rounded-full border border-violet-200 bg-white px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em] text-violet-900">
+                      {syncReviewEvidenceComplete ? "ready to approve" : "review incomplete"}
+                    </span>
+                  </div>
+
+                  {syncWizardSavedReview && (
+                    <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-[11px] font-bold leading-5 text-emerald-950">
+                      <div className="font-black">Existing reviewed placement</div>
+                      <div className="mt-1">
+                        {syncWizardSavedReview.reviewer.name} approved {formatSyncClock(syncWizardSavedReview.placement.anchorTimelineSeconds)}
+                        {" "}on {new Date(syncWizardSavedReview.reviewedAt).toLocaleString()} using {syncWizardSavedReview.sourceEvidence.strength === "sha256-pair" ? "two verified SHA-256 identities" : "stable source identities"}.
+                      </div>
+                      <div className="mt-1 font-mono text-[10px]">
+                        residual {syncWizardSavedReview.driftReview.residualDriftMilliseconds.toFixed(3)} ms /
+                        {" "}{syncWizardSavedReview.driftReview.observationIntervalSeconds.toFixed(3)} s ·
+                        {" "}{syncWizardSavedReview.driftReview.observedPartsPerMillion.toFixed(3)} ppm
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="mt-3 grid gap-2">
+                    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-violet-200 bg-white p-3">
+                      <input
+                        type="checkbox"
+                        checked={syncReviewWaveformConfirmed}
+                        onChange={(event) => setSyncReviewWaveformConfirmed(event.target.checked)}
+                        className="mt-1 size-4 shrink-0 accent-violet-700"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-black text-violet-950">Opening event matches</span>
+                        <span className="mt-1 block text-[11px] font-bold leading-5 text-violet-900">
+                          I listened at the proposed sync point and confirmed the same word, clap, or waveform event in both sources.
+                        </span>
+                      </span>
+                    </label>
+
+                    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-violet-200 bg-white p-3">
+                      <input
+                        type="checkbox"
+                        checked={syncReviewDriftConfirmed}
+                        onChange={(event) => setSyncReviewDriftConfirmed(event.target.checked)}
+                        className="mt-1 size-4 shrink-0 accent-violet-700"
+                      />
+                      <span className="min-w-0">
+                        <span className="block font-black text-violet-950">Later event compared</span>
+                        <span className="mt-1 block text-[11px] font-bold leading-5 text-violet-900">
+                          I compared another shared event later in the take and recorded its residual drift below.
+                        </span>
+                      </span>
+                    </label>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="block">
+                      <span className="font-black text-violet-950">Seconds between review points</span>
+                      <input
+                        type="number"
+                        min="0.001"
+                        max="86400"
+                        step="0.001"
+                        inputMode="decimal"
+                        value={syncReviewIntervalSeconds}
+                        onChange={(event) => setSyncReviewIntervalSeconds(event.target.value)}
+                        placeholder="e.g. 1800"
+                        className="mt-1 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 font-mono text-violet-950"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="font-black text-violet-950">Residual drift at later point (ms)</span>
+                      <input
+                        type="number"
+                        min="-60000"
+                        max="60000"
+                        step="0.001"
+                        inputMode="decimal"
+                        value={syncReviewResidualMilliseconds}
+                        onChange={(event) => setSyncReviewResidualMilliseconds(event.target.value)}
+                        placeholder="0 is valid"
+                        className="mt-1 w-full rounded-lg border border-violet-200 bg-white px-3 py-2 font-mono text-violet-950"
+                      />
+                    </label>
+                  </div>
+
+                  <div className="mt-2 rounded-lg border border-violet-200 bg-white px-3 py-2 text-[11px] font-bold leading-5 text-violet-950">
+                    Observed drift: <span className="font-mono font-black">
+                      {syncReviewObservedPartsPerMillion === null
+                        ? "enter both measurements"
+                        : `${syncReviewObservedPartsPerMillion.toFixed(3)} ppm`}
+                    </span>.
+                    {" "}This records evidence only; it does not silently stretch or resample media.
+                  </div>
+
+                  <label className="mt-3 block">
+                    <span className="font-black text-violet-950">Review notes (optional)</span>
+                    <textarea
+                      value={syncReviewNotes}
+                      onChange={(event) => setSyncReviewNotes(event.target.value)}
+                      maxLength={2000}
+                      rows={3}
+                      placeholder="Name the opening and later events you compared."
+                      className="mt-1 w-full resize-y rounded-lg border border-violet-200 bg-white px-3 py-2 font-bold text-violet-950"
+                    />
+                  </label>
+
+                  <label className="mt-3 flex cursor-pointer items-start gap-3 rounded-lg border border-violet-300 bg-white p-3">
+                    <input
+                      type="checkbox"
+                      checked={syncReviewHumanApproved}
+                      onChange={(event) => setSyncReviewHumanApproved(event.target.checked)}
+                      className="mt-1 size-4 shrink-0 accent-violet-700"
+                    />
+                    <span className="min-w-0">
+                      <span className="block font-black text-violet-950">Approve this reversible placement</span>
+                      <span className="mt-1 block text-[11px] font-bold leading-5 text-violet-900">
+                        I approve the current anchor. Source bytes stay unchanged, and I understand this is not a sample-accuracy claim.
+                      </span>
+                    </span>
+                  </label>
                 </div>
 
                 <div className="rounded-xl border border-red-200 bg-red-50 p-3 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <div className="font-black text-red-950">6. Something looks wrong</div>
+                      <div className="font-black text-red-950">7. Something looks wrong</div>
                       <p className="mt-1 text-[11px] font-bold leading-5 text-red-900">
                         Recovery actions for sync panic. These avoid destructive timeline edits and keep the current episode diagnosable.
                       </p>
@@ -7361,10 +7731,17 @@ function CloudEditorContent() {
                 <button
                   type="button"
                   onClick={() => void saveSyncWizardAlignment()}
-                  disabled={!syncWizardTargetAsset}
+                  disabled={
+                    !syncWizardTargetAsset
+                    || !syncWizardSpineAsset
+                    || !syncReviewEvidenceComplete
+                    || isSavingAlignmentReview
+                  }
                   className="rounded-xl border border-[#3d3122] bg-[#3d3122] px-4 py-3 font-black text-white shadow-sm hover:bg-[#59442d] disabled:cursor-not-allowed disabled:border-[#d8b777] disabled:bg-[#f3e4c7] disabled:text-[#8c6b4a]"
                 >
-                  7. Save synced alignment
+                  {isSavingAlignmentReview
+                    ? "8. Saving reviewed placement..."
+                    : "8. Approve reviewed placement"}
                 </button>
               </div>
             </div>
@@ -7640,7 +8017,7 @@ function CloudEditorContent() {
                       )}
                     </div>
                   )}
-                  <div className="mt-2 grid grid-cols-3 gap-2">
+                  <div className="mt-2 grid gap-2 sm:grid-cols-3">
                     <button
                       type="button"
                       onClick={() => addImportedAssetToTimeline(asset)}
@@ -7659,11 +8036,17 @@ function CloudEditorContent() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => void updateImportedAssetSyncStatus(asset, "synced")}
+                      onClick={() => {
+                        setSyncWizardTargetAssetId(asset.id);
+                        setMediaImportStatus(`Selected ${asset.originalName} for reviewed alignment.`);
+                        document
+                          .getElementById("guided-sync-wizard")
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }}
                       className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 font-black text-emerald-800 hover:bg-emerald-100"
-                      title="Use this when the file is lined up correctly enough to keep editing."
+                      title="Open Guided sync to review clock, waveform, drift, and the reversible placement."
                     >
-                      Mark lined up
+                      Review alignment
                     </button>
                   </div>
                   {!realEditingMode && (asset.kind === "audio" || asset.kind === "video" || asset.contentType.startsWith("audio/") || asset.contentType.startsWith("video/")) && (
@@ -7763,24 +8146,30 @@ function CloudEditorContent() {
                         : "Make this the main spine audio"}
                     </button>
                   )}
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void updateImportedAssetSyncStatus(asset, "ready-to-sync")}
-                      className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 font-black text-amber-900 hover:bg-amber-100"
-                      title={`Sets this file's anchor to the current playhead: ${formatClock(currentTime)}.`}
-                    >
-                      Line up at playhead
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void updateImportedAssetSyncStatus(asset, "held")}
-                      className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 font-black text-slate-700 hover:bg-slate-100"
-                      title="Park this file so it is preserved but no longer feels like the next urgent thing."
-                    >
-                      Park for later
-                    </button>
-                  </div>
+                  {asset.sync?.status === "synced" ? (
+                    <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-[11px] font-bold leading-5 text-emerald-950">
+                      This reviewed placement is protected. Reopen Guided sync to inspect it, or use Undo last sync change before replacing it with a rough anchor or held status.
+                    </div>
+                  ) : (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void updateImportedAssetSyncStatus(asset, "ready-to-sync")}
+                        className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-2 font-black text-amber-900 hover:bg-amber-100"
+                        title={`Stores the current playhead (${formatSyncClock(currentTime)}) as a rough anchor without claiming review.`}
+                      >
+                        Use rough playhead anchor
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void updateImportedAssetSyncStatus(asset, "held")}
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-2 font-black text-slate-700 hover:bg-slate-100"
+                        title="Park this file so it is preserved but no longer feels like the next urgent thing."
+                      >
+                        Park for later
+                      </button>
+                    </div>
+                  )}
                   {!realEditingMode && (
                     <button
                       type="button"
@@ -8462,7 +8851,7 @@ function CloudEditorContent() {
         </aside>
 
         {/* Main Editor Area */}
-        <main className="flex-1 flex flex-col relative overflow-hidden bg-transparent p-8">
+        <main className="relative flex min-w-0 flex-1 flex-col overflow-visible bg-transparent p-3 sm:p-5 lg:overflow-hidden lg:p-8">
           <section className="mb-6 rounded-3xl border border-[#e8dcc4] bg-[#fffdf7] p-5 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div className="min-w-0">

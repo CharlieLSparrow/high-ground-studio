@@ -4,6 +4,11 @@ import type { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
+import {
+  ReviewedSourceAlignmentError,
+  buildReviewedSourceAlignment,
+} from "@/lib/episode-production/reviewed-source-alignment";
+import { planEpisodeProductionSyncUndo } from "@/lib/episode-production/episode-production-sync-undo";
 import { uploadMediaBuffer } from "@/lib/server/gcs";
 import { MEDIA_VAULT_PREFIXES, buildMediaVaultObjectName } from "@/lib/server/media-vault";
 import { attachAssetToNest, createWorkflowJob } from "@/lib/server/quipsly-core";
@@ -915,6 +920,7 @@ export async function PATCH(request: Request) {
     const spineAudioClipId = String(body.spineAudioClipId ?? "").trim() || undefined;
     const spineAudioSource = String(body.spineAudioSource ?? "").trim() || undefined;
     const spineAudioLabel = String(body.spineAudioLabel ?? "").trim() || undefined;
+    const reviewSpineAssetId = String(body.spineAssetId ?? "").trim() || undefined;
 
     const prisma = getPrismaClient();
     if (!(prisma as any).studioEpisodeProduction) {
@@ -966,6 +972,8 @@ export async function PATCH(request: Request) {
         spineAudioClipId: currentJson.spineAudioClipId,
         spineAudioSource: currentJson.spineAudioSource,
         spineAudioLabel: currentJson.spineAudioLabel,
+        spineAudioSetAt: currentJson.spineAudioSetAt,
+        spineAudioSetBy: currentJson.spineAudioSetBy,
       };
       const productionJson = episodeProductionJson(currentJson, projectSlug, episodeSlug, {
         spineAudioAssetId: spineAudioAssetId ?? null,
@@ -1276,31 +1284,20 @@ export async function PATCH(request: Request) {
     }
 
     if (action === "undo-last-sync") {
-      const history = syncHistoryArray(currentJson);
-      const [latestSnapshot, ...remainingHistory] = history;
-      const snapshot = asRecord(latestSnapshot);
-
-      if (!snapshot.type) {
-        return NextResponse.json({ ok: false, error: "No sync history to undo" }, { status: 404 });
-      }
-
-      let nextImportedMedia = importedMedia;
-      if (snapshot.type === "sync-status" || snapshot.type === "ai-suggestion") {
-        const snapshotAssetId = String(snapshot.assetId ?? "");
-        nextImportedMedia = importedMedia.map((item) => {
-          const asset = asRecord(item);
-          if (!asset) return item;
-          if (asset.id !== snapshotAssetId && asset.sourceId !== snapshotAssetId) return item;
-          return {
-            ...asset,
-            sync: asRecord(snapshot.beforeSync) ?? {},
-          };
+      const undoPlan = planEpisodeProductionSyncUndo(currentJson);
+      if (!undoPlan.ok) {
+        return NextResponse.json({
+          ok: false,
+          code: undoPlan.code,
+          error: undoPlan.message,
+        }, {
+          status: undoPlan.code === "sync-undo-empty" ? 404 : 409,
         });
       }
 
       const productionJson = episodeProductionJson(currentJson, projectSlug, episodeSlug, {
-        importedMedia: nextImportedMedia,
-        syncHistory: remainingHistory,
+        ...undoPlan.productionPatch,
+        syncHistory: undoPlan.remainingHistory,
         lastSyncUndoAt: syncedAt,
       });
 
@@ -1312,7 +1309,9 @@ export async function PATCH(request: Request) {
       return NextResponse.json({
         ok: true,
         productionJson,
-        undoAction: snapshot,
+        undoAction: undoPlan.snapshot,
+        clientTimelineRestoreRequired:
+          undoPlan.clientTimelineRestoreRequired,
         updatedAt: updated.updatedAt?.toISOString?.() ?? syncedAt,
       });
     }
@@ -1405,11 +1404,98 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ ok: false, error: "assetId is required" }, { status: 400 });
     }
 
+    const isAlignmentApproval = action === "approve-alignment";
+    const targetAsset = importedMedia
+      .map((item) => asRecord(item))
+      .find((asset) => asset.id === assetId || asset.sourceId === assetId);
+    let alignmentReview: ReturnType<typeof buildReviewedSourceAlignment> | null = null;
+    if (isAlignmentApproval) {
+      const spineAsset = importedMedia
+        .map((item) => asRecord(item))
+        .find((asset) => (
+          asset.id === reviewSpineAssetId
+          || asset.sourceId === reviewSpineAssetId
+        ));
+      if (!targetAsset) {
+        return NextResponse.json({
+          ok: false,
+          code: "alignment-review-target-missing",
+          error: "The target source is no longer attached to this episode.",
+        }, { status: 404 });
+      }
+      if (!reviewSpineAssetId || !spineAsset || !isAudioAsset(spineAsset)) {
+        return NextResponse.json({
+          ok: false,
+          code: "alignment-review-spine-invalid",
+          error: "Choose an attached audio source as the alignment spine.",
+        }, { status: 400 });
+      }
+      try {
+        const review = asRecord(body.alignmentReview);
+        alignmentReview = buildReviewedSourceAlignment({
+          reviewId: randomUUID(),
+          reviewedAt: syncedAt,
+          reviewer: {
+            userId: access.actor.id,
+            email: access.actor.email,
+            name: access.actor.name,
+            source: access.actor.source,
+          },
+          targetAsset,
+          spineAsset,
+          targetClipId,
+          anchorTimelineSeconds,
+          waveformCorrelationConfirmed:
+            review.waveformCorrelationConfirmed,
+          driftReviewConfirmed: review.driftReviewConfirmed,
+          humanApprovalConfirmed: review.humanApprovalConfirmed,
+          driftObservationIntervalSeconds:
+            review.driftObservationIntervalSeconds,
+          residualDriftMilliseconds:
+            review.residualDriftMilliseconds,
+          notes: review.notes,
+        });
+      } catch (error) {
+        if (error instanceof ReviewedSourceAlignmentError) {
+          return NextResponse.json({
+            ok: false,
+            code: error.code,
+            error: error.message,
+          }, { status: 400 });
+        }
+        throw error;
+      }
+    }
+
     let found = false;
     let beforeSync: Record<string, unknown> | null = null;
     let afterSync: Record<string, unknown> | null = null;
     const isAiSuggestionApply = action === "apply-ai-suggestion";
-    const effectiveStatus = isAiSuggestionApply ? sanitizeAiSyncStatus(body.status ?? body.suggestedSyncStatus) ?? status : status;
+    const effectiveStatus = isAlignmentApproval
+      ? "synced"
+      : isAiSuggestionApply
+        ? sanitizeAiSyncStatus(body.status ?? body.suggestedSyncStatus) ?? status
+        : status;
+    if (effectiveStatus === "synced" && !isAlignmentApproval) {
+      return NextResponse.json({
+        ok: false,
+        code: "alignment-review-required",
+        error: "Use Guided sync to review waveforms, later-take drift, and the final placement before marking a source synced.",
+      }, { status: 400 });
+    }
+    const existingReviewedSync = asRecord(targetAsset?.sync);
+    if (
+      !isAlignmentApproval
+      && existingReviewedSync.status === "synced"
+      && existingReviewedSync.source === "editor-reviewed-alignment-v1"
+      && Object.keys(asRecord(existingReviewedSync.alignmentReview)).length > 0
+    ) {
+      return NextResponse.json({
+        ok: false,
+        code: "reviewed-alignment-undo-required",
+        error: "Undo the recorded reviewed alignment before changing this source's sync status.",
+      }, { status: 409 });
+    }
 
     const nextImportedMedia = importedMedia.map((item) => {
       const asset = asRecord(item);
@@ -1429,8 +1515,13 @@ export async function PATCH(request: Request) {
         ...(suggestionReason ? { suggestionReason } : {}),
         ...(suggestionConfidence !== undefined ? { suggestionConfidence } : {}),
         ...(isAiSuggestionApply ? { suggestionAppliedAt: syncedAt, suggestionSource } : {}),
+        ...(alignmentReview ? { alignmentReview } : {}),
         syncedAt,
-        source: isAiSuggestionApply ? "editor-ai-suggestion" : "editor-sync-bench",
+        source: alignmentReview
+          ? "editor-reviewed-alignment-v1"
+          : isAiSuggestionApply
+            ? "editor-ai-suggestion"
+            : "editor-sync-bench",
       };
       return {
         ...asset,
@@ -1445,14 +1536,20 @@ export async function PATCH(request: Request) {
     const productionJson = episodeProductionJson(currentJson, projectSlug, episodeSlug, {
       importedMedia: nextImportedMedia,
       syncHistory: appendSyncHistory(currentJson, {
-        type: isAiSuggestionApply ? "ai-suggestion" : "sync-status",
+        type: alignmentReview
+          ? "alignment-review"
+          : isAiSuggestionApply
+            ? "ai-suggestion"
+            : "sync-status",
         assetId,
         targetClipId,
         beforeSync: beforeSync ?? {},
         afterSync: afterSync ?? {},
         label: isAiSuggestionApply
           ? `Applied AI suggestion for ${assetId}${suggestedTrackId ? ` (${suggestedTrackId})` : ""}`
-          : `Changed sync for ${assetId}`,
+          : alignmentReview
+            ? `Approved reviewed placement for ${assetId}`
+            : `Changed sync for ${assetId}`,
       }),
       lastImportSyncUpdatedAt: syncedAt,
     });
@@ -1465,6 +1562,7 @@ export async function PATCH(request: Request) {
     return NextResponse.json({
       ok: true,
       productionJson,
+      alignmentReview,
       updatedAt: updated.updatedAt?.toISOString?.() ?? syncedAt,
     });
   } catch (error) {

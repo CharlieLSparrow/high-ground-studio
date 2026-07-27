@@ -2197,3 +2197,42 @@ This is an active-goal checkpoint, not a completion claim.
   desktop and 390 px phone widths, checked for horizontal overflow and honest
   status language, then removed with an exact zero-fixture readback. This is
   rendered UX proof, not real iPhone waveform/drift approval.
+
+### 2026-07-27 authenticated reviewed-alignment checkpoint
+
+- Closed the proposal-to-editor trust boundary with
+  `quipsly-reviewed-source-alignment-v1`. The only route that can now mark an
+  imported source `synced` resolves the exact attached target and audio spine,
+  binds the authenticated reviewer and server time, validates distinct source
+  identities and optional clock evidence, and requires opening waveform,
+  later-take drift, and explicit reversible-placement approval.
+- Generic status and AI-suggestion paths fail closed when asked to write
+  `synced`. The reader rejects incomplete, optimistic, invalid-hash, or
+  sample-accuracy-claiming receipts. The editor labels a validated receipt
+  **Reviewed placement** and keeps legacy sync visually distinct.
+- Guided Sync presents the capture proposal without applying it, requires exact
+  baseline-spine identity before copying its offset, records interval,
+  residual milliseconds, observed ppm, and notes, and states that no source
+  bytes are changed. Sync readouts now retain milliseconds after operated
+  dogfood caught a 500 ms proposal displaying as `00:00`.
+- Replaced the false-success undo path with a tested planner. Reviewed
+  alignment and prior source/spine state restore exactly; clip-source history
+  declares its client timeline handoff; unsupported entries remain intact with
+  a dedicated-recovery error.
+- Operated a disposable signed-in two-source episode through the real editor:
+  copied a `+500 ms` clock proposal, played and paused both sources, proved an
+  exact five-second decoded waveform match, completed all review gates,
+  persisted and reloaded the authenticated SHA-256-pair receipt, then undid it
+  and read `ready-to-sync`, no review, zero history, and the preserved proposal
+  from PostgreSQL. Desktop and 390 x 844 render checks exposed and repaired the
+  editor shell's fixed-rail phone overflow. The exact test row and generated
+  WAV were removed.
+- Focused alignment/readback/undo tests pass 19/19. The complete Nest run passes
+  146 suites / 701 runnable tests with 26 suites / 71 tests environment-gated;
+  strict TypeScript, all 150 production-build routes, 107/107 Quipsly
+  contracts, six release manifests, repository health, 13/13 changed-surface
+  governance tests, and an exact eight-path Nest-only planner result. This is
+  local synthetic workflow proof, not
+  human review of real High Ground Odyssey media, physical iPhone capture,
+  direct MV7i/Canon qualification, cloud-worker qualification, TestFlight, or
+  App Store readiness.

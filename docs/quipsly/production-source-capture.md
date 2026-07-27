@@ -126,9 +126,17 @@ explicit completion state. Quipsly adds stricter source/proxy separation:
 preserved originals remain immutable, while only registered derivatives may be
 used for low-latency collaborative playback.
 
+Riverside also distinguishes raw local tracks from aligned exports and uses a
+scratch/reference recording to line up independently captured sources. Quipsly
+keeps that distinction visible: provider-aligned media may be useful evidence,
+but the local master remains immutable and an editor must approve the final
+timeline placement from clock, waveform, and later-take drift evidence.
+
 - [Riverside recording architecture](https://riverside.fm/blog/what-is-riverside)
 - [Riverside progressive uploading](https://riverside.fm/blog/progressive-video-uploading)
 - [Riverside recording product](https://riverside.fm/recording)
+- [Riverside raw and aligned file formats](https://support.riverside.fm/hc/en-us/articles/5260131045917-Video-and-audio-file-formats-Overview)
+- [Riverside scratch-track alignment](https://support.riverside.fm/hc/en-us/articles/10989462140445-Recording-in-person-while-sharing-devices)
 
 The proxy worker follows two current cloud/runtime boundaries:
 
@@ -408,6 +416,26 @@ is downgraded to **Evidence needed** instead of being displayed as ready.
 Episode Room remains a review/readback surface; it cannot approve or lock the
 proposal.
 
+The editor owns the next state transition through
+`quipsly-reviewed-source-alignment-v1`. Approval is accepted only when the
+authenticated reviewer records:
+
+- a non-negative timeline anchor against an exact attached audio spine;
+- distinct stable source identities, upgraded to `sha256-pair` only when both
+  hashes are valid SHA-256 values;
+- explicit opening-event waveform correlation;
+- a later comparison interval and signed residual drift measurement;
+- explicit human approval of a reversible placement;
+- the original capture-clock proposal snapshot when one exists.
+
+The receipt always says `sampleAccurateClaimed:false`,
+`sourceBytesMutated:false`, and `timelineDecisionReversible:true`. Generic
+`synced` writes, including AI suggestions, fail closed and direct the editor to
+Guided Sync. The UI distinguishes these authenticated receipts from legacy
+sync markers. Undo restores the exact prior source-sync packet; unsupported
+history entries are preserved and routed to their dedicated recovery workflow
+instead of being silently discarded.
+
 ## Cloud/editor pipeline
 
 ```text
@@ -510,8 +538,9 @@ mid-file.
    survives finalization and appears on web/Mac readback without claiming
    sample accuracy. Episode Room now renders the real proposal, offset,
    uncertainty, and open review gates instead of re-labeling generic
-   `ready-to-sync` state as alignment. Cloud execution plus waveform/drift
-   review and explicit alignment approval remain.**
+   `ready-to-sync` state as alignment. Authenticated, provenance-bearing
+   approval and reversible undo are complete and dogfooded locally. Cloud
+   execution plus waveform/drift review on real production media remain.**
 7. Build the native Mac Shure master lane and Canon import manifest.
    **The Core Audio inventory, truthful route policy, crash-recoverable
    48 kHz/24-bit WAV master, SHA-256 source receipt, and Episode Capture Setup
@@ -660,3 +689,42 @@ picker. The temporary app was terminated without accepting that permission.
 The real-file importer and attachment path are core-tested; file-picker
 automation and a physical MV7i recording/playback receipt remain human-present
 acceptance gates, not claimed passes.
+
+## Implementation checkpoint — July 27, 2026 (reviewed alignment)
+
+- Guided Sync now exposes a valid capture-clock proposal as evidence, including
+  group offset, uncertainty, projected start, receipt-backed baseline identity,
+  and an explicit **Use as rough anchor** action. It never auto-applies an
+  offset.
+- Sync clocks render millisecond precision. This was corrected after the real
+  browser exercise exposed a 500 ms proposal visually collapsing to `00:00`.
+- A source cannot become `synced` through the general status API. The dedicated
+  approval action resolves the target and audio spine server-side and builds an
+  authenticated immutable review receipt with source identity, optional clock
+  proposal, waveform check, later-take drift measurement, reviewer, notes, and
+  reversible placement.
+- The persisted review reader validates the complete receipt instead of
+  trusting optimistic status strings. Invalid hashes cannot claim an immutable
+  pair, and incomplete or sample-accuracy-claiming packets do not receive the
+  reviewed UI state.
+- Undo now restores reviewed alignment, ordinary sync, AI suggestion, and spine
+  state through a tested plan. Unsupported history is retained with an
+  explicit recovery error instead of being popped while the UI claims success.
+- The editor shell now stacks on phone widths, wraps operator controls, keeps
+  Guided Sync full-width, and uses responsive evidence/proposal grids instead
+  of clipping the main editor beside a fixed 256 px media rail.
+- Local dogfood used a disposable two-source Episode Production row and a
+  generated spine derived from the attached MP4. Browser operation copied the
+  500 ms clock proposal, played both sources, paused both, completed the three
+  review gates, persisted the receipt, reloaded it at desktop and 390 x 844,
+  then undid it. Independent FFmpeg readback matched five decoded seconds
+  exactly at the proposed offset; PostgreSQL matched the reviewed receipt and
+  then the exact restored `ready-to-sync` packet. The disposable row and
+  waveform were removed with zero-fixture readback.
+- Focused alignment/undo/readback tests pass 19/19. The complete Nest run passes
+  146 suites / 701 runnable tests with 26 suites / 71 tests environment-gated;
+  strict Quipsly TypeScript, all 150 production-build routes, 107/107 Quipsly
+  contracts, six release manifests, repository health, 13/13 changed-surface
+  governance tests, and an exact eight-path Nest-only planner result. Cloud,
+  physical hardware, and real-episode gates remain separate and are not implied
+  by this checkpoint.
