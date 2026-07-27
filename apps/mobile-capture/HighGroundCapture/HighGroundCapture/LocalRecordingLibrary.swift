@@ -559,10 +559,9 @@ final class LocalRecordingLibrary: ObservableObject {
     ) throws -> LocalRecording {
         try mutate(id, allowInactiveOwner: true) { recording in
             let fileURL = self.sourceFileURL(for: recording)
-            let validation = Self.validateSource(
+            let validation = Self.validateSourceHeader(
                 at: fileURL,
-                mediaKind: recording.effectiveMediaKind,
-                readsToEnd: false
+                mediaKind: recording.effectiveMediaKind
             )
             recording.stoppedAt = stoppedAt
             recording.durationSeconds = validation.durationSeconds ?? max(0, durationSeconds)
@@ -601,10 +600,9 @@ final class LocalRecordingLibrary: ObservableObject {
         }
 
         let validation = await Task.detached(priority: .utility) {
-            Self.validateSource(
+            await Self.validateSourceThroughEnd(
                 at: fileURL,
-                mediaKind: mediaKind,
-                readsToEnd: true
+                mediaKind: mediaKind
             )
         }.value
 
@@ -1096,10 +1094,9 @@ final class LocalRecordingLibrary: ObservableObject {
         // Header/duration validation is intentionally bounded on MainActor. A
         // source stays non-playable while a utility task reads through EOF.
         let mediaKind = recording.effectiveMediaKind
-        let validation = Self.validateSource(
+        let validation = Self.validateSourceHeader(
             at: fileURL,
-            mediaKind: mediaKind,
-            readsToEnd: false
+            mediaKind: mediaKind
         )
         recording.byteCount = fileByteCount(at: fileURL)
         if let durationSeconds = validation.durationSeconds {
@@ -1130,10 +1127,9 @@ final class LocalRecordingLibrary: ObservableObject {
         Task { [weak self] in
             for candidate in candidates {
                 let validation = await Task.detached(priority: .utility) {
-                    Self.validateSource(
+                    await Self.validateSourceThroughEnd(
                         at: candidate.fileURL,
-                        mediaKind: candidate.mediaKind,
-                        readsToEnd: true
+                        mediaKind: candidate.mediaKind
                     )
                 }.value
                 guard let self else { return }
@@ -1158,16 +1154,27 @@ final class LocalRecordingLibrary: ObservableObject {
         }
     }
 
-    nonisolated private static func validateSource(
+    nonisolated private static func validateSourceHeader(
         at fileURL: URL,
-        mediaKind: LocalRecordingMediaKind,
-        readsToEnd: Bool
+        mediaKind: LocalRecordingMediaKind
     ) -> SourceValidation {
         switch mediaKind {
         case .audio:
-            return validateAudioSource(at: fileURL, readsToEnd: readsToEnd)
+            return validateAudioSource(at: fileURL, readsToEnd: false)
         case .video:
-            return validateVideoSource(at: fileURL, readsToEnd: readsToEnd)
+            return validateVideoSourceHeader(at: fileURL)
+        }
+    }
+
+    nonisolated private static func validateSourceThroughEnd(
+        at fileURL: URL,
+        mediaKind: LocalRecordingMediaKind
+    ) async -> SourceValidation {
+        switch mediaKind {
+        case .audio:
+            return validateAudioSource(at: fileURL, readsToEnd: true)
+        case .video:
+            return await validateVideoSourceThroughEnd(at: fileURL)
         }
     }
 
@@ -1248,9 +1255,8 @@ final class LocalRecordingLibrary: ObservableObject {
         }
     }
 
-    nonisolated private static func validateVideoSource(
-        at fileURL: URL,
-        readsToEnd: Bool
+    nonisolated private static func validateVideoSourceHeader(
+        at fileURL: URL
     ) -> SourceValidation {
         let byteCount = fileByteCountForValidation(at: fileURL)
         guard byteCount > 0 else {
@@ -1260,32 +1266,46 @@ final class LocalRecordingLibrary: ObservableObject {
                 failureMessage: "Quipsly preserved the file path and journal evidence, but the source has no video bytes. It needs repair and is not claimed playable."
             )
         }
+        return SourceValidation(
+            isPlayable: true,
+            durationSeconds: nil,
+            failureMessage: nil
+        )
+    }
 
-        let asset = AVURLAsset(url: fileURL)
-        let videoTracks = asset.tracks(withMediaType: .video)
-        let duration = asset.duration.seconds
-        guard asset.isReadable,
-              asset.isPlayable,
-              !videoTracks.isEmpty,
-              duration.isFinite,
-              duration > 0 else {
+    nonisolated private static func validateVideoSourceThroughEnd(
+        at fileURL: URL
+    ) async -> SourceValidation {
+        let byteCount = fileByteCountForValidation(at: fileURL)
+        guard byteCount > 0 else {
             return SourceValidation(
                 isPlayable: false,
                 durationSeconds: nil,
-                failureMessage: "Quipsly preserved the source bytes, but could not prove a readable video track and positive duration. It needs repair and is not claimed playable."
+                failureMessage: "Quipsly preserved the file path and journal evidence, but the source has no video bytes. It needs repair and is not claimed playable."
             )
         }
-
-        guard readsToEnd else {
-            return SourceValidation(
-                isPlayable: true,
-                durationSeconds: duration,
-                failureMessage: nil
-            )
-        }
-
+        let asset = AVURLAsset(url: fileURL)
+        var inspectedDuration: Double?
         do {
-            let tracks = videoTracks + asset.tracks(withMediaType: .audio)
+            let videoTracks = try await asset.loadTracks(withMediaType: .video)
+            let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+            let duration = try await asset.load(.duration).seconds
+            inspectedDuration = duration
+            let isReadable = try await asset.load(.isReadable)
+            let isPlayable = try await asset.load(.isPlayable)
+            guard isReadable,
+                  isPlayable,
+                  !videoTracks.isEmpty,
+                  duration.isFinite,
+                  duration > 0 else {
+                return SourceValidation(
+                    isPlayable: false,
+                    durationSeconds: nil,
+                    failureMessage: "Quipsly preserved the source bytes, but could not prove a readable video track and positive duration. It needs repair and is not claimed playable."
+                )
+            }
+
+            let tracks = videoTracks + audioTracks
             for track in tracks {
                 let reader = try AVAssetReader(asset: asset)
                 let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
@@ -1325,7 +1345,7 @@ final class LocalRecordingLibrary: ObservableObject {
         } catch {
             return SourceValidation(
                 isPlayable: false,
-                durationSeconds: duration,
+                durationSeconds: inspectedDuration,
                 failureMessage: "Quipsly preserved the source bytes, but iOS could not decode every recorded video sample through the declared end. It needs repair and is not claimed playable."
             )
         }
