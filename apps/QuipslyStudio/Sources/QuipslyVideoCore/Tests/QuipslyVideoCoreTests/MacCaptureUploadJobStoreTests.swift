@@ -162,6 +162,26 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
         )
         XCTAssertTrue(
             job.sourceProfileJSON.contains(
+                "\"schemaVersion\" : 2"
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"codec\" : \"avc1\""
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"nominalFrameRate\" : 29.97"
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"negotiatedInputFormat\""
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
                 "\"monotonicStartedNanoseconds\" : \"1000\""
             )
         )
@@ -653,6 +673,13 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
             state: .finalized,
             negotiatedFormat:
                 device.formats[0],
+            recordedFormat:
+                ProductionVideoRecordedFormat(
+                    width: 1_920,
+                    height: 1_080,
+                    nominalFrameRate: 29.97,
+                    codec: "avc1"
+                ),
             startedAt: Date(timeIntervalSince1970: 100),
             stoppedAt: Date(timeIntervalSince1970: 102),
             startedMonotonicNanoseconds: 1_000,

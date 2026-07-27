@@ -79,6 +79,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var lastTakeAudit:
         ProductionCaptureTakeAuditReceipt?
     @Published private(set) var takeAuditError: String?
+    @Published private(set) var agentCommandStatus = "idle"
 
     let captureRoot = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
@@ -129,6 +130,385 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             uploadError =
                 uploadJobStore.persistenceError
                     ?? "The canonical upload outbox is locked read-only."
+        }
+    }
+
+    func publishAgentAcceptanceState() {
+        let selectedInputState: [String: Any]
+        if let selectedAudioInput {
+            selectedInputState = [
+                "id": selectedAudioInput.id,
+                "name": selectedAudioInput.name,
+                "sampleRate":
+                    selectedAudioInput.nominalSampleRate ?? 0,
+            ]
+        } else {
+            selectedInputState = [:]
+        }
+
+        let selectedOutputState: [String: Any]
+        if let selectedAudioOutput {
+            selectedOutputState = [
+                "id": selectedAudioOutput.id,
+                "name": selectedAudioOutput.name,
+                "sampleRate":
+                    selectedAudioOutput.nominalSampleRate ?? 0,
+            ]
+        } else {
+            selectedOutputState = [:]
+        }
+
+        let selectedVideoState: [String: Any]
+        if let selectedVideoDevice {
+            selectedVideoState = [
+                "id": selectedVideoDevice.id,
+                "name": selectedVideoDevice.name,
+            ]
+        } else {
+            selectedVideoState = [:]
+        }
+
+        let availableInputs: [[String: Any]] =
+            inventory?.audioDevices.filter(\.hasInput).map {
+                [
+                    "id": $0.id,
+                    "name": $0.name,
+                    "sampleRate":
+                        $0.nominalSampleRate ?? 0,
+                ]
+            } ?? []
+        let availableOutputs: [[String: Any]] =
+            inventory?.audioDevices.filter(\.hasOutput).map {
+                [
+                    "id": $0.id,
+                    "name": $0.name,
+                    "sampleRate":
+                        $0.nominalSampleRate ?? 0,
+                ]
+            } ?? []
+        let availableVideoDevices: [[String: Any]] =
+            inventory?.videoDevices.map {
+                [
+                    "id": $0.id,
+                    "name": $0.name,
+                ]
+            } ?? []
+
+        let lastAudioState: [String: Any]
+        if let lastFinalizedReceipt {
+            lastAudioState = [
+                "state": lastFinalizedReceipt.state.rawValue,
+                "path": lastFinalizedReceipt.audioPath,
+                "durationSeconds":
+                    lastFinalizedReceipt.durationSeconds,
+                "byteCount":
+                    lastFinalizedReceipt.byteCount ?? 0,
+                "sha256":
+                    lastFinalizedReceipt.sha256 ?? "",
+            ]
+        } else {
+            lastAudioState = [:]
+        }
+
+        let lastVideoState: [String: Any]
+        if let lastFinalizedVideoReceipt {
+            let recordedFormat: [String: Any]
+            if let value =
+                lastFinalizedVideoReceipt.recordedFormat {
+                recordedFormat = [
+                    "width": value.width,
+                    "height": value.height,
+                    "nominalFrameRate":
+                        value.nominalFrameRate,
+                    "codec": value.codec,
+                ]
+            } else {
+                recordedFormat = [:]
+            }
+            lastVideoState = [
+                "state":
+                    lastFinalizedVideoReceipt.state.rawValue,
+                "path": lastFinalizedVideoReceipt.videoPath,
+                "durationSeconds":
+                    lastFinalizedVideoReceipt.durationSeconds,
+                "byteCount":
+                    lastFinalizedVideoReceipt.byteCount ?? 0,
+                "sha256":
+                    lastFinalizedVideoReceipt.sha256 ?? "",
+                "negotiatedFormat": [
+                    "width":
+                        lastFinalizedVideoReceipt
+                            .negotiatedFormat.width,
+                    "height":
+                        lastFinalizedVideoReceipt
+                            .negotiatedFormat.height,
+                    "maximumFrameRate":
+                        lastFinalizedVideoReceipt
+                            .negotiatedFormat
+                            .maximumFrameRate,
+                    "mediaSubType":
+                        lastFinalizedVideoReceipt
+                            .negotiatedFormat.mediaSubType,
+                ],
+                "recordedFormat": recordedFormat,
+            ]
+        } else {
+            lastVideoState = [:]
+        }
+
+        let lastTakeAuditState: [String: Any]
+        if let lastTakeAudit {
+            lastTakeAuditState = [
+                "disposition":
+                    lastTakeAudit.disposition.rawValue,
+                "receiptPath": lastTakeAudit.receiptPath,
+                "holdCount": lastTakeAudit.holdCount,
+                "warningCount": lastTakeAudit.warningCount,
+                "checks": lastTakeAudit.checks.map {
+                    [
+                        "id": $0.id,
+                        "status": $0.status.rawValue,
+                        "summary": $0.summary,
+                    ]
+                },
+            ]
+        } else {
+            lastTakeAuditState = [:]
+        }
+
+        let captureState: [String: Any] = [
+            "episodeSpaceID": episodeSpaceID,
+            "participantID": participantID,
+            "captureGroupID":
+                captureGroupID.uuidString.lowercased(),
+            "captureGroupIsClosed": captureGroupIsClosed,
+            "isLocalOnly": isLocalOnlyCapture,
+            "includeCameraReference": includeCameraReference,
+            "canStartRecording": canStartRecording,
+            "isRecording": isRecording,
+            "isFinalizing": isFinalizing,
+            "elapsedSeconds": elapsedSeconds,
+            "message": message,
+            "recordingError": recordingError ?? "",
+            "cameraPreviewMessage": cameraPreviewMessage,
+            "cameraPreviewError": cameraPreviewError ?? "",
+            "cameraPreviewReady":
+                cameraPreviewFormat != nil
+                    && videoRecorder.preparedDeviceID
+                        == selectedVideoDeviceID,
+            "cameraAuthorization":
+                inventory?.cameraAuthorization.rawValue
+                    ?? "unknown",
+            "microphoneAuthorization":
+                inventory?.microphoneAuthorization.rawValue
+                    ?? "unknown",
+            "selectedInput": selectedInputState,
+            "selectedOutput": selectedOutputState,
+            "selectedVideo": selectedVideoState,
+            "availableInputs": availableInputs,
+            "availableOutputs": availableOutputs,
+            "availableVideoDevices": availableVideoDevices,
+            "lastAudio": lastAudioState,
+            "lastVideo": lastVideoState,
+            "lastTakeAudit": lastTakeAuditState,
+        ]
+        let status: [String: Any] = [
+            "projectTitle": "Episode Capture Setup",
+            "launchStage":
+                inventory == nil
+                    ? "capture_inventory_loading"
+                    : "capture_setup_ready",
+            "windowVisible": true,
+            "captureAcceptanceMode": "local-only",
+            "captureExternalSideEffectsAllowed": false,
+            "captureAgentCommandStatus": agentCommandStatus,
+            "capture": captureState,
+            "agentAccessibilityModel":
+                "semantic_local_capture_commands_with_state_echo",
+            "agentInterfaceModel":
+                "observe_exact_routes_prepare_local_start_stop_audit_reobserve",
+            "agentCapabilityParity": [
+                "read exact camera, microphone, and output routes",
+                "prepare a local-only capture without joining a room",
+                "start only when exact selected device IDs are reconfirmed",
+                "stop and finalize every active local source",
+                "run deterministic byte and media acceptance",
+            ],
+            "agentCurrentSafeActions": [
+                "GET /capture_refresh_hardware",
+                "GET /capture_prepare_local",
+                "GET /capture_start_local",
+                "GET /capture_stop_local",
+                "GET /capture_audit_local",
+            ],
+            "captureAgentBoundary":
+                "This launch-only acceptance surface can write local media. It cannot request privacy permission, join a provider room, create a Nest START, upload, deliver, or publish.",
+        ]
+        AgentServer.shared.writeStatus(status)
+    }
+
+    func handleAgentAcceptanceCommand(_ request: AgentCommandRequest) {
+        switch request.name {
+        case "capture_refresh_hardware":
+            agentCommandStatus = "refreshing-hardware"
+            publishAgentAcceptanceState()
+            Task {
+                await refresh(requestAccess: false)
+                agentCommandStatus = "hardware-refreshed"
+                publishAgentAcceptanceState()
+            }
+        case "capture_prepare_local":
+            guard !isRecording, !isFinalizing else {
+                agentCommandStatus =
+                    "prepare-rejected-active-recording"
+                publishAgentAcceptanceState()
+                return
+            }
+            let episode = request.values["episode_space_id"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let participant = request.values["participant_id"]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let episode, !episode.isEmpty,
+                  let participant, !participant.isEmpty,
+                  let inventory else {
+                agentCommandStatus =
+                    "prepare-rejected-missing-identity-or-inventory"
+                publishAgentAcceptanceState()
+                return
+            }
+            let inputID = request.values["input_device_id"] ?? ""
+            let outputID = request.values["output_device_id"] ?? ""
+            let videoID = request.values["video_device_id"] ?? ""
+            guard inventory.audioDevices.contains(where: {
+                $0.id == inputID && $0.hasInput
+            }),
+            inventory.audioDevices.contains(where: {
+                $0.id == outputID && $0.hasOutput
+            }) else {
+                agentCommandStatus =
+                    "prepare-rejected-exact-audio-route-not-found"
+                publishAgentAcceptanceState()
+                return
+            }
+            let includeCamera = ["1", "true", "yes"].contains(
+                (request.values["include_camera"] ?? "false")
+                    .lowercased()
+            )
+            if includeCamera,
+               !inventory.videoDevices.contains(where: {
+                   $0.id == videoID
+               }) {
+                agentCommandStatus =
+                    "prepare-rejected-exact-camera-route-not-found"
+                publishAgentAcceptanceState()
+                return
+            }
+
+            selectEpisodeRoom(nil)
+            episodeSpaceID = episode
+            participantID = participant
+            selectedAudioInputID = inputID
+            selectedAudioOutputID = outputID
+            selectedVideoDeviceID =
+                includeCamera ? videoID : nil
+            includeCameraReference = includeCamera
+            agentCommandStatus = "preparing-local-capture"
+            publishAgentAcceptanceState()
+            Task {
+                await prepareSelectedCameraReference()
+                agentCommandStatus =
+                    cameraPreviewError == nil
+                        ? "local-capture-prepared"
+                        : "local-capture-camera-not-ready"
+                publishAgentAcceptanceState()
+            }
+        case "capture_start_local":
+            let expectedInput =
+                request.values["input_device_id"] ?? ""
+            let expectedVideo =
+                request.values["video_device_id"] ?? ""
+            guard isLocalOnlyCapture,
+                  selectedEpisodeRoom == nil else {
+                agentCommandStatus =
+                    "start-rejected-not-local-only"
+                publishAgentAcceptanceState()
+                return
+            }
+            guard expectedInput == selectedAudioInputID,
+                  !expectedInput.isEmpty else {
+                agentCommandStatus =
+                    "start-rejected-input-route-drift"
+                publishAgentAcceptanceState()
+                return
+            }
+            if includeCameraReference,
+               expectedVideo != selectedVideoDeviceID {
+                agentCommandStatus =
+                    "start-rejected-camera-route-drift"
+                publishAgentAcceptanceState()
+                return
+            }
+            guard canStartRecording else {
+                agentCommandStatus =
+                    "start-rejected-preflight-not-ready"
+                publishAgentAcceptanceState()
+                return
+            }
+            agentCommandStatus = "starting-local-capture"
+            publishAgentAcceptanceState()
+            Task {
+                await startRecording()
+                agentCommandStatus =
+                    isRecording
+                        ? "local-capture-recording"
+                        : "local-capture-start-failed"
+                publishAgentAcceptanceState()
+            }
+        case "capture_stop_local":
+            guard isRecording else {
+                agentCommandStatus =
+                    "stop-rejected-no-active-recording"
+                publishAgentAcceptanceState()
+                return
+            }
+            agentCommandStatus = "stopping-local-capture"
+            publishAgentAcceptanceState()
+            Task {
+                await stopRecording()
+                agentCommandStatus =
+                    recordingError == nil
+                        ? "local-capture-finalized"
+                        : "local-capture-finalized-with-attention"
+                publishAgentAcceptanceState()
+            }
+        case "capture_audit_local":
+            guard canAuditLastFinalizedTake else {
+                agentCommandStatus =
+                    "audit-rejected-no-finalized-pair"
+                publishAgentAcceptanceState()
+                return
+            }
+            agentCommandStatus = "auditing-local-capture"
+            publishAgentAcceptanceState()
+            Task {
+                await auditLastFinalizedTake()
+                switch lastTakeAudit?.disposition {
+                case .held:
+                    agentCommandStatus =
+                        "local-capture-audited-held"
+                case .machinePassHumanReviewRequired:
+                    agentCommandStatus =
+                        "local-capture-audited-human-review-required"
+                case nil:
+                    agentCommandStatus =
+                        "local-capture-audit-failed"
+                }
+                publishAgentAcceptanceState()
+            }
+        default:
+            agentCommandStatus =
+                "rejected-unsupported-capture-command"
+            publishAgentAcceptanceState()
         }
     }
 
@@ -1004,9 +1384,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 case (false, false):
                     sourceSummary = "Local source"
                 }
-                message = roomReceiptError == nil
-                    ? "\(sourceSummary) finalized, verified, attached to the editor, and closed in Nest."
-                    : "\(sourceSummary) finalized, verified, and attached; Nest boundary sync needs retry."
+                if roomCapture == nil {
+                    message =
+                        "\(sourceSummary) finalized, byte-verified, and attached to the local editor. No Nest recording boundary was created."
+                } else if roomReceiptError == nil {
+                    message =
+                        "\(sourceSummary) finalized, byte-verified, attached to the editor, and closed in Nest."
+                } else {
+                    message =
+                        "\(sourceSummary) finalized, byte-verified, and attached; Nest boundary sync needs retry."
+                }
             } catch {
                 recordingError = [
                     recordingError,
@@ -2015,6 +2402,7 @@ struct EpisodeCaptureSetupView: View {
     @StateObject private var audioRoom = MacAudioRoomController()
     @ObservedObject private var nativeAccountStore:
         QuipslyNativeAccountStore
+    @State private var captureAgentConsumerID = UUID()
 
     init(
         projectStore: ProjectStore,
@@ -2064,11 +2452,40 @@ struct EpisodeCaptureSetupView: View {
             await model.refreshEpisodeRooms()
             await model.recoverRoomReceiptsAfterLaunch()
             await model.recoverUploadsAfterLaunch()
+            if usesCaptureAgentAcceptance {
+                model.publishAgentAcceptanceState()
+            }
         }
         .task(id: model.selectedVideoDeviceID) {
             await model.prepareSelectedCameraReference()
         }
+        .task {
+            guard usesCaptureAgentAcceptance else { return }
+            while !Task.isCancelled {
+                model.publishAgentAcceptanceState()
+                try? await Task.sleep(
+                    nanoseconds: 500_000_000
+                )
+            }
+        }
+        .onAppear {
+            guard usesCaptureAgentAcceptance else { return }
+            let server = AgentServer.shared
+            server.claimCommandConsumer(captureAgentConsumerID)
+            server.registerCommandExecutor { request in
+                model.handleAgentAcceptanceCommand(request)
+            }
+            for request in server.drainCommandRequests(
+                consumerId: captureAgentConsumerID
+            ) {
+                model.handleAgentAcceptanceCommand(request)
+            }
+            model.publishAgentAcceptanceState()
+        }
         .onDisappear {
+            if usesCaptureAgentAcceptance {
+                AgentServer.shared.clearCommandExecutor()
+            }
             Task {
                 if model.isRecording {
                     await model.stopRecording()
@@ -2080,6 +2497,12 @@ struct EpisodeCaptureSetupView: View {
             }
         }
         .accessibilityIdentifier("EpisodeCaptureSetup")
+    }
+
+    private var usesCaptureAgentAcceptance: Bool {
+        ProcessInfo.processInfo.arguments.contains(
+            "--episode-capture-setup-only"
+        )
     }
 
     private var cameraReferenceCard: some View {
@@ -2205,7 +2628,7 @@ struct EpisodeCaptureSetupView: View {
                             Text("Verified camera reference")
                                 .font(.headline)
                             Text(
-                                "\(formatDuration(receipt.durationSeconds)) · \(receipt.negotiatedFormat.width)×\(receipt.negotiatedFormat.height) · \(ByteCountFormatter.string(fromByteCount: receipt.byteCount ?? 0, countStyle: .file))"
+                                "\(formatDuration(receipt.durationSeconds)) · \(receipt.recordedFormat?.width ?? receipt.negotiatedFormat.width)×\(receipt.recordedFormat?.height ?? receipt.negotiatedFormat.height) recorded · \(ByteCountFormatter.string(fromByteCount: receipt.byteCount ?? 0, countStyle: .file))"
                             )
                             .font(.caption)
                             .foregroundStyle(.secondary)

@@ -349,14 +349,18 @@ public final class MacCaptureUploadJobStore {
             throw MacCaptureUploadJobStoreError
                 .sourceIsNotFinalized
         }
+        guard let recordedFormat = receipt.recordedFormat else {
+            throw MacCaptureUploadJobStoreError
+                .uploadIdentityIncomplete
+        }
         let profile = MacVideoReferenceUploadSourceProfile(
-            schemaVersion: 1,
+            schemaVersion: 2,
             container: "mov",
-            codec: nil,
-            width: receipt.negotiatedFormat.width,
-            height: receipt.negotiatedFormat.height,
+            codec: recordedFormat.codec,
+            width: recordedFormat.width,
+            height: recordedFormat.height,
             nominalFrameRate:
-                receipt.negotiatedFormat.maximumFrameRate,
+                recordedFormat.nominalFrameRate,
             colorSpace: nil,
             orientation: nil,
             cameraPosition: nil,
@@ -370,6 +374,8 @@ public final class MacCaptureUploadJobStore {
                 receipt.stoppedMonotonicNanoseconds.map(String.init),
             clockSamples: receipt.clockSamples,
             cameraDevice: receipt.videoDevice,
+            negotiatedInputFormat:
+                receipt.negotiatedFormat,
             referenceKind: receipt.sourceKind
         )
         let profileData = try Self.encoder.encode(profile)
@@ -946,6 +952,8 @@ public final class MacCaptureUploadJobStore {
         persisted.videoDevice == receipt.videoDevice,
         persisted.negotiatedFormat
             == receipt.negotiatedFormat,
+        persisted.recordedFormat
+            == receipt.recordedFormat,
         persisted.startedMonotonicNanoseconds
             == receipt.startedMonotonicNanoseconds,
         persisted.stoppedMonotonicNanoseconds
@@ -1117,6 +1125,8 @@ public final class MacCaptureUploadJobStore {
         let monotonicStoppedNanoseconds: String?
         let clockSamples: [ProductionCaptureClockSample]?
         let cameraDevice: CaptureVideoDeviceSnapshot
+        let negotiatedInputFormat:
+            CaptureVideoFormatSnapshot
         let referenceKind: String
     }
 

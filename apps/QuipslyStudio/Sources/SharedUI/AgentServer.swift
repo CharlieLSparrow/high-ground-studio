@@ -146,6 +146,63 @@ public class AgentServer: ObservableObject {
                 }
             case "/editor_loop_proof":
                 self?.sendJSON(connection, object: Self.cachedEditorLoopProofPayload())
+            case "/capture_prepare_local":
+                let values = [
+                    "episode_space_id":
+                        request.query["episode_space_id"] ?? "",
+                    "participant_id":
+                        request.query["participant_id"] ?? "",
+                    "input_device_id":
+                        request.query["input_device_id"] ?? "",
+                    "output_device_id":
+                        request.query["output_device_id"] ?? "",
+                    "video_device_id":
+                        request.query["video_device_id"] ?? "",
+                    "include_camera":
+                        request.query["include_camera"] ?? "false",
+                ]
+                Task { @MainActor in
+                    let receipt = self?.enqueueCommand(
+                        "capture_prepare_local",
+                        values: values
+                    ) ?? [:]
+                    self?.sendJSON(connection, object: receipt)
+                }
+            case "/capture_refresh_hardware":
+                Task { @MainActor in
+                    let receipt = self?.enqueueCommand(
+                        "capture_refresh_hardware"
+                    ) ?? [:]
+                    self?.sendJSON(connection, object: receipt)
+                }
+            case "/capture_start_local":
+                let values = [
+                    "input_device_id":
+                        request.query["input_device_id"] ?? "",
+                    "video_device_id":
+                        request.query["video_device_id"] ?? "",
+                ]
+                Task { @MainActor in
+                    let receipt = self?.enqueueCommand(
+                        "capture_start_local",
+                        values: values
+                    ) ?? [:]
+                    self?.sendJSON(connection, object: receipt)
+                }
+            case "/capture_stop_local":
+                Task { @MainActor in
+                    let receipt = self?.enqueueCommand(
+                        "capture_stop_local"
+                    ) ?? [:]
+                    self?.sendJSON(connection, object: receipt)
+                }
+            case "/capture_audit_local":
+                Task { @MainActor in
+                    let receipt = self?.enqueueCommand(
+                        "capture_audit_local"
+                    ) ?? [:]
+                    self?.sendJSON(connection, object: receipt)
+                }
             case "/demo":
                 Task { @MainActor in
                     self?.enqueueCommand("load_demo")
@@ -3871,6 +3928,11 @@ public class AgentServer: ObservableObject {
                 "GET /agent_capabilities",
                 "GET /codex_editor_handoff",
                 "GET /editor_loop_proof",
+                "GET /capture_refresh_hardware",
+                "GET /capture_prepare_local?episode_space_id=<id>&participant_id=<id>&input_device_id=<exact-id>&output_device_id=<exact-id>&video_device_id=<exact-id>&include_camera=true|false",
+                "GET /capture_start_local?input_device_id=<exact-id>&video_device_id=<exact-id>",
+                "GET /capture_stop_local",
+                "GET /capture_audit_local",
                 "GET /demo",
                 "GET /premiere_packet?path=<absolute-packet-json-path>",
                 "GET /import?path=<absolute-file-path>",

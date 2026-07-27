@@ -89,6 +89,13 @@ final class ProductionVideoReferenceRecorderTests: XCTestCase {
             configuration: configuration,
             state: .finalized,
             negotiatedFormat: referenceFormat,
+            recordedFormat:
+                ProductionVideoRecordedFormat(
+                    width: 1_920,
+                    height: 1_080,
+                    nominalFrameRate: 29.97,
+                    codec: "avc1"
+                ),
             startedAt: Date(timeIntervalSince1970: 1_000),
             stoppedAt: Date(timeIntervalSince1970: 1_010),
             startedMonotonicNanoseconds: 1_000_000_000,
@@ -111,13 +118,64 @@ final class ProductionVideoReferenceRecorderTests: XCTestCase {
         XCTAssertEqual(receipt.recordingConsentID, "consent-5")
         XCTAssertEqual(receipt.sourceKind, "local_video_reference")
         XCTAssertEqual(receipt.state, .finalized)
+        XCTAssertEqual(receipt.protocolVersion, 2)
         XCTAssertFalse(receipt.containsAudio)
         XCTAssertEqual(receipt.negotiatedFormat, referenceFormat)
+        XCTAssertEqual(receipt.recordedFormat?.codec, "avc1")
         XCTAssertTrue(receipt.truth.contains("exact selected macOS route"))
         XCTAssertTrue(
             receipt.truth.contains(
                 "not proof of a Canon camera-card 4K master"
             )
+        )
+    }
+
+    func testReceiptDecodesWhenLegacyJSONOmitsRecordedFormat()
+        throws
+    {
+        let configuration =
+            ProductionVideoReferenceConfiguration(
+                episodeSpaceID: "legacy-episode",
+                participantID: "charlie",
+                videoDevice: eosWebcamUtility
+            )
+        let receipt = ProductionVideoReferenceReceipt(
+            configuration: configuration,
+            state: .inProgress,
+            negotiatedFormat: referenceFormat,
+            startedAt: Date(timeIntervalSince1970: 1_000),
+            stoppedAt: nil,
+            startedMonotonicNanoseconds: 1_000,
+            stoppedMonotonicNanoseconds: nil,
+            durationSeconds: 0,
+            recordingDirectoryPath: "/tmp/legacy",
+            videoPath: "/tmp/legacy/reference.mov",
+            partialVideoPath: "/tmp/legacy/reference.partial.mov",
+            byteCount: nil,
+            sha256: nil,
+            failure: nil
+        )
+        let encoded = try JSONEncoder().encode(receipt)
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded)
+                as? [String: Any]
+        )
+        json.removeValue(forKey: "recordedFormat")
+        json["protocolVersion"] = 1
+        let legacyData = try JSONSerialization.data(
+            withJSONObject: json
+        )
+
+        let decoded = try JSONDecoder().decode(
+            ProductionVideoReferenceReceipt.self,
+            from: legacyData
+        )
+
+        XCTAssertNil(decoded.recordedFormat)
+        XCTAssertEqual(decoded.protocolVersion, 1)
+        XCTAssertEqual(
+            decoded.negotiatedFormat,
+            referenceFormat
         )
     }
 

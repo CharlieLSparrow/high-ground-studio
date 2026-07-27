@@ -2595,3 +2595,61 @@ This is an active-goal checkpoint, not a completion claim.
   `MOTIV Mix Virtual` rather than the direct MV7i input/output device, and no
   real MOV/WAV has yet been recorded, watched, listened to, probed, hashed,
   accepted, or read back in Nest/Studio.
+
+### 2026-07-27 real local Mac take and fail-closed audit checkpoint
+
+- Added an app-owned, loopback-only semantic acceptance surface to the
+  dedicated `--episode-capture-setup-only` launch mode. It can refresh exact
+  hardware IDs, prepare an explicitly local-only take, start only after the
+  caller repeats the selected input/video IDs, stop, audit, and read exact
+  state. It cannot answer privacy prompts, obtain Episode Room authority,
+  create a Nest START, upload, deliver, or publish. This replaces fragile
+  screen-coordinate automation for the native camera preview without
+  expanding the app's external authority.
+- Operated that surface against the real macOS routes. Camera and microphone
+  permissions are authorized. macOS exposes EOS Webcam Utility, the MacBook
+  camera/microphone, Continuity Camera/Microphone, and MOTIV Mix Virtual; it
+  still does not expose a direct physical MV7i Core Audio input/output or a
+  physical Canon USB device. Therefore neither direct MV7i routing nor R8
+  camera signal is claimed.
+- The first preserved 11.7-second WAV / 12.0-second MOV take finalized with
+  matching fresh SHA-256 reads, but correctly remained held: the WAV was exact
+  digital silence and the MOV encoded 1280×720 even though the DAL input
+  advertised 1920×1080. Its midpoint frame visibly contained Canon's
+  no-camera USB placeholder. No bytes or receipts were rewritten.
+- Separated negotiated input truth from finalized encoded-media truth.
+  Version-2 camera receipts now probe and preserve the actual width, height,
+  nominal frame rate, and codec after AVFoundation finishes the movie.
+  Canon's BGRA input subtype is no longer incorrectly compared with the MOV's
+  H.264 codec. Canonical upload profile v2 uses the recorded media facts and
+  retains the negotiated input format separately; legacy receipts remain
+  readable but cannot arm a new video upload without finalized-format
+  evidence.
+- Replaced the generic `.high` session preset with the supported preset that
+  matches the selected camera dimensions. A second real take then produced a
+  21.44857-second silent H.264 MOV at 1920×1080 and approximately 29.05 fps.
+  Fresh probe, byte count, and SHA-256
+  `a6c0bce7e8994a80e7661cd77be4ecac21f9c8f1b4ebfcf3d9e34093c02138a9`
+  match the finalized receipt. Every video audit check passes, including the
+  negotiated-resolution contract.
+- The companion 48 kHz, mono, 24-bit PCM WAV also finalized and matched
+  SHA-256
+  `7209cab03c894fed5e21c0c356ffdce6f20fcd3cfabad648b50ee95b4bc7f8fe`,
+  but a fresh Accelerate scan measured peak `0` and RMS `0`. The new
+  `audio-signal-present` check therefore holds exact/near digital silence
+  despite valid structure. The overall take remains `held`; missing shared
+  clock samples remain an additional warning, and watch/listen/sync/drift
+  approval remains human-required.
+- Corrected local-only completion copy so it says the sources were
+  byte-verified and attached locally and explicitly states that no Nest
+  recording boundary was created. A fresh audio-only operation read that
+  exact state back from the running signed app.
+- Current gates pass 70/70 QuipslyVideoCore tests and a strict Apple
+  Development signed arm64 QuipslyMac build
+  (`com.highground.QuipslyMac`, Team `585GUXMY5M`, CDHash
+  `384284eba8391ba66e865f75eb71743fad35c9b3`). The preserved takes establish
+  real local creation, finalization, probing, hashing, editor attachment, and
+  honest hold behavior. They do not complete the physical production gate:
+  connect and qualify the R8 signal and direct MV7i route, speak/listen through
+  the intended headphones, record a sync event and long take, review drift,
+  approve alignment, and prove the authorized Nest/Studio handoff.

@@ -1,3 +1,4 @@
+import Accelerate
 import AVFoundation
 import AudioToolbox
 import CryptoKit
@@ -48,6 +49,8 @@ public struct ProductionCaptureAudioProbe:
     public let formatID: UInt32?
     public let frameCount: Int64
     public let durationSeconds: Double
+    public let peakMagnitude: Double?
+    public let rmsMagnitude: Double?
 }
 
 public struct ProductionCaptureVideoProbe:
@@ -411,6 +414,7 @@ public enum ProductionCaptureTakeAuditor {
                 let settings = file.fileFormat.settings
                 let sampleRate = file.fileFormat.sampleRate
                 let frameCount = file.length
+                let signal = try audioSignalProbe(file: file)
                 probe = ProductionCaptureAudioProbe(
                     sampleRate: sampleRate,
                     channelCount:
@@ -425,7 +429,9 @@ public enum ProductionCaptureTakeAuditor {
                     durationSeconds:
                         sampleRate > 0
                             ? Double(frameCount) / sampleRate
-                            : 0
+                            : 0,
+                    peakMagnitude: signal.peakMagnitude,
+                    rmsMagnitude: signal.rmsMagnitude
                 )
             } catch {
                 errorMessages.append(
@@ -624,6 +630,36 @@ public enum ProductionCaptureTakeAuditor {
                     : "WAV duration differs from its frame-derived receipt duration."
             )
         )
+        let peak = probe.peakMagnitude
+        let rms = probe.rmsMagnitude
+        let signalStatus: ProductionCaptureTakeAuditCheckStatus
+        let signalSummary: String
+        if let peak,
+           let rms,
+           peak.isFinite,
+           rms.isFinite,
+           peak > 0.000_000_1 {
+            if peak < 0.001 || rms < 0.000_01 {
+                signalStatus = .warning
+                signalSummary =
+                    "WAV contains a measurable but extremely low signal (peak \(formatDecibels(peak)), RMS \(formatDecibels(rms))). Listen before accepting the take."
+            } else {
+                signalStatus = .pass
+                signalSummary =
+                    "WAV contains a measurable signal (peak \(formatDecibels(peak)), RMS \(formatDecibels(rms)))."
+            }
+        } else {
+            signalStatus = .hold
+            signalSummary =
+                "WAV is digital silence or its signal level could not be measured. Do not accept this take."
+        }
+        checks.append(
+            ProductionCaptureTakeAuditCheck(
+                id: "audio-signal-present",
+                status: signalStatus,
+                summary: signalSummary
+            )
+        )
     }
 
     private static func appendVideoShapeChecks(
@@ -642,24 +678,74 @@ public enum ProductionCaptureTakeAuditor {
             )
             return
         }
+        let recordedFormat = receipt.recordedFormat
+        let expectedWidth =
+            recordedFormat?.width
+                ?? receipt.negotiatedFormat.width
+        let expectedHeight =
+            recordedFormat?.height
+                ?? receipt.negotiatedFormat.height
+        let expectedFrameRate =
+            recordedFormat?.nominalFrameRate
+        let expectedCodec = recordedFormat?.codec
         let shapeMatches =
             probe.videoTrackCount == 1
             && probe.audioTrackCount == 0
-            && probe.width
-                == receipt.negotiatedFormat.width
-            && probe.height
-                == receipt.negotiatedFormat.height
+            && probe.width == expectedWidth
+            && probe.height == expectedHeight
             && probe.nominalFrameRate > 0
-            && probe.nominalFrameRate <= 30.01
-            && probe.videoCodec
-                == receipt.negotiatedFormat.mediaSubType
+            && probe.nominalFrameRate
+                <= receipt.negotiatedFormat.maximumFrameRate
+                    + 0.05
+            && (
+                expectedFrameRate == nil
+                    || abs(
+                        probe.nominalFrameRate
+                            - (expectedFrameRate ?? 0)
+                    ) <= 0.05
+            )
+            && (
+                expectedCodec == nil
+                    || probe.videoCodec == expectedCodec
+            )
         checks.append(
             ProductionCaptureTakeAuditCheck(
                 id: "video-reference-shape",
                 status: shapeMatches ? .pass : .hold,
                 summary: shapeMatches
-                    ? "Camera reference contains one silent video track at the receipted dimensions and no more than 30 fps."
-                    : "Camera-reference tracks, dimensions, frame rate, or silent-source invariant differ from the receipt."
+                    ? "Camera reference contains one silent video track at the finalized recorded dimensions, codec, and no more than the negotiated frame rate."
+                    : "Camera-reference tracks, recorded dimensions, frame rate, codec, or silent-source invariant differ from the receipt."
+            )
+        )
+        checks.append(
+            ProductionCaptureTakeAuditCheck(
+                id: "video-recorded-format-receipt",
+                status:
+                    recordedFormat == nil
+                        ? .warning
+                        : .pass,
+                summary:
+                    recordedFormat == nil
+                        ? "This legacy receipt does not preserve a post-finalization recorded media format; the probe was compared with its negotiated dimensions."
+                        : "The finalized receipt preserves a distinct recorded media format."
+            )
+        )
+        let outputContractMatches =
+            probe.width == receipt.negotiatedFormat.width
+            && probe.height == receipt.negotiatedFormat.height
+        let outputContractFailure =
+            probe.width * probe.height
+                < receipt.negotiatedFormat.width
+                    * receipt.negotiatedFormat.height
+                ? "Do not accept this resolution downgrade."
+                : "Do not accept this unexplained resolution mismatch."
+        checks.append(
+            ProductionCaptureTakeAuditCheck(
+                id: "video-negotiated-resolution-delivered",
+                status: outputContractMatches ? .pass : .hold,
+                summary: outputContractMatches
+                    ? "The encoded MOV delivered the negotiated input resolution."
+                    : "The encoded MOV is \(probe.width)×\(probe.height), but the selected camera input negotiated \(receipt.negotiatedFormat.width)×\(receipt.negotiatedFormat.height). \(outputContractFailure)"
             )
         )
         let durationMatches =
@@ -775,6 +861,79 @@ public enum ProductionCaptureTakeAuditor {
         return hasher.finalize()
             .map { String(format: "%02x", $0) }
             .joined()
+    }
+
+    private static func audioSignalProbe(
+        file: AVAudioFile
+    ) throws -> (
+        peakMagnitude: Double,
+        rmsMagnitude: Double
+    ) {
+        let format = file.processingFormat
+        guard let buffer = AVAudioPCMBuffer(
+            pcmFormat: format,
+            frameCapacity: 65_536
+        ) else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        var peakMagnitude: Float = 0
+        var sumOfSquares = 0.0
+        var sampleCount = 0
+        while file.framePosition < file.length {
+            try file.read(into: buffer)
+            let frameLength = Int(buffer.frameLength)
+            guard frameLength > 0 else { break }
+            guard let channelData = buffer.floatChannelData else {
+                throw CocoaError(.fileReadCorruptFile)
+            }
+            for channel in 0..<Int(format.channelCount) {
+                var channelPeak: Float = 0
+                var channelSumOfSquares: Float = 0
+                vDSP_maxmgv(
+                    channelData[channel],
+                    1,
+                    &channelPeak,
+                    vDSP_Length(frameLength)
+                )
+                vDSP_svesq(
+                    channelData[channel],
+                    1,
+                    &channelSumOfSquares,
+                    vDSP_Length(frameLength)
+                )
+                peakMagnitude = max(
+                    peakMagnitude,
+                    channelPeak
+                )
+                sumOfSquares += Double(
+                    channelSumOfSquares
+                )
+                sampleCount += frameLength
+            }
+        }
+        let rmsMagnitude =
+            sampleCount > 0
+                ? sqrt(
+                    sumOfSquares
+                        / Double(sampleCount)
+                )
+                : 0
+        return (
+            Double(peakMagnitude),
+            rmsMagnitude
+        )
+    }
+
+    private static func formatDecibels(
+        _ magnitude: Double
+    ) -> String {
+        guard magnitude.isFinite, magnitude > 0 else {
+            return "-∞ dBFS"
+        }
+        return String(
+            format: "%.1f dBFS",
+            20 * log10(magnitude)
+        )
     }
 
     private static func validDigest(

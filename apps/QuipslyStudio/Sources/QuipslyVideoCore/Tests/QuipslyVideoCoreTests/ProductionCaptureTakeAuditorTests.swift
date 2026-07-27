@@ -47,6 +47,22 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
         XCTAssertEqual(receipt.video.videoProbe?.width, 1_920)
         XCTAssertEqual(receipt.video.videoProbe?.height, 1_080)
         XCTAssertEqual(receipt.video.videoProbe?.audioTrackCount, 0)
+        XCTAssertGreaterThan(
+            receipt.audio.audioProbe?.peakMagnitude ?? 0,
+            0.09
+        )
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "audio-signal-present"
+                    && $0.status == .pass
+            }
+        )
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "video-recorded-format-receipt"
+                    && $0.status == .pass
+            }
+        )
         XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: receipt.receiptPath
@@ -126,6 +142,46 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
         )
     }
 
+    func testDigitalSilenceIsHeldEvenWhenWAVStructurePasses()
+        async throws
+    {
+        let fixture = try makeFixture(silentAudio: true)
+        defer {
+            try? FileManager.default.removeItem(
+                at: fixture.root
+            )
+        }
+
+        let receipt = try await ProductionCaptureTakeAuditor
+            .audit(
+                audio: fixture.audio,
+                video: fixture.video,
+                rootDirectory: fixture.root
+            )
+
+        XCTAssertEqual(receipt.disposition, .held)
+        XCTAssertEqual(
+            receipt.audio.audioProbe?.peakMagnitude,
+            0
+        )
+        XCTAssertEqual(
+            receipt.audio.audioProbe?.rmsMagnitude,
+            0
+        )
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "audio-production-shape"
+                    && $0.status == .pass
+            }
+        )
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "audio-signal-present"
+                    && $0.status == .hold
+            }
+        )
+    }
+
     func testRoomBoundPairRejectsDivergentClockBurst()
         async throws
     {
@@ -195,7 +251,8 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
         )
         XCTAssertTrue(
             receipt.checks.contains {
-                $0.id == "video-reference-shape"
+                $0.id
+                    == "video-negotiated-resolution-delivered"
                     && $0.status == .hold
             }
         )
@@ -217,7 +274,8 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
         roomBound: Bool = false,
         divergentClockBurst: Bool = false,
         mismatchedTakeIdentity: Bool = false,
-        mismatchedVideoShape: Bool = false
+        mismatchedVideoShape: Bool = false,
+        silentAudio: Bool = false
     ) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -256,6 +314,20 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
             )
         )
         buffer.frameLength = 4_800
+        if !silentAudio,
+           let channelData = buffer.floatChannelData {
+            for frame in 0..<Int(buffer.frameLength) {
+                channelData[0][frame] =
+                    0.1
+                    * sin(
+                        2
+                            * .pi
+                            * 440
+                            * Float(frame)
+                            / 48_000
+                    )
+            }
+        }
         try writer?.write(from: buffer)
         writer = nil
 
@@ -399,6 +471,13 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
                 state: .finalized,
                 negotiatedFormat:
                     videoDevice.formats[0],
+                recordedFormat:
+                    ProductionVideoRecordedFormat(
+                        width: 1_920,
+                        height: 1_080,
+                        nominalFrameRate: 30,
+                        codec: "avc1"
+                    ),
                 startedAt:
                     Date(timeIntervalSince1970: 99.9),
                 stoppedAt:

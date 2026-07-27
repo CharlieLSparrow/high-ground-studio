@@ -11,6 +11,29 @@ public enum ProductionVideoReferenceState: String, Codable, Equatable, Sendable 
     case failed
 }
 
+public struct ProductionVideoRecordedFormat:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let width: Int
+    public let height: Int
+    public let nominalFrameRate: Double
+    public let codec: String
+
+    public init(
+        width: Int,
+        height: Int,
+        nominalFrameRate: Double,
+        codec: String
+    ) {
+        self.width = width
+        self.height = height
+        self.nominalFrameRate = nominalFrameRate
+        self.codec = codec
+    }
+}
+
 public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
     public let recordingID: UUID
     public let captureGroupID: UUID
@@ -83,6 +106,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
     public let state: ProductionVideoReferenceState
     public let videoDevice: CaptureVideoDeviceSnapshot
     public let negotiatedFormat: CaptureVideoFormatSnapshot
+    public let recordedFormat: ProductionVideoRecordedFormat?
     public let containsAudio: Bool
     public let startedAt: Date
     public let stoppedAt: Date?
@@ -122,6 +146,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
         configuration: ProductionVideoReferenceConfiguration,
         state: ProductionVideoReferenceState,
         negotiatedFormat: CaptureVideoFormatSnapshot,
+        recordedFormat: ProductionVideoRecordedFormat? = nil,
         startedAt: Date,
         stoppedAt: Date?,
         startedMonotonicNanoseconds: UInt64,
@@ -134,7 +159,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
         sha256: String?,
         failure: String?
     ) {
-        protocolVersion = 1
+        protocolVersion = 2
         recordingID = configuration.recordingID
         captureGroupID = configuration.captureGroupID
         episodeSpaceID = configuration.episodeSpaceID
@@ -152,6 +177,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
         self.state = state
         videoDevice = configuration.videoDevice
         self.negotiatedFormat = negotiatedFormat
+        self.recordedFormat = recordedFormat
         containsAudio = false
         self.startedAt = startedAt
         self.stoppedAt = stoppedAt
@@ -166,7 +192,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
         self.failure = failure
         if state == .finalized {
             truth =
-                "This silent movie is a finalized local camera reference from the exact selected macOS route. Its hash, byte count, negotiated format, and monotonic boundaries are verified. It is not proof of a Canon camera-card 4K master."
+                "This silent movie is a finalized local camera reference from the exact selected macOS route. Its hash, byte count, negotiated input format, recorded media format, and monotonic boundaries are verified. It is not proof of a Canon camera-card 4K master."
         } else {
             truth =
                 "This camera-reference receipt is not finalized. Preserve and explicitly review any partial movie; never treat it as a complete source or Canon camera-card master."
@@ -654,11 +680,23 @@ public final class ProductionVideoReferenceRecorder:
         for output in captureSession.outputs {
             captureSession.removeOutput(output)
         }
-        if captureSession.canSetSessionPreset(.high) {
+        let selected = Self.preferredFormat(for: device)
+        let resolutionPreset: AVCaptureSession.Preset
+        if selected.snapshot.width >= 1_920,
+           selected.snapshot.height >= 1_080 {
+            resolutionPreset = .hd1920x1080
+        } else if selected.snapshot.width >= 1_280,
+                  selected.snapshot.height >= 720 {
+            resolutionPreset = .hd1280x720
+        } else {
+            resolutionPreset = .high
+        }
+        if captureSession.canSetSessionPreset(resolutionPreset) {
+            captureSession.sessionPreset = resolutionPreset
+        } else if captureSession.canSetSessionPreset(.high) {
             captureSession.sessionPreset = .high
         }
 
-        let selected = Self.preferredFormat(for: device)
         try device.lockForConfiguration()
         do {
             defer { device.unlockForConfiguration() }
@@ -818,7 +856,7 @@ public final class ProductionVideoReferenceRecorder:
             let finalized = try await Task.detached(
                 priority: .utility
             ) {
-                let duration = try await Self.validatedVideoDuration(
+                let validation = try await Self.validatedVideo(
                     at: session.partialVideoURL
                 )
                 guard let byteCount = Self.fileSize(
@@ -840,12 +878,13 @@ public final class ProductionVideoReferenceRecorder:
                     configuration: session.configuration,
                     state: .finalized,
                     negotiatedFormat: session.negotiatedFormat,
+                    recordedFormat: validation.format,
                     startedAt: session.startedAt,
                     stoppedAt: stoppedAt,
                     startedMonotonicNanoseconds:
                         session.startedMonotonicNanoseconds,
                     stoppedMonotonicNanoseconds: stoppedMonotonic,
-                    durationSeconds: duration,
+                    durationSeconds: validation.durationSeconds,
                     recordingDirectoryPath:
                         session.directory.path,
                     videoPath:
@@ -1000,14 +1039,17 @@ public final class ProductionVideoReferenceRecorder:
         }()
     }
 
-    private nonisolated static func validatedVideoDuration(
+    private nonisolated static func validatedVideo(
         at url: URL
-    ) async throws -> Double {
+    ) async throws -> (
+        durationSeconds: Double,
+        format: ProductionVideoRecordedFormat
+    ) {
         let asset = AVURLAsset(url: url)
         let videoTracks = try await asset.loadTracks(
             withMediaType: .video
         )
-        guard !videoTracks.isEmpty else {
+        guard let videoTrack = videoTracks.first else {
             throw ProductionVideoReferenceRecorderError
                 .finalizationFailed(
                     "The finalized camera reference contains no video track."
@@ -1021,7 +1063,42 @@ public final class ProductionVideoReferenceRecorder:
                     "The finalized movie reported no usable duration."
                 )
         }
-        return seconds
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let transform = try await videoTrack.load(
+            .preferredTransform
+        )
+        let displaySize = naturalSize.applying(transform)
+        let nominalFrameRate = Double(
+            try await videoTrack.load(.nominalFrameRate)
+        )
+        let descriptions = try await videoTrack.load(
+            .formatDescriptions
+        )
+        guard displaySize.width.isFinite,
+              displaySize.height.isFinite,
+              abs(displaySize.width) >= 1,
+              abs(displaySize.height) >= 1,
+              nominalFrameRate.isFinite,
+              nominalFrameRate > 0,
+              let description = descriptions.first else {
+            throw ProductionVideoReferenceRecorderError
+                .finalizationFailed(
+                    "The finalized movie reported no usable recorded media format."
+                )
+        }
+        return (
+            seconds,
+            ProductionVideoRecordedFormat(
+                width: Int(abs(displaySize.width).rounded()),
+                height: Int(abs(displaySize.height).rounded()),
+                nominalFrameRate: nominalFrameRate,
+                codec: fourCC(
+                    CMFormatDescriptionGetMediaSubType(
+                        description
+                    )
+                )
+            )
+        )
     }
 
     private nonisolated static func monotonicDurationSeconds(
