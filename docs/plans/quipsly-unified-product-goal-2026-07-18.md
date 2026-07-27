@@ -2535,3 +2535,33 @@ This is an active-goal checkpoint, not a completion claim.
   physical iPhone front/rear/interruption/recovery operation, real Canon R8
   internal-4K and direct MV7i routing, TestFlight install, or the required real
   HGO and coaching workflow matrix.
+
+### 2026-07-27 rendered Episode 4 and production-schema checkpoint
+
+- Operated the promoted Nest in a real signed-in Chrome session. The High
+  Ground Odyssey Episode 4 room rendered its 171-block manuscript,
+  shared-watch/source-media lane, timeline synchronization controls, and
+  collaboration thread. Preparing a canonical podcast Session worked, but its
+  Session workspace initially failed closed.
+- Cloud Run logs proved this was database drift, not a navigation bug:
+  `CoachingNoteRevision` was absent. An isolated exact-source Prisma status job
+  found exactly two pending migrations: anchored writing-span notes and
+  session-note visibility/revisions. A live diff matched those additive
+  changes, a fresh on-demand Cloud SQL backup completed, and the Cloud Run
+  migration job applied both. An independent status execution now reports all
+  25 migrations applied.
+- Reopened the same production Session and verified its preparation runway,
+  project context, participant, and explicit not-ready consent state. Created
+  one real author-private Episode 4 production note, saved a second retained
+  revision, and attached the canonical `#Episode 4` and `#Media` tags. This is
+  persisted product work, not a sample page or database-only fixture.
+- Hardened the release smoke so promotion now requires a database-backed
+  Session Prepare page and fails if the page falls into
+  `Session review is unavailable`. The focused release suite passes 11/11 and
+  the complete strengthened signed promotion smoke passes against production,
+  including both configured public hosts and the revision-bound readiness
+  receipt.
+- This advances one required HGO workflow and establishes the missing
+  application/schema release boundary. It does not yet count as a completed
+  HGO episode workflow: real Mac/iPhone capture, playback, transcript,
+  alignment approval, editor handoff, and publish-ready outputs remain open.

@@ -134,6 +134,8 @@ const inviteToken = (process.env.QUIPSLY_AUTH_SMOKE_INVITE_TOKEN || "")
     ? fs.readFileSync(inviteTokenFile, "utf8").trim()
     : "");
 const skipNativeSessionCheck = process.env.QUIPSLY_AUTH_SMOKE_SKIP_NATIVE_SESSION_CHECK === "1";
+const requireSessionWorkspaceCheck =
+  process.env.QUIPSLY_AUTH_SMOKE_REQUIRE_SESSION_WORKSPACE === "1";
 const firebaseApiKey = requiredEnv(
   "QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY",
   localEnv.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -297,6 +299,75 @@ try {
   );
   assert(recorderAccessBody.slug === "release-smoke", "Recorder access proof episode mismatch.");
   assert(recorderAccessBody.accessRole, "Recorder access proof did not return an access role.");
+  const checkedRoutes = ["/api/episode-production:200:database"];
+  let sessionWorkspacePath = null;
+  if (requireSessionWorkspaceCheck) {
+    const captureSessions = await requestText(`${baseUrl}/api/mobile/capture/sessions`, {
+      headers: { cookie },
+    });
+    assert(
+      captureSessions.response.status === 200,
+      `/api/mobile/capture/sessions returned HTTP ${captureSessions.response.status}: ${captureSessions.text.slice(0, 240)}`,
+    );
+    const captureSessionsBody = JSON.parse(captureSessions.text);
+    assert(captureSessionsBody.ok === true, "Capture Session listing did not return ok:true.");
+    assert(Array.isArray(captureSessionsBody.sessions), "Capture Session listing did not return sessions.");
+    checkedRoutes.push("/api/mobile/capture/sessions:200:database");
+
+    let smokeSession = captureSessionsBody.sessions.find((candidate) => candidate?.id);
+    if (!smokeSession) {
+      const captureSessionCreate = await requestText(`${baseUrl}/api/mobile/capture/sessions`, {
+        method: "POST",
+        headers: {
+          cookie,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          projectSlug: sessionBody.homeNest.slug,
+          episodeSlug: "release-smoke",
+          purpose: "PODCAST",
+          title: "Release smoke capture session",
+          provider: "planned",
+          deviceLabel: "Quipsly release smoke",
+        }),
+      });
+      assert(
+        captureSessionCreate.response.status === 201,
+        `Capture Session create returned HTTP ${captureSessionCreate.response.status}: ${captureSessionCreate.text.slice(0, 240)}`,
+      );
+      const captureSessionCreateBody = JSON.parse(captureSessionCreate.text);
+      assert(captureSessionCreateBody.ok === true, "Capture Session create did not return ok:true.");
+      assert(
+        captureSessionCreateBody.boundaries?.recordingStarted === false
+          && captureSessionCreateBody.boundaries?.providerJoined === false
+          && captureSessionCreateBody.boundaries?.calendarMutated === false
+          && captureSessionCreateBody.boundaries?.externalInviteSent === false,
+        "Capture Session smoke crossed a recording, provider, calendar, or invitation boundary.",
+      );
+      smokeSession = captureSessionCreateBody.session;
+      checkedRoutes.push("/api/mobile/capture/sessions:201:safe-session-created");
+    }
+    assert(smokeSession?.id, "Capture Session smoke could not resolve an accessible Session.");
+
+    sessionWorkspacePath = `/sessions/${encodeURIComponent(smokeSession.id)}?mode=prepare`;
+    const sessionWorkspace = await requestText(`${baseUrl}${sessionWorkspacePath}`, {
+      headers: { cookie },
+    });
+    assert(
+      sessionWorkspace.response.status === 200,
+      `${sessionWorkspacePath} returned HTTP ${sessionWorkspace.response.status}`,
+    );
+    assert(
+      /Session workspace/i.test(sessionWorkspace.text),
+      `${sessionWorkspacePath} did not render the canonical Session workspace.`,
+    );
+    assert(
+      !/Session review is unavailable/i.test(sessionWorkspace.text),
+      `${sessionWorkspacePath} rendered the fail-closed unavailable state.`,
+    );
+    checkedRoutes.push(`${sessionWorkspacePath}:200:database`);
+  }
+
   const allRouteChecks = routeChecks.concat([
     [homeNestPath, 200, /Nest|Home|Quipsly/i],
     [createPath, 200, /Writing Desk/i],
@@ -306,7 +377,6 @@ try {
     ["/publishing", 200, /Publishing runway|The Transmitter/i],
   ]);
 
-  const checkedRoutes = ["/api/episode-production:200:database"];
   let projectsText = "";
   for (const [route, expectedStatus, marker] of allRouteChecks) {
     const result = await requestText(`${baseUrl}${route}`, { headers: { cookie } });
@@ -351,6 +421,7 @@ try {
     freeTierOnboarding: sessionBody.onboarding.freeMembershipStatus,
     expectedProjectSlug: expectedProjectSlug || null,
     inviteAcceptance: inviteToken ? "pass" : "not-requested",
+    sessionWorkspace: requireSessionWorkspaceCheck ? sessionWorkspacePath : "not-requested",
     checkedRoutes,
     logout: "pass",
     logoutClearsSessionCookie: "pass",

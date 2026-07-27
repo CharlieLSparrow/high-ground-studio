@@ -18,6 +18,10 @@ const authenticatedSmoke = fs.readFileSync(
   new URL("../quipsly-firebase-auth-smoke.mjs", import.meta.url),
   "utf8",
 );
+const previewSmoke = fs.readFileSync(
+  new URL("./quipsly-smoke-preview.sh", import.meta.url),
+  "utf8",
+);
 const gcloudIgnore = fs.readFileSync(
   new URL("../../.gcloudignore", import.meta.url),
   "utf8",
@@ -64,4 +68,12 @@ test("authenticated smoke persists and verifies recorder access before claiming 
   assert.match(authenticatedSmoke, /authenticated-recorder-access-proof/);
   assert.match(authenticatedSmoke, /recorderAccessBody\.mode === "database"/);
   assert.match(authenticatedSmoke, /Checking Nest access/);
+});
+
+test("promotion requires a database-backed Session workspace instead of route-only success", () => {
+  assert.match(previewSmoke, /QUIPSLY_AUTH_SMOKE_REQUIRE_SESSION_WORKSPACE=1/);
+  assert.match(previewSmoke, /"sessions\.workspace"/);
+  assert.match(authenticatedSmoke, /\/api\/mobile\/capture\/sessions:200:database/);
+  assert.match(authenticatedSmoke, /Session review is unavailable/);
+  assert.match(authenticatedSmoke, /rendered the fail-closed unavailable state/);
 });

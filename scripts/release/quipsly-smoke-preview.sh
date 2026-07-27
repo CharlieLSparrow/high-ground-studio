@@ -186,6 +186,7 @@ candidate_firebase_api_key="$(
 QUIPSLY_AUTH_SMOKE_BASE_URL="${TARGET_URL}" \
   QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY="${QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY:-${candidate_firebase_api_key}}" \
   QUIPSLY_AUTH_SMOKE_EXPECT_ADMIN="${QUIPSLY_RELEASE_SMOKE_EXPECT_ADMIN:-0}" \
+  QUIPSLY_AUTH_SMOKE_REQUIRE_SESSION_WORKSPACE=1 \
   node "${REPO_ROOT}/scripts/quipsly-firebase-auth-smoke.mjs"
 unset candidate_firebase_api_key
 passed_route_ids+=(
@@ -195,6 +196,7 @@ passed_route_ids+=(
   "writing.create"
   "editor.timeline"
   "recording.capture"
+  "sessions.workspace"
   "research.library"
   "publishing.runway"
 )

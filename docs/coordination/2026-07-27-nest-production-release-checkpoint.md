@@ -60,6 +60,51 @@ domain mapping, public/legal routes, and the 104-check production mobile
 Capture contract. The serving revision had zero error-severity Cloud Run log
 entries during the fresh release window.
 
+## Rendered dogfood and schema convergence
+
+A signed-in Chrome pass then operated the real High Ground Odyssey production
+Nest rather than stopping at HTTP route markers. Episode 4 rendered its
+manuscript, shared-watch lane, registered source media, timeline controls, and
+episode thread. Preparing its canonical podcast Session succeeded, but opening
+that Session initially failed closed with `Session review is unavailable`.
+
+Cloud Run application logs identified the exact boundary: Prisma `P2021`
+reported that `public.CoachingNoteRevision` did not exist. The application
+revision was healthy, but the original authenticated smoke never opened a
+database-backed Session workspace, so it could not catch the unapplied
+session-note migration.
+
+Recovery stayed inside the committed migration discipline:
+
+- an isolated Cloud Run schema job built from pushed source
+  `9e374d20431e5527b27c31af699d7c88c7d31905`
+  found 25 migrations, with only
+  `20260724122500_add_writing_span_notes` and
+  `20260724160000_add_session_note_visibility` pending;
+- a live schema diff matched those additive changes, apart from PostgreSQL's
+  built-in `plpgsql` extension;
+- a new on-demand Cloud SQL backup completed successfully before mutation;
+- Cloud Run execution `quipsly-schema-migrate-rczqk` applied exactly those two
+  migrations; and
+- independent execution `quipsly-schema-status-dh72x` reported
+  `Database schema is up to date!`.
+
+The same production Session then rendered its preparation runway, project
+identity, participant, and explicit not-ready consent state. A real
+author-private production note named
+`Episode 4 recording readiness — 2026-07-27` was created, updated to two
+retained append-only revisions, and tagged with the canonical `#Episode 4` and
+`#Media` vocabulary. No message, recording, provider join, calendar mutation,
+client delivery, or publication action occurred.
+
+The promotion smoke is now hardened to require
+`QUIPSLY_AUTH_SMOKE_REQUIRE_SESSION_WORKSPACE=1`. It reads or safely creates an
+app-owned Capture Session only when needed, opens its database-backed Prepare
+workspace, and rejects the fail-closed unavailable page. The focused release
+suite passes 11/11, and the complete strengthened signed promotion smoke passed
+against `https://nest.quipsly.com`, including both configured public hosts and
+the revision-bound readiness receipt.
+
 ## Rollback
 
 If the production acceptance boundary regresses:
