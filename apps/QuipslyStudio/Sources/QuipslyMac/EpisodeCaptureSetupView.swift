@@ -2371,7 +2371,7 @@ struct EpisodeCaptureSetupView: View {
                 Text(model.message)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                Button(model.isRefreshing ? "Refreshing…" : "Refresh hardware") {
+                Button(hardwareRefreshTitle) {
                     Task { await model.refresh(requestAccess: true) }
                 }
                 .disabled(
@@ -2454,12 +2454,30 @@ struct EpisodeCaptureSetupView: View {
             if inventory.cameraAuthorization != .authorized
                 || inventory.microphoneAuthorization != .authorized {
                 Label(
-                    "Camera: \(inventory.cameraAuthorization.rawValue) · Microphone: \(inventory.microphoneAuthorization.rawValue). Refresh hardware to request any undecided access.",
+                    "Camera: \(inventory.cameraAuthorization.rawValue) · Microphone: \(inventory.microphoneAuthorization.rawValue). Use \(hardwarePermissionActionTitle) to request any undecided access.",
                     systemImage: "lock.trianglebadge.exclamationmark"
                 )
                 .foregroundStyle(.orange)
             }
         }
+    }
+
+    private var hardwareRefreshTitle: String {
+        if model.isRefreshing {
+            return "Refreshing…"
+        }
+        return hardwarePermissionActionTitle
+    }
+
+    private var hardwarePermissionActionTitle: String {
+        guard let inventory = model.inventory else {
+            return "Refresh hardware"
+        }
+        if inventory.cameraAuthorization == .notDetermined
+            || inventory.microphoneAuthorization == .notDetermined {
+            return "Grant camera + microphone"
+        }
+        return "Refresh hardware"
     }
 
     private var localMasterCard: some View {

@@ -36,21 +36,9 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
         installAudioRoomKeyboardBridge()
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
-        if ProcessInfo.processInfo.arguments.contains(
-            "--episode-capture-setup-only"
-        ) {
-            if ProcessInfo.processInfo.arguments.contains(
-                "--episode-capture-request-access"
-            ) {
-                Task { @MainActor in
-                    _ = await ProductionCaptureInventoryProbe.snapshot(
-                        requestAccess: true
-                    )
-                    showEpisodeCaptureSetup(nil)
-                }
-            } else {
-                showEpisodeCaptureSetup(nil)
-            }
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("--episode-capture-setup-only") {
+            showEpisodeCaptureSetup(nil)
         } else {
             ensureMainWindow(reason: "launch")
         }
@@ -324,7 +312,11 @@ enum QuipslyMacApp {
         app.delegate = delegate
         app.setActivationPolicy(.regular)
         app.finishLaunching()
-        if app.windows.isEmpty {
+        let launchesEpisodeCaptureSetupOnly =
+            ProcessInfo.processInfo.arguments.contains(
+                "--episode-capture-setup-only"
+            )
+        if app.windows.isEmpty && !launchesEpisodeCaptureSetupOnly {
             delegate.ensureMainWindow(reason: "bootstrap-before-run")
         }
         app.activate(ignoringOtherApps: true)
