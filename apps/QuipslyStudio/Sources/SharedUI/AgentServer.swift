@@ -62,6 +62,16 @@ public class AgentServer: ObservableObject {
     private nonisolated static let directProxyExportLock = NSLock()
     private nonisolated(unsafe) static var lastDirectProxyShortExportRequestPath: String = ""
     private nonisolated static let directProxyExportRequestDefaultsKey = "quipsly.agent.lastDirectProxyShortExportRequestPath"
+    private nonisolated static let proxyShortReconciliationLock =
+        NSLock()
+    private nonisolated(unsafe) static var proxyShortReconciliationInFlight =
+        false
+    private nonisolated(unsafe) static var proxyShortReconciliationNeeded =
+        true
+    private nonisolated(unsafe) static var lastProxyShortReconciliationAttempt =
+        Date.distantPast
+    private nonisolated(unsafe) static var proxyShortReconciliationGeneration:
+        UInt64 = 0
 
     public init() {
         start()
@@ -2050,9 +2060,10 @@ public class AgentServer: ObservableObject {
                     self?.sendJSON(connection, object: ["status": "sync_audio_commanded"])
                 }
             case "/state":
-                if let cachedStatus = Self.cachedStatusResponseDataReconcilingProxyShortExport() {
+                if let cachedStatus = Self.cachedStatusResponseData() {
                     print("AgentServer: sending cached response for /state")
                     self?.sendJSONData(connection, bodyData: cachedStatus)
+                    Self.scheduleProxyShortExportReconciliation()
                 } else {
                     self?.sendJSON(connection, object: ["status": "no_state_yet"])
                 }
@@ -2752,6 +2763,11 @@ public class AgentServer: ObservableObject {
         directProxyExportLock.lock()
         lastDirectProxyShortExportRequestPath = normalizedPath
         directProxyExportLock.unlock()
+        proxyShortReconciliationLock.lock()
+        proxyShortReconciliationNeeded = true
+        lastProxyShortReconciliationAttempt = .distantPast
+        proxyShortReconciliationGeneration &+= 1
+        proxyShortReconciliationLock.unlock()
 
         guard !normalizedPath.isEmpty else {
             UserDefaults.standard.removeObject(forKey: directProxyExportRequestDefaultsKey)
@@ -2850,14 +2866,46 @@ public class AgentServer: ObservableObject {
         return object
     }
 
-    private nonisolated static func cachedStatusResponseDataReconcilingProxyShortExport() -> Data? {
-        guard var status = cachedStatusDictionary() else {
-            return cachedStatusResponseData()
+    private nonisolated static func scheduleProxyShortExportReconciliation() {
+        let now = Date()
+        proxyShortReconciliationLock.lock()
+        guard proxyShortReconciliationNeeded,
+              !proxyShortReconciliationInFlight,
+              now.timeIntervalSince(
+                lastProxyShortReconciliationAttempt
+              ) >= 5 else {
+            proxyShortReconciliationLock.unlock()
+            return
         }
-        guard let summary = proxyShortExportManifestSummary(forCachedStatus: status) else {
-            return cachedStatusResponseData()
-        }
+        proxyShortReconciliationInFlight = true
+        lastProxyShortReconciliationAttempt = now
+        let generation = proxyShortReconciliationGeneration
+        proxyShortReconciliationLock.unlock()
 
+        DispatchQueue.global(qos: .utility).async {
+            let reconciled =
+                reconcileProxyShortExportIntoCachedStatus()
+            proxyShortReconciliationLock.lock()
+            proxyShortReconciliationInFlight = false
+            if reconciled,
+               generation == proxyShortReconciliationGeneration {
+                proxyShortReconciliationNeeded = false
+            }
+            proxyShortReconciliationLock.unlock()
+        }
+    }
+
+    @discardableResult
+    private nonisolated static func reconcileProxyShortExportIntoCachedStatus()
+        -> Bool
+    {
+        guard let seedStatus = cachedStatusDictionary(),
+              let summary = proxyShortExportManifestSummary(
+                  forCachedStatus: seedStatus
+              ),
+              var status = cachedStatusDictionary() else {
+            return false
+        }
         var lastExportProof: [String: Any] = [
             "id": summary.clipId,
             "title": summary.clipTitle,
@@ -2917,7 +2965,7 @@ public class AgentServer: ObservableObject {
 
         let safeStatus = jsonSafeDictionary(status)
         updateCachedStatusResponse(safeStatus)
-        return cachedStatusResponseData()
+        return true
     }
 
     private struct ProxyShortExportManifestSummary {

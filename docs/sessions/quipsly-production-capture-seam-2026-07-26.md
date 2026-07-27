@@ -58,8 +58,23 @@ alignment and non-destructive editorial decisions.
 - fail-closed manifest normalization that recognizes a distinct capture ID only
   when room, actor, and capture readiness evidence agree exactly, plus
   long-video worker verification of that independent identity;
+- a protected Mac room-state outbox with exact owner/session/room binding,
+  idempotent START/STOP identities, last-known-good and per-receipt recovery,
+  corrupt-ledger quarantine, launch-time orphan closure, and ordered replay;
+- Nest-applied START as a hard prerequisite for opening the Mac audio engine,
+  followed by local-first WAV finalization and durable STOP delivery;
+- closed-take UX that keeps the capture group available for companion camera
+  sources while requiring a new group before another recording interval;
+- an explicit, recoverable Mac canonical-upload outbox for finalized room WAVs:
+  exact preflight re-hash, unique per-file upload identity, shared take
+  identity, direct file-backed private-storage PUT, strict capability host
+  validation, exact Nest verification readback, and unconditional local
+  retention;
 - explicit UX that joining sends no video, starts no recording, and leaves the
   local WAV recorder independent;
+- an agent-state responsiveness repair found by launching the real app:
+  `/state` now sends cached JSON before a coalesced, generation-bound utility
+  task may touch a stale short-export manifest on external storage;
 - background loading for the large source-aware waveform map;
 - bounded Studio launch status instead of an automatic external-root walk;
 - a real playable fixture for the AV composition layering test.
@@ -67,8 +82,12 @@ alignment and non-destructive editorial decisions.
 ## Verification
 
 - `pnpm --filter quipsly typecheck`
+- Quipsly contracts: 95/95
 - mobile-session canonical identity/readiness Jest: 11/11
 - canonical upload/security/long-video identity contract tests: 24/24
+- QuipslyVideoCore: 43/43, including protected room-boundary and canonical
+  upload job durability, exact production storage-host validation, and
+  persisted verified-session recovery
 - clock route Jest: 4/4
 - QuipslyVideoCore: 34/34, including exact LiveKit/Core Audio UID routing,
   physical-versus-virtual MV7i truth, secret-free room receipts, real-MP4

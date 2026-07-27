@@ -486,9 +486,38 @@ The first coordinated Mac/iPhone source-clock slice is now implemented:
   identity. Selecting a different room—or deliberately entering local-only
   mode—starts a new capture group while leaving already finalized source files
   and receipts untouched.
+- Authorized Mac recording now uses a protected, owner-partitioned START/STOP
+  outbox. The server-returned verified account, stable room/session IDs, and
+  capture group are committed before the request leaves the Mac. Nest must
+  persist and apply START before `AVAudioEngine` opens. Stop closes and hashes
+  the WAV first, durably journals STOP, then synchronizes it; network failure
+  cannot invalidate or delete the local source. Relaunch recovery writes the
+  missing STOP for an orphaned START and replays each capture in START-before-
+  STOP order. Corrupt canonical ledgers are copied aside and locked read-only
+  instead of reset.
+- A STOP closes that recording interval. The same group remains available for
+  Canon/iPhone sources from the take, but the UI requires **New capture group**
+  before another microphone recording so media cannot appear after a terminal
+  STOP identity.
+- Finalized Episode Room WAVs can enter an explicit canonical upload outbox.
+  The per-file `recordingID` becomes its unique `uploadSessionId`; the take's
+  `captureGroupId` is sent as both shared `captureId` and `captureGroupId`.
+  Before every attempt, the Mac streams the file again and requires its exact
+  size and SHA-256 to match the finalized source receipt. The app persists job
+  phase and immutable binding, but never persists the secret upload capability.
+  It accepts only private GCS HTTPS capabilities in production and same-origin
+  loopback capabilities in debug, sends bytes from the file URL, consumes exact
+  server verification/finalization evidence, distinguishes processing holds
+  from byte verification, and always retains the local master.
 - Studio launch no longer synchronously loads the external 11 MB audio waveform
   map or walks the large publication/delivery state graph. Both operations are
   deferred so an empty project opens responsively.
+- The Mac agent `/state` boundary returns its immutable in-memory JSON snapshot
+  before any optional short-export reconciliation. A stale short-export
+  manifest on a sleeping external disk previously made real status reads time
+  out. Reconciliation is now coalesced on a utility queue, generation-bound so
+  an older task cannot retire a newer export, and merged into the freshest
+  cached snapshot.
 
 The current Mac hardware readback is deliberately not overstated:
 
@@ -502,14 +531,20 @@ The current Mac hardware readback is deliberately not overstated:
 Local verification passed:
 
 - Quipsly TypeScript 7 typecheck;
+- Quipsly contract suite: 95/95, including the Mac agent-state responsiveness
+  and off-request reconciliation boundary;
 - mobile-session canonical identity/readiness tests: 11/11;
 - capture-clock route tests: 4/4;
-- QuipslyVideoCore tests: 34/34, including writing and reopening an actual
+- QuipslyVideoCore tests: 43/43, including writing and reopening an actual
   48 kHz/24-bit PCM WAV, proving that a MOTIV virtual-route receipt cannot
   claim direct physical MV7i provenance, importing a real playable MP4 without
   modifying it, matching independent source/destination digests, attaching the
   verified source to a provenance-bearing editor lane, decoding the Nest room
-  projection, and refusing inconsistent recording-readiness evidence;
+  projection, refusing inconsistent recording-readiness evidence, durable
+  START/STOP recovery and quarantine, immutable canonical upload jobs, and an
+  independent pre-upload file digest, and exact HTTPS Google Storage upload
+  capability host validation, and a fully persisted verified-session recovery
+  against exact mocked Nest identity, byte, and finalization evidence;
 - HighGroundCapture unsigned simulator build;
 - QuipslyMac unsigned debug build;
 - real QuipslyMac launch, responsive main editor readback, and visual readback
