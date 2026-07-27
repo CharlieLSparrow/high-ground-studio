@@ -2496,3 +2496,42 @@ This is an active-goal checkpoint, not a completion claim.
   rows on readback. This is a real local route/database collision rehearsal,
   not physical media, two rendered browsers, or real Episode Room acceptance
   proof.
+
+### 2026-07-27 exact-source Nest production promotion checkpoint
+
+- Repaired local Application Default Credentials by restoring the
+  `quipsly-reef` quota-project binding, then re-proved all five deploy
+  authorization checks: selected user, user access token, ADC access token,
+  deploy-project visibility, Firebase-project visibility, and an actual
+  Firebase Admin `listUsers` call.
+- Materialized the bounded Nest release manifest from committed source
+  `8db0f9842f2f723d4c8bf6fd0cfd2caf2ea02235`. The release context contained
+  1,102 files / 110.9 MiB; the exact local production build and strict
+  TypeScript check passed before Cloud Build began.
+- Cloud Build `e8288055-d340-4665-a9dc-ac4cd39fc23c` rebuilt the Linux image,
+  verified six required route bundles, and pushed immutable image index
+  `sha256:beb6b4b163d7c2e08791a49a070368bf86712162d67b2fb878f154330224e7c7`.
+  Cloud Run resolved its amd64 manifest as
+  `sha256:55c6c0fa4bd25e7b387b50ab688b12c66647653e5d0b60ed1a5a208950b360a5`.
+- Deployed `studio-00410-faj` behind the `quipsly-preview` tag at zero traffic.
+  Readback proved the exact source SHA, image tag, `preview` release channel,
+  ready condition, and 0% candidate / 100% incumbent traffic split.
+- The secure reviewer journey passed twice: first against the tagged preview
+  and again through `https://nest.quipsly.com` after promotion. It proved
+  Firebase login, session-cookie exchange, native session authorization, Home
+  Nest and free-tier state, database-backed Episode Production, Projects,
+  Nests, account switch, Writing, Editor, Recorder, Research, Publishing,
+  logout, configured public hosts, and the signed revision-bound beta-readiness
+  receipt.
+- Promoted only the already-smoked immutable revision. Production recovery
+  then proved billing, Cloud SQL, Cloud Run, domain mapping, public/legal
+  routes, the 104-check production mobile Capture contract, and 100% traffic
+  pinned to `studio-00410-faj`. The prior rollback revision is
+  `studio-00406-cog`; the new revision had zero error-severity Cloud Run log
+  entries during the fresh release window.
+- This establishes reachable production Nest and an exact-source release
+  boundary. It does not replace the remaining physical acceptance gates:
+  signed Mac camera/microphone permission and real MOV/WAV watch/listen/probe,
+  physical iPhone front/rear/interruption/recovery operation, real Canon R8
+  internal-4K and direct MV7i routing, TestFlight install, or the required real
+  HGO and coaching workflow matrix.
