@@ -23,6 +23,179 @@ public enum CaptureAuthorizationState: String, Codable, Equatable, Sendable {
     }
 }
 
+/// Immutable authority copied from a source opened only after Nest applied the
+/// exact recording START. Later companion sources may inherit this receipt,
+/// but must never infer it from the room currently selected in the UI.
+public struct ProductionCaptureRoomBinding:
+    Codable,
+    Equatable,
+    Sendable
+{
+    private enum CodingKeys: String, CodingKey {
+        case captureGroupID
+        case episodeSpaceID
+        case participantID
+        case ownerAccountID
+        case callRoomID
+        case recordingConsentID
+        case startReceiptID
+        case projectSlug
+        case episodeSlug
+        case capturePurpose
+    }
+
+    public let captureGroupID: UUID
+    public let episodeSpaceID: String
+    public let participantID: String
+    public let ownerAccountID: String
+    public let callRoomID: String
+    public let recordingConsentID: String
+    public let startReceiptID: UUID
+    public let projectSlug: String?
+    public let episodeSlug: String?
+    public let capturePurpose: String?
+
+    public init?(
+        captureGroupID: UUID,
+        episodeSpaceID: String,
+        participantID: String,
+        ownerAccountID: String,
+        callRoomID: String,
+        recordingConsentID: String,
+        startReceiptID: UUID,
+        projectSlug: String? = nil,
+        episodeSlug: String? = nil,
+        capturePurpose: String? = nil
+    ) {
+        let episode = Self.nonempty(episodeSpaceID)
+        let participant = Self.nonempty(participantID)
+        let owner = Self.nonempty(ownerAccountID)?
+            .lowercased()
+        let room = Self.nonempty(callRoomID)
+        let consent = Self.nonempty(recordingConsentID)
+        guard let episode,
+              let participant,
+              let owner,
+              let room,
+              let consent else {
+            return nil
+        }
+        self.captureGroupID = captureGroupID
+        self.episodeSpaceID = episode
+        self.participantID = participant
+        self.ownerAccountID = owner
+        self.callRoomID = room
+        self.recordingConsentID = consent
+        self.startReceiptID = startReceiptID
+        self.projectSlug = Self.nonempty(projectSlug)
+        self.episodeSlug = Self.nonempty(episodeSlug)
+        self.capturePurpose = Self.nonempty(capturePurpose)
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(
+            keyedBy: CodingKeys.self
+        )
+        guard let binding = Self(
+            captureGroupID: try values.decode(
+                UUID.self,
+                forKey: .captureGroupID
+            ),
+            episodeSpaceID: try values.decode(
+                String.self,
+                forKey: .episodeSpaceID
+            ),
+            participantID: try values.decode(
+                String.self,
+                forKey: .participantID
+            ),
+            ownerAccountID: try values.decode(
+                String.self,
+                forKey: .ownerAccountID
+            ),
+            callRoomID: try values.decode(
+                String.self,
+                forKey: .callRoomID
+            ),
+            recordingConsentID: try values.decode(
+                String.self,
+                forKey: .recordingConsentID
+            ),
+            startReceiptID: try values.decode(
+                UUID.self,
+                forKey: .startReceiptID
+            ),
+            projectSlug: try values.decodeIfPresent(
+                String.self,
+                forKey: .projectSlug
+            ),
+            episodeSlug: try values.decodeIfPresent(
+                String.self,
+                forKey: .episodeSlug
+            ),
+            capturePurpose: try values.decodeIfPresent(
+                String.self,
+                forKey: .capturePurpose
+            )
+        ) else {
+            throw DecodingError.dataCorrupted(
+                DecodingError.Context(
+                    codingPath: decoder.codingPath,
+                    debugDescription:
+                        "The Episode Room binding is incomplete."
+                )
+            )
+        }
+        self = binding
+    }
+
+    public func matchesSource(
+        captureGroupID: UUID,
+        episodeSpaceID: String,
+        participantID: String
+    ) -> Bool {
+        self.captureGroupID == captureGroupID
+            && self.episodeSpaceID
+                == Self.nonempty(episodeSpaceID)
+            && self.participantID
+                == Self.nonempty(participantID)
+    }
+
+    /// Resolves authority for a later same-take companion source. Every
+    /// non-nil candidate must name the exact source and agree byte-for-byte;
+    /// any disagreement fails closed instead of picking whichever receipt was
+    /// observed last.
+    public static func exactCompanionBinding(
+        candidates: [ProductionCaptureRoomBinding?],
+        captureGroupID: UUID,
+        episodeSpaceID: String,
+        participantID: String
+    ) -> ProductionCaptureRoomBinding? {
+        let present = candidates.compactMap { $0 }
+        guard let first = present.first,
+              present.allSatisfy({
+                  $0 == first
+                      && $0.matchesSource(
+                          captureGroupID: captureGroupID,
+                          episodeSpaceID: episodeSpaceID,
+                          participantID: participantID
+                      )
+              }) else {
+            return nil
+        }
+        return first
+    }
+
+    private static func nonempty(
+        _ value: String?
+    ) -> String? {
+        let clean = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return clean?.isEmpty == false ? clean : nil
+    }
+}
+
 /// One uncertainty-bearing bridge between an immutable local source clock and
 /// the Episode Room server clock. Source media timestamps remain authoritative;
 /// this evidence may only seed reviewed alignment.

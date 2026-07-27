@@ -84,6 +84,7 @@ public struct CanonCardImportConfiguration: Equatable, Sendable {
     public let captureGroupID: UUID
     public let episodeSpaceID: String
     public let participantID: String
+    public let roomBinding: ProductionCaptureRoomBinding?
     public let declaredCameraModel: String
     public let sourceURL: URL
     public let rootDirectory: URL
@@ -93,6 +94,7 @@ public struct CanonCardImportConfiguration: Equatable, Sendable {
         captureGroupID: UUID,
         episodeSpaceID: String,
         participantID: String,
+        roomBinding: ProductionCaptureRoomBinding? = nil,
         declaredCameraModel: String = "Canon EOS R8",
         sourceURL: URL,
         rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
@@ -102,6 +104,7 @@ public struct CanonCardImportConfiguration: Equatable, Sendable {
         self.captureGroupID = captureGroupID
         self.episodeSpaceID = episodeSpaceID
         self.participantID = participantID
+        self.roomBinding = roomBinding
         self.declaredCameraModel = declaredCameraModel
         self.sourceURL = sourceURL
         self.rootDirectory = rootDirectory
@@ -114,6 +117,7 @@ public struct CanonCardImportReceipt: Codable, Equatable, Sendable {
     public let captureGroupID: UUID
     public let episodeSpaceID: String
     public let participantID: String
+    public let roomBinding: ProductionCaptureRoomBinding?
     public let clientKind: String
     public let sourceKind: String
     public let state: CanonCardImportState
@@ -169,6 +173,7 @@ public struct CanonCardImportReceipt: Codable, Equatable, Sendable {
         captureGroupID = configuration.captureGroupID
         episodeSpaceID = configuration.episodeSpaceID
         participantID = configuration.participantID
+        roomBinding = configuration.roomBinding
         clientKind = "macos"
         sourceKind = "camera_card_original"
         self.state = state
@@ -196,8 +201,11 @@ public struct CanonCardImportReceipt: Codable, Equatable, Sendable {
         self.failure = failure
 
         if state == .finalized, byteIdentityVerified {
+            let authority = roomBinding == nil
+                ? "No immutable Episode Room authority was inherited, so this managed original remains local-only until an explicit reviewed binding exists."
+                : "The source inherited the exact account, room, consent, capture group, and applied START receipt from a finalized local source in the same take."
             truth =
-                "Quipsly copied the user-selected camera-card file into managed storage without modifying the card original, then independently hashed both byte streams and proved they match. The camera model is user-declared; this receipt does not prove a camera body or serial number. Timeline alignment remains a separate reviewable decision."
+                "Quipsly copied the user-selected camera-card file into managed storage without modifying the card original, then independently hashed both byte streams and proved they match. \(authority) The camera model is user-declared; this receipt does not prove a camera body or serial number. Timeline alignment remains a separate reviewable decision."
         } else {
             truth =
                 "This camera-card import is not a verified managed original. Preserve the source and any partial copy, then retry or review the failure; never attach it as a complete episode master."
@@ -216,6 +224,7 @@ public enum CanonCardImporterError: LocalizedError, Equatable {
     case unableToCreatePartial
     case byteCountMismatch(expected: Int64, actual: Int64)
     case digestMismatch
+    case roomBindingMismatch
 
     public var errorDescription: String? {
         switch self {
@@ -239,6 +248,8 @@ public enum CanonCardImporterError: LocalizedError, Equatable {
             "The managed copy contains \(actual) bytes; the card source contains \(expected)."
         case .digestMismatch:
             "The managed copy digest does not match the card-source digest."
+        case .roomBindingMismatch:
+            "The supplied Episode Room authority does not match this camera file's capture group, episode, and participant."
         }
     }
 }
@@ -253,6 +264,14 @@ public enum CanonCardImporter {
         configuration: CanonCardImportConfiguration,
         onProgress: @escaping @Sendable (CanonCardImportProgress) -> Void = { _ in }
     ) async throws -> CanonCardImportReceipt {
+        if let binding = configuration.roomBinding,
+           !binding.matchesSource(
+               captureGroupID: configuration.captureGroupID,
+               episodeSpaceID: configuration.episodeSpaceID,
+               participantID: configuration.participantID
+           ) {
+            throw CanonCardImporterError.roomBindingMismatch
+        }
         let probe = try await technicalProbe(at: configuration.sourceURL)
         return try await Task.detached(priority: .userInitiated) {
             try performImport(
@@ -611,7 +630,9 @@ public enum CanonCardImporter {
         to url: URL
     ) throws {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
+        encoder.dateEncodingStrategy = .custom(
+            ProductionCaptureDateCoding.encode
+        )
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try encoder.encode(receipt).write(to: url, options: [.atomic])
     }

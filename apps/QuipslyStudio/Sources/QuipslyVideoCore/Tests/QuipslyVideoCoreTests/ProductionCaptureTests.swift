@@ -140,4 +140,105 @@ final class ProductionCaptureTests: XCTestCase {
         XCTAssertEqual(plan.status, .blocked)
         XCTAssertTrue(plan.nextActions.contains { $0.contains("microphone") })
     }
+
+    func testCompanionRoomBindingRequiresExactSameTakeAgreement()
+        throws
+    {
+        let groupID = UUID()
+        let first = try XCTUnwrap(
+            ProductionCaptureRoomBinding(
+                captureGroupID: groupID,
+                episodeSpaceID: "episode-5",
+                participantID: "charlie",
+                ownerAccountID: "Charlie@Example.com",
+                callRoomID: "room-5",
+                recordingConsentID: "consent-5",
+                startReceiptID: UUID()
+            )
+        )
+
+        XCTAssertEqual(
+            ProductionCaptureRoomBinding.exactCompanionBinding(
+                candidates: [first, nil, first],
+                captureGroupID: groupID,
+                episodeSpaceID: " episode-5 ",
+                participantID: "charlie"
+            ),
+            first
+        )
+        XCTAssertNil(
+            ProductionCaptureRoomBinding.exactCompanionBinding(
+                candidates: [
+                    first,
+                    ProductionCaptureRoomBinding(
+                        captureGroupID: groupID,
+                        episodeSpaceID: "episode-5",
+                        participantID: "charlie",
+                        ownerAccountID: first.ownerAccountID,
+                        callRoomID: "different-room",
+                        recordingConsentID:
+                            first.recordingConsentID,
+                        startReceiptID:
+                            first.startReceiptID
+                    ),
+                ],
+                captureGroupID: groupID,
+                episodeSpaceID: "episode-5",
+                participantID: "charlie"
+            )
+        )
+        XCTAssertNil(
+            ProductionCaptureRoomBinding.exactCompanionBinding(
+                candidates: [first],
+                captureGroupID: UUID(),
+                episodeSpaceID: "episode-5",
+                participantID: "charlie"
+            )
+        )
+        XCTAssertNil(
+            ProductionCaptureRoomBinding.exactCompanionBinding(
+                candidates: [
+                    first,
+                    ProductionCaptureRoomBinding(
+                        captureGroupID: UUID(),
+                        episodeSpaceID: "episode-5",
+                        participantID: "charlie",
+                        ownerAccountID: first.ownerAccountID,
+                        callRoomID: first.callRoomID,
+                        recordingConsentID:
+                            first.recordingConsentID,
+                        startReceiptID:
+                            first.startReceiptID
+                    ),
+                ],
+                captureGroupID: groupID,
+                episodeSpaceID: "episode-5",
+                participantID: "charlie"
+            )
+        )
+    }
+
+    func testRoomBindingDecoderRejectsIncompleteAuthority()
+        throws
+    {
+        let data = try JSONSerialization.data(
+            withJSONObject: [
+                "captureGroupID": UUID().uuidString,
+                "episodeSpaceID": "episode-5",
+                "participantID": "charlie",
+                "ownerAccountID": "   ",
+                "callRoomID": "room-5",
+                "recordingConsentID": "consent-5",
+                "startReceiptID": UUID().uuidString,
+            ],
+            options: [.sortedKeys]
+        )
+
+        XCTAssertThrowsError(
+            try JSONDecoder().decode(
+                ProductionCaptureRoomBinding.self,
+                from: data
+            )
+        )
+    }
 }

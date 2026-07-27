@@ -2405,3 +2405,33 @@ This is an active-goal checkpoint, not a completion claim.
 - Current automated gates pass: 48/48 QuipslyVideoCore tests, 107/107
   Capture/Nest contracts, the unsigned arm64 QuipslyMac build, and the
   canonical HighGroundCapture universal simulator build with LiveKit linked.
+
+### 2026-07-27 Canon same-take authority and preservation checkpoint
+
+- Closed the Canon card-master authorization gap without letting a later UI
+  selection rewrite provenance. A finalized Mac WAV or camera-reference MOV
+  now exposes one immutable room binding only when owner, CallRoom, consent,
+  participant, capture group, and applied START are complete. A card import
+  may inherit that binding only from exact same-take receipts; multiple
+  candidates must agree byte-for-byte or resolution fails closed.
+- The card receipt persists that authority with the independently hashed card
+  stream and managed copy. Local-only imports stay visibly local-only and
+  receive no cloud control. Room-bound MP4, MOV, and MXF originals can enter
+  the existing account-partitioned canonical outbox only after the durable
+  receipt and exact managed bytes are revalidated.
+- Episode Capture Setup now shows the authority state per card source, offers
+  explicit private-vault preservation, and recovers per-source
+  upload/retry/hold/verified truth after relaunch without confusing a Canon
+  master with the silent camera-reference MOV.
+- Canon file-creation/import timestamps are retained as unreviewed metadata,
+  never treated as a clock projection. Nest receives no manufactured monotonic
+  samples and returns `needs-alignment`; waveform correlation, drift review,
+  playback, and explicit human approval remain mandatory.
+- Current gates pass: 61/61 QuipslyVideoCore tests, 8/8 focused Nest alignment
+  tests, strict Nest TypeScript, diff hygiene, and a valid Apple Development
+  signed QuipslyMac build (`com.highground.QuipslyMac`, Team `585GUXMY5M`).
+  Obsolete regenerable Xcode caches were removed after the startup volume
+  reached zero free space; the exact active permission-test build was
+  preserved. Physical camera/microphone permission and real MOV/WAV/Canon
+  operation remain open human-present gates and are not implied by these
+  automated results.

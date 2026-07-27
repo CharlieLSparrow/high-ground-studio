@@ -208,6 +208,46 @@ describe("capture source alignment proposal", () => {
     });
   });
 
+  it("keeps a Canon card timestamp as unreviewed metadata instead of inventing timeline sync", () => {
+    const proposal = buildCaptureSourceAlignmentProposal({
+      sourceProfile: {
+        schemaVersion: 1,
+        sourceKind: "camera_card_original",
+        captureTimingEvidence: "card-file-creation-date-unreviewed",
+        recordedAtCandidate: "2026-07-27T17:59:58.000Z",
+        cardByteIdentityVerified: true,
+        monotonicStartedNanoseconds: null,
+        monotonicStoppedNanoseconds: null,
+        clockSamples: null,
+      },
+      callRoomId: "room-1",
+      captureId: "capture-1",
+      captureGroupId: "group-1",
+      actorUserId: "user-1",
+      startReceiptId: "receipt-1",
+      recordedStartedAt: "2026-07-27T17:59:58.000Z",
+      startReceipt: receipt,
+    });
+
+    expect(proposal).toMatchObject({
+      status: "needs-alignment",
+      sourceClockEvidence: "clock-samples-missing",
+      method: null,
+      estimatedServerStartedAt: null,
+      uncertaintyMilliseconds: null,
+      selectedClockSample: null,
+      startBoundary: null,
+      sampleAccurateClaimed: false,
+      reviewRequired: true,
+      reviewGate: {
+        waveformCorrelationRequired: true,
+        driftReviewRequired: true,
+        humanApprovalRequired: true,
+      },
+    });
+    expect(proposal.reason).toContain("Waveform alignment remains required");
+  });
+
   it("derives reviewable group offsets without claiming a locked timeline", () => {
     const proposal = buildCaptureSourceAlignmentProposal({
       sourceProfile: {

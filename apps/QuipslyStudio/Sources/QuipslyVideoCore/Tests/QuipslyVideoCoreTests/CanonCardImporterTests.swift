@@ -21,6 +21,21 @@ final class CanonCardImporterTests: XCTestCase {
         )
         let captureGroupID = UUID()
         let importID = UUID()
+        let startReceiptID = UUID()
+        let roomBinding = try XCTUnwrap(
+            ProductionCaptureRoomBinding(
+                captureGroupID: captureGroupID,
+                episodeSpaceID: "HGO Episode 5",
+                participantID: "charlie",
+                ownerAccountID: "Charlie@Example.com",
+                callRoomID: "room-5",
+                recordingConsentID: "consent-5",
+                startReceiptID: startReceiptID,
+                projectSlug: "high-ground-odyssey",
+                episodeSlug: "episode-5",
+                capturePurpose: "PODCAST"
+            )
+        )
 
         let receipt = try await CanonCardImporter.importOriginal(
             configuration: CanonCardImportConfiguration(
@@ -28,6 +43,7 @@ final class CanonCardImporterTests: XCTestCase {
                 captureGroupID: captureGroupID,
                 episodeSpaceID: "HGO Episode 5",
                 participantID: "charlie",
+                roomBinding: roomBinding,
                 sourceURL: source,
                 rootDirectory: root
             )
@@ -37,6 +53,15 @@ final class CanonCardImporterTests: XCTestCase {
         XCTAssertEqual(receipt.captureGroupID, captureGroupID)
         XCTAssertEqual(receipt.importID, importID)
         XCTAssertEqual(receipt.sourceKind, "camera_card_original")
+        XCTAssertEqual(receipt.roomBinding, roomBinding)
+        XCTAssertEqual(
+            receipt.roomBinding?.ownerAccountID,
+            "charlie@example.com"
+        )
+        XCTAssertEqual(
+            receipt.roomBinding?.startReceiptID,
+            startReceiptID
+        )
         XCTAssertEqual(receipt.episodeAttachmentState, "ready-for-local-editor-attachment")
         XCTAssertEqual(receipt.alignmentState, "needs-alignment")
         XCTAssertTrue(receipt.byteIdentityVerified)
@@ -54,6 +79,7 @@ final class CanonCardImporterTests: XCTestCase {
         XCTAssertNil(receipt.partialManagedOriginalPath)
         XCTAssertTrue(receipt.truth.contains("independently hashed"))
         XCTAssertTrue(receipt.truth.contains("user-declared"))
+        XCTAssertTrue(receipt.truth.contains("applied START"))
 
         let decoded = try JSONDecoder.quipslyReceiptDecoder.decode(
             CanonCardImportReceipt.self,
@@ -74,6 +100,7 @@ final class CanonCardImporterTests: XCTestCase {
         )
         XCTAssertEqual(decoded.technicalProbe, receipt.technicalProbe)
         XCTAssertEqual(decoded.truth, receipt.truth)
+        XCTAssertEqual(decoded.roomBinding, roomBinding)
 
         let sourceAfter = try source.resourceValues(
             forKeys: [.fileSizeKey, .contentModificationDateKey]
@@ -82,6 +109,51 @@ final class CanonCardImporterTests: XCTestCase {
         XCTAssertEqual(
             sourceAfter.contentModificationDate,
             sourceBefore.contentModificationDate
+        )
+    }
+
+    func testMismatchedRoomBindingIsRejectedBeforeCopy()
+        async throws
+    {
+        let source = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("../../../../Charlie.mp4")
+            .standardizedFileURL
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let binding = try XCTUnwrap(
+            ProductionCaptureRoomBinding(
+                captureGroupID: UUID(),
+                episodeSpaceID: "other-episode",
+                participantID: "charlie",
+                ownerAccountID: "charlie@example.com",
+                callRoomID: "room-5",
+                recordingConsentID: "consent-5",
+                startReceiptID: UUID()
+            )
+        )
+
+        do {
+            _ = try await CanonCardImporter.importOriginal(
+                configuration: CanonCardImportConfiguration(
+                    captureGroupID: UUID(),
+                    episodeSpaceID: "episode-5",
+                    participantID: "charlie",
+                    roomBinding: binding,
+                    sourceURL: source,
+                    rootDirectory: root
+                )
+            )
+            XCTFail("Expected immutable room binding rejection.")
+        } catch {
+            XCTAssertEqual(
+                error as? CanonCardImporterError,
+                .roomBindingMismatch
+            )
+        }
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: root.path)
         )
     }
 
@@ -105,7 +177,9 @@ final class CanonCardImporterTests: XCTestCase {
 private extension JSONDecoder {
     static var quipslyReceiptDecoder: JSONDecoder {
         let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
+        decoder.dateDecodingStrategy = .custom(
+            ProductionCaptureDateCoding.decode
+        )
         return decoder
     }
 }

@@ -42,6 +42,12 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var canonImportError: String?
     @Published private(set) var importedCanonReceipts: [CanonCardImportReceipt] = []
     @Published private(set) var attachedLaneIDs: [UUID] = []
+    @Published private(set) var canonUploadJobs:
+        [UUID: MacCaptureUploadJob] = [:]
+    @Published private(set) var canonUploadProgress:
+        [UUID: Double] = [:]
+    @Published private(set) var canonUploadErrors:
+        [UUID: String] = [:]
     @Published private(set) var episodeRooms: [MacEpisodeRoomSummary] = []
     @Published private(set) var selectedEpisodeRoomID: String?
     @Published private(set) var isRefreshingEpisodeRooms = false
@@ -260,6 +266,38 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             return "externaldrive.fill"
         }
         return videoUploadError == nil
+            ? "icloud.and.arrow.up.fill"
+            : "exclamationmark.icloud.fill"
+    }
+
+    func canUploadCanonOriginal(
+        _ receipt: CanonCardImportReceipt
+    ) -> Bool {
+        guard !isUploadingMaster,
+              uploadJobStore.isWritable,
+              receipt.state == .finalized,
+              receipt.byteIdentityVerified,
+              let binding = receipt.roomBinding,
+              normalizedOwnerAccountID(binding.ownerAccountID)
+                == normalizedOwnerAccountID(
+                    episodeRoomOwnerAccountID
+                ) else {
+            return false
+        }
+        return canonUploadJobs[receipt.importID]?.phase
+            != .verified
+    }
+
+    func canonUploadSystemImage(
+        for receipt: CanonCardImportReceipt
+    ) -> String {
+        if canonUploadJobs[receipt.importID]?.phase == .verified {
+            return "checkmark.icloud.fill"
+        }
+        if receipt.roomBinding == nil {
+            return "externaldrive.fill"
+        }
+        return canonUploadErrors[receipt.importID] == nil
             ? "icloud.and.arrow.up.fill"
             : "exclamationmark.icloud.fill"
     }
@@ -983,6 +1021,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             "Authorized camera references can be preserved in Quipsly and projected into the Episode Room after exact-byte verification."
         importedCanonReceipts = []
         attachedLaneIDs = []
+        canonUploadJobs = [:]
+        canonUploadProgress = [:]
+        canonUploadErrors = [:]
         canonImportProgress = nil
         canonImportError = nil
         canonImportMessage = "New capture group ready."
@@ -1017,6 +1058,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         }
 
         var failures: [String] = []
+        let roomBinding = ProductionCaptureRoomBinding
+            .exactCompanionBinding(
+                candidates: [
+                    lastFinalizedReceipt?.roomBinding,
+                    lastFinalizedVideoReceipt?.roomBinding,
+                ],
+                captureGroupID: captureGroupID,
+                episodeSpaceID: cleanEpisode,
+                participantID: cleanParticipant
+            )
         for (index, url) in urls.enumerated() {
             canonImportMessage =
                 "Importing \(index + 1) of \(urls.count): \(url.lastPathComponent)"
@@ -1033,6 +1084,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                         captureGroupID: captureGroupID,
                         episodeSpaceID: cleanEpisode,
                         participantID: cleanParticipant,
+                        roomBinding: roomBinding,
                         sourceURL: url,
                         rootDirectory: captureRoot
                     ),
@@ -1046,7 +1098,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 importedCanonReceipts.append(receipt)
                 attachedLaneIDs.append(laneID)
                 canonImportMessage =
-                    "Verified and attached \(index + 1) of \(urls.count): \(receipt.sourceFileName)"
+                    receipt.roomBinding == nil
+                        ? "Verified and attached \(index + 1) of \(urls.count): \(receipt.sourceFileName). No same-take Episode Room authority was available, so it remains local-only."
+                        : "Verified and attached \(index + 1) of \(urls.count): \(receipt.sourceFileName). It inherited the same take's applied START authority and is eligible for explicit preservation."
             } catch {
                 failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
             }
@@ -1054,7 +1108,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 
         if failures.isEmpty {
             canonImportMessage =
-                "\(urls.count) camera-card original(s) are byte verified and attached to the editor. Alignment and proxy review remain."
+                roomBinding == nil
+                    ? "\(urls.count) camera-card original(s) are byte verified and attached locally. Quipsly will not infer Episode Room authority later; alignment and proxy review remain."
+                    : "\(urls.count) camera-card original(s) are byte verified, attached, and bound to this take's applied START. Preserve them explicitly when ready; waveform, drift, and proxy review remain."
         } else {
             canonImportError = failures.joined(separator: "\n")
             canonImportMessage =
@@ -1178,6 +1234,33 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         }
     }
 
+    func uploadCanonOriginal(
+        _ receipt: CanonCardImportReceipt
+    ) async {
+        guard let ownerAccountID = episodeRoomOwnerAccountID else {
+            canonUploadErrors[receipt.importID] =
+                "A verified Nest account is required before this room-bound original can be preserved."
+            return
+        }
+        do {
+            let job = try uploadJobStore
+                .enqueueFinalizedCanonCardOriginal(
+                    receipt: receipt,
+                    ownerAccountID: ownerAccountID
+                )
+            canonUploadJobs[receipt.importID] = job
+            canonUploadErrors[receipt.importID] = nil
+            await runCanonicalUpload(
+                jobID: job.id,
+                expectedSourceType: "video",
+                canonImportID: receipt.importID
+            )
+        } catch {
+            canonUploadErrors[receipt.importID] =
+                error.localizedDescription
+        }
+    }
+
     func recoverUploadsAfterLaunch() async {
         guard !didAttemptLaunchUploadRecovery,
               let ownerAccountID = episodeRoomOwnerAccountID else {
@@ -1193,8 +1276,21 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         let videoJobs = ownerJobs.filter {
             $0.sourceType == "video"
         }
+        let canonVideoJobs = videoJobs.filter {
+            $0.trackID.hasSuffix("-camera-card-master")
+        }
+        let cameraReferenceJobs = videoJobs.filter {
+            !$0.trackID.hasSuffix("-camera-card-master")
+        }
         activeUploadJob = audioJobs.last
-        activeVideoUploadJob = videoJobs.last
+        activeVideoUploadJob = cameraReferenceJobs.last
+        canonUploadJobs = Dictionary(
+            canonVideoJobs.map { ($0.id, $0) },
+            uniquingKeysWith: { _, latest in latest }
+        )
+        for job in canonVideoJobs where job.phase == .verified {
+            canonUploadProgress[job.id] = 1
+        }
         if lastFinalizedReceipt == nil,
            let latestJob = audioJobs.last,
            let data = try? Data(
@@ -1204,14 +1300,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                )
            ) {
             let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
+            decoder.dateDecodingStrategy = .custom(
+                ProductionCaptureDateCoding.decode
+            )
             lastFinalizedReceipt = try? decoder.decode(
                 ProductionAudioRecordingReceipt.self,
                 from: data
             )
         }
         if lastFinalizedVideoReceipt == nil,
-           let latestJob = videoJobs.last,
+           let latestJob = cameraReferenceJobs.last,
            let data = try? Data(
                contentsOf: URL(
                    fileURLWithPath:
@@ -1219,7 +1317,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                )
            ) {
             let decoder = JSONDecoder()
-            decoder.dateDecodingStrategy = .iso8601
+            decoder.dateDecodingStrategy = .custom(
+                ProductionCaptureDateCoding.decode
+            )
             lastFinalizedVideoReceipt = try? decoder.decode(
                 ProductionVideoReferenceReceipt.self,
                 from: data
@@ -1231,11 +1331,36 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 verified.userFacingVerificationSummary
             uploadProgress = 1
         }
-        if let verified = videoJobs.last,
+        if let verified = cameraReferenceJobs.last,
            verified.phase == .verified {
             videoUploadMessage =
                 verified.userFacingVerificationSummary
             videoUploadProgress = 1
+        }
+        let receiptDecoder = JSONDecoder()
+        receiptDecoder.dateDecodingStrategy = .custom(
+            ProductionCaptureDateCoding.decode
+        )
+        for job in canonVideoJobs {
+            guard !importedCanonReceipts.contains(where: {
+                $0.importID == job.id
+            }),
+            let data = try? Data(
+                contentsOf: URL(
+                    fileURLWithPath: job.sourceReceiptPath
+                )
+            ),
+            let receipt = try? receiptDecoder.decode(
+                CanonCardImportReceipt.self,
+                from: data
+            ),
+            receipt.importID == job.id,
+            normalizedOwnerAccountID(
+                receipt.roomBinding?.ownerAccountID
+            ) == normalizedOwnerAccountID(ownerAccountID) else {
+                continue
+            }
+            importedCanonReceipts.append(receipt)
         }
         let pendingJobs = ownerJobs.filter {
             $0.phase != .verified
@@ -1244,7 +1369,13 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             return
         }
         for pending in pendingJobs {
-            if pending.sourceType == "video" {
+            let canonImportID = pending.trackID
+                .hasSuffix("-camera-card-master")
+                ? pending.id
+                : nil
+            if canonImportID != nil {
+                canonUploadErrors[pending.id] = nil
+            } else if pending.sourceType == "video" {
                 videoUploadMessage =
                     "Recovering the previously authorized camera-reference upload from its durable job receipt…"
             } else {
@@ -1253,14 +1384,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             }
             await runCanonicalUpload(
                 jobID: pending.id,
-                expectedSourceType: pending.sourceType
+                expectedSourceType: pending.sourceType,
+                canonImportID: canonImportID
             )
         }
     }
 
     private func runCanonicalUpload(
         jobID: UUID,
-        expectedSourceType: String
+        expectedSourceType: String,
+        canonImportID: UUID? = nil
     ) async {
         guard !isUploadingMaster,
               let ownerAccountID = episodeRoomOwnerAccountID,
@@ -1272,7 +1405,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
               sourceJob.sourceType == expectedSourceType else {
             let error =
                 "The configured Nest account, URL, or protected upload job is unavailable."
-            if expectedSourceType == "video" {
+            if let canonImportID {
+                canonUploadErrors[canonImportID] = error
+            } else if expectedSourceType == "video" {
                 videoUploadError = error
             } else {
                 uploadError = error
@@ -1281,7 +1416,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         }
         let isVideo = sourceJob.sourceType == "video"
         isUploadingMaster = true
-        if isVideo {
+        if let canonImportID {
+            canonUploadErrors[canonImportID] = nil
+            canonUploadProgress[canonImportID] = 0.04
+        } else if isVideo {
             videoUploadError = nil
             videoUploadProgress = 0.04
         } else {
@@ -1306,7 +1444,14 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                         id: jobID,
                         ownerAccountID: ownerAccountID
                     )
-                    if isVideo {
+                    if let canonImportID {
+                        canonUploadProgress[canonImportID] =
+                            update.progress
+                        if let current {
+                            canonUploadJobs[canonImportID] =
+                                current
+                        }
+                    } else if isVideo {
                         videoUploadProgress =
                             update.progress
                         videoUploadMessage = update.message
@@ -1318,7 +1463,11 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     }
                 }
             )
-            if isVideo {
+            if let canonImportID {
+                canonUploadJobs[canonImportID] = verified
+                canonUploadProgress[canonImportID] = 1
+                canonUploadErrors[canonImportID] = nil
+            } else if isVideo {
                 activeVideoUploadJob = verified
                 videoUploadProgress = 1
                 videoUploadMessage =
@@ -1334,7 +1483,13 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 id: jobID,
                 ownerAccountID: ownerAccountID
             )
-            if isVideo {
+            if let canonImportID {
+                if let current {
+                    canonUploadJobs[canonImportID] = current
+                }
+                canonUploadErrors[canonImportID] =
+                    error.localizedDescription
+            } else if isVideo {
                 activeVideoUploadJob = current
                 videoUploadError =
                     error.localizedDescription
@@ -3028,7 +3183,7 @@ struct EpisodeCaptureSetupView: View {
                         Text("Import the internally recorded camera files after the take.")
                             .font(.headline)
                         Text(
-                            "Quipsly never edits the card. It copies each selected MP4 or MOV to managed capture storage, hashes the card stream and managed copy independently, then attaches only verified files to the source timeline."
+                            "Quipsly never edits the card. It copies each selected MP4, MOV, or MXF to managed storage, hashes both byte streams independently, and attaches only verified files. Cloud preservation is available only when the exact same take already has an applied START and consent boundary."
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -3099,16 +3254,102 @@ struct EpisodeCaptureSetupView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             Text(
-                                "SHA-256 \(receipt.managedOriginalSHA256?.prefix(16) ?? "missing")… · attached, alignment needed"
+                                "SHA-256 \(receipt.managedOriginalSHA256?.prefix(16) ?? "missing")… · byte verified, alignment needed"
                             )
                             .font(.caption.monospaced())
                             .textSelection(.enabled)
+                            Label(
+                                receipt.roomBinding == nil
+                                    ? "Local-only · no same-take Episode Room authority"
+                                    : "Room-bound · same capture group, consent, and applied START",
+                                systemImage:
+                                    receipt.roomBinding == nil
+                                        ? "externaldrive.fill"
+                                        : "lock.shield.fill"
+                            )
+                            .font(.caption)
+                            .foregroundStyle(
+                                receipt.roomBinding == nil
+                                    ? Color.orange
+                                    : Color.secondary
+                            )
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                            if let job = model
+                                .canonUploadJobs[receipt.importID] {
+                                Label(
+                                    job.phase == .verified
+                                        ? job.userFacingVerificationSummary
+                                        : "Private-vault preservation: \(job.phase.rawValue)",
+                                    systemImage: model
+                                        .canonUploadSystemImage(
+                                            for: receipt
+                                        )
+                                )
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(
+                                    horizontal: false,
+                                    vertical: true
+                                )
+                                if job.phase != .verified {
+                                    ProgressView(
+                                        value: model
+                                            .canonUploadProgress[
+                                                receipt.importID
+                                            ] ?? 0
+                                    )
+                                }
+                            }
+                            if let error = model
+                                .canonUploadErrors[receipt.importID] {
+                                Text(
+                                    "\(error) The managed original and receipt remain preserved locally."
+                                )
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.orange)
+                                    .textSelection(.enabled)
+                                    .fixedSize(
+                                        horizontal: false,
+                                        vertical: true
+                                    )
+                            }
                         }
                         Spacer()
-                        Button("Reveal managed original") {
-                            NSWorkspace.shared.activateFileViewerSelecting([
-                                URL(fileURLWithPath: receipt.managedOriginalPath)
-                            ])
+                        VStack(alignment: .trailing, spacing: 8) {
+                            if model.canUploadCanonOriginal(receipt) {
+                                Button(
+                                    model.canonUploadJobs[
+                                        receipt.importID
+                                    ] == nil
+                                        ? "Preserve in Quipsly"
+                                        : "Retry preservation"
+                                ) {
+                                    Task {
+                                        await model
+                                            .uploadCanonOriginal(
+                                                receipt
+                                            )
+                                    }
+                                }
+                                .buttonStyle(.borderedProminent)
+                                .disabled(model.isUploadingMaster)
+                                .accessibilityIdentifier(
+                                    "EpisodeCaptureUploadCanonOriginal-\(receipt.importID.uuidString.lowercased())"
+                                )
+                            }
+                            Button("Reveal managed original") {
+                                NSWorkspace.shared
+                                    .activateFileViewerSelecting([
+                                        URL(
+                                            fileURLWithPath:
+                                                receipt
+                                                    .managedOriginalPath
+                                        ),
+                                    ])
+                            }
                         }
                     }
                 }

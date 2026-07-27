@@ -98,6 +98,27 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
     public let failure: String?
     public let truth: String
 
+    public var roomBinding: ProductionCaptureRoomBinding? {
+        guard let ownerAccountID,
+              let callRoomID,
+              let recordingConsentID,
+              let startReceiptID else {
+            return nil
+        }
+        return ProductionCaptureRoomBinding(
+            captureGroupID: captureGroupID,
+            episodeSpaceID: episodeSpaceID,
+            participantID: participantID,
+            ownerAccountID: ownerAccountID,
+            callRoomID: callRoomID,
+            recordingConsentID: recordingConsentID,
+            startReceiptID: startReceiptID,
+            projectSlug: projectSlug,
+            episodeSlug: episodeSlug,
+            capturePurpose: capturePurpose
+        )
+    }
+
     public init(
         recordingID: UUID,
         configuration: ProductionAudioRecordingConfiguration,

@@ -835,11 +835,25 @@ the local WAV without inventing a second upload system:
   this with proxy completion, transcription, reviewed alignment, or
   publication, and it never removes the local MOV.
 
-This does not yet authorize Canon camera-card originals for cloud upload. Those
-imports are byte-verified and locally attached, but their import receipt does
-not yet carry the immutable account, CallRoom, consent, and applied-START
-binding required by this outbox. That boundary must be added explicitly rather
-than inferred from whichever Episode Room happens to be selected later.
+Canon camera-card originals now use the same outbox only when their import
+receipt inherited immutable authority from a finalized WAV or MOV in the exact
+same capture group:
+
+- every non-nil companion-source binding must agree on capture group, episode,
+  participant, verified account, CallRoom, consent, and applied START receipt;
+  disagreement fails closed;
+- the currently selected Episode Room is never used to authorize a historical
+  card file;
+- an import with no same-take binding stays visibly local-only and cannot enter
+  the private-vault outbox;
+- a room-bound MP4, MOV, or MXF is revalidated against its durable import
+  receipt and exact managed-copy bytes before the upload job is armed;
+- relaunch recovery distinguishes card masters from camera-reference MOVs and
+  restores each card source's own progress, retry, hold, and verified state;
+- card creation time is retained only as unreviewed metadata. The source
+  profile intentionally has no clock samples, so Nest keeps it
+  `needs-alignment` until waveform correlation, drift review, playback, and
+  explicit human approval.
 
 ## Implementation checkpoint — July 27, 2026 (Mac capture-clock bridge)
 
@@ -873,10 +887,13 @@ uncertainty-bearing capture-clock evidence as iPhone sources:
   Waveform correlation, drift review, playback, and explicit editor approval
   remain mandatory before a source may be called aligned.
 
-Verification for this checkpoint passes the complete 55-test
+Verification for the combined clock and Canon-authority checkpoint passes the
+complete 61-test
 `QuipslyVideoCore` suite, the signed QuipslyMac build, strict Nest typecheck,
-and seven focused server-alignment tests including the long-uptime integer
-boundary. The physical gate remains unchanged: macOS camera and microphone
-permission must be granted through the visible Episode Capture Setup control,
-then an actual MOV+WAV take must be recorded, played, probed, hashed, and read
+and eight focused server-alignment tests including the long-uptime integer
+boundary and the no-invented-sync Canon path. The signed build is
+`com.highground.QuipslyMac`, Team `585GUXMY5M`. The physical gate remains
+unchanged: macOS camera and microphone permission must be granted through the
+visible Episode Capture Setup control, then an actual MOV+WAV take and a real
+Canon card original must be recorded/imported, played, probed, hashed, and read
 back in the Episode Room/editor.

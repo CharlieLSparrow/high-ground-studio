@@ -82,6 +82,14 @@ alignment and non-destructive editorial decisions.
   and MOV uploads, with explicit separation between exact-byte preservation,
   canonical Episode Room projection, proxy readiness, alignment, transcript,
   and publication state;
+- immutable same-take authority for Canon card originals: only an exact,
+  agreeing finalized-source binding may carry account, room, consent, capture
+  group, and applied START into the card receipt and canonical outbox;
+- explicit local-only Canon handling when no same-take authority exists, with
+  no later authorization from the room currently selected in the UI;
+- durable per-card upload/retry/hold/verification recovery, exact receipt and
+  managed-byte revalidation, and an intentionally clockless source profile
+  that keeps card timestamps unreviewed until waveform/drift/human approval;
 - explicit UX that joining sends no video, starts no recording, and leaves the
   local WAV recorder independent;
 - an agent-state responsiveness repair found by launching the real app:
@@ -140,9 +148,11 @@ alignment and non-destructive editorial decisions.
   inconsistent-consent fail-closed behavior
 - HighGroundCapture generic iOS Simulator build
 - QuipslyMac debug build with LiveKit 2.15.1 linked
-- signed QuipslyMac build with the capture-clock bridge
-- focused server alignment: 7/7, including long-uptime Mac monotonic values
-- current QuipslyVideoCore: 55/55
+- signed QuipslyMac build with the capture-clock bridge and Canon same-take
+  authority (`com.highground.QuipslyMac`, Team `585GUXMY5M`)
+- focused server alignment: 8/8, including long-uptime Mac monotonic values and
+  the clockless Canon `needs-alignment` path
+- current QuipslyVideoCore: 61/61
 - real QuipslyMac launch and menu-command execution
 
 The current Computer Use run could open the Episode Capture Setup command, but

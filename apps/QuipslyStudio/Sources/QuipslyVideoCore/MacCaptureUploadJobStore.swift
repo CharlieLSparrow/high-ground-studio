@@ -158,6 +158,7 @@ public enum MacCaptureUploadJobStoreError:
 {
     case uploadIdentityIncomplete
     case sourceIsNotFinalized
+    case roomAuthorityMissing
     case sourceFileMissing
     case sourceFileSizeChanged
     case sourceDigestMissing
@@ -173,6 +174,8 @@ public enum MacCaptureUploadJobStoreError:
             "The finalized source is missing its verified owner, room, participant, consent, or time boundary."
         case .sourceIsNotFinalized:
             "Only a finalized local master can enter the canonical upload outbox."
+        case .roomAuthorityMissing:
+            "This finalized source has no immutable Episode Room authority from its own take, so Quipsly will keep it local instead of inferring consent or room ownership later."
         case .sourceFileMissing:
             "The finalized local source file is no longer present."
         case .sourceFileSizeChanged:
@@ -412,6 +415,131 @@ public final class MacCaptureUploadJobStore {
             stoppedAt: stoppedAt,
             expectedOwnerAccountID:
                 receipt.ownerAccountID,
+            ownerAccountID: ownerAccountID
+        )
+    }
+
+    @discardableResult
+    public func enqueueFinalizedCanonCardOriginal(
+        receipt: CanonCardImportReceipt,
+        ownerAccountID: String
+    ) throws -> MacCaptureUploadJob {
+        guard receipt.state == .finalized,
+              receipt.byteIdentityVerified,
+              let stoppedAt = receipt.stoppedAt,
+              let byteCount = receipt.managedOriginalByteCount,
+              let sha256 = receipt.managedOriginalSHA256 else {
+            throw MacCaptureUploadJobStoreError
+                .sourceIsNotFinalized
+        }
+        guard let binding = receipt.roomBinding else {
+            throw MacCaptureUploadJobStoreError
+                .roomAuthorityMissing
+        }
+        guard receipt.sourceByteCount == byteCount,
+              receipt.sourceSHA256?.lowercased()
+                == sha256.lowercased(),
+              binding.matchesSource(
+                  captureGroupID: receipt.captureGroupID,
+                  episodeSpaceID: receipt.episodeSpaceID,
+                  participantID: receipt.participantID
+              ) else {
+            throw MacCaptureUploadJobStoreError
+                .sourceReceiptMismatch
+        }
+        let managedOriginal = URL(
+            fileURLWithPath: receipt.managedOriginalPath
+        )
+        let contentType = try canonVideoContentType(
+            for: managedOriginal
+        )
+        let recordedAtCandidate =
+            receipt.sourceCreatedAt ?? receipt.startedAt
+        let recordedStopCandidate = recordedAtCandidate
+            .addingTimeInterval(
+                max(0, receipt.technicalProbe.durationSeconds)
+            )
+        let profile = MacCanonCardUploadSourceProfile(
+            schemaVersion: 1,
+            sourceKind: receipt.sourceKind,
+            container:
+                managedOriginal.pathExtension.lowercased(),
+            codec: receipt.technicalProbe.videoCodec,
+            width: receipt.technicalProbe.width,
+            height: receipt.technicalProbe.height,
+            nominalFrameRate:
+                receipt.technicalProbe.nominalFrameRate,
+            includesAudio:
+                receipt.technicalProbe.audioTrackCount > 0,
+            audioSampleRate:
+                receipt.technicalProbe.audioSampleRate,
+            audioChannelCount:
+                receipt.technicalProbe.audioChannelCount,
+            videoTrackCount:
+                receipt.technicalProbe.videoTrackCount,
+            audioTrackCount:
+                receipt.technicalProbe.audioTrackCount,
+            timecodeTrackCount:
+                receipt.technicalProbe.timecodeTrackCount,
+            declaredCameraModel:
+                receipt.declaredCameraModel,
+            cardByteIdentityVerified:
+                receipt.byteIdentityVerified,
+            captureTimingEvidence:
+                receipt.sourceCreatedAt == nil
+                    ? "import-time-fallback-unreviewed"
+                    : "card-file-creation-date-unreviewed",
+            recordedAtCandidate:
+                recordedAtCandidate,
+            sourceCreatedAt: receipt.sourceCreatedAt,
+            sourceModifiedAt: receipt.sourceModifiedAt,
+            importStartedAt: receipt.startedAt,
+            importStoppedAt: stoppedAt,
+            monotonicStartedNanoseconds: nil,
+            monotonicStoppedNanoseconds: nil,
+            clockSamples: nil
+        )
+        let profileData = try Self.encoder.encode(profile)
+        guard let profileJSON = String(
+            data: profileData,
+            encoding: .utf8
+        ) else {
+            throw MacCaptureUploadJobStoreError
+                .uploadIdentityIncomplete
+        }
+        try validateDurableCanonReceipt(
+            receipt,
+            at: receipt.receiptPath
+        )
+        return try enqueueFinalizedSource(
+            id: receipt.importID,
+            captureGroupID: receipt.captureGroupID,
+            fileURL: managedOriginal,
+            sourceReceiptPath: receipt.receiptPath,
+            contentType: contentType,
+            sourceType: "video",
+            byteCount: byteCount,
+            sha256: sha256,
+            projectSlug: binding.projectSlug,
+            episodeSlug:
+                binding.episodeSlug
+                    ?? binding.episodeSpaceID,
+            trackID:
+                "\(safeToken(receipt.participantID))-camera-card-master",
+            callRoomID: binding.callRoomID,
+            participantID: binding.participantID,
+            recordingConsentID:
+                binding.recordingConsentID,
+            startReceiptID: binding.startReceiptID,
+            capturePurpose: binding.capturePurpose,
+            sourceProfileJSON: profileJSON,
+            startedAt: recordedAtCandidate,
+            stoppedAt: max(
+                recordedStopCandidate,
+                recordedAtCandidate
+            ),
+            expectedOwnerAccountID:
+                binding.ownerAccountID,
             ownerAccountID: ownerAccountID
         )
     }
@@ -836,6 +964,66 @@ public final class MacCaptureUploadJobStore {
         }
     }
 
+    private func validateDurableCanonReceipt(
+        _ receipt: CanonCardImportReceipt,
+        at path: String
+    ) throws {
+        let url = URL(fileURLWithPath: path)
+        guard fileManager.fileExists(atPath: path) else {
+            throw MacCaptureUploadJobStoreError
+                .sourceReceiptMissing
+        }
+        guard let persisted = try? Self.decoder.decode(
+            CanonCardImportReceipt.self,
+            from: Data(contentsOf: url)
+        ),
+        persisted.state == .finalized,
+        persisted.importID == receipt.importID,
+        persisted.captureGroupID == receipt.captureGroupID,
+        persisted.episodeSpaceID == receipt.episodeSpaceID,
+        persisted.participantID == receipt.participantID,
+        persisted.roomBinding == receipt.roomBinding,
+        persisted.sourceKind == receipt.sourceKind,
+        persisted.declaredCameraModel
+            == receipt.declaredCameraModel,
+        persisted.sourceFileName == receipt.sourceFileName,
+        persisted.sourcePath == receipt.sourcePath,
+        persisted.sourceVolumeIdentifier
+            == receipt.sourceVolumeIdentifier,
+        datesMatch(
+            persisted.sourceCreatedAt,
+            receipt.sourceCreatedAt
+        ),
+        datesMatch(
+            persisted.sourceModifiedAt,
+            receipt.sourceModifiedAt
+        ),
+        persisted.sourceByteCount == receipt.sourceByteCount,
+        persisted.managedOriginalPath
+            == receipt.managedOriginalPath,
+        persisted.partialManagedOriginalPath == nil,
+        persisted.receiptPath == receipt.receiptPath,
+        persisted.sourceSHA256?.lowercased()
+            == receipt.sourceSHA256?.lowercased(),
+        persisted.managedOriginalSHA256?.lowercased()
+            == receipt.managedOriginalSHA256?.lowercased(),
+        persisted.managedOriginalByteCount
+            == receipt.managedOriginalByteCount,
+        persisted.byteIdentityVerified,
+        persisted.startedMonotonicNanoseconds
+            == receipt.startedMonotonicNanoseconds,
+        persisted.stoppedMonotonicNanoseconds
+            == receipt.stoppedMonotonicNanoseconds,
+        persisted.technicalProbe == receipt.technicalProbe,
+        persisted.failure == nil,
+        datesMatch(persisted.startedAt, receipt.startedAt),
+        datesMatch(persisted.stoppedAt, receipt.stoppedAt)
+        else {
+            throw MacCaptureUploadJobStoreError
+                .sourceReceiptMismatch
+        }
+    }
+
     private func datesMatch(_ lhs: Date?, _ rhs: Date?) -> Bool {
         switch (lhs, rhs) {
         case (.none, .none):
@@ -863,6 +1051,22 @@ public final class MacCaptureUploadJobStore {
                 in: CharacterSet(charactersIn: "-_")
             )
         return token.isEmpty ? "participant" : token
+    }
+
+    private func canonVideoContentType(
+        for url: URL
+    ) throws -> String {
+        switch url.pathExtension.lowercased() {
+        case "mp4":
+            return "video/mp4"
+        case "mov":
+            return "video/quicktime"
+        case "mxf":
+            return "video/mxf"
+        default:
+            throw MacCaptureUploadJobStoreError
+                .uploadIdentityIncomplete
+        }
     }
 
     private func sortJobs() {
@@ -914,6 +1118,37 @@ public final class MacCaptureUploadJobStore {
         let clockSamples: [ProductionCaptureClockSample]?
         let cameraDevice: CaptureVideoDeviceSnapshot
         let referenceKind: String
+    }
+
+    private struct MacCanonCardUploadSourceProfile:
+        Codable,
+        Equatable,
+        Sendable
+    {
+        let schemaVersion: Int
+        let sourceKind: String
+        let container: String
+        let codec: String
+        let width: Int
+        let height: Int
+        let nominalFrameRate: Double
+        let includesAudio: Bool
+        let audioSampleRate: Double?
+        let audioChannelCount: Int?
+        let videoTrackCount: Int
+        let audioTrackCount: Int
+        let timecodeTrackCount: Int
+        let declaredCameraModel: String
+        let cardByteIdentityVerified: Bool
+        let captureTimingEvidence: String
+        let recordedAtCandidate: Date
+        let sourceCreatedAt: Date?
+        let sourceModifiedAt: Date?
+        let importStartedAt: Date
+        let importStoppedAt: Date
+        let monotonicStartedNanoseconds: String?
+        let monotonicStoppedNanoseconds: String?
+        let clockSamples: [ProductionCaptureClockSample]?
     }
 
     private static var encoder: JSONEncoder {

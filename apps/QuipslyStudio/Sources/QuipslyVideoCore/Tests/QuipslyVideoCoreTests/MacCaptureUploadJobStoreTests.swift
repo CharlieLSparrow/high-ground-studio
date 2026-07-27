@@ -211,6 +211,93 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
         )
     }
 
+    func testRoomBoundCanonCardOriginalCreatesDurableVideoJob()
+        throws
+    {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let receipt = try finalizedCanonReceipt(
+            in: root,
+            roomBound: true
+        )
+        let store = MacCaptureUploadJobStore(
+            rootDirectory: root
+        )
+
+        let job = try store.enqueueFinalizedCanonCardOriginal(
+            receipt: receipt,
+            ownerAccountID: "Charlie@Example.com"
+        )
+
+        XCTAssertEqual(job.id, receipt.importID)
+        XCTAssertEqual(job.captureID, receipt.captureGroupID)
+        XCTAssertEqual(job.sourceType, "video")
+        XCTAssertEqual(job.contentType, "video/mp4")
+        XCTAssertEqual(
+            job.trackID,
+            "participant-5-camera-card-master"
+        )
+        XCTAssertEqual(
+            job.startReceiptID,
+            receipt.roomBinding?.startReceiptID
+        )
+        XCTAssertEqual(
+            job.startedAt,
+            receipt.sourceCreatedAt
+        )
+        XCTAssertEqual(
+            job.stoppedAt.timeIntervalSince(job.startedAt),
+            receipt.technicalProbe.durationSeconds,
+            accuracy: 0.001
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"sourceKind\" : \"camera_card_original\""
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"captureTimingEvidence\" : \"card-file-creation-date-unreviewed\""
+            )
+        )
+        XCTAssertTrue(
+            job.sourceProfileJSON.contains(
+                "\"cardByteIdentityVerified\" : true"
+            )
+        )
+        XCTAssertFalse(
+            job.sourceProfileJSON.contains("clockSamples")
+        )
+        let evidence =
+            try MacCaptureUploadJobStore.exactSourceEvidence(
+                for: job
+            )
+        XCTAssertEqual(evidence.sizeBytes, job.expectedSizeBytes)
+        XCTAssertEqual(evidence.sha256, job.expectedSHA256)
+
+        let reopened = MacCaptureUploadJobStore(
+            rootDirectory: root
+        )
+        let reopenedJob = try XCTUnwrap(
+            reopened.job(
+                id: job.id,
+                ownerAccountID: "charlie@example.com"
+            )
+        )
+        XCTAssertEqual(
+            reopenedJob.expectedSHA256,
+            job.expectedSHA256
+        )
+        XCTAssertEqual(
+            reopenedJob.sourceProfileJSON,
+            job.sourceProfileJSON
+        )
+        XCTAssertEqual(
+            reopenedJob.startReceiptID,
+            job.startReceiptID
+        )
+    }
+
     func testLocalOnlyReceiptCannotEnterRoomUploadOutbox()
         throws
     {
@@ -304,6 +391,64 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
                 ownerAccountID: "charlie@example.com"
             )
         )
+    }
+
+    func testLocalOnlyCanonCardOriginalCannotEnterRoomUploadOutbox()
+        throws
+    {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let receipt = try finalizedCanonReceipt(
+            in: root,
+            roomBound: false
+        )
+        let store = MacCaptureUploadJobStore(
+            rootDirectory: root
+        )
+
+        XCTAssertThrowsError(
+            try store.enqueueFinalizedCanonCardOriginal(
+                receipt: receipt,
+                ownerAccountID: "charlie@example.com"
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? MacCaptureUploadJobStoreError,
+                .roomAuthorityMissing
+            )
+        }
+        XCTAssertTrue(
+            store.jobs(
+                ownerAccountID: "charlie@example.com"
+            ).isEmpty
+        )
+    }
+
+    func testCanonCardUploadRejectsReceiptWithoutCardToManagedByteIdentity()
+        throws
+    {
+        let root = temporaryRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let receipt = try finalizedCanonReceipt(
+            in: root,
+            roomBound: true,
+            cardDigestMatches: false
+        )
+        let store = MacCaptureUploadJobStore(
+            rootDirectory: root
+        )
+
+        XCTAssertThrowsError(
+            try store.enqueueFinalizedCanonCardOriginal(
+                receipt: receipt,
+                ownerAccountID: "charlie@example.com"
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? MacCaptureUploadJobStoreError,
+                .sourceReceiptMismatch
+            )
+        }
     }
 
     func testFinalizedSourceCannotCrossVerifiedOwnerPartition()
@@ -557,6 +702,104 @@ final class MacCaptureUploadJobStoreTests: XCTestCase {
             uncertaintyMilliseconds: 10,
             wallClockDiscontinuityMilliseconds: 0
         )
+    }
+
+    private func finalizedCanonReceipt(
+        in root: URL,
+        roomBound: Bool,
+        cardDigestMatches: Bool = true
+    ) throws -> CanonCardImportReceipt {
+        let importID = UUID()
+        let captureGroupID = UUID()
+        let sourceURL = root.appendingPathComponent(
+            "canon-card-source.mp4"
+        )
+        let directory = CanonCardImporter.importDirectory(
+            root: root,
+            episodeSpaceID: "episode-5",
+            importID: importID
+        )
+        try FileManager.default.createDirectory(
+            at: directory,
+            withIntermediateDirectories: true
+        )
+        let managedURL = directory.appendingPathComponent(
+            "canon-card-source.mp4"
+        )
+        let bytes = Data("verified-canon-card-bytes".utf8)
+        try bytes.write(to: sourceURL)
+        try bytes.write(to: managedURL)
+        let digest = SHA256.hash(data: bytes)
+            .map { String(format: "%02x", $0) }
+            .joined()
+        let binding = roomBound
+            ? ProductionCaptureRoomBinding(
+                captureGroupID: captureGroupID,
+                episodeSpaceID: "episode-5",
+                participantID: "participant-5",
+                ownerAccountID: "charlie@example.com",
+                callRoomID: "room-5",
+                recordingConsentID: "consent-5",
+                startReceiptID: UUID(),
+                projectSlug: "high-ground-odyssey",
+                episodeSlug: "episode-5",
+                capturePurpose: "PODCAST"
+            )
+            : nil
+        let configuration = CanonCardImportConfiguration(
+            importID: importID,
+            captureGroupID: captureGroupID,
+            episodeSpaceID: "episode-5",
+            participantID: "participant-5",
+            roomBinding: binding,
+            sourceURL: sourceURL,
+            rootDirectory: root
+        )
+        let receiptURL = directory.appendingPathComponent(
+            CanonCardImporter.receiptFilename
+        )
+        let receipt = CanonCardImportReceipt(
+            configuration: configuration,
+            state: .finalized,
+            sourceVolumeIdentifier: "canon-card-volume",
+            sourceCreatedAt:
+                Date(timeIntervalSince1970: 90),
+            sourceModifiedAt:
+                Date(timeIntervalSince1970: 92),
+            sourceByteCount: Int64(bytes.count),
+            managedOriginalPath: managedURL.path,
+            partialManagedOriginalPath: nil,
+            receiptPath: receiptURL.path,
+            sourceSHA256:
+                cardDigestMatches
+                    ? digest
+                    : String(repeating: "0", count: 64),
+            managedOriginalSHA256: digest,
+            managedOriginalByteCount: Int64(bytes.count),
+            byteIdentityVerified: true,
+            startedAt: Date(timeIntervalSince1970: 100),
+            stoppedAt: Date(timeIntervalSince1970: 102),
+            startedMonotonicNanoseconds: 1_000,
+            stoppedMonotonicNanoseconds: 2_000,
+            technicalProbe: CanonCardMediaProbe(
+                durationSeconds: 2,
+                width: 3_840,
+                height: 2_160,
+                nominalFrameRate: 29.97,
+                videoCodec: "hvc1",
+                videoTrackCount: 1,
+                audioTrackCount: 1,
+                timecodeTrackCount: 1,
+                audioSampleRate: 48_000,
+                audioChannelCount: 2
+            ),
+            episodeAttachmentState:
+                "ready-for-local-editor-attachment",
+            alignmentState: "needs-alignment",
+            failure: nil
+        )
+        try writeReceipt(receipt, to: receiptURL)
+        return receipt
     }
 
     private func writeReceipt<T: Encodable>(
