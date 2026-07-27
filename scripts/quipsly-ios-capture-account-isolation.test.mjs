@@ -285,7 +285,7 @@ test("consent grant sends exact separate recording, transcription, and nearby-pe
 
   for (const identifier of [
     "CaptureConsentRecordAudioToggle",
-    "CaptureConsentVideoOffRow",
+    "CaptureConsentRecordVideoToggle",
     "CaptureConsentTranscriptionToggle",
     "CaptureConsentAudibleParticipantsToggle",
     "CaptureConsentSaveChoicesButton",

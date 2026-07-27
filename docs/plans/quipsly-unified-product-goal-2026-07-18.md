@@ -2265,3 +2265,58 @@ This is an active-goal checkpoint, not a completion claim.
   links LiveKit and succeeds for arm64 and x86_64. This is not a signed archive,
   physical-device operation, TestFlight upload/install, or App Store
   submission claim.
+
+### 2026-07-27 user-reachable iPhone video and exact Mac-route checkpoint
+
+- Promoted the camera core into the real iPhone Record journey. Audio, Solo
+  video, and Podcast camera are explicit source modes. Solo video records the
+  selected camera and microphone into one protected movie and refuses to take
+  over a connected LiveKit audio session. Podcast camera is video-only and may
+  coexist with the room. Both expose a real `AVCaptureVideoPreviewLayer`,
+  front/rear selection, the resolved device/profile, available-duration
+  estimate, and visible prepare/start/pause/resume/flip/stop controls.
+- Extended the canonical session projection without redefining historical
+  audio readiness. Actor and all-party audio/video consent choices, counts, and
+  readiness are independent; stale policy evidence counts for neither source.
+  Video-only consent cannot unlock the audio recorder, while Solo video
+  requires both current audio and video authority. The visible nearby-person
+  attestation now covers everyone who may be seen or heard.
+- Closed two state-machine defects found during operated review. Resume and
+  camera flip now refresh the exact session and immutable owner before new
+  movie bytes; Solo video rechecks audio as well as video. A flip never emits a
+  transient `saved` state while its capture group is still rearming, so session
+  and LiveKit controls cannot unlock between immutable source files. Podcast
+  camera keeps room controls available; all audio-bearing modes keep them
+  visibly and operationally locked.
+- Current Riverside and Descript research supports the split rather than a
+  browser-only recorder: both products use double-ended local tracks,
+  progressive upload, and explicit fallback/recovery media. Descript documents
+  Rooms as desktop-only and its source quality as dependent on browser,
+  hardware, load, light, and network. Quipsly therefore keeps native Capture as
+  the iPhone source owner, native Studio as the exact MV7i/Canon master
+  endpoint, and Nest Episode Room as the call, script, shared clips,
+  collaboration, and source-status surface. A future browser guest recorder
+  remains additive rather than authoritative over a direct device master.
+- macOS currently exposes MacBook Pro Camera, EOS Webcam Utility, and Wall-E
+  Continuity Camera; MacBook Pro, Wall-E, Teams, and MOTIV Mix Virtual audio at
+  48 kHz. It does not expose a direct physical MV7i Core Audio device or direct
+  Canon R8 UVC device. The app therefore keeps MOTIV Mix Virtual
+  rehearsal-only and Canon USB as a reference path, while Canon internal 4K
+  and a direct MV7i 48 kHz/24-bit WAV remain the required production masters.
+- Fresh verification passes: 683/683 App Store/static checks, 15/15 account
+  isolation, 67/67 native durability checks, 9/9 resumable/long-source
+  contracts, 14/14 focused Nest session tests, strict Quipsly TypeScript, the
+  complete Nest run at 146 suites / 703 runnable tests with 26 suites / 71
+  tests environment-gated, the optimized Nest production build, three
+  operated iPhone source/consent journeys, the unsigned universal iPhone
+  simulator build with LiveKit for arm64 and x86_64, the QuipslyMac unsigned
+  Debug build, and 20/20 focused Mac route/source/receipt tests including a real
+  48 kHz/24-bit PCM WAV.
+- This is not physical-camera or physical-audio proof. The loop-back gates are
+  front/rear iPhone recording through interruption, background, storage,
+  thermal, long-take, upload, proxy, and editor readback; direct MV7i
+  record/headphone monitoring; Canon R8 internal 4K plus reference import and
+  alignment; authenticated LiveKit coexistence; cloud worker qualification;
+  TestFlight install; and real High Ground Odyssey episode operation. The open
+  Google reauthentication callback also prevents a new cloud qualification or
+  deployment claim.

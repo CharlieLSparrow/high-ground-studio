@@ -27,6 +27,8 @@ const files = {
   authManager: path.join(sourceRoot, "AuthManager.swift"),
   loginView: path.join(sourceRoot, "LoginView.swift"),
   audioCapture: path.join(sourceRoot, "AudioCaptureController.swift"),
+  videoCaptureController: path.join(sourceRoot, "VideoCaptureController.swift"),
+  videoCaptureService: path.join(sourceRoot, "VideoCaptureService.swift"),
   captureAudioSessionCoordinator: path.join(sourceRoot, "CaptureAudioSessionCoordinator.swift"),
   uploadManager: path.join(sourceRoot, "UploadManager.swift"),
   uploadLedgerStore: path.join(sourceRoot, "UploadLedgerStore.swift"),
@@ -141,6 +143,8 @@ const generatedMobileCaptureAuthSmokeText = read(files.generatedMobileCaptureAut
 const authText = read(files.authManager);
 const loginText = read(files.loginView);
 const audioText = read(files.audioCapture);
+const videoCaptureControllerText = read(files.videoCaptureController);
+const videoCaptureServiceText = read(files.videoCaptureService);
 const captureAudioSessionCoordinatorText = read(files.captureAudioSessionCoordinator);
 const uploadText = read(files.uploadManager);
 const uploadLedgerText = read(files.uploadLedgerStore);
@@ -524,17 +528,64 @@ for (const needle of [
   "CaptureConfirmConsentButton",
   "CaptureConsentConfirmationSheet",
   "CaptureConsentRecordAudioToggle",
-  "CaptureConsentVideoOffRow",
+  "CaptureConsentRecordVideoToggle",
   "CaptureConsentTranscriptionToggle",
   "CaptureConsentAudibleParticipantsToggle",
   "CaptureConsentSaveChoicesButton",
   "Local source is production truth",
-  "Open active recording",
+  "GlobalCaptureBanner",
   "ProviderControlsCaptureLockNotice",
   "Live room controls locked for this take",
   ".disabled(providerControlsLocked",
+  "CaptureRecordingModePicker",
+  "CaptureVideoRecorderHero",
+  "CaptureVideoPreview",
+  "CaptureVideoPrepareButton",
+  "CaptureVideoStartButton",
+  "CaptureVideoStopButton",
+  "CaptureVideoPauseResumeButton",
+  "CaptureVideoSwitchCameraButton",
+  "Podcast camera",
+  "Everyone who may be seen or heard",
+  "model.providerControlsLockedForLocalCapture",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "capture-first iPhone UX");
+}
+for (const needle of [
+  "recordingConsentCanRecordVideo == true",
+  "recordingConsentVideoGranted == true",
+  "canRecordVideoNow == true",
+  "videoAuthorityIsCurrent",
+  "startVideoConsentMonitor",
+  "maximumVideoSourceBytes",
+  "longSourceUploadEnabled",
+]) {
+  requireIncludes(captureExperienceText, needle, "source-specific video authority");
+}
+for (const needle of [
+  "AVCaptureVideoPreviewLayer",
+  "videoRotationAngle",
+  "resizeAspectFill",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "production camera preview");
+}
+for (const needle of [
+  "state = .arming",
+  "activeCaptureGroupID",
+  "clockSamples",
+  "validateFinalizedSource",
+  "markUploadHeld",
+  "The capture group is still open.",
+]) {
+  requireIncludes(videoCaptureControllerText, needle, "durable video controller");
+}
+for (const needle of [
+  "AVCaptureMovieFileOutput",
+  "movieFragmentInterval",
+  "availableVideoCodecTypes",
+  "startRunning",
+]) {
+  requireIncludes(videoCaptureServiceText, needle, "AVFoundation camera service");
 }
 for (const needle of [
   "prepareForRecording()",

@@ -2,7 +2,7 @@
 
 Candidate date: 2026-07-18
 
-Latest addendum: 2026-07-24
+Latest addendum: 2026-07-27
 
 Scope: iPhone capture app, mobile-capture Nest APIs, durable media upload, and release-readiness surfaces
 
@@ -47,7 +47,7 @@ Passing an earlier gate does not imply a later gate.
 | CallKit activation failure could leave a connected silent LiveKit room | Room join waits for CallKit audio activation; failure disconnects media, ends CallKit, releases the audio lease, and clears UI truth. |
 | Disk-space preflight used a required-reason API without declaring it | Privacy manifest declares `NSPrivacyAccessedAPICategoryDiskSpace` reason `E174.1`. |
 | VoiceOver exposed a nine-point microphone meter element | The slim visual meter now occupies a 44-point semantic inspection region. |
-| Linked session code caused App Store validation to require a camera purpose string | The host bundle declares the dependency-required purpose string while the audio-first app keeps video disabled and never requests camera access without an explicit future video choice. |
+| Camera permission could be requested by an audio-only launch or room join | Audio remains camera-free; camera authorization is requested only after an explicit Solo video or Podcast camera choice followed by Prepare. |
 
 ## Automated evidence
 
@@ -56,14 +56,14 @@ The final local run records exact results after all hardening changes settled. S
 | Gate | Command or proof | Result |
 |---|---|---|
 | Privacy manifest | `plutil -lint HighGroundCapture/PrivacyInfo.xcprivacy` | PASS — valid plist |
-| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 635/635 |
+| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 683/683 |
 | Owner isolation | `node --test scripts/quipsly-ios-capture-account-isolation.test.mjs` | PASS — 15/15 |
-| iOS source durability | `node scripts/quipsly-ios-capture-durability-contract.test.mjs` | PASS — 50/50 |
+| iOS source durability | `node scripts/quipsly-ios-capture-durability-contract.test.mjs` | PASS — 67/67 |
 | Mobile source contracts | `node scripts/quipsly-mobile-capture-contract-smoke.mjs --source-only=1` | PASS — 74/74 source; 104/104 with local network |
 | Committed release isolation | `scripts/release/quipsly-capture-release-from-commit.test.sh` | PASS — exact SHA, dirty-source exclusion, argument/output preservation, cleanup |
 | Repository TypeScript authority | `bash scripts/ci/typecheck-typescript-7.sh` | PASS — 21/21 on pinned TypeScript 7.0.2 |
 | Security boundaries | `node --experimental-strip-types scripts/quipsly-mobile-capture-security.test.mjs` | PASS — 6/6 |
-| Resumable upload | `node scripts/quipsly-mobile-capture-resumable-contract.test.mjs` | PASS — 6/6 |
+| Resumable upload | `TS_NODE_PROJECT=apps/quipsly/tsconfig.json TS_NODE_TRANSPILE_ONLY=1 node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-mobile-capture-resumable-contract.test.mjs` | PASS — 9/9 |
 | Ingestion idempotency | `node scripts/quipsly-mobile-capture-ingestion-idempotency.test.mjs` | PASS |
 | Upload reservation quotas | `node --test scripts/quipsly-media-vault-upload-quota.test.mjs` | PASS — 14/14 |
 | Session evidence | `node scripts/quipsly-mobile-capture-session-evidence.test.mjs` | PASS |
@@ -77,6 +77,7 @@ The final local run records exact results after all hardening changes settled. S
 | Static analysis | generic iOS Simulator `xcodebuild analyze` | PASS |
 | Unsigned Release | generic iOS device, signing disabled | PASS — two deprecation warnings confined to deferred `ExportManager` / `NativeEditorView` prototypes |
 | Capture UX, native auth, and Share extension | focused `CaptureExperienceUITests`, `CaptureLoginExperienceUITests`, and `ShareCaptureExtensionUITests` | PASS — 26/26, no skips; `/tmp/quipsly-account-deletion-full-ui.xcresult` |
+| Video source modes and consent | focused `CaptureExperienceUITests` on iPhone 16e simulator | PASS — 3/3; exact Audio / Solo video / Podcast camera explanations, separate video choice, and video-only consent cannot enable audio |
 | Visual QA | Today, Record, Work, Library, Account; light/dark, large type, and accessibility XXXL | PASS — focused navigation and Work journeys plus signed local Work operation; physical TestFlight inspection remains open |
 | Patch hygiene | tracked-worktree `git diff --check` | PASS |
 
@@ -90,7 +91,7 @@ These checks cannot be substituted with source inspection or Simulator output:
 - Apply and read back the reviewed media-vault CORS policy containing `x-goog-if-generation-match`; local source review alone does not prove browser create-only uploads work against the live bucket.
 - Approve the 30-day target and legal retention matrix, implement the reviewed destructive/anonymizing executor, and prove its completion email against a disposable test account. The app and API now create and reopen one idempotent request, show its durable review/completion status and target date, and provide an in-app completion readback. The operator status transition still does not itself erase or anonymize data, so this is not yet complete destructive-deletion proof.
 - Replace the explicitly beta/incomplete Terms and high-level beta privacy surface with counsel-approved production terms, retention/vendor/rights disclosures, and App Store privacy answers that match the candidate.
-- Record on a physical supported iPhone with built-in, Bluetooth HFP, wired, and USB microphones.
+- Record on a physical supported iPhone with built-in, Bluetooth HFP, wired, and USB microphones, then record front/rear Solo video and Podcast camera sources at every resolved production profile.
 - Exercise lock/unlock, background, call/alarm/Siri interruption, route removal, Low Data Mode, constrained/cellular transfer, force quit, and reboot.
 - Confirm each resulting source is playable, remains visible in the correct account's Library, resumes upload, and becomes **Verified in Quipsly** without local deletion.
 - Join a Nest-issued LiveKit packet and prove CallKit activation/deactivation, remote participant updates, mute, disconnect/reset, and simultaneous local-source behavior.

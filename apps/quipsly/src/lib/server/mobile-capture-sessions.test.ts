@@ -11,7 +11,13 @@ import {
   captureSourceSummaries,
   canonicalMobileSessionEpisodeSlug,
   canonicalMobileSessionProject,
+  registeredParticipantConsentSummary,
 } from "./mobile-capture-sessions";
+import {
+  MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+  MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+  MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+} from "./mobile-capture-consent-readiness.js";
 
 describe("mobile Session canonical project projection", () => {
   it("uses the relational project and reports legacy slug drift", () => {
@@ -65,6 +71,93 @@ describe("mobile Session canonical episode projection", () => {
       booking: { offering: { slug: "legacy-offering" } },
     })).toBe("legacy-offering");
     expect(canonicalMobileSessionEpisodeSlug({ id: "room-2" })).toBe("room-2");
+  });
+});
+
+describe("mobile Session source-specific consent projection", () => {
+  const currentEvidence = {
+    consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+    consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+    recordingChoiceExplicit: true,
+    allAudibleParticipantsNotifiedAndAgreed: true,
+    presentationEvidence: {
+      surface: "quipsly-capture-consent-v2",
+      version: 1,
+    },
+  };
+
+  it("keeps audio and video readiness separate for every registered participant", () => {
+    const summary = registeredParticipantConsentSummary({
+      participants: [
+        { id: "host", userId: "user-host", role: "HOST" },
+        { id: "guest", userId: "user-guest", role: "GUEST" },
+        { id: "observer", userId: "user-observer", role: "OBSERVER" },
+      ],
+      recordingConsents: [
+        {
+          id: "consent-host",
+          participantId: "host",
+          userId: "user-host",
+          status: "GRANTED",
+          policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+          canRecordAudio: true,
+          canRecordVideo: true,
+          canTranscribe: false,
+          consentedAt: new Date("2026-07-27T18:00:00Z"),
+          revokedAt: null,
+          updatedAt: new Date("2026-07-27T18:00:00Z"),
+          metadataJson: currentEvidence,
+        },
+        {
+          id: "consent-guest",
+          participantId: "guest",
+          userId: "user-guest",
+          status: "GRANTED",
+          policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+          canRecordAudio: true,
+          canRecordVideo: false,
+          canTranscribe: false,
+          consentedAt: new Date("2026-07-27T18:00:01Z"),
+          revokedAt: null,
+          updatedAt: new Date("2026-07-27T18:00:01Z"),
+          metadataJson: currentEvidence,
+        },
+      ],
+    });
+
+    expect(summary).toEqual({
+      requiredCount: 2,
+      audioGrantedCount: 2,
+      videoGrantedCount: 1,
+      allAudioGranted: true,
+      allVideoGranted: false,
+    });
+  });
+
+  it("does not count stale policy evidence as source authority", () => {
+    const summary = registeredParticipantConsentSummary({
+      participants: [{ id: "host", userId: "user-host", role: "HOST" }],
+      recordingConsents: [{
+        id: "stale",
+        participantId: "host",
+        userId: "user-host",
+        status: "GRANTED",
+        policyVersion: "stale-policy",
+        canRecordAudio: true,
+        canRecordVideo: true,
+        consentedAt: new Date("2026-07-27T18:00:00Z"),
+        revokedAt: null,
+        updatedAt: new Date("2026-07-27T18:00:00Z"),
+        metadataJson: currentEvidence,
+      }],
+    });
+
+    expect(summary).toMatchObject({
+      audioGrantedCount: 0,
+      videoGrantedCount: 0,
+      allAudioGranted: false,
+      allVideoGranted: false,
+    });
   });
 });
 

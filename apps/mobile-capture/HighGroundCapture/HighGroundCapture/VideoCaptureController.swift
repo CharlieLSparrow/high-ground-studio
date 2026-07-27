@@ -406,6 +406,13 @@ final class VideoCaptureController: ObservableObject {
     }
 
     func stop() async {
+        if state == .paused {
+            pausedCapture = nil
+            activeCaptureGroupID = nil
+            state = .saved
+            safetyMessage = "Capture group finished. Every movie boundary and the honest pause gap remain preserved."
+            return
+        }
         await stopIfActive(reason: .user)
     }
 
@@ -579,16 +586,23 @@ final class VideoCaptureController: ObservableObject {
         if stopReason == .cameraSwitch,
            let nextPosition = pendingSwitchPosition {
             pendingSwitchPosition = nil
-            state = .saved
+            // The capture group is still open. Never publish a transient
+            // `.saved` state here: downstream UI treats that as authority to
+            // unlock session and provider controls, even though the next
+            // immutable movie is about to be armed.
+            state = .preparing
             safetyMessage = "First camera source is closed and preserved. Preparing the \(nextPosition.rawValue) camera."
             await prepare(
                 position: nextPosition,
                 includesAudio: finishedCapture.includesAudio
             )
-            guard state == .ready,
-                  AuthManager.shared.matchesStableOwnerSnapshot(
-                    finishedCapture.ownerSnapshot
-                  ) else {
+            guard state == .ready else {
+                return
+            }
+            guard AuthManager.shared.matchesStableOwnerSnapshot(
+                finishedCapture.ownerSnapshot
+            ) else {
+                fail(VideoCaptureControllerError.ownerChanged)
                 return
             }
             await start(

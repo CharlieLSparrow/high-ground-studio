@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @StateObject private var authManager = AuthManager.shared
     @EnvironmentObject private var audioCapture: AudioCaptureController
+    @EnvironmentObject private var videoCapture: VideoCaptureController
 
     var body: some View {
         if CaptureLaunchConfiguration.usesLoginPreview {
@@ -21,11 +22,14 @@ struct ContentView: View {
     /// Authentication can expire while a source recording is in progress. The recorder must
     /// remain reachable until the local file is safely finalized; sign-in can be repaired after.
     private var mustKeepRecorderVisible: Bool {
+        if videoCapture.state.isActive || videoCapture.state == .paused {
+            return true
+        }
         switch audioCapture.captureState {
         case .preparing, .recording, .paused, .finalizing:
-            true
+            return true
         case .idle, .saved, .failed:
-            false
+            return false
         }
     }
 }
@@ -236,4 +240,5 @@ private struct ProtectedOfflineRecordingRow: View {
 #Preview {
     ContentView()
         .environmentObject(AudioCaptureController())
+        .environmentObject(VideoCaptureController())
 }

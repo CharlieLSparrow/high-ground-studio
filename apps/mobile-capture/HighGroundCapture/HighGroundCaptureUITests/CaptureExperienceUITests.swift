@@ -33,6 +33,7 @@ final class CaptureExperienceUITests: XCTestCase {
 
         app.buttons["CaptureOpenNextSessionButton"].tap()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureRecordingModePicker"].exists)
         XCTAssertTrue(app.buttons["CaptureStartButton"].isEnabled)
         let project = app.descendants(matching: .any)["CaptureSessionProject_preview-coaching-ready"]
         reveal(project)
@@ -788,16 +789,12 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
 
         let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
+        let recordVideo = app.switches["CaptureConsentRecordVideoToggle"]
         let transcribe = app.switches["CaptureConsentTranscriptionToggle"]
-        let nearbyPeople = app.switches["CaptureConsentAudibleParticipantsToggle"]
-
         XCTAssertTrue(recordAudio.exists)
+        XCTAssertTrue(recordVideo.exists)
         XCTAssertTrue(transcribe.exists)
-        XCTAssertTrue(nearbyPeople.exists)
-        XCTAssertTrue(
-            app.descendants(matching: .any)["CaptureConsentVideoOffRow"].exists,
-            "The explicit video-off row may bridge to different XCUI element types across SwiftUI runtimes."
-        )
+        XCTAssertEqual(recordVideo.value as? String, "0", "Video must default off and require its own opt-in.")
         XCTAssertEqual(transcribe.value as? String, "0", "Transcription must default off and require its own opt-in.")
 
         turnOn(recordAudio)
@@ -808,6 +805,8 @@ final class CaptureExperienceUITests: XCTestCase {
         )
 
         let nearbyPeopleChoice = app.switches["CaptureConsentAudibleParticipantsToggle"]
+        reveal(nearbyPeopleChoice)
+        XCTAssertTrue(nearbyPeopleChoice.exists)
         turnOn(nearbyPeopleChoice)
 
         // SwiftUI Form virtualizes rows after toggle updates on newer runtimes.
@@ -831,6 +830,85 @@ final class CaptureExperienceUITests: XCTestCase {
         waitForExpectations(timeout: 5)
         XCTAssertTrue(readyStart.isEnabled, "The local recorder should become available once explicit choices and nearby-person agreement are saved.")
         XCTAssertEqual(app.staticTexts["CaptureRecorderStateLabel"].label, "Consent ready · mic checks on tap")
+    }
+
+    func testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission() {
+        app.tabBars.buttons["Record"].tap()
+
+        let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
+        XCTAssertTrue(modePicker.waitForExistence(timeout: 5))
+        XCTAssertEqual(modePicker.buttons.count, 3)
+
+        modePicker.buttons["Podcast"].tap()
+        XCTAssertTrue(app.otherElements["CaptureVideoRecorderHero"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureVideoPreviewPlaceholder"].exists)
+        XCTAssertTrue(app.buttons["CaptureVideoPrepareButton"].exists)
+        XCTAssertTrue(app.segmentedControls["CaptureVideoCameraPicker"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Video only: LiveKit carries the audible conversation.")
+            ).firstMatch.exists,
+            "Podcast camera must state that it records an independent video-only source before asking for camera permission."
+        )
+
+        modePicker.buttons["Solo"].tap()
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Camera and microphone share this local movie.")
+            ).firstMatch.exists,
+            "Solo video must state that the camera movie also owns local microphone audio."
+        )
+
+        modePicker.buttons["Audio"].tap()
+        XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.otherElements["CaptureVideoRecorderHero"].exists)
+    }
+
+    func testVideoOnlyConsentDoesNotAccidentallyAuthorizeAudioCapture() {
+        app.tabBars.buttons["Record"].tap()
+        app.buttons["CaptureSessionChooser"].tap()
+        let consentNeededSession = app.staticTexts["High Ground pre-show"]
+        XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
+        consentNeededSession.tap()
+
+        app.buttons["CaptureConfirmConsentButton"].tap()
+        let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
+        XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
+
+        let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
+        let recordVideo = app.switches["CaptureConsentRecordVideoToggle"]
+        XCTAssertEqual(recordAudio.value as? String, "0")
+        turnOn(recordVideo)
+
+        let nearbyPeople = app.switches["CaptureConsentAudibleParticipantsToggle"]
+        reveal(nearbyPeople)
+        turnOn(nearbyPeople)
+
+        let saveChoices = app.buttons["CaptureConsentSaveChoicesButton"]
+        reveal(saveChoices)
+        XCTAssertTrue(saveChoices.isEnabled)
+        saveChoices.tap()
+        expectation(
+            for: NSPredicate(format: "exists == false"),
+            evaluatedWith: consentSheet
+        )
+        waitForExpectations(timeout: 5)
+
+        let audioStart = app.buttons["CaptureStartButton"]
+        XCTAssertTrue(audioStart.exists)
+        XCTAssertFalse(
+            audioStart.isEnabled,
+            "A video-only receipt must never authorize the microphone-only recorder."
+        )
+
+        let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
+        modePicker.buttons["Podcast"].tap()
+        let prepareVideo = app.buttons["CaptureVideoPrepareButton"]
+        XCTAssertTrue(prepareVideo.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            prepareVideo.isEnabled,
+            "Video-only consent should allow an explicit camera preflight while the audio recorder remains locked."
+        )
     }
 
     func testNewSessionDoesNotImplyConsentOrStartRecording() {

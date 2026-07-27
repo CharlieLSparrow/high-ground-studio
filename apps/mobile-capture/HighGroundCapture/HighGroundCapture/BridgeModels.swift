@@ -464,11 +464,20 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let recordingConsentId: String?
     let recordingConsentStatus: String?
     let recordingConsentGranted: Bool
+    var recordingConsentCanRecordAudio: Bool? = nil
+    var recordingConsentCanRecordVideo: Bool? = nil
+    var recordingConsentCanTranscribe: Bool? = nil
+    var recordingConsentVideoGranted: Bool? = nil
     let canRecordNow: Bool
+    var canRecordAudioNow: Bool? = nil
+    var canRecordVideoNow: Bool? = nil
     var consentRequiredParticipantCount: Int? = nil
     var consentGrantedParticipantCount: Int? = nil
     var allRegisteredParticipantConsentGranted: Bool? = nil
+    var videoConsentGrantedParticipantCount: Int? = nil
+    var allRegisteredParticipantVideoConsentGranted: Bool? = nil
     let captureReadiness: MobileCaptureReadinessVerdict?
+    var videoCaptureReadiness: MobileCaptureReadinessVerdict? = nil
     let journeySummary: MobileCaptureJourneySummary?
     var contentReadiness: MobileCaptureContentReadiness? = nil
     let lifecycle: MobileCaptureLifecycle?
@@ -651,6 +660,10 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         let label = captureReadiness?.label?.trimmingCharacters(in: .whitespacesAndNewlines)
         if let label, !label.isEmpty { return label }
         return recordingConsentGranted ? "Ready locally" : "Consent needed"
+    }
+
+    var hasCurrentRecordingConsent: Bool {
+        recordingConsentGranted || recordingConsentVideoGranted == true
     }
 
     var captureReadinessDetail: String {
@@ -1132,9 +1145,15 @@ struct MobileCaptureConsentUpdate: Codable {
     let recordingConsentId: String?
     let recordingConsentStatus: String?
     let recordingConsentGranted: Bool?
+    let recordingConsentCanRecordAudio: Bool?
+    let recordingConsentCanRecordVideo: Bool?
+    let recordingConsentCanTranscribe: Bool?
+    let recordingConsentVideoGranted: Bool?
     let consentRequiredParticipantCount: Int?
     let consentGrantedParticipantCount: Int?
     let allRegisteredParticipantConsentGranted: Bool?
+    let videoConsentGrantedParticipantCount: Int?
+    let allRegisteredParticipantVideoConsentGranted: Bool?
     let nextAction: String?
 }
 
@@ -2673,9 +2692,8 @@ struct MobileCaptureConsentGrantAttestation: Equatable, Sendable {
     let allAudibleParticipantsNotifiedAndAgreed: Bool
     let presentedAt: Date
 
-    var isCompleteForAudioCapture: Bool {
-        canRecordAudio
-            && !canRecordVideo
+    var isCompleteForCapture: Bool {
+        (canRecordAudio || canRecordVideo)
             && allAudibleParticipantsNotifiedAndAgreed
     }
 }
@@ -3848,11 +3866,11 @@ final class CaptureSessionClient: ObservableObject {
             ]
             if consentAction.uppercased() == "GRANT" {
                 guard let grantAttestation,
-                      grantAttestation.isCompleteForAudioCapture else {
+                      grantAttestation.isCompleteForCapture else {
                     throw NSError(
                         domain: "CaptureSessions",
                         code: 3,
-                        userInfo: [NSLocalizedDescriptionKey: "Recording consent is incomplete. Confirm audio recording and the nearby-participant safety attestation; transcription remains a separate choice."]
+                        userInfo: [NSLocalizedDescriptionKey: "Recording consent is incomplete. Choose audio, video, or both and confirm the nearby-participant safety attestation; transcription remains a separate choice."]
                     )
                 }
                 requestBody["canRecordAudio"] = grantAttestation.canRecordAudio
@@ -3913,8 +3931,20 @@ final class CaptureSessionClient: ObservableObject {
                 recordingConsentId: update?.recordingConsentId ?? session.recordingConsentId,
                 recordingConsentStatus: update?.recordingConsentStatus ?? session.recordingConsentStatus,
                 recordingConsentGranted: update?.recordingConsentGranted ?? session.recordingConsentGranted,
+                recordingConsentCanRecordAudio: update?.recordingConsentCanRecordAudio ?? session.recordingConsentCanRecordAudio,
+                recordingConsentCanRecordVideo: update?.recordingConsentCanRecordVideo ?? session.recordingConsentCanRecordVideo,
+                recordingConsentCanTranscribe: update?.recordingConsentCanTranscribe ?? session.recordingConsentCanTranscribe,
+                recordingConsentVideoGranted: update?.recordingConsentVideoGranted ?? session.recordingConsentVideoGranted,
                 canRecordNow: session.canRecordNow && (update?.recordingConsentGranted ?? session.recordingConsentGranted),
+                canRecordAudioNow: session.canRecordAudioNow,
+                canRecordVideoNow: session.canRecordVideoNow,
+                consentRequiredParticipantCount: update?.consentRequiredParticipantCount ?? session.consentRequiredParticipantCount,
+                consentGrantedParticipantCount: update?.consentGrantedParticipantCount ?? session.consentGrantedParticipantCount,
+                allRegisteredParticipantConsentGranted: update?.allRegisteredParticipantConsentGranted ?? session.allRegisteredParticipantConsentGranted,
+                videoConsentGrantedParticipantCount: update?.videoConsentGrantedParticipantCount ?? session.videoConsentGrantedParticipantCount,
+                allRegisteredParticipantVideoConsentGranted: update?.allRegisteredParticipantVideoConsentGranted ?? session.allRegisteredParticipantVideoConsentGranted,
                 captureReadiness: session.captureReadiness,
+                videoCaptureReadiness: session.videoCaptureReadiness,
                 journeySummary: session.journeySummary,
                 contentReadiness: session.contentReadiness,
                 lifecycle: session.lifecycle,
@@ -4086,8 +4116,20 @@ final class CaptureSessionClient: ObservableObject {
                 recordingConsentId: update?.recordingConsentId ?? session.recordingConsentId,
                 recordingConsentStatus: update?.recordingConsentStatus ?? session.recordingConsentStatus,
                 recordingConsentGranted: update?.recordingConsentGranted ?? session.recordingConsentGranted,
+                recordingConsentCanRecordAudio: update?.recordingConsentCanRecordAudio ?? session.recordingConsentCanRecordAudio,
+                recordingConsentCanRecordVideo: update?.recordingConsentCanRecordVideo ?? session.recordingConsentCanRecordVideo,
+                recordingConsentCanTranscribe: update?.recordingConsentCanTranscribe ?? session.recordingConsentCanTranscribe,
+                recordingConsentVideoGranted: update?.recordingConsentVideoGranted ?? session.recordingConsentVideoGranted,
                 canRecordNow: session.canRecordNow && ["PLANNED", "OPEN", "RECORDING"].contains(update?.status ?? session.status ?? ""),
+                canRecordAudioNow: session.canRecordAudioNow,
+                canRecordVideoNow: session.canRecordVideoNow,
+                consentRequiredParticipantCount: update?.consentRequiredParticipantCount ?? session.consentRequiredParticipantCount,
+                consentGrantedParticipantCount: update?.consentGrantedParticipantCount ?? session.consentGrantedParticipantCount,
+                allRegisteredParticipantConsentGranted: update?.allRegisteredParticipantConsentGranted ?? session.allRegisteredParticipantConsentGranted,
+                videoConsentGrantedParticipantCount: update?.videoConsentGrantedParticipantCount ?? session.videoConsentGrantedParticipantCount,
+                allRegisteredParticipantVideoConsentGranted: update?.allRegisteredParticipantVideoConsentGranted ?? session.allRegisteredParticipantVideoConsentGranted,
                 captureReadiness: session.captureReadiness,
+                videoCaptureReadiness: session.videoCaptureReadiness,
                 journeySummary: session.journeySummary,
                 contentReadiness: session.contentReadiness,
                 lifecycle: session.lifecycle,

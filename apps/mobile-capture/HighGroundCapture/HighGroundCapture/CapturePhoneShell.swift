@@ -1,7 +1,10 @@
+import AVFoundation
 import SwiftUI
+import UIKit
 
 struct CapturePhoneShell: View {
     @EnvironmentObject private var audioCapture: AudioCaptureController
+    @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var model = CaptureExperienceModel()
     @State private var showsNewSession = false
 
@@ -39,10 +42,28 @@ struct CapturePhoneShell: View {
         }
         .tint(CapturePalette.accent)
         .safeAreaInset(edge: .top, spacing: 0) {
-            if captureIsActive {
+            if audioCaptureIsActive {
                 GlobalCaptureBanner(
-                    state: audioCapture.captureState,
+                    title: audioCapture.captureState == .paused
+                        ? "Audio paused"
+                        : audioCapture.captureState == .finalizing
+                            ? "Saving audio"
+                            : "Recording audio",
                     duration: audioCapture.currentDuration,
+                    tint: audioCapture.captureState == .paused ? .orange : .red,
+                    isPulsing: audioCapture.captureState == .recording,
+                    action: { model.selectedTab = .record }
+                )
+            } else if videoCaptureIsActive {
+                GlobalCaptureBanner(
+                    title: videoCapture.state == .paused
+                        ? "Camera paused"
+                        : videoCapture.state == .finalizing
+                            ? "Saving video"
+                            : "Recording video",
+                    duration: videoCapture.durationSeconds,
+                    tint: videoCapture.state == .paused ? .orange : .red,
+                    isPulsing: videoCapture.state == .recording,
                     action: { model.selectedTab = .record }
                 )
             }
@@ -62,15 +83,22 @@ struct CapturePhoneShell: View {
         .onChange(of: audioCapture.captureState) { _, state in
             model.reconcileCaptureState(state)
         }
+        .onChange(of: videoCapture.state) { _, state in
+            model.reconcileVideoCaptureState(state, using: videoCapture)
+        }
     }
 
-    private var captureIsActive: Bool {
+    private var audioCaptureIsActive: Bool {
         switch audioCapture.captureState {
         case .recording, .paused, .finalizing:
             true
         default:
             false
         }
+    }
+
+    private var videoCaptureIsActive: Bool {
+        videoCapture.state.isActive || videoCapture.state == .paused
     }
 
     private var errorIsPresented: Binding<Bool> {
@@ -2170,11 +2198,14 @@ private struct TodayGoalCheckInControls: View {
 private struct CaptureRecorderView: View {
     @ObservedObject var model: CaptureExperienceModel
     @EnvironmentObject private var audioCapture: AudioCaptureController
+    @EnvironmentObject private var videoCapture: VideoCaptureController
     @State private var showsSessionPicker = false
     @State private var showsRoomDetails = false
     @State private var showsSessionContext = false
     @State private var showsConsentConfirmation = false
     @State private var quickEntryKind: MobileQuickEntryKind?
+    @State private var recordingMode: CaptureRecordingMode = .audio
+    @State private var cameraPosition: VideoCaptureCameraPosition = .front
 
     var body: some View {
         ScrollView {
@@ -2225,26 +2256,79 @@ private struct CaptureRecorderView: View {
                         onRevoke: { Task { await model.revokeConsent() } }
                     )
 
-                    RecorderHero(
-                        session: session,
-                        captureState: audioCapture.captureState,
-                        duration: audioCapture.currentDuration,
-                        inputLevel: audioCapture.normalizedInputLevel,
-                        inputRoute: audioCapture.inputRouteName,
-                        userMarkOffsets: audioCapture.userMarkOffsets,
-                        isBusy: model.isChangingCapture,
-                        onPrimaryAction: {
-                            Task {
-                                if captureIsActive {
-                                    await model.stopCapture(using: audioCapture)
-                                } else {
-                                    await model.startCapture(using: audioCapture)
+                    CaptureRecordingModePicker(
+                        selection: $recordingMode,
+                        isLocked: captureIsActive || model.isChangingCapture
+                    )
+
+                    if recordingMode == .audio {
+                        RecorderHero(
+                            session: session,
+                            captureState: audioCapture.captureState,
+                            duration: audioCapture.currentDuration,
+                            inputLevel: audioCapture.normalizedInputLevel,
+                            inputRoute: audioCapture.inputRouteName,
+                            userMarkOffsets: audioCapture.userMarkOffsets,
+                            isBusy: model.isChangingCapture,
+                            onPrimaryAction: {
+                                Task {
+                                    if audioCaptureIsActive {
+                                        await model.stopCapture(using: audioCapture)
+                                    } else {
+                                        await model.startCapture(using: audioCapture)
+                                    }
+                                }
+                            },
+                            onPauseResume: { Task { await model.togglePause(using: audioCapture) } },
+                            onMark: { model.markMoment(using: audioCapture) }
+                        )
+                    } else {
+                        VideoRecorderHero(
+                            session: session,
+                            mode: recordingMode,
+                            controller: videoCapture,
+                            cameraPosition: $cameraPosition,
+                            isBusy: model.isChangingCapture,
+                            onPrepare: {
+                                Task {
+                                    await model.prepareVideoCapture(
+                                        using: videoCapture,
+                                        mode: recordingMode,
+                                        position: cameraPosition
+                                    )
+                                }
+                            },
+                            onStart: {
+                                Task {
+                                    await model.startVideoCapture(
+                                        using: videoCapture,
+                                        mode: recordingMode
+                                    )
+                                }
+                            },
+                            onStop: {
+                                Task {
+                                    await model.stopVideoCapture(
+                                        using: videoCapture
+                                    )
+                                }
+                            },
+                            onPauseResume: {
+                                Task {
+                                    await model.toggleVideoPause(
+                                        using: videoCapture
+                                    )
+                                }
+                            },
+                            onSwitchCamera: {
+                                Task {
+                                    await model.switchVideoCamera(
+                                        using: videoCapture
+                                    )
                                 }
                             }
-                        },
-                        onPauseResume: { Task { await model.togglePause(using: audioCapture) } },
-                        onMark: { model.markMoment(using: audioCapture) }
-                    )
+                        )
+                    }
 
                     if audioCapture.captureState == .paused,
                        let recorderMessage = audioCapture.lastErrorMessage,
@@ -2279,8 +2363,7 @@ private struct CaptureRecorderView: View {
                     DisclosureGroup(isExpanded: $showsRoomDetails) {
                         ProviderRoomControls(
                             model: model,
-                            session: session,
-                            captureState: audioCapture.captureState
+                            session: session
                         )
                             .padding(.top, 12)
                     } label: {
@@ -2288,16 +2371,16 @@ private struct CaptureRecorderView: View {
                             Label("Live room", systemImage: "person.2.wave.2")
                                 .font(.headline)
                             Spacer()
-                            Text(captureIsActive ? "Locked for take" : model.providerRoom.isConnected ? "Connected" : session.providerBadgeLabel)
+                            Text(model.providerControlsLockedForLocalCapture ? "Locked for take" : model.providerRoom.isConnected ? "Connected" : session.providerBadgeLabel)
                                 .font(.caption.weight(.semibold))
-                                .foregroundStyle(captureIsActive ? Color.orange : model.providerRoom.isConnected ? Color.green : Color.secondary)
+                                .foregroundStyle(model.providerControlsLockedForLocalCapture ? Color.orange : model.providerRoom.isConnected ? Color.green : Color.secondary)
                         }
                     }
                     .captureCard()
-                    .accessibilityHint(captureIsActive ? model.providerControlsLockMessage : "Shows optional live room controls. Joining never starts local recording.")
+                    .accessibilityHint(model.providerControlsLockedForLocalCapture ? model.providerControlsLockMessage : "Shows optional live room controls. Joining never starts local recording.")
                     .accessibilityIdentifier("CaptureLiveRoomDisclosure")
 
-                    SourceTruthFootnote()
+                    SourceTruthFootnote(mode: recordingMode)
                 } else if model.isRefreshing {
                     CaptureLoadingCard(label: "Loading capture sessions…")
                 } else {
@@ -2343,15 +2426,58 @@ private struct CaptureRecorderView: View {
                 .presentationDetents([.large])
         }
         .interactiveDismissDisabled(captureIsActive)
+        .onChange(of: recordingMode) { oldMode, newMode in
+            guard oldMode != newMode else { return }
+            if newMode == .audio {
+                Task { await videoCapture.shutdownPreview() }
+            } else if videoCapture.state == .ready,
+                      videoCapture.resolvedProfile?.includesAudio != newMode.includesLocalAudio {
+                Task {
+                    await model.prepareVideoCapture(
+                        using: videoCapture,
+                        mode: newMode,
+                        position: cameraPosition
+                    )
+                }
+            }
+        }
+        .onChange(of: cameraPosition) { oldPosition, newPosition in
+            guard oldPosition != newPosition,
+                  recordingMode.recordsVideo,
+                  videoCapture.state == .ready else { return }
+            Task {
+                await model.prepareVideoCapture(
+                    using: videoCapture,
+                    mode: recordingMode,
+                    position: newPosition
+                )
+            }
+        }
+        .onChange(of: videoCapture.cameraPosition) { _, position in
+            cameraPosition = position
+        }
+        .onDisappear {
+            guard !videoCapture.state.isActive,
+                  videoCapture.state != .paused else { return }
+            Task { await videoCapture.shutdownPreview() }
+        }
     }
 
     private var captureIsActive: Bool {
+        audioCaptureIsActive || videoCaptureIsActive
+    }
+
+    private var audioCaptureIsActive: Bool {
         switch audioCapture.captureState {
         case .recording, .paused, .finalizing:
             true
         default:
             false
         }
+    }
+
+    private var videoCaptureIsActive: Bool {
+        videoCapture.state.isActive || videoCapture.state == .paused
     }
 }
 
@@ -4014,9 +4140,9 @@ private struct SessionListRow: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 Spacer()
-                Image(systemName: session.recordingConsentGranted ? "checkmark.shield.fill" : "shield.lefthalf.filled.badge.checkmark")
-                    .foregroundStyle(session.recordingConsentGranted ? .green : .orange)
-                    .accessibilityLabel(session.recordingConsentGranted ? "Consent granted" : "Consent needed")
+                Image(systemName: session.hasCurrentRecordingConsent ? "checkmark.shield.fill" : "shield.lefthalf.filled.badge.checkmark")
+                    .foregroundStyle(session.hasCurrentRecordingConsent ? .green : .orange)
+                    .accessibilityLabel(session.hasCurrentRecordingConsent ? "Consent granted" : "Consent needed")
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.bold))
                     .foregroundStyle(.tertiary)
@@ -4086,7 +4212,7 @@ private struct ConsentStrip: View {
             }
         }
         .padding(13)
-        .background((session.recordingConsentGranted ? Color.green : Color.orange).opacity(0.09), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .background((session.hasCurrentRecordingConsent ? Color.green : Color.orange).opacity(0.09), in: RoundedRectangle(cornerRadius: 17, style: .continuous))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureConsentStrip")
     }
@@ -4126,9 +4252,9 @@ private struct ConsentStrip: View {
     }
 
     private var consentIcon: some View {
-        Image(systemName: session.recordingConsentGranted ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
+        Image(systemName: session.hasCurrentRecordingConsent ? "checkmark.shield.fill" : "exclamationmark.shield.fill")
             .font(.title3)
-            .foregroundStyle(session.recordingConsentGranted ? .green : .orange)
+            .foregroundStyle(session.hasCurrentRecordingConsent ? .green : .orange)
             .accessibilityHidden(true)
     }
 
@@ -4136,7 +4262,7 @@ private struct ConsentStrip: View {
     private var consentAction: some View {
         if isBusy {
             ProgressView()
-        } else if session.recordingConsentGranted {
+        } else if session.hasCurrentRecordingConsent {
             Menu {
                 Button("Revoke consent", role: .destructive, action: onRevoke)
                     .disabled(isCaptureActive)
@@ -4156,19 +4282,31 @@ private struct ConsentStrip: View {
     }
 
     private var consentTitle: String {
-        session.recordingConsentGranted ? "Recorder attestation saved" : "Consent attestation required"
+        session.hasCurrentRecordingConsent ? "Recorder attestation saved" : "Consent attestation required"
     }
 
     private var consentDetail: String {
-        if let required = session.consentRequiredParticipantCount,
-           let granted = session.consentGrantedParticipantCount,
-           required > 1,
-           granted < required {
-            return "\(granted) of \(required) signed-in participants consented. Each person must confirm; everyone else who may be heard must also be told and agree."
+        if let required = session.consentRequiredParticipantCount, required > 1 {
+            let audioGranted = session.consentGrantedParticipantCount ?? 0
+            let videoGranted = session.videoConsentGrantedParticipantCount ?? 0
+            let waitingOnAudio = session.recordingConsentCanRecordAudio == true && audioGranted < required
+            let waitingOnVideo = session.recordingConsentCanRecordVideo == true && videoGranted < required
+            if waitingOnAudio || waitingOnVideo {
+                let counts = [
+                    session.recordingConsentCanRecordAudio == true ? "audio \(audioGranted)/\(required)" : nil,
+                    session.recordingConsentCanRecordVideo == true ? "video \(videoGranted)/\(required)" : nil,
+                ].compactMap { $0 }.joined(separator: " · ")
+                return "\(counts). Each signed-in participant must confirm; everyone else who may be captured must also be told and agree."
+            }
         }
-        return session.recordingConsentGranted
-            ? "You confirmed everyone who may be heard was told and agreed. Recording still starts visibly."
-            : "Confirm your consent and that everyone who may be heard was told and agreed."
+        guard session.hasCurrentRecordingConsent else {
+            return "Choose audio, video, or both, then confirm that everyone who may be captured was told and agreed."
+        }
+        let sources = [
+            session.recordingConsentCanRecordAudio == true ? "audio" : nil,
+            session.recordingConsentCanRecordVideo == true ? "video" : nil,
+        ].compactMap { $0 }.joined(separator: " and ")
+        return "You confirmed \(sources) consent for everyone who may be captured. Recording still starts visibly."
     }
 }
 
@@ -4179,6 +4317,7 @@ struct CaptureConsentConfirmationSheet: View {
     let onSave: @MainActor @Sendable (Bool, Bool, Bool, Bool, Date) async -> Bool
 
     @State private var canRecordAudio = false
+    @State private var canRecordVideo = false
     @State private var canTranscribe = false
     @State private var allAudibleParticipantsNotifiedAndAgreed = false
     @State private var isSubmitting = false
@@ -4227,23 +4366,14 @@ struct CaptureConsentConfirmationSheet: View {
                     }
                     .accessibilityIdentifier("CaptureConsentRecordAudioToggle")
 
-                    HStack(alignment: .top, spacing: 12) {
-                        Image(systemName: "video.slash")
-                            .foregroundStyle(.secondary)
-                            .frame(width: 24)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Record video")
-                            Text("Off — Quipsly Capture does not request video recording in this flow.")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Text("Off")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                    Toggle(isOn: $canRecordVideo) {
+                        ConsentChoiceLabel(
+                            title: "Record video",
+                            detail: "Allow this iPhone to create and preserve local camera sources for this session. This is separate from joining a call.",
+                            systemImage: "video"
+                        )
                     }
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("CaptureConsentVideoOffRow")
+                    .accessibilityIdentifier("CaptureConsentRecordVideoToggle")
                 }
 
                 Section("Transcription") {
@@ -4257,9 +4387,9 @@ struct CaptureConsentConfirmationSheet: View {
                     .accessibilityIdentifier("CaptureConsentTranscriptionToggle")
                 }
 
-                Section("Everyone who may be heard") {
+                Section("Everyone who may be seen or heard") {
                     Toggle(isOn: $allAudibleParticipantsNotifiedAndAgreed) {
-                        Text("I confirm that everyone who may be heard — including people who are not signed into Quipsly — was told about the recording and transcription choices and agreed before recording starts.")
+                        Text("I confirm that everyone who may be seen or heard — including people who are not signed into Quipsly — was told about the audio, video, and transcription choices and agreed before recording starts.")
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     .accessibilityIdentifier("CaptureConsentAudibleParticipantsToggle")
@@ -4294,12 +4424,14 @@ struct CaptureConsentConfirmationSheet: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(!canRecordAudio || !allAudibleParticipantsNotifiedAndAgreed || isSubmitting)
+                    .disabled(
+                        (!canRecordAudio && !canRecordVideo)
+                            || !allAudibleParticipantsNotifiedAndAgreed
+                            || isSubmitting
+                    )
                     .accessibilityIdentifier("CaptureConsentSaveChoicesButton")
                 } footer: {
-                    Text(canTranscribe
-                        ? "You are allowing audio recording and transcription. Video remains off."
-                        : "You are allowing audio recording only. Video and transcription remain off.")
+                    Text(consentSummary)
                 }
             }
             .navigationTitle("Consent choices")
@@ -4317,7 +4449,9 @@ struct CaptureConsentConfirmationSheet: View {
     }
 
     private func submitConsent() {
-        guard canRecordAudio, allAudibleParticipantsNotifiedAndAgreed, !isSubmitting else { return }
+        guard (canRecordAudio || canRecordVideo),
+              allAudibleParticipantsNotifiedAndAgreed,
+              !isSubmitting else { return }
         if requiresStableOwner {
             guard let presentationOwnerSnapshot,
                   AuthManager.shared.matchesStableOwnerSnapshot(presentationOwnerSnapshot) else {
@@ -4327,12 +4461,14 @@ struct CaptureConsentConfirmationSheet: View {
         }
         localErrorMessage = nil
         isSubmitting = true
+        let audioChoice = canRecordAudio
+        let videoChoice = canRecordVideo
         let transcriptionChoice = canTranscribe
         let consentPresentationDate = presentedAt
-        Task { @MainActor [transcriptionChoice, consentPresentationDate] in
+        Task { @MainActor [audioChoice, videoChoice, transcriptionChoice, consentPresentationDate] in
             let saved = await onSave(
-                true,
-                false,
+                audioChoice,
+                videoChoice,
                 transcriptionChoice,
                 true,
                 consentPresentationDate
@@ -4340,6 +4476,20 @@ struct CaptureConsentConfirmationSheet: View {
             isSubmitting = false
             if saved { dismiss() }
         }
+    }
+
+    private var consentSummary: String {
+        let recording: String
+        if canRecordAudio && canRecordVideo {
+            recording = "audio and video recording"
+        } else if canRecordVideo {
+            recording = "video recording"
+        } else if canRecordAudio {
+            recording = "audio recording"
+        } else {
+            recording = "no recording"
+        }
+        return "You are allowing \(recording). Transcription is \(canTranscribe ? "on" : "off") as a separate choice."
     }
 }
 
@@ -4359,6 +4509,404 @@ private struct ConsentChoiceLabel: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+}
+
+private struct CaptureRecordingModePicker: View {
+    @Binding var selection: CaptureRecordingMode
+    let isLocked: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Label("Source mode", systemImage: selection.systemImage)
+                    .font(.headline)
+                Spacer()
+                if isLocked {
+                    Label("Locked", systemImage: "lock.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Picker("Source mode", selection: $selection) {
+                ForEach(CaptureRecordingMode.allCases) { mode in
+                    Text(mode.shortTitle).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .disabled(isLocked)
+            .accessibilityIdentifier("CaptureRecordingModePicker")
+
+            Text(selection.detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureRecordingModeDetail")
+        }
+        .captureCard()
+    }
+}
+
+@MainActor
+private final class CaptureVideoPreviewUIView: UIView {
+    override class var layerClass: AnyClass {
+        AVCaptureVideoPreviewLayer.self
+    }
+
+    var previewLayer: AVCaptureVideoPreviewLayer {
+        layer as! AVCaptureVideoPreviewLayer
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        previewLayer.videoGravity = .resizeAspectFill
+        backgroundColor = .black
+        isAccessibilityElement = true
+        accessibilityLabel = "Live camera preview"
+        accessibilityIdentifier = "CaptureVideoPreview"
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        previewLayer.videoGravity = .resizeAspectFill
+    }
+
+    func attach(session: AVCaptureSession) {
+        if previewLayer.session !== session {
+            previewLayer.session = session
+        }
+        let portraitAngle: CGFloat = 90
+        if let connection = previewLayer.connection,
+           connection.isVideoRotationAngleSupported(portraitAngle) {
+            connection.videoRotationAngle = portraitAngle
+        }
+    }
+}
+
+private struct CaptureVideoPreview: UIViewRepresentable {
+    let session: AVCaptureSession
+
+    func makeUIView(context: Context) -> CaptureVideoPreviewUIView {
+        let view = CaptureVideoPreviewUIView()
+        view.attach(session: session)
+        return view
+    }
+
+    func updateUIView(
+        _ uiView: CaptureVideoPreviewUIView,
+        context: Context
+    ) {
+        uiView.attach(session: session)
+    }
+}
+
+private struct VideoRecorderHero: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var timerFontSize: CGFloat = 40
+
+    let session: MobileCaptureSession
+    let mode: CaptureRecordingMode
+    @ObservedObject var controller: VideoCaptureController
+    @Binding var cameraPosition: VideoCaptureCameraPosition
+    let isBusy: Bool
+    let onPrepare: () -> Void
+    let onStart: () -> Void
+    let onStop: () -> Void
+    let onPauseResume: () -> Void
+    let onSwitchCamera: () -> Void
+
+    var body: some View {
+        VStack(spacing: 14) {
+            VStack(spacing: 5) {
+                Text(stateTitle)
+                    .font(.title2.weight(.bold))
+                    .multilineTextAlignment(.center)
+                    .accessibilityIdentifier("CaptureVideoStateLabel")
+                Text(controller.durationSeconds.captureDurationLabel)
+                    .font(.system(
+                        size: min(timerFontSize, 64),
+                        weight: .medium,
+                        design: .monospaced
+                    ))
+                    .monospacedDigit()
+                    .contentTransition(reduceMotion ? .identity : .numericText())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+                    .accessibilityLabel(
+                        "Elapsed time \(controller.durationSeconds.captureDurationLabel)"
+                    )
+                    .accessibilityIdentifier("CaptureVideoElapsedTime")
+            }
+
+            if showsPreview {
+                CaptureVideoPreview(session: controller.captureSession)
+                    .frame(maxWidth: .infinity)
+                    .aspectRatio(9 / 16, contentMode: .fit)
+                    .frame(maxHeight: 440)
+                    .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .overlay(alignment: .topLeading) {
+                        Label(
+                            controller.cameraPosition == .front ? "Front" : "Back",
+                            systemImage: "camera.fill"
+                        )
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(.black.opacity(0.58), in: Capsule())
+                        .padding(10)
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if isCaptureGroupOpen {
+                            Text(controller.state == .paused ? "PAUSED" : "REC")
+                                .font(.caption2.weight(.black))
+                                .tracking(1.2)
+                                .foregroundStyle(
+                                    controller.state == .paused ? .orange : .red
+                                )
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(.black.opacity(0.68), in: Capsule())
+                                .padding(10)
+                        }
+                    }
+            } else {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(Color.black.opacity(0.9))
+                    VStack(spacing: 10) {
+                        Image(systemName: "camera.viewfinder")
+                            .font(.system(size: 42, weight: .medium))
+                        Text("Prepare the camera to verify its real format and framing.")
+                            .font(.subheadline.weight(.semibold))
+                            .multilineTextAlignment(.center)
+                    }
+                    .foregroundStyle(.white.opacity(0.86))
+                    .padding(24)
+                }
+                .aspectRatio(9 / 12, contentMode: .fit)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("CaptureVideoPreviewPlaceholder")
+            }
+
+            Picker("Camera", selection: $cameraPosition) {
+                Text("Front").tag(VideoCaptureCameraPosition.front)
+                Text("Back").tag(VideoCaptureCameraPosition.back)
+            }
+            .pickerStyle(.segmented)
+            .disabled(isBusy || isCaptureGroupOpen || controller.state == .preparing)
+            .accessibilityIdentifier("CaptureVideoCameraPicker")
+
+            if let profile = controller.resolvedProfile {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Label(profile.profileLabel, systemImage: "checkmark.seal.fill")
+                            .font(.subheadline.weight(.bold))
+                            .foregroundStyle(CapturePalette.accent)
+                        Spacer()
+                    }
+                    Text(profile.cameraLocalizedName)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        Label(
+                            mode.includesLocalAudio ? "Local audio on" : "Video only",
+                            systemImage: mode.includesLocalAudio ? "mic.fill" : "mic.slash"
+                        )
+                        if let minutes = controller.estimatedAvailableMinutes {
+                            Label("≈\(minutes) min free", systemImage: "internaldrive")
+                        }
+                    }
+                    .font(.caption.weight(.semibold))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(12)
+                .background(
+                    CapturePalette.accent.opacity(0.08),
+                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                )
+                .accessibilityIdentifier("CaptureVideoResolvedProfile")
+            }
+
+            Button(action: primaryAction) {
+                ZStack {
+                    Circle()
+                        .fill(primaryTint.opacity(0.14))
+                        .frame(width: 126, height: 126)
+                    Circle()
+                        .fill(primaryTint)
+                        .frame(width: 96, height: 96)
+                    if isBusy || [.preparing, .arming, .finalizing].contains(controller.state) {
+                        ProgressView().tint(.white).controlSize(.large)
+                    } else {
+                        Image(systemName: primarySystemImage)
+                            .font(.system(size: 34, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+            }
+            .buttonStyle(CaptureRecordButtonStyle())
+            .disabled(primaryDisabled)
+            .accessibilityLabel(primaryAccessibilityLabel)
+            .accessibilityIdentifier(primaryIdentifier)
+
+            if controller.state == .recording || controller.state == .paused {
+                HStack(spacing: 10) {
+                    Button(action: onPauseResume) {
+                        Label(
+                            controller.state == .paused ? "Resume" : "Pause",
+                            systemImage: controller.state == .paused
+                                ? "play.fill"
+                                : "pause.fill"
+                        )
+                        .frame(minWidth: 78)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
+                    .accessibilityIdentifier("CaptureVideoPauseResumeButton")
+
+                    if controller.state == .recording {
+                        Button(action: onSwitchCamera) {
+                            Label("Flip", systemImage: "arrow.triangle.2.circlepath.camera")
+                                .frame(minWidth: 78)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .accessibilityHint(
+                            "Closes and validates this movie, then starts the other camera in the same capture group."
+                        )
+                        .accessibilityIdentifier("CaptureVideoSwitchCameraButton")
+                    }
+                }
+            }
+
+            if let safetyMessage = controller.safetyMessage {
+                Label(safetyMessage, systemImage: "lock.shield.fill")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureVideoSafetyMessage")
+            }
+            if let error = controller.lastErrorMessage {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureVideoErrorMessage")
+            }
+
+            Text(sourceBoundary)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("CaptureVideoSourceBoundary")
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 18)
+        .padding(.horizontal, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(.regularMaterial)
+                .shadow(color: .black.opacity(0.06), radius: 18, y: 8)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureVideoRecorderHero")
+    }
+
+    private var showsPreview: Bool {
+        controller.resolvedProfile != nil
+            && ![.idle, .failed].contains(controller.state)
+    }
+
+    private var isCaptureGroupOpen: Bool {
+        controller.state.isActive || controller.state == .paused
+    }
+
+    private var videoReady: Bool {
+        session.recordingConsentVideoGranted == true
+            && session.canRecordVideoNow == true
+    }
+
+    private var primaryDisabled: Bool {
+        if isBusy || [.preparing, .arming, .finalizing].contains(controller.state) {
+            return true
+        }
+        if controller.state == .ready {
+            return !videoReady
+                || (
+                    mode.includesLocalAudio
+                    && !(session.canRecordAudioNow ?? session.canRecordNow)
+                )
+        }
+        return false
+    }
+
+    private var primaryTint: Color {
+        if isCaptureGroupOpen { return .red }
+        if controller.state == .ready && !videoReady { return .gray }
+        return CapturePalette.record
+    }
+
+    private var primarySystemImage: String {
+        if isCaptureGroupOpen { return "stop.fill" }
+        if controller.state == .ready { return "circle.fill" }
+        return "camera.fill"
+    }
+
+    private var primaryIdentifier: String {
+        if isCaptureGroupOpen { return "CaptureVideoStopButton" }
+        if controller.state == .ready { return "CaptureVideoStartButton" }
+        return "CaptureVideoPrepareButton"
+    }
+
+    private var primaryAccessibilityLabel: String {
+        if isCaptureGroupOpen {
+            return "Stop video capture group, \(controller.durationSeconds.captureDurationLabel) elapsed"
+        }
+        if controller.state == .ready {
+            return videoReady
+                ? "Start \(mode.title.lowercased())"
+                : "Video recording unavailable until every participant's video consent is ready"
+        }
+        return "Prepare \(cameraPosition.rawValue) camera"
+    }
+
+    private var stateTitle: String {
+        switch controller.state {
+        case .idle: "Camera is off"
+        case .preparing: "Verifying camera…"
+        case .ready:
+            videoReady ? "Camera and consent ready" : "Camera ready · video consent needed"
+        case .arming: "Protecting source identity…"
+        case .recording:
+            mode == .podcastCamera ? "Podcast camera recording" : "Solo video recording"
+        case .finalizing: "Closing and validating movie…"
+        case .paused: "Camera paused safely"
+        case .saved: "Video saved on this iPhone"
+        case .failed: "Camera source needs attention"
+        }
+    }
+
+    private var sourceBoundary: String {
+        switch mode {
+        case .podcastCamera:
+            "Video only: LiveKit carries the audible conversation. This movie stays an independent immutable source until reviewed clock and waveform alignment."
+        case .soloVideo:
+            "Camera and microphone share this local movie. Joining a live room is blocked so the call cannot silently reconfigure its audio."
+        case .audio:
+            ""
+        }
+    }
+
+    private func primaryAction() {
+        if isCaptureGroupOpen {
+            onStop()
+        } else if controller.state == .ready {
+            onStart()
+        } else {
+            onPrepare()
         }
     }
 }
@@ -4564,7 +5112,6 @@ private struct InputLevelMeter: View {
 private struct ProviderRoomControls: View {
     @ObservedObject var model: CaptureExperienceModel
     let session: MobileCaptureSession
-    let captureState: AudioCaptureState
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -4633,13 +5180,7 @@ private struct ProviderRoomControls: View {
     }
 
     private var providerControlsLocked: Bool {
-        if model.isChangingCapture { return true }
-        switch captureState {
-        case .recording, .paused, .finalizing:
-            return true
-        default:
-            return false
-        }
+        model.providerControlsLockedForLocalCapture
     }
 
     private var providerControlHint: String {
@@ -5397,16 +5938,18 @@ private func accountDeletionDate(_ value: String?) -> String? {
 }
 
 private struct GlobalCaptureBanner: View {
-    let state: AudioCaptureState
+    let title: String
     let duration: TimeInterval
+    let tint: Color
+    let isPulsing: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                Image(systemName: state == .paused ? "pause.circle.fill" : "record.circle.fill")
-                    .symbolEffect(.pulse, isActive: state == .recording)
-                Text(state == .paused ? "Recording paused" : state == .finalizing ? "Saving recording" : "Recording")
+                Image(systemName: isPulsing ? "record.circle.fill" : "pause.circle.fill")
+                    .symbolEffect(.pulse, isActive: isPulsing)
+                Text(title)
                     .font(.subheadline.weight(.bold))
                 Spacer()
                 Text(duration.captureDurationLabel)
@@ -5417,11 +5960,11 @@ private struct GlobalCaptureBanner: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 16)
             .frame(height: 44)
-            .background(state == .paused ? Color.orange : Color.red)
+            .background(tint)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(state == .finalizing ? "Open recording being saved" : "Open active recording")
-        .accessibilityValue("\(state == .paused ? "Paused" : state == .finalizing ? "Saving" : "Recording"), \(duration.captureDurationLabel)")
+        .accessibilityLabel("Open \(title.lowercased())")
+        .accessibilityValue("\(title), \(duration.captureDurationLabel)")
         .accessibilityIdentifier("GlobalCaptureBanner")
     }
 }
@@ -5451,12 +5994,25 @@ private struct LocalSafetySummary: View {
 }
 
 private struct SourceTruthFootnote: View {
+    let mode: CaptureRecordingMode
+
     var body: some View {
-        Label("The local file is this iPhone's immutable microphone source. Room audio is coordination; only a verified, released upload becomes editor input.", systemImage: "lock.shield")
+        Label(detail, systemImage: "lock.shield")
             .font(.caption)
             .foregroundStyle(.secondary)
             .padding(.horizontal, 6)
             .accessibilityIdentifier("CaptureSourceTruthFootnote")
+    }
+
+    private var detail: String {
+        switch mode {
+        case .audio:
+            "The local file is this iPhone's immutable microphone source. Room audio is coordination; only a verified, released upload becomes editor input."
+        case .soloVideo:
+            "The local movie is this iPhone's immutable camera-and-microphone source. Only exact-byte verification and reviewed editor placement can promote it."
+        case .podcastCamera:
+            "The local movie is an immutable video-only camera source. Room audio stays independent; clock evidence proposes placement, and a human reviews sync."
+        }
     }
 }
 
@@ -5681,4 +6237,5 @@ private extension String {
 #Preview {
     CapturePhoneShell()
         .environmentObject(AudioCaptureController())
+        .environmentObject(VideoCaptureController())
 }

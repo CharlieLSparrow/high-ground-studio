@@ -11,6 +11,7 @@ import SwiftUI
 struct HighGroundCaptureApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var audioCapture = AudioCaptureController()
+    @StateObject private var videoCapture = VideoCaptureController()
 
     init() {
         AuthManager.configureShareExtensionUITestOwnerIfRequested()
@@ -20,6 +21,7 @@ struct HighGroundCaptureApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(audioCapture)
+                .environmentObject(videoCapture)
         }
     }
 }

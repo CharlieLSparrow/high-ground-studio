@@ -1,7 +1,7 @@
 # Quipsly Capture iPhone Architecture
 
 Status: implementation baseline
-Last reviewed: 2026-07-23
+Last reviewed: 2026-07-27
 Minimum OS: iOS 17
 Primary product: local-first, consent-aware audio and production-source capture for coaching, podcasts, research interviews, and creator video
 
@@ -9,18 +9,19 @@ Primary product: local-first, consent-aware audio and production-source capture 
 
 Quipsly Capture must make one promise and keep it under stress:
 
-> When the user taps Record after consent, Quipsly saves a high-quality source from this iPhone's selected microphone. Network, room-provider, transcript, and editor work may continue later, but none of them can erase or pretend to replace the local source. Only the current user can remove that iPhone's local original through a separate, explicit, irreversible Library action.
+> When the user taps Record after consent, Quipsly saves the explicitly chosen high-quality audio, solo camera-and-microphone, or podcast camera source on this iPhone. Network, room-provider, transcript, and editor work may continue later, but none of them can erase or pretend to replace the local source. Only the current user can remove that iPhone's local original through a separate, explicit, irreversible Library action.
 
 The live room is coordination. Its remote audio is not secretly mixed into the local file. Remote production audio requires double-ended participant tracks or verified provider egress. The local device file is the production source for this microphone. A server-verified upload proves durable preservation of those exact bytes; only a separately released processing receipt may make them an editor input or transcript source.
 
 ## Capture v1 scope
 
-The implemented iPhone candidate exposes four focused surfaces:
+The implemented iPhone candidate exposes five focused surfaces:
 
 1. **Today** — upcoming/recent Quipsly sessions plus actor-scoped canonical goals, committed tasks, personal focus blocks, weekly commitments, source-linked research cues, blockers, and one clear next action. Protected offline work is read-only; task/focus/annotation decisions require a current verified session. Resolving a research cue changes only its annotation overlay and never the preserved source.
-2. **Record** — session choice, consent, microphone readiness, a persistent recording indicator, elapsed time, pause/mark/stop, and compact room controls.
-3. **Library** — every local source, its upload state, size, duration, server verification, and recovery action.
-4. **Account** — identity, upload policy, storage, privacy, local-original controls, and in-app account-deletion request initiation.
+2. **Record** — session choice, source-specific consent, Audio / Solo video / Podcast camera modes, real microphone or camera preflight, persistent capture state, elapsed time, controlled pause/switch/stop boundaries, and compact room controls.
+3. **Work** — actor-scoped projects, tasks, goals, notes, and reusable canonical tags without exposing desktop editor administration.
+4. **Library** — every local source, its upload state, size, duration, server verification, and recovery action.
+5. **Account** — identity, upload policy, storage, privacy, local-original controls, and in-app account-deletion request initiation.
 
 The native 360 editor, publishing prototype, sample manuscript, sample clips, reviewer reports, and simulated actions are not Capture v1 navigation. They may remain in source while separate Studio work continues, but the Capture app must not present prototype or fake-success surfaces as production features.
 
@@ -120,7 +121,7 @@ Audio interruption or any loss of the selected external route pauses visibly, ev
 
 The current source is one AAC/M4A container, not independently finalized segments or a CAF/ALAC stream. After process death, launch reconciliation first performs a bounded header/duration check and durably leaves the source in the non-playable `Validating preserved audio` state. That persisted state is requeued after another termination or relaunch. A sequential utility task then opens the file through `AVAudioFile` and reads decoded frames through the declared end without blocking `MainActor`; only a successful, durable result promotes it to `Recovered locally`. An open, zero-frame, truncated, or corrupt container moves to `Audio needs repair`; its bytes, path, UUID, and owner evidence stay preserved, but the app disables playback and upload retry and never claims the file is playable. Moving capture to independently finalized segments or CAF/ALAC remains deferred until physical-device lock/background, long-take, and ingestion compatibility have been proved.
 
-Local video is the next production increment. It is a separate
+Local video is now a user-reachable production-source lane. It is a separate
 `AVCaptureSession` implementation behind a serial actor/executor, using
 `AVCaptureMovieFileOutput`, ten-second movie fragments, storage and thermal
 interlocks, and foreground-only camera behavior. It writes the same protected
@@ -133,14 +134,16 @@ mid-file input mutation. The full source/clock/editor contract is documented in
 `docs/quipsly/production-source-capture.md`.
 
 The actor-isolated capture service, controller, typed source ledger, controlled
-source boundaries, full-track finalized-file validation, and upload handoff are
-implemented. The product surface remains gated: the current HTTP finalizer
-streams SHA-256 synchronously and therefore accepts at most 2 GiB. A larger
-video stays in an explicit local upload-held state until a dedicated Cloud Run
-Job can stream one immutable GCS generation, commit the same idempotent
-verification/finalization evidence, and expose pollable status. Raising the
-request limit, trusting client metadata as server verification, or silently
-splitting a continuous master into short files are not acceptable substitutes.
+source boundaries, real `AVCaptureVideoPreviewLayer`, source-mode preflight,
+source-specific consent/readiness, full-track finalized-file validation, and
+upload handoff are implemented. The UI may record a safe local original even
+when cloud processing is unavailable; it must then say that upload is held.
+The synchronous finalizer accepts at most 2 GiB. A larger video is upload
+eligible only when Nest advertises the dedicated long-source verifier and its
+maximum size; otherwise it stays in an explicit local upload-held state.
+Raising the request limit, trusting client metadata as server verification, or
+silently splitting a continuous master into short files are not acceptable
+substitutes.
 
 ### Local recording ledger
 
@@ -235,7 +238,7 @@ Every capture mutation validates the authenticated actor and the requested objec
 
 ## Privacy, security, and App Store rules
 
-- The microphone purpose string is specific and localized. Audio-first v1 does not request camera permission, but the app declares a precise camera purpose string because the linked LiveKit session SDK references camera APIs and App Store validation requires the host bundle disclosure. Any future video control must remain an explicit user action; audio recording does not use the camera.
+- The microphone and camera purpose strings are specific and localized. Audio mode never requests camera access. Camera access is requested only after the person explicitly chooses Solo video or Podcast camera and taps Prepare; merely opening Record or joining the audio room does not open the camera.
 - Audio/video permission is requested only when the relevant user action needs it.
 - Local-only capture does not request Photos access. “Save to Photos” would request add-only access at that moment.
 - Recording requires explicit consent and a persistent visible and accessible indication.

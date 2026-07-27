@@ -37,5 +37,10 @@ assert.match(api, /Date\.now\(\) - 30 \* 60 \* 1_000/,
   "stale presentation evidence must not be replayable indefinitely");
 assert.match(api, /serverConfirmedAt: now\.toISOString\(\)/);
 assert.match(api, /CURRENT_CONSENT_PRESENTATION_REQUIRED/);
+assert.match(
+  api,
+  /selectedSourceConsentsReady/,
+  "video-only consent must not be judged by the audio readiness result",
+);
 
 console.log("PASS: iOS/API/web consent use exact v2 copy, explicit choices, current presentation, and audible-person attestation.");

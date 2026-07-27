@@ -13,9 +13,12 @@ changes, and decodes each finalized track through EOF before upload eligibility.
 Old audio ledgers and v2 upload manifests normalize to one-source capture groups
 without gaining new processing authority. The long-source verifier, durable GCS
 queue, scoped Cloud Run Job release, IAM/scheduler setup, and fail-closed Nest
-capability are implemented and container-proved from committed source. Camera
-capture UI remains disabled in environments where Nest does not advertise that
-capability and until the physical-device acceptance gates exist.
+capability are implemented and container-proved from committed source. The
+iPhone Record surface now exposes Audio, Solo video, and Podcast camera as
+distinct modes with a real preview, front/rear selection, resolved profile,
+storage estimate, source-specific consent, and explicit pause/switch
+boundaries. This is simulator- and contract-qualified, not physical-camera
+qualified; unsupported long sources remain visibly safe and upload-held.
 
 Verified sources now project into one canonical episode-media boundary:
 `StudioEpisodeProduction.productionJson.importedMedia`. New finalizations never
@@ -137,6 +140,26 @@ timeline placement from clock, waveform, and later-take drift evidence.
 - [Riverside recording product](https://riverside.fm/recording)
 - [Riverside raw and aligned file formats](https://support.riverside.fm/hc/en-us/articles/5260131045917-Video-and-audio-file-formats-Overview)
 - [Riverside scratch-track alignment](https://support.riverside.fm/hc/en-us/articles/10989462140445-Recording-in-person-while-sharing-devices)
+
+Descript Rooms confirms that double-ended browser capture is a viable future
+guest lane: it records separate participant audio/video files and progressively
+uploads primary sources while retaining lower-quality cloud backups. Its
+published quality is still device-, browser-, light-, load-, and
+network-dependent, and Descript explicitly does not support Rooms on mobile.
+Its recovery workflow may also require a person to replace a partial or backup
+track and recheck alignment. Those constraints reinforce Quipsly's split:
+
+- native Capture owns iPhone camera sources and recovery;
+- native Quipsly Studio owns Charlie's exact local MV7i WAV, Canon master
+  import, route identity, and capture-group receipts;
+- Nest Episode Room owns the call, script, shared clips, collaboration, and
+  visible source status;
+- a future browser double-ended recorder may serve guests, but never silently
+  replaces a direct device master or an editor-approved alignment.
+
+- [Descript Rooms overview](https://help.descript.com/hc/en-us/articles/28800967976205-Get-Started-with-Descript-Rooms)
+- [Descript Rooms recording quality](https://help.descript.com/hc/en-us/articles/23103533895309-Audio-and-Video-Quality-in-SquadCast-Recordings)
+- [Descript stalled-recording recovery](https://help.descript.com/hc/en-us/articles/30176966037005-Recover-and-replace-stalled-Rooms-recordings)
 
 The proxy worker follows two current cloud/runtime boundaries:
 
@@ -526,11 +549,15 @@ mid-file.
    **Complete through simulator build and immutable-manifest tests.**
 3. Add the solo fragmented iPhone movie core, front/rear resolution, exact
    source profile, storage/thermal interlocks, controlled pause/switch, complete
-   stream validation, and upload handoff. **Core complete through simulator
-   build and durability contracts; preflight/live UX, long-source worker, and
-   physical-device proof remain.**
-4. Add podcast-room video-only capture alongside LiveKit audio.
-5. Add controlled camera-switch source boundaries.
+   stream validation, and upload handoff. **Core plus preflight/live UX are
+   complete through simulator build, operated mode selection, and durability
+   contracts; physical-device proof remains.**
+4. Add podcast-room video-only capture alongside LiveKit audio. **Implemented
+   behind source-specific current-consent and room-readiness checks; real
+   simultaneous LiveKit/camera operation remains a physical-device gate.**
+5. Add controlled camera-switch source boundaries. **Implemented as
+   close/validate/re-arm within one capture group; real front/rear gap and
+   alignment proof remain.**
 6. Add cloud technical probe, proxy, alignment proposal, and Episode Room
    readback. **Canonical source projection, exact-byte status, transcript/job
    evidence, native/web source readback, and fail-closed Watch proxy gating are

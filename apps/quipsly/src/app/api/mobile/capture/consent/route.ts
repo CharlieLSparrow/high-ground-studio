@@ -10,6 +10,7 @@ import {
   MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
   MOBILE_CAPTURE_CONSENT_TEXT,
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+  mobileCaptureConsentHasCurrentPolicyEvidence,
 } from "@/lib/server/mobile-capture-consent-readiness.js";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
@@ -293,11 +294,26 @@ export async function POST(request: Request) {
     && receipt.canRecordAudio
     && Boolean(receipt.consentedAt)
     && !receipt.revokedAt
+    && mobileCaptureConsentHasCurrentPolicyEvidence(receipt)
   )).length;
   const allRegisteredParticipantConsentGranted = mobileCaptureAllPartiesReady(
     consentVersions,
     "audio",
   );
+  const videoConsentGrantedParticipantCount = consentVersions.filter((receipt) => (
+    receipt.status === "GRANTED"
+    && receipt.canRecordVideo
+    && Boolean(receipt.consentedAt)
+    && !receipt.revokedAt
+    && mobileCaptureConsentHasCurrentPolicyEvidence(receipt)
+  )).length;
+  const allRegisteredParticipantVideoConsentGranted = mobileCaptureAllPartiesReady(
+    consentVersions,
+    "video",
+  );
+  const selectedSourceConsentsReady =
+    (!consent.canRecordAudio || allRegisteredParticipantConsentGranted)
+    && (!consent.canRecordVideo || allRegisteredParticipantVideoConsentGranted);
 
   return NextResponse.json({
     ok: true,
@@ -309,6 +325,14 @@ export async function POST(request: Request) {
       recordingConsentStatus: consent.status,
       recordingConsentGranted:
         consent.status === "GRANTED" && consent.canRecordAudio === true,
+      recordingConsentCanRecordAudio:
+        consent.status === "GRANTED" && consent.canRecordAudio === true,
+      recordingConsentCanRecordVideo:
+        consent.status === "GRANTED" && consent.canRecordVideo === true,
+      recordingConsentCanTranscribe:
+        consent.status === "GRANTED" && consent.canTranscribe === true,
+      recordingConsentVideoGranted:
+        consent.status === "GRANTED" && consent.canRecordVideo === true,
       recordingConsentChoices: {
         canRecordAudio: consent.canRecordAudio,
         canRecordVideo: consent.canRecordVideo,
@@ -320,11 +344,13 @@ export async function POST(request: Request) {
       consentRequiredParticipantCount: registeredParticipants.length,
       consentGrantedParticipantCount,
       allRegisteredParticipantConsentGranted,
+      videoConsentGrantedParticipantCount,
+      allRegisteredParticipantVideoConsentGranted,
       nextAction:
         consent.status === "GRANTED"
-          ? allRegisteredParticipantConsentGranted
-            ? "Recorder attestation and all signed-in participant consents are ready for visible capture."
-            : "Your recorder attestation is saved. Wait for every signed-in participant to consent before recording."
+          ? selectedSourceConsentsReady
+            ? "Recorder attestation and all signed-in participant consents are ready for the selected audio and video sources."
+            : "Your recorder attestation is saved. Wait for every signed-in participant to consent to each selected source before recording."
           : consent.status === "REVOKED"
             ? "Consent revoked. Stop any active recording before continuing."
             : "Consent declined. Do not record this session.",

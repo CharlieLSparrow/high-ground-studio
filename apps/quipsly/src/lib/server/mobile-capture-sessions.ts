@@ -7,6 +7,7 @@ import {
   buildMobileCaptureConsentVersions,
   latestMobileCaptureConsentForParticipant,
   mobileCaptureAllPartiesReady,
+  mobileCaptureConsentHasCurrentPolicyEvidence,
 } from "./mobile-capture-consent-readiness.js";
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
@@ -63,23 +64,33 @@ function consentNextAction(status: string | null | undefined) {
   return "Save your recorder attestation and collect consent from every signed-in participant before recording.";
 }
 
-function registeredParticipantConsentSummary(room: any) {
+export function registeredParticipantConsentSummary(room: any) {
   const participants = Array.isArray(room?.participants)
     ? room.participants.filter((participant: any) => participant?.role !== "OBSERVER" && Boolean(participant?.userId))
     : [];
   const consents = Array.isArray(room?.recordingConsents) ? room.recordingConsents : [];
   const versions = buildMobileCaptureConsentVersions({ participants, consents });
-  const grantedCount = versions.filter((consent: any) => (
+  const audioGrantedCount = versions.filter((consent: any) => (
     consent.status === "GRANTED"
     && consent.canRecordAudio
     && Boolean(consent.consentedAt)
     && !consent.revokedAt
+    && mobileCaptureConsentHasCurrentPolicyEvidence(consent)
+  )).length;
+  const videoGrantedCount = versions.filter((consent: any) => (
+    consent.status === "GRANTED"
+    && consent.canRecordVideo
+    && Boolean(consent.consentedAt)
+    && !consent.revokedAt
+    && mobileCaptureConsentHasCurrentPolicyEvidence(consent)
   )).length;
 
   return {
     requiredCount: participants.length,
-    grantedCount,
-    allGranted: mobileCaptureAllPartiesReady(versions, "audio"),
+    audioGrantedCount,
+    videoGrantedCount,
+    allAudioGranted: mobileCaptureAllPartiesReady(versions, "audio"),
+    allVideoGranted: mobileCaptureAllPartiesReady(versions, "video"),
   };
 }
 
@@ -839,12 +850,26 @@ export function mapMobileCaptureSessionsForUser(input: {
     const recordingConsentGranted = actorConsentVersion
       ? mobileCaptureAllPartiesReady([actorConsentVersion], "audio")
       : false;
+    const recordingConsentVideoGranted = actorConsentVersion
+      ? mobileCaptureAllPartiesReady([actorConsentVersion], "video")
+      : false;
     const participantConsent = registeredParticipantConsentSummary(room);
     const captureReadiness = captureReadinessForMobileSession({
       room,
       consentStatus: consent?.status,
       consentGranted: recordingConsentGranted,
-      allRegisteredParticipantConsentGranted: participantConsent.allGranted,
+      allRegisteredParticipantConsentGranted: participantConsent.allAudioGranted,
+      provider,
+      recordingCount,
+      latestTranscriptStatus,
+      packetSummaryNoteId,
+      afterCaptureNextAction: afterCaptureLine,
+    });
+    const videoCaptureReadiness = captureReadinessForMobileSession({
+      room,
+      consentStatus: consent?.status,
+      consentGranted: recordingConsentVideoGranted,
+      allRegisteredParticipantConsentGranted: participantConsent.allVideoGranted,
       provider,
       recordingCount,
       latestTranscriptStatus,
@@ -933,11 +958,20 @@ export function mapMobileCaptureSessionsForUser(input: {
       recordingConsentId: consent?.id ?? null,
       recordingConsentStatus: consent?.status ?? "not-created",
       recordingConsentGranted,
+      recordingConsentCanRecordAudio: actorConsentVersion?.canRecordAudio === true,
+      recordingConsentCanRecordVideo: actorConsentVersion?.canRecordVideo === true,
+      recordingConsentCanTranscribe: actorConsentVersion?.canTranscribe === true,
+      recordingConsentVideoGranted,
       canRecordNow: captureReadiness.safeToRecordLocally,
+      canRecordAudioNow: captureReadiness.safeToRecordLocally,
+      canRecordVideoNow: videoCaptureReadiness.safeToRecordLocally,
       consentRequiredParticipantCount: participantConsent.requiredCount,
-      consentGrantedParticipantCount: participantConsent.grantedCount,
-      allRegisteredParticipantConsentGranted: participantConsent.allGranted,
+      consentGrantedParticipantCount: participantConsent.audioGrantedCount,
+      allRegisteredParticipantConsentGranted: participantConsent.allAudioGranted,
+      videoConsentGrantedParticipantCount: participantConsent.videoGrantedCount,
+      allRegisteredParticipantVideoConsentGranted: participantConsent.allVideoGranted,
       captureReadiness,
+      videoCaptureReadiness,
       contentReadiness,
       journeySummary,
       lifecycle,
