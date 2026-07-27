@@ -25,6 +25,7 @@ private final class AudioRoomMenuCommandController: NSObject, NSMenuItemValidati
 private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelegate {
     private let projectStore = ProjectStore(project: VideoProject(title: "New Project"))
     private let playbackEngine = PlaybackEngine()
+    private let nativeAccountStore = QuipslyNativeAccountStore()
     private let audioRoomMenuCommandController = AudioRoomMenuCommandController()
     private var keyboardEventMonitor: Any?
     private var mainWindow: NSWindow?
@@ -201,7 +202,8 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
         window.contentView = NSHostingView(
             rootView: EpisodeCaptureSetupView(
                 projectStore: projectStore,
-                playbackEngine: playbackEngine
+                playbackEngine: playbackEngine,
+                nativeAccountStore: nativeAccountStore
             )
         )
         window.setFrameAutosaveName("QuipslyStudioEpisodeCaptureSetup")
@@ -252,7 +254,11 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
             "windowVisible": false,
             "windowCount": NSApp.windows.count
         ])
-        let rootView = WorkspaceView(playbackEngine: playbackEngine, projectStore: projectStore)
+        let rootView = WorkspaceView(
+            playbackEngine: playbackEngine,
+            projectStore: projectStore,
+            nativeAccountStore: nativeAccountStore
+        )
             .frame(minWidth: 1180, minHeight: 760)
 
         AgentServer.shared.writeStatus([

@@ -169,16 +169,24 @@ a clock or capture failure.
 The production Mac path lives in **Quipsly Studio**, not in an additional
 browser recorder or another legacy desktop shell.
 
-Quipsly Studio owns one native audio graph:
+Quipsly Studio owns two explicit native branches:
 
-1. select and read back the exact MV7i input and headphone output;
-2. capture the MV7i source once at its hardware clock and preserve a local
-   48 kHz lossless master;
-3. send a realtime copy through LiveKit's manual/application-audio path;
-4. render remote room audio to the selected MV7i headphone output;
-5. keep voice processing on the realtime branch, not baked into the master;
-6. write device loss, route change, overload, and reconnect as explicit source
-   events.
+1. select and read back the exact Core Audio input and headphone output;
+2. preserve the input as a local 48 kHz/24-bit PCM WAV through the production
+   recorder graph;
+3. publish a separate realtime copy through LiveKit's voice-communication
+   graph;
+4. render remote room audio to the exact selected headphone output;
+5. keep realtime processing out of the local master;
+6. write local-source and call-route events as separate durable receipts.
+
+The branches intentionally share only the selected physical device and the
+capture-group identity. Joining the room never starts the recorder, stopping
+the recorder never leaves the room, and no LiveKit token is persisted. A
+future single-tap/application-audio graph is allowed only if it can retain the
+same failure isolation and raw-master proof. The current dual-client Core Audio
+path must pass an MV7i long-take and route-loss rehearsal before it is described
+as physically qualified.
 
 LiveKit's Swift `AudioManager` exposes input/output device selection and manual
 rendering/application-audio hooks. The web platform can enumerate devices, but
@@ -190,11 +198,14 @@ controller and recovery call, but not the canonical MV7i owner.
 - [MDN device enumeration](https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/enumerateDevices)
 - [MDN AudioContext output selection](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext/setSinkId)
 
-The preflight must show `Shure MV7i` twice when selected: once as **Call mic +
-local master** and once as **Headphones**. A meter, ten-second record/playback
-check, negotiated sample rate/channels, available disk time, and route-loss test
-must pass before Record is enabled. Hardware monitoring remains available at
-the MV7i; Quipsly must not create a delayed software sidetone.
+The preflight must show `Shure MV7i` twice when selected: once as **Local mic
+master + call mic** and once as **Call + headphones**. Core Audio and LiveKit
+must expose the same exact device UID; matching names are not accepted. A
+virtual MOTIV Mix route is explicitly rehearsal-only and can never prove a
+direct MV7i path. A meter, ten-second record/playback check, negotiated sample
+rate/channels, available disk time, concurrent-call check, and route-loss test
+must pass before the physical path is qualified. Hardware monitoring remains
+available at the MV7i; Quipsly must not create a delayed software sidetone.
 
 ### Canon R8 decision
 

@@ -671,6 +671,7 @@ public actor AVCompositionBuilder {
     }
 
     private static func isProtectedOriginalPath(_ path: String) -> Bool {
+        #if os(macOS)
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
         let protectedPrefixes = [
             home + "/Desktop/",
@@ -680,6 +681,9 @@ public actor AVCompositionBuilder {
             "/Volumes/"
         ]
         return protectedPrefixes.contains { path == String($0.dropLast()) || path.hasPrefix($0) }
+        #else
+        return false
+        #endif
     }
 
     private static func isOriginalPathAllowed(_ path: String, allowedRootPath: String?) -> Bool {

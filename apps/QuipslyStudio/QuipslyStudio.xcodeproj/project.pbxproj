@@ -12,6 +12,7 @@
 		2019552FF64725B1D459CA80 /* AudioRoomCommandRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EBABDDD4253CD4CC3535F7 /* AudioRoomCommandRouter.swift */; };
 		20A2D594BBBBEC7CFAD0CC63 /* SourceAwareAudioWorkbenchPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9579A4F5DF5D9EA12BFB67DF /* SourceAwareAudioWorkbenchPanel.swift */; };
 		2ACB80CA311E3D0E863029B8 /* WorkspaceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3F4B056B7835E61AB2A8BBB /* WorkspaceView.swift */; };
+		2DE22552745CFCCFBE730E10 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = DDA39FABAA474D725D779E30 /* LiveKit */; };
 		2EC6E74686F72FC44DBBF199 /* QuipslyVideoCore in Frameworks */ = {isa = PBXBuildFile; productRef = 82FC6A3071DA78D17DE1ABE9 /* QuipslyVideoCore */; };
 		2F41D9F270FD16EBABBAA2BB /* AudioRoomCommandRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76EBABDDD4253CD4CC3535F7 /* AudioRoomCommandRouter.swift */; };
 		32A762DF02FD8F0A4317F8C0 /* ShortsTranscriptConfidencePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C133C1F743D90A328814DCAD /* ShortsTranscriptConfidencePanel.swift */; };
@@ -37,6 +38,7 @@
 		9C8436F8FFA187064C699F73 /* ShortsReviewBriefPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB43B2DABEA30F30FCB92FBF /* ShortsReviewBriefPanel.swift */; };
 		9DF4F9D27ED4B81ECDAAF57B /* WaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2FBFFB0A63C5C2C402A1D59 /* WaveformView.swift */; };
 		A05CBA3EE6AEF91FF5A9A6FC /* FirebaseVertexAI in Frameworks */ = {isa = PBXBuildFile; productRef = 06726C116455D611844E7EA6 /* FirebaseVertexAI */; };
+		B0B8A3A87191FF6BFDBA519A /* MacAudioRoomController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1DA9847F6A86C52079F4C9F1 /* MacAudioRoomController.swift */; };
 		B1ADD30CA80428D8E1800D93 /* InspectorSidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B58E53B06D44AC3CA4E0338F /* InspectorSidebarView.swift */; };
 		B7AA63B0A029E59FDFC0460A /* FirebaseFirestore in Frameworks */ = {isa = PBXBuildFile; productRef = C763722EE9E903C33A75FD6E /* FirebaseFirestore */; };
 		BB83C5C675E2F786C5B650BF /* EpisodeCaptureSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 511429179AF61AC9018DB385 /* EpisodeCaptureSetupView.swift */; };
@@ -61,6 +63,7 @@
 /* Begin PBXFileReference section */
 		17A0747BA3E8F7658062A88E /* Episode4CutIntelligenceBoardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Episode4CutIntelligenceBoardView.swift; sourceTree = "<group>"; };
 		1A26C85B53E7F56A319EB618 /* AgentServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentServer.swift; sourceTree = "<group>"; };
+		1DA9847F6A86C52079F4C9F1 /* MacAudioRoomController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacAudioRoomController.swift; sourceTree = "<group>"; };
 		21F41F4FA2319A5D7495CF0C /* ShortCreatorQuality.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortCreatorQuality.swift; sourceTree = "<group>"; };
 		25A7C2D5D8974C79EDE7F375 /* QuipslyiOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = QuipslyiOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		3315ACD42976DE388399833D /* ShortsRecipeRepairProofPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsRecipeRepairProofPanel.swift; sourceTree = "<group>"; };
@@ -95,6 +98,7 @@
 				B7AA63B0A029E59FDFC0460A /* FirebaseFirestore in Frameworks */,
 				79DDF6787B938B8CFF7A41A6 /* FirebaseAuth in Frameworks */,
 				E4811DC6C79F82A7AFE93127 /* FirebaseVertexAI in Frameworks */,
+				2DE22552745CFCCFBE730E10 /* LiveKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -116,6 +120,7 @@
 			isa = PBXGroup;
 			children = (
 				511429179AF61AC9018DB385 /* EpisodeCaptureSetupView.swift */,
+				1DA9847F6A86C52079F4C9F1 /* MacAudioRoomController.swift */,
 				A50573AE9640D0892E0F71F4 /* QuipslyMacApp.swift */,
 			);
 			name = QuipslyMac;
@@ -206,6 +211,7 @@
 				C763722EE9E903C33A75FD6E /* FirebaseFirestore */,
 				19CB3C3C1BA8DA49B6467712 /* FirebaseAuth */,
 				7C74C75E621A875259E7DD67 /* FirebaseVertexAI */,
+				DDA39FABAA474D725D779E30 /* LiveKit */,
 			);
 			productName = QuipslyMac;
 			productReference = 9F441C776F811BFB75CC7CC5 /* QuipslyMac.app */;
@@ -255,6 +261,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				FD41C7DE82DDCCBAE87A99D7 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */,
+				73FB9B14227ADB4BB8B7C140 /* XCRemoteSwiftPackageReference "client-sdk-swift-xcframework" */,
 				2F72EE8575739B6A6C05E6F9 /* XCLocalSwiftPackageReference "Sources/QuipslyVideoCore" */,
 			);
 			preferredProjectObjectVersion = 77;
@@ -280,6 +287,7 @@
 				BB83C5C675E2F786C5B650BF /* EpisodeCaptureSetupView.swift in Sources */,
 				5017CEF4F2B29AE676DC557F /* ExternalMediaAccess.swift in Sources */,
 				B1ADD30CA80428D8E1800D93 /* InspectorSidebarView.swift in Sources */,
+				B0B8A3A87191FF6BFDBA519A /* MacAudioRoomController.swift in Sources */,
 				57474812238A64135269AFB5 /* NativeTransportControls.swift in Sources */,
 				697410343FE5BB9BCC5AB84C /* ProfessionalDecisionTimelineView.swift in Sources */,
 				F8DDDA19C500F6E969CB665A /* QuipslyMacApp.swift in Sources */,
@@ -570,6 +578,14 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		73FB9B14227ADB4BB8B7C140 /* XCRemoteSwiftPackageReference "client-sdk-swift-xcframework" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/livekit/client-sdk-swift-xcframework.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.15.1;
+			};
+		};
 		FD41C7DE82DDCCBAE87A99D7 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/firebase/firebase-ios-sdk";
@@ -613,6 +629,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = FD41C7DE82DDCCBAE87A99D7 /* XCRemoteSwiftPackageReference "firebase-ios-sdk" */;
 			productName = FirebaseFirestore;
+		};
+		DDA39FABAA474D725D779E30 /* LiveKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 73FB9B14227ADB4BB8B7C140 /* XCRemoteSwiftPackageReference "client-sdk-swift-xcframework" */;
+			productName = LiveKit;
 		};
 		EDB9790D44F4E8A5BA7AA2F7 /* FirebaseFirestore */ = {
 			isa = XCSwiftPackageProductDependency;

@@ -5,6 +5,7 @@ public enum ProxyError: Error, LocalizedError {
     case exportFailed(Error?)
     case ffmpegMissing
     case ffmpegFailed(status: Int32, output: String)
+    case platformUnsupported
 
     public var errorDescription: String? {
         switch self {
@@ -17,6 +18,8 @@ public enum ProxyError: Error, LocalizedError {
         case .ffmpegFailed(let status, let output):
             let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
             return "ffmpeg proxy generation failed with status \(status): \(trimmed.isEmpty ? "no diagnostic output" : trimmed)"
+        case .platformUnsupported:
+            return "This Quipsly Studio shell cannot generate proxies on iOS. Quipsly Capture uses its dedicated derived-media pipeline."
         }
     }
 }
@@ -37,7 +40,11 @@ public actor ProxyEngine {
             try FileManager.default.createDirectory(at: proxyDir, withIntermediateDirectories: true)
         }
 
-        guard let ffmpegURL = Self.resolveExecutable(named: "ffmpeg", envKey: "QUIPSLY_FFMPEG_PATH") else {
+        #if os(macOS)
+        guard let ffmpegURL = Self.resolveExecutable(
+            named: "ffmpeg",
+            envKey: "QUIPSLY_FFMPEG_PATH"
+        ) else {
             throw ProxyError.ffmpegMissing
         }
 
@@ -95,6 +102,9 @@ public actor ProxyEngine {
             try? FileManager.default.removeItem(at: temporaryOutputURL)
             throw error
         }
+        #else
+        throw ProxyError.platformUnsupported
+        #endif
     }
 
     private static func videoProxyArguments(ffmpegURL: URL, inputURL: URL, outputURL: URL) -> [String] {
@@ -140,6 +150,7 @@ public actor ProxyEngine {
     }
 
     private static func ffmpegSupportsEncoder(_ encoder: String, ffmpegURL: URL) -> Bool {
+        #if os(macOS)
         let process = Process()
         process.executableURL = ffmpegURL
         process.arguments = ["-hide_banner", "-encoders"]
@@ -156,6 +167,9 @@ public actor ProxyEngine {
         } catch {
             return false
         }
+        #else
+        return false
+        #endif
     }
 
     private static func resolveExecutable(named name: String, envKey: String) -> URL? {

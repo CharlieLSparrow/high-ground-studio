@@ -966,7 +966,7 @@ struct WorkspaceView: View {
     @State private var lastDrainedAgentCommandSerial: Int = 0
     @State private var agentCommandConsumerId = UUID()
     @StateObject private var agentCommandBridge = WorkspaceAgentCommandBridge.shared
-    @StateObject private var nativeAccountStore = QuipslyNativeAccountStore()
+    @ObservedObject var nativeAccountStore: QuipslyNativeAccountStore
     @State private var lastSessionPath: String? = nil
     @State private var lastMediaAction: String? = nil
     @AppStorage("quipsly.nativeEditor.activeSessionName") private var activeSessionName: String = "autosave"

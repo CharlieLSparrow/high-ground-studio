@@ -19,6 +19,15 @@
       }
     },
     {
+      "identity" : "client-sdk-swift-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/livekit/client-sdk-swift-xcframework.git",
+      "state" : {
+        "revision" : "1eecf330f0eb4e5276ca1cd35624d79f9b63db58",
+        "version" : "2.15.1"
+      }
+    },
+    {
       "identity" : "firebase-ios-sdk",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/firebase/firebase-ios-sdk",

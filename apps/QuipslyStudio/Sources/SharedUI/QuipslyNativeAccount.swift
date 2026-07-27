@@ -195,6 +195,7 @@ final class QuipslyNativeAccountStore: ObservableObject {
     private static let baseURLKey = "quipsly.nativeAccount.baseURL"
     private static let emailKey = "quipsly.nativeAccount.email"
     private var idToken: String = ""
+    private var idTokenExpiresAt: Date = .distantPast
     private var refreshToken: String?
 
     init() {
@@ -264,6 +265,9 @@ final class QuipslyNativeAccountStore: ObservableObject {
             let config = try await fetchFirebaseClientConfig()
             let signIn = try await signInWithPassword(config: config)
             idToken = signIn.idToken
+            idTokenExpiresAt = Date().addingTimeInterval(
+                TimeInterval(Int(signIn.expiresIn) ?? 3_600)
+            )
             refreshToken = signIn.refreshToken
             try QuipslyNativeAccountKeychain.saveRefreshToken(signIn.refreshToken)
             password = ""
@@ -282,6 +286,9 @@ final class QuipslyNativeAccountStore: ObservableObject {
             let config = try await fetchFirebaseClientConfig()
             let refreshed = try await refreshFirebaseToken(config: config, refreshToken: refreshToken)
             idToken = refreshed.id_token
+            idTokenExpiresAt = Date().addingTimeInterval(
+                TimeInterval(Int(refreshed.expires_in) ?? 3_600)
+            )
             self.refreshToken = refreshed.refresh_token
             try QuipslyNativeAccountKeychain.saveRefreshToken(refreshed.refresh_token)
             try await verifyNativeSession(idToken: refreshed.id_token)
@@ -299,6 +306,7 @@ final class QuipslyNativeAccountStore: ObservableObject {
 
     func clearLocalSession() -> String {
         idToken = ""
+        idTokenExpiresAt = .distantPast
         refreshToken = nil
         userEmail = ""
         userName = ""
@@ -314,6 +322,54 @@ final class QuipslyNativeAccountStore: ObservableObject {
         statusMessage = "Local native session cleared. Firebase/Quipsly account was not deleted."
         QuipslyNativeAccountKeychain.deleteRefreshToken()
         return statusMessage
+    }
+
+    func authenticatedData(
+        for request: URLRequest
+    ) async throws -> (Data, HTTPURLResponse) {
+        var authenticatedRequest = request
+        var token = try await validIDToken()
+        authenticatedRequest.setValue(
+            "Bearer \(token)",
+            forHTTPHeaderField: "authorization"
+        )
+        var (data, response) = try await URLSession.shared.data(
+            for: authenticatedRequest
+        )
+        guard var http = response as? HTTPURLResponse else {
+            throw NSError(
+                domain: "QuipslyNativeAccount",
+                code: 7,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Nest did not return an HTTP response.",
+                ]
+            )
+        }
+
+        if http.statusCode == 401 {
+            token = try await refreshIDToken()
+            authenticatedRequest.setValue(
+                "Bearer \(token)",
+                forHTTPHeaderField: "authorization"
+            )
+            (data, response) = try await URLSession.shared.data(
+                for: authenticatedRequest
+            )
+            guard let retryHTTP = response as? HTTPURLResponse else {
+                throw NSError(
+                    domain: "QuipslyNativeAccount",
+                    code: 8,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "Nest did not return an HTTP response after session refresh.",
+                    ]
+                )
+            }
+            http = retryHTTP
+        }
+
+        return (data, http)
     }
 
     private func runAuthAction(start: String, operation: () async throws -> String) async -> String {
@@ -335,6 +391,41 @@ final class QuipslyNativeAccountStore: ObservableObject {
         errorMessage = message
         statusMessage = "Native account needs attention."
         return message
+    }
+
+    private func validIDToken() async throws -> String {
+        if !idToken.isEmpty,
+           idTokenExpiresAt.timeIntervalSinceNow > 60 {
+            return idToken
+        }
+        return try await refreshIDToken()
+    }
+
+    private func refreshIDToken() async throws -> String {
+        guard let refreshToken else {
+            throw NSError(
+                domain: "QuipslyNativeAccount",
+                code: 9,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Connect the native Quipsly account before joining an episode room.",
+                ]
+            )
+        }
+        let config = try await fetchFirebaseClientConfig()
+        let refreshed = try await refreshFirebaseToken(
+            config: config,
+            refreshToken: refreshToken
+        )
+        idToken = refreshed.id_token
+        idTokenExpiresAt = Date().addingTimeInterval(
+            TimeInterval(Int(refreshed.expires_in) ?? 3_600)
+        )
+        self.refreshToken = refreshed.refresh_token
+        try QuipslyNativeAccountKeychain.saveRefreshToken(
+            refreshed.refresh_token
+        )
+        return refreshed.id_token
     }
 
     private func fetchFirebaseClientConfig() async throws -> FirebaseClientConfigEnvelope.FirebaseClientConfig {

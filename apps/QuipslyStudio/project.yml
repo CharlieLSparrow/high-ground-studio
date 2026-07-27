@@ -7,6 +7,9 @@ packages:
   Firebase:
     url: https://github.com/firebase/firebase-ios-sdk
     majorVersion: 11.0.0
+  LiveKit:
+    url: https://github.com/livekit/client-sdk-swift-xcframework.git
+    exactVersion: 2.15.1
 
 targets:
   QuipslyMac:
@@ -21,6 +24,8 @@ targets:
         product: FirebaseAuth
       - package: Firebase
         product: FirebaseVertexAI
+      - package: LiveKit
+        product: LiveKit
     settings:
       base:
         MACOSX_DEPLOYMENT_TARGET: "26.0"

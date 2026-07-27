@@ -89,6 +89,7 @@ public final class PlaybackEngine: ObservableObject {
     }
 
     private nonisolated static func isProtectedMediaPath(_ path: String) -> Bool {
+        #if os(macOS)
         let home = FileManager.default.homeDirectoryForCurrentUser.standardizedFileURL.path
         let protectedPrefixes = [
             home + "/Desktop/",
@@ -98,6 +99,9 @@ public final class PlaybackEngine: ObservableObject {
             "/Volumes/"
         ]
         return protectedPrefixes.contains { path == String($0.dropLast()) || path.hasPrefix($0) }
+        #else
+        return false
+        #endif
     }
 
     private nonisolated static func isPath(_ path: String, inside rootPath: String?) -> Bool {

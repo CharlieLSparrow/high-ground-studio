@@ -1,6 +1,5 @@
 import Foundation
 
-#if os(macOS)
 public struct VerifiedCaptureSourceAttachment: Equatable, Sendable {
     public let sourceAssetID: String
     public let captureGroupID: UUID
@@ -105,4 +104,3 @@ public enum LocalEditorSourceAttachmentWriter {
         return outputURL
     }
 }
-#endif

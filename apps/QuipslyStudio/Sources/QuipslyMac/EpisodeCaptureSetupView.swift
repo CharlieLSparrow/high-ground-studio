@@ -14,6 +14,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var message = "Inspecting connected production sources…"
     @Published var episodeSpaceID = "high-ground-odyssey"
     @Published var participantID = "charlie"
+    @Published var callRoomID = ""
     @Published private(set) var activeReceipt: ProductionAudioRecordingReceipt?
     @Published private(set) var lastFinalizedReceipt: ProductionAudioRecordingReceipt?
     @Published private(set) var interruptedRecordings: [InterruptedProductionAudioRecording] = []
@@ -34,17 +35,27 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     private let recorder = ProductionAudioRecorder()
     private let projectStore: ProjectStore
     private let playbackEngine: PlaybackEngine
+    let nativeAccountStore: QuipslyNativeAccountStore
     private var elapsedTask: Task<Void, Never>?
 
-    init(projectStore: ProjectStore, playbackEngine: PlaybackEngine) {
+    init(
+        projectStore: ProjectStore,
+        playbackEngine: PlaybackEngine,
+        nativeAccountStore: QuipslyNativeAccountStore
+    ) {
         self.projectStore = projectStore
         self.playbackEngine = playbackEngine
+        self.nativeAccountStore = nativeAccountStore
     }
 
     var isRecording: Bool { recorder.isRecording }
 
     var selectedAudioInput: CaptureAudioDeviceSnapshot? {
         inventory?.audioDevices.first { $0.id == selectedAudioInputID }
+    }
+
+    var selectedAudioOutput: CaptureAudioDeviceSnapshot? {
+        inventory?.audioDevices.first { $0.id == selectedAudioOutputID }
     }
 
     var canStartRecording: Bool {
@@ -365,12 +376,23 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 
 struct EpisodeCaptureSetupView: View {
     @StateObject private var model: EpisodeCaptureSetupModel
+    @StateObject private var audioRoom = MacAudioRoomController()
+    @ObservedObject private var nativeAccountStore:
+        QuipslyNativeAccountStore
 
-    init(projectStore: ProjectStore, playbackEngine: PlaybackEngine) {
+    init(
+        projectStore: ProjectStore,
+        playbackEngine: PlaybackEngine,
+        nativeAccountStore: QuipslyNativeAccountStore
+    ) {
+        _nativeAccountStore = ObservedObject(
+            wrappedValue: nativeAccountStore
+        )
         _model = StateObject(
             wrappedValue: EpisodeCaptureSetupModel(
                 projectStore: projectStore,
-                playbackEngine: playbackEngine
+                playbackEngine: playbackEngine,
+                nativeAccountStore: nativeAccountStore
             )
         )
     }
@@ -383,6 +405,7 @@ struct EpisodeCaptureSetupView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     routeSelectors
                     localMasterCard
+                    audioOnlyRoomCard
                     canonCardMasterCard
                     if let plan = model.plan {
                         planSummary(plan)
@@ -403,6 +426,9 @@ struct EpisodeCaptureSetupView: View {
         .onDisappear {
             if model.isRecording {
                 Task { await model.stopRecording() }
+            }
+            if audioRoom.isActive {
+                Task { await audioRoom.disconnect() }
             }
         }
         .accessibilityIdentifier("EpisodeCaptureSetup")
@@ -432,6 +458,7 @@ struct EpisodeCaptureSetupView: View {
                         || model.isRecording
                         || model.isFinalizing
                         || model.isImportingCanon
+                        || audioRoom.isActive
                 )
                 .accessibilityIdentifier("EpisodeCaptureRefreshHardware")
             }
@@ -457,6 +484,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || audioRoom.isActive
                         )
                         .accessibilityIdentifier("EpisodeCaptureCameraPicker")
                     }
@@ -473,6 +501,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || audioRoom.isActive
                         )
                         .accessibilityIdentifier("EpisodeCaptureAudioInputPicker")
                     }
@@ -489,6 +518,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || audioRoom.isActive
                         )
                         .accessibilityIdentifier("EpisodeCaptureAudioOutputPicker")
                     }
@@ -517,6 +547,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || audioRoom.isActive
                         )
                         .accessibilityIdentifier("EpisodeCaptureEpisodeSpaceID")
                     TextField("Participant ID", text: $model.participantID)
@@ -526,6 +557,7 @@ struct EpisodeCaptureSetupView: View {
                             model.isRecording
                                 || model.isFinalizing
                                 || model.isImportingCanon
+                                || audioRoom.isActive
                         )
                         .accessibilityIdentifier("EpisodeCaptureParticipantID")
                 }
@@ -545,6 +577,7 @@ struct EpisodeCaptureSetupView: View {
                         model.isRecording
                             || model.isFinalizing
                             || model.isImportingCanon
+                            || audioRoom.isActive
                     )
                     .accessibilityIdentifier("EpisodeCaptureNewGroup")
                 }
@@ -628,6 +661,226 @@ struct EpisodeCaptureSetupView: View {
             .padding(10)
         }
         .accessibilityIdentifier("EpisodeCaptureLocalMaster")
+    }
+
+    private var audioOnlyRoomCard: some View {
+        let route = audioRoom.routeResolution(
+            coreAudioInput: model.selectedAudioInput,
+            coreAudioOutput: model.selectedAudioOutput
+        )
+
+        return GroupBox("Audio-only episode room") {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Talk through the selected mic and headphones")
+                            .font(.headline)
+                        Text(
+                            "No camera is sent. Joining never starts recording. LiveKit carries the conversation while Quipsly's 48 kHz/24-bit WAV recorder writes a separate local production master only when you press Record."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Text(audioRoom.connectionStateLabel.uppercased())
+                        .font(.caption2.weight(.black))
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 6)
+                        .background(.quaternary, in: Capsule())
+                }
+
+                HStack(spacing: 10) {
+                    TextField(
+                        "Nest call-room ID",
+                        text: $model.callRoomID
+                    )
+                    .textFieldStyle(.roundedBorder)
+                    .disabled(audioRoom.isActive)
+                    .accessibilityIdentifier(
+                        "EpisodeCaptureCallRoomID"
+                    )
+
+                    Button(
+                        audioRoom.isRefreshingDevices
+                            ? "Refreshing…"
+                            : "Refresh provider routes"
+                    ) {
+                        audioRoom.refreshProviderDevices()
+                    }
+                    .disabled(audioRoom.isActive)
+                    .accessibilityIdentifier(
+                        "EpisodeCaptureRefreshProviderRoutes"
+                    )
+                }
+
+                HStack(alignment: .top, spacing: 10) {
+                    Image(
+                        systemName: route.status == .ready
+                            ? "checkmark.seal.fill"
+                            : route.status == .rehearsalOnly
+                                ? "testtube.2"
+                                : "exclamationmark.triangle.fill"
+                    )
+                    .foregroundStyle(
+                        route.status == .ready
+                            ? .green
+                            : route.status == .rehearsalOnly
+                                ? .orange
+                                : .red
+                    )
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(
+                            route.status.rawValue
+                                .replacingOccurrences(
+                                    of: "-",
+                                    with: " "
+                                )
+                                .capitalized
+                        )
+                        .font(.caption.weight(.bold))
+                        Text(route.truth)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                    }
+                }
+
+                HStack(spacing: 12) {
+                    if audioRoom.isConnected {
+                        Button {
+                            Task {
+                                await audioRoom.setMuted(
+                                    !audioRoom.isMuted
+                                )
+                            }
+                        } label: {
+                            Label(
+                                audioRoom.isMuted
+                                    ? "Unmute call"
+                                    : "Mute call",
+                                systemImage: audioRoom.isMuted
+                                    ? "mic.slash.fill"
+                                    : "mic.fill"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier(
+                            "EpisodeCaptureToggleCallMute"
+                        )
+
+                        Button(role: .destructive) {
+                            Task { await audioRoom.disconnect() }
+                        } label: {
+                            Label("Leave room", systemImage: "phone.down.fill")
+                        }
+                        .accessibilityIdentifier(
+                            "EpisodeCaptureLeaveAudioRoom"
+                        )
+                    } else {
+                        Button {
+                            Task {
+                                await audioRoom.join(
+                                    callRoomID: model.callRoomID,
+                                    captureGroupID: model.captureGroupID,
+                                    episodeSpaceID:
+                                        model.episodeSpaceID,
+                                    fallbackParticipantID:
+                                        model.participantID,
+                                    coreAudioInput:
+                                        model.selectedAudioInput,
+                                    coreAudioOutput:
+                                        model.selectedAudioOutput,
+                                    accountStore:
+                                        nativeAccountStore,
+                                    captureRoot: model.captureRoot
+                                )
+                            }
+                        } label: {
+                            Label(
+                                audioRoom.isConnecting
+                                    ? "Joining…"
+                                    : route.status == .rehearsalOnly
+                                        ? "Join rehearsal route"
+                                        : "Join audio-only room",
+                                systemImage: "phone.connection.fill"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(
+                            audioRoom.isConnecting
+                                || route.status == .blocked
+                                || model.callRoomID
+                                    .trimmingCharacters(
+                                        in: .whitespacesAndNewlines
+                                    )
+                                    .isEmpty
+                                || !nativeAccountStore.hasSavedSession
+                        )
+                        .accessibilityIdentifier(
+                            "EpisodeCaptureJoinAudioRoom"
+                        )
+                    }
+
+                    if audioRoom.isConnecting {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Text(
+                        nativeAccountStore.isVerified
+                            ? "Nest: \(nativeAccountStore.userEmail)"
+                            : nativeAccountStore.hasSavedSession
+                                ? "Nest session saved; join will refresh it"
+                                : "Connect Native Account in Workspace"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                    Spacer()
+
+                    if audioRoom.isConnected {
+                        Label(
+                            "\(audioRoom.remoteParticipantCount) remote",
+                            systemImage: "person.2.fill"
+                        )
+                        .font(.caption.monospacedDigit())
+                    }
+                }
+
+                Text(audioRoom.statusText)
+                    .font(.callout)
+                    .foregroundStyle(
+                        audioRoom.lastError == nil
+                            ? Color.secondary
+                            : Color.red
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let receiptURL = audioRoom.lastReceiptURL {
+                    HStack(spacing: 8) {
+                        Label(
+                            "Route event receipt saved without provider credentials.",
+                            systemImage: "doc.badge.checkmark"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        Spacer()
+                        Button("Reveal receipt") {
+                            NSWorkspace.shared
+                                .activateFileViewerSelecting([
+                                    receiptURL,
+                                ])
+                        }
+                    }
+                }
+            }
+            .padding(10)
+        }
+        .accessibilityIdentifier("EpisodeCaptureAudioOnlyRoom")
     }
 
     private var canonCardMasterCard: some View {
