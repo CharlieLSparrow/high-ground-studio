@@ -4,9 +4,11 @@ import Combine
 @MainActor
 final class LocalRecordingPlaybackController: NSObject, ObservableObject {
     @Published private(set) var playingRecordingID: UUID?
+    @Published private(set) var videoPlayer: AVPlayer?
     @Published private(set) var errorMessage: String?
 
-    private var player: AVAudioPlayer?
+    private var audioPlayer: AVAudioPlayer?
+    private var videoCompletionObserver: NSObjectProtocol?
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
     private var accountCancellable: AnyCancellable?
 
@@ -45,6 +47,34 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
             return
         }
 
+        recording.effectiveMediaKind == .video
+            ? beginVideoPlayback(
+                recordingID: recording.id,
+                fileURL: fileURL
+            )
+            : beginAudioPlayback(
+                recordingID: recording.id,
+                fileURL: fileURL
+            )
+    }
+
+    func stop() {
+        audioPlayer?.stop()
+        audioPlayer = nil
+        videoPlayer?.pause()
+        videoPlayer = nil
+        if let videoCompletionObserver {
+            NotificationCenter.default.removeObserver(videoCompletionObserver)
+            self.videoCompletionObserver = nil
+        }
+        playingRecordingID = nil
+        audioSessionCoordinator.endLocalPlayback()
+    }
+
+    private func beginAudioPlayback(
+        recordingID: UUID,
+        fileURL: URL
+    ) {
         do {
             try audioSessionCoordinator.beginLocalPlayback()
             let player = try AVAudioPlayer(contentsOf: fileURL)
@@ -53,32 +83,54 @@ final class LocalRecordingPlaybackController: NSObject, ObservableObject {
                 throw NSError(
                     domain: "LocalRecordingPlayback",
                     code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "The local take could not begin playback."]
+                    userInfo: [NSLocalizedDescriptionKey: "The local audio take could not begin playback."]
                 )
             }
-            self.player = player
-            playingRecordingID = recording.id
+            audioPlayer = player
+            playingRecordingID = recordingID
             errorMessage = nil
         } catch {
             audioSessionCoordinator.endLocalPlayback()
-            player = nil
+            audioPlayer = nil
             playingRecordingID = nil
             errorMessage = error.localizedDescription
         }
     }
 
-    func stop() {
-        player?.stop()
-        player = nil
-        playingRecordingID = nil
-        audioSessionCoordinator.endLocalPlayback()
+    private func beginVideoPlayback(
+        recordingID: UUID,
+        fileURL: URL
+    ) {
+        do {
+            try audioSessionCoordinator.beginLocalPlayback()
+            let item = AVPlayerItem(url: fileURL)
+            let player = AVPlayer(playerItem: item)
+            videoCompletionObserver = NotificationCenter.default.addObserver(
+                forName: .AVPlayerItemDidPlayToEndTime,
+                object: item,
+                queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated {
+                    self?.stop()
+                }
+            }
+            videoPlayer = player
+            playingRecordingID = recordingID
+            errorMessage = nil
+            player.play()
+        } catch {
+            audioSessionCoordinator.endLocalPlayback()
+            videoPlayer = nil
+            playingRecordingID = nil
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
 extension LocalRecordingPlaybackController: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor in
-            self.player = nil
+            self.audioPlayer = nil
             self.playingRecordingID = nil
             self.audioSessionCoordinator.endLocalPlayback()
             if !flag {
@@ -89,7 +141,7 @@ extension LocalRecordingPlaybackController: AVAudioPlayerDelegate {
 
     nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
         Task { @MainActor in
-            self.player = nil
+            self.audioPlayer = nil
             self.playingRecordingID = nil
             self.audioSessionCoordinator.endLocalPlayback()
             self.errorMessage = error?.localizedDescription ?? "The local take could not be decoded."

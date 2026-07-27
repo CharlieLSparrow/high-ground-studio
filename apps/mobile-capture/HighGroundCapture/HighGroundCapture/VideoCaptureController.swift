@@ -321,6 +321,7 @@ final class VideoCaptureController: ObservableObject {
                 startedAt: startedAt
             )
             let sourceProfile = LocalRecordingSourceProfile(
+                schemaVersion: 2,
                 container: "mov",
                 codec: profile.codec,
                 width: profile.width,
@@ -550,7 +551,7 @@ final class VideoCaptureController: ObservableObject {
         stopRequestedWhileArming = nil
         durationSeconds = duration
 
-        if let finalized, finalized.status.isUploadEligible {
+        if let finalized, finalized.isUploadEligible {
             if finalized.byteCount <= synchronousCloudVerificationLimitBytes
                 || (
                     finishedCapture.context.longSourceUploadEnabled

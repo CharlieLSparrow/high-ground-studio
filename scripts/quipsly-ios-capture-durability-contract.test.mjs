@@ -213,7 +213,21 @@ check("recovery has a durable non-playable pending state", library.includes("cas
 check("pending recovery is requeued after relaunch", library.includes("case .armed, .recording, .paused, .finalizing, .validatingRecovery:") && library.includes("applyCrashRecoveryValidation(to: &storedRecordings[index]"));
 check("only deep validation can promote recovered playback", library.includes("guard recording.status == .validatingRecovery") && library.includes("recording.status = .recovered"));
 check("undecodable source is needs-repair", library.includes("recording.status = .needsRepair"));
-check("needs-repair source is not upload eligible", library.includes("var isUploadEligible: Bool") && model.includes("guard recording.status.isUploadEligible else"));
+check("needs-repair source is not upload eligible", library.includes("var isUploadEligible: Bool") && model.includes("guard recording.isUploadEligible else"));
+check(
+  "finished video persists actual track evidence before upload",
+  library.includes("struct LocalRecordingRecordedMediaProfile")
+    && library.includes("sourceProfile.recordedMedia = recordedMedia")
+    && library.includes("videoTrack.load(.formatDescriptions)")
+    && library.includes("videoTrack.load(.preferredTransform)"),
+);
+check(
+  "video upload fails closed on negotiated versus recorded drift",
+  library.includes("sourceIntegrityHoldReason")
+    && library.includes("videoIntegrityHoldReason(")
+    && library.includes("Upload is held so Quipsly cannot silently relabel the source.")
+    && model.includes("recording.sourceIntegrityHoldReason"),
+);
 check("safe filename and canonical path checks remain", library.includes("isSafeRecordingFileName") && library.includes("recordingOutsideLibrary"));
 check("explicit deletion tombstone remains", library.includes("status = .deletedLocally") && library.includes("Durable-before-destructive"));
 

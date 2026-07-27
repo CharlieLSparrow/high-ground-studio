@@ -2653,3 +2653,34 @@ This is an active-goal checkpoint, not a completion claim.
   connect and qualify the R8 signal and direct MV7i route, speak/listen through
   the intended headphones, record a sync event and long take, review drift,
   approve alignment, and prove the authorized Nest/Studio handoff.
+
+### 2026-07-27 iPhone finalized-video truth and local watch checkpoint
+
+- This is an active-goal checkpoint, not a completion claim.
+- Audited the existing production iPhone camera lane at its actual user and
+  media boundaries. The actor-isolated front/rear recorder, immutable
+  pause/switch files, clock evidence, protected ledger, resumable upload,
+  verifier, proxy, and editor projection were already coherent; the uncovered
+  gaps were that Library tried to play every source as audio and upload
+  eligibility could inherit the armed camera profile without persisting the
+  finished MOV's actual shape.
+- Library now watches video originals through `AVPlayer`, retains the existing
+  audio path, coordinates both through the capture audio-session owner, stops
+  cleanly at item completion or account change, and states that watching never
+  edits, uploads, or deletes the original.
+- Finished-video validation now decodes every audio and video track through
+  EOF, requires exactly one video track, and persists actual encoded and
+  presentation dimensions, transform-derived rotation, codec, nominal frame
+  rate, audio sample rate/channels, track counts, and duration. The armed
+  profile remains negotiation evidence rather than recorded truth.
+- Missing legacy negotiation evidence, unexpected or missing movie audio,
+  dimension or codec mismatch, material frame-rate drift, and
+  portrait/landscape presentation drift create a durable, visible source
+  integrity hold. The original remains locally playable and preserved while
+  automatic and manual upload retry both fail closed.
+- Focused evidence passes: source durability 69/69, App Store/static UX
+  694/694, generic iOS Simulator build, and the iPhone 17 Pro simulator
+  production-video mode journey 1/1. This does not qualify physical camera
+  capture, real orientation, 4K/endurance/thermal behavior, real-video
+  watching, background upload, cloud proxy, timeline sync, or editor
+  alignment. Those remain mandatory physical and end-to-end gates.

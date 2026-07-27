@@ -1500,11 +1500,13 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     func retryUpload(for recording: LocalRecording) {
-        guard recording.status.isUploadEligible else {
+        guard recording.isUploadEligible else {
             if recording.status == .validatingRecovery {
                 errorMessage = "Quipsly is still validating this preserved source through its end. Upload will unlock only after that check is durably saved."
             } else if recording.status == .needsRepair {
                 errorMessage = "This source needs repair before Quipsly can upload it. The original bytes remain on this iPhone."
+            } else if let holdReason = recording.sourceIntegrityHoldReason {
+                errorMessage = holdReason
             } else {
                 errorMessage = "Finish and validate this local source before uploading it."
             }

@@ -23,7 +23,7 @@ enum LocalRecordingMediaKind: String, Codable, CaseIterable {
     }
 }
 
-struct LocalRecordingSourceProfile: Codable, Equatable {
+struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     let schemaVersion: Int
     var container: String
     var codec: String?
@@ -40,8 +40,9 @@ struct LocalRecordingSourceProfile: Codable, Equatable {
     var monotonicStartedNanoseconds: UInt64?
     var monotonicStoppedNanoseconds: UInt64?
     var clockSamples: [LocalRecordingClockSample]?
+    var recordedMedia: LocalRecordingRecordedMediaProfile?
 
-    init(
+    nonisolated init(
         schemaVersion: Int = 1,
         container: String,
         codec: String? = nil,
@@ -57,7 +58,8 @@ struct LocalRecordingSourceProfile: Codable, Equatable {
         audioChannelCount: Int? = nil,
         monotonicStartedNanoseconds: UInt64? = nil,
         monotonicStoppedNanoseconds: UInt64? = nil,
-        clockSamples: [LocalRecordingClockSample]? = nil
+        clockSamples: [LocalRecordingClockSample]? = nil,
+        recordedMedia: LocalRecordingRecordedMediaProfile? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.container = container
@@ -75,6 +77,53 @@ struct LocalRecordingSourceProfile: Codable, Equatable {
         self.monotonicStartedNanoseconds = monotonicStartedNanoseconds
         self.monotonicStoppedNanoseconds = monotonicStoppedNanoseconds
         self.clockSamples = clockSamples
+        self.recordedMedia = recordedMedia
+    }
+}
+
+struct LocalRecordingRecordedMediaProfile: Codable, Equatable, Sendable {
+    let schemaVersion: Int
+    let videoTrackCount: Int
+    let audioTrackCount: Int
+    let videoCodec: String?
+    let encodedWidth: Int?
+    let encodedHeight: Int?
+    let presentationWidth: Int?
+    let presentationHeight: Int?
+    let rotationDegrees: Double?
+    let nominalFrameRate: Double?
+    let audioSampleRate: Double?
+    let audioChannelCount: Int?
+    let durationSeconds: Double
+
+    nonisolated init(
+        schemaVersion: Int = 1,
+        videoTrackCount: Int,
+        audioTrackCount: Int,
+        videoCodec: String?,
+        encodedWidth: Int?,
+        encodedHeight: Int?,
+        presentationWidth: Int?,
+        presentationHeight: Int?,
+        rotationDegrees: Double?,
+        nominalFrameRate: Double?,
+        audioSampleRate: Double?,
+        audioChannelCount: Int?,
+        durationSeconds: Double
+    ) {
+        self.schemaVersion = schemaVersion
+        self.videoTrackCount = videoTrackCount
+        self.audioTrackCount = audioTrackCount
+        self.videoCodec = videoCodec
+        self.encodedWidth = encodedWidth
+        self.encodedHeight = encodedHeight
+        self.presentationWidth = presentationWidth
+        self.presentationHeight = presentationHeight
+        self.rotationDegrees = rotationDegrees
+        self.nominalFrameRate = nominalFrameRate
+        self.audioSampleRate = audioSampleRate
+        self.audioChannelCount = audioChannelCount
+        self.durationSeconds = durationSeconds
     }
 }
 
@@ -141,6 +190,7 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var roomStartReceiptId: UUID? = nil
     var sourceProfile: LocalRecordingSourceProfile? = nil
     var recordingSegmentsJson: String?
+    var sourceIntegrityHoldReason: String? = nil
 
     var uploadProgress: Double?
     var uploadedSourceId: String?
@@ -176,6 +226,49 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(sourceProfile) else { return nil }
         return String(data: data, encoding: .utf8)
+    }
+
+    var isUploadEligible: Bool {
+        status.isUploadEligible
+            && sourceIntegrityHoldReason?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).isEmpty != false
+    }
+
+    var recordedVideoProfileLabel: String? {
+        guard effectiveMediaKind == .video,
+              let recorded = sourceProfile?.recordedMedia else {
+            return nil
+        }
+        let resolution: String
+        if let width = recorded.presentationWidth,
+           let height = recorded.presentationHeight {
+            if max(width, height) >= 3_840 && min(width, height) >= 2_160 {
+                resolution = "4K"
+            } else if max(width, height) >= 1_920 && min(width, height) >= 1_080 {
+                resolution = "1080p"
+            } else {
+                resolution = "\(width)×\(height)"
+            }
+        } else {
+            resolution = "resolution verified"
+        }
+        let frameRate = recorded.nominalFrameRate.map {
+            "\(Int($0.rounded())) fps"
+        } ?? "frame rate verified"
+        let codec: String
+        switch recorded.videoCodec?.lowercased() {
+        case "hvc1", "hev1", "hevc":
+            codec = "HEVC"
+        case "avc1", "h264", "h.264":
+            codec = "H.264"
+        case let value?:
+            codec = value.uppercased()
+        case nil:
+            codec = "codec verified"
+        }
+        let audio = recorded.audioTrackCount > 0 ? "movie audio" : "video only"
+        return "\(resolution) · \(frameRate) · \(codec) · \(audio)"
     }
 
     var statusLabel: String {
@@ -333,12 +426,29 @@ final class LocalRecordingLibrary: ObservableObject {
         let isPlayable: Bool
         let durationSeconds: TimeInterval?
         let failureMessage: String?
+        let recordedMedia: LocalRecordingRecordedMediaProfile?
+        let sourceIntegrityHoldReason: String?
+
+        nonisolated init(
+            isPlayable: Bool,
+            durationSeconds: TimeInterval?,
+            failureMessage: String?,
+            recordedMedia: LocalRecordingRecordedMediaProfile? = nil,
+            sourceIntegrityHoldReason: String? = nil
+        ) {
+            self.isPlayable = isPlayable
+            self.durationSeconds = durationSeconds
+            self.failureMessage = failureMessage
+            self.recordedMedia = recordedMedia
+            self.sourceIntegrityHoldReason = sourceIntegrityHoldReason
+        }
     }
 
     private struct PendingDeepValidation: Sendable {
         let recordingID: UUID
         let fileURL: URL
         let mediaKind: LocalRecordingMediaKind
+        let expectedSourceProfile: LocalRecordingSourceProfile?
         let playableMessage: String
     }
 
@@ -602,7 +712,8 @@ final class LocalRecordingLibrary: ObservableObject {
         let validation = await Task.detached(priority: .utility) {
             await Self.validateSourceThroughEnd(
                 at: fileURL,
-                mediaKind: mediaKind
+                mediaKind: mediaKind,
+                expectedSourceProfile: candidate.sourceProfile
             )
         }.value
 
@@ -612,9 +723,17 @@ final class LocalRecordingLibrary: ObservableObject {
             if let durationSeconds = validation.durationSeconds {
                 recording.durationSeconds = durationSeconds
             }
+            if let recordedMedia = validation.recordedMedia,
+               var sourceProfile = recording.sourceProfile {
+                sourceProfile.recordedMedia = recordedMedia
+                recording.sourceProfile = sourceProfile
+            }
+            recording.sourceIntegrityHoldReason =
+                validation.sourceIntegrityHoldReason
             if validation.isPlayable {
                 recording.status = .saved
-                recording.statusMessage = preservedMessage
+                recording.statusMessage = validation.sourceIntegrityHoldReason
+                    ?? preservedMessage
             } else {
                 recording.status = .needsRepair
                 recording.statusMessage = validation.failureMessage
@@ -1110,6 +1229,7 @@ final class LocalRecordingLibrary: ObservableObject {
                     recordingID: recording.id,
                     fileURL: fileURL,
                     mediaKind: mediaKind,
+                    expectedSourceProfile: recording.sourceProfile,
                     playableMessage: playableMessage
                 ))
             }
@@ -1129,16 +1249,26 @@ final class LocalRecordingLibrary: ObservableObject {
                 let validation = await Task.detached(priority: .utility) {
                     await Self.validateSourceThroughEnd(
                         at: candidate.fileURL,
-                        mediaKind: candidate.mediaKind
+                        mediaKind: candidate.mediaKind,
+                        expectedSourceProfile: candidate.expectedSourceProfile
                     )
                 }.value
                 guard let self else { return }
                 do {
                     try self.mutate(candidate.recordingID, allowInactiveOwner: true) { recording in
                         guard recording.status == .validatingRecovery else { return }
+                        if let recordedMedia = validation.recordedMedia,
+                           var sourceProfile = recording.sourceProfile {
+                            sourceProfile.recordedMedia = recordedMedia
+                            recording.sourceProfile = sourceProfile
+                        }
+                        recording.sourceIntegrityHoldReason =
+                            validation.sourceIntegrityHoldReason
                         if validation.isPlayable {
                             recording.status = .recovered
-                            recording.statusMessage = candidate.playableMessage
+                            recording.statusMessage =
+                                validation.sourceIntegrityHoldReason
+                                ?? candidate.playableMessage
                             if let durationSeconds = validation.durationSeconds {
                                 recording.durationSeconds = durationSeconds
                             }
@@ -1168,13 +1298,17 @@ final class LocalRecordingLibrary: ObservableObject {
 
     nonisolated private static func validateSourceThroughEnd(
         at fileURL: URL,
-        mediaKind: LocalRecordingMediaKind
+        mediaKind: LocalRecordingMediaKind,
+        expectedSourceProfile: LocalRecordingSourceProfile?
     ) async -> SourceValidation {
         switch mediaKind {
         case .audio:
             return validateAudioSource(at: fileURL, readsToEnd: true)
         case .video:
-            return await validateVideoSourceThroughEnd(at: fileURL)
+            return await validateVideoSourceThroughEnd(
+                at: fileURL,
+                expectedSourceProfile: expectedSourceProfile
+            )
         }
     }
 
@@ -1274,7 +1408,8 @@ final class LocalRecordingLibrary: ObservableObject {
     }
 
     nonisolated private static func validateVideoSourceThroughEnd(
-        at fileURL: URL
+        at fileURL: URL,
+        expectedSourceProfile: LocalRecordingSourceProfile?
     ) async -> SourceValidation {
         let byteCount = fileByteCountForValidation(at: fileURL)
         guard byteCount > 0 else {
@@ -1295,13 +1430,13 @@ final class LocalRecordingLibrary: ObservableObject {
             let isPlayable = try await asset.load(.isPlayable)
             guard isReadable,
                   isPlayable,
-                  !videoTracks.isEmpty,
+                  videoTracks.count == 1,
                   duration.isFinite,
                   duration > 0 else {
                 return SourceValidation(
                     isPlayable: false,
                     durationSeconds: nil,
-                    failureMessage: "Quipsly preserved the source bytes, but could not prove a readable video track and positive duration. It needs repair and is not claimed playable."
+                    failureMessage: "Quipsly preserved the source bytes, but could not prove exactly one readable video track and a positive duration. It needs repair and is not claimed playable."
                 )
             }
 
@@ -1337,10 +1472,22 @@ final class LocalRecordingLibrary: ObservableObject {
                     )
                 }
             }
+
+            let recordedMedia = try await recordedMediaProfile(
+                videoTrack: videoTracks[0],
+                audioTracks: audioTracks,
+                durationSeconds: duration
+            )
+            let integrityHold = videoIntegrityHoldReason(
+                expected: expectedSourceProfile,
+                recorded: recordedMedia
+            )
             return SourceValidation(
                 isPlayable: true,
                 durationSeconds: duration,
-                failureMessage: nil
+                failureMessage: nil,
+                recordedMedia: recordedMedia,
+                sourceIntegrityHoldReason: integrityHold
             )
         } catch {
             return SourceValidation(
@@ -1349,6 +1496,160 @@ final class LocalRecordingLibrary: ObservableObject {
                 failureMessage: "Quipsly preserved the source bytes, but iOS could not decode every recorded video sample through the declared end. It needs repair and is not claimed playable."
             )
         }
+    }
+
+    nonisolated private static func recordedMediaProfile(
+        videoTrack: AVAssetTrack,
+        audioTracks: [AVAssetTrack],
+        durationSeconds: Double
+    ) async throws -> LocalRecordingRecordedMediaProfile {
+        let naturalSize = try await videoTrack.load(.naturalSize)
+        let preferredTransform = try await videoTrack.load(.preferredTransform)
+        let nominalFrameRate = try await videoTrack.load(.nominalFrameRate)
+        let videoDescriptions = try await videoTrack.load(.formatDescriptions)
+        let encodedDimensions = videoDescriptions.first.map {
+            CMVideoFormatDescriptionGetDimensions($0)
+        }
+        let videoCodec = videoDescriptions.first.map {
+            fourCCString(CMFormatDescriptionGetMediaSubType($0))
+        }
+        let presentationRect = CGRect(
+            origin: .zero,
+            size: naturalSize
+        ).applying(preferredTransform)
+        let presentationWidth = Int(abs(presentationRect.width).rounded())
+        let presentationHeight = Int(abs(presentationRect.height).rounded())
+        let rotation = normalizedRotationDegrees(preferredTransform)
+
+        var audioSampleRate: Double?
+        var audioChannelCount: Int?
+        if let audioTrack = audioTracks.first {
+            let audioDescriptions = try await audioTrack.load(.formatDescriptions)
+            if let audioDescription = audioDescriptions.first,
+               let stream = CMAudioFormatDescriptionGetStreamBasicDescription(
+                   audioDescription
+               ) {
+                audioSampleRate = stream.pointee.mSampleRate
+                audioChannelCount = Int(stream.pointee.mChannelsPerFrame)
+            }
+        }
+
+        return LocalRecordingRecordedMediaProfile(
+            videoTrackCount: 1,
+            audioTrackCount: audioTracks.count,
+            videoCodec: videoCodec,
+            encodedWidth: encodedDimensions.map { Int($0.width) },
+            encodedHeight: encodedDimensions.map { Int($0.height) },
+            presentationWidth: presentationWidth > 0
+                ? presentationWidth
+                : nil,
+            presentationHeight: presentationHeight > 0
+                ? presentationHeight
+                : nil,
+            rotationDegrees: rotation,
+            nominalFrameRate: nominalFrameRate.isFinite
+                && nominalFrameRate > 0
+                ? Double(nominalFrameRate)
+                : nil,
+            audioSampleRate: audioSampleRate,
+            audioChannelCount: audioChannelCount,
+            durationSeconds: durationSeconds
+        )
+    }
+
+    nonisolated private static func videoIntegrityHoldReason(
+        expected: LocalRecordingSourceProfile?,
+        recorded: LocalRecordingRecordedMediaProfile
+    ) -> String? {
+        guard let expected else {
+            return "The complete movie is playable, but it predates Quipsly's negotiated-versus-recorded profile receipt. Upload is held until a human reviews the preserved local original."
+        }
+        var differences: [String] = []
+        if recorded.videoTrackCount != 1 {
+            differences.append(
+                "expected one video track, recorded \(recorded.videoTrackCount)"
+            )
+        }
+        let expectedAudioTrack = expected.includesAudio
+        let recordedAudioTrack = recorded.audioTrackCount > 0
+        if expectedAudioTrack != recordedAudioTrack {
+            differences.append(
+                expectedAudioTrack
+                    ? "the armed solo source expected movie audio, but no audio track was recorded"
+                    : "the armed podcast-camera source was video-only, but the movie contains audio"
+            )
+        }
+        if let expectedWidth = expected.width,
+           let expectedHeight = expected.height,
+           let recordedWidth = recorded.encodedWidth,
+           let recordedHeight = recorded.encodedHeight,
+           expectedWidth != recordedWidth || expectedHeight != recordedHeight {
+            differences.append(
+                "negotiated \(expectedWidth)×\(expectedHeight), recorded \(recordedWidth)×\(recordedHeight)"
+            )
+        }
+        if let expectedCodec = expected.codec,
+           let recordedCodec = recorded.videoCodec,
+           normalizedVideoCodec(expectedCodec)
+                != normalizedVideoCodec(recordedCodec) {
+            differences.append(
+                "negotiated \(expectedCodec), recorded \(recordedCodec)"
+            )
+        }
+        if let expectedFrameRate = expected.nominalFrameRate,
+           let recordedFrameRate = recorded.nominalFrameRate,
+           abs(expectedFrameRate - recordedFrameRate) > 1.0 {
+            differences.append(
+                "negotiated \(Int(expectedFrameRate.rounded())) fps, recorded \(Int(recordedFrameRate.rounded())) fps"
+            )
+        }
+        if expected.orientation == "portrait",
+           let width = recorded.presentationWidth,
+           let height = recorded.presentationHeight,
+           width >= height {
+            differences.append(
+                "the armed portrait source produced a \(width)×\(height) landscape presentation"
+            )
+        }
+        guard !differences.isEmpty else { return nil }
+        return "The complete movie is playable and preserved, but its finished track does not match the armed source: \(differences.joined(separator: "; ")). Upload is held so Quipsly cannot silently relabel the source."
+    }
+
+    nonisolated private static func normalizedVideoCodec(
+        _ value: String
+    ) -> String {
+        switch value.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).lowercased() {
+        case "hvc1", "hev1", "hevc":
+            return "hevc"
+        case "avc1", "h264", "h.264":
+            return "h264"
+        case let value:
+            return value
+        }
+    }
+
+    nonisolated private static func normalizedRotationDegrees(
+        _ transform: CGAffineTransform
+    ) -> Double? {
+        let radians = atan2(transform.b, transform.a)
+        guard radians.isFinite else { return nil }
+        let degrees = radians * 180 / .pi
+        let normalized = degrees.truncatingRemainder(dividingBy: 360)
+        return normalized < 0 ? normalized + 360 : normalized
+    }
+
+    nonisolated private static func fourCCString(
+        _ value: FourCharCode
+    ) -> String {
+        let scalars = [
+            UnicodeScalar((value >> 24) & 0xff),
+            UnicodeScalar((value >> 16) & 0xff),
+            UnicodeScalar((value >> 8) & 0xff),
+            UnicodeScalar(value & 0xff),
+        ]
+        return String(String.UnicodeScalarView(scalars.compactMap { $0 }))
     }
 
     nonisolated private static func fileByteCountForValidation(at fileURL: URL) -> Int64 {

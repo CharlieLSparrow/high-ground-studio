@@ -1,4 +1,5 @@
 import AVFoundation
+import AVKit
 import SwiftUI
 import UIKit
 
@@ -3844,7 +3845,39 @@ private struct CaptureLibraryView: View {
                 }
             )
         }
+        .sheet(
+            isPresented: Binding(
+                get: { playback.videoPlayer != nil },
+                set: { isPresented in
+                    if !isPresented {
+                        playback.stop()
+                    }
+                }
+            )
+        ) {
+            CaptureLocalVideoPlayerSheet(
+                title: playingVideoTitle,
+                profileLabel: playingVideoProfileLabel,
+                player: playback.videoPlayer,
+                onDone: { playback.stop() }
+            )
+        }
         .onDisappear { playback.stop() }
+    }
+
+    private var playingVideoTitle: String {
+        guard let recordingID = playback.playingRecordingID else {
+            return "Local video source"
+        }
+        return library.recording(id: recordingID)?.displayTitle
+            ?? "Local video source"
+    }
+
+    private var playingVideoProfileLabel: String? {
+        guard let recordingID = playback.playingRecordingID else {
+            return nil
+        }
+        return library.recording(id: recordingID)?.recordedVideoProfileLabel
     }
 
     private var captureIsActive: Bool {
@@ -5384,7 +5417,7 @@ private struct LocalRecordingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .top, spacing: 12) {
-                Image(systemName: recording.status.isVerified ? "checkmark.waveform" : "waveform")
+                Image(systemName: sourceSystemImage)
                     .font(.title3)
                     .foregroundStyle(recording.status.isVerified ? .green : CapturePalette.accent)
                     .frame(width: 40, height: 40)
@@ -5414,6 +5447,32 @@ private struct LocalRecordingRow: View {
             }
             .font(.caption)
             .foregroundStyle(.secondary)
+
+            if let recordedVideoProfileLabel = recording.recordedVideoProfileLabel {
+                Label(
+                    "Recorded · \(recordedVideoProfileLabel)",
+                    systemImage: "checkmark.seal.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(
+                    "LocalRecordingRecordedVideoProfile_\(recording.id)"
+                )
+            }
+
+            if let sourceIntegrityHoldReason = recording.sourceIntegrityHoldReason {
+                Label(
+                    sourceIntegrityHoldReason,
+                    systemImage: "exclamationmark.shield.fill"
+                )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.orange)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier(
+                    "LocalRecordingSourceIntegrityHold_\(recording.id)"
+                )
+            }
 
             if !recording.userMarkOffsets.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -5447,14 +5506,27 @@ private struct LocalRecordingRow: View {
 
             HStack(spacing: 10) {
                 Button(action: onPlay) {
-                    Label(isPlaying ? "Stop" : "Play", systemImage: isPlaying ? "stop.fill" : "play.fill")
+                    Label(
+                        isPlaying
+                            ? "Stop"
+                            : recording.effectiveMediaKind == .video
+                                ? "Watch"
+                                : "Play",
+                        systemImage: isPlaying
+                            ? "stop.fill"
+                            : recording.effectiveMediaKind == .video
+                                ? "play.rectangle.fill"
+                                : "play.fill"
+                    )
                         .frame(minHeight: 44)
                 }
                 .buttonStyle(.bordered)
                 .disabled(!canAudition || fileURL == nil || !recording.status.isPlaybackEligible)
                 .accessibilityHint(recording.status.isPlaybackEligible
-                    ? "Auditions the immutable local source."
-                    : "Audio is not available for playback until capture is finalized and its stream is decoded.")
+                    ? recording.effectiveMediaKind == .video
+                        ? "Opens and watches the immutable local video source."
+                        : "Auditions the immutable local audio source."
+                    : "The source is not available for playback until capture is finalized and its complete stream is decoded.")
 
                 if retryIsAvailable {
                     Button(action: onRetry) {
@@ -5527,6 +5599,19 @@ private struct LocalRecordingRow: View {
         }
     }
 
+    private var sourceSystemImage: String {
+        switch (recording.effectiveMediaKind, recording.status.isVerified) {
+        case (.video, true):
+            return "checkmark.rectangle.fill"
+        case (.video, false):
+            return "video.fill"
+        case (.audio, true):
+            return "checkmark.waveform"
+        case (.audio, false):
+            return "waveform"
+        }
+    }
+
     private var localDeletionAccessibilityHint: String {
         switch recording.status {
         case .armed, .recording, .paused, .finalizing:
@@ -5545,12 +5630,78 @@ private struct LocalRecordingRow: View {
     }
 
     private var retryIsAvailable: Bool {
-        switch recording.status {
+        if recording.sourceIntegrityHoldReason != nil {
+            return false
+        }
+        return switch recording.status {
         case .saved, .queued, .awaitingVerification, .uploadHeld, .recovered, .captureFailed:
             true
         case .armed, .recording, .paused, .finalizing, .validatingRecovery, .uploading, .uploaded, .needsRepair, .missingFile, .deletedLocally:
             false
         }
+    }
+}
+
+private struct CaptureLocalVideoPlayerSheet: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let title: String
+    let profileLabel: String?
+    let player: AVPlayer?
+    let onDone: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 14) {
+                VideoPlayer(player: player)
+                    .background(Color.black)
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: 18,
+                            style: .continuous
+                        )
+                    )
+                    .accessibilityLabel(
+                        "Immutable local video playback"
+                    )
+                    .accessibilityIdentifier(
+                        "CaptureLocalVideoPlayer"
+                    )
+
+                if let profileLabel {
+                    Label(
+                        profileLabel,
+                        systemImage: "checkmark.seal.fill"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                Label(
+                    "Watching does not alter, trim, upload, or delete the local original.",
+                    systemImage: "lock.shield.fill"
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(16)
+            .background(CaptureCanvas())
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        onDone()
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .interactiveDismissDisabled(false)
+        .onDisappear { onDone() }
+        .accessibilityIdentifier("CaptureLocalVideoPlayerSheet")
     }
 }
 

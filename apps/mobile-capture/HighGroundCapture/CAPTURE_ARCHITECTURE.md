@@ -138,6 +138,17 @@ source boundaries, real `AVCaptureVideoPreviewLayer`, source-mode preflight,
 source-specific consent/readiness, full-track finalized-file validation, and
 upload handoff are implemented. The UI may record a safe local original even
 when cloud processing is unavailable; it must then say that upload is held.
+Finalized MOV validation does not trust the armed camera profile as recorded
+truth. It decodes every audio and video track through EOF, requires exactly one
+video track, and persists the actual encoded dimensions, presentation
+dimensions, transform-derived rotation, codec, nominal frame rate, audio track
+shape, and asset duration. A missing legacy negotiated profile, unexpected or
+missing audio track, dimension/codec mismatch, material frame-rate drift, or
+portrait/landscape presentation mismatch creates a visible source-integrity
+hold. The original stays playable and preserved, but cannot upload under a
+silently false source label. Library video playback uses `AVPlayer` and the
+same process-wide audio-session coordinator as audio playback; watching never
+edits, uploads, or removes the original.
 The synchronous finalizer accepts at most 2 GiB. A larger video is upload
 eligible only when Nest advertises the dedicated long-source verifier and its
 maximum size; otherwise it stays in an explicit local upload-held state.

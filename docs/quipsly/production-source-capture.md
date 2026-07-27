@@ -10,6 +10,11 @@ native camera core now resolves the actual front/rear format, records fragmented
 MOV sources behind an actor, makes pause/switch explicit source boundaries,
 closes room receipts across failures, storage, thermal, identity, and foreground
 changes, and decodes each finalized track through EOF before upload eligibility.
+The finished MOV's actual encoded and presentation dimensions, rotation, codec,
+frame rate, audio shape, and duration are persisted independently of the
+negotiated camera profile. Material drift creates a visible upload hold without
+damaging playback or relabeling the source. Library now watches video originals
+through an app-owned AVPlayer surface instead of attempting audio-only playback.
 Old audio ledgers and v2 upload manifests normalize to one-source capture groups
 without gaining new processing authority. The long-source verifier, durable GCS
 queue, scoped Cloud Run Job release, IAM/scheduler setup, and fail-closed Nest

@@ -39,6 +39,7 @@ const files = {
   captureReceiptStore: path.join(sourceRoot, "CaptureRoomReceiptStore.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
   localRecordingLibrary: path.join(sourceRoot, "LocalRecordingLibrary.swift"),
+  localRecordingPlayback: path.join(sourceRoot, "LocalRecordingPlaybackController.swift"),
   mobileComponents: path.join(sourceRoot, "QuipslyMobileComponents.swift"),
   bridgeModels: path.join(sourceRoot, "BridgeModels.swift"),
   iPhoneSession: path.join(sourceRoot, "IPhoneQuipslySessionView.swift"),
@@ -155,6 +156,7 @@ const sessionNoteEditOutboxText = read(files.sessionNoteEditOutbox);
 const captureReceiptStoreText = read(files.captureReceiptStore);
 const capturePhoneShellText = read(files.capturePhoneShell);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
+const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
 const bridgeText = read(files.bridgeModels);
 const iPhoneText = read(files.iPhoneSession);
@@ -586,6 +588,29 @@ for (const needle of [
   "startRunning",
 ]) {
   requireIncludes(videoCaptureServiceText, needle, "AVFoundation camera service");
+}
+for (const needle of [
+  "LocalRecordingRecordedMediaProfile",
+  "videoTrack.load(.formatDescriptions)",
+  "videoTrack.load(.preferredTransform)",
+  "sourceIntegrityHoldReason",
+  "Upload is held so Quipsly cannot silently relabel the source.",
+]) {
+  requireIncludes(localRecordingLibraryText, needle, "finished-video source evidence");
+}
+for (const needle of [
+  "AVPlayerItem(url:",
+  "videoPlayer",
+  "beginVideoPlayback",
+]) {
+  requireIncludes(localRecordingPlaybackText, needle, "local video playback");
+}
+for (const needle of [
+  "CaptureLocalVideoPlayerSheet",
+  "VideoPlayer(player:",
+  "LocalRecordingRecordedVideoProfile",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "video Library review UX");
 }
 for (const needle of [
   "prepareForRecording()",
