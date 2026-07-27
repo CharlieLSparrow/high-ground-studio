@@ -2377,7 +2377,7 @@ This is an active-goal checkpoint, not a completion claim.
   receipt write was interrupted.
 - Camera and mic retain unique source IDs inside one capture group. Their
   delegate-confirmed monotonic starts create explicit timeline offsets; paired
-  lanes are labeled `capture-clock-aligned`, with a receipt warning that this
+  lanes are labeled `capture-clock-proposed`, with a receipt warning that this
   is deterministic first placement rather than content-level lip sync,
   waveform/drift review, or a sample-accuracy claim. A lone surviving source is
   still attached but remains `needs-alignment`; non-finite offsets and unknown
@@ -2453,6 +2453,10 @@ This is an active-goal checkpoint, not a completion claim.
   checklist: watch, listen through the intended route, correlate a sync event
   or waveform, inspect end-of-take drift, and explicitly approve or revise
   placement.
+- Corrected the local editor state from the false-strong
+  `capture-clock-aligned` label to `capture-clock-proposed`. Historical caller
+  input is normalized to proposal state; only the reviewed-alignment workflow
+  may claim an aligned source.
 - Current automated proof passes 65/65 QuipslyVideoCore tests, four focused
   real-media/negative acceptance fixtures, and an Apple Development signed
   QuipslyMac build. Physical permission, real camera/MV7i capture, playback,

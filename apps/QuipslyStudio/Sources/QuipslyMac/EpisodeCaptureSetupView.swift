@@ -958,7 +958,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     finalizedAudioReceipt != nil
                         && finalizedVideoReceipt != nil
                 let alignmentStatus = isCaptureClockPair
-                    ? "capture-clock-aligned"
+                    ? "capture-clock-proposed"
                     : "needs-alignment"
 
                 if let audioReceipt = finalizedAudioReceipt {

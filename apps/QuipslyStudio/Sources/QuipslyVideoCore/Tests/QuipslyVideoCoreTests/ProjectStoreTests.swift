@@ -137,7 +137,7 @@ final class ProjectStoreTests: XCTestCase {
                 sha256: String(repeating: "b", count: 64),
                 sourceReceiptPath: sourceReceiptPath,
                 timelineOffsetSeconds: 0.237,
-                alignmentStatus: "capture-clock-aligned"
+                alignmentStatus: "capture-clock-proposed"
             )
         )
 
@@ -149,7 +149,7 @@ final class ProjectStoreTests: XCTestCase {
         )
         XCTAssertEqual(
             lane.metadata?.alignmentStatus,
-            "capture-clock-aligned"
+            "capture-clock-proposed"
         )
         XCTAssertEqual(
             receipt.timelineOffsetSeconds ?? -1,
@@ -157,7 +157,7 @@ final class ProjectStoreTests: XCTestCase {
             accuracy: 0.000_001
         )
         XCTAssertTrue(receipt.truth.contains("monotonic clock"))
-        XCTAssertTrue(receipt.truth.contains("does not prove content-level lip sync"))
+        XCTAssertTrue(receipt.truth.contains("does not prove reviewed alignment"))
     }
 
     func testAttachmentEvidenceFailsClosedOnInvalidAlignmentClaims() {
@@ -179,6 +179,26 @@ final class ProjectStoreTests: XCTestCase {
 
         XCTAssertEqual(source.timelineOffsetSeconds, 0)
         XCTAssertEqual(source.alignmentStatus, "needs-alignment")
+
+        let historicalSource = VerifiedCaptureSourceAttachment(
+            sourceAssetID: "historical-source",
+            captureGroupID: UUID(),
+            episodeSpaceID: "hgo-episode-5",
+            mediaURL: URL(fileURLWithPath: "/tmp/historical.mov"),
+            originalURL: URL(fileURLWithPath: "/tmp/historical.mov"),
+            duration: 10,
+            name: "Historical clock source",
+            role: "camera_reference",
+            ingestKind: "mac_local_video_reference",
+            sha256: nil,
+            sourceReceiptPath: "/tmp/historical-receipt.json",
+            timelineOffsetSeconds: 0.5,
+            alignmentStatus: "capture-clock-aligned"
+        )
+        XCTAssertEqual(
+            historicalSource.alignmentStatus,
+            "capture-clock-proposed"
+        )
 
         let receipt = LocalEditorSourceAttachmentReceipt(
             sourceAssetID: source.sourceAssetID,

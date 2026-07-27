@@ -1,5 +1,19 @@
 import Foundation
 
+private func normalizedLocalAlignmentStatus(
+    _ value: String
+) -> String {
+    switch value {
+    case "capture-clock-proposed",
+         "capture-clock-aligned":
+        // The historical "aligned" spelling never represented
+        // content-level review. Normalize it to proposal truth.
+        "capture-clock-proposed"
+    default:
+        "needs-alignment"
+    }
+}
+
 public struct VerifiedCaptureSourceAttachment: Equatable, Sendable {
     public let sourceAssetID: String
     public let captureGroupID: UUID
@@ -49,9 +63,7 @@ public struct VerifiedCaptureSourceAttachment: Equatable, Sendable {
         )
         self.timelineOffsetSeconds = safeTimelineOffset
         self.alignmentStatus =
-            alignmentStatus == "capture-clock-aligned"
-                ? "capture-clock-aligned"
-                : "needs-alignment"
+            normalizedLocalAlignmentStatus(alignmentStatus)
     }
 }
 
@@ -96,17 +108,15 @@ public struct LocalEditorSourceAttachmentReceipt: Codable, Equatable, Sendable {
         self.mediaPath = mediaPath
         self.sourceReceiptPath = sourceReceiptPath
         self.alignmentStatus =
-            alignmentStatus == "capture-clock-aligned"
-                ? "capture-clock-aligned"
-                : "needs-alignment"
+            normalizedLocalAlignmentStatus(alignmentStatus)
         self.timelineOffsetSeconds = timelineOffsetSeconds.flatMap {
             $0.isFinite && $0 >= 0 ? $0 : nil
         }
         self.attachedAt = attachedAt
-        if self.alignmentStatus == "capture-clock-aligned",
+        if self.alignmentStatus == "capture-clock-proposed",
            self.timelineOffsetSeconds != nil {
             truth =
-                "This receipt proves that Quipsly attached the verified managed source to one local non-destructive editor lane and placed it from a shared capture-group monotonic clock. It does not prove content-level lip sync, cloud upload, proxy readiness, transcription, or publication."
+                "This receipt proves that Quipsly attached the verified managed source to one local non-destructive editor lane and proposed its first placement from a shared capture-group monotonic clock. It does not prove reviewed alignment, content-level lip sync, cloud upload, proxy readiness, transcription, or publication."
         } else {
             truth =
                 "This receipt proves that Quipsly attached the verified managed source to one local non-destructive editor lane. It does not prove cloud upload, proxy readiness, synchronization, transcription, or publication."

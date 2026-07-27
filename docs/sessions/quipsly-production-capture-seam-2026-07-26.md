@@ -96,6 +96,9 @@ alignment and non-destructive editorial decisions.
 - a Take acceptance workspace that separates machine pass from mandatory
   full-playback, headphone, waveform/lip-sync, end-drift, and editor-placement
   review;
+- local paired-lane clock placement renamed to `capture-clock-proposed`, with
+  the historical false-strong label normalized instead of treated as reviewed
+  alignment;
 - explicit UX that joining sends no video, starts no recording, and leaves the
   local WAV recorder independent;
 - an agent-state responsiveness repair found by launching the real app:

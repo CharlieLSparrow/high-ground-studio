@@ -787,7 +787,7 @@ into either one:
   attaches every successfully finalized source even when its partner needs
   recovery.
 - The editor writes the measured per-source monotonic offset and labels a
-  two-source pair `capture-clock-aligned`. The receipt explicitly says this is
+  two-source pair `capture-clock-proposed`. The receipt explicitly says this is
   deterministic first placement, not content-level lip-sync, waveform/drift
   review, or proof of the Canon camera-card 4K master. A surviving single
   source remains `needs-alignment`. Non-finite offsets and stronger, unknown
@@ -920,6 +920,10 @@ filename into editorial approval:
   still requires watching the complete reference, listening to the complete
   mic master, correlating a visible/audible event or waveform, checking
   end-of-take drift, and explicitly approving or revising timeline placement.
+- Local editor placement from the shared monotonic clock is labeled
+  `capture-clock-proposed`, never `aligned`. The former historical
+  `capture-clock-aligned` input spelling is normalized to proposal state so it
+  cannot bypass review.
 - Missing clock samples produce a visible warning rather than invented
   precision. Changed bytes, cross-take sources, partial authority, divergent
   clock bursts, unreadable media, or format/duration drift hold the take while
