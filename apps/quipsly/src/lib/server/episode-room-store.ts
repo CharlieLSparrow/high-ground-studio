@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { Prisma } from "@prisma/client";
 
 import type { EpisodeImportedMediaAsset } from "@/app/(app)/episode-production/episodeArtifact";
@@ -26,6 +26,10 @@ import {
 } from "@/lib/episode-room/episode-room-source-alignment";
 import { getPrismaClient } from "@/lib/prisma";
 import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
+import {
+  episodeRoomWritingUpdatedAt,
+  episodeRoomWritingVersion,
+} from "@/lib/server/episode-room-writing";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -35,6 +39,15 @@ export type EpisodeRoomTextBlock = {
   order: number;
   title: string | null;
   body: string;
+};
+
+export type EpisodeRoomWritingState = {
+  version: string;
+  updatedAt: string;
+  blockCount: number;
+  visibleBlockCount: number;
+  truncated: boolean;
+  textBlocks?: EpisodeRoomTextBlock[];
 };
 
 export type EpisodeRoomTranscriptSegment = {
@@ -87,6 +100,7 @@ export type EpisodeRoomDeskPayload = {
     documentTitle: string;
   };
   room: EpisodeRoomState;
+  writing: EpisodeRoomWritingState;
   textBlocks: EpisodeRoomTextBlock[];
   transcriptSegments: EpisodeRoomTranscriptSegment[];
   importedCandidates: EpisodeRoomImportedCandidate[];
@@ -97,6 +111,7 @@ export type EpisodeRoomDeskPayload = {
 
 export type EpisodeRoomRuntimePayload = {
   room: EpisodeRoomState;
+  writing: EpisodeRoomWritingState;
   importedCandidates: EpisodeRoomImportedCandidate[];
   recordingSessions: EpisodeRoomRecordingSession[];
   timelineClipCount: number;
@@ -400,6 +415,78 @@ function blockOrderWhere(start?: number | null, end?: number | null) {
   };
 }
 
+const EPISODE_ROOM_TEXT_BLOCK_LIMIT = 400;
+
+async function loadEpisodeRoomWriting(
+  prisma: Pick<
+    ReturnType<typeof getPrismaClient>,
+    "studioDocumentBlock" | "studioDocumentOperation"
+  >,
+  input: {
+    documentId: string;
+    documentUpdatedAt: Date;
+    boundaryStartOrder?: number | null;
+    boundaryEndOrder?: number | null;
+    knownVersion?: string;
+  },
+): Promise<EpisodeRoomWritingState> {
+  const order = blockOrderWhere(
+    input.boundaryStartOrder,
+    input.boundaryEndOrder,
+  );
+  const where = {
+    documentId: input.documentId,
+    archivedAt: null,
+    ...(order ? { order } : {}),
+  };
+  const [blockSignals, latestOperation] = await Promise.all([
+    prisma.studioDocumentBlock.aggregate({
+      where,
+      _count: { _all: true },
+      _max: { updatedAt: true },
+    }),
+    prisma.studioDocumentOperation.findFirst({
+      where: { documentId: input.documentId },
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      select: { id: true },
+    }),
+  ]);
+  const blockCount = blockSignals._count._all;
+  const signals = {
+    documentUpdatedAt: input.documentUpdatedAt,
+    latestBlockUpdatedAt: blockSignals._max.updatedAt,
+    blockCount,
+    latestOperationId: latestOperation?.id ?? null,
+  };
+  const version = episodeRoomWritingVersion(signals);
+  const metadata = {
+    version,
+    updatedAt: episodeRoomWritingUpdatedAt(signals),
+    blockCount,
+    visibleBlockCount: Math.min(blockCount, EPISODE_ROOM_TEXT_BLOCK_LIMIT),
+    truncated: blockCount > EPISODE_ROOM_TEXT_BLOCK_LIMIT,
+  };
+  if (input.knownVersion === version) return metadata;
+
+  const textBlocks = await prisma.studioDocumentBlock.findMany({
+    where,
+    orderBy: { order: "asc" },
+    take: EPISODE_ROOM_TEXT_BLOCK_LIMIT,
+    select: {
+      id: true,
+      stableId: true,
+      order: true,
+      title: true,
+      body: true,
+    },
+  });
+  return {
+    ...metadata,
+    visibleBlockCount: textBlocks.length,
+    textBlocks,
+  };
+}
+
 async function reconcileEpisodeCaptureProxies(
   prisma: ReturnType<typeof getPrismaClient>,
   projectSlug: string,
@@ -451,43 +538,23 @@ export async function loadEpisodeRoomDesk(
         select: {
           id: true,
           title: true,
-          blocks: {
-            where: { archivedAt: null },
-            orderBy: { order: "asc" },
-            take: 240,
-            select: {
-              id: true,
-              stableId: true,
-              order: true,
-              title: true,
-              body: true,
-            },
-          },
+          updatedAt: true,
         },
       },
     },
   });
   if (!production) return null;
 
-  const order = blockOrderWhere(production.boundaryStartOrder, production.boundaryEndOrder);
-  const textBlocks = order
-    ? await prisma.studioDocumentBlock.findMany({
-        where: {
-          documentId: production.documentId,
-          archivedAt: null,
-          order,
-        },
-        orderBy: { order: "asc" },
-        take: 240,
-        select: {
-          id: true,
-          stableId: true,
-          order: true,
-          title: true,
-          body: true,
-        },
-      })
-    : production.document.blocks;
+  const writingSnapshot = await loadEpisodeRoomWriting(prisma, {
+    documentId: production.documentId,
+    documentUpdatedAt: production.document.updatedAt,
+    boundaryStartOrder: production.boundaryStartOrder,
+    boundaryEndOrder: production.boundaryEndOrder,
+  });
+  const {
+    textBlocks = [],
+    ...writing
+  } = writingSnapshot;
 
   const now = new Date().toISOString();
   const room = productionRoomState(production.productionJson, now);
@@ -503,6 +570,7 @@ export async function loadEpisodeRoomDesk(
       documentTitle: production.document.title,
     },
     room,
+    writing,
     textBlocks,
     transcriptSegments: transcriptSegments(production.timelineJson),
     importedCandidates: importedCandidatesFor(
@@ -526,6 +594,7 @@ export async function loadEpisodeRoomRuntime(
   projectSlug: string,
   episodeSlug: string,
   actor?: EpisodeRoomActor,
+  knownWritingVersion?: string,
 ): Promise<EpisodeRoomRuntimePayload | null> {
   const prisma = getPrismaClient();
   await reconcileEpisodeCaptureProxies(prisma, projectSlug);
@@ -538,16 +607,32 @@ export async function loadEpisodeRoomRuntime(
       id: true,
       slug: true,
       projectId: true,
+      documentId: true,
+      boundaryStartOrder: true,
+      boundaryEndOrder: true,
       productionJson: true,
       timelineJson: true,
       updatedAt: true,
+      document: {
+        select: {
+          updatedAt: true,
+        },
+      },
     },
   });
   if (!production) return null;
   const now = new Date().toISOString();
   const room = productionRoomState(production.productionJson, now);
+  const writing = await loadEpisodeRoomWriting(prisma, {
+    documentId: production.documentId,
+    documentUpdatedAt: production.document.updatedAt,
+    boundaryStartOrder: production.boundaryStartOrder,
+    boundaryEndOrder: production.boundaryEndOrder,
+    knownVersion: knownWritingVersion,
+  });
   return {
     room,
+    writing,
     importedCandidates: importedCandidatesFor(
       production.productionJson,
       production.timelineJson,
@@ -805,6 +890,7 @@ export async function importEpisodeRoomText({
       where: { id: productionRef.id },
       select: {
         id: true,
+        projectId: true,
         documentId: true,
         productionJson: true,
       },
@@ -818,6 +904,7 @@ export async function importEpisodeRoomText({
         imported: false,
         alreadyImported: true,
         blockCount: Math.max(0, Math.trunc(optionalNumber(priorImport.blockCount) ?? 0)),
+        operationId: text(priorImport.operationId) || null,
       };
     }
 
@@ -832,20 +919,53 @@ export async function importEpisodeRoomText({
     }
 
     const importedAt = new Date();
+    const importedBlocks = blocks.map((block, index) => ({
+      id: randomUUID(),
+      documentId: production.documentId,
+      stableId: `episode-room-${randomUUID()}`,
+      order: index,
+      body: block,
+      sourceLabel: "Episode Room text import",
+      sourcePath: `episode-room://${projectSlug}/${episodeSlug}/${clientRequestId}`,
+      isPrivate: true,
+    }));
     await tx.studioDocumentBlock.createMany({
-      data: blocks.map((block, index) => ({
-        documentId: production.documentId,
-        stableId: `episode-room-${randomUUID()}`,
-        order: index,
-        body: block,
-        sourceLabel: "Episode Room text import",
-        sourcePath: `episode-room://${projectSlug}/${episodeSlug}/${clientRequestId}`,
-        isPrivate: true,
-      })),
+      data: importedBlocks,
     });
     await tx.studioDocument.update({
       where: { id: production.documentId },
       data: { updatedAt: importedAt },
+    });
+    const contentSha256 = createHash("sha256")
+      .update(blocks.join("\n\n"))
+      .digest("hex");
+    const operation = await tx.studioDocumentOperation.create({
+      data: {
+        projectId: production.projectId,
+        documentId: production.documentId,
+        groupId: clientRequestId,
+        actorEmail: actor.email,
+        origin: "human",
+        operationType: "episode-room-text-import",
+        status: "applied",
+        beforeJson: json({
+          blockCount: 0,
+          blockIds: [],
+        }),
+        afterJson: json({
+          blockCount: importedBlocks.length,
+          blockIds: importedBlocks.map((block) => block.id),
+          stableIds: importedBlocks.map((block) => block.stableId),
+        }),
+        payloadJson: json({
+          clientRequestId,
+          episodeSlug,
+          contentSha256,
+          source: "episode-room-paste",
+        }),
+        reversible: false,
+      },
+      select: { id: true },
     });
     await tx.studioEpisodeProduction.update({
       where: { id: production.id },
@@ -859,6 +979,8 @@ export async function importEpisodeRoomText({
             importedAt: importedAt.toISOString(),
             importedBy: actor.label,
             actorEmail: actor.email,
+            operationId: operation.id,
+            contentSha256,
             source: "episode-room-paste",
             externalSideEffects: false,
           },
@@ -871,6 +993,7 @@ export async function importEpisodeRoomText({
       imported: true,
       alreadyImported: false,
       blockCount: blocks.length,
+      operationId: operation.id,
     };
   }, {
     isolationLevel: Prisma.TransactionIsolationLevel.Serializable,

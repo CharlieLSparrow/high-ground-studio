@@ -6,10 +6,11 @@ import { getPrismaClient } from "@/lib/prisma";
 import {
   EpisodeRoomRevisionConflict,
   applyEpisodeRoomStoreCommand,
+  loadEpisodeRoomRuntime,
 } from "@/lib/server/episode-room-store";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/episode-production-access", () => ({
@@ -220,5 +221,61 @@ describe("Episode Room command route", () => {
         expectedRevision: 1,
       },
     }));
+  });
+});
+
+describe("Episode Room runtime route", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(getPrismaClient).mockReturnValue({} as never);
+  });
+
+  it("passes the caller's opaque writing version to the shared snapshot loader", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: true,
+      actor: {
+        id: "user-1",
+        email: "editor@example.test",
+        name: "Episode Editor",
+        isStaff: false,
+        source: "embedded-cookie",
+      },
+      access: {
+        allowed: true,
+        projectId: "project-1",
+        role: "EDITOR",
+      },
+    } as never);
+    jest.mocked(loadEpisodeRoomRuntime).mockResolvedValue({
+      room: { revision: 8 },
+      writing: {
+        version: "writing-version-8",
+        updatedAt: "2026-07-27T10:00:00.000Z",
+        blockCount: 4,
+        visibleBlockCount: 4,
+        truncated: false,
+      },
+      updatedAt: "2026-07-27T10:00:00.000Z",
+      timelineClipCount: 2,
+      importedCandidates: [],
+      recordingSessions: [],
+    } as never);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nests/high-ground-odyssey/episode-room?episode=episode-4-part-2&runtime=1&writingVersion=writing-version-7",
+    ), params);
+
+    expect(response.status).toBe(200);
+    expect(loadEpisodeRoomRuntime).toHaveBeenCalledWith(
+      "high-ground-odyssey",
+      "episode-4-part-2",
+      {
+        userId: "user-1",
+        email: "editor@example.test",
+        label: "Episode Editor",
+        isStaff: false,
+      },
+      "writing-version-7",
+    );
   });
 });

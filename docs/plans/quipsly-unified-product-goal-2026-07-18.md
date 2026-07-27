@@ -2327,3 +2327,35 @@ This is an active-goal checkpoint, not a completion claim.
   TestFlight install; and real High Ground Odyssey episode operation. The open
   Google reauthentication callback also prevents a new cloud qualification or
   deployment claim.
+
+### 2026-07-27 revision-aware Episode Room writing checkpoint
+
+- Closed the remaining “one room” ownership defect without creating a second
+  manuscript editor. Episode Room now derives an opaque writing version from
+  canonical document, bounded-block, and operation-receipt signals; normal
+  750 ms runtime polls return metadata only until that version changes, then
+  return one bounded fresh snapshot. The room visibly reports the refresh and
+  never silently claims a truncated document is complete.
+- `Write` and `Open this manuscript` now route to the episode's exact
+  `StudioDocument`, not the Nest's arbitrary default page. The empty-document
+  import remains serialized, idempotent, and fail-closed on existing text, and
+  now records an attributable `episode-room-text-import` operation with stable
+  block identities and a SHA-256 fingerprint. It is honestly marked
+  non-reversible until a dedicated import-undo command exists.
+- Operated the rendered local
+  `high-ground-odyssey / episode-4-part-2` workflow against PostgreSQL. Episode
+  Room imported four useful producer-review blocks without reloading; Writing
+  opened the exact canonical document and saved a revised intelligibility
+  check; the already-open room rendered the exact changed sentence on the next
+  poll. Database readback retained both the import and reversible
+  `block-content-save` receipts under `codex@dev.test`.
+- Focused writing-version, API, and rendered-client tests pass 13/13. The
+  complete Nest run passes 148 suites / 711 runnable tests with 26 suites / 71
+  tests environment-gated; strict Quipsly TypeScript, 107/107 repository
+  contracts, the public local route/auth smoke, and the isolated 150-route
+  production build pass.
+- This proves one authenticated editor moving between the two canonical web
+  surfaces; it does not add a simultaneous text-merge protocol or replace the
+  earlier two-account playback/chat authorization proof. Physical iPhone
+  source qualification, direct Canon/MV7i masters, cloud worker qualification,
+  production deployment, TestFlight, and App Store readback remain open gates.

@@ -1,7 +1,7 @@
 # Quipsly Episode Room
 
-Status: first end-to-end vertical slice
-Last updated: 2026-07-26
+Status: production vertical slice under local and device qualification
+Last updated: 2026-07-27
 
 ## Product promise
 
@@ -83,9 +83,48 @@ Commands:
 - `ENDED`
 - `SYNC_TIMELINE`
 
-Clients poll only the lightweight runtime state every 750 ms. Episode text is loaded once. The protocol can later travel over a LiveKit data channel without changing command semantics or persisted receipts.
+Clients poll the lightweight runtime state every 750 ms. The protocol can later travel over a LiveKit data channel without changing command semantics or persisted receipts.
 
 Browser autoplay policies can block remote audio playback. A blocked participant sees a deliberate `Tap to join playback on this device` control. Remote Pause always remains enforceable because pausing media is not autoplay-restricted.
+
+## Shared writing protocol
+
+Episode Room does not own another copy of the manuscript. It reads the
+episode-bounded rows from the canonical `StudioDocument`.
+
+The runtime response includes an opaque writing version derived from:
+
+- the document update time;
+- the latest active bounded block update time;
+- the active bounded block count;
+- the latest document-operation receipt identity.
+
+The client sends its known version on each runtime poll. When the version is
+unchanged, the response contains only bounded writing metadata. When it
+changes, the server returns the newest episode-bounded text snapshot and the
+room replaces its read model without a page reload. The room visibly reports
+that the shared manuscript was refreshed.
+
+This is deliberately revision-aware read synchronization, not a second
+collaborative editor. `Write` and `Open this manuscript` route to the exact
+canonical document ID. All normal edits remain attributable
+`StudioDocumentOperation` mutations in Writing.
+
+The empty-document Episode Room import:
+
+- is serialized behind the episode-production row lock;
+- is idempotent by `clientRequestId`;
+- refuses to overwrite any active document blocks;
+- records an `episode-room-text-import` document-operation receipt containing
+  the imported stable identities and a SHA-256 content fingerprint;
+- is marked non-reversible because there is not yet a dedicated import-undo
+  command;
+- refreshes the room through the same writing-version protocol instead of
+  reloading the page.
+
+At most 400 writing blocks render in the live room. If the bounded document is
+larger, the UI states the exact total and routes to Writing for the complete
+manuscript instead of silently implying that the visible subset is complete.
 
 ## Timeline alignment
 
@@ -149,6 +188,25 @@ dogfood database. They prove the multi-account web contract and the
 Capture-to-Episode-Room server-clock seam. They do not prove physical iPhone
 alignment, provider egress, production deployment, or episode publication.
 
+On 2026-07-27 the same persisted episode was used to prove the shared-writing
+seam in the rendered app:
+
+- Episode Room imported four useful producer-review paragraphs into the empty
+  canonical episode document without a reload;
+- PostgreSQL readback showed an attributable
+  `episode-room-text-import` operation followed by a reversible
+  `block-content-save` operation;
+- the contextual `Write` link opened document
+  `document_046c4d894947c8c3fb2e1781`, not the Nest's arbitrary default page;
+- a producer-review sentence was edited and saved in Writing;
+- the already-open Episode Room observed the new opaque version, fetched the
+  changed snapshot, and rendered the exact saved sentence on the next polling
+  interval without navigation or manual refresh.
+
+This proves cross-surface canonical-document synchronization for one
+authenticated local editor. It does not replace the separate-account access
+proof already recorded above or claim conflict-free simultaneous text editing.
+
 ## Access and collaboration
 
 - Nest `OWNER` and `EDITOR` roles can control playback, attach media, sync the timeline, and post to episode chat.
@@ -162,7 +220,8 @@ Automated:
 
 1. reducer tests prove play/pause segment alignment, seek boundaries, idempotency, revision conflict, clock projection, and pause-before-sync;
 2. route tests prove malformed-command rejection, authenticated actor binding,
-   revision conflicts, episode-thread write authorization, and viewer denial;
+   revision conflicts, opaque writing-version forwarding, episode-thread write
+   authorization, and viewer denial;
 3. local-vault tests prove exact-byte persistence, private file mode,
    traversal denial, production denial, loopback-database binding, and
    temporary-root confinement;
@@ -173,20 +232,22 @@ Automated:
 Real workflow:
 
 1. open a real High Ground Odyssey episode;
-2. upload a short MP4 or audio clip;
-3. open the room in two authenticated accounts;
-4. prepare or select the exact podcast Capture room;
-5. grant current-policy consent in Capture and apply a real recording-start
+2. open its exact manuscript from Episode Room and make an attributable edit;
+3. verify the already-open room refreshes the saved text without navigation;
+4. upload a short MP4 or audio clip;
+5. open the room in two authenticated accounts;
+6. prepare or select the exact podcast Capture room;
+7. grant current-policy consent in Capture and apply a real recording-start
    receipt;
-6. bind the Episode Room to that server recording clock;
-7. play from account A and pause from account B;
-8. verify both players stop and the actor receipt is visible;
-9. seek and resume;
-10. post messages from both accounts and verify they remain episode-scoped;
-11. sync watched spans;
-12. open Edit and verify the source plus receipt-backed timeline derivatives;
-13. confirm unrelated timeline clips and source media remain unchanged;
-14. apply the matching recording-stop receipt and verify the room is no longer
+8. bind the Episode Room to that server recording clock;
+9. play from account A and pause from account B;
+10. verify both players stop and the actor receipt is visible;
+11. seek and resume;
+12. post messages from both accounts and verify they remain episode-scoped;
+13. sync watched spans;
+14. open Edit and verify the source plus receipt-backed timeline derivatives;
+15. confirm unrelated timeline clips and source media remain unchanged;
+16. apply the matching recording-stop receipt and verify the room is no longer
     recording.
 
 TestFlight and physical-iPhone proof add:

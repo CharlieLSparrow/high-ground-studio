@@ -121,12 +121,15 @@ export async function GET(
     }, { status: readAccess.status });
   }
   if (request.nextUrl.searchParams.get("runtime") === "1") {
+    const knownWritingVersion = text(
+      request.nextUrl.searchParams.get("writingVersion"),
+    ).slice(0, 128);
     const runtime = await loadEpisodeRoomRuntime(slug, episodeSlug, {
       ...(readAccess.actor.id ? { userId: readAccess.actor.id } : {}),
       email: readAccess.actor.email,
       label: readAccess.actor.name || readAccess.actor.email,
       isStaff: readAccess.actor.isStaff,
-    });
+    }, knownWritingVersion || undefined);
     if (!runtime) {
       return NextResponse.json({ ok: false, error: "Episode production not found." }, { status: 404 });
     }

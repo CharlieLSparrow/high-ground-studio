@@ -41,6 +41,7 @@ import type {
   EpisodeRoomDeskPayload,
   EpisodeRoomImportedCandidate,
   EpisodeRoomRecordingSession,
+  EpisodeRoomWritingState,
 } from "@/lib/server/episode-room-store";
 
 import EpisodeRoomChat from "./EpisodeRoomChat";
@@ -52,6 +53,7 @@ type RoomResponse = {
   currentRevision?: number;
   desk?: EpisodeRoomDeskPayload;
   room?: EpisodeRoomState;
+  writing?: EpisodeRoomWritingState;
   importedCandidates?: EpisodeRoomImportedCandidate[];
   recordingSessions?: EpisodeRoomRecordingSession[];
   timelineClipCount?: number;
@@ -134,6 +136,10 @@ export default function EpisodeRoomClient({
 }) {
   const [room, setRoom] = useState(initialPayload.room);
   const roomRef = useRef(initialPayload.room);
+  const [writing, setWriting] = useState(initialPayload.writing);
+  const writingRef = useRef(initialPayload.writing);
+  const [textBlocks, setTextBlocks] = useState(initialPayload.textBlocks);
+  const [writingNotice, setWritingNotice] = useState("");
   const [candidates, setCandidates] = useState(initialPayload.importedCandidates);
   const [recordingSessions, setRecordingSessions] = useState(initialPayload.recordingSessions);
   const [selectedRecordingRoomId, setSelectedRecordingRoomId] = useState(
@@ -163,7 +169,11 @@ export default function EpisodeRoomClient({
 
   const refresh = useCallback(async (quiet = false) => {
     try {
-      const params = new URLSearchParams({ episode: episodeSlug, runtime: "1" });
+      const params = new URLSearchParams({
+        episode: episodeSlug,
+        runtime: "1",
+        writingVersion: writingRef.current.version,
+      });
       const response = await fetch(`${endpoint}?${params}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as RoomResponse;
       if (!response.ok || !payload.ok || !payload.room) {
@@ -171,6 +181,24 @@ export default function EpisodeRoomClient({
       }
       roomRef.current = payload.room;
       setRoom(payload.room);
+      if (payload.writing) {
+        const {
+          textBlocks: refreshedTextBlocks,
+          ...writingMetadata
+        } = payload.writing;
+        const writingChanged = writingMetadata.version !== writingRef.current.version;
+        if (writingChanged && !refreshedTextBlocks) {
+          throw new Error("Episode writing changed, but its refreshed snapshot was unavailable.");
+        }
+        writingRef.current = writingMetadata;
+        setWriting(writingMetadata);
+        if (refreshedTextBlocks) {
+          setTextBlocks(refreshedTextBlocks);
+          if (writingChanged) {
+            setWritingNotice("Latest episode writing loaded from the shared manuscript.");
+          }
+        }
+      }
       if (payload.importedCandidates) setCandidates(payload.importedCandidates);
       if (payload.recordingSessions) {
         setRecordingSessions(payload.recordingSessions);
@@ -363,7 +391,9 @@ export default function EpisodeRoomClient({
       return;
     }
     setNotice(`${payload.blockCount ?? 0} episode text blocks imported.`);
-    window.location.reload();
+    setEpisodeTextDraft("");
+    setStatus("idle");
+    await refresh(true);
   }
 
   async function prepareRecordingSession() {
@@ -442,7 +472,7 @@ export default function EpisodeRoomClient({
               </p>
             </div>
             <nav aria-label="Episode workflow" className="flex flex-wrap gap-2">
-              <Link href={`/create?project=${encodeURIComponent(projectSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
+              <Link href={`/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(initialPayload.episode.documentId)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
                 <FileText size={15} /> Write
               </Link>
               <Link href={`/recorder?project=${encodeURIComponent(projectSlug)}&episode=${encodeURIComponent(episodeSlug)}`} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#40584c] bg-[#17251e] px-4 text-xs font-black hover:border-[#d8ad56]">
@@ -485,13 +515,32 @@ export default function EpisodeRoomClient({
               <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#d8ad56]">Episode text</p>
               <h2 id="episode-text-heading" className="mt-1 font-serif text-2xl font-black">{initialPayload.episode.documentTitle}</h2>
               <p className="mt-2 text-xs font-semibold leading-5 text-[#aab9af]">
-                {initialPayload.textBlocks.length
-                  ? `${initialPayload.textBlocks.length} writing blocks in this episode boundary.`
+                {textBlocks.length
+                  ? `${writing.blockCount} writing blocks in this episode boundary.`
                   : `${initialPayload.transcriptSegments.length} recorded transcript segments available; writing has not been imported yet.`}
               </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-[#91a298]">
+                <span>Shared manuscript · {new Date(writing.updatedAt).toLocaleString()}</span>
+                <Link
+                  href={`/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(initialPayload.episode.documentId)}`}
+                  className="rounded-full border border-[#40584c] px-2.5 py-1 text-[#f6d68f] hover:border-[#d8ad56]"
+                >
+                  Open this manuscript
+                </Link>
+              </div>
+              {writingNotice ? (
+                <p aria-live="polite" className="mt-3 rounded-xl border border-emerald-400/30 bg-emerald-950/40 px-3 py-2 text-xs font-bold text-emerald-100">
+                  {writingNotice}
+                </p>
+              ) : null}
+              {writing.truncated ? (
+                <p className="mt-3 rounded-xl border border-amber-300/20 bg-amber-300/10 px-3 py-2 text-xs font-bold text-amber-100">
+                  Showing the first {writing.visibleBlockCount} of {writing.blockCount} blocks. Open the shared manuscript for the complete document.
+                </p>
+              ) : null}
             </header>
             <div className="max-h-[calc(100vh-16rem)] space-y-3 overflow-y-auto p-4">
-              {initialPayload.textBlocks.length ? initialPayload.textBlocks.map((block) => (
+              {textBlocks.length ? textBlocks.map((block) => (
                 <article key={block.id} id={`block-${block.stableId}`} className="rounded-2xl border border-[#30483d] bg-[#17251e] p-4">
                   {block.title ? <h3 className="font-serif text-lg font-black text-[#f4eedf]">{block.title}</h3> : null}
                   <p className={`${block.title ? "mt-2" : ""} whitespace-pre-wrap text-sm font-medium leading-7 text-[#d5ded8]`}>{block.body}</p>
