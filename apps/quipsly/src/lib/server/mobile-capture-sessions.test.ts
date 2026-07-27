@@ -8,6 +8,7 @@ jest.mock("@high-ground/quipsly-domain/coaching-packet", () => ({
 
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
 import {
+  captureSourceSummaries,
   canonicalMobileSessionEpisodeSlug,
   canonicalMobileSessionProject,
 } from "./mobile-capture-sessions";
@@ -150,6 +151,86 @@ describe("mobile Session recording content readiness", () => {
       status: "capture-proof-only",
       verifiedCaptureCount: 0,
       substantialRecordingCount: 0,
+    });
+  });
+});
+
+describe("mobile Session canonical capture sources", () => {
+  it("projects exact verification, proxy, transcript, and take identity together", () => {
+    const [source] = captureSourceSummaries({
+      recordingAssets: [{
+        id: "recording-1",
+        fileName: "homer-iphone.mov",
+        kind: "LOCAL_VIDEO",
+        contentType: "video/quicktime",
+        byteSize: BigInt(4_000_000_000),
+        durationSeconds: 1_800,
+        status: "VERIFIED",
+        recordedStartedAt: new Date("2026-07-27T18:00:00Z"),
+        recordedStoppedAt: new Date("2026-07-27T18:30:00Z"),
+        localManifestJson: {
+          exactBytesVerified: true,
+          byteVerificationKind: "server-size-and-sha256",
+          captureGroupId: "take-1",
+          reportedSourceProfile: {
+            clientKind: "ios",
+            codec: "hevc",
+          },
+        },
+        transcriptJobs: [{
+          id: "transcript-1",
+          status: "QUEUED",
+          provider: "pending",
+          updatedAt: new Date("2026-07-27T18:31:00Z"),
+          _count: { segments: 0 },
+        }],
+      }],
+    }, [{
+      uploadSessionId: "upload-1",
+      captureId: "capture-1",
+      recordingAssetId: "recording-1",
+      mediaAssetId: "media-1",
+      sourceId: "source-1",
+      processingDisposition: "RELEASED",
+      transcriptDisposition: "RELEASED",
+    }], [{
+      id: "media-1",
+      url: "/api/ingest/media/source-1",
+      variants: [],
+      proxyAssets: [],
+      workflowJobs: [{
+        type: "asset-proxy",
+        status: "queued",
+      }],
+    }]);
+
+    expect(source).toMatchObject({
+      recordingAssetId: "recording-1",
+      uploadSessionId: "upload-1",
+      captureId: "capture-1",
+      captureGroupId: "take-1",
+      exactBytesVerified: true,
+      byteVerificationKind: "server-size-and-sha256",
+      processingDisposition: "RELEASED",
+      transcriptDisposition: "RELEASED",
+      sourceId: "source-1",
+      mediaAssetId: "media-1",
+      playbackUrl: "/api/ingest/media/source-1",
+      alignment: {
+        status: "needs-alignment",
+        sourceClockEvidence: "source-profile-preserved",
+        sampleAccurateClaimed: false,
+      },
+      proxy: {
+        required: true,
+        status: "queued",
+        sourceOriginalPreserved: true,
+      },
+      transcript: {
+        id: "transcript-1",
+        status: "QUEUED",
+        segmentCount: 0,
+      },
     });
   });
 });

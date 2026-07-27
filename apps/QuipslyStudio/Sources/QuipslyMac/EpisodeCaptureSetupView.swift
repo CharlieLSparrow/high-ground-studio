@@ -1429,6 +1429,60 @@ struct EpisodeCaptureSetupView: View {
             }
             .font(.caption)
 
+            if let sources = room.captureSources,
+               !sources.isEmpty {
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack {
+                        Label(
+                            "\(sources.count) canonical source\(sources.count == 1 ? "" : "s")",
+                            systemImage: "externaldrive.fill.badge.checkmark"
+                        )
+                        .font(.caption.weight(.semibold))
+                        Spacer()
+                        Text(
+                            "\(sources.filter(\.exactBytesVerified).count) byte-verified"
+                        )
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(sources.prefix(4))) { source in
+                        HStack(spacing: 8) {
+                            Image(
+                                systemName:
+                                    source.kind.uppercased().contains("VIDEO")
+                                        ? "video.fill"
+                                        : "waveform"
+                            )
+                            .foregroundStyle(
+                                source.exactBytesVerified
+                                    ? .green
+                                    : .orange
+                            )
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(source.fileName)
+                                    .font(.caption.weight(.semibold))
+                                    .lineLimit(1)
+                                Text(source.readinessLabel)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(source.recordingStatus.uppercased())
+                                .font(.caption2.weight(.black))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding(10)
+                .background(
+                    Color.primary.opacity(0.035),
+                    in: RoundedRectangle(cornerRadius: 10)
+                )
+                .accessibilityIdentifier(
+                    "EpisodeCaptureCanonicalSources"
+                )
+            }
+
             DisclosureGroup("Technical binding") {
                 Grid(
                     alignment: .leading,

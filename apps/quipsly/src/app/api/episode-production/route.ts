@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  canonicalEpisodeProductionJson,
+} from "@/lib/episode-production/imported-media";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { lookupStudioProjectDocument, projectConfig } from "../../(app)/create/projectConfig";
 import { EPISODE_ARTIFACT_CURRENT_VERSION } from "../../(app)/episode-production/episodeArtifact";
@@ -30,6 +33,20 @@ function addPayloadVersion(value: unknown) {
 function payloadContentFingerprint(value: unknown) {
   const record = asRecord(value);
   return typeof record?.contentFingerprint === "string" ? record.contentFingerprint : "";
+}
+
+function publicProductionJson(
+  productionJson: unknown,
+  timelineJson: unknown,
+) {
+  return canonicalEpisodeProductionJson(
+    productionJson,
+    timelineJson,
+  );
+}
+
+function jsonValue(value: unknown) {
+  return JSON.parse(JSON.stringify(value));
 }
 
 function isUniqueConstraintError(error: unknown) {
@@ -204,7 +221,10 @@ async function ensureProduction(body: any, request: Request) {
       recordingRoomJson: production.recordingRoomJson ?? null,
       timelineJson: production.timelineJson ?? null,
       transcriptJson: production.transcriptJson ?? null,
-      productionJson: production.productionJson ?? null,
+      productionJson: publicProductionJson(
+        production.productionJson,
+        production.timelineJson,
+      ),
       updatedAt: production.updatedAt.toISOString(),
     };
   } catch (error) {
@@ -226,7 +246,7 @@ export async function POST(request: Request) {
     const prisma = getPrismaClient();
     const currentForMerge = await prisma.studioEpisodeProduction.findUnique({
       where: { id: state.id },
-      select: { productionJson: true },
+      select: { productionJson: true, timelineJson: true },
     });
 
     if (body.expectedUpdatedAt) {
@@ -243,7 +263,10 @@ export async function POST(request: Request) {
           recordingRoomJson: current.recordingRoomJson ?? null,
           timelineJson: current.timelineJson ?? null,
           transcriptJson: current.transcriptJson ?? null,
-          productionJson: current.productionJson ?? null,
+          productionJson: publicProductionJson(
+            current.productionJson,
+            current.timelineJson,
+          ),
           updatedAt: current.updatedAt.toISOString(),
         }, { status: 409 });
       }
@@ -254,12 +277,15 @@ export async function POST(request: Request) {
       where: { id: state.id },
       data: {
         recordingRoomJson: nextRecordingRoom,
-        productionJson: {
-          ...(asRecord(currentForMerge?.productionJson) ?? {}),
+        productionJson: jsonValue({
+          ...publicProductionJson(
+            currentForMerge?.productionJson,
+            currentForMerge?.timelineJson,
+          ),
           lastRecordingPackageAt: new Date().toISOString(),
           projectSlug: state.projectSlug,
           episodeSlug: state.slug,
-        },
+        }),
       },
     });
 
@@ -291,7 +317,10 @@ export async function POST(request: Request) {
           recordingRoomJson: currentForMerge?.recordingRoomJson ?? null,
           timelineJson: currentForMerge?.timelineJson ?? null,
           transcriptJson: currentForMerge?.transcriptJson ?? null,
-          productionJson: currentForMerge?.productionJson ?? null,
+          productionJson: publicProductionJson(
+            currentForMerge?.productionJson,
+            currentForMerge?.timelineJson,
+          ),
           updatedAt: currentForMerge?.updatedAt?.toISOString() ?? state.updatedAt,
         }, { status: 409 });
       }
@@ -304,7 +333,10 @@ export async function POST(request: Request) {
         recordingRoomJson: currentForMerge.recordingRoomJson ?? null,
         timelineJson: currentForMerge.timelineJson ?? null,
         transcriptJson: currentForMerge.transcriptJson ?? null,
-        productionJson: currentForMerge.productionJson ?? null,
+        productionJson: publicProductionJson(
+          currentForMerge.productionJson,
+          currentForMerge.timelineJson,
+        ),
         updatedAt: currentForMerge.updatedAt.toISOString(),
       }, { status: 409 });
     }
@@ -316,12 +348,15 @@ export async function POST(request: Request) {
       data: {
         timelineJson: timelinePayload,
         transcriptJson: transcriptPayload,
-        productionJson: {
-          ...(asRecord(currentForMerge?.productionJson) ?? {}),
+        productionJson: jsonValue({
+          ...publicProductionJson(
+            currentForMerge?.productionJson,
+            currentForMerge?.timelineJson,
+          ),
           lastTimelineSaveAt: new Date().toISOString(),
           projectSlug: state.projectSlug,
           episodeSlug: state.slug,
-        },
+        }),
       },
     });
 

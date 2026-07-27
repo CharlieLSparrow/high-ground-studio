@@ -1,5 +1,8 @@
 import "server-only";
 
+import {
+  canonicalEpisodeImportedMedia,
+} from "@/lib/episode-production/imported-media";
 import { isRetryableCaptureRoomTransactionError } from "@/lib/server/capture-room-state-ledger";
 import { toGcsUri } from "@/lib/server/gcs";
 import { recordMobileCaptureIngestion } from "@/lib/server/mobile-capture-records";
@@ -43,6 +46,21 @@ function parsedSegments(value: string | null) {
   } catch {
     return { raw: value };
   }
+}
+
+function dateIso(value: string | null) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed.toISOString() : null;
+}
+
+function durationSeconds(startedAt: string | null, stoppedAt: string | null) {
+  const start = startedAt ? Date.parse(startedAt) : Number.NaN;
+  const stop = stoppedAt ? Date.parse(stoppedAt) : Number.NaN;
+  if (!Number.isFinite(start) || !Number.isFinite(stop) || stop < start) {
+    return null;
+  }
+  return (stop - start) / 1_000;
 }
 
 function evidenceFromReceipt(receipt: any) {
@@ -241,25 +259,103 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
   const existingAttachment = await transaction.mobileCaptureEpisodeAttachment.findUnique({
     where: { uploadSessionId: manifest.uploadSessionId },
   });
-  if (existingAttachment) return;
+  if (
+    existingAttachment
+    && (
+      existingAttachment.productionId !== productionKey.id
+      || existingAttachment.mediaAssetId !== mediaAsset.id
+      || existingAttachment.sourceId !== source.id
+    )
+  ) {
+    throw new Error(
+      "The immutable Capture episode attachment is bound to different source evidence.",
+    );
+  }
 
   const production = await transaction.studioEpisodeProduction.findUnique({
     where: { id: productionKey.id },
-    select: { id: true, timelineJson: true },
+    select: { id: true, productionJson: true, timelineJson: true },
   });
   if (!production) return;
 
-  const timelineJson = asObject(production.timelineJson);
-  const importedMedia = Array.isArray(timelineJson.importedMedia)
-    ? [...timelineJson.importedMedia]
-    : [];
-  const alreadyAttached = importedMedia.some((entry) => {
+  const productionJson = asObject(production.productionJson);
+  const canonicalImportedMediaCount = Array.isArray(
+    productionJson.importedMedia,
+  )
+    ? productionJson.importedMedia.length
+    : 0;
+  const importedMedia = canonicalEpisodeImportedMedia(
+    production.productionJson,
+    production.timelineJson,
+  );
+  const recoveredLegacyCount = Math.max(
+    0,
+    importedMedia.length - canonicalImportedMediaCount,
+  );
+  const existingImportedIndex = importedMedia.findIndex((entry) => {
     const record = asObject(entry);
-    return record.sourceId === source.id || record.storageUri === manifest.storageUri;
+    const sync = asObject(record.sync);
+    const recordingSync = asObject(sync.recordingSync);
+    return record.id === mediaAsset.id
+      || record.sourceId === source.id
+      || record.storageUri === manifest.storageUri
+      || sync.recordingAssetId === captureRecords.recordingAssetId
+      || recordingSync.recordingAssetId === captureRecords.recordingAssetId;
   });
+  const existingImported = existingImportedIndex >= 0
+    ? asObject(importedMedia[existingImportedIndex])
+    : {};
+  const isVideo =
+    manifest.sourceType === "video"
+    || manifest.contentType.toLowerCase().startsWith("video/");
+  const importRole = isVideo
+    ? "participant-camera"
+    : "spine-audio-candidate";
+  const importedAt =
+    typeof existingImported.importedAt === "string"
+      ? existingImported.importedAt
+      : new Date().toISOString();
+  const recordingSync = {
+    recordingAssetId: captureRecords.recordingAssetId,
+    callRoomId: manifest.callRoomId,
+    participantId: captureRecords.participantId,
+    recordingConsentId: captureRecords.consentId,
+    recordingConsentGranted:
+      captureRecords.consentStatus === "GRANTED",
+    recordedStartAt: dateIso(manifest.startedAt),
+    recordedEndAt: dateIso(manifest.stoppedAt),
+    durationSeconds: durationSeconds(
+      manifest.startedAt,
+      manifest.stoppedAt,
+    ),
+    recordingSegments: parsedSegments(
+      manifest.recordingSegmentsJson,
+    ),
+    capturePurpose: manifest.capturePurpose,
+    captureId: manifest.captureId,
+    captureGroupId: manifest.captureGroupId,
+    uploadSessionId: manifest.uploadSessionId,
+    sourceVerification: "server-size-and-sha256",
+    expectedSha256: manifest.sha256,
+    storageGeneration: object.generation,
+    reportedSourceProfile: manifest.sourceProfileJson
+      ? JSON.parse(manifest.sourceProfileJson)
+      : null,
+    source: "quipsly-capture-resumable-v2",
+  };
 
-  if (!alreadyAttached) {
-    importedMedia.push({
+  const existingMetadata = asObject(existingImported.metadata);
+  const existingSync = asObject(existingImported.sync);
+  const existingProxy = asObject(existingImported.proxy);
+  const existingProxyStatus =
+    typeof existingProxy.status === "string"
+      ? existingProxy.status
+      : "";
+  const proxyStatus = isVideo
+    ? existingProxyStatus || "queued"
+    : "not-required";
+  const canonicalImportedSource = {
+      ...existingImported,
       id: mediaAsset.id,
       sourceId: source.id,
       projectSlug: manifest.projectSlug,
@@ -274,45 +370,190 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
       storageUri: manifest.storageUri,
       gcsUri: manifest.gcsUri,
       playbackUrl,
-      importedAt: new Date().toISOString(),
+      importedAt,
       source: "quipsly-capture-resumable-v2",
+      importRole,
       sha256: manifest.sha256,
-      sync: {
-        status: "ready-to-sync",
-        recordingSegments: parsedSegments(manifest.recordingSegmentsJson),
-        callRoomId: manifest.callRoomId,
-        participantId: captureRecords.participantId,
-        recordingConsentId: captureRecords.consentId,
-        recordingConsentGranted: captureRecords.consentStatus === "GRANTED",
-        recordingAssetId: captureRecords.recordingAssetId,
-        capturePurpose: manifest.capturePurpose,
-        captureGroupId: manifest.captureGroupId,
-        reportedSourceProfile: manifest.sourceProfileJson
-          ? JSON.parse(manifest.sourceProfileJson)
-          : null,
+      metadata: {
+        ...existingMetadata,
+        recordingSync,
+        localImport: {
+          ...asObject(existingMetadata.localImport),
+          promotedFrom: "MobileCaptureFinalizationReceipt",
+          copiedBlob: false,
+          mutatedOriginal: false,
+          exactBytesVerified: true,
+        },
       },
-      proxy: { status: "not-required" },
-    });
+      sync: {
+        ...existingSync,
+        status: "ready-to-sync",
+        recordingAssetId: captureRecords.recordingAssetId,
+        suggestedRole: importRole,
+        source: "quipsly-capture-resumable-v2",
+        recordingSync,
+        note: isVideo
+          ? "The original is verified and attached. Create a proxy before collaborative playback or editing."
+          : "The original is verified and ready for deterministic alignment against the episode audio spine.",
+      },
+      proxy: {
+        ...existingProxy,
+        status: proxyStatus,
+        note: isVideo
+          ? existingProxyStatus === "ready"
+            ? "The immutable source is safe and its registered proxy is ready for collaborative playback."
+            : "The immutable video is safe, but collaborative playback waits for a registered media-vault proxy."
+          : "This audio master does not require a video proxy.",
+      },
+    };
 
-    await transaction.studioEpisodeProduction.update({
-      where: { id: production.id },
+  if (existingImportedIndex >= 0) {
+    importedMedia[existingImportedIndex] = canonicalImportedSource;
+  } else {
+    importedMedia.unshift(canonicalImportedSource);
+  }
+
+  await transaction.studioEpisodeProduction.update({
+    where: { id: production.id },
+    data: {
+      productionJson: {
+        ...productionJson,
+        episodeProductionPayloadVersion: 1,
+        projectSlug: manifest.projectSlug,
+        episodeSlug: manifest.episodeSlug,
+        importedMedia,
+        importedMediaOwnership: {
+          schema: "quipsly-episode-imported-media-v1",
+          canonicalField:
+            "StudioEpisodeProduction.productionJson.importedMedia",
+          legacyTimelineReadThrough: recoveredLegacyCount > 0,
+          recoveredLegacyCount,
+        },
+        lastCaptureSourceAttachedAt: importedAt,
+        source: "quipsly-capture-resumable-v2",
+      },
+    },
+  });
+
+  await transaction.studioAssetAttachment.upsert({
+    where: {
+      projectId_assetId: {
+        projectId: manifest.projectId,
+        assetId: mediaAsset.id,
+      },
+    },
+    create: {
+      projectId: manifest.projectId,
+      assetId: mediaAsset.id,
+      role: importRole,
+      source: "mobile-capture-finalization",
+      createdByEmail: manifest.actorEmail,
+      metadataJson: {
+        uploadSessionId: manifest.uploadSessionId,
+        captureId: manifest.captureId,
+        captureGroupId: manifest.captureGroupId,
+        recordingAssetId: captureRecords.recordingAssetId,
+        sourceId: source.id,
+        exactBytesVerified: true,
+        copiedBlob: false,
+        mutatedOriginal: false,
+      },
+    },
+    update: {
+      role: importRole,
+      source: "mobile-capture-finalization",
+      metadataJson: {
+        uploadSessionId: manifest.uploadSessionId,
+        captureId: manifest.captureId,
+        captureGroupId: manifest.captureGroupId,
+        recordingAssetId: captureRecords.recordingAssetId,
+        sourceId: source.id,
+        exactBytesVerified: true,
+        copiedBlob: false,
+        mutatedOriginal: false,
+      },
+    },
+  });
+
+  const existingWorkflow = await transaction.studioWorkflowJob.findFirst({
+    where: {
+      projectId: manifest.projectId,
+      assetId: mediaAsset.id,
+      type: isVideo ? "asset-proxy" : "asset-register",
+      source: "mobile-capture-finalization",
+    },
+    select: { id: true },
+  });
+  if (!existingWorkflow) {
+    await transaction.studioWorkflowJob.create({
       data: {
-        timelineJson: {
-          ...timelineJson,
-          importedMedia,
+        projectId: manifest.projectId,
+        assetId: mediaAsset.id,
+        type: isVideo ? "asset-proxy" : "asset-register",
+        status: "queued",
+        source: "mobile-capture-finalization",
+        requestedByEmail: manifest.actorEmail,
+        inputJson: {
+          uploadSessionId: manifest.uploadSessionId,
+          captureId: manifest.captureId,
+          captureGroupId: manifest.captureGroupId,
+          callRoomId: manifest.callRoomId,
+          recordingAssetId: captureRecords.recordingAssetId,
+          sourceId: source.id,
+          projectSlug: manifest.projectSlug,
+          episodeSlug: manifest.episodeSlug,
+          mediaKind: isVideo ? "video" : "audio",
+          proxyPolicy: isVideo
+            ? "proxy-required-before-collaborative-playback"
+            : "audio-source-registered",
         },
       },
     });
   }
 
-  await transaction.mobileCaptureEpisodeAttachment.create({
+  const recordingAsset = await transaction.recordingAsset.findUnique({
+    where: { id: captureRecords.recordingAssetId },
+    select: { localManifestJson: true },
+  });
+  await transaction.recordingAsset.update({
+    where: { id: captureRecords.recordingAssetId },
     data: {
-      uploadSessionId: manifest.uploadSessionId,
-      productionId: production.id,
-      mediaAssetId: mediaAsset.id,
-      sourceId: source.id,
+      localManifestJson: {
+        ...asObject(recordingAsset?.localManifestJson),
+        promotion: {
+          status: "promoted-to-studio-media",
+          mediaAssetId: mediaAsset.id,
+          sourceId: source.id,
+          playbackUrl,
+          providerSourceId: source.providerSourceId,
+          projectId: manifest.projectId,
+          nestSlug: manifest.projectSlug,
+          episodeSlug: manifest.episodeSlug,
+          importRole,
+          mediaKind: isVideo ? "video" : "audio",
+          captureGroupId: manifest.captureGroupId,
+          handoffReceipt: {
+            version: 1,
+            source: "StudioAssetAttachment",
+          },
+          promotedAt: importedAt,
+          promotedByUserId: manifest.actorUserId,
+          source: "mobile-capture-finalization",
+        },
+      },
     },
   });
+
+  if (!existingAttachment) {
+    await transaction.mobileCaptureEpisodeAttachment.create({
+      data: {
+        uploadSessionId: manifest.uploadSessionId,
+        productionId: production.id,
+        mediaAssetId: mediaAsset.id,
+        sourceId: source.id,
+      },
+    });
+  }
 }
 
 function captureRecordInput(args: {

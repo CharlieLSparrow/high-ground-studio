@@ -793,10 +793,16 @@ export default function EpisodeRoomClient({
                       <li key={candidate.assetId} className="flex items-center justify-between gap-3 rounded-2xl border border-[#30483d] bg-[#07110d] p-3">
                         <div className="min-w-0">
                           <p className="truncate text-sm font-black">{candidate.title}</p>
-                          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#91a298]">{candidate.kind} · {candidate.proxyStatus || "registered"}</p>
+                          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#91a298]">{candidate.kind} · {candidate.readinessLabel}</p>
+                          {candidate.recordingAssetId ? (
+                            <p className="mt-1 truncate font-mono text-[9px] font-semibold text-[#72847a]">
+                              Recording {candidate.recordingAssetId}
+                              {candidate.captureGroupId ? ` · Take ${candidate.captureGroupId}` : ""}
+                            </p>
+                          ) : null}
                         </div>
-                        <button type="button" disabled={!canEdit} onClick={() => void sendCommand({ type: "ADD_CLIP", assetId: candidate.assetId }, { success: `${candidate.title} is in Watch.` })} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-[#d8ad56]/60 px-3 text-[10px] font-black uppercase tracking-wide text-[#f6d68f] disabled:opacity-40">
-                          <Plus size={13} /> Add
+                        <button type="button" disabled={!canEdit || !candidate.canAddToWatch} onClick={() => void sendCommand({ type: "ADD_CLIP", assetId: candidate.assetId }, { success: `${candidate.title} is in Watch.` })} className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-[#d8ad56]/60 px-3 text-[10px] font-black uppercase tracking-wide text-[#f6d68f] disabled:opacity-40">
+                          <Plus size={13} /> {candidate.canAddToWatch ? "Add" : "Proxying"}
                         </button>
                       </li>
                     ))}

@@ -320,7 +320,10 @@ test("verified bytes create idempotent source, asset, receipt, checksum, and tra
     "recordMobileCaptureIngestion",
     "checksumSha256: manifest.sha256",
     "transcriptJobId",
-    "alreadyAttached",
+    "existingImportedIndex",
+    "canonicalEpisodeImportedMedia",
+    "studioAssetAttachment.upsert",
+    "studioWorkflowJob.create",
   ]) {
     assert.ok(finalization.includes(required), required);
   }

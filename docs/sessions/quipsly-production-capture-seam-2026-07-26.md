@@ -78,12 +78,25 @@ alignment and non-destructive editorial decisions.
 - background loading for the large source-aware waveform map;
 - bounded Studio launch status instead of an automatic external-root walk;
 - a real playable fixture for the AV composition layering test.
+- one canonical episode-source owner,
+  `StudioEpisodeProduction.productionJson.importedMedia`, shared by the Episode
+  Room, production editor API, media inventory, mobile capture sessions, and
+  native Mac Episode Room catalog;
+- legacy `timelineJson.importedMedia` read-through and opportunistic migration,
+  with source/asset/recording/upload/storage identity deduplication;
+- released-capture projection into canonical media, modern Studio attachment,
+  immutable mobile attachment, source promotion readback, and an idempotent
+  proxy/register workflow job;
+- exact-byte, processing, transcript, proxy, and alignment evidence shown in
+  the Mac setup screen and Episode Room without claiming sample-accurate sync;
+- fail-closed shared Watch admission: a verified video is visibly **Proxying**
+  until a registered playback derivative is ready.
 
 ## Verification
 
 - `pnpm --filter quipsly typecheck`
 - Quipsly contracts: 95/95
-- mobile-session canonical identity/readiness Jest: 11/11
+- canonical imported-media and mobile-session Jest: 14/14
 - canonical upload/security/long-video identity contract tests: 24/24
 - QuipslyVideoCore: 43/43, including protected room-boundary and canonical
   upload job durability, exact production storage-host validation, and
@@ -126,6 +139,7 @@ reported as observed and are not promoted to physical-master status.
    identity.
 4. Attach finalized Mac/iPhone sources to one Episode Room capture group, build
    proxies, propose alignment with uncertainty and drift, and review the result
-   in the Studio timeline.
+   in the Studio timeline. Canonical source projection and proxy admission gates
+   now pass; executable proxy processing and reviewed alignment remain.
 5. Pass the long-take, route-loss, storage, interruption, recovery, physical
    iPhone, TestFlight, and real episode rehearsal matrices.

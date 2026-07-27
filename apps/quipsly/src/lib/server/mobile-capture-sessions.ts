@@ -136,6 +136,149 @@ function receiptsForRecordingAsset(receipts: any[], recordingAssetId: string) {
   return receipts.filter((receipt: any) => receipt?.recordingAssetId === recordingAssetId);
 }
 
+function iso(value: unknown) {
+  return value && typeof (value as any).toISOString === "function"
+    ? (value as any).toISOString()
+    : label(value);
+}
+
+export function captureSourceSummaries(
+  room: any,
+  receipts: any[],
+  mediaAssets: any[],
+) {
+  const mediaById = new Map(
+    mediaAssets.map((asset: any) => [asset.id, asset]),
+  );
+  return (Array.isArray(room?.recordingAssets)
+    ? room.recordingAssets
+    : [])
+    .filter((asset: any) => !isProviderRecordingReceiptSlot(asset))
+    .map((asset: any) => {
+      const receipt = receiptsForRecordingAsset(receipts, asset.id)
+        .sort((left: any, right: any) => (
+          String(right.updatedAt || right.createdAt)
+            .localeCompare(String(left.updatedAt || left.createdAt))
+        ))[0] || null;
+      const manifest = sourceJson(asset.localManifestJson);
+      const promotion = sourceJson(manifest.promotion);
+      const mediaAssetId = label(receipt?.mediaAssetId)
+        || label(promotion.mediaAssetId);
+      const media = mediaAssetId
+        ? mediaById.get(mediaAssetId) as any
+        : null;
+      const sourceProfile = sourceJson(manifest.reportedSourceProfile);
+      const transcriptJob = Array.isArray(asset.transcriptJobs)
+        ? asset.transcriptJobs[0] || null
+        : null;
+      const kind = label(asset.kind)?.toUpperCase() || "UNKNOWN";
+      const contentType = label(asset.contentType)?.toLowerCase() || "";
+      const isVideo =
+        kind.includes("VIDEO")
+        || contentType.startsWith("video/");
+      const variants = Array.isArray(media?.variants)
+        ? media.variants
+        : [];
+      const proxyAssets = Array.isArray(media?.proxyAssets)
+        ? media.proxyAssets
+        : [];
+      const proxyReady =
+        proxyAssets.length > 0
+        || variants.some((variant: any) => (
+          label(variant.kind)?.toLowerCase().includes("proxy")
+        ));
+      const proxyJob = (Array.isArray(media?.workflowJobs)
+        ? media.workflowJobs
+        : []).find((job: any) => (
+          label(job.type)?.toLowerCase().includes("proxy")
+        ));
+      const proxyStatus = !isVideo
+        ? "not-required"
+        : proxyReady
+          ? "ready"
+          : label(proxyJob?.status)?.toLowerCase() || "queued";
+      const exactBytesVerified =
+        manifest.exactBytesVerified === true
+        && Boolean(receipt?.uploadSessionId);
+      const captureGroupId =
+        label(manifest.captureGroupId)
+        || label(receipt?.captureId);
+
+      return {
+        recordingAssetId: asset.id,
+        uploadSessionId: label(receipt?.uploadSessionId),
+        captureId: label(receipt?.captureId),
+        captureGroupId,
+        fileName: label(asset.fileName) || "Unnamed capture source",
+        kind,
+        contentType: label(asset.contentType),
+        byteSize: asset.byteSize == null
+          ? null
+          : String(asset.byteSize),
+        durationSeconds: asset.durationSeconds ?? null,
+        recordedStartedAt: iso(asset.recordedStartedAt),
+        recordedStoppedAt: iso(asset.recordedStoppedAt),
+        recordingStatus: label(asset.status) || "UNKNOWN",
+        exactBytesVerified,
+        byteVerificationKind: label(manifest.byteVerificationKind)
+          || (exactBytesVerified
+            ? "server-size-and-sha256"
+            : "unverified"),
+        processingDisposition:
+          label(receipt?.processingDisposition)
+          || label(manifest.processingDisposition)
+          || "HELD",
+        transcriptDisposition:
+          label(receipt?.transcriptDisposition)
+          || label(manifest.transcriptionDisposition)
+          || "HELD",
+        sourceId: label(receipt?.sourceId)
+          || label(promotion.sourceId),
+        mediaAssetId,
+        playbackUrl: label(media?.url)
+          || label(promotion.playbackUrl),
+        sourceProfile,
+        alignment: {
+          status: captureGroupId
+            ? "needs-alignment"
+            : "capture-group-missing",
+          captureGroupId,
+          sourceClockEvidence:
+            Object.keys(sourceProfile).length > 0
+              ? "source-profile-preserved"
+              : "source-profile-missing",
+          sampleAccurateClaimed: false,
+        },
+        proxy: {
+          required: isVideo,
+          status: proxyStatus,
+          playbackUrl: proxyReady
+            ? label(proxyAssets[0]?.url)
+              || label(
+                variants.find((variant: any) => (
+                  label(variant.kind)?.toLowerCase().includes("proxy")
+                ))?.url,
+              )
+            : null,
+          sourceOriginalPreserved: true,
+        },
+        transcript: transcriptJob
+          ? {
+              id: transcriptJob.id,
+              status: transcriptJob.status,
+              provider: transcriptJob.provider,
+              segmentCount: transcriptJob._count?.segments ?? 0,
+              updatedAt: iso(transcriptJob.updatedAt),
+            }
+          : null,
+      };
+    })
+    .sort((left: any, right: any) => (
+      String(right.recordedStartedAt || "")
+        .localeCompare(String(left.recordedStartedAt || ""))
+    ));
+}
+
 function captureProcessingGate(room: any, asset: any, receipts: any[], transcript: boolean) {
   if (!asset) {
     return {
@@ -567,8 +710,10 @@ export function mapMobileCaptureSessionsForUser(input: {
   productionNoteProjectIds?: string[];
   env?: NodeJS.ProcessEnv;
   finalizationReceipts?: any[];
+  captureMediaAssets?: any[];
 }) {
   const finalizationReceipts = Array.isArray(input.finalizationReceipts) ? input.finalizationReceipts : [];
+  const captureMediaAssets = Array.isArray(input.captureMediaAssets) ? input.captureMediaAssets : [];
   const productionNoteProjectIds = new Set(input.productionNoteProjectIds || []);
   return input.rooms.map((room: any) => {
     const sessionProject = canonicalMobileSessionProject(room);
@@ -586,6 +731,11 @@ export function mapMobileCaptureSessionsForUser(input: {
       : [];
     const recordingAssetsForTranscript = transcribableRecordingAssets(room, finalizationReceipts);
     const recordingCount = allRecordingAssets.length;
+    const captureSources = captureSourceSummaries(
+      room,
+      finalizationReceipts,
+      captureMediaAssets,
+    );
     const contentReadiness = recordingContentReadiness(allRecordingAssets, room.purpose);
     const latestTranscriptStatus = latestTranscriptJob?.status ?? null;
     const latestRecordingAsset = allRecordingAssets.find((asset: any) => asset.id === latestTranscriptJob?.assetId)
@@ -796,6 +946,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       latestCheckoutExpiresAt: latestCheckout?.expiresAt?.toISOString?.() ?? null,
       calendarStatus: booking?.calendarLinks?.[0]?.status || null,
       recordingCount,
+      captureSources,
       providerRecordingReceiptSlotId: receiptSlot?.id ?? null,
       providerRecordingReceiptStatus: receiptSlot?.status ?? null,
       providerRecordingReceiptNextAction: receiptSlot

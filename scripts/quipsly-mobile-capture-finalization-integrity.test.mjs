@@ -17,11 +17,26 @@ assert.match(finalization, /SELECT 1 AS locked FROM pg_advisory_xact_lock\(hasht
 assert.match(finalization, /StudioEpisodeProduction" WHERE "id" = \$1 FOR UPDATE/,
   "different uploads targeting one episode must lock the projection row");
 assert.ok(
-  finalization.indexOf("FOR UPDATE") < finalization.indexOf("timelineJson: {") ,
+  finalization.indexOf("FOR UPDATE") < finalization.indexOf("productionJson: {") ,
   "the episode row lock must be acquired before importedMedia is written",
 );
 assert.match(finalization, /mobileCaptureEpisodeAttachment\.findUnique/);
 assert.match(finalization, /mobileCaptureEpisodeAttachment\.create/);
+assert.match(finalization, /studioAssetAttachment\.upsert/,
+  "released Capture sources must use the canonical Nest asset attachment");
+assert.match(finalization, /studioWorkflowJob\.create/,
+  "released Capture sources must enter the durable processing ledger");
+assert.match(finalization, /type: isVideo \? "asset-proxy" : "asset-register"/);
+assert.match(finalization, /proxy-required-before-collaborative-playback/);
+assert.match(finalization, /canonicalField:\s+"StudioEpisodeProduction\.productionJson\.importedMedia"/);
+assert.doesNotMatch(
+  finalization.slice(
+    finalization.indexOf("async function attachEpisodeMediaWithoutLostUpdate"),
+    finalization.indexOf("function captureRecordInput"),
+  ),
+  /data:\s*\{\s*timelineJson:/,
+  "Capture finalization must not write episode sources into timelineJson",
+);
 assert.match(schema, /model MobileCaptureEpisodeAttachment \{/);
 assert.match(schema, /uploadSessionId\s+String\s+@id @db\.Uuid/);
 assert.match(schema, /@@unique\(\[productionId, mediaAssetId\]\)/);

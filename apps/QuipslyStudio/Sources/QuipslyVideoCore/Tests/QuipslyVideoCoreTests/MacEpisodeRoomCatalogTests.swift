@@ -148,6 +148,42 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
               "blockers": [],
               "evidence": ["actor-consent-granted"]
             },
+            "captureSources": [{
+              "recordingAssetId": "recording-1",
+              "uploadSessionId": "upload-1",
+              "captureId": "capture-1",
+              "captureGroupId": "take-1",
+              "fileName": "charlie-master.wav",
+              "kind": "LOCAL_AUDIO",
+              "contentType": "audio/wav",
+              "byteSize": "96000000",
+              "durationSeconds": 1000,
+              "recordingStatus": "VERIFIED",
+              "exactBytesVerified": true,
+              "byteVerificationKind": "server-size-and-sha256",
+              "processingDisposition": "RELEASED",
+              "transcriptDisposition": "RELEASED",
+              "sourceId": "source-1",
+              "mediaAssetId": "media-1",
+              "playbackUrl": "/api/ingest/media/source-1",
+              "alignment": {
+                "status": "needs-alignment",
+                "captureGroupId": "take-1",
+                "sourceClockEvidence": "source-profile-preserved",
+                "sampleAccurateClaimed": false
+              },
+              "proxy": {
+                "required": false,
+                "status": "not-required",
+                "sourceOriginalPreserved": true
+              },
+              "transcript": {
+                "id": "transcript-1",
+                "status": "QUEUED",
+                "provider": "pending",
+                "segmentCount": 0
+              }
+            }],
             "unknownFutureField": {"keptByNest": true}
           }]
         }
@@ -168,6 +204,11 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
             episode.captureReadiness?.evidence,
             ["actor-consent-granted"]
         )
+        let source = try XCTUnwrap(episode.captureSources?.first)
+        XCTAssertEqual(source.recordingAssetId, "recording-1")
+        XCTAssertEqual(source.captureGroupId, "take-1")
+        XCTAssertEqual(source.alignment?.sampleAccurateClaimed, false)
+        XCTAssertEqual(source.readinessLabel, "Needs alignment")
     }
 
     private func room(

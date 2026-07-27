@@ -5,6 +5,10 @@ import { Prisma } from "@prisma/client";
 
 import type { EpisodeImportedMediaAsset } from "@/app/(app)/episode-production/episodeArtifact";
 import {
+  canonicalEpisodeImportedMedia,
+  canonicalEpisodeProductionJson,
+} from "@/lib/episode-production/imported-media";
+import {
   EPISODE_ROOM_TIMELINE_SOURCE,
   EpisodeRoomCommandError,
   EpisodeRoomRevisionConflict,
@@ -39,6 +43,12 @@ export type EpisodeRoomTranscriptSegment = {
 export type EpisodeRoomImportedCandidate = EpisodeRoomClip & {
   attached: boolean;
   proxyStatus?: string;
+  sourceStatus: string;
+  alignmentStatus: string;
+  canAddToWatch: boolean;
+  readinessLabel: string;
+  recordingAssetId?: string;
+  captureGroupId?: string;
 };
 
 export type EpisodeRoomRecordingSession = {
@@ -124,9 +134,14 @@ function productionRoomState(productionJson: unknown, now?: string) {
   return normalizeEpisodeRoomState(record(productionJson).episodeRoom, now);
 }
 
-function importedMedia(productionJson: unknown) {
-  const rows = record(productionJson).importedMedia;
-  return Array.isArray(rows) ? rows as EpisodeImportedMediaAsset[] : [];
+function importedMedia(
+  productionJson: unknown,
+  legacyTimelineJson?: unknown,
+) {
+  return canonicalEpisodeImportedMedia(
+    productionJson,
+    legacyTimelineJson,
+  ) as EpisodeImportedMediaAsset[];
 }
 
 function durationForImportedAsset(asset: EpisodeImportedMediaAsset) {
@@ -143,6 +158,20 @@ function clipFromImportedAsset(
   actorLabel: string,
   now: string,
 ): EpisodeRoomClip {
+  const proxyStatus = text(asset.proxy?.status).toLowerCase();
+  const collaborativePlaybackReady =
+    asset.kind !== "video"
+    || Boolean(text(asset.proxy?.proxyUrl))
+    || ["ready", "not-required", "external-preview"].includes(
+      proxyStatus,
+    );
+  if (!collaborativePlaybackReady) {
+    throw new EpisodeRoomCommandError(
+      proxyStatus === "failed"
+        ? "Repair or register this video proxy before adding it to shared Watch."
+        : "Wait for this verified video source's proxy before adding it to shared Watch.",
+    );
+  }
   const playbackUrl = text(asset.proxy?.proxyUrl) || text(asset.playbackUrl);
   if (!playbackUrl) {
     throw new EpisodeRoomCommandError("This media does not have a playable source yet.");
@@ -165,19 +194,88 @@ function clipFromImportedAsset(
   };
 }
 
-function importedCandidatesFor(productionJson: unknown, room: EpisodeRoomState, now: string) {
+function importedCandidate(
+  asset: EpisodeImportedMediaAsset,
+  room: EpisodeRoomState,
+  now: string,
+): EpisodeRoomImportedCandidate | null {
+  const playbackUrl = text(asset.proxy?.proxyUrl)
+    || text(asset.playbackUrl);
+  if (
+    !playbackUrl
+    || (asset.kind !== "audio" && asset.kind !== "video")
+  ) {
+    return null;
+  }
+  const metadata = record(asset.metadata);
+  const metadataRecording = record(metadata.recordingSync);
+  const sync = record(asset.sync);
+  const syncRecording = record(sync.recordingSync);
+  const proxyStatus = text(asset.proxy?.status).toLowerCase()
+    || "registered";
+  const sourceVerification =
+    text(syncRecording.sourceVerification)
+    || text(metadataRecording.sourceVerification);
+  const recordingAssetId =
+    text(sync.recordingAssetId)
+    || text(syncRecording.recordingAssetId)
+    || text(metadataRecording.recordingAssetId);
+  const captureGroupId =
+    text(syncRecording.captureGroupId)
+    || text(metadataRecording.captureGroupId);
+  const canAddToWatch =
+    asset.kind !== "video"
+    || Boolean(text(asset.proxy?.proxyUrl))
+    || ["ready", "not-required", "external-preview"].includes(
+      proxyStatus,
+    );
+  const sourceStatus =
+    sourceVerification === "server-size-and-sha256"
+      ? "source verified"
+      : "source registered";
+  const alignmentStatus = text(sync.status) || "needs-alignment";
+  const readinessLabel = canAddToWatch
+    ? `${sourceStatus} · ${alignmentStatus}`
+    : proxyStatus === "failed"
+      ? `${sourceStatus} · proxy failed`
+      : `${sourceStatus} · proxy ${proxyStatus}`;
+
+  return {
+    assetId: asset.id,
+    ...(asset.sourceId ? { sourceId: asset.sourceId } : {}),
+    title: asset.originalName || "Untitled source",
+    kind: asset.kind,
+    playbackUrl,
+    ...(durationForImportedAsset(asset) === undefined
+      ? {}
+      : { durationSeconds: durationForImportedAsset(asset) }),
+    ...(asset.importRole ? { importRole: asset.importRole } : {}),
+    addedAt: asset.importedAt || now,
+    addedBy: "Imported media",
+    attached: room.clips.some((clip) => clip.assetId === asset.id),
+    proxyStatus,
+    sourceStatus,
+    alignmentStatus,
+    canAddToWatch,
+    readinessLabel,
+    ...(recordingAssetId ? { recordingAssetId } : {}),
+    ...(captureGroupId ? { captureGroupId } : {}),
+  };
+}
+
+function importedCandidatesFor(
+  productionJson: unknown,
+  legacyTimelineJson: unknown,
+  room: EpisodeRoomState,
+  now: string,
+) {
   const attached = new Set(room.clips.map((clip) => clip.assetId));
-  return importedMedia(productionJson)
+  return importedMedia(productionJson, legacyTimelineJson)
     .flatMap((asset) => {
-      try {
-        return [{
-          ...clipFromImportedAsset(asset, "Imported media", asset.importedAt || now),
-          attached: attached.has(asset.id),
-          ...(asset.proxy?.status ? { proxyStatus: asset.proxy.status } : {}),
-        }];
-      } catch {
-        return [];
-      }
+      const candidate = importedCandidate(asset, room, now);
+      return candidate
+        ? [{ ...candidate, attached: attached.has(asset.id) }]
+        : [];
     })
     .sort((left, right) => right.addedAt.localeCompare(left.addedAt));
 }
@@ -367,7 +465,12 @@ export async function loadEpisodeRoomDesk(
     room,
     textBlocks,
     transcriptSegments: transcriptSegments(production.timelineJson),
-    importedCandidates: importedCandidatesFor(production.productionJson, room, now),
+    importedCandidates: importedCandidatesFor(
+      production.productionJson,
+      production.timelineJson,
+      room,
+      now,
+    ),
     recordingSessions: await recordingSessionsFor(
       prisma,
       production.project.id,
@@ -395,6 +498,7 @@ export async function loadEpisodeRoomRuntime(
       slug: true,
       projectId: true,
       productionJson: true,
+      timelineJson: true,
       updatedAt: true,
     },
   });
@@ -403,7 +507,12 @@ export async function loadEpisodeRoomRuntime(
   const room = productionRoomState(production.productionJson, now);
   return {
     room,
-    importedCandidates: importedCandidatesFor(production.productionJson, room, now),
+    importedCandidates: importedCandidatesFor(
+      production.productionJson,
+      production.timelineJson,
+      room,
+      now,
+    ),
     recordingSessions: await recordingSessionsFor(
       prisma,
       production.projectId,
@@ -461,20 +570,30 @@ export async function applyEpisodeRoomStoreCommand({
             slug: true,
             projectId: true,
             productionJson: true,
+            timelineJson: true,
             updatedAt: true,
           },
         });
         if (!production) throw new EpisodeRoomCommandError("Episode production not found.");
 
         const acceptedAt = new Date().toISOString();
-        const currentProductionJson = record(production.productionJson);
+        const currentProductionJson =
+          canonicalEpisodeProductionJson(
+            production.productionJson,
+            production.timelineJson,
+          );
         const currentRoom = productionRoomState(currentProductionJson, acceptedAt);
         if (currentRoom.receipts.some((receipt) => receipt.clientRequestId === input.clientRequestId)) {
           return {
             room: currentRoom,
             updatedAt: production.updatedAt.toISOString(),
             timelineClipCount: timelineRows(currentProductionJson).length,
-            importedCandidates: importedCandidatesFor(currentProductionJson, currentRoom, acceptedAt),
+            importedCandidates: importedCandidatesFor(
+              currentProductionJson,
+              production.timelineJson,
+              currentRoom,
+              acceptedAt,
+            ),
             recordingSessions: await recordingSessionsFor(
               tx,
               production.projectId,
@@ -490,7 +609,10 @@ export async function applyEpisodeRoomStoreCommand({
               clientRequestId: input.clientRequestId,
               expectedRevision: input.expectedRevision,
               clip: clipFromImportedAsset(
-                importedMedia(currentProductionJson).find((asset) => asset.id === input.assetId)
+                importedMedia(
+                  currentProductionJson,
+                  production.timelineJson,
+                ).find((asset) => asset.id === input.assetId)
                   ?? (() => {
                     throw new EpisodeRoomCommandError("Import the media into this episode before adding it to Watch.");
                   })(),
@@ -577,7 +699,12 @@ export async function applyEpisodeRoomStoreCommand({
           room: nextRoom,
           updatedAt: updated.updatedAt.toISOString(),
           timelineClipCount: nextTimeline.length,
-          importedCandidates: importedCandidatesFor(nextProductionJson, nextRoom, acceptedAt),
+          importedCandidates: importedCandidatesFor(
+            nextProductionJson,
+            production.timelineJson,
+            nextRoom,
+            acceptedAt,
+          ),
           recordingSessions: await recordingSessionsFor(
             tx,
             production.projectId,

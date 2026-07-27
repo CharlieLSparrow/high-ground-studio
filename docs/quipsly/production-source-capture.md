@@ -17,6 +17,15 @@ capability are implemented and container-proved from committed source. Camera
 capture UI remains disabled in environments where Nest does not advertise that
 capability and until the physical-device acceptance gates exist.
 
+Verified sources now project into one canonical episode-media boundary:
+`StudioEpisodeProduction.productionJson.importedMedia`. New finalizations never
+write imported media into `timelineJson`; existing timeline-owned rows remain
+readable and are migrated without duplication on the next authorized episode
+command. The Episode Room, editor API, media inventory, mobile session readback,
+and native Mac catalog all consume the same merged projection. A byte-verified
+video remains visible as **Proxying** and cannot enter shared Watch until a
+registered playback derivative exists.
+
 ## Outcome
 
 Quipsly records a low-latency **audio room** for conversation and one or more
@@ -94,6 +103,17 @@ survive process exit in a background session.
 
 - [Apple URLSession](https://developer.apple.com/documentation/foundation/urlsession)
 - [Apple background transfers](https://developer.apple.com/documentation/foundation/downloading-files-in-the-background)
+
+Riverside's current production model reinforces three decisions already present
+in this architecture: record locally on each participant's device, preserve
+separate high-quality participant tracks, and upload progressively with an
+explicit completion state. Quipsly adds stricter source/proxy separation:
+preserved originals remain immutable, while only registered derivatives may be
+used for low-latency collaborative playback.
+
+- [Riverside recording architecture](https://riverside.fm/blog/what-is-riverside)
+- [Riverside progressive uploading](https://riverside.fm/blog/progressive-video-uploading)
+- [Riverside recording product](https://riverside.fm/recording)
 
 The current synchronous finalize request is intentionally limited to 2 GiB.
 Long-form 4K removes that limit by moving full-generation SHA-256 verification
@@ -353,7 +373,7 @@ local source ledger
   -> file-backed direct resumable upload
   -> exact-byte verification receipt
   -> RecordingAsset LOCAL_VIDEO/LOCAL_AUDIO
-  -> episode attachment
+  -> canonical episode source + attachment
   -> proxy + waveform + technical probe
   -> alignment proposal
   -> human review when confidence is not exact
@@ -362,6 +382,22 @@ local source ledger
 
 An upload receipt proves preservation only. Proxy readiness, alignment,
 transcription, and editorial readiness remain separate states.
+
+`StudioEpisodeProduction.productionJson.importedMedia` owns canonical episode
+source membership. `timelineJson` owns editorial placement only. Every released
+capture is idempotently projected into:
+
+- a canonical imported-media source with recording, upload, group, participant,
+  consent, exact-byte, processing, transcript, proxy, and alignment evidence;
+- a `StudioAssetAttachment` binding the source to its Episode Room;
+- an immutable `MobileCaptureEpisodeAttachment` finalization ledger;
+- a `StudioWorkflowJob` for either video proxy creation or audio registration;
+- the `RecordingAsset` promotion result returned to the native client.
+
+Legacy `timelineJson.importedMedia` remains read-through compatible, but it
+cannot regain ownership. Identity is deduplicated across source, asset,
+recording, upload, and storage-object evidence rather than by display name.
+Video Watch admission is fail-closed until its proxy is registered and ready.
 
 The current `RecordingAsset`, `MobileCaptureFinalizationReceipt`,
 `MobileCaptureEpisodeAttachment`, Studio media, and Episode Room watch-segment
@@ -426,7 +462,10 @@ mid-file.
 4. Add podcast-room video-only capture alongside LiveKit audio.
 5. Add controlled camera-switch source boundaries.
 6. Add cloud technical probe, proxy, alignment proposal, and Episode Room
-   readback.
+   readback. **Canonical source projection, exact-byte status, transcript/job
+   evidence, native/web source readback, and fail-closed Watch proxy gating are
+   complete locally. The executable proxy worker and reviewed clock/drift
+   alignment remain.**
 7. Build the native Mac Shure master lane and Canon import manifest.
    **The Core Audio inventory, truthful route policy, crash-recoverable
    48 kHz/24-bit WAV master, SHA-256 source receipt, and Episode Capture Setup

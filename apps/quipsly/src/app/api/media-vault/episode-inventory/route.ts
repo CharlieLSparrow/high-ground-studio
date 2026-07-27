@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+import {
+  canonicalEpisodeImportedMedia,
+} from "@/lib/episode-production/imported-media";
 import { getPrismaClient } from "@/lib/prisma";
 import { getMediaVaultReadiness } from "@/lib/server/media-vault";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
@@ -377,8 +380,10 @@ export async function GET(request: Request) {
     });
   }
 
-  const productionJson = jsonObject(episodeProduction.productionJson);
-  const importedMedia = jsonArray(productionJson.importedMedia);
+  const importedMedia = canonicalEpisodeImportedMedia(
+    episodeProduction.productionJson,
+    episodeProduction.timelineJson,
+  );
   const assetIds = collectAssetIds(importedMedia);
   const recordingAssetIds = [...new Set(importedMedia.map(recordingAssetIdFromImportedMedia).filter(Boolean) as string[])];
 

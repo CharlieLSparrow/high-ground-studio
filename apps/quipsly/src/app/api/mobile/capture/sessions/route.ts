@@ -51,7 +51,15 @@ const MOBILE_CAPTURE_ROOM_INCLUDE = {
   },
   participants: true,
   recordingConsents: true,
-  recordingAssets: true,
+  recordingAssets: {
+    include: {
+      transcriptJobs: {
+        orderBy: { createdAt: "desc" },
+        take: 3,
+        include: { _count: { select: { segments: true } } },
+      },
+    },
+  },
   transcriptJobs: {
     orderBy: { createdAt: "desc" },
     take: 5,
@@ -177,6 +185,40 @@ export async function GET(request: Request) {
         orderBy: { createdAt: "asc" },
       })
     : [];
+  const mediaAssetIds = [...new Set(
+    finalizationReceipts
+      .map((receipt: any) => text(receipt.mediaAssetId))
+      .filter(Boolean),
+  )];
+  const rawCaptureMediaAssets = mediaAssetIds.length
+    ? await prisma.studioMediaAsset.findMany({
+        where: { id: { in: mediaAssetIds } },
+        include: {
+          variants: { orderBy: { updatedAt: "desc" } },
+          workflowJobs: {
+            orderBy: { createdAt: "desc" },
+            take: 8,
+          },
+        },
+      })
+    : [];
+  const captureProxyAssets = rawCaptureMediaAssets.length
+    ? await prisma.studioMediaAsset.findMany({
+        where: {
+          rawAssetId: {
+            in: rawCaptureMediaAssets.map((asset: any) => asset.id),
+          },
+          isProxy: true,
+        },
+        orderBy: { updatedAt: "desc" },
+      })
+    : [];
+  const captureMediaAssets = rawCaptureMediaAssets.map((asset: any) => ({
+    ...asset,
+    proxyAssets: captureProxyAssets.filter(
+      (proxy: any) => proxy.rawAssetId === asset.id,
+    ),
+  }));
   const captureProjects = (await listAccessibleStudioProjectSummariesForEmail(
     session.user.primaryEmail,
     prisma,
@@ -229,6 +271,7 @@ export async function GET(request: Request) {
       isStaff: session.user.isStaff === true,
       productionNoteProjectIds: captureProjects.map((project) => project.id),
       finalizationReceipts,
+      captureMediaAssets,
     }),
     links: {
       today: "/api/mobile/capture/today",

@@ -1,6 +1,96 @@
 import Foundation
 
 #if os(macOS)
+public struct MacEpisodeRoomCaptureSourceProxy:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let required: Bool?
+    public let status: String?
+    public let playbackUrl: String?
+    public let sourceOriginalPreserved: Bool?
+}
+
+public struct MacEpisodeRoomCaptureSourceTranscript:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let id: String?
+    public let status: String?
+    public let provider: String?
+    public let segmentCount: Int?
+    public let updatedAt: String?
+}
+
+public struct MacEpisodeRoomCaptureSourceAlignment:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let status: String?
+    public let captureGroupId: String?
+    public let sourceClockEvidence: String?
+    public let sampleAccurateClaimed: Bool?
+}
+
+public struct MacEpisodeRoomCaptureSource:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    public let recordingAssetId: String
+    public let uploadSessionId: String?
+    public let captureId: String?
+    public let captureGroupId: String?
+    public let fileName: String
+    public let kind: String
+    public let contentType: String?
+    public let byteSize: String?
+    public let durationSeconds: Double?
+    public let recordedStartedAt: String?
+    public let recordedStoppedAt: String?
+    public let recordingStatus: String
+    public let exactBytesVerified: Bool
+    public let byteVerificationKind: String?
+    public let processingDisposition: String
+    public let transcriptDisposition: String
+    public let sourceId: String?
+    public let mediaAssetId: String?
+    public let playbackUrl: String?
+    public let alignment: MacEpisodeRoomCaptureSourceAlignment?
+    public let proxy: MacEpisodeRoomCaptureSourceProxy?
+    public let transcript: MacEpisodeRoomCaptureSourceTranscript?
+
+    public var id: String { recordingAssetId }
+
+    public var readinessLabel: String {
+        if processingDisposition.uppercased() != "RELEASED" {
+            return "Processing held"
+        }
+        if !exactBytesVerified {
+            return "Verification pending"
+        }
+        if proxy?.required == true,
+           proxy?.status?.lowercased() != "ready" {
+            return "Proxy \(proxy?.status?.lowercased() ?? "pending")"
+        }
+        if let alignmentStatus = alignment?.status?.lowercased(),
+           !["aligned", "reviewed", "locked"].contains(alignmentStatus) {
+            return alignmentStatus == "needs-alignment"
+                ? "Needs alignment"
+                : "Alignment \(alignmentStatus)"
+        }
+        if transcriptDisposition.uppercased() == "RELEASED",
+           let transcriptStatus = transcript?.status {
+            return "Transcript \(transcriptStatus.lowercased())"
+        }
+        return "Source verified"
+    }
+}
+
 public struct MacEpisodeRoomReadiness: Codable, Equatable, Sendable {
     public let status: String?
     public let label: String?
@@ -61,6 +151,7 @@ public struct MacEpisodeRoomSummary:
     public let recordingConsentGranted: Bool
     public let canRecordNow: Bool
     public let captureReadiness: MacEpisodeRoomReadiness?
+    public let captureSources: [MacEpisodeRoomCaptureSource]?
     public let nextAction: String?
 
     public init(
@@ -84,6 +175,7 @@ public struct MacEpisodeRoomSummary:
         recordingConsentGranted: Bool,
         canRecordNow: Bool,
         captureReadiness: MacEpisodeRoomReadiness? = nil,
+        captureSources: [MacEpisodeRoomCaptureSource]? = nil,
         nextAction: String? = nil
     ) {
         self.id = id
@@ -106,6 +198,7 @@ public struct MacEpisodeRoomSummary:
         self.recordingConsentGranted = recordingConsentGranted
         self.canRecordNow = canRecordNow
         self.captureReadiness = captureReadiness
+        self.captureSources = captureSources
         self.nextAction = nextAction
     }
 
