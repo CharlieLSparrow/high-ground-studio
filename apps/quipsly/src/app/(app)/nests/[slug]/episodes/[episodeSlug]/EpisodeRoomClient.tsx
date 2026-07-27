@@ -8,6 +8,7 @@ import {
   ExternalLink,
   FileText,
   Film,
+  Gauge,
   Loader2,
   Mic2,
   Pause,
@@ -17,8 +18,10 @@ import {
   RotateCcw,
   RotateCw,
   Scissors,
+  ShieldCheck,
   Trash2,
   Upload,
+  Waves,
 } from "lucide-react";
 import {
   FormEvent,
@@ -85,6 +88,19 @@ function formatClock(value: number) {
   return hours
     ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
     : `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatOffset(milliseconds: number | null) {
+  if (milliseconds === null) return "Group offset pending";
+  if (milliseconds === 0) return "Group baseline";
+  const sign = milliseconds > 0 ? "+" : "−";
+  const seconds = Math.abs(milliseconds) / 1_000;
+  return `${sign}${seconds.toFixed(seconds < 10 ? 3 : 2)}s from baseline`;
+}
+
+function formatUncertainty(milliseconds: number | null) {
+  if (milliseconds === null) return "uncertainty unavailable";
+  return `±${milliseconds.toFixed(milliseconds < 10 ? 1 : 0)}ms clock uncertainty`;
 }
 
 function selectedClip(room: EpisodeRoomState) {
@@ -399,6 +415,9 @@ export default function EpisodeRoomClient({
   const duration = Math.max(0, localDuration || clip?.durationSeconds || room.durationSeconds || 0);
   const sliderPosition = Math.min(duration || Number.MAX_SAFE_INTEGER, dragPosition ?? displayPosition);
   const unattachedCandidates = candidates.filter((candidate) => !candidate.attached);
+  const alignmentCandidates = candidates.filter(
+    (candidate) => candidate.captureAlignment,
+  );
   const recordingSession = recordingSessions.find((session) => session.id === selectedRecordingRoomId)
     || recordingSessions.find((session) => session.status === "RECORDING")
     || recordingSessions[0]
@@ -611,6 +630,59 @@ export default function EpisodeRoomClient({
                     </button>
                   </div>
                 )}
+
+                {alignmentCandidates.length ? (
+                  <div className="mt-4 border-t border-[#30483d] pt-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d8ad56]">Capture alignment review</p>
+                        <h4 className="mt-1 font-serif text-xl font-black">Clock proposals, not locked sync</h4>
+                        <p className="mt-1 max-w-2xl text-xs font-semibold leading-5 text-[#aab9af]">
+                          These offsets come from immutable START receipts and the best device clock sample. Quipsly never calls them sample-accurate until waveform correlation, drift review, and a person approves the result.
+                        </p>
+                      </div>
+                      <Link
+                        href={`/nests/${encodeURIComponent(projectSlug)}/episode-editor?episode=${encodeURIComponent(episodeSlug)}`}
+                        className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-full border border-[#d8ad56]/60 px-3 text-[10px] font-black uppercase tracking-wide text-[#f6d68f]"
+                      >
+                        <Scissors size={13} /> Review in editor
+                      </Link>
+                    </div>
+                    <ul className="mt-3 grid min-w-0 gap-2 lg:grid-cols-2">
+                      {alignmentCandidates.map((candidate) => {
+                        const alignment = candidate.captureAlignment!;
+                        const ready = alignment.status === "proposal-ready";
+                        return (
+                          <li key={`${candidate.assetId}-alignment`} className="min-w-0 rounded-2xl border border-[#30483d] bg-[#07110d] p-3">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="truncate text-sm font-black">{candidate.title}</p>
+                                <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#91a298]">
+                                  {formatOffset(alignment.estimatedOffsetMilliseconds)} · {formatUncertainty(alignment.uncertaintyMilliseconds)}
+                                </p>
+                              </div>
+                              <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black uppercase tracking-wide ${ready ? "bg-emerald-400/10 text-emerald-100" : "bg-amber-300/10 text-amber-100"}`}>
+                                {ready ? "Proposal ready" : "Evidence needed"}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-[11px] font-semibold leading-5 text-[#aab9af]">{alignment.reason}</p>
+                            <div className="mt-2 flex flex-wrap gap-1.5 text-[9px] font-black uppercase tracking-wide text-[#c9d4cd]">
+                              <span className="inline-flex items-center gap-1 rounded-full border border-[#40584c] px-2 py-1"><Waves size={11} /> Waveform</span>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-[#40584c] px-2 py-1"><Gauge size={11} /> Drift</span>
+                              <span className="inline-flex items-center gap-1 rounded-full border border-[#40584c] px-2 py-1"><ShieldCheck size={11} /> Human approval</span>
+                            </div>
+                            {alignment.estimatedServerStartedAt ? (
+                              <p className="mt-2 truncate font-mono text-[9px] text-[#72847a]">
+                                Proposed server start {alignment.estimatedServerStartedAt}
+                                {alignment.proposalSourceCount ? ` · ${alignment.proposalSourceCount} grouped sources` : ""}
+                              </p>
+                            ) : null}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
               </section>
 
               <div className="relative flex aspect-video items-center justify-center overflow-hidden rounded-3xl border border-[#30483d] bg-black">

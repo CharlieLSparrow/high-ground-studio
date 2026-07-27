@@ -398,6 +398,16 @@ Alignment quality is explicit:
 The editor stores the selected method, confidence, offset, drift correction,
 input hashes, and reviewer. It never rewrites source bytes.
 
+Episode Room reads alignment through the versioned
+`quipsly-capture-alignment-proposal-v1` contract. A generic source-workflow
+state such as `ready-to-sync` is not alignment evidence. For every capture
+proposal the room shows the group-relative offset, clock uncertainty, proposed
+server start, and the still-open waveform, drift, and human-approval gates. A
+proposal that claims sample accuracy, omits review, or lacks a proposed start
+is downgraded to **Evidence needed** instead of being displayed as ready.
+Episode Room remains a review/readback surface; it cannot approve or lock the
+proposal.
+
 ## Cloud/editor pipeline
 
 ```text
@@ -498,8 +508,10 @@ mid-file.
    evidence, native/web source readback, and fail-closed Watch proxy gating are
    complete locally. A deterministic, uncertainty-bearing clock proposal now
    survives finalization and appears on web/Mac readback without claiming
-   sample accuracy. Cloud execution plus waveform/drift review and explicit
-   alignment approval remain.**
+   sample accuracy. Episode Room now renders the real proposal, offset,
+   uncertainty, and open review gates instead of re-labeling generic
+   `ready-to-sync` state as alignment. Cloud execution plus waveform/drift
+   review and explicit alignment approval remain.**
 7. Build the native Mac Shure master lane and Canon import manifest.
    **The Core Audio inventory, truthful route policy, crash-recoverable
    48 kHz/24-bit WAV master, SHA-256 source receipt, and Episode Capture Setup

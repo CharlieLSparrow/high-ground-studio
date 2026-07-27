@@ -2174,3 +2174,26 @@ This is an active-goal checkpoint, not a completion claim.
   context proof. The credentialed command has not run yet because the open
   Google reauthentication is still awaiting browser confirmation; no cloud
   mutation or cloud qualification is claimed by this checkpoint.
+
+### 2026-07-27 Episode Room alignment readback checkpoint
+
+- Repaired a status-ownership defect at the Episode Room boundary. The room had
+  been exposing the imported source workflow state, usually
+  `ready-to-sync`, as `alignmentStatus`; it now reads only the versioned
+  capture-alignment proposal and keeps source workflow state separate.
+- Added a pure fail-closed read model. It accepts the canonical proposal and
+  both compatibility copies, validates the proposed start and all safety
+  invariants, and downgrades any record that claims sample accuracy or omits
+  waveform, drift, or human review.
+- Episode Room now presents capture proposals as a focused review surface:
+  group-relative offset, clock uncertainty, proposed server start, source
+  count, reason, and the three open review gates. It links to the editor but
+  cannot approve or lock a timeline.
+- Focused proposal/readback tests pass 11/11, the complete Nest run passes 144
+  suites / 687 runnable tests with 26 suites / 71 tests environment-gated, and
+  strict Quipsly TypeScript passes. A temporary source was added to the
+  isolated local Episode 4 Part 2
+  production projection, rendered in the real signed-in Episode Room at
+  desktop and 390 px phone widths, checked for horizontal overflow and honest
+  status language, then removed with an exact zero-fixture readback. This is
+  rendered UX proof, not real iPhone waveform/drift approval.

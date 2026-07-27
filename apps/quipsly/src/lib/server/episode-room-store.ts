@@ -20,6 +20,10 @@ import {
   type EpisodeRoomCommand,
   type EpisodeRoomState,
 } from "@/lib/episode-room/episode-room-contract";
+import {
+  episodeRoomCaptureAlignment,
+  type EpisodeRoomCaptureAlignment,
+} from "@/lib/episode-room/episode-room-source-alignment";
 import { getPrismaClient } from "@/lib/prisma";
 import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
 
@@ -45,7 +49,9 @@ export type EpisodeRoomImportedCandidate = EpisodeRoomClip & {
   attached: boolean;
   proxyStatus?: string;
   sourceStatus: string;
+  sourceSyncStatus: string;
   alignmentStatus: string;
+  captureAlignment: EpisodeRoomCaptureAlignment | null;
   canAddToWatch: boolean;
   readinessLabel: string;
   recordingAssetId?: string;
@@ -234,9 +240,23 @@ function importedCandidate(
     sourceVerification === "server-size-and-sha256"
       ? "source verified"
       : "source registered";
-  const alignmentStatus = text(sync.status) || "needs-alignment";
+  const sourceSyncStatus = text(sync.status) || "ready-to-sync";
+  const captureAlignment = episodeRoomCaptureAlignment(asset);
+  const alignmentStatus = captureAlignment?.status
+    || (
+      sourceSyncStatus === "synced"
+        ? "timeline alignment saved"
+        : "needs alignment"
+    );
+  const alignmentLabel = captureAlignment?.status === "proposal-ready"
+    ? "clock proposal ready"
+    : captureAlignment
+      ? "alignment review needed"
+      : sourceSyncStatus === "synced"
+        ? "timeline alignment saved"
+        : "alignment needed";
   const readinessLabel = canAddToWatch
-    ? `${sourceStatus} · ${alignmentStatus}`
+    ? `${sourceStatus} · ${alignmentLabel}`
     : proxyStatus === "failed"
       ? `${sourceStatus} · proxy failed`
       : `${sourceStatus} · proxy ${proxyStatus}`;
@@ -256,7 +276,9 @@ function importedCandidate(
     attached: room.clips.some((clip) => clip.assetId === asset.id),
     proxyStatus,
     sourceStatus,
+    sourceSyncStatus,
     alignmentStatus,
+    captureAlignment,
     canAddToWatch,
     readinessLabel,
     ...(recordingAssetId ? { recordingAssetId } : {}),
