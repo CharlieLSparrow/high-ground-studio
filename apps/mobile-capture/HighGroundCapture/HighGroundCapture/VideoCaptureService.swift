@@ -28,6 +28,7 @@ struct VideoCaptureResolvedProfile: Codable, Equatable, Sendable {
     let audioSampleRate: Double?
     let audioChannelCount: Int?
     let movieFragmentSeconds: Double
+    let captureRotationDegrees: Double
 
     var resolutionLabel: String {
         if width >= 3_840 && height >= 2_160 { return "4K" }
@@ -35,8 +36,22 @@ struct VideoCaptureResolvedProfile: Codable, Equatable, Sendable {
         return "\(width)×\(height)"
     }
 
+    var presentationOrientation: String {
+        let quarterTurn = !Int(captureRotationDegrees.rounded())
+            .isMultiple(of: 180)
+        let presentationWidth = quarterTurn ? height : width
+        let presentationHeight = quarterTurn ? width : height
+        return presentationHeight >= presentationWidth
+            ? "portrait"
+            : "landscape"
+    }
+
+    var presentationOrientationLabel: String {
+        presentationOrientation.capitalized
+    }
+
     var profileLabel: String {
-        "\(resolutionLabel) · \(Int(framesPerSecond.rounded())) fps · \(codec.uppercased())"
+        "\(resolutionLabel) · \(Int(framesPerSecond.rounded())) fps · \(codec.uppercased()) · \(presentationOrientationLabel)"
     }
 
     var estimatedBytesPerSecond: Int64 {
@@ -71,6 +86,7 @@ enum VideoCaptureServiceError: LocalizedError {
     case cameraInputUnavailable(String)
     case microphoneInputUnavailable(String)
     case movieOutputUnavailable
+    case captureRotationUnavailable(Double)
     case notPrepared
     case alreadyRecording
     case notRecording
@@ -92,6 +108,8 @@ enum VideoCaptureServiceError: LocalizedError {
             "The selected microphone could not be attached: \(detail)"
         case .movieOutputUnavailable:
             "The iPhone could not attach a fragmented movie output."
+        case .captureRotationUnavailable(let angle):
+            "The camera reported an unsupported \(Int(angle.rounded()))° capture rotation. Quipsly did not arm a possibly sideways source."
         case .notPrepared:
             "Prepare and verify the camera profile before recording."
         case .alreadyRecording:
@@ -147,6 +165,7 @@ actor VideoCaptureService {
     private let movieOutput = AVCaptureMovieFileOutput()
     private var cameraInput: AVCaptureDeviceInput?
     private var microphoneInput: AVCaptureDeviceInput?
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     private var activeDelegate: VideoCaptureMovieDelegate?
     private var resolvedProfile: VideoCaptureResolvedProfile?
     private var configuredPosition: VideoCaptureCameraPosition?
@@ -270,6 +289,7 @@ actor VideoCaptureService {
 
         do {
             try device.lockForConfiguration()
+            defer { device.unlockForConfiguration() }
             device.activeFormat = selection.format
             device.activeVideoMinFrameDuration = selection.frameDuration
             device.activeVideoMaxFrameDuration = selection.frameDuration
@@ -277,7 +297,6 @@ actor VideoCaptureService {
                selection.format.supportedColorSpaces.contains(selection.colorSpace) {
                 device.activeColorSpace = selection.colorSpace
             }
-            device.unlockForConfiguration()
         } catch {
             throw VideoCaptureServiceError.cameraInputUnavailable(
                 "The selected quality profile could not be locked: \(error.localizedDescription)"
@@ -291,9 +310,14 @@ actor VideoCaptureService {
         if videoConnection.isVideoStabilizationSupported {
             videoConnection.preferredVideoStabilizationMode = .auto
         }
-        if videoConnection.isVideoRotationAngleSupported(90) {
-            videoConnection.videoRotationAngle = 90
-        }
+        let newRotationCoordinator = AVCaptureDevice.RotationCoordinator(
+            device: device,
+            previewLayer: nil
+        )
+        let captureRotationDegrees = try applyCaptureRotation(
+            coordinator: newRotationCoordinator,
+            connection: videoConnection
+        )
 
         let codec = movieOutput.availableVideoCodecTypes.contains(.hevc)
             ? AVVideoCodecType.hevc
@@ -323,13 +347,15 @@ actor VideoCaptureService {
             includesAudio: includesAudio,
             audioSampleRate: audioDescription?.sampleRate,
             audioChannelCount: audioDescription?.channels,
-            movieFragmentSeconds: 10
+            movieFragmentSeconds: 10,
+            captureRotationDegrees: captureRotationDegrees
         )
         cameraInput = newCameraInput
         microphoneInput = newMicrophoneInput
         resolvedProfile = profile
         configuredPosition = position
         configuredIncludesAudio = includesAudio
+        rotationCoordinator = newRotationCoordinator
         configurationSucceeded = true
         captureSession.commitConfiguration()
         configurationIsOpen = false
@@ -342,6 +368,37 @@ actor VideoCaptureService {
 
     func currentProfile() -> VideoCaptureResolvedProfile? {
         resolvedProfile
+    }
+
+    func lockCaptureOrientationForArming() throws -> VideoCaptureResolvedProfile {
+        guard let profile = resolvedProfile,
+              let rotationCoordinator,
+              let videoConnection = movieOutput.connection(with: .video),
+              captureSession.isRunning,
+              !movieOutput.isRecording else {
+            throw VideoCaptureServiceError.notPrepared
+        }
+        let captureRotationDegrees = try applyCaptureRotation(
+            coordinator: rotationCoordinator,
+            connection: videoConnection
+        )
+        let armedProfile = VideoCaptureResolvedProfile(
+            cameraPosition: profile.cameraPosition,
+            cameraDeviceUniqueID: profile.cameraDeviceUniqueID,
+            cameraLocalizedName: profile.cameraLocalizedName,
+            width: profile.width,
+            height: profile.height,
+            framesPerSecond: profile.framesPerSecond,
+            codec: profile.codec,
+            colorSpace: profile.colorSpace,
+            includesAudio: profile.includesAudio,
+            audioSampleRate: profile.audioSampleRate,
+            audioChannelCount: profile.audioChannelCount,
+            movieFragmentSeconds: profile.movieFragmentSeconds,
+            captureRotationDegrees: captureRotationDegrees
+        )
+        resolvedProfile = armedProfile
+        return armedProfile
     }
 
     func startRecording(to fileURL: URL) throws {
@@ -474,5 +531,28 @@ actor VideoCaptureService {
         case .HLG_BT2020: "HLG-BT.2020"
         default: "unknown-\(colorSpace.rawValue)"
         }
+    }
+
+    private func applyCaptureRotation(
+        coordinator: AVCaptureDevice.RotationCoordinator,
+        connection: AVCaptureConnection
+    ) throws -> Double {
+        let reportedAngle =
+            coordinator.videoRotationAngleForHorizonLevelCapture
+        let normalizedAngle = normalizedQuarterTurn(reportedAngle)
+        guard connection.isVideoRotationAngleSupported(normalizedAngle) else {
+            throw VideoCaptureServiceError.captureRotationUnavailable(
+                Double(reportedAngle)
+            )
+        }
+        connection.videoRotationAngle = normalizedAngle
+        return Double(normalizedAngle)
+    }
+
+    private func normalizedQuarterTurn(_ angle: CGFloat) -> CGFloat {
+        let normalized = angle.truncatingRemainder(dividingBy: 360)
+        let positive = normalized < 0 ? normalized + 360 : normalized
+        let quarterTurn = (positive / 90).rounded() * 90
+        return quarterTurn == 360 ? 0 : quarterTurn
     }
 }

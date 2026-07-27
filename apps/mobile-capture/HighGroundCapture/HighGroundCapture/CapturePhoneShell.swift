@@ -4584,6 +4584,9 @@ private struct CaptureRecordingModePicker: View {
 
 @MainActor
 private final class CaptureVideoPreviewUIView: UIView {
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var attachedCameraDeviceUniqueID: String?
+
     override class var layerClass: AnyClass {
         AVCaptureVideoPreviewLayer.self
     }
@@ -4606,24 +4609,55 @@ private final class CaptureVideoPreviewUIView: UIView {
         previewLayer.videoGravity = .resizeAspectFill
     }
 
-    func attach(session: AVCaptureSession) {
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        applyPreviewRotation()
+    }
+
+    func attach(
+        session: AVCaptureSession,
+        cameraDeviceUniqueID: String?
+    ) {
         if previewLayer.session !== session {
             previewLayer.session = session
         }
-        let portraitAngle: CGFloat = 90
-        if let connection = previewLayer.connection,
-           connection.isVideoRotationAngleSupported(portraitAngle) {
-            connection.videoRotationAngle = portraitAngle
+        if attachedCameraDeviceUniqueID != cameraDeviceUniqueID {
+            attachedCameraDeviceUniqueID = cameraDeviceUniqueID
+            let device = session.inputs
+                .compactMap { ($0 as? AVCaptureDeviceInput)?.device }
+                .first { $0.uniqueID == cameraDeviceUniqueID }
+            rotationCoordinator = device.map {
+                AVCaptureDevice.RotationCoordinator(
+                    device: $0,
+                    previewLayer: previewLayer
+                )
+            }
         }
+        applyPreviewRotation()
+    }
+
+    private func applyPreviewRotation() {
+        guard let rotationCoordinator,
+              let connection = previewLayer.connection else {
+            return
+        }
+        let angle =
+            rotationCoordinator.videoRotationAngleForHorizonLevelPreview
+        guard connection.isVideoRotationAngleSupported(angle) else { return }
+        connection.videoRotationAngle = angle
     }
 }
 
 private struct CaptureVideoPreview: UIViewRepresentable {
     let session: AVCaptureSession
+    let cameraDeviceUniqueID: String?
 
     func makeUIView(context: Context) -> CaptureVideoPreviewUIView {
         let view = CaptureVideoPreviewUIView()
-        view.attach(session: session)
+        view.attach(
+            session: session,
+            cameraDeviceUniqueID: cameraDeviceUniqueID
+        )
         return view
     }
 
@@ -4631,7 +4665,10 @@ private struct CaptureVideoPreview: UIViewRepresentable {
         _ uiView: CaptureVideoPreviewUIView,
         context: Context
     ) {
-        uiView.attach(session: session)
+        uiView.attach(
+            session: session,
+            cameraDeviceUniqueID: cameraDeviceUniqueID
+        )
     }
 }
 
@@ -4674,9 +4711,13 @@ private struct VideoRecorderHero: View {
             }
 
             if showsPreview {
-                CaptureVideoPreview(session: controller.captureSession)
+                CaptureVideoPreview(
+                    session: controller.captureSession,
+                    cameraDeviceUniqueID: controller.resolvedProfile?
+                        .cameraDeviceUniqueID
+                )
                     .frame(maxWidth: .infinity)
-                    .aspectRatio(9 / 16, contentMode: .fit)
+                    .aspectRatio(previewAspectRatio, contentMode: .fit)
                     .frame(maxHeight: 440)
                     .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
                     .overlay(alignment: .topLeading) {
@@ -4748,11 +4789,21 @@ private struct VideoRecorderHero: View {
                             mode.includesLocalAudio ? "Local audio on" : "Video only",
                             systemImage: mode.includesLocalAudio ? "mic.fill" : "mic.slash"
                         )
+                        Label(
+                            "\(profile.presentationOrientationLabel) \(controller.state == .ready ? "at prepare" : "locked")",
+                            systemImage: "rectangle.portrait.and.arrow.right"
+                        )
                         if let minutes = controller.estimatedAvailableMinutes {
                             Label("≈\(minutes) min free", systemImage: "internaldrive")
                         }
                     }
                     .font(.caption.weight(.semibold))
+                    Text(
+                        "Frame the phone in the orientation you want before Start. Each immutable movie locks one horizon-level orientation; pause or stop before changing it."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(12)
@@ -4851,6 +4902,12 @@ private struct VideoRecorderHero: View {
     private var showsPreview: Bool {
         controller.resolvedProfile != nil
             && ![.idle, .failed].contains(controller.state)
+    }
+
+    private var previewAspectRatio: CGFloat {
+        controller.resolvedProfile?.presentationOrientation == "landscape"
+            ? 16 / 9
+            : 9 / 16
     }
 
     private var isCaptureGroupOpen: Bool {

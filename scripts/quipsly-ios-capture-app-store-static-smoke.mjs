@@ -566,6 +566,8 @@ for (const needle of [
 }
 for (const needle of [
   "AVCaptureVideoPreviewLayer",
+  "AVCaptureDevice.RotationCoordinator",
+  "videoRotationAngleForHorizonLevelPreview",
   "videoRotationAngle",
   "resizeAspectFill",
 ]) {
@@ -573,6 +575,9 @@ for (const needle of [
 }
 for (const needle of [
   "state = .arming",
+  "lockCaptureOrientationForArming",
+  "captureRotationDegrees:",
+  "orientation: profile.presentationOrientation",
   "activeCaptureGroupID",
   "clockSamples",
   "validateFinalizedSource",
@@ -583,6 +588,7 @@ for (const needle of [
 }
 for (const needle of [
   "AVCaptureMovieFileOutput",
+  "videoRotationAngleForHorizonLevelCapture",
   "movieFragmentInterval",
   "availableVideoCodecTypes",
   "startRunning",
@@ -595,6 +601,7 @@ for (const needle of [
   "videoTrack.load(.preferredTransform)",
   "sourceIntegrityHoldReason",
   "Upload is held so Quipsly cannot silently relabel the source.",
+  "angularDistance(expectedRotation, recordedRotation)",
 ]) {
   requireIncludes(localRecordingLibraryText, needle, "finished-video source evidence");
 }

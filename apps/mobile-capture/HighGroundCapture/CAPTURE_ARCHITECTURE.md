@@ -133,6 +133,17 @@ opens another in the same capture group rather than risking an unrecoverable
 mid-file input mutation. The full source/clock/editor contract is documented in
 `docs/quipsly/production-source-capture.md`.
 
+Preview and movie orientation are not a fixed portrait assumption.
+`AVCaptureDevice.RotationCoordinator` supplies the device- and gravity-aware
+horizon-level preview and capture angles. Preview follows its own coordinator;
+immediately before the durable START receipt, the actor snapshots and locks the
+movie angle, orientation, camera ID, and negotiated format into source-profile
+schema v3. One immutable movie keeps one orientation. The UI tells the creator
+to frame before Start and to pause or stop before changing orientation. After
+finalization, the recorded QuickTime transform and presentation shape must
+agree with that receipt or upload is held while the local original remains
+watchable.
+
 The actor-isolated capture service, controller, typed source ledger, controlled
 source boundaries, real `AVCaptureVideoPreviewLayer`, source-mode preflight,
 source-specific consent/readiness, full-track finalized-file validation, and

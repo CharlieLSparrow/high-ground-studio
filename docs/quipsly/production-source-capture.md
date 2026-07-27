@@ -15,6 +15,12 @@ frame rate, audio shape, and duration are persisted independently of the
 negotiated camera profile. Material drift creates a visible upload hold without
 damaging playback or relabeling the source. Library now watches video originals
 through an app-owned AVPlayer surface instead of attempting audio-only playback.
+Fixed portrait rotation has also been removed. Apple's device rotation
+coordinator owns separate horizon-level preview and movie angles; the movie
+angle and derived portrait/landscape shape are locked immediately before the
+durable START receipt, preserved in source-profile schema v3, and compared with
+the finished QuickTime track transform. Changing orientation requires a new
+immutable source boundary rather than silently mutating one movie's semantics.
 Old audio ledgers and v2 upload manifests normalize to one-source capture groups
 without gaining new processing authority. The long-source verifier, durable GCS
 queue, scoped Cloud Run Job release, IAM/scheduler setup, and fail-closed Nest

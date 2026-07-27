@@ -34,6 +34,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     var orientation: String?
     var cameraPosition: String?
     var cameraDeviceUniqueID: String?
+    var captureRotationDegrees: Double?
     var includesAudio: Bool
     var audioSampleRate: Double?
     var audioChannelCount: Int?
@@ -53,6 +54,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         orientation: String? = nil,
         cameraPosition: String? = nil,
         cameraDeviceUniqueID: String? = nil,
+        captureRotationDegrees: Double? = nil,
         includesAudio: Bool,
         audioSampleRate: Double? = nil,
         audioChannelCount: Int? = nil,
@@ -71,6 +73,7 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         self.orientation = orientation
         self.cameraPosition = cameraPosition
         self.cameraDeviceUniqueID = cameraDeviceUniqueID
+        self.captureRotationDegrees = captureRotationDegrees
         self.includesAudio = includesAudio
         self.audioSampleRate = audioSampleRate
         self.audioChannelCount = audioChannelCount
@@ -1611,6 +1614,21 @@ final class LocalRecordingLibrary: ObservableObject {
                 "the armed portrait source produced a \(width)×\(height) landscape presentation"
             )
         }
+        if expected.orientation == "landscape",
+           let width = recorded.presentationWidth,
+           let height = recorded.presentationHeight,
+           height >= width {
+            differences.append(
+                "the armed landscape source produced a \(width)×\(height) portrait presentation"
+            )
+        }
+        if let expectedRotation = expected.captureRotationDegrees,
+           let recordedRotation = recorded.rotationDegrees,
+           angularDistance(expectedRotation, recordedRotation) > 1 {
+            differences.append(
+                "armed rotation \(Int(expectedRotation.rounded()))°, recorded track rotation \(Int(recordedRotation.rounded()))°"
+            )
+        }
         guard !differences.isEmpty else { return nil }
         return "The complete movie is playable and preserved, but its finished track does not match the armed source: \(differences.joined(separator: "; ")). Upload is held so Quipsly cannot silently relabel the source."
     }
@@ -1638,6 +1656,14 @@ final class LocalRecordingLibrary: ObservableObject {
         let degrees = radians * 180 / .pi
         let normalized = degrees.truncatingRemainder(dividingBy: 360)
         return normalized < 0 ? normalized + 360 : normalized
+    }
+
+    nonisolated private static func angularDistance(
+        _ lhs: Double,
+        _ rhs: Double
+    ) -> Double {
+        let difference = abs(lhs - rhs).truncatingRemainder(dividingBy: 360)
+        return min(difference, 360 - difference)
     }
 
     nonisolated private static func fourCCString(

@@ -119,6 +119,25 @@ check(
     && videoService.includes("VideoCaptureResolvedProfile("),
 );
 check(
+  "camera orientation uses Apple's device rotation coordinator",
+  videoService.includes("AVCaptureDevice.RotationCoordinator(")
+    && videoService.includes("videoRotationAngleForHorizonLevelCapture")
+    && phoneShell.includes("videoRotationAngleForHorizonLevelPreview")
+    && !videoService.includes("isVideoRotationAngleSupported(90)"),
+);
+check(
+  "capture orientation is locked before durable START",
+  videoStart.indexOf("lockCaptureOrientationForArming()") >= 0
+    && videoStart.indexOf("lockCaptureOrientationForArming()")
+      < videoStartReceipt
+    && videoStart.includes("captureRotationDegrees:")
+    && videoStart.includes("orientation: profile.presentationOrientation"),
+);
+check(
+  "camera configuration always releases its lock",
+  videoService.includes("defer { device.unlockForConfiguration() }"),
+);
+check(
   "camera does not silently downgrade an active source",
   videoController.includes("Quality will not silently change during a source.")
     && videoController.includes("without changing quality"),
@@ -227,6 +246,12 @@ check(
     && library.includes("videoIntegrityHoldReason(")
     && library.includes("Upload is held so Quipsly cannot silently relabel the source.")
     && model.includes("recording.sourceIntegrityHoldReason"),
+);
+check(
+  "video upload fails closed on orientation receipt drift",
+  library.includes("var captureRotationDegrees: Double?")
+    && library.includes("angularDistance(expectedRotation, recordedRotation)")
+    && library.includes("the armed landscape source produced"),
 );
 check("safe filename and canonical path checks remain", library.includes("isSafeRecordingFileName") && library.includes("recordingOutsideLibrary"));
 check("explicit deletion tombstone remains", library.includes("status = .deletedLocally") && library.includes("Durable-before-destructive"));

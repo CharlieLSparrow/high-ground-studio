@@ -261,9 +261,9 @@ final class VideoCaptureController: ObservableObject {
             fail(VideoCaptureControllerError.audioConsentRequired)
             return
         }
-        guard let profile = resolvedProfile,
-              profile.cameraPosition == cameraPosition,
-              profile.includesAudio == includesAudio else {
+        guard let preparedProfile = resolvedProfile,
+              preparedProfile.cameraPosition == cameraPosition,
+              preparedProfile.includesAudio == includesAudio else {
             fail(VideoCaptureControllerError.profileNotPrepared)
             return
         }
@@ -283,7 +283,9 @@ final class VideoCaptureController: ObservableObject {
         var armedOwnerAccountID: String?
         var ledgerWasCreated = false
         do {
-            let requiredBytes = minimumRequiredBytes(profile: profile)
+            let requiredBytes = minimumRequiredBytes(
+                profile: preparedProfile
+            )
             let currentAvailableBytes = try availableCapacity()
             availableBytes = currentAvailableBytes
             guard currentAvailableBytes >= requiredBytes else {
@@ -304,6 +306,13 @@ final class VideoCaptureController: ObservableObject {
             guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
                 throw VideoCaptureControllerError.ownerChanged
             }
+            // Snapshot and lock the horizon-level movie transform immediately
+            // before the durable source receipt. The connection keeps this
+            // orientation for the immutable source rather than changing track
+            // semantics if the phone moves later.
+            let profile = try await service
+                .lockCaptureOrientationForArming()
+            resolvedProfile = profile
             let startReceipt = try receiptStore.enqueueDurably(
                 captureID: recordingID,
                 sessionID: context.sessionID,
@@ -321,16 +330,17 @@ final class VideoCaptureController: ObservableObject {
                 startedAt: startedAt
             )
             let sourceProfile = LocalRecordingSourceProfile(
-                schemaVersion: 2,
+                schemaVersion: 3,
                 container: "mov",
                 codec: profile.codec,
                 width: profile.width,
                 height: profile.height,
                 nominalFrameRate: profile.framesPerSecond,
                 colorSpace: profile.colorSpace,
-                orientation: "portrait",
+                orientation: profile.presentationOrientation,
                 cameraPosition: profile.cameraPosition.rawValue,
                 cameraDeviceUniqueID: profile.cameraDeviceUniqueID,
+                captureRotationDegrees: profile.captureRotationDegrees,
                 includesAudio: profile.includesAudio,
                 audioSampleRate: profile.audioSampleRate,
                 audioChannelCount: profile.audioChannelCount,

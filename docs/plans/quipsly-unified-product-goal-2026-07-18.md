@@ -2684,3 +2684,28 @@ This is an active-goal checkpoint, not a completion claim.
   capture, real orientation, 4K/endurance/thermal behavior, real-video
   watching, background upload, cloud proxy, timeline sync, or editor
   alignment. Those remain mandatory physical and end-to-end gates.
+
+### 2026-07-27 iPhone horizon-level orientation checkpoint
+
+- This is an active-goal checkpoint, not a completion claim.
+- Removed the fixed 90° assumption from both the camera preview and movie
+  output. Apple's device rotation coordinator now provides the separate
+  horizon-level preview and capture angles required for the active front or
+  rear camera and current device gravity.
+- Immediately before the durable room START and local source ledger, the
+  camera actor snapshots and locks the movie rotation. Source-profile schema v3
+  preserves that angle plus its derived portrait/landscape presentation; the
+  UX shows the prepared/locked orientation and tells the creator to pause or
+  stop before rotating to begin another immutable source.
+- Finished-source validation now compares both expected presentation shape and
+  exact rotation with the QuickTime track transform. A disagreement keeps the
+  source locally watchable and preserved but holds every automatic or manual
+  upload path.
+- Camera format configuration now releases its device lock through `defer`,
+  including every thrown setter path.
+- Source durability passes 73/73, App Store/static UX passes 701/701, and the
+  generic iOS Simulator build succeeds for arm64 and x86_64. Simulator proof
+  cannot validate gravity, camera hardware, front-camera transform/mirroring,
+  or the finished MOV on a phone; real front/rear portrait and both landscape
+  directions must be recorded, watched, probed, uploaded, proxied, and aligned
+  before physical qualification.

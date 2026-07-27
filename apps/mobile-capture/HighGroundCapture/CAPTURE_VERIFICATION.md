@@ -50,6 +50,8 @@ Passing an earlier gate does not imply a later gate.
 | Camera permission could be requested by an audio-only launch or room join | Audio remains camera-free; camera authorization is requested only after an explicit Solo video or Podcast camera choice followed by Prepare. |
 | Library treated every local source as audio | Video sources now open an app-owned `AVPlayer` watch surface with explicit non-destructive local-original copy; audio retains the `AVAudioPlayer` path. |
 | An armed camera profile could be mistaken for the shape of the finished MOV | Finalization now decodes every track through EOF, persists actual encoded/presentation dimensions, rotation, codec, frame rate, audio shape, and duration, and fails upload closed on negotiated-versus-recorded integrity drift while preserving playback. |
+| Camera output and preview assumed every source was portrait at 90° | Apple rotation coordinators now supply separate horizon-level preview and capture angles. The movie angle is locked before START, persisted in source-profile v3, presented as portrait/landscape in the UX, and compared with the finished QuickTime transform before upload. |
+| Camera configuration did not guarantee unlock when a selected format setter threw | Configuration now releases the `AVCaptureDevice` lock with `defer` on every Swift error path. |
 
 ## Automated evidence
 
@@ -58,9 +60,9 @@ The final local run records exact results after all hardening changes settled. S
 | Gate | Command or proof | Result |
 |---|---|---|
 | Privacy manifest | `plutil -lint HighGroundCapture/PrivacyInfo.xcprivacy` | PASS — valid plist |
-| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 694/694 |
+| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 701/701 |
 | Owner isolation | `node --test scripts/quipsly-ios-capture-account-isolation.test.mjs` | PASS — 15/15 |
-| iOS source durability | `node scripts/quipsly-ios-capture-durability-contract.test.mjs` | PASS — 69/69 |
+| iOS source durability | `node scripts/quipsly-ios-capture-durability-contract.test.mjs` | PASS — 73/73 |
 | Mobile source contracts | `node scripts/quipsly-mobile-capture-contract-smoke.mjs --source-only=1` | PASS — 74/74 source; 104/104 with local network |
 | Committed release isolation | `scripts/release/quipsly-capture-release-from-commit.test.sh` | PASS — exact SHA, dirty-source exclusion, argument/output preservation, cleanup |
 | Repository TypeScript authority | `bash scripts/ci/typecheck-typescript-7.sh` | PASS — 21/21 on pinned TypeScript 7.0.2 |
@@ -81,6 +83,7 @@ The final local run records exact results after all hardening changes settled. S
 | Capture UX, native auth, and Share extension | focused `CaptureExperienceUITests`, `CaptureLoginExperienceUITests`, and `ShareCaptureExtensionUITests` | PASS — 26/26, no skips; `/tmp/quipsly-account-deletion-full-ui.xcresult` |
 | Video source modes and consent | focused `CaptureExperienceUITests` on iPhone 16e simulator | PASS — 3/3; exact Audio / Solo video / Podcast camera explanations, separate video choice, and video-only consent cannot enable audio |
 | Finalized video truth and local watch path | static contracts, generic iOS Simulator build, and focused iPhone 17 Pro mode journey | PASS — actual MOV evidence and integrity holds are required for upload eligibility; AVPlayer Library path compiles; focused journey passes 1/1 |
+| Camera orientation contract | static contracts and generic iOS Simulator build | PASS — no fixed 90° output assumption; capture angle locks before START and finished rotation drift holds upload; physical portrait/landscape recording remains open |
 | Visual QA | Today, Record, Work, Library, Account; light/dark, large type, and accessibility XXXL | PASS — focused navigation and Work journeys plus signed local Work operation; physical TestFlight inspection remains open |
 | Patch hygiene | tracked-worktree `git diff --check` | PASS |
 
