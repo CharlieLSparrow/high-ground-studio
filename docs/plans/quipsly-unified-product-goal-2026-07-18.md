@@ -2565,3 +2565,33 @@ This is an active-goal checkpoint, not a completion claim.
   application/schema release boundary. It does not yet count as a completed
   HGO episode workflow: real Mac/iPhone capture, playback, transcript,
   alignment approval, editor handoff, and publish-ready outputs remain open.
+
+### 2026-07-27 real Canon driver recovery checkpoint
+
+- Launching the previously signed Episode Capture Setup against the connected
+  `EOS Webcam Utility` found a real production crash that unit fixtures had
+  not exposed. Canon's fixed-rate DAL device returned an invalid `0/0`
+  `activeVideoMinFrameDuration`; assigning that getter value back into
+  `activeVideoMaxFrameDuration` raised an Objective-C exception before a take
+  could begin.
+- Frame-duration negotiation is now explicit and fail-closed. Fixed-rate
+  drivers keep their advertised format default without touching unsupported
+  duration setters. Variable-rate drivers receive one independently validated,
+  finite `CMTime` value for both setters. Non-finite, non-positive, or
+  unadvertised rates are rejected before capture configuration, and device
+  configuration always unlocks through `defer`.
+- A fresh Apple Development signed arm64 build
+  (`com.highground.QuipslyMac`, Team `585GUXMY5M`, CDHash
+  `8fcefc1e4612dc5255be7657741a5d542898ba44`) was installed at
+  `/Users/wall-e/Applications/Quipsly Studio.app`. The pre-fix signed build was
+  preserved under `/Users/wall-e/Applications/Quipsly Builds/` rather than
+  overwritten. The new build stayed alive through real EOS preview
+  initialization with no repeat exception; macOS readback still reports
+  camera authorized.
+- QuipslyVideoCore passes 68/68 tests, including fixed-rate default,
+  variable-rate finite-duration, and invalid/unadvertised-rate coverage.
+  This closes the observed Canon preview crash, not the physical capture gate.
+  Microphone permission remains undecided, macOS currently exposes only
+  `MOTIV Mix Virtual` rather than the direct MV7i input/output device, and no
+  real MOV/WAV has yet been recorded, watched, listened to, probed, hashed,
+  accepted, or read back in Nest/Studio.

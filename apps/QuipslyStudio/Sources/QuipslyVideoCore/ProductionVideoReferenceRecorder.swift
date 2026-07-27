@@ -208,6 +208,7 @@ public enum ProductionVideoReferenceRecorderError:
     case notRecording
     case cameraPermissionRequired
     case cameraUnavailable(String)
+    case unsupportedFrameRate(String)
     case unableToAddCamera(String)
     case unableToAddMovieOutput
     case previewNotPrepared
@@ -225,6 +226,8 @@ public enum ProductionVideoReferenceRecorderError:
             "Camera permission is required before Quipsly can preview or record this reference."
         case .cameraUnavailable(let name):
             "The selected camera route is no longer available: \(name)."
+        case .unsupportedFrameRate(let name):
+            "Quipsly could not negotiate a finite supported frame rate for \(name)."
         case .unableToAddCamera(let name):
             "Quipsly could not add \(name) to the camera-reference session."
         case .unableToAddMovieOutput:
@@ -239,6 +242,12 @@ public enum ProductionVideoReferenceRecorderError:
             "The camera reference remains preserved as a partial movie but could not be finalized: \(detail)"
         }
     }
+}
+
+enum ProductionVideoFrameDurationPlan: Equatable {
+    case formatDefault
+    case explicit(CMTime)
+    case unsupported
 }
 
 @MainActor
@@ -651,14 +660,33 @@ public final class ProductionVideoReferenceRecorder:
 
         let selected = Self.preferredFormat(for: device)
         try device.lockForConfiguration()
+        defer { device.unlockForConfiguration() }
         device.activeFormat = selected.format
-        device.activeVideoMinFrameDuration = CMTime(
-            value: 1,
-            timescale: CMTimeScale(selected.frameRate.rounded())
+        let frameDurationPlan = Self.frameDurationPlan(
+            frameRate: selected.frameRate,
+            supportedRanges: selected.format
+                .videoSupportedFrameRateRanges
+                .map {
+                    (
+                        minimum: $0.minFrameRate,
+                        maximum: $0.maxFrameRate
+                    )
+                }
         )
-        device.activeVideoMaxFrameDuration =
-            device.activeVideoMinFrameDuration
-        device.unlockForConfiguration()
+        switch frameDurationPlan {
+        case .formatDefault:
+            // Fixed-rate external drivers already own the only legal
+            // duration. Reading activeVideoMinFrameDuration back from some
+            // DAL devices returns invalid 0/0 even after a successful set, so
+            // do not manufacture a second assignment from that getter.
+            break
+        case .explicit(let frameDuration):
+            device.activeVideoMinFrameDuration = frameDuration
+            device.activeVideoMaxFrameDuration = frameDuration
+        case .unsupported:
+            throw ProductionVideoReferenceRecorderError
+                .unsupportedFrameRate(device.localizedName)
+        }
 
         let input = try AVCaptureDeviceInput(device: device)
         guard captureSession.canAddInput(input) else {
@@ -672,6 +700,43 @@ public final class ProductionVideoReferenceRecorder:
         }
         captureSession.addOutput(movieOutput)
         return selected.snapshot
+    }
+
+    nonisolated static func frameDurationPlan(
+        frameRate: Double,
+        supportedRanges: [(minimum: Double, maximum: Double)]
+    ) -> ProductionVideoFrameDurationPlan {
+        guard frameRate.isFinite, frameRate > 0 else {
+            return .unsupported
+        }
+        let tolerance = 0.001
+        guard let supportedRange = supportedRanges.first(where: {
+            $0.minimum.isFinite
+                && $0.maximum.isFinite
+                && $0.minimum > 0
+                && $0.maximum >= $0.minimum
+                && frameRate >= ($0.minimum - tolerance)
+                && frameRate <= ($0.maximum + tolerance)
+        }) else {
+            return .unsupported
+        }
+        if abs(supportedRange.maximum - supportedRange.minimum)
+            <= tolerance {
+            return .formatDefault
+        }
+
+        let duration = CMTime(
+            seconds: 1 / frameRate,
+            preferredTimescale: 60_000
+        )
+        let durationSeconds = CMTimeGetSeconds(duration)
+        guard duration.value > 0,
+              duration.timescale > 0,
+              durationSeconds.isFinite,
+              durationSeconds > 0 else {
+            return .unsupported
+        }
+        return .explicit(duration)
     }
 
     private func finishRecording(error: Error?) async {
@@ -877,6 +942,7 @@ public final class ProductionVideoReferenceRecorder:
             }
             let maximum = format.videoSupportedFrameRateRanges
                 .map(\.maxFrameRate)
+                .filter { $0.isFinite && $0 > 0 }
                 .max() ?? 0
             let frameRate = min(30, maximum)
             guard frameRate > 0 else { return nil }
@@ -911,6 +977,7 @@ public final class ProductionVideoReferenceRecorder:
             )
             let maximum = format.videoSupportedFrameRateRanges
                 .map(\.maxFrameRate)
+                .filter { $0.isFinite && $0 > 0 }
                 .max() ?? 30
             let frameRate = max(1, min(30, maximum))
             return (

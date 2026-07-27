@@ -1,4 +1,5 @@
 import Foundation
+import CoreMedia
 import XCTest
 @testable import QuipslyVideoCore
 
@@ -24,6 +25,46 @@ final class ProductionVideoReferenceRecorderTests: XCTestCase {
             )
         ]
     )
+
+    func testFixedRateDriverUsesAdvertisedFormatDefaultWithoutDurationSetter() {
+        let plan = ProductionVideoReferenceRecorder.frameDurationPlan(
+            frameRate: 30,
+            supportedRanges: [(minimum: 30, maximum: 30)]
+        )
+
+        XCTAssertEqual(plan, .formatDefault)
+    }
+
+    func testVariableRateDriverReceivesOneFiniteDurationForBothSetters() {
+        let plan = ProductionVideoReferenceRecorder.frameDurationPlan(
+            frameRate: 30,
+            supportedRanges: [(minimum: 15, maximum: 60)]
+        )
+
+        guard case .explicit(let duration) = plan else {
+            return XCTFail("Expected an explicit finite frame duration.")
+        }
+        XCTAssertGreaterThan(duration.value, 0)
+        XCTAssertGreaterThan(duration.timescale, 0)
+        XCTAssertEqual(CMTimeGetSeconds(duration), 1 / 30, accuracy: 0.000_001)
+    }
+
+    func testInvalidOrUnadvertisedFrameRateFailsClosed() {
+        XCTAssertEqual(
+            ProductionVideoReferenceRecorder.frameDurationPlan(
+                frameRate: .nan,
+                supportedRanges: [(minimum: 30, maximum: 30)]
+            ),
+            .unsupported
+        )
+        XCTAssertEqual(
+            ProductionVideoReferenceRecorder.frameDurationPlan(
+                frameRate: 30,
+                supportedRanges: [(minimum: 60, maximum: 60)]
+            ),
+            .unsupported
+        )
+    }
 
     func testFinalizedReceiptPreservesBoundaryAndNeverClaimsCanonCardMaster() {
         let recordingID = UUID()
