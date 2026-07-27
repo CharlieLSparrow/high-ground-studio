@@ -33,6 +33,19 @@ alignment and non-destructive editorial decisions.
 - direct physical MV7i, non-MV7i, virtual-rehearsal, and blocked route states;
 - authenticated Nest room-join requests with automatic Firebase token refresh
   and one bounded retry after a 401;
+- authenticated Episode Room catalog loading through the same native account,
+  limited to the sessions already authorized by Nest;
+- stable episode, participant, and call-room identity projected from Nest
+  instead of reusing editable display titles;
+- fail-closed local recording for an authorized room unless consent,
+  `canRecordNow`, and the server capture-readiness verdict all agree;
+- final Nest readiness revalidation when Record is pressed; failed refreshes
+  and rooms removed from the authorized catalog lock recording instead of
+  reusing stale evidence or silently switching episodes;
+- an explicit Local-only / solo-source choice that does not infer Nest consent
+  or collaboration state;
+- room switching starts a fresh capture group while preserving finalized media
+  and receipts from the prior group;
 - native join, mute, unmute, leave, participant-count, and connection-state
   controls in Episode Capture Setup;
 - separate call-event receipts that contain exact routes and capture-group
@@ -47,10 +60,13 @@ alignment and non-destructive editorial decisions.
 ## Verification
 
 - `pnpm --filter quipsly typecheck`
+- mobile-session canonical identity/readiness Jest: 11/11
 - clock route Jest: 4/4
-- QuipslyVideoCore: 27/27, including exact LiveKit/Core Audio UID routing,
+- QuipslyVideoCore: 34/34, including exact LiveKit/Core Audio UID routing,
   physical-versus-virtual MV7i truth, secret-free room receipts, real-MP4
-  byte-identical card ingest, and provenance-bearing editor attachment
+  byte-identical card ingest, provenance-bearing editor attachment, Nest
+  catalog decoding, stable episode identity, selection policy, and
+  inconsistent-consent fail-closed behavior
 - HighGroundCapture generic iOS Simulator build
 - QuipslyMac debug build with LiveKit 2.15.1 linked
 - real QuipslyMac launch and menu-command execution
@@ -77,8 +93,12 @@ reported as observed and are not promoted to physical-master status.
    master concurrently, exercise mute/unmute/leave, compare the WAV against the
    call feed, and prove realtime voice processing did not alter the local
    master.
-3. Attach finalized Mac/iPhone sources to one Episode Room capture group, build
+3. With the production native account, select an authorized Episode Room,
+   verify a consent hold locks Record, grant every required participant's
+   consent, refresh, and verify the same room unlocks without changing source
+   identity.
+4. Attach finalized Mac/iPhone sources to one Episode Room capture group, build
    proxies, propose alignment with uncertainty and drift, and review the result
    in the Studio timeline.
-4. Pass the long-take, route-loss, storage, interruption, recovery, physical
+5. Pass the long-take, route-loss, storage, interruption, recovery, physical
    iPhone, TestFlight, and real episode rehearsal matrices.

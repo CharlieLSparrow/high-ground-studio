@@ -1,7 +1,7 @@
 # Quipsly production source capture
 
 Status: architecture decision and delivery contract
-Last reviewed: 2026-07-26
+Last reviewed: 2026-07-27
 
 Implementation checkpoint: the protected local ledger and canonical resumable
 manifest now carry a backward-compatible `audio | video` media kind,
@@ -458,6 +458,19 @@ The first coordinated Mac/iPhone source-clock slice is now implemented:
   receipt, capture group, episode, ingest kind, hash, and `needs-alignment`
   state; a second durable receipt proves local editor attachment without
   claiming upload, proxy, sync, transcription, or publication.
+- The Mac setup screen loads Episode Rooms from Nest through the authenticated
+  native account and binds source, participant, and call identity to the
+  selected authorized session. Recording for that room remains locked unless
+  explicit participant consent, `canRecordNow`, and Nest's capture-readiness
+  verdict all agree. Record performs one final Nest revalidation; a failed
+  refresh or a room removed from the authorized catalog locks capture instead
+  of reusing stale evidence or selecting another episode. Local-only /
+  solo-source capture is a deliberate separate selection and never inherits
+  Nest consent.
+- Refreshing an existing room updates its readiness without rotating capture
+  identity. Selecting a different room—or deliberately entering local-only
+  mode—starts a new capture group while leaving already finalized source files
+  and receipts untouched.
 - Studio launch no longer synchronously loads the external 11 MB audio waveform
   map or walks the large publication/delivery state graph. Both operations are
   deferred so an empty project opens responsively.
@@ -474,12 +487,14 @@ The current Mac hardware readback is deliberately not overstated:
 Local verification passed:
 
 - Quipsly TypeScript 7 typecheck;
+- mobile-session canonical identity/readiness tests: 11/11;
 - capture-clock route tests: 4/4;
-- QuipslyVideoCore tests: 22/22, including writing and reopening an actual
+- QuipslyVideoCore tests: 34/34, including writing and reopening an actual
   48 kHz/24-bit PCM WAV, proving that a MOTIV virtual-route receipt cannot
   claim direct physical MV7i provenance, importing a real playable MP4 without
-  modifying it, matching independent source/destination digests, and attaching
-  the verified source to a provenance-bearing editor lane;
+  modifying it, matching independent source/destination digests, attaching the
+  verified source to a provenance-bearing editor lane, decoding the Nest room
+  projection, and refusing inconsistent recording-readiness evidence;
 - HighGroundCapture unsigned simulator build;
 - QuipslyMac unsigned debug build;
 - real QuipslyMac launch, responsive main editor readback, and visual readback

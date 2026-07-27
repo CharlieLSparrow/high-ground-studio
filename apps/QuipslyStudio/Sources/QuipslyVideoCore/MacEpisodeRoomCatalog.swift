@@ -1,0 +1,210 @@
+import Foundation
+
+#if os(macOS)
+public struct MacEpisodeRoomReadiness: Codable, Equatable, Sendable {
+    public let status: String?
+    public let label: String?
+    public let tone: String?
+    public let safeToRecordLocally: Bool?
+    public let providerCanJoin: Bool?
+    public let detail: String?
+    public let nextAction: String?
+    public let blockers: [String]?
+    public let evidence: [String]?
+
+    public init(
+        status: String? = nil,
+        label: String? = nil,
+        tone: String? = nil,
+        safeToRecordLocally: Bool? = nil,
+        providerCanJoin: Bool? = nil,
+        detail: String? = nil,
+        nextAction: String? = nil,
+        blockers: [String]? = nil,
+        evidence: [String]? = nil
+    ) {
+        self.status = status
+        self.label = label
+        self.tone = tone
+        self.safeToRecordLocally = safeToRecordLocally
+        self.providerCanJoin = providerCanJoin
+        self.detail = detail
+        self.nextAction = nextAction
+        self.blockers = blockers
+        self.evidence = evidence
+    }
+}
+
+public struct MacEpisodeRoomSummary:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    public let id: String
+    public let callRoomId: String
+    public let title: String
+    public let purpose: String?
+    public let status: String?
+    public let updatedAt: String?
+    public let provider: String?
+    public let providerCanJoin: Bool?
+    public let providerReadiness: String?
+    public let providerNextAction: String?
+    public let projectSlug: String?
+    public let projectName: String?
+    public let episodeSlug: String?
+    public let scheduledStart: String?
+    public let participantId: String?
+    public let recordingConsentStatus: String?
+    public let recordingConsentGranted: Bool
+    public let canRecordNow: Bool
+    public let captureReadiness: MacEpisodeRoomReadiness?
+    public let nextAction: String?
+
+    public init(
+        id: String,
+        callRoomId: String,
+        title: String,
+        purpose: String? = nil,
+        status: String? = nil,
+        updatedAt: String? = nil,
+        provider: String? = nil,
+        providerCanJoin: Bool? = nil,
+        providerReadiness: String? = nil,
+        providerNextAction: String? = nil,
+        projectSlug: String? = nil,
+        projectName: String? = nil,
+        episodeSlug: String? = nil,
+        scheduledStart: String? = nil,
+        participantId: String? = nil,
+        recordingConsentStatus: String? = nil,
+        recordingConsentGranted: Bool,
+        canRecordNow: Bool,
+        captureReadiness: MacEpisodeRoomReadiness? = nil,
+        nextAction: String? = nil
+    ) {
+        self.id = id
+        self.callRoomId = callRoomId
+        self.title = title
+        self.purpose = purpose
+        self.status = status
+        self.updatedAt = updatedAt
+        self.provider = provider
+        self.providerCanJoin = providerCanJoin
+        self.providerReadiness = providerReadiness
+        self.providerNextAction = providerNextAction
+        self.projectSlug = projectSlug
+        self.projectName = projectName
+        self.episodeSlug = episodeSlug
+        self.scheduledStart = scheduledStart
+        self.participantId = participantId
+        self.recordingConsentStatus = recordingConsentStatus
+        self.recordingConsentGranted = recordingConsentGranted
+        self.canRecordNow = canRecordNow
+        self.captureReadiness = captureReadiness
+        self.nextAction = nextAction
+    }
+
+    public var safeToRecordLocally: Bool {
+        recordingConsentGranted
+            && canRecordNow
+            && captureReadiness?.safeToRecordLocally == true
+    }
+
+    public var canJoinProvider: Bool {
+        captureReadiness?.providerCanJoin == true
+            || providerCanJoin == true
+    }
+
+    public var canonicalEpisodeSpaceID: String {
+        nonempty(episodeSlug)
+            ?? nonempty(projectSlug)
+            ?? callRoomId
+    }
+
+    public var displaySubtitle: String {
+        [
+            nonempty(purpose)?.lowercased(),
+            nonempty(projectName),
+            nonempty(status)?.lowercased(),
+        ]
+        .compactMap { $0 }
+        .joined(separator: " · ")
+    }
+
+    public var readinessLabel: String {
+        nonempty(captureReadiness?.label)
+            ?? (safeToRecordLocally
+                ? "Ready to record"
+                : "Recording held")
+    }
+
+    public var readinessDetail: String {
+        nonempty(captureReadiness?.detail)
+            ?? nonempty(captureReadiness?.nextAction)
+            ?? nonempty(nextAction)
+            ?? "Nest has not supplied a capture-readiness explanation."
+    }
+
+    private func nonempty(_ value: String?) -> String? {
+        let clean = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return clean?.isEmpty == false ? clean : nil
+    }
+}
+
+public struct MacEpisodeRoomCatalogResponse:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let ok: Bool
+    public let error: String?
+    public let sessions: [MacEpisodeRoomSummary]?
+
+    public init(
+        ok: Bool,
+        error: String? = nil,
+        sessions: [MacEpisodeRoomSummary]? = nil
+    ) {
+        self.ok = ok
+        self.error = error
+        self.sessions = sessions
+    }
+}
+
+public enum MacEpisodeRoomSelectionPolicy {
+    public static func refreshedRoomID(
+        rooms: [MacEpisodeRoomSummary],
+        previousID: String?
+    ) -> String? {
+        if let previousID {
+            return rooms.contains(where: { $0.id == previousID })
+                ? previousID
+                : nil
+        }
+        return preferredRoomID(
+            rooms: rooms,
+            preserving: nil
+        )
+    }
+
+    public static func preferredRoomID(
+        rooms: [MacEpisodeRoomSummary],
+        preserving currentID: String?
+    ) -> String? {
+        if let currentID,
+           rooms.contains(where: { $0.id == currentID }) {
+            return currentID
+        }
+        return rooms.first(where: {
+            $0.safeToRecordLocally && $0.canJoinProvider
+        })?.id
+            ?? rooms.first(where: \.safeToRecordLocally)?.id
+            ?? rooms.first(where: \.canJoinProvider)?.id
+            ?? rooms.first?.id
+    }
+}
+#endif

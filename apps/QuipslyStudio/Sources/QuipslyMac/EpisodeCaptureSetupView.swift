@@ -28,6 +28,14 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var canonImportError: String?
     @Published private(set) var importedCanonReceipts: [CanonCardImportReceipt] = []
     @Published private(set) var attachedLaneIDs: [UUID] = []
+    @Published private(set) var episodeRooms: [MacEpisodeRoomSummary] = []
+    @Published private(set) var selectedEpisodeRoomID: String?
+    @Published private(set) var isRefreshingEpisodeRooms = false
+    @Published private(set) var episodeRoomMessage =
+        "Connect the native account to load authorized Episode Rooms."
+    @Published private(set) var episodeRoomError: String?
+    @Published private(set) var isLocalOnlyCapture = false
+    @Published private(set) var episodeRoomCatalogIsFresh = false
 
     let captureRoot = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
@@ -58,16 +66,31 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         inventory?.audioDevices.first { $0.id == selectedAudioOutputID }
     }
 
+    var selectedEpisodeRoom: MacEpisodeRoomSummary? {
+        guard let selectedEpisodeRoomID else { return nil }
+        return episodeRooms.first { $0.id == selectedEpisodeRoomID }
+    }
+
     var canStartRecording: Bool {
         guard !isRecording,
               !isFinalizing,
               !isImportingCanon,
+              !isRefreshingEpisodeRooms,
               !episodeSpaceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !participantID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               inventory?.microphoneAuthorization == .authorized,
               let input = selectedAudioInput,
               input.hasInput,
               let sampleRate = input.nominalSampleRate else {
+            return false
+        }
+        if !isLocalOnlyCapture {
+            guard let selectedEpisodeRoom,
+                  episodeRoomCatalogIsFresh,
+                  selectedEpisodeRoom.safeToRecordLocally else {
+                return false
+            }
+        } else if selectedEpisodeRoom != nil {
             return false
         }
         return abs(sampleRate - ProductionAudioRecorder.targetSampleRate) < 1
@@ -99,7 +122,114 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         isRefreshing = false
     }
 
-    func startRecording() {
+    func refreshEpisodeRooms() async {
+        guard !isRefreshingEpisodeRooms else { return }
+        guard nativeAccountStore.hasSavedSession else {
+            episodeRoomCatalogIsFresh = false
+            episodeRoomError = nil
+            episodeRoomMessage =
+                "Connect the native account in Workspace, then refresh Episode Rooms."
+            return
+        }
+        guard let baseURL = nativeAccountStore.normalizedBaseURL else {
+            episodeRoomCatalogIsFresh = false
+            episodeRoomError = "The configured Nest base URL is not valid."
+            return
+        }
+
+        isRefreshingEpisodeRooms = true
+        episodeRoomCatalogIsFresh = false
+        episodeRoomError = nil
+        episodeRoomMessage = "Loading authorized Episode Rooms from Nest…"
+        defer { isRefreshingEpisodeRooms = false }
+
+        do {
+            let request = URLRequest(
+                url: baseURL.appending(
+                    path: "/api/mobile/capture/sessions"
+                )
+            )
+            let (data, response) =
+                try await nativeAccountStore.authenticatedData(
+                    for: request
+                )
+            let catalog = try JSONDecoder().decode(
+                MacEpisodeRoomCatalogResponse.self,
+                from: data
+            )
+            guard (200 ..< 300).contains(response.statusCode),
+                  catalog.ok else {
+                throw NSError(
+                    domain: "QuipslyEpisodeRoomCatalog",
+                    code: response.statusCode,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            catalog.error
+                                ?? "Nest could not load authorized Episode Rooms.",
+                    ]
+                )
+            }
+
+            episodeRooms = catalog.sessions ?? []
+            episodeRoomCatalogIsFresh = true
+            if !isLocalOnlyCapture {
+                let preferredID =
+                    MacEpisodeRoomSelectionPolicy.refreshedRoomID(
+                        rooms: episodeRooms,
+                        previousID: selectedEpisodeRoomID
+                    )
+                applyEpisodeRoomSelection(
+                    preferredID,
+                    beginNewGroup:
+                        preferredID != selectedEpisodeRoomID
+                )
+            }
+            episodeRoomMessage = episodeRooms.isEmpty
+                ? "No authorized capture sessions are available. Create one in Nest or use Local-only / solo source."
+                : selectedEpisodeRoom.map {
+                    "\(episodeRooms.count) authorized session(s) loaded · \($0.title) selected · \($0.readinessLabel)."
+                } ?? "\(episodeRooms.count) authorized session(s) loaded from Nest."
+        } catch {
+            episodeRoomCatalogIsFresh = false
+            episodeRoomError = error.localizedDescription
+            episodeRoomMessage =
+                "Episode Room refresh needs attention. Existing local sources were not changed."
+        }
+    }
+
+    func selectEpisodeRoom(_ roomID: String?) {
+        guard !isRecording, !isFinalizing, !isImportingCanon else {
+            return
+        }
+        let nextIsLocalOnly = roomID == nil
+        let shouldBeginNewGroup =
+            roomID != selectedEpisodeRoomID
+                || nextIsLocalOnly != isLocalOnlyCapture
+        isLocalOnlyCapture = nextIsLocalOnly
+        applyEpisodeRoomSelection(
+            roomID,
+            beginNewGroup: shouldBeginNewGroup
+        )
+    }
+
+    func startRecording() async {
+        if !isLocalOnlyCapture {
+            guard let intendedRoomID = selectedEpisodeRoomID else {
+                recordingError =
+                    "Choose an authorized Episode Room before recording."
+                return
+            }
+            await refreshEpisodeRooms()
+            guard selectedEpisodeRoomID == intendedRoomID,
+                  episodeRoomCatalogIsFresh,
+                  selectedEpisodeRoom?.safeToRecordLocally == true else {
+                recordingError = selectedEpisodeRoom.map {
+                    "\($0.readinessLabel): \($0.readinessDetail)"
+                } ?? "That Episode Room is no longer authorized for this account. Choose it again after reviewing Nest."
+                message = "Local master did not start."
+                return
+            }
+        }
         guard let input = selectedAudioInput else {
             recordingError = "Select the exact microphone/interface that will own this local master."
             return
@@ -372,9 +502,44 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 ?? inventory.audioDevices.first(where: \.hasOutput)?.id
         }
     }
+
+    private func applyEpisodeRoomSelection(
+        _ roomID: String?,
+        beginNewGroup: Bool
+    ) {
+        selectedEpisodeRoomID = roomID
+        guard let room = selectedEpisodeRoom else {
+            callRoomID = ""
+            if beginNewGroup {
+                beginNewCaptureGroup()
+            }
+            episodeRoomMessage = isLocalOnlyCapture
+                ? "Local-only source mode. Enter a stable source label and participant identity; no room or consent state will be inferred."
+                : "Choose an authorized Episode Room or explicitly select Local-only / solo source."
+            return
+        }
+
+        callRoomID = room.callRoomId
+        episodeSpaceID = room.canonicalEpisodeSpaceID
+        if let rawParticipantID = room.participantId {
+            let cleanParticipantID = rawParticipantID
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleanParticipantID.isEmpty {
+                participantID = cleanParticipantID
+            }
+        }
+        if beginNewGroup {
+            beginNewCaptureGroup()
+        }
+        episodeRoomMessage =
+            "\(room.title) selected · \(room.readinessLabel)."
+    }
 }
 
 struct EpisodeCaptureSetupView: View {
+    private static let localOnlyRoomSelectionID =
+        "__quipsly-local-only-source__"
+
     @StateObject private var model: EpisodeCaptureSetupModel
     @StateObject private var audioRoom = MacAudioRoomController()
     @ObservedObject private var nativeAccountStore:
@@ -403,6 +568,7 @@ struct EpisodeCaptureSetupView: View {
             Divider()
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
+                    episodeRoomCard
                     routeSelectors
                     localMasterCard
                     audioOnlyRoomCard
@@ -422,6 +588,7 @@ struct EpisodeCaptureSetupView: View {
         .frame(minWidth: 820, minHeight: 680)
         .task {
             await model.refresh()
+            await model.refreshEpisodeRooms()
         }
         .onDisappear {
             if model.isRecording {
@@ -432,6 +599,264 @@ struct EpisodeCaptureSetupView: View {
             }
         }
         .accessibilityIdentifier("EpisodeCaptureSetup")
+    }
+
+    private var episodeRoomCard: some View {
+        GroupBox("Episode workspace") {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Bind every source to an authorized Nest session")
+                            .font(.headline)
+                        Text(
+                            "The selected room supplies stable episode, participant, call-room, and consent identity. Quipsly will not infer recording permission from a title or from successfully joining the call."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer()
+                    Button(
+                        model.isRefreshingEpisodeRooms
+                            ? "Refreshing…"
+                            : "Refresh rooms"
+                    ) {
+                        Task { await model.refreshEpisodeRooms() }
+                    }
+                    .disabled(
+                        model.isRefreshingEpisodeRooms
+                            || model.isRecording
+                            || model.isFinalizing
+                            || model.isImportingCanon
+                            || audioRoom.isActive
+                    )
+                    .accessibilityIdentifier(
+                        "EpisodeCaptureRefreshEpisodeRooms"
+                    )
+                }
+
+                Picker(
+                    "Capture destination",
+                    selection: episodeRoomSelection
+                ) {
+                    Text("Choose an authorized Episode Room")
+                        .tag("")
+                    Text("Local-only / solo source")
+                        .tag(Self.localOnlyRoomSelectionID)
+                    ForEach(model.episodeRooms) { room in
+                        Text(roomPickerLabel(room))
+                            .tag(room.id)
+                    }
+                }
+                .disabled(
+                    model.isRecording
+                        || model.isFinalizing
+                        || model.isImportingCanon
+                        || audioRoom.isActive
+                )
+                .accessibilityIdentifier(
+                    "EpisodeCaptureEpisodeRoomPicker"
+                )
+
+                if let room = model.selectedEpisodeRoom {
+                    selectedEpisodeRoomSummary(room)
+                } else if model.isLocalOnlyCapture {
+                    Label(
+                        "Local-only mode is explicit: files stay linked by the source label and capture-group receipt, but Nest room consent and collaboration state are not inferred.",
+                        systemImage: "externaldrive.badge.person.crop"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Label(
+                        "Recording is locked until you choose an authorized room or deliberately select Local-only / solo source.",
+                        systemImage: "lock.shield"
+                    )
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                }
+
+                HStack(spacing: 8) {
+                    Text(model.episodeRoomMessage)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(
+                        nativeAccountStore.isVerified
+                            ? nativeAccountStore.userEmail
+                            : nativeAccountStore.hasSavedSession
+                                ? "Saved Nest session"
+                                : "Native account not connected"
+                    )
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                }
+
+                if let error = model.episodeRoomError {
+                    Label(error, systemImage: "exclamationmark.octagon.fill")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .padding(10)
+        }
+        .accessibilityIdentifier("EpisodeCaptureEpisodeWorkspace")
+    }
+
+    private var episodeRoomSelection: Binding<String> {
+        Binding(
+            get: {
+                if model.isLocalOnlyCapture {
+                    return Self.localOnlyRoomSelectionID
+                }
+                return model.selectedEpisodeRoomID ?? ""
+            },
+            set: { selection in
+                if selection == Self.localOnlyRoomSelectionID {
+                    model.selectEpisodeRoom(nil)
+                } else if !selection.isEmpty {
+                    model.selectEpisodeRoom(selection)
+                }
+            }
+        )
+    }
+
+    private func selectedEpisodeRoomSummary(
+        _ room: MacEpisodeRoomSummary
+    ) -> some View {
+        let ready =
+            model.episodeRoomCatalogIsFresh
+                && room.safeToRecordLocally
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 12) {
+                Image(
+                    systemName: ready
+                        ? "checkmark.shield.fill"
+                        : "exclamationmark.shield.fill"
+                )
+                .font(.title2)
+                .foregroundStyle(
+                    ready ? .green : .orange
+                )
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(room.title)
+                        .font(.headline)
+                    if !room.displaySubtitle.isEmpty {
+                        Text(room.displaySubtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(
+                        model.episodeRoomCatalogIsFresh
+                            ? room.readinessDetail
+                            : "Nest readiness must refresh successfully before recording."
+                    )
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer()
+                Text(
+                    model.episodeRoomCatalogIsFresh
+                        ? room.readinessLabel.uppercased()
+                        : "REFRESH REQUIRED"
+                )
+                    .font(.caption2.weight(.black))
+                    .foregroundStyle(
+                        ready ? .green : .orange
+                    )
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 6)
+                    .background(.quaternary, in: Capsule())
+            }
+
+            HStack(spacing: 16) {
+                Label(
+                    room.recordingConsentGranted
+                        ? "Consent granted"
+                        : "Consent \(room.recordingConsentStatus ?? "needed")",
+                    systemImage: room.recordingConsentGranted
+                        ? "person.badge.shield.checkmark.fill"
+                        : "person.badge.shield.exclamationmark.fill"
+                )
+                .foregroundStyle(
+                    room.recordingConsentGranted ? .green : .orange
+                )
+
+                Label(
+                    room.canJoinProvider
+                        ? "Audio room join-ready"
+                        : "Provider room not ready",
+                    systemImage: room.canJoinProvider
+                        ? "phone.connection.fill"
+                        : "phone.badge.waveform"
+                )
+                .foregroundStyle(
+                    room.canJoinProvider ? .green : .secondary
+                )
+
+                Spacer()
+
+                if let roomURL = episodeRoomURL(room) {
+                    Button("Open Episode Room in Nest") {
+                        NSWorkspace.shared.open(roomURL)
+                    }
+                    .accessibilityIdentifier(
+                        "EpisodeCaptureOpenEpisodeRoom"
+                    )
+                }
+            }
+            .font(.caption)
+
+            DisclosureGroup("Technical binding") {
+                Grid(
+                    alignment: .leading,
+                    horizontalSpacing: 12,
+                    verticalSpacing: 4
+                ) {
+                    GridRow {
+                        Text("Episode source")
+                        Text(room.canonicalEpisodeSpaceID)
+                            .textSelection(.enabled)
+                    }
+                    GridRow {
+                        Text("Nest room")
+                        Text(room.id)
+                            .textSelection(.enabled)
+                    }
+                    GridRow {
+                        Text("Call room")
+                        Text(room.callRoomId)
+                            .textSelection(.enabled)
+                    }
+                    if let participantID = room.participantId {
+                        GridRow {
+                            Text("Participant")
+                            Text(participantID)
+                                .textSelection(.enabled)
+                        }
+                    }
+                }
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .padding(.top, 6)
+            }
+
+            if let blockers = room.captureReadiness?.blockers,
+               !blockers.isEmpty {
+                Text("Hold evidence: \(blockers.joined(separator: " · "))")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.orange)
+                    .textSelection(.enabled)
+            }
+        }
+        .padding(12)
+        .background(
+            Color.primary.opacity(0.045),
+            in: RoundedRectangle(cornerRadius: 12)
+        )
     }
 
     private var header: some View {
@@ -548,6 +973,7 @@ struct EpisodeCaptureSetupView: View {
                                 || model.isFinalizing
                                 || model.isImportingCanon
                                 || audioRoom.isActive
+                                || model.selectedEpisodeRoom != nil
                         )
                         .accessibilityIdentifier("EpisodeCaptureEpisodeSpaceID")
                     TextField("Participant ID", text: $model.participantID)
@@ -558,6 +984,7 @@ struct EpisodeCaptureSetupView: View {
                                 || model.isFinalizing
                                 || model.isImportingCanon
                                 || audioRoom.isActive
+                                || model.selectedEpisodeRoom != nil
                         )
                         .accessibilityIdentifier("EpisodeCaptureParticipantID")
                 }
@@ -593,7 +1020,7 @@ struct EpisodeCaptureSetupView: View {
                         .accessibilityIdentifier("EpisodeCaptureStopAudioMaster")
                     } else {
                         Button {
-                            model.startRecording()
+                            Task { await model.startRecording() }
                         } label: {
                             Label("Record local master", systemImage: "record.circle")
                         }
@@ -696,7 +1123,10 @@ struct EpisodeCaptureSetupView: View {
                         text: $model.callRoomID
                     )
                     .textFieldStyle(.roundedBorder)
-                    .disabled(audioRoom.isActive)
+                    .disabled(
+                        audioRoom.isActive
+                            || model.selectedEpisodeRoom != nil
+                    )
                     .accessibilityIdentifier(
                         "EpisodeCaptureCallRoomID"
                     )
@@ -1010,6 +1440,17 @@ struct EpisodeCaptureSetupView: View {
     }
 
     private var recordingReadinessMessage: String {
+        if !model.isLocalOnlyCapture {
+            guard let room = model.selectedEpisodeRoom else {
+                return "Choose an authorized Episode Room or explicitly select Local-only / solo source."
+            }
+            guard model.episodeRoomCatalogIsFresh else {
+                return "Refresh Episode Rooms successfully before recording this authorized session."
+            }
+            guard room.safeToRecordLocally else {
+                return "\(room.readinessLabel): \(room.readinessDetail)"
+            }
+        }
         if model.inventory?.microphoneAuthorization != .authorized {
             return "Grant microphone access with Refresh hardware before recording."
         }
@@ -1021,6 +1462,41 @@ struct EpisodeCaptureSetupView: View {
             return "\(input.name) must be configured for exactly 48 kHz before Quipsly will record."
         }
         return "Enter both the episode space and participant identity."
+    }
+
+    private func roomPickerLabel(
+        _ room: MacEpisodeRoomSummary
+    ) -> String {
+        let readiness = room.safeToRecordLocally
+            ? "ready"
+            : "recording held"
+        let project = room.projectName?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if let project, !project.isEmpty {
+            return "\(room.title) — \(project) — \(readiness)"
+        }
+        return "\(room.title) — \(readiness)"
+    }
+
+    private func episodeRoomURL(
+        _ room: MacEpisodeRoomSummary
+    ) -> URL? {
+        guard let baseURL = nativeAccountStore.normalizedBaseURL,
+              let projectSlug = nonempty(room.projectSlug),
+              let episodeSlug = nonempty(room.episodeSlug) else {
+            return nil
+        }
+        return baseURL
+            .appendingPathComponent("nests", isDirectory: true)
+            .appendingPathComponent(projectSlug, isDirectory: true)
+            .appendingPathComponent("episodes", isDirectory: true)
+            .appendingPathComponent(episodeSlug, isDirectory: false)
+    }
+
+    private func nonempty(_ value: String?) -> String? {
+        let clean = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean?.isEmpty == false ? clean : nil
     }
 
     private func planSummary(_ plan: ProductionCapturePlan) -> some View {
