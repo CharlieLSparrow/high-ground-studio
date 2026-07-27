@@ -2149,3 +2149,26 @@ This is an active-goal checkpoint, not a completion claim.
   HighGroundCapture simulator target builds on Xcode 26.2. This proves
   deterministic proposal generation and cross-surface decoding, not physical
   source alignment, cloud worker execution, or TestFlight readiness.
+
+### 2026-07-27 capture-proxy cloud qualification harness checkpoint
+
+- Added one credentialed qualification command below the Nest boundary. It
+  requires explicit project, private media bucket, region/job, and expected
+  committed SHA; refuses mutable job images or mismatched worker environment;
+  and never relies on the ambient gcloud project.
+- Each run generates a unique two-second portrait A/V source, uploads it with a
+  create-only generation precondition, writes a strict manifest and queue
+  receipt, executes the deployed Cloud Run Job, and downloads the exact source
+  and proxy generations for independent SHA-256, CRC32C, FFprobe, and MP4
+  fast-start verification.
+- The harness executes the job a second time and requires the proxy generation,
+  result-receipt generation, and completed-manifest generation to remain
+  unchanged with no queue left behind. Its private fixture objects remain
+  inspectable by default; `CLEANUP=1` deletes only the run's unique current
+  generations with exact preconditions.
+- Static fail-before-cloud and destructive-scope contracts pass alongside the
+  worker/control-plane fault suite (12/12), real local FFmpeg acceptance,
+  six-manifest audit, changed-surface tests (13/13), and exact committed worker
+  context proof. The credentialed command has not run yet because the open
+  Google reauthentication is still awaiting browser confirmation; no cloud
+  mutation or cloud qualification is claimed by this checkpoint.

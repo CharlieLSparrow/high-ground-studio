@@ -48,13 +48,15 @@
     ],
     "deterministic": [
       "pnpm --filter quipsly-media-processor build",
-      "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-capture-proxy-worker.test.mjs scripts/quipsly-capture-proxy-control-plane.test.mjs"
+      "pnpm quipsly:media-processor:test",
+      "pnpm quipsly:media-processor:acceptance"
     ],
     "localRuntime": [
       "Run the real FFmpeg portrait-video acceptance and fault-injected immutable-storage worker tests."
     ],
     "credentialedRuntime": [
-      "Verify one generation-pinned private GCS source fixture through queue, manifest, output, result, and Nest reconciliation.",
+      "Run scripts/release/quipsly-media-processor-cloud-fixture.mjs against the exact deployed build and verify its generation-pinned source, queue, manifest, output, result, and create-once retry evidence.",
+      "Verify one released video through the authorized Nest finalization and reconciliation boundary.",
       "Apply and read back managed-folder IAM plus no-override Cloud Run Jobs execution authority."
     ],
     "deliveryReadback": [

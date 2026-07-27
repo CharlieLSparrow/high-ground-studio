@@ -156,13 +156,26 @@ bash scripts/release/quipsly-media-processor-deploy.sh
 
 PROJECT_ID=high-ground-odyssey \
 QUIPSLY_MEDIA_BUCKET=<private-media-bucket> \
+EXPECTED_BUILD_ID=<committed-sha> \
+pnpm quipsly:media-processor:cloud-fixture
+
+PROJECT_ID=high-ground-odyssey \
+QUIPSLY_MEDIA_BUCKET=<private-media-bucket> \
 PHASE=activate \
 APPLY=1 \
 bash scripts/release/quipsly-media-processor-access.sh
 ```
 
-Then create one synthetic released-video fixture through Nest, execute the job,
-and prove:
+The credentialed cloud fixture is deliberately below Nest: it generation-binds
+a unique private two-second portrait video, manifest, and queue; executes the
+deployed job twice; downloads the exact source and proxy generations; and
+requires the second execution to be a create-once no-op. It preserves its
+uniquely prefixed objects for independent inspection by default. Set
+`CLEANUP=1` only when those exact fixture generations should be deleted after a
+passing run.
+
+After the worker fixture passes, create one synthetic released-video fixture
+through Nest and prove the complete reconciliation path:
 
 - original generation, size, and SHA-256 are unchanged;
 - queue claim, lease, and completion generations are coherent;
