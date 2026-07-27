@@ -169,6 +169,11 @@ struct LocalRecording: Codable, Identifiable, Equatable {
         }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys, .withoutEscapingSlashes]
+        // Source profiles cross the Swift/TypeScript boundary. The default
+        // Date encoding is seconds from Apple's 2001 reference epoch, which is
+        // not self-describing JSON. New profiles use ISO 8601; Nest retains a
+        // versioned compatibility reader for already-recorded v1 evidence.
+        encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(sourceProfile) else { return nil }
         return String(data: data, encoding: .utf8)
     }

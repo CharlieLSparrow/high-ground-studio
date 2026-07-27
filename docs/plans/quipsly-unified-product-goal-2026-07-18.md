@@ -2120,3 +2120,32 @@ This is an active-goal checkpoint, not a completion claim.
   engine and durability boundary, not user-facing camera UX, >2 GiB cloud
   verification, physical iPhone 4K/thermal/lock operation, editor proxy/sync,
   or TestFlight readiness.
+
+### 2026-07-27 deterministic capture-alignment proposal checkpoint
+
+- Closed the first cross-language clock defect before deployment. New iPhone
+  source profiles encode `Date` fields as ISO 8601 instead of Swift's
+  non-self-describing seconds-from-2001 default. Nest retains a versioned
+  compatibility reader for already-protected v1 numeric profiles, so the
+  correction does not strand historical source evidence.
+- Added a pure, fail-closed alignment contract that validates the exact room,
+  capture group, source monotonic boundary, actor, capture ID, and applied
+  `START_RECORDING` receipt. It recomputes network RTT and NTP-style server
+  offset from the four recorded timestamps, chooses the lowest-RTT valid
+  sample, projects the source's monotonic start onto server time, and carries
+  wall-clock discontinuity into explicit uncertainty.
+- Released finalization now writes that proposal into the canonical imported
+  source, recording-sync packet, Nest attachment, workflow outbox, and local
+  promotion receipt. Mobile Session readback derives deterministic
+  capture-group-relative millisecond offsets; Quipsly Studio decodes them and
+  labels the source **Alignment proposal ready**.
+- The proposal deliberately sets `sampleAccurateClaimed:false` and
+  `reviewRequired:true`. It cannot transition itself to `aligned`, `reviewed`,
+  or `locked`; waveform correlation, long-take drift measurement, and explicit
+  human approval remain separate editorial decisions.
+- Strict Quipsly TypeScript passes. The complete Nest run passes 143 suites and
+  680 runnable tests, with 26 environment-gated suites skipped. Focused
+  QuipslyVideoCore catalog tests pass 7/7, and the complete unsigned
+  HighGroundCapture simulator target builds on Xcode 26.2. This proves
+  deterministic proposal generation and cross-surface decoding, not physical
+  source alignment, cloud worker execution, or TestFlight readiness.

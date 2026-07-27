@@ -6,6 +6,9 @@ import {
 import {
   ensureCaptureProxyProcessingQueued,
 } from "@/lib/server/capture-proxy-processing";
+import {
+  buildCaptureSourceAlignmentProposal,
+} from "@/lib/server/capture-source-alignment";
 import { isRetryableCaptureRoomTransactionError } from "@/lib/server/capture-room-state-ledger";
 import { toGcsUri } from "@/lib/server/gcs";
 import { recordMobileCaptureIngestion } from "@/lib/server/mobile-capture-records";
@@ -314,6 +317,23 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
   const importRole = isVideo
     ? "participant-camera"
     : "spine-audio-candidate";
+  const startReceipt = manifest.startReceiptId
+    ? await transaction.captureRoomStateReceipt.findUnique({
+        where: { receiptId: manifest.startReceiptId },
+      })
+    : null;
+  const alignment = buildCaptureSourceAlignmentProposal({
+    sourceProfile: manifest.sourceProfileJson
+      ? JSON.parse(manifest.sourceProfileJson)
+      : null,
+    callRoomId: manifest.callRoomId,
+    captureId: manifest.captureId,
+    captureGroupId: manifest.captureGroupId,
+    actorUserId: manifest.actorUserId,
+    startReceiptId: manifest.startReceiptId,
+    recordedStartedAt: manifest.startedAt,
+    startReceipt,
+  });
   const importedAt =
     typeof existingImported.importedAt === "string"
       ? existingImported.importedAt
@@ -344,6 +364,7 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
     reportedSourceProfile: manifest.sourceProfileJson
       ? JSON.parse(manifest.sourceProfileJson)
       : null,
+    alignment,
     source: "quipsly-capture-resumable-v2",
   };
 
@@ -395,9 +416,14 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
         suggestedRole: importRole,
         source: "quipsly-capture-resumable-v2",
         recordingSync,
+        alignment,
         note: isVideo
-          ? "The original is verified and attached. Create a proxy before collaborative playback or editing."
-          : "The original is verified and ready for deterministic alignment against the episode audio spine.",
+          ? alignment.status === "proposal-ready"
+            ? "The original is verified and attached. Its clock proposal still requires waveform and drift review; collaborative playback also requires the registered proxy."
+            : "The original is verified and attached. Create a proxy, then align it from preserved clock and waveform evidence."
+          : alignment.status === "proposal-ready"
+            ? "The original is verified with a clock proposal. Correlate waveforms and approve drift before locking it to the episode spine."
+            : "The original is verified and ready for reviewed alignment against the episode audio spine.",
       },
       proxy: {
         ...existingProxy,
@@ -457,6 +483,7 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
         captureGroupId: manifest.captureGroupId,
         recordingAssetId: captureRecords.recordingAssetId,
         sourceId: source.id,
+        alignment,
         exactBytesVerified: true,
         copiedBlob: false,
         mutatedOriginal: false,
@@ -471,6 +498,7 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
         captureGroupId: manifest.captureGroupId,
         recordingAssetId: captureRecords.recordingAssetId,
         sourceId: source.id,
+        alignment,
         exactBytesVerified: true,
         copiedBlob: false,
         mutatedOriginal: false,
@@ -496,6 +524,7 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
     sourceSha256: manifest.sha256,
     sourceSizeBytes: object.sizeBytes,
     sourceContentType: manifest.contentType,
+    alignment,
     proxyPolicy: isVideo
       ? "proxy-required-before-collaborative-playback"
       : "audio-source-registered",
@@ -555,6 +584,7 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
           importRole,
           mediaKind: isVideo ? "video" : "audio",
           captureGroupId: manifest.captureGroupId,
+          alignment,
           handoffReceipt: {
             version: 1,
             source: "StudioAssetAttachment",

@@ -52,6 +52,25 @@ const MOBILE_CAPTURE_ROOM_INCLUDE = {
   },
   participants: true,
   recordingConsents: true,
+  stateReceipts: {
+    where: {
+      action: "START_RECORDING",
+      stateApplied: true,
+      outcome: "APPLIED",
+    },
+    orderBy: { sequence: "asc" },
+    select: {
+      receiptId: true,
+      roomId: true,
+      captureId: true,
+      actorUserId: true,
+      action: true,
+      occurredAt: true,
+      receivedAt: true,
+      outcome: true,
+      stateApplied: true,
+    },
+  },
   recordingAssets: {
     include: {
       transcriptJobs: {

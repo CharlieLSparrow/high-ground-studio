@@ -167,10 +167,22 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
               "mediaAssetId": "media-1",
               "playbackUrl": "/api/ingest/media/source-1",
               "alignment": {
-                "status": "needs-alignment",
+                "status": "proposal-ready",
                 "captureGroupId": "take-1",
-                "sourceClockEvidence": "source-profile-preserved",
-                "sampleAccurateClaimed": false
+                "sourceClockEvidence": "lowest-rtt-monotonic-projection",
+                "method": "lowest-rtt-monotonic-server-projection-v1",
+                "estimatedServerStartedAt": "2026-07-27T18:00:00.010Z",
+                "uncertaintyMilliseconds": 52,
+                "sampleAccurateClaimed": false,
+                "reviewRequired": true,
+                "reason": "Waveform and drift review are required.",
+                "captureGroup": {
+                  "baselineRecordingAssetId": "recording-1",
+                  "baselineEstimatedServerStartedAt": "2026-07-27T18:00:00.010Z",
+                  "estimatedOffsetMilliseconds": 0,
+                  "proposalSourceCount": 2,
+                  "sampleAccurateClaimed": false
+                }
               },
               "proxy": {
                 "required": false,
@@ -208,7 +220,12 @@ final class MacEpisodeRoomCatalogTests: XCTestCase {
         XCTAssertEqual(source.recordingAssetId, "recording-1")
         XCTAssertEqual(source.captureGroupId, "take-1")
         XCTAssertEqual(source.alignment?.sampleAccurateClaimed, false)
-        XCTAssertEqual(source.readinessLabel, "Needs alignment")
+        XCTAssertEqual(source.alignment?.uncertaintyMilliseconds, 52)
+        XCTAssertEqual(
+            source.alignment?.captureGroup?.baselineRecordingAssetId,
+            "recording-1"
+        )
+        XCTAssertEqual(source.readinessLabel, "Alignment proposal ready")
     }
 
     private func room(

@@ -29,10 +29,24 @@ public struct MacEpisodeRoomCaptureSourceAlignment:
     Equatable,
     Sendable
 {
+    public struct CaptureGroup: Codable, Equatable, Sendable {
+        public let baselineRecordingAssetId: String?
+        public let baselineEstimatedServerStartedAt: String?
+        public let estimatedOffsetMilliseconds: Double?
+        public let proposalSourceCount: Int?
+        public let sampleAccurateClaimed: Bool?
+    }
+
     public let status: String?
     public let captureGroupId: String?
     public let sourceClockEvidence: String?
+    public let method: String?
+    public let estimatedServerStartedAt: String?
+    public let uncertaintyMilliseconds: Double?
     public let sampleAccurateClaimed: Bool?
+    public let reviewRequired: Bool?
+    public let reason: String?
+    public let captureGroup: CaptureGroup?
 }
 
 public struct MacEpisodeRoomCaptureSource:
@@ -79,6 +93,9 @@ public struct MacEpisodeRoomCaptureSource:
         }
         if let alignmentStatus = alignment?.status?.lowercased(),
            !["aligned", "reviewed", "locked"].contains(alignmentStatus) {
+            if alignmentStatus == "proposal-ready" {
+                return "Alignment proposal ready"
+            }
             return alignmentStatus == "needs-alignment"
                 ? "Needs alignment"
                 : "Alignment \(alignmentStatus)"

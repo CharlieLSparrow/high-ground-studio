@@ -10,6 +10,10 @@ import {
 } from "./mobile-capture-consent-readiness.js";
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
+import {
+  addCaptureGroupAlignmentOffsets,
+  buildCaptureSourceAlignmentProposal,
+} from "./capture-source-alignment";
 
 const MOBILE_CAPTURE_ACTION_PACKET_KIND = "quipsly-capture-action-packet-v1";
 const DELIBERATE_SESSION_NOTE_KINDS = new Set([
@@ -150,7 +154,7 @@ export function captureSourceSummaries(
   const mediaById = new Map(
     mediaAssets.map((asset: any) => [asset.id, asset]),
   );
-  return (Array.isArray(room?.recordingAssets)
+  const sources = (Array.isArray(room?.recordingAssets)
     ? room.recordingAssets
     : [])
     .filter((asset: any) => !isProviderRecordingReceiptSlot(asset))
@@ -203,6 +207,24 @@ export function captureSourceSummaries(
       const captureGroupId =
         label(manifest.captureGroupId)
         || label(receipt?.captureId);
+      const startReceiptId = label(receipt?.startReceiptId);
+      const startReceipt = (Array.isArray(room?.stateReceipts)
+        ? room.stateReceipts
+        : []).find((candidate: any) => (
+          label(candidate?.receiptId) === startReceiptId
+        )) || null;
+      const alignment = buildCaptureSourceAlignmentProposal({
+        sourceProfile,
+        callRoomId: label(room?.id) || "",
+        captureId: label(receipt?.captureId) || "",
+        captureGroupId,
+        actorUserId: label(receipt?.actorUserId)
+          || label(startReceipt?.actorUserId)
+          || "",
+        startReceiptId,
+        recordedStartedAt: asset.recordedStartedAt,
+        startReceipt,
+      });
 
       return {
         recordingAssetId: asset.id,
@@ -238,17 +260,7 @@ export function captureSourceSummaries(
         playbackUrl: label(media?.url)
           || label(promotion.playbackUrl),
         sourceProfile,
-        alignment: {
-          status: captureGroupId
-            ? "needs-alignment"
-            : "capture-group-missing",
-          captureGroupId,
-          sourceClockEvidence:
-            Object.keys(sourceProfile).length > 0
-              ? "source-profile-preserved"
-              : "source-profile-missing",
-          sampleAccurateClaimed: false,
-        },
+        alignment,
         proxy: {
           required: isVideo,
           status: proxyStatus,
@@ -272,7 +284,8 @@ export function captureSourceSummaries(
             }
           : null,
       };
-    })
+    });
+  return addCaptureGroupAlignmentOffsets(sources)
     .sort((left: any, right: any) => (
       String(right.recordedStartedAt || "")
         .localeCompare(String(left.recordedStartedAt || ""))

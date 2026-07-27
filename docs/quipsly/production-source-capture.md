@@ -496,8 +496,10 @@ mid-file.
 6. Add cloud technical probe, proxy, alignment proposal, and Episode Room
    readback. **Canonical source projection, exact-byte status, transcript/job
    evidence, native/web source readback, and fail-closed Watch proxy gating are
-   complete locally. The executable proxy worker and reviewed clock/drift
-   alignment remain.**
+   complete locally. A deterministic, uncertainty-bearing clock proposal now
+   survives finalization and appears on web/Mac readback without claiming
+   sample accuracy. Cloud execution plus waveform/drift review and explicit
+   alignment approval remain.**
 7. Build the native Mac Shure master lane and Canon import manifest.
    **The Core Audio inventory, truthful route policy, crash-recoverable
    48 kHz/24-bit WAV master, SHA-256 source receipt, and Episode Capture Setup
@@ -520,6 +522,19 @@ The first coordinated Mac/iPhone source-clock slice is now implemented:
 - iPhone audio and video capture collect three bounded samples concurrently,
   retain the lowest-round-trip results with the immutable source profile, and
   continue recording with explicit missing evidence when Nest is unavailable.
+- New source profiles serialize clock dates as ISO 8601. Nest also decodes the
+  already-shipped Swift v1 numeric reference-date format, so old protected
+  recordings retain their original clock meaning instead of being discarded or
+  silently reinterpreted.
+- Finalization validates room, take, actor, and applied START receipt identity,
+  selects the lowest measured network-RTT sample, projects the source's
+  monotonic start onto accepted server time, and stores the recomputed offset,
+  uncertainty, wall-clock discontinuity, and receipt boundary in the canonical
+  Episode Production source record.
+- Mobile Session and native Mac readback group valid proposals by
+  `captureGroupId` and expose relative millisecond offsets from the earliest
+  source. The state is **Alignment proposal ready**, never `aligned`: waveform
+  correlation, drift review, and explicit human approval remain hard gates.
 - Quipsly Studio inventories exact AVFoundation camera IDs and Core Audio input
   and output UIDs. The policy distinguishes Canon's virtual webcam reference
   from a direct R8 route and distinguishes MOTIV Mix Virtual from a proven
@@ -601,7 +616,8 @@ The current Mac hardware readback is deliberately not overstated:
 
 Local verification passed:
 
-- Quipsly TypeScript 7 typecheck;
+- Quipsly TypeScript 7 typecheck and the complete Nest Jest run: 143 suites,
+  680 runnable tests, with 26 environment-gated suites skipped;
 - Quipsly contract suite: 95/95, including the Mac agent-state responsiveness
   and off-request reconciliation boundary;
 - mobile-session canonical identity/readiness tests: 11/11;
