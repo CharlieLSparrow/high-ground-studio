@@ -897,3 +897,37 @@ unchanged: macOS camera and microphone permission must be granted through the
 visible Episode Capture Setup control, then an actual MOV+WAV take and a real
 Canon card original must be recorded/imported, played, probed, hashed, and read
 back in the Episode Room/editor.
+
+## Implementation checkpoint — July 27, 2026 (take acceptance receipt)
+
+Episode Capture Setup now has an explicit acceptance boundary after local
+finalization. It does not turn a successful recorder callback or matching
+filename into editorial approval:
+
+- `Verify take` performs a fresh streamed SHA-256 and byte-count read of the
+  finalized WAV and silent MOV, then opens both through AVFoundation rather
+  than trusting extension or receipt metadata.
+- The machine receipt checks finalized/no-partial state, exact capture group,
+  episode, participant, account, room, consent, applied START, shared clock
+  sample identity, monotonic boundaries, and bounded first-placement offset.
+- The WAV must still be 48 kHz, 24-bit linear PCM with the receipted channel
+  and frame count. The reference must still be one silent video track at the
+  receipted dimensions and no more than 30 fps. Duration drift is held.
+- Every audit writes a new, append-only JSON receipt under
+  `Movies/QuipslyCaptures/_take-audits`; an existing receipt ID is never
+  overwritten.
+- A machine pass is labeled `machine-pass-human-review-required`. The screen
+  still requires watching the complete reference, listening to the complete
+  mic master, correlating a visible/audible event or waveform, checking
+  end-of-take drift, and explicitly approving or revising timeline placement.
+- Missing clock samples produce a visible warning rather than invented
+  precision. Changed bytes, cross-take sources, partial authority, divergent
+  clock bursts, unreadable media, or format/duration drift hold the take while
+  preserving its files.
+
+The complete QuipslyVideoCore suite passes 65/65, including real WAV/MP4
+inspection, append-only collision protection, post-receipt byte mutation,
+cross-take identity, clock divergence, media-shape, and duration-drift
+fixtures. The Apple Development signed QuipslyMac build also passes. This is
+machine acceptance of fixture media, not physical-camera or MV7i qualification;
+the real MOV+WAV operation and human watch/listen gate remain open.

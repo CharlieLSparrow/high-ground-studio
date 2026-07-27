@@ -2435,3 +2435,26 @@ This is an active-goal checkpoint, not a completion claim.
   preserved. Physical camera/microphone permission and real MOV/WAV/Canon
   operation remain open human-present gates and are not implied by these
   automated results.
+
+### 2026-07-27 explicit take-acceptance checkpoint
+
+- Added a deterministic, append-only acceptance receipt for a finalized Mac
+  microphone master and silent camera reference. It freshly streams both files
+  for byte count and SHA-256, probes the actual WAV/MOV structures, and checks
+  exact take, participant, room, consent, applied START, clock burst, monotonic
+  boundary, format, and duration evidence.
+- The verifier fails closed on changed bytes, cross-take pairing, partial or
+  divergent authority, divergent clock samples, unreadable media, unexpected
+  audio in the silent reference, dimension/frame-rate drift, or duration
+  mismatch. Missing clock evidence is a visible warning and never becomes
+  manufactured alignment.
+- Episode Capture Setup now exposes `Verify take`, holds conflicting evidence,
+  reveals the immutable JSON receipt, and always shows the remaining human
+  checklist: watch, listen through the intended route, correlate a sync event
+  or waveform, inspect end-of-take drift, and explicitly approve or revise
+  placement.
+- Current automated proof passes 65/65 QuipslyVideoCore tests, four focused
+  real-media/negative acceptance fixtures, and an Apple Development signed
+  QuipslyMac build. Physical permission, real camera/MV7i capture, playback,
+  Canon internal-4K import, and editor readback remain open human-present
+  production gates.

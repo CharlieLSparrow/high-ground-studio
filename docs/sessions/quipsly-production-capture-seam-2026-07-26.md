@@ -90,6 +90,12 @@ alignment and non-destructive editorial decisions.
 - durable per-card upload/retry/hold/verification recovery, exact receipt and
   managed-byte revalidation, and an intentionally clockless source profile
   that keeps card timestamps unreviewed until waveform/drift/human approval;
+- an explicit Mac take-acceptance auditor that freshly re-hashes and probes the
+  finalized WAV/MOV pair, rejects cross-take identity, authority, clock,
+  media-shape, or duration drift, and persists a create-once JSON receipt;
+- a Take acceptance workspace that separates machine pass from mandatory
+  full-playback, headphone, waveform/lip-sync, end-drift, and editor-placement
+  review;
 - explicit UX that joining sends no video, starts no recording, and leaves the
   local WAV recorder independent;
 - an agent-state responsiveness repair found by launching the real app:
@@ -152,7 +158,7 @@ alignment and non-destructive editorial decisions.
   authority (`com.highground.QuipslyMac`, Team `585GUXMY5M`)
 - focused server alignment: 8/8, including long-uptime Mac monotonic values and
   the clockless Canon `needs-alignment` path
-- current QuipslyVideoCore: 61/61
+- current QuipslyVideoCore: 65/65
 - real QuipslyMac launch and menu-command execution
 
 The current Computer Use run could open the Episode Capture Setup command, but
@@ -172,9 +178,10 @@ reported as observed and are not promoted to physical-master status.
 
 1. In the visible Episode Capture Setup window, grant Quipsly Studio camera and
    microphone permission, record a short MOV+WAV take, stop, reopen both files,
-   probe and hash them, and inspect both receipts and their shared clock
-   samples. Then repeat for at least 60 seconds with the MV7i attached directly,
-   inspect both WAV channels, and listen through MV7i headphones.
+   run `Verify take`, inspect its append-only receipt and shared clock samples,
+   then watch/listen through the mandatory human-review checklist. Repeat for
+   at least 60 seconds with the MV7i attached directly, inspect both WAV
+   channels, and listen through MV7i headphones.
 2. With a second participant, join a real Nest/LiveKit room, record the local
    master concurrently, exercise mute/unmute/leave, compare the WAV against the
    call feed, and prove realtime voice processing did not alter the local

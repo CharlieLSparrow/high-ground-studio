@@ -75,6 +75,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var videoUploadMessage =
         "Authorized camera references can be preserved in Quipsly and projected into the Episode Room after exact-byte verification."
     @Published private(set) var videoUploadError: String?
+    @Published private(set) var isAuditingTake = false
+    @Published private(set) var lastTakeAudit:
+        ProductionCaptureTakeAuditReceipt?
+    @Published private(set) var takeAuditError: String?
 
     let captureRoot = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
@@ -132,6 +136,24 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         recorder.isRecording || videoRecorder.isRecording
     }
 
+    var canAuditLastFinalizedTake: Bool {
+        guard !isRecording,
+              !isFinalizing,
+              !isImportingCanon,
+              !isUploadingMaster,
+              !isAuditingTake,
+              let audio = lastFinalizedReceipt,
+              let video = lastFinalizedVideoReceipt,
+              audio.state == .finalized,
+              video.state == .finalized,
+              audio.captureGroupID == video.captureGroupID,
+              audio.episodeSpaceID == video.episodeSpaceID,
+              audio.participantID == video.participantID else {
+            return false
+        }
+        return true
+    }
+
     var selectedVideoDevice: CaptureVideoDeviceSnapshot? {
         inventory?.videoDevices.first {
             $0.id == selectedVideoDeviceID
@@ -157,6 +179,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
               !isImportingCanon,
               !isRefreshingEpisodeRooms,
               !isUploadingMaster,
+              !isAuditingTake,
               !captureGroupIsClosed,
               !episodeSpaceID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !participantID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
@@ -1002,7 +1025,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         guard !isRecording,
               !isFinalizing,
               !isImportingCanon,
-              !isUploadingMaster else { return }
+              !isUploadingMaster,
+              !isAuditingTake else { return }
         captureGroupID = UUID()
         captureGroupIsClosed = false
         activeReceipt = nil
@@ -1027,8 +1051,33 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         canonImportProgress = nil
         canonImportError = nil
         canonImportMessage = "New capture group ready."
+        lastTakeAudit = nil
+        takeAuditError = nil
         elapsedSeconds = 0
         message = "New episode capture group ready."
+    }
+
+    func auditLastFinalizedTake() async {
+        guard canAuditLastFinalizedTake,
+              let audio = lastFinalizedReceipt,
+              let video = lastFinalizedVideoReceipt else {
+            takeAuditError =
+                "A finalized microphone master and silent camera reference from the exact same capture group are required."
+            return
+        }
+        isAuditingTake = true
+        takeAuditError = nil
+        defer { isAuditingTake = false }
+        do {
+            lastTakeAudit =
+                try await ProductionCaptureTakeAuditor.audit(
+                    audio: audio,
+                    video: video,
+                    rootDirectory: captureRoot
+                )
+        } catch {
+            takeAuditError = error.localizedDescription
+        }
     }
 
     func importCanonOriginals(_ urls: [URL]) async {
@@ -1994,6 +2043,7 @@ struct EpisodeCaptureSetupView: View {
                     routeSelectors
                     cameraReferenceCard
                     localMasterCard
+                    takeAcceptanceCard
                     audioOnlyRoomCard
                     canonCardMasterCard
                     if let plan = model.plan {
@@ -2289,6 +2339,7 @@ struct EpisodeCaptureSetupView: View {
                             || model.isFinalizing
                             || model.isImportingCanon
                             || model.isUploadingMaster
+                            || model.isAuditingTake
                             || audioRoom.isActive
                     )
                     .accessibilityIdentifier(
@@ -2752,6 +2803,7 @@ struct EpisodeCaptureSetupView: View {
                             || model.isFinalizing
                             || model.isImportingCanon
                             || model.isUploadingMaster
+                            || model.isAuditingTake
                             || audioRoom.isActive
                     )
                     .accessibilityIdentifier("EpisodeCaptureNewGroup")
@@ -2950,6 +3002,185 @@ struct EpisodeCaptureSetupView: View {
             .padding(10)
         }
         .accessibilityIdentifier("EpisodeCaptureLocalMaster")
+    }
+
+    private var takeAcceptanceCard: some View {
+        GroupBox("Take acceptance") {
+            VStack(alignment: .leading, spacing: 13) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Verify the source pair before editing")
+                            .font(.headline)
+                        Text(
+                            "Quipsly re-reads the finalized WAV and silent MOV, recomputes both SHA-256 digests, probes their production formats, and checks exact take, room, consent, START, and capture-clock identity."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+                    }
+                    Spacer()
+                    Button {
+                        Task {
+                            await model.auditLastFinalizedTake()
+                        }
+                    } label: {
+                        if model.isAuditingTake {
+                            Label(
+                                "Verifying…",
+                                systemImage: "hourglass"
+                            )
+                        } else {
+                            Label(
+                                "Verify take",
+                                systemImage:
+                                    "checkmark.shield"
+                            )
+                        }
+                    }
+                    .disabled(!model.canAuditLastFinalizedTake)
+                    .accessibilityIdentifier(
+                        "EpisodeCaptureAuditTake"
+                    )
+                }
+
+                if model.isAuditingTake {
+                    ProgressView(
+                        "Reading every source byte and media header…"
+                    )
+                    .controlSize(.small)
+                }
+
+                if let receipt = model.lastTakeAudit {
+                    Divider()
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(
+                            systemName:
+                                receipt.disposition == .held
+                                    ? "hand.raised.fill"
+                                    : "checkmark.shield.fill"
+                        )
+                        .font(.title2)
+                        .foregroundStyle(
+                            receipt.disposition == .held
+                                ? Color.orange
+                                : Color.green
+                        )
+                        VStack(alignment: .leading, spacing: 5) {
+                            Text(
+                                receipt.disposition == .held
+                                    ? "Take held"
+                                    : "Machine checks passed"
+                            )
+                            .font(.headline)
+                            Text(receipt.truth)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(
+                                    horizontal: false,
+                                    vertical: true
+                                )
+                            Text(
+                                "\(receipt.checks.count - receipt.holdCount - receipt.warningCount) passed · \(receipt.warningCount) warning(s) · \(receipt.holdCount) hold(s)"
+                            )
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Reveal receipt") {
+                            NSWorkspace.shared
+                                .activateFileViewerSelecting([
+                                    URL(
+                                        fileURLWithPath:
+                                            receipt.receiptPath
+                                    ),
+                                ])
+                        }
+                        .accessibilityIdentifier(
+                            "EpisodeCaptureRevealTakeAudit"
+                        )
+                    }
+
+                    let attentionChecks = receipt.checks.filter {
+                        $0.status != .pass
+                    }
+                    if !attentionChecks.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(attentionChecks) { check in
+                                Label(
+                                    check.summary,
+                                    systemImage:
+                                        check.status == .hold
+                                            ? "hand.raised.fill"
+                                            : "exclamationmark.triangle.fill"
+                                )
+                                .font(.caption)
+                                .foregroundStyle(
+                                    check.status == .hold
+                                        ? Color.orange
+                                        : Color.secondary
+                                )
+                                .fixedSize(
+                                    horizontal: false,
+                                    vertical: true
+                                )
+                            }
+                        }
+                    }
+
+                    Divider()
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Human review still required")
+                            .font(.subheadline.weight(.semibold))
+                        ForEach(
+                            Array(
+                                receipt.humanReviewRequired
+                                    .enumerated()
+                            ),
+                            id: \.offset
+                        ) { index, item in
+                            Text("\(index + 1). \(item)")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(
+                                    horizontal: false,
+                                    vertical: true
+                                )
+                        }
+                    }
+                } else if let error = model.takeAuditError {
+                    Label(
+                        error,
+                        systemImage: "exclamationmark.octagon.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+                } else {
+                    Label(
+                        model.canAuditLastFinalizedTake
+                            ? "The finalized source pair is ready for an explicit acceptance check."
+                            : "Finalize a microphone master and camera reference in the same capture group to run take acceptance.",
+                        systemImage: "waveform.and.magnifyingglass"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+                }
+            }
+            .padding(10)
+        }
+        .accessibilityIdentifier(
+            "EpisodeCaptureTakeAcceptance"
+        )
     }
 
     private var audioOnlyRoomCard: some View {
