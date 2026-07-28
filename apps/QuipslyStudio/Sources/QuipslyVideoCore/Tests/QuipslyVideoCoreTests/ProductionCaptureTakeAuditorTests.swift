@@ -6,6 +6,176 @@ import XCTest
 
 #if os(macOS)
 final class ProductionCaptureTakeAuditorTests: XCTestCase {
+    func testAudioOnlyMasterProducesAppendOnlyMachineAudit()
+        async throws
+    {
+        let fixture = try makeFixture()
+        defer {
+            try? FileManager.default.removeItem(
+                at: fixture.root
+            )
+        }
+        let auditID = UUID()
+
+        let receipt = try await ProductionCaptureTakeAuditor
+            .audit(
+                audio: fixture.audio,
+                rootDirectory: fixture.root,
+                auditID: auditID,
+                generatedAt:
+                    Date(timeIntervalSince1970: 1_000)
+            )
+
+        XCTAssertEqual(
+            receipt.disposition,
+            .machinePassHumanReviewRequired
+        )
+        XCTAssertEqual(receipt.holdCount, 0)
+        XCTAssertEqual(receipt.warningCount, 1)
+        XCTAssertNil(receipt.roomBinding)
+        XCTAssertTrue(receipt.clockSamples.isEmpty)
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "audio-signal-present"
+                    && $0.status == .pass
+            }
+        )
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "local-only-clock-boundary"
+                    && $0.status == .pass
+            }
+        )
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "audio-review-duration"
+                    && $0.status == .warning
+            }
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: receipt.receiptPath
+            )
+        )
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .custom(
+            ProductionCaptureDateCoding.decode
+        )
+        let persisted = try decoder.decode(
+            ProductionCaptureAudioTakeAuditReceipt.self,
+            from: Data(
+                contentsOf: URL(
+                    fileURLWithPath: receipt.receiptPath
+                )
+            )
+        )
+        XCTAssertEqual(persisted, receipt)
+
+        do {
+            _ = try await ProductionCaptureTakeAuditor.audit(
+                audio: fixture.audio,
+                rootDirectory: fixture.root,
+                auditID: auditID
+            )
+            XCTFail(
+                "A second audio audit must not overwrite the append-only receipt."
+            )
+        } catch {
+            XCTAssertEqual(
+                error as? ProductionCaptureTakeAuditorError,
+                .receiptCollision
+            )
+        }
+    }
+
+    func testAudioOnlyDigitalSilenceIsHeld()
+        async throws
+    {
+        let fixture = try makeFixture(silentAudio: true)
+        defer {
+            try? FileManager.default.removeItem(
+                at: fixture.root
+            )
+        }
+
+        let receipt = try await ProductionCaptureTakeAuditor
+            .audit(
+                audio: fixture.audio,
+                rootDirectory: fixture.root
+            )
+
+        XCTAssertEqual(receipt.disposition, .held)
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "audio-signal-present"
+                    && $0.status == .hold
+            }
+        )
+    }
+
+    func testAudioOnlyQuietSignalWarnsWithoutHolding()
+        async throws
+    {
+        let fixture = try makeFixture(
+            signalAmplitude: 0.01
+        )
+        defer {
+            try? FileManager.default.removeItem(
+                at: fixture.root
+            )
+        }
+
+        let receipt = try await ProductionCaptureTakeAuditor
+            .audit(
+                audio: fixture.audio,
+                rootDirectory: fixture.root
+            )
+
+        XCTAssertEqual(
+            receipt.disposition,
+            .machinePassHumanReviewRequired
+        )
+        XCTAssertEqual(receipt.holdCount, 0)
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "audio-signal-present"
+                    && $0.status == .warning
+                    && $0.summary.contains(
+                        "production-usable level"
+                    )
+            }
+        )
+    }
+
+    func testAudioOnlyRoomClockMustNameExactRoomAndTake()
+        async throws
+    {
+        let fixture = try makeFixture(roomBound: true)
+        defer {
+            try? FileManager.default.removeItem(
+                at: fixture.root
+            )
+        }
+
+        let receipt = try await ProductionCaptureTakeAuditor
+            .audit(
+                audio: fixture.audio,
+                rootDirectory: fixture.root
+            )
+
+        XCTAssertEqual(
+            receipt.roomBinding,
+            fixture.audio.roomBinding
+        )
+        XCTAssertEqual(receipt.clockSamples.count, 1)
+        XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "clock-evidence-identity"
+                    && $0.status == .pass
+            }
+        )
+    }
+
     func testRealMediaPairProducesAppendOnlyMachineAudit()
         async throws
     {
@@ -421,6 +591,7 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
         mismatchedTakeIdentity: Bool = false,
         mismatchedVideoShape: Bool = false,
         silentAudio: Bool = false,
+        signalAmplitude: Float = 0.1,
         videoSignalVerified: Bool = true
     ) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
@@ -464,7 +635,7 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
            let channelData = buffer.floatChannelData {
             for frame in 0..<Int(buffer.frameLength) {
                 channelData[0][frame] =
-                    0.1
+                    signalAmplitude
                     * sin(
                         2
                             * .pi

@@ -1100,3 +1100,59 @@ The deliberate unplug, interrupted-receipt readback, reconnect, and subsequent
 clean finalization are still mandatory physical gates. Re-arm the take only
 with a human ready at the MV7i cable; never substitute a software simulation for
 this acceptance result.
+
+## Implementation checkpoint — July 28, 2026 (audio-only take acceptance)
+
+The Mac capture path can now audit a real podcast or coaching microphone master
+without requiring a camera source that the creator did not enable:
+
+- **Verify take** chooses the source-pair auditor when a finalized camera
+  reference exists and the audio-only auditor when it does not. A camera remains
+  optional for audio-first work; every enabled camera source must still finish
+  before a mixed take can be audited.
+- The audio-only receipt freshly re-reads byte count and SHA-256, opens the WAV
+  through AVFoundation, checks 48 kHz/24-bit PCM shape, frame-derived duration,
+  measurable signal, exact selected-route continuity, monotonic start/stop,
+  complete-or-absent Episode Room authority, and room/clock identity when the
+  source is room-bound.
+- Digital silence, changed bytes, unreadable or malformed media, incomplete
+  authority, lost route continuity, malformed current-protocol evidence, or
+  cross-room clock samples hold the take. A measurable but quiet source warns
+  rather than being mislabeled as either silent or production-ready.
+- Each result is append-only at
+  `_take-audits/<episode>/<capture-group>/audio-take-audit-<uuid>.json`.
+  Machine success remains `machine-pass-human-review-required`; it never becomes
+  a headphone listen, transcript, alignment, creative, or publication approval.
+- The launch-only acceptance endpoint now exposes `sourceMode=audio-only` or
+  `audio-video` and rejects an unavailable audit as
+  `audit-rejected-no-finalized-source`, matching the user-visible model.
+
+The Apple Development signed Debug app operated the physical direct-USB Shure
+MV7i as both exact input and exact output and created capture group
+`16788cfb-f945-4439-8522-78c57a4604c4`. Its preserved master is
+`/Users/wall-e/Movies/QuipslyCaptures/high-ground-odyssey/267f1bc0-a802-44a6-b792-dbe6496c2e00/local-mic-master.wav`:
+
+- 29.600 seconds, mono 48 kHz 24-bit PCM
+- 4,266,496 bytes
+- SHA-256
+  `58a3c04e0e76db1d9fec7c45b5d0c444df7c99c10bc42516373457fabbc1a259`
+- exact-route continuity locked through the stop boundary
+- measurable but quiet signal: peak -35.8 dBFS and RMS -53.3 dBFS
+
+The app itself wrote
+`audio-take-audit-2e83b391-9f1b-4671-8313-82a3d5489ee7.json` with eleven
+passes, one warning, zero holds, and disposition
+`machine-pass-human-review-required`. Independent `shasum` and `ffprobe`
+readback match the receipt. The signed build has Team `585GUXMY5M` and CDHash
+`10145cb16ce5ff4c36c5e7d790bdd466c03ac6b0`.
+
+Focused take-auditor verification passes 11/11, including deterministic quiet
+signal, digital silence, append-only collision, byte mutation, room-bound clock
+identity, divergent clock, and mixed-source identity/shape cases. The complete
+QuipslyVideoCore suite passes 84/84 and the full signed Mac app builds.
+
+This was an ambient/quiet source operation, not a spoken production gain test
+or proof-listen. Listening start-to-stop through headphones connected to the
+MV7i, confirming intelligible speech and usable gain, deliberate physical
+unplug/recovery, a real Episode Room, participant comparison/drift, Canon R8
+live image, and final human accept/hold/replace remain mandatory.

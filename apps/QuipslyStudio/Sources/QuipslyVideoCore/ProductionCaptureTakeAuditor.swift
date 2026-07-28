@@ -129,6 +129,103 @@ public struct ProductionCaptureTakeAuditReceipt:
     }
 }
 
+public struct ProductionCaptureAudioTakeAuditReceipt:
+    Codable,
+    Equatable,
+    Identifiable,
+    Sendable
+{
+    public let schemaVersion: Int
+    public let id: UUID
+    public let generatedAt: Date
+    public let captureGroupID: UUID
+    public let episodeSpaceID: String
+    public let participantID: String
+    public let audio: ProductionCaptureTakeSourceAudit
+    public let roomBinding: ProductionCaptureRoomBinding?
+    public let clockSamples: [ProductionCaptureClockSample]
+    public let disposition: ProductionCaptureTakeAuditDisposition
+    public let checks: [ProductionCaptureTakeAuditCheck]
+    public let humanReviewRequired: [String]
+    public let receiptPath: String
+    public let truth: String
+
+    public var holdCount: Int {
+        checks.filter { $0.status == .hold }.count
+    }
+
+    public var warningCount: Int {
+        checks.filter { $0.status == .warning }.count
+    }
+}
+
+public enum ProductionCaptureTakeAuditResult: Sendable {
+    case sourcePair(ProductionCaptureTakeAuditReceipt)
+    case audioOnly(ProductionCaptureAudioTakeAuditReceipt)
+
+    public var sourceMode: String {
+        switch self {
+        case .sourcePair:
+            "audio-video"
+        case .audioOnly:
+            "audio-only"
+        }
+    }
+
+    public var disposition: ProductionCaptureTakeAuditDisposition {
+        switch self {
+        case .sourcePair(let receipt):
+            receipt.disposition
+        case .audioOnly(let receipt):
+            receipt.disposition
+        }
+    }
+
+    public var receiptPath: String {
+        switch self {
+        case .sourcePair(let receipt):
+            receipt.receiptPath
+        case .audioOnly(let receipt):
+            receipt.receiptPath
+        }
+    }
+
+    public var checks: [ProductionCaptureTakeAuditCheck] {
+        switch self {
+        case .sourcePair(let receipt):
+            receipt.checks
+        case .audioOnly(let receipt):
+            receipt.checks
+        }
+    }
+
+    public var humanReviewRequired: [String] {
+        switch self {
+        case .sourcePair(let receipt):
+            receipt.humanReviewRequired
+        case .audioOnly(let receipt):
+            receipt.humanReviewRequired
+        }
+    }
+
+    public var truth: String {
+        switch self {
+        case .sourcePair(let receipt):
+            receipt.truth
+        case .audioOnly(let receipt):
+            receipt.truth
+        }
+    }
+
+    public var holdCount: Int {
+        checks.filter { $0.status == .hold }.count
+    }
+
+    public var warningCount: Int {
+        checks.filter { $0.status == .warning }.count
+    }
+}
+
 public enum ProductionCaptureTakeAuditorError:
     LocalizedError,
     Equatable
@@ -147,6 +244,162 @@ public enum ProductionCaptureTakeAuditorError:
 }
 
 public enum ProductionCaptureTakeAuditor {
+    public static func audit(
+        audio: ProductionAudioRecordingReceipt,
+        rootDirectory: URL,
+        auditID: UUID = UUID(),
+        generatedAt: Date = Date()
+    ) async throws -> ProductionCaptureAudioTakeAuditReceipt {
+        let audioAudit = await inspectAudio(audio)
+        var checks: [ProductionCaptureTakeAuditCheck] = []
+        func append(
+            _ id: String,
+            _ status: ProductionCaptureTakeAuditCheckStatus,
+            _ summary: String
+        ) {
+            checks.append(
+                ProductionCaptureTakeAuditCheck(
+                    id: id,
+                    status: status,
+                    summary: summary
+                )
+            )
+        }
+
+        let sourceFinalized =
+            audio.state == .finalized
+            && audio.partialAudioPath == nil
+        append(
+            "source-state-finalized",
+            sourceFinalized ? .pass : .hold,
+            sourceFinalized
+                ? "The microphone source receipt is finalized with no partial path."
+                : "The microphone source must be finalized and free of a partial-path claim."
+        )
+
+        let authorityComplete =
+            authorityIsCompleteOrAbsent(
+                owner: audio.ownerAccountID,
+                room: audio.callRoomID,
+                consent: audio.recordingConsentID,
+                startReceiptID: audio.startReceiptID
+            )
+        append(
+            "authority-fields-complete-or-absent",
+            authorityComplete ? .pass : .hold,
+            authorityComplete
+                ? audio.roomBinding == nil
+                    ? "The source is explicitly local-only and contains no partial Episode Room authority."
+                    : "The source carries a complete account, room, consent, and applied START authority."
+                : "The source contains partial Episode Room authority."
+        )
+
+        appendFileChecks(
+            source: audioAudit,
+            expectedLabel: "WAV",
+            checks: &checks
+        )
+        appendAudioRouteContinuityCheck(
+            receipt: audio,
+            checks: &checks
+        )
+        appendAudioShapeChecks(
+            receipt: audio,
+            probe: audioAudit.audioProbe,
+            checks: &checks
+        )
+
+        let clockSamples = audio.clockSamples ?? []
+        if let roomBinding = audio.roomBinding {
+            if clockSamples.isEmpty {
+                append(
+                    "clock-evidence-present",
+                    .warning,
+                    "This Episode Room master has no capture-clock samples. Multi-participant alignment requires waveform and drift review."
+                )
+            } else {
+                let clockIdentityMatches = clockSamples.allSatisfy {
+                    $0.captureGroupId == audio.captureGroupID
+                        && $0.callRoomId == roomBinding.callRoomID
+                }
+                append(
+                    "clock-evidence-identity",
+                    clockIdentityMatches ? .pass : .hold,
+                    clockIdentityMatches
+                        ? "Every clock sample names this capture group and Episode Room."
+                        : "At least one clock sample belongs to a different capture group or room."
+                )
+            }
+        } else {
+            append(
+                "local-only-clock-boundary",
+                clockSamples.isEmpty ? .pass : .hold,
+                clockSamples.isEmpty
+                    ? "The local-only source correctly makes no server-clock claim."
+                    : "A local-only source must not contain Episode Room clock evidence."
+            )
+        }
+
+        let monotonicBoundaryValid = validMonotonicBoundary(
+            start: audio.startedMonotonicNanoseconds,
+            stop: audio.stoppedMonotonicNanoseconds
+        )
+        append(
+            "monotonic-source-boundary",
+            monotonicBoundaryValid ? .pass : .hold,
+            monotonicBoundaryValid
+                ? "The microphone source has an ordered monotonic start and stop boundary."
+                : "The microphone source has a missing or non-increasing monotonic boundary."
+        )
+
+        let reviewDuration = audioAudit.audioProbe?.durationSeconds ?? 0
+        append(
+            "audio-review-duration",
+            reviewDuration >= 10 ? .pass : .warning,
+            reviewDuration >= 10
+                ? "The master is long enough for a meaningful signal and listening check."
+                : "This master is only \(String(format: "%.1f", reviewDuration)) seconds. Treat it as a route smoke, not a production-quality listening proof."
+        )
+
+        let receiptURL = audioAuditReceiptURL(
+            rootDirectory: rootDirectory,
+            episodeSpaceID: audio.episodeSpaceID,
+            captureGroupID: audio.captureGroupID,
+            auditID: auditID
+        )
+        let disposition: ProductionCaptureTakeAuditDisposition =
+            checks.contains { $0.status == .hold }
+                ? .held
+                : .machinePassHumanReviewRequired
+        let humanReview = [
+            "Listen to the microphone master from start through stop through the intended headphones.",
+            "Confirm speech is intelligible, comfortably loud, unclipped, and free of dropouts or unexpected processing.",
+            "If this belongs to a shared room, compare it with every participant source and review drift near the end.",
+            "Explicitly accept, hold, or replace the master before transcript or editorial work.",
+        ]
+        let truth = disposition == .held
+            ? "Machine inspection found at least one audio integrity, authority, route, or media-shape hold. The WAV and receipt remain preserved; do not call this master accepted."
+            : "Machine inspection re-read the finalized WAV and immutable receipt. Byte, format, route, and signal checks pass without requiring a camera, but this is not a human listen, transcript, alignment, creative, or publication approval."
+        let receipt = ProductionCaptureAudioTakeAuditReceipt(
+            schemaVersion: 1,
+            id: auditID,
+            generatedAt: generatedAt,
+            captureGroupID: audio.captureGroupID,
+            episodeSpaceID: audio.episodeSpaceID,
+            participantID: audio.participantID,
+            audio: audioAudit,
+            roomBinding: authorityComplete ? audio.roomBinding : nil,
+            clockSamples: clockSamples,
+            disposition: disposition,
+            checks: checks,
+            humanReviewRequired: humanReview,
+            receiptPath: receiptURL.path,
+            truth: truth
+        )
+        try persist(receipt, to: receiptURL)
+        return receipt
+    }
+
     public static func audit(
         audio: ProductionAudioRecordingReceipt,
         video: ProductionVideoReferenceReceipt,
@@ -406,6 +659,32 @@ public enum ProductionCaptureTakeAuditor {
             )
     }
 
+    public static func audioAuditReceiptURL(
+        rootDirectory: URL,
+        episodeSpaceID: String,
+        captureGroupID: UUID,
+        auditID: UUID
+    ) -> URL {
+        rootDirectory
+            .appendingPathComponent(
+                "_take-audits",
+                isDirectory: true
+            )
+            .appendingPathComponent(
+                ProductionAudioRecorder.safePathComponent(
+                    episodeSpaceID
+                ),
+                isDirectory: true
+            )
+            .appendingPathComponent(
+                captureGroupID.uuidString.lowercased(),
+                isDirectory: true
+            )
+            .appendingPathComponent(
+                "audio-take-audit-\(auditID.uuidString.lowercased()).json"
+            )
+    }
+
     private static func inspectAudio(
         _ receipt: ProductionAudioRecordingReceipt
     ) async -> ProductionCaptureTakeSourceAudit {
@@ -647,10 +926,10 @@ public enum ProductionCaptureTakeAuditor {
            peak.isFinite,
            rms.isFinite,
            peak > 0.000_000_1 {
-            if peak < 0.001 || rms < 0.000_01 {
+            if peak < 0.05 || rms < 0.003 {
                 signalStatus = .warning
                 signalSummary =
-                    "WAV contains a measurable but extremely low signal (peak \(formatDecibels(peak)), RMS \(formatDecibels(rms))). Listen before accepting the take."
+                    "WAV contains a measurable but quiet signal (peak \(formatDecibels(peak)), RMS \(formatDecibels(rms))). Confirm normal speech reaches a production-usable level before accepting the take."
             } else {
                 signalStatus = .pass
                 signalSummary =
@@ -839,8 +1118,8 @@ public enum ProductionCaptureTakeAuditor {
         )
     }
 
-    private static func persist(
-        _ receipt: ProductionCaptureTakeAuditReceipt,
+    private static func persist<Receipt: Encodable>(
+        _ receipt: Receipt,
         to url: URL
     ) throws {
         let fileManager = FileManager.default

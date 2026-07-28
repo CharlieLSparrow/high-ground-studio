@@ -2897,3 +2897,33 @@ This is an active-goal checkpoint, not a completion claim.
   sync-marked long take, drift/alignment review, real cloud media processing,
   physical iPhone qualification, TestFlight, App Store submission, and
   proof-watch/listen/publish still remain open.
+
+### 2026-07-28 Mac audio-only take-acceptance checkpoint
+
+- This is an active-goal checkpoint, not a completion claim.
+- Closed a real audio-first workflow defect: the app could finalize, hash, and
+  attach a local podcast/coaching WAV but only exposed take acceptance when a
+  camera reference also existed. Quipsly now chooses a production source-pair
+  audit when video exists and a production audio-only audit when it does not.
+- Audio-only acceptance freshly proves bytes, hash, AVFoundation readability,
+  48 kHz/24-bit PCM shape, duration, signal, exact route continuity, monotonic
+  boundaries, complete-or-absent authority, and exact room/clock identity.
+  Digital silence or integrity/authority/route defects hold; measurable quiet
+  signal warns; all machine passes still require explicit human review.
+- Operated the Apple Development signed app against the physical direct USB
+  Shure MV7i. Capture group
+  `16788cfb-f945-4439-8522-78c57a4604c4` finalized a 29.600-second mono
+  48 kHz/24-bit WAV with 4,266,496 bytes and SHA-256
+  `58a3c04e0e76db1d9fec7c45b5d0c444df7c99c10bc42516373457fabbc1a259`.
+  The app-authored append-only audit returned eleven passes, one quiet-level
+  warning at peak -35.8 dBFS/RMS -53.3 dBFS, zero holds, and
+  `machine-pass-human-review-required`; independent file probe and hash match.
+- Focused acceptance tests pass 11/11, the complete media core passes 84/84,
+  and the signed Mac target builds. The exact exercised build has Team
+  `585GUXMY5M` and CDHash
+  `10145cb16ce5ff4c36c5e7d790bdd466c03ac6b0`.
+- This capture contains quiet ambient signal and proves neither usable spoken
+  gain nor headphone playback. Start-to-stop MV7i headphone listening,
+  deliberate unplug/recovery, a real Nest room and second participant,
+  sync/drift review, real Canon image and card-master alignment, physical
+  iPhone capture, TestFlight, and proof-listen/watch remain open.

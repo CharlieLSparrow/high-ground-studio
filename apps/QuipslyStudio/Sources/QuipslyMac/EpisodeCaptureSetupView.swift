@@ -81,7 +81,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var videoUploadError: String?
     @Published private(set) var isAuditingTake = false
     @Published private(set) var lastTakeAudit:
-        ProductionCaptureTakeAuditReceipt?
+        ProductionCaptureTakeAuditResult?
     @Published private(set) var takeAuditError: String?
     @Published private(set) var agentCommandStatus = "idle"
 
@@ -329,6 +329,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         let lastTakeAuditState: [String: Any]
         if let lastTakeAudit {
             lastTakeAuditState = [
+                "sourceMode": lastTakeAudit.sourceMode,
                 "disposition":
                     lastTakeAudit.disposition.rawValue,
                 "receiptPath": lastTakeAudit.receiptPath,
@@ -590,7 +591,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         case "capture_audit_local":
             guard canAuditLastFinalizedTake else {
                 agentCommandStatus =
-                    "audit-rejected-no-finalized-pair"
+                    "audit-rejected-no-finalized-source"
                 publishAgentAcceptanceState()
                 return
             }
@@ -629,15 +630,15 @@ final class EpisodeCaptureSetupModel: ObservableObject {
               !isUploadingMaster,
               !isAuditingTake,
               let audio = lastFinalizedReceipt,
-              let video = lastFinalizedVideoReceipt,
               audio.state == .finalized,
-              video.state == .finalized,
-              audio.captureGroupID == video.captureGroupID,
-              audio.episodeSpaceID == video.episodeSpaceID,
-              audio.participantID == video.participantID else {
+              audio.partialAudioPath == nil else {
             return false
         }
-        return true
+        guard let video = lastFinalizedVideoReceipt else {
+            return true
+        }
+        return video.state == .finalized
+            && video.partialVideoPath == nil
     }
 
     var selectedVideoDevice: CaptureVideoDeviceSnapshot? {
@@ -1670,22 +1671,31 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 
     func auditLastFinalizedTake() async {
         guard canAuditLastFinalizedTake,
-              let audio = lastFinalizedReceipt,
-              let video = lastFinalizedVideoReceipt else {
+              let audio = lastFinalizedReceipt else {
             takeAuditError =
-                "A finalized microphone master and silent camera reference from the exact same capture group are required."
+                "A finalized microphone master is required. If this take includes a camera reference, that source must also be finalized."
             return
         }
         isAuditingTake = true
         takeAuditError = nil
         defer { isAuditingTake = false }
         do {
-            lastTakeAudit =
-                try await ProductionCaptureTakeAuditor.audit(
-                    audio: audio,
-                    video: video,
-                    rootDirectory: captureRoot
+            if let video = lastFinalizedVideoReceipt {
+                lastTakeAudit = .sourcePair(
+                    try await ProductionCaptureTakeAuditor.audit(
+                        audio: audio,
+                        video: video,
+                        rootDirectory: captureRoot
+                    )
                 )
+            } else {
+                lastTakeAudit = .audioOnly(
+                    try await ProductionCaptureTakeAuditor.audit(
+                        audio: audio,
+                        rootDirectory: captureRoot
+                    )
+                )
+            }
         } catch {
             takeAuditError = error.localizedDescription
         }
@@ -3738,10 +3748,12 @@ struct EpisodeCaptureSetupView: View {
             VStack(alignment: .leading, spacing: 13) {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Verify the source pair before editing")
+                        Text("Verify finalized sources before editing")
                             .font(.headline)
                         Text(
-                            "Quipsly re-reads the finalized WAV and silent MOV, recomputes both SHA-256 digests, probes their production formats, and checks exact take, room, consent, START, and capture-clock identity."
+                            model.lastFinalizedVideoReceipt == nil
+                                ? "Quipsly re-reads the finalized WAV, recomputes its SHA-256 digest, probes its production format and signal, and checks exact route, room, consent, START, and clock evidence. A camera is not required for audio-only work."
+                                : "Quipsly re-reads the finalized WAV and silent MOV, recomputes both SHA-256 digests, probes their production formats, and checks exact take, room, consent, START, and capture-clock identity."
                         )
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -3893,8 +3905,10 @@ struct EpisodeCaptureSetupView: View {
                 } else {
                     Label(
                         model.canAuditLastFinalizedTake
-                            ? "The finalized source pair is ready for an explicit acceptance check."
-                            : "Finalize a microphone master and camera reference in the same capture group to run take acceptance.",
+                            ? model.lastFinalizedVideoReceipt == nil
+                                ? "The finalized microphone master is ready for an explicit audio-only acceptance check."
+                                : "The finalized source pair is ready for an explicit acceptance check."
+                            : "Finalize the microphone master and every enabled camera source to run take acceptance.",
                         systemImage: "waveform.and.magnifyingglass"
                     )
                     .font(.caption)
