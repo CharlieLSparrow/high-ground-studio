@@ -163,16 +163,23 @@ pnpm quipsly:production:status
 The deployed health/release evidence must identify the intended committed SHA.
 A generic `{"ok":true}` response is availability evidence, not source parity.
 
-## Build without uploading
+## Qualify without uploading
 
 Use this before any external mutation:
 
 ```bash
 candidate_sha="$(git rev-parse HEAD)"
 scripts/release/quipsly-capture-release-from-commit.sh \
-  release \
+  candidate \
   --revision "$candidate_sha"
 ```
+
+The `candidate` lane runs the deterministic iPhone and Share Capture UI suite
+first, then creates and verifies the signed archive and IPA from the same
+detached commit. The resulting receipt must record
+`candidateQualified: true`, `deterministicUITestPerformed: true`, and the
+exact result-bundle evidence path. The lower-level `release` lane is retained
+for archive-only diagnosis; it is not a fully qualified candidate.
 
 Expected output directory:
 
@@ -188,6 +195,9 @@ receipt must say:
 {
   "sourceRevision": "<full candidate SHA>",
   "sourceIsolation": "detached-worktree",
+  "candidateQualified": true,
+  "deterministicUITestPerformed": true,
+  "uiTestEvidencePath": "/tmp/quipsly-capture-ui-tests/<SHA>/<run>/HighGroundCapture.xcresult",
   "uploadAttempted": false,
   "uploadPerformed": false,
   "uploadOutcome": "not-attempted",

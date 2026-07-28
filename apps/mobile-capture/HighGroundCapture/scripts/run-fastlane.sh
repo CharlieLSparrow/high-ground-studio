@@ -12,12 +12,12 @@ fail() {
   exit 1
 }
 
-[[ "$#" -ge 1 ]] || fail "Usage: $0 <verify|ui_test|release|beta> [fastlane options]"
+[[ "$#" -ge 1 ]] || fail "Usage: $0 <verify|ui_test|candidate|release|beta> [fastlane options]"
 
 lane="$1"
 shift
 case "${lane}" in
-  verify|ui_test|release|beta) ;;
+  verify|ui_test|candidate|release|beta) ;;
   *) fail "Unsupported Capture lane: ${lane}" ;;
 esac
 

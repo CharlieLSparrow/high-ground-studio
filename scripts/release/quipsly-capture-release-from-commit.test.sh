@@ -69,13 +69,13 @@ printf 'must not enter release\n' >"${fixture_repo}/uncommitted-only.txt"
 MOCK_RECEIPT_PATH="$receipt" \
 QUIPSLY_CAPTURE_RELEASE_DIR="$fixture_release" \
 "${fixture_repo}/scripts/release/quipsly-capture-release-from-commit.sh" \
-  release \
+  candidate \
   --revision "$source_revision" \
   --device "iPhone Test"
 
 grep -Fqx "revision=${source_revision}" "$receipt" ||
   fail "Runner did not receive the exact committed revision."
-grep -Fqx "lane=release" "$receipt" ||
+grep -Fqx "lane=candidate" "$receipt" ||
   fail "Runner did not receive the requested lane."
 grep -Fqx "sourceRevision=${source_revision}" "$receipt" ||
   fail "Source revision environment did not match."

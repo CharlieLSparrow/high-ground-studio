@@ -109,6 +109,15 @@ platform :ios do
       buildlog_path: output_root,
       fail_build: true,
     )
+    result_bundles = Dir[File.join(output_root, "*.xcresult")].select do |path|
+      File.directory?(path)
+    end
+    UI.user_error!(
+      "Expected exactly one deterministic UI result bundle in #{output_root}; found #{result_bundles.length}.",
+    ) unless result_bundles.length == 1
+    result_bundle_path = File.expand_path(result_bundles.fetch(0))
+    UI.success("Deterministic Capture UI evidence: #{result_bundle_path}")
+    result_bundle_path
   end
 
   desc "Build, export, and inspect the exact committed Capture version"
@@ -181,6 +190,9 @@ platform :ios do
         ipaPath: paths[:ipa_path],
         ipaBytes: File.size(paths[:ipa_path]),
         ipaSHA256: Digest::SHA256.file(paths[:ipa_path]).hexdigest,
+        candidateQualified: false,
+        deterministicUITestPerformed: false,
+        uiTestEvidencePath: nil,
         uploadAttempted: false,
         uploadPerformed: false,
         uploadOutcome: "not-attempted",
@@ -193,18 +205,34 @@ platform :ios do
     UI.success("Release receipt: #{receipt_path}")
   end
 
-  desc "Build and upload to TestFlight without silently changing the committed build number"
-  lane :beta do |options|
+  desc "Run deterministic UI tests, build, export, and verify without uploading"
+  lane :candidate do |options|
     unless ENV["QUIPSLY_CAPTURE_RELEASE_ISOLATED"] == "1"
       UI.user_error!(
-        "TestFlight uploads must use scripts/deploy-testflight.sh from an exact committed revision.",
+        "Candidate qualification must use scripts/release/quipsly-capture-release-from-commit.sh from an exact committed revision.",
       )
     end
+
+    ui_test_evidence_path = ui_test(device: options[:device])
+    release(options)
+    paths = release_paths(options)
+    receipt_path = update_release_receipt(paths) do |receipt|
+      receipt["candidateQualified"] = true
+      receipt["candidateQualifiedAt"] = Time.now.utc.iso8601
+      receipt["deterministicUITestPerformed"] = true
+      receipt["uiTestEvidencePath"] = File.expand_path(ui_test_evidence_path)
+    end
+    UI.success("Quipsly Capture candidate qualification completed without upload.")
+    UI.success("Qualified release receipt: #{receipt_path}")
+    receipt_path
+  end
+
+  desc "Qualify and upload to TestFlight without silently changing the committed build number"
+  lane :beta do |options|
     api_key_path = options[:api_key_path] || ENV["APP_STORE_CONNECT_API_KEY_PATH"]
     UI.user_error!("Set APP_STORE_CONNECT_API_KEY_PATH to a Fastlane App Store Connect API key JSON file.") if api_key_path.to_s.empty?
 
-    ui_test(device: options[:device])
-    release(options)
+    candidate(options)
     paths = release_paths(options)
     update_release_receipt(paths) do |receipt|
       receipt["uploadAttempted"] = true

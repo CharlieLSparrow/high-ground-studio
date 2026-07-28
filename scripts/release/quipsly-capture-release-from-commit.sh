@@ -5,10 +5,15 @@ set -euo pipefail
 usage() {
   cat <<'USAGE'
 Usage:
-  scripts/release/quipsly-capture-release-from-commit.sh <release|beta> [--revision <commit-ish>] [fastlane options...]
+  scripts/release/quipsly-capture-release-from-commit.sh <candidate|release|beta> [--revision <commit-ish>] [fastlane options...]
 
 Builds or uploads Quipsly Capture from a disposable detached worktree at one
 resolved commit. Any uncommitted files in the caller's worktree are excluded.
+
+`candidate` is the canonical no-upload qualification lane: deterministic UI
+tests followed by signed archive/export verification. `release` is the lower
+level archive-only diagnostic lane. `beta` qualifies, uploads, and waits for
+App Store Connect processing.
 USAGE
 }
 
@@ -19,14 +24,14 @@ fail() {
 
 lane="${1:-}"
 case "$lane" in
-  release | beta) ;;
+  candidate | release | beta) ;;
   -h | --help)
     usage
     exit 0
     ;;
   *)
     usage >&2
-    fail "First argument must be release or beta."
+    fail "First argument must be candidate, release, or beta."
     ;;
 esac
 shift

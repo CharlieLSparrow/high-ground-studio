@@ -62,13 +62,15 @@ Pinned local entry points:
 ```bash
 apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh verify
 apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test
-scripts/release/quipsly-capture-release-from-commit.sh release --revision <commit-sha>
+scripts/release/quipsly-capture-release-from-commit.sh candidate --revision <commit-sha>
 scripts/deploy-testflight.sh
 ```
 
-The first three commands never upload. The build-only release command resolves
-one exact commit into a disposable detached worktree. The final command uses
-the same isolation boundary and locked `beta` lane and requires
+The first three commands never upload. The candidate command resolves one
+exact commit into a disposable detached worktree, runs the deterministic UI
+suite, then signs and verifies the archive and IPA. The lower-level `release`
+lane is archive-only diagnosis and is not a fully qualified candidate. The
+final command uses the same isolation boundary and locked `beta` lane and requires
 `APP_STORE_CONNECT_API_KEY_PATH`; do not place that credential in the
 repository.
 
