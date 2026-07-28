@@ -3031,3 +3031,31 @@ This is an active-goal checkpoint, not a completion claim.
   Mirroring after the microphone is released, install Build 6, sign into
   production Quipsly, and operate the full physical capture/offline/relaunch/
   upload/transcript/same-ID checklist before closing the device gate.
+
+### 2026-07-28 Quipsly Capture Build 6 screenshot checkpoint
+
+- This is a layout-evidence checkpoint, not App Store screenshot approval.
+- Exact Build 6 source
+  `f10ceab5e83ce08e61092d3cf6a8e8ec2f457589` completed the five-screen
+  iPhone 17 Pro Max draft journey with one passed UI test, zero failures or
+  skips, clean detached-source isolation, exact-size `1320 x 2868` images, and
+  `submissionEligible: false`.
+- The first run exposed a real macOS evidence-pipeline defect: the materializer
+  compared `/var` and `/private/var` as different CLI paths and silently
+  skipped its body. The outer boundary rejected the missing receipt. Current
+  source canonicalizes the path, tests symlinked invocation, and can recover
+  by calling the exact committed exported materializer without substituting
+  current source.
+- Human visual review rejected the drafts for submission. The Account
+  attachment exposed restored-scroll/query-order nondeterminism; the test now
+  resets Account to the top, waits for the scroll indicator to clear, and
+  captures before descendant queries. Library preview copy now reads
+  `Review transcript`.
+- Production parity and exact Build 6 upload/processing/tester assignment are
+  removed from the App Store blocker ledger because their delivery readbacks
+  exist. Five blockers remain: account-holder legal selections, reviewer
+  account/session, final physical/TestFlight screenshots, physical TestFlight
+  operation, and App Privacy plus disposable-account deletion proof.
+- No image was promoted to the canonical screenshot asset directory. Final
+  assets still require the TestFlight app on the physical iPhone and an
+  approved synthetic reviewer account with no DEBUG badge or private material.

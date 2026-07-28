@@ -83,12 +83,10 @@
   "submission": {
     "readiness": "blocked",
     "blockers": [
-      "Promote and read back the Nest revision that passes all 104 production mobile contracts and canonical policy redirects.",
       "Confirm the legal copyright owner, categories, age rating, content rights, DSA trader status, and territory availability in App Store Connect.",
       "Create the reviewer account and visible synthetic session; store credentials only in App Store Connect.",
       "Capture and approve all five 6.9-inch screenshots from the exact physical-device or TestFlight candidate without private data.",
-      "Operate Build 6 on the unlocked trusted physical iPhone, including interruption, offline, recovery, upload, and cross-device readback.",
-      "Upload the exact Build 6 candidate, read back processing, assign testers, and repeat the workflow from the TestFlight install.",
+      "Install the assigned Build 6 from TestFlight on the unlocked trusted physical iPhone, then prove interruption, offline, recovery, upload, and cross-device readback.",
       "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."
     ]
   }

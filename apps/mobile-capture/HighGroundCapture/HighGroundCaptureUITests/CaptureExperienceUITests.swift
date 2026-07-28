@@ -1102,10 +1102,19 @@ final class CaptureAppStoreScreenshotUITests: XCTestCase {
         keepScreenshot("04-library.png")
 
         launch(tab: "account", waitingFor: app.navigationBars["Account"])
+        // SwiftUI can restore the prior ScrollView offset across process
+        // relaunches. Account has no pull-to-refresh action, so return it to
+        // the deterministic top viewport before capturing.
+        for _ in 0..<6 {
+            app.swipeDown()
+        }
+        Thread.sleep(forTimeInterval: 1.2)
+        // Capture the stable initial viewport before descendant queries can
+        // auto-scroll SwiftUI's account surface to an offscreen control.
+        keepScreenshot("05-account.png")
         XCTAssertTrue(app.staticTexts["Privacy policy"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["Account deletion information"].exists)
         XCTAssertTrue(app.buttons["Request account deletion"].exists)
-        keepScreenshot("05-account.png")
     }
 
     private func launch(tab: String, waitingFor destination: XCUIElement) {

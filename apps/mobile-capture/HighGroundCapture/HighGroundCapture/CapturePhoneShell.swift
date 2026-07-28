@@ -3784,7 +3784,7 @@ private struct CaptureLibraryView: View {
                                 previewOnly: true
                             )
                         } label: {
-                            Label("Preview transcript review", systemImage: "waveform.and.magnifyingglass")
+                            Label("Review transcript", systemImage: "waveform.and.magnifyingglass")
                                 .font(.headline)
                                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                         }
@@ -4033,6 +4033,7 @@ private struct CaptureAccountView: View {
         .background(CaptureCanvas())
         .navigationTitle("Account")
         .navigationBarTitleDisplayMode(.inline)
+        .accessibilityIdentifier("CaptureAccountView")
         .sheet(isPresented: $showsDeletion) {
             AccountDeletionSheet(
                 isPresented: $showsDeletion,

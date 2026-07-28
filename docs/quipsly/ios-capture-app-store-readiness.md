@@ -475,6 +475,15 @@ remain red until approved screenshots and every delivery-layer proof exist.
   regression proof excludes an uncommitted sentinel and removes the linked
   worktree afterward; this is not upload, App Store Connect readback, or
   physical-device proof.
+- 2026-07-28 screenshot evidence: the exact Build 6 source completed the
+  deterministic five-screen draft journey at `1320 x 2868`, with one passed
+  UI test and clean detached-source readback. Visual review rejected all five
+  for submission, as required: DEBUG preview badges remain, and the Account
+  attachment exposed a restored-scroll/XCUITest query-order defect. The
+  materializer also exposed and now covers macOS `/var` versus `/private/var`
+  CLI identity. See
+  [`2026-07-28-capture-build-6-screenshot-audit.md`](../coordination/2026-07-28-capture-build-6-screenshot-audit.md).
+  No canonical screenshot asset is approved.
 
 - 2026-07-21 physical-device blocker: Xcode/CoreDevice still does not see the plugged-in iPhone as an available destination. `xctrace` lists only the Mac plus offline iPads `Layla` and `Morbo`; `devicectl` lists the same unavailable iPads. Unlock/trust the iPhone, use a data-capable cable/direct port, and confirm it appears in Xcode Devices before claiming physical-device capture proof.
 - Complete authenticated native lifecycle and separate-account privacy
