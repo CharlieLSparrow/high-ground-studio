@@ -1575,6 +1575,14 @@ public class AgentServer: ObservableObject {
                         "path": request.query["path"] ?? ""
                     ])
                 }
+            case "/restore_media_access":
+                Task { @MainActor in
+                    self?.enqueueCommand("restore_media_access")
+                    self?.sendJSON(connection, object: [
+                        "status": "restore_media_access_commanded",
+                        "truth": "This asks the editor to restore only its previously user-granted folder bookmark. Re-read /state for active access and validation results."
+                    ])
+                }
             case "/export_proxy_package":
                 let directory = request.query["directory"] ?? ""
                 Task { @MainActor in
@@ -4018,6 +4026,7 @@ public class AgentServer: ObservableObject {
                 "GET /retry_proxies",
                 "GET /relink_lane?lane_id=<uuid-or-name>&path=<absolute-file-path>",
                 "GET /match_folder?path=<absolute-folder-path>",
+                "GET /restore_media_access",
                 "GET /export_proxy_package?directory=<absolute-output-folder>&basename=<name>&proof_seconds=<seconds>",
                 "GET /audio_master_export?directory=<absolute-output-folder>&basename=<name>&proof_seconds=<seconds>",
                 "GET /delivery_packet",
@@ -4191,7 +4200,7 @@ public class AgentServer: ObservableObject {
                 ],
                 [
                     "risk": "media-recovery",
-                    "examples": ["/relink_lane", "/match_folder", "/vault_lane", "/retry_proxies"],
+                    "examples": ["/restore_media_access", "/relink_lane", "/match_folder", "/vault_lane", "/retry_proxies"],
                     "rule": "Requires explicit operator intent because it may touch protected folders or run proxy work."
                 ]
             ],

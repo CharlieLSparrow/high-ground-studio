@@ -79,6 +79,7 @@ Usage:
   script/agentctl.sh relink-lane "Unresolved Camera V1 - video clip 235" /absolute/path/to/video.mp4
   script/agentctl.sh attach-proxy "Charlie Audio - First Pod Ever.wav" /absolute/path/to/audio_proxy.m4a
   script/agentctl.sh match-folder "/Volumes/My Passport/Episode 1"
+  script/agentctl.sh restore-media-access
   script/agentctl.sh retry-proxies
   script/agentctl.sh export-proxy-package /absolute/output/folder basename 8
   script/agentctl.sh audio-master-export /absolute/output/folder basename 8
@@ -13989,6 +13990,9 @@ PY
       exit 2
     fi
     get "/match_folder?path=$(urlencode "$path")"
+    ;;
+  restore-media-access)
+    get "/restore_media_access"
     ;;
   retry-proxies)
     get "/retry_proxies"

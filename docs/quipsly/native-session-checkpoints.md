@@ -66,6 +66,10 @@ The local agent state exposes:
 - `lastSessionPath`
 - `lastMediaAction`
 
+These fields are part of both the full diagnostic state and the default lean
+control-plane state. Session safety must not disappear merely because the app
+chooses a lighter-weight status payload for a large project.
+
 The expected transition is:
 
 ```text

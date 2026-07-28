@@ -51,6 +51,12 @@ relinked, regenerated, or replaced. Changing or restoring an explicit
 protected-folder grant invalidates the in-memory validation cache so a formerly
 blocked lane can be checked again.
 
+The semantic `restore-media-access` command restores only the exact folder
+bookmark the user previously granted. It cannot choose or broaden a folder
+grant. If that bookmark is absent, stale beyond recovery, or outside the source
+path, the lane remains blocked and the app asks the user to re-grant the folder
+through the native picker.
+
 Each asynchronous validation has a unique run ID. Results from a superseded
 validation cannot mutate a newly loaded session or a lane whose proxy changed
 while the probe was running.

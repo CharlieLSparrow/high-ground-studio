@@ -23980,7 +23980,7 @@ struct WorkspaceView: View {
         guard !path.isEmpty else { return false }
         if isExternalOriginalPath(path) {
             let url = URL(fileURLWithPath: path)
-            return externalMediaAccess.canProbeWithoutPrompt(url)
+            return externalMediaAccess.hasUserGrantedAccess(to: url)
         }
         return true
     }
@@ -26981,11 +26981,23 @@ struct WorkspaceView: View {
             let proxyPath = source?.proxyURL?.path ?? readiness.playbackPath
             let protectedSource = !sourcePath.isEmpty && ExternalMediaAccess.isProtectedUserMediaPath(sourcePath)
             let protectedProxy = !proxyPath.isEmpty && ExternalMediaAccess.isProtectedUserMediaPath(proxyPath)
-            let sourceProbePolicy = protectedSource && !externalMediaAccess.canProbeWithoutPrompt(URL(fileURLWithPath: sourcePath))
-                ? "not_probed_protected_original"
+            let sourceProbePolicy = protectedSource
+                ? (
+                    externalMediaAccess.hasUserGrantedAccess(
+                        to: URL(fileURLWithPath: sourcePath)
+                    )
+                        ? "explicitly_granted_source_probe"
+                        : "not_probed_protected_original"
+                )
                 : "safe_to_probe_if_needed"
-            let proxyProbePolicy = protectedProxy && !externalMediaAccess.canProbeWithoutPrompt(URL(fileURLWithPath: proxyPath))
-                ? "not_probed_protected_proxy"
+            let proxyProbePolicy = protectedProxy
+                ? (
+                    externalMediaAccess.hasUserGrantedAccess(
+                        to: URL(fileURLWithPath: proxyPath)
+                    )
+                        ? "explicitly_granted_proxy_probe"
+                        : "not_probed_protected_proxy"
+                )
                 : "safe_to_probe_if_needed"
 
             return [
@@ -45486,6 +45498,17 @@ struct WorkspaceView: View {
             }
         case "match_folder":
             relinkExpectedMediaFromExternalFolder(rootPathOverride: request.values["path"])
+        case "restore_media_access":
+            if externalMediaAccess.restoreAccess() {
+                resetVideoProxyValidation()
+                lastMediaAction =
+                    "Restored explicit media access for \(externalMediaAccess.displayName); video duration validation will retry"
+            } else {
+                lastMediaAction =
+                    "Media access could not be restored. Re-grant the exact folder in Production Details."
+                isShowingProductionDetails = true
+            }
+            updateAgentState()
         case "export_proxy_package":
             exportProxyPackageForAgent(
                 directoryPath: request.values["directory"],
@@ -46302,6 +46325,7 @@ struct WorkspaceView: View {
     private func publishMountedAgentState() {
         let sequence = projectStore.activeSequence
         let laneInventory = agentLaneInventoryPayload(for: sequence)
+        let readinessSummary = mediaReadinessSummary()
         let cutIntelligencePayload = sequence
             .map {
                 CutIntelligenceAnalyzer.analyze(
@@ -46342,6 +46366,33 @@ struct WorkspaceView: View {
             "cutIntelligenceCadenceMode": cutIntelligenceCadenceMode.rawValue,
             "nativeAccount": nativeAccountStore.agentStatusPayload,
             "activeSessionName": normalizedActiveSessionName(),
+            "activeSessionRole":
+                NativeSessionNamePolicy.roleLabel(
+                    normalizedActiveSessionName()
+                ),
+            "pendingAutosaveSessionName":
+                pendingAutosaveSessionName ?? "",
+            "pendingAutosaveCheckpointName":
+                pendingAutosaveCheckpointName ?? "",
+            "checkpointProtection":
+                "first_autosave_forks_unique_working_copy",
+            "autosaveStatus": autosaveStatus,
+            "lastSavedAt":
+                lastSavedAt.map {
+                    ISO8601DateFormatter().string(from: $0)
+                } ?? "",
+            "lastSessionPath": lastSessionPath ?? "",
+            "productionReady": readinessSummary.isProductionReady,
+            "productionReadinessDetail": readinessSummary.detail,
+            "videoProxyReadyCount":
+                readinessSummary.videoProxyReadyCount,
+            "videoBlockedCount": readinessSummary.videoBlockedCount,
+            "audioReadyCount": readinessSummary.audioReadyCount,
+            "audioBlockedCount": readinessSummary.audioBlockedCount,
+            "ignoredLaneCount": readinessSummary.ignoredCount,
+            "externalMediaRootPath": externalMediaAccess.rootPath,
+            "externalMediaAccessActive":
+                externalMediaAccess.hasActiveAccess,
             "playhead": playbackEngine.playhead,
             "isPlaying": playbackEngine.isPlaying,
             "playbackMode": playbackEngine.playbackMode.rawValue,
@@ -46355,6 +46406,7 @@ struct WorkspaceView: View {
     private func publishLeanAgentState(stage: String) {
         let sequence = projectStore.activeSequence
         let laneInventory = agentLaneInventoryPayload(for: sequence)
+        let readinessSummary = mediaReadinessSummary()
         let cutIntelligencePayload = sequence
             .map {
                 CutIntelligenceAnalyzer.analyze(
@@ -46406,6 +46458,33 @@ struct WorkspaceView: View {
             "cutIntelligenceCadenceMode": cutIntelligenceCadenceMode.rawValue,
             "nativeAccount": nativeAccountStore.agentStatusPayload,
             "activeSessionName": normalizedActiveSessionName(),
+            "activeSessionRole":
+                NativeSessionNamePolicy.roleLabel(
+                    normalizedActiveSessionName()
+                ),
+            "pendingAutosaveSessionName":
+                pendingAutosaveSessionName ?? "",
+            "pendingAutosaveCheckpointName":
+                pendingAutosaveCheckpointName ?? "",
+            "checkpointProtection":
+                "first_autosave_forks_unique_working_copy",
+            "autosaveStatus": autosaveStatus,
+            "lastSavedAt":
+                lastSavedAt.map {
+                    ISO8601DateFormatter().string(from: $0)
+                } ?? "",
+            "lastSessionPath": lastSessionPath ?? "",
+            "productionReady": readinessSummary.isProductionReady,
+            "productionReadinessDetail": readinessSummary.detail,
+            "videoProxyReadyCount":
+                readinessSummary.videoProxyReadyCount,
+            "videoBlockedCount": readinessSummary.videoBlockedCount,
+            "audioReadyCount": readinessSummary.audioReadyCount,
+            "audioBlockedCount": readinessSummary.audioBlockedCount,
+            "ignoredLaneCount": readinessSummary.ignoredCount,
+            "externalMediaRootPath": externalMediaAccess.rootPath,
+            "externalMediaAccessActive":
+                externalMediaAccess.hasActiveAccess,
             "playhead": playbackEngine.playhead,
             "isPlaying": playbackEngine.isPlaying,
             "playbackMode": playbackEngine.playbackMode.rawValue,
