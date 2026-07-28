@@ -170,6 +170,29 @@ persistent direct screen-and-audio access. That permission was not granted.
 The new audio-room card therefore has compile and launch proof, but not a
 completed second-window visual acceptance or a real room join.
 
+## Mac audio-room route continuity — July 27
+
+- The LiveKit path is a real native audio-only room, not a receipt mock. Nest
+  returns the short-lived room packet; Quipsly selects the provider input and
+  output only when their IDs exactly match the selected Core Audio UIDs.
+- Join now verifies the active provider input/output after selection, after
+  connection, and after microphone publication. The visible preflight calls
+  the input **Local master + call mic** and the output **Call + headphones**,
+  shows the exact selected UIDs, and states that the local WAV has no call
+  processing or software sidetone.
+- LiveKit device updates continuously revalidate availability and the active
+  input/output IDs. Device removal or a provider fallback immediately mutes
+  the provider engine, leaves the room, and writes a version-2 `route-lost`
+  receipt with expected and observed device IDs. A healthy independent local
+  WAV is not stopped or rewritten by a call-route failure.
+- QuipslyVideoCore passes 76/76 tests, including selected-output removal and
+  silent provider-fallback cases. The complete QuipslyMac target builds and
+  links LiveKit 2.15.1 successfully.
+- The running app's semantic hardware readback still exposes only MacBook,
+  Microsoft Teams Audio, and `MOTIV Mix Virtual` routes. No direct MV7i UID or
+  physical Canon R8 device is present, so this is implementation and live
+  inventory proof—not an MV7i/R8 qualification claim.
+
 ## Hardware truth on this Mac
 
 MOTIV Mix Virtual is available at 48 kHz, but a direct physical MV7i route is

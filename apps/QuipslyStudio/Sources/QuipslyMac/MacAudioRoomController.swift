@@ -44,11 +44,13 @@ final class MacAudioRoomController: NSObject, ObservableObject {
     @Published private(set) var isMuted = true
     @Published private(set) var remoteParticipantCount = 0
     @Published private(set) var activeRoomName: String?
+    @Published private(set) var routeIntegrityLabel = "Not locked"
     @Published private(set) var lastError: String?
     @Published private(set) var lastReceiptURL: URL?
 
     private let room = Room()
     private var activeContext: ActiveMacAudioRoomContext?
+    private var routeLossIsBeingHandled = false
 
     override init() {
         super.init()
@@ -56,7 +58,7 @@ final class MacAudioRoomController: NSObject, ObservableObject {
         AudioManager.prepare()
         AudioManager.shared.onDeviceUpdate = { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.readProviderDevices()
+                self?.providerDevicesDidUpdate()
             }
         }
         readProviderDevices()
@@ -178,6 +180,13 @@ final class MacAudioRoomController: NSObject, ObservableObject {
         do {
             AudioManager.shared.inputDevice = liveKitInput
             AudioManager.shared.outputDevice = liveKitOutput
+            let selectedRoute = activeProviderRouteIntegrity(
+                expectedInputDeviceID: providerInput.id,
+                expectedOutputDeviceID: providerOutput.id
+            )
+            guard selectedRoute.status == .verified else {
+                throw roomError(selectedRoute.truth, code: 4)
+            }
 
             guard let baseURL = accountStore.normalizedBaseURL else {
                 throw roomError(
@@ -246,6 +255,7 @@ final class MacAudioRoomController: NSObject, ObservableObject {
                 captureRoot: captureRoot
             )
             activeContext = receiptContext
+            routeIntegrityLabel = "Verifying"
             statusText =
                 "Joining \(join.roomName ?? cleanRoomID) with audio only…"
             connectionStateLabel = "Connecting"
@@ -254,11 +264,24 @@ final class MacAudioRoomController: NSObject, ObservableObject {
                 url: serverURL,
                 token: participantToken
             )
+            let connectedRoute = activeProviderRouteIntegrity(
+                context: receiptContext
+            )
+            guard connectedRoute.status == .verified else {
+                throw roomError(connectedRoute.truth, code: 5)
+            }
             try await room.localParticipant.setMicrophone(enabled: true)
+            let liveRoute = activeProviderRouteIntegrity(
+                context: receiptContext
+            )
+            guard liveRoute.status == .verified else {
+                throw roomError(liveRoute.truth, code: 6)
+            }
 
             isConnecting = false
             isConnected = true
             isMuted = false
+            routeIntegrityLabel = "Locked"
             activeRoomName = room.name ?? join.roomName
             remoteParticipantCount = room.remoteParticipants.count
             connectionStateLabel = "Connected"
@@ -273,6 +296,7 @@ final class MacAudioRoomController: NSObject, ObservableObject {
             isConnecting = false
             isConnected = false
             isMuted = true
+            routeIntegrityLabel = "Not locked"
             remoteParticipantCount = 0
             activeRoomName = nil
             connectionStateLabel = "Needs attention"
@@ -288,6 +312,11 @@ final class MacAudioRoomController: NSObject, ObservableObject {
     func setMuted(_ muted: Bool) async {
         guard isConnected, let context = activeContext else {
             fail("Join the audio-only room before changing mute state.")
+            return
+        }
+        let integrity = activeProviderRouteIntegrity(context: context)
+        guard integrity.status == .verified else {
+            holdForRouteLoss(context: context, integrity: integrity)
             return
         }
         do {
@@ -336,12 +365,106 @@ final class MacAudioRoomController: NSObject, ObservableObject {
         }
     }
 
+    private func providerDevicesDidUpdate() {
+        readProviderDevices()
+        guard let context = activeContext, isActive else { return }
+        let integrity = activeProviderRouteIntegrity(context: context)
+        if integrity.status == .verified {
+            routeIntegrityLabel = "Locked"
+        } else {
+            holdForRouteLoss(context: context, integrity: integrity)
+        }
+    }
+
+    private func activeProviderRouteIntegrity(
+        context: ActiveMacAudioRoomContext
+    ) -> MacAudioRoomRouteIntegrity {
+        activeProviderRouteIntegrity(
+            expectedInputDeviceID: context.providerInputDeviceID,
+            expectedOutputDeviceID: context.providerOutputDeviceID
+        )
+    }
+
+    private func activeProviderRouteIntegrity(
+        expectedInputDeviceID: String,
+        expectedOutputDeviceID: String
+    ) -> MacAudioRoomRouteIntegrity {
+        MacAudioRoomRoutePolicy.verifyActiveProviderRoute(
+            expectedInputDeviceID: expectedInputDeviceID,
+            expectedOutputDeviceID: expectedOutputDeviceID,
+            providerInputs: providerInputs,
+            providerOutputs: providerOutputs,
+            activeInputDeviceID:
+                AudioManager.shared.inputDevice.deviceId,
+            activeOutputDeviceID:
+                AudioManager.shared.outputDevice.deviceId
+        )
+    }
+
+    private func holdForRouteLoss(
+        context: ActiveMacAudioRoomContext,
+        integrity: MacAudioRoomRouteIntegrity
+    ) {
+        guard !routeLossIsBeingHandled,
+              activeContext != nil else { return }
+
+        routeLossIsBeingHandled = true
+        AudioManager.shared.isMicrophoneMuted = true
+        isMuted = true
+        isConnecting = true
+        isConnected = false
+        remoteParticipantCount = 0
+        activeRoomName = nil
+        connectionStateLabel = "Route safety hold"
+        routeIntegrityLabel = "Lost"
+        lastError = integrity.truth
+        statusText =
+            "\(integrity.truth) A healthy local WAV master is not stopped or rewritten by this call-route hold."
+        activeContext = nil
+        writeReceipt(
+            event: .routeLost,
+            context: context,
+            failure: integrity.truth,
+            observedProviderInputDeviceID:
+                integrity.observedInputDeviceID,
+            observedProviderOutputDeviceID:
+                integrity.observedOutputDeviceID,
+            routeIntegrity: .lost
+        )
+
+        Task {
+            _ = try? await room.localParticipant.setMicrophone(
+                enabled: false
+            )
+            await room.disconnect()
+            routeLossIsBeingHandled = false
+            isConnecting = false
+            isConnected = false
+            isMuted = true
+            remoteParticipantCount = 0
+            activeRoomName = nil
+            connectionStateLabel = "Route safety hold"
+            routeIntegrityLabel = "Lost"
+        }
+    }
+
     private func writeReceipt(
         event: MacAudioRoomEvent,
         context: ActiveMacAudioRoomContext,
-        failure: String? = nil
+        failure: String? = nil,
+        observedProviderInputDeviceID: String? = nil,
+        observedProviderOutputDeviceID: String? = nil,
+        routeIntegrity: MacAudioRoomRouteIntegrityStatus = .verified
     ) {
         do {
+            let observedInput = routeIntegrity == .lost
+                ? observedProviderInputDeviceID
+                : observedProviderInputDeviceID
+                    ?? AudioManager.shared.inputDevice.deviceId
+            let observedOutput = routeIntegrity == .lost
+                ? observedProviderOutputDeviceID
+                : observedProviderOutputDeviceID
+                    ?? AudioManager.shared.outputDevice.deviceId
             lastReceiptURL = try MacAudioRoomReceiptWriter.write(
                 MacAudioRoomEventReceipt(
                     event: event,
@@ -359,7 +482,12 @@ final class MacAudioRoomController: NSObject, ObservableObject {
                     directPhysicalMV7iClaimed:
                         context.directPhysicalMV7iClaimed,
                     remoteParticipantCount: remoteParticipantCount,
-                    failure: failure
+                    failure: failure,
+                    observedProviderInputDeviceID:
+                        observedInput,
+                    observedProviderOutputDeviceID:
+                        observedOutput,
+                    routeIntegrity: routeIntegrity
                 ),
                 root: context.captureRoot
             )
@@ -386,6 +514,7 @@ final class MacAudioRoomController: NSObject, ObservableObject {
         remoteParticipantCount = 0
         activeRoomName = nil
         connectionStateLabel = "Disconnected"
+        routeIntegrityLabel = "Not locked"
         statusText = message
     }
 
@@ -411,10 +540,23 @@ extension MacAudioRoomController: RoomDelegate {
 
             switch connectionState {
             case .connected:
+                guard !self.routeLossIsBeingHandled else {
+                    AudioManager.shared.isMicrophoneMuted = true
+                    self.isConnected = false
+                    self.isMuted = true
+                    return
+                }
                 self.isConnecting = false
                 self.isConnected = true
                 self.lastError = nil
             case .disconnected:
+                if self.routeLossIsBeingHandled {
+                    self.isConnected = false
+                    self.isMuted = true
+                    self.remoteParticipantCount = 0
+                    self.activeRoomName = nil
+                    return
+                }
                 if let context = self.activeContext {
                     self.writeReceipt(event: .left, context: context)
                 }

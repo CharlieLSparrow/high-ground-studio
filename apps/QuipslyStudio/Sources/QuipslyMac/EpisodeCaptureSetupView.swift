@@ -3113,8 +3113,8 @@ struct EpisodeCaptureSetupView: View {
                         .accessibilityIdentifier("EpisodeCaptureCameraPicker")
                     }
                     GridRow {
-                        Label("Local mic master", systemImage: "mic.fill")
-                        Picker("Local mic master", selection: $model.selectedAudioInputID) {
+                        Label("Local master + call mic", systemImage: "mic.fill")
+                        Picker("Local master and call mic", selection: $model.selectedAudioInputID) {
                             Text("Select an input").tag(String?.none)
                             ForEach(inventory.audioDevices.filter(\.hasInput)) { device in
                                 Text(audioDeviceLabel(device, input: true)).tag(Optional(device.id))
@@ -3695,6 +3695,43 @@ struct EpisodeCaptureSetupView: View {
                     }
                 }
 
+                HStack(alignment: .top, spacing: 18) {
+                    selectedCallRoute(
+                        title: "Local master + call mic",
+                        device: model.selectedAudioInput,
+                        icon: "mic.fill"
+                    )
+                    selectedCallRoute(
+                        title: "Call + headphones",
+                        device: model.selectedAudioOutput,
+                        icon: "headphones"
+                    )
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 3) {
+                        Text("ACTIVE ROUTE")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        Text(audioRoom.routeIntegrityLabel.uppercased())
+                            .font(.caption.weight(.black))
+                            .foregroundStyle(
+                                audioRoom.routeIntegrityLabel == "Locked"
+                                    ? .green
+                                    : audioRoom.routeIntegrityLabel == "Lost"
+                                        ? .red
+                                        : .secondary
+                            )
+                    }
+                }
+                .padding(10)
+                .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
+
+                Text(
+                    "The native WAV graph writes the selected mic without call processing or software sidetone. Monitor your own voice in MV7i hardware; Quipsly sends only the separate realtime copy to LiveKit."
+                )
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
                 HStack(spacing: 12) {
                     if audioRoom.isConnected {
                         Button {
@@ -3827,6 +3864,27 @@ struct EpisodeCaptureSetupView: View {
             .padding(10)
         }
         .accessibilityIdentifier("EpisodeCaptureAudioOnlyRoom")
+    }
+
+    private func selectedCallRoute(
+        title: String,
+        device: CaptureAudioDeviceSnapshot?,
+        icon: String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Label(title, systemImage: icon)
+                .font(.caption.weight(.bold))
+            Text(device?.name ?? "Not selected")
+                .font(.caption)
+            if let device {
+                Text(device.id)
+                    .font(.caption2.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(device.id)
+            }
+        }
     }
 
     private var canonCardMasterCard: some View {

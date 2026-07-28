@@ -140,5 +140,85 @@ final class MacAudioRoomRouteTests: XCTestCase {
         XCTAssertFalse(result.directPhysicalMV7iClaimed)
         XCTAssertTrue(result.truth.contains("does not label it as a physical MV7i"))
     }
+
+    func testActiveRouteIntegrityRequiresExactAvailableInputAndOutput() {
+        let input = ProviderAudioDeviceSnapshot(
+            id: "mv7i-input",
+            name: "Shure MV7i"
+        )
+        let output = ProviderAudioDeviceSnapshot(
+            id: "mv7i-output",
+            name: "Shure MV7i"
+        )
+
+        let result = MacAudioRoomRoutePolicy.verifyActiveProviderRoute(
+            expectedInputDeviceID: input.id,
+            expectedOutputDeviceID: output.id,
+            providerInputs: [input],
+            providerOutputs: [output],
+            activeInputDeviceID: input.id,
+            activeOutputDeviceID: output.id
+        )
+
+        XCTAssertEqual(result.status, .verified)
+        XCTAssertEqual(result.observedInputDeviceID, input.id)
+        XCTAssertEqual(result.observedOutputDeviceID, output.id)
+        XCTAssertTrue(result.truth.contains("exact locked Core Audio"))
+    }
+
+    func testActiveRouteIntegrityFailsWhenSelectedHeadphonesDisappear() {
+        let result = MacAudioRoomRoutePolicy.verifyActiveProviderRoute(
+            expectedInputDeviceID: "mv7i",
+            expectedOutputDeviceID: "mv7i",
+            providerInputs: [
+                ProviderAudioDeviceSnapshot(
+                    id: "mv7i",
+                    name: "Shure MV7i"
+                ),
+            ],
+            providerOutputs: [],
+            activeInputDeviceID: "mv7i",
+            activeOutputDeviceID: "macbook-speakers"
+        )
+
+        XCTAssertEqual(result.status, .lost)
+        XCTAssertEqual(
+            result.observedOutputDeviceID,
+            "macbook-speakers"
+        )
+        XCTAssertTrue(
+            result.truth.contains(
+                "selected headphone output disappeared"
+            )
+        )
+        XCTAssertTrue(result.truth.contains("mute and leave"))
+    }
+
+    func testActiveRouteIntegrityRejectsSilentProviderFallback() {
+        let mv7i = ProviderAudioDeviceSnapshot(
+            id: "mv7i",
+            name: "Shure MV7i"
+        )
+
+        let result = MacAudioRoomRoutePolicy.verifyActiveProviderRoute(
+            expectedInputDeviceID: mv7i.id,
+            expectedOutputDeviceID: mv7i.id,
+            providerInputs: [
+                mv7i,
+                ProviderAudioDeviceSnapshot(
+                    id: "macbook-mic",
+                    name: "MacBook Microphone"
+                ),
+            ],
+            providerOutputs: [mv7i],
+            activeInputDeviceID: "macbook-mic",
+            activeOutputDeviceID: mv7i.id
+        )
+
+        XCTAssertEqual(result.status, .lost)
+        XCTAssertTrue(
+            result.truth.contains("LiveKit changed the call microphone")
+        )
+    }
 }
 #endif

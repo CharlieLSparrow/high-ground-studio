@@ -2709,3 +2709,33 @@ This is an active-goal checkpoint, not a completion claim.
   or the finished MOV on a phone; real front/rear portrait and both landscape
   directions must be recorded, watched, probed, uploaded, proxied, and aligned
   before physical qualification.
+
+### 2026-07-27 Mac audio-room exact-route continuity checkpoint
+
+- This is an active-goal checkpoint, not a completion claim.
+- Audited the native Mac recording endpoint at the real ownership boundary.
+  Quipsly Studio already had an independent 48 kHz/24-bit WAV graph, a real
+  Nest-issued LiveKit audio-room join, and exact Core Audio-to-provider input
+  and output selection. The uncovered production defect was continuity after
+  join: a provider device update refreshed the list but did not prove that the
+  active room had retained either selected route.
+- Join now verifies the selected provider devices immediately after assignment,
+  again after connection, and again after microphone publication. While active,
+  every LiveKit device update requires both expected devices to remain
+  available and both active device IDs to remain byte-for-byte exact.
+- If the microphone or headphone route disappears, or LiveKit silently falls
+  back while the named route remains listed, Quipsly synchronously mutes the
+  provider engine, leaves the room, and writes a version-2 `route-lost` receipt
+  with expected and observed device IDs. It does not stop or rewrite a healthy
+  independent WAV master.
+- Episode Capture preflight now visibly says **Local master + call mic** and
+  **Call + headphones**, shows both exact UIDs plus `LOCKED`/`LOST` state, and
+  states that Quipsly adds neither LiveKit processing nor delayed software
+  sidetone to the local master.
+- QuipslyVideoCore passes 76/76 tests, including selected-output removal and
+  silent-fallback cases. The full arm64 QuipslyMac Debug target builds and
+  links LiveKit 2.15.1 successfully. The running app's semantic readback still
+  exposes MacBook routes, Microsoft Teams Audio, and `MOTIV Mix Virtual`, but
+  no direct physical MV7i input/output UID or Canon R8 device. A real
+  two-participant join, MV7i headphones, concurrent WAV, route-loss rehearsal,
+  sync event, and long take therefore remain mandatory physical gates.

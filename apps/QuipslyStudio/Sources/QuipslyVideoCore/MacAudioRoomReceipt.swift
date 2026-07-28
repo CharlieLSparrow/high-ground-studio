@@ -6,6 +6,7 @@ public enum MacAudioRoomEvent: String, Codable, Equatable, Sendable {
     case left
     case muted
     case unmuted
+    case routeLost = "route-lost"
     case failed
 }
 
@@ -24,6 +25,9 @@ public struct MacAudioRoomEventReceipt: Codable, Equatable, Sendable {
     public let coreAudioOutputUID: String
     public let providerInputDeviceID: String
     public let providerOutputDeviceID: String
+    public let observedProviderInputDeviceID: String?
+    public let observedProviderOutputDeviceID: String?
+    public let routeIntegrity: MacAudioRoomRouteIntegrityStatus?
     public let directPhysicalMV7iClaimed: Bool
     public let remoteParticipantCount: Int
     public let failure: String?
@@ -44,9 +48,12 @@ public struct MacAudioRoomEventReceipt: Codable, Equatable, Sendable {
         providerOutputDeviceID: String,
         directPhysicalMV7iClaimed: Bool,
         remoteParticipantCount: Int,
-        failure: String?
+        failure: String?,
+        observedProviderInputDeviceID: String? = nil,
+        observedProviderOutputDeviceID: String? = nil,
+        routeIntegrity: MacAudioRoomRouteIntegrityStatus = .verified
     ) {
-        protocolVersion = 1
+        protocolVersion = 2
         self.id = id
         self.event = event
         self.occurredAt = occurredAt
@@ -60,11 +67,17 @@ public struct MacAudioRoomEventReceipt: Codable, Equatable, Sendable {
         self.coreAudioOutputUID = coreAudioOutputUID
         self.providerInputDeviceID = providerInputDeviceID
         self.providerOutputDeviceID = providerOutputDeviceID
+        self.observedProviderInputDeviceID =
+            observedProviderInputDeviceID
+        self.observedProviderOutputDeviceID =
+            observedProviderOutputDeviceID
+        self.routeIntegrity = routeIntegrity
         self.directPhysicalMV7iClaimed = directPhysicalMV7iClaimed
         self.remoteParticipantCount = remoteParticipantCount
         self.failure = Self.sanitizedFailure(failure)
-        truth =
-            "This receipt describes the separate realtime call feed and exact selected route. It contains no provider token or secret and does not claim that LiveKit audio is the local production master. The 48 kHz/24-bit local WAV remains an independent recorder graph and source receipt."
+        truth = routeIntegrity == .lost
+            ? "This receipt proves the realtime call route stopped matching its exact selected device UIDs. Quipsly muted and left instead of silently falling back. The independent 48 kHz/24-bit local WAV remains governed by its own source receipt."
+            : "This receipt describes the separate realtime call feed and exact selected route. It contains no provider token or secret and does not claim that LiveKit audio is the local production master. The 48 kHz/24-bit local WAV remains an independent recorder graph and source receipt."
     }
 
     private static func sanitizedFailure(_ value: String?) -> String? {

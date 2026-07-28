@@ -282,6 +282,14 @@ same failure isolation and raw-master proof. The current dual-client Core Audio
 path must pass an MV7i long-take and route-loss rehearsal before it is described
 as physically qualified.
 
+Once joined, the native room keeps an exact route lease over both selected
+provider device IDs. A LiveKit device update re-reads the available and active
+input/output IDs. If either selected device disappears or LiveKit moves to a
+fallback device, Quipsly synchronously mutes the provider engine, leaves the
+room, and writes a versioned `route-lost` receipt containing both expected and
+observed IDs. It does not stop or rewrite an independently healthy local WAV;
+the recorder's own failure and audit boundaries remain authoritative.
+
 LiveKit's Swift `AudioManager` exposes input/output device selection and manual
 rendering/application-audio hooks. The web platform can enumerate devices, but
 explicit output routing such as `AudioContext.setSinkId()` is not consistently
@@ -586,9 +594,12 @@ mid-file.
    live native preview and can record an independently recoverable, silent
    camera-reference MOV in the same capture group. Camera-card originals copy
    into managed storage without mutating the card, are independently rehashed,
-   and attach to non-destructive editor lanes with durable receipts. Direct
-   MV7i hardware qualification, Canon internal-4K operation, and authenticated
-   audio-only LiveKit coexistence remain.**
+   and attach to non-destructive editor lanes with durable receipts. The native
+   LiveKit audio-only runtime now selects exact Core Audio-matching provider
+   IDs, continuously holds that route, and mutes/leaves with expected-versus-
+   observed evidence instead of silently falling back. Direct MV7i hardware
+   qualification, Canon internal-4K operation, and a real authenticated
+   two-participant coexistence run remain.**
 8. Run the physical-device and real-episode acceptance matrix before TestFlight
    scope expands to video.
 

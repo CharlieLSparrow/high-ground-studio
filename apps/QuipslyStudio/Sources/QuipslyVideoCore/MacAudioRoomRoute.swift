@@ -39,6 +39,41 @@ public struct MacAudioRoomRouteResolution: Equatable, Sendable {
     }
 }
 
+public enum MacAudioRoomRouteIntegrityStatus:
+    String,
+    Codable,
+    Equatable,
+    Sendable
+{
+    case verified
+    case lost
+}
+
+public struct MacAudioRoomRouteIntegrity: Equatable, Sendable {
+    public let status: MacAudioRoomRouteIntegrityStatus
+    public let expectedInputDeviceID: String
+    public let expectedOutputDeviceID: String
+    public let observedInputDeviceID: String?
+    public let observedOutputDeviceID: String?
+    public let truth: String
+
+    public init(
+        status: MacAudioRoomRouteIntegrityStatus,
+        expectedInputDeviceID: String,
+        expectedOutputDeviceID: String,
+        observedInputDeviceID: String?,
+        observedOutputDeviceID: String?,
+        truth: String
+    ) {
+        self.status = status
+        self.expectedInputDeviceID = expectedInputDeviceID
+        self.expectedOutputDeviceID = expectedOutputDeviceID
+        self.observedInputDeviceID = observedInputDeviceID
+        self.observedOutputDeviceID = observedOutputDeviceID
+        self.truth = truth
+    }
+}
+
 public enum MacAudioRoomRoutePolicy {
     public static func resolve(
         coreAudioInput: CaptureAudioDeviceSnapshot?,
@@ -93,6 +128,62 @@ public enum MacAudioRoomRoutePolicy {
             truth: directPhysicalMV7i
                 ? "LiveKit and Core Audio agree on the exact direct MV7i device UID for microphone input and headphone output. The call feed remains separate from the local WAV recorder."
                 : "LiveKit and Core Audio agree on both exact device UIDs. The route is ready for an audio-only call, but Quipsly does not label it as a physical MV7i path."
+        )
+    }
+
+    public static func verifyActiveProviderRoute(
+        expectedInputDeviceID: String,
+        expectedOutputDeviceID: String,
+        providerInputs: [ProviderAudioDeviceSnapshot],
+        providerOutputs: [ProviderAudioDeviceSnapshot],
+        activeInputDeviceID: String?,
+        activeOutputDeviceID: String?
+    ) -> MacAudioRoomRouteIntegrity {
+        let inputStillAvailable = providerInputs.contains {
+            $0.id == expectedInputDeviceID
+        }
+        let outputStillAvailable = providerOutputs.contains {
+            $0.id == expectedOutputDeviceID
+        }
+        let exactInputStillActive =
+            activeInputDeviceID == expectedInputDeviceID
+        let exactOutputStillActive =
+            activeOutputDeviceID == expectedOutputDeviceID
+
+        guard inputStillAvailable,
+              outputStillAvailable,
+              exactInputStillActive,
+              exactOutputStillActive else {
+            var reasons: [String] = []
+            if !inputStillAvailable {
+                reasons.append("the selected call microphone disappeared")
+            } else if !exactInputStillActive {
+                reasons.append("LiveKit changed the call microphone")
+            }
+            if !outputStillAvailable {
+                reasons.append("the selected headphone output disappeared")
+            } else if !exactOutputStillActive {
+                reasons.append("LiveKit changed the headphone output")
+            }
+            return MacAudioRoomRouteIntegrity(
+                status: .lost,
+                expectedInputDeviceID: expectedInputDeviceID,
+                expectedOutputDeviceID: expectedOutputDeviceID,
+                observedInputDeviceID: activeInputDeviceID,
+                observedOutputDeviceID: activeOutputDeviceID,
+                truth:
+                    "The locked audio-room route is no longer exact: \(reasons.joined(separator: " and ")). Quipsly must mute and leave instead of continuing through a fallback device."
+            )
+        }
+
+        return MacAudioRoomRouteIntegrity(
+            status: .verified,
+            expectedInputDeviceID: expectedInputDeviceID,
+            expectedOutputDeviceID: expectedOutputDeviceID,
+            observedInputDeviceID: activeInputDeviceID,
+            observedOutputDeviceID: activeOutputDeviceID,
+            truth:
+                "The active LiveKit call microphone and headphone output still match the exact locked Core Audio device UIDs."
         )
     }
 
