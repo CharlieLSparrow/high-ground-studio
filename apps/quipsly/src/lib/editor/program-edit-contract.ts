@@ -79,6 +79,25 @@ export type EpisodeDeskAnnotation = {
   createdAt: string;
 };
 
+export type EpisodeWatchDerivative = {
+  id: string;
+  assetId: string;
+  name: string;
+  kind: "audio" | "video";
+  startSeconds: number;
+  durationSeconds: number;
+  sourceStartSeconds: number;
+  sourceEndSeconds: number;
+  color: string;
+  episodeRoomSessionId: string;
+  watchSegmentId: string;
+  startReceiptId: string;
+  endReceiptId: string;
+  watchedAt: string;
+  recordingRoomId?: string;
+  recordingStartedAt?: string;
+};
+
 export type EpisodeEditDeskPayload = {
   projectSlug: string;
   episodes: EpisodeDeskEpisode[];
@@ -100,6 +119,7 @@ export type EpisodeEditDeskPayload = {
     updatedAt: string;
   };
   state: ProgramEditState;
+  watchDerivatives: EpisodeWatchDerivative[];
   annotations: EpisodeDeskAnnotation[];
   transcript: unknown;
   document: { id: string; title: string } | null;

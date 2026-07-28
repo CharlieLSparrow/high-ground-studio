@@ -119,4 +119,90 @@ describe("EpisodeRoomClient shared writing", () => {
       "Latest episode writing loaded from the shared manuscript.",
     )).toBeInTheDocument();
   });
+
+  it("shows a bound recording clock without leaking raw Capture-room access", () => {
+    render(<EpisodeRoomClient initialPayload={{
+      ...initialPayload,
+      room: {
+        ...initialPayload.room,
+        session: {
+          id: "episode-room-session-1",
+          startedAt: "2026-07-27T19:00:00.000Z",
+          startedBy: "Episode Host",
+          recordingRoomId: "call-room-1",
+          recordingStartedAt: "2026-07-27T18:59:55.000Z",
+        },
+      },
+      recordingSessions: [{
+        id: "call-room-1",
+        title: "Episode 5 capture",
+        purpose: "PODCAST",
+        status: "RECORDING",
+        provider: "livekit",
+        recordingStartedAt: "2026-07-27T18:59:55.000Z",
+        endedAt: null,
+        updatedAt: "2026-07-27T19:00:00.000Z",
+        participantRole: null,
+        canUseRecordingClock: true,
+        canOpenSession: false,
+      }],
+    }} />);
+
+    expect(screen.getByText("Bound to Episode 5 capture")).toBeInTheDocument();
+    expect(screen.getByText(
+      "Capture access is separate; ask a session participant to add you if you need the raw room.",
+    )).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Open session" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use recording clock" })).toBeDisabled();
+  });
+
+  it("pauses local playback controls when a bound Capture clock is stale", () => {
+    jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    render(<EpisodeRoomClient initialPayload={{
+      ...initialPayload,
+      room: {
+        ...initialPayload.room,
+        status: "paused",
+        selectedClipId: "watch-clip-1",
+        durationSeconds: 30,
+        clips: [{
+          assetId: "watch-clip-1",
+          sourceId: "watch-source-1",
+          title: "Reference clip",
+          kind: "video",
+          playbackUrl: "/api/ingest/media/watch-source-1",
+          durationSeconds: 30,
+          importRole: "reference-clip",
+          addedAt: "2026-07-27T19:00:00.000Z",
+          addedBy: "Episode Host",
+        }],
+        session: {
+          id: "episode-room-session-1",
+          startedAt: "2026-07-27T19:00:00.000Z",
+          startedBy: "Episode Host",
+          recordingRoomId: "call-room-1",
+          recordingStartedAt: "2026-07-27T18:59:55.000Z",
+        },
+      },
+      recordingSessions: [{
+        id: "call-room-1",
+        title: "Stopped Episode 5 capture",
+        purpose: "PODCAST",
+        status: "OPEN",
+        provider: "livekit",
+        recordingStartedAt: "2026-07-27T18:59:55.000Z",
+        endedAt: "2026-07-27T19:01:00.000Z",
+        updatedAt: "2026-07-27T19:01:00.000Z",
+        participantRole: "HOST",
+        canUseRecordingClock: false,
+        canOpenSession: true,
+      }],
+    }} />);
+
+    expect(screen.getByText(
+      "This recording clock is no longer live. Start a rehearsal clock before creating new shared-watch receipts, or begin a new Capture recording and bind that clock.",
+    )).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Play for everyone" })).toBeDisabled();
+    expect(screen.getByRole("slider", { name: "Shared clip position" })).toBeDisabled();
+  });
 });

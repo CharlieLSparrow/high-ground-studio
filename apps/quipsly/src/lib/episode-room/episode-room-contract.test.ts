@@ -104,6 +104,94 @@ describe("Episode Room contract", () => {
     ]);
   });
 
+  test("materializes only the current rehearsal or recording pass", () => {
+    let state = createEmptyEpisodeRoomState("2026-07-26T12:00:00.000Z");
+    state = apply(state, {
+      type: "ADD_CLIP",
+      clip,
+      clientRequestId: "add-current-pass",
+      expectedRevision: 0,
+    }, "2026-07-26T12:00:01.000Z", "add-current-pass");
+    state = apply(state, {
+      type: "PLAY",
+      positionSeconds: 0,
+      clientRequestId: "play-old-pass",
+      expectedRevision: 1,
+    }, "2026-07-26T12:00:02.000Z", "play-old-pass");
+    state = apply(state, {
+      type: "PAUSE",
+      positionSeconds: 2,
+      clientRequestId: "pause-old-pass",
+      expectedRevision: 2,
+    }, "2026-07-26T12:00:04.000Z", "pause-old-pass");
+    state = apply(state, {
+      type: "START_SESSION",
+      clientRequestId: "start-current-pass",
+      expectedRevision: 3,
+    }, "2026-07-26T12:01:00.000Z", "current-pass");
+    state = apply(state, {
+      type: "PLAY",
+      positionSeconds: 10,
+      clientRequestId: "play-current-pass",
+      expectedRevision: 4,
+    }, "2026-07-26T12:01:01.000Z", "play-current-pass");
+    state = apply(state, {
+      type: "PAUSE",
+      positionSeconds: 13,
+      clientRequestId: "pause-current-pass",
+      expectedRevision: 5,
+    }, "2026-07-26T12:01:04.000Z", "pause-current-pass");
+
+    expect(state.segments).toHaveLength(2);
+    expect(episodeRoomTimelineClips(state)).toEqual([
+      expect.objectContaining({
+        id: "episode-room-watch-segment-play-current-pass",
+        sourceStart: 10,
+        sourceEnd: 13,
+        startIn: 1,
+        duration: 3,
+      }),
+    ]);
+    expect(episodeRoomTimelineClips({
+      ...state,
+      session: undefined,
+    })).toEqual([]);
+  });
+
+  test("closes a remote pause from the authoritative clock when the device has no local position", () => {
+    let state = createEmptyEpisodeRoomState("2026-07-26T12:00:00.000Z");
+    state = apply(state, {
+      type: "ADD_CLIP",
+      clip,
+      clientRequestId: "add-remote-pause",
+      expectedRevision: 0,
+    }, "2026-07-26T12:00:01.000Z", "add-remote-pause");
+    state = apply(state, {
+      type: "START_SESSION",
+      clientRequestId: "clock-remote-pause",
+      expectedRevision: 1,
+    }, "2026-07-26T12:01:00.000Z", "clock-remote-pause");
+    state = apply(state, {
+      type: "PLAY",
+      positionSeconds: 4,
+      clientRequestId: "play-remote-pause",
+      expectedRevision: 2,
+    }, "2026-07-26T12:01:05.000Z", "play-remote-pause");
+    state = apply(state, {
+      type: "PAUSE",
+      clientRequestId: "pause-without-device-time",
+      expectedRevision: 3,
+    }, "2026-07-26T12:01:07.000Z", "pause-without-device-time");
+
+    expect(state.positionSeconds).toBe(6);
+    expect(state.segments[0]).toMatchObject({
+      sourceStartSeconds: 4,
+      sourceEndSeconds: 6,
+      episodeStartSeconds: 5,
+      episodeEndSeconds: 7,
+    });
+  });
+
   test("closes and reopens the receipt segment when a playing clip seeks", () => {
     let state = createEmptyEpisodeRoomState("2026-07-26T12:00:00.000Z");
     state = apply(state, {

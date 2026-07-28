@@ -12,19 +12,17 @@ function normalizedEmail(actor: SessionAccessActor) {
 }
 
 /**
- * Shared read/write boundary for the canonical Nest Session workspace.
+ * Shared actor boundary for every canonical Nest Session projection.
  *
  * Project access deliberately grants access to the Session shell, but every
  * actor-owned note, task, goal, reminder, and brief query must still scope its
  * rows to the current actor. This keeps collaboration and private follow-through
  * separate instead of treating Nest membership as ownership of personal work.
  */
-export function sessionAccessWhere(roomId: string, actor: SessionAccessActor) {
-  if (actor.isStaff) return { id: roomId };
-
+export function sessionActorAccessWhere(actor: SessionAccessActor) {
+  if (actor.isStaff) return {};
   const email = normalizedEmail(actor);
   return {
-    id: roomId,
     OR: [
       { createdByUserId: actor.id },
       { participants: { some: { userId: actor.id } } },
@@ -34,5 +32,12 @@ export function sessionAccessWhere(roomId: string, actor: SessionAccessActor) {
         ? [{ project: { accessGrants: { some: { email, status: "ACTIVE" as const } } } }]
         : []),
     ],
+  };
+}
+
+export function sessionAccessWhere(roomId: string, actor: SessionAccessActor) {
+  return {
+    id: roomId,
+    ...sessionActorAccessWhere(actor),
   };
 }

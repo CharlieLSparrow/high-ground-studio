@@ -30,6 +30,7 @@ import {
   episodeRoomWritingUpdatedAt,
   episodeRoomWritingVersion,
 } from "@/lib/server/episode-room-writing";
+import { sessionActorAccessWhere } from "@/lib/server/session-access";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -82,6 +83,7 @@ export type EpisodeRoomRecordingSession = {
   updatedAt: string;
   participantRole: string | null;
   canUseRecordingClock: boolean;
+  canOpenSession: boolean;
 };
 
 export type EpisodeRoomDeskPayload = {
@@ -343,21 +345,19 @@ function transcriptSegments(timelineJson: unknown): EpisodeRoomTranscriptSegment
 function recordingRoomAccessWhere(actor: EpisodeRoomActor) {
   if (actor.isStaff) return {};
   if (!actor.userId) return { id: "__episode-room-no-user__" };
-  return {
-    OR: [
-      { createdByUserId: actor.userId },
-      { participants: { some: { userId: actor.userId } } },
-      { booking: { clientUserId: actor.userId } },
-      { booking: { coachUserId: actor.userId } },
-    ],
-  };
+  return sessionActorAccessWhere({
+    id: actor.userId,
+    email: actor.email,
+    isStaff: actor.isStaff,
+  });
 }
 
-async function recordingSessionsFor(
+export async function recordingSessionsFor(
   prisma: any,
   projectId: string,
   episodeSlug: string,
   actor?: EpisodeRoomActor,
+  boundRecordingRoomId?: string,
 ): Promise<EpisodeRoomRecordingSession[]> {
   if (!actor?.userId && !actor?.isStaff) return [];
   const rooms = await prisma.callRoom.findMany({
@@ -393,7 +393,7 @@ async function recordingSessionsFor(
           },
     },
   });
-  return rooms.map((room: any) => ({
+  const sessions = rooms.map((room: any) => ({
     id: room.id,
     title: text(room.title) || "Podcast recording session",
     purpose: room.purpose,
@@ -403,8 +403,60 @@ async function recordingSessionsFor(
     endedAt: room.endedAt?.toISOString?.() ?? null,
     updatedAt: room.updatedAt.toISOString(),
     participantRole: room.participants[0]?.role ?? null,
-    canUseRecordingClock: Boolean(room.recordingStartedAt),
+    canUseRecordingClock:
+      room.status === "RECORDING" && Boolean(room.recordingStartedAt),
+    canOpenSession: true,
   }));
+  if (
+    !boundRecordingRoomId
+    || sessions.some((session: EpisodeRoomRecordingSession) => (
+      session.id === boundRecordingRoomId
+    ))
+  ) {
+    return sessions;
+  }
+
+  const boundRoom = await prisma.callRoom.findFirst({
+    where: {
+      id: boundRecordingRoomId,
+      projectId,
+      purpose: "PODCAST",
+      metadataJson: {
+        path: ["episodeSlug"],
+        equals: episodeSlug,
+      },
+    },
+    select: {
+      id: true,
+      title: true,
+      purpose: true,
+      status: true,
+      provider: true,
+      recordingStartedAt: true,
+      endedAt: true,
+      updatedAt: true,
+    },
+  });
+  if (!boundRoom) return sessions;
+
+  return [
+    ...sessions,
+    {
+      id: boundRoom.id,
+      title: text(boundRoom.title) || "Podcast recording session",
+      purpose: boundRoom.purpose,
+      status: boundRoom.status,
+      provider: boundRoom.provider,
+      recordingStartedAt:
+        boundRoom.recordingStartedAt?.toISOString?.() ?? null,
+      endedAt: boundRoom.endedAt?.toISOString?.() ?? null,
+      updatedAt: boundRoom.updatedAt.toISOString(),
+      participantRole: null,
+      canUseRecordingClock:
+        boundRoom.status === "RECORDING" && Boolean(boundRoom.recordingStartedAt),
+      canOpenSession: false,
+    },
+  ];
 }
 
 function blockOrderWhere(start?: number | null, end?: number | null) {
@@ -584,6 +636,7 @@ export async function loadEpisodeRoomDesk(
       production.project.id,
       production.slug,
       actor,
+      room.session?.recordingRoomId,
     ),
     timelineClipCount: timelineRows(production.productionJson).length,
     canEdit,
@@ -644,6 +697,7 @@ export async function loadEpisodeRoomRuntime(
       production.projectId,
       production.slug,
       actor,
+      room.session?.recordingRoomId,
     ),
     timelineClipCount: timelineRows(production.productionJson).length,
     updatedAt: production.updatedAt.toISOString(),
@@ -725,6 +779,7 @@ export async function applyEpisodeRoomStoreCommand({
               production.projectId,
               production.slug,
               actor,
+              currentRoom.session?.recordingRoomId,
             ),
           };
         }
@@ -760,6 +815,7 @@ export async function applyEpisodeRoomStoreCommand({
             },
             select: {
               id: true,
+              status: true,
               recordingStartedAt: true,
             },
           });
@@ -773,6 +829,11 @@ export async function applyEpisodeRoomStoreCommand({
               "Start recording from Quipsly Capture before binding the Episode Room to its clock.",
             );
           }
+          if (recordingRoom.status !== "RECORDING") {
+            throw new EpisodeRoomCommandError(
+              "That Capture recording clock is no longer live. Start a rehearsal clock or begin a new recording before binding Watch.",
+            );
+          }
           command = {
             ...input,
             recordingRoomId: recordingRoom.id,
@@ -780,6 +841,27 @@ export async function applyEpisodeRoomStoreCommand({
           };
         } else {
           command = input;
+        }
+        if (command.type === "PLAY" && currentRoom.session?.recordingRoomId) {
+          const liveRecording = await tx.callRoom.findFirst({
+            where: {
+              id: currentRoom.session.recordingRoomId,
+              projectId: production.projectId,
+              purpose: "PODCAST",
+              metadataJson: {
+                path: ["episodeSlug"],
+                equals: production.slug,
+              },
+              status: "RECORDING",
+              ...recordingRoomAccessWhere(actor),
+            },
+            select: { id: true },
+          });
+          if (!liveRecording) {
+            throw new EpisodeRoomCommandError(
+              "The bound Capture clock is no longer recording. Start a rehearsal clock or begin a new recording before playing the shared clip.",
+            );
+          }
         }
         let nextRoom = applyEpisodeRoomCommand(currentRoom, command, {
           actor,
@@ -802,7 +884,7 @@ export async function applyEpisodeRoomStoreCommand({
               syncedAt: acceptedAt,
               syncedBy: actor.label,
               sourceRevision: nextRoom.revision,
-              segmentCount: nextRoom.segments.length,
+              segmentCount: watchedTimeline.length,
               timelineClipCount: watchedTimeline.length,
             },
           };
@@ -836,6 +918,7 @@ export async function applyEpisodeRoomStoreCommand({
             production.projectId,
             production.slug,
             actor,
+            nextRoom.session?.recordingRoomId,
           ),
         };
       }, {

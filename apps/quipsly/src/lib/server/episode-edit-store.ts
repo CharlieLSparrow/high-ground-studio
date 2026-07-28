@@ -10,6 +10,7 @@ import {
   type ProgramDecisionKind,
   type ProgramEditSource,
   type ProgramEditState,
+  type EpisodeWatchDerivative,
   sourceIDsForDecision,
 } from "@/lib/editor/program-edit-contract";
 
@@ -40,6 +41,18 @@ function numberValue(...values: unknown[]): number {
     if (Number.isFinite(parsed)) return parsed;
   }
   return 0;
+}
+
+function optionalNumberValue(value: unknown): number | undefined {
+  if (
+    value === null
+    || value === undefined
+    || (typeof value === "string" && !value.trim())
+  ) {
+    return undefined;
+  }
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function textValue(...values: unknown[]): string | undefined {
@@ -151,6 +164,75 @@ function normalizeDecisions(timelineJson: unknown, cutoff: Date): ProgramDecisio
         : { timestampPrecision: "before-cutoff", createdBefore: cutoff.toISOString() },
     } satisfies ProgramDecision];
   }).sort((a, b) => a.startTime - b.startTime);
+}
+
+export function normalizeWatchDerivatives(
+  productionJson: unknown,
+): EpisodeWatchDerivative[] {
+  const production = record(productionJson);
+  const rows = Array.isArray(production.timelineClips)
+    ? production.timelineClips
+    : [];
+  return rows.flatMap((value) => {
+    const row = record(value);
+    if (row.generatedFrom !== "quipsly-episode-room-watch.v1") return [];
+    const recordingSync = record(row.recordingSync);
+    const id = textValue(row.id);
+    const assetId = textValue(row.assetId);
+    const episodeRoomSessionId = textValue(recordingSync.episodeRoomSessionId);
+    const watchSegmentId = textValue(recordingSync.watchSegmentId);
+    const startReceiptId = textValue(recordingSync.startReceiptId);
+    const endReceiptId = textValue(recordingSync.endReceiptId);
+    const watchedAt = textValue(recordingSync.watchedAt);
+    const recordingRoomId = textValue(recordingSync.recordingRoomId);
+    const recordingStartedAt = textValue(recordingSync.recordingStartedAt);
+    const kind = row.kind === "audio" ? "audio" : row.kind === "video" ? "video" : null;
+    const startSeconds = optionalNumberValue(row.startIn);
+    const durationSeconds = optionalNumberValue(row.duration);
+    const sourceStartSeconds = optionalNumberValue(row.sourceStart);
+    const sourceEndSeconds = optionalNumberValue(row.sourceEnd);
+    if (
+      !id
+      || !assetId
+      || !kind
+      || !episodeRoomSessionId
+      || !watchSegmentId
+      || !startReceiptId
+      || !endReceiptId
+      || !watchedAt
+      || startSeconds === undefined
+      || startSeconds < 0
+      || durationSeconds === undefined
+      || durationSeconds < 0.05
+      || sourceStartSeconds === undefined
+      || sourceStartSeconds < 0
+      || sourceEndSeconds === undefined
+      || sourceEndSeconds < sourceStartSeconds
+    ) {
+      return [];
+    }
+    return [{
+      id,
+      assetId,
+      name: textValue(row.name) ?? "Watched clip",
+      kind,
+      startSeconds,
+      durationSeconds,
+      sourceStartSeconds,
+      sourceEndSeconds,
+      color: textValue(row.color) ?? (kind === "audio" ? "#8f6fc2" : "#d37b43"),
+      episodeRoomSessionId,
+      watchSegmentId,
+      startReceiptId,
+      endReceiptId,
+      watchedAt,
+      ...(recordingRoomId ? { recordingRoomId } : {}),
+      ...(recordingStartedAt ? { recordingStartedAt } : {}),
+    } satisfies EpisodeWatchDerivative];
+  }).sort((left, right) => (
+    left.startSeconds - right.startSeconds
+    || left.watchedAt.localeCompare(right.watchedAt)
+  ));
 }
 
 function findAudioUrl(productionJson: unknown): string | undefined {
@@ -304,6 +386,7 @@ export async function loadEpisodeEditDesk(
       baseline: null,
       branch: null,
       state: { version: PROGRAM_EDIT_VERSION, durationSeconds: 0, sources: [], programDecisions: [] },
+      watchDerivatives: [],
       annotations: [],
       transcript: null,
       document: null,
@@ -358,6 +441,7 @@ export async function loadEpisodeEditDesk(
       updatedAt: branch.updatedAt.toISOString(),
     } : null,
     state: branch ? parseState(branch.stateJson) : initialState(selected),
+    watchDerivatives: normalizeWatchDerivatives(selected.productionJson),
     annotations: annotations.map((annotation) => ({
       id: annotation.id,
       startSeconds: annotation.startSeconds,

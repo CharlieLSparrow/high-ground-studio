@@ -87,6 +87,18 @@ export default function EpisodeEditorClient({ initialPayload }: { initialPayload
   const state = payload.state;
   const episode = payload.selectedEpisode;
   const duration = Math.max(1, state.durationSeconds);
+  const protectedBaselineDuration = Math.max(
+    0,
+    payload.baseline?.durationSeconds ?? state.durationSeconds,
+  );
+  const watchDerivatives = payload.watchDerivatives;
+  const placedWatchDerivatives = watchDerivatives.filter((derivative) => (
+    derivative.startSeconds >= 0
+    && derivative.startSeconds + derivative.durationSeconds
+      <= protectedBaselineDuration
+  ));
+  const heldWatchDerivativeCount =
+    watchDerivatives.length - placedWatchDerivatives.length;
   const currentDecision = useMemo(
     () => decisionAt(state.programDecisions, playhead),
     [state.programDecisions, playhead],
@@ -520,6 +532,48 @@ export default function EpisodeEditorClient({ initialPayload }: { initialPayload
               onChange={(event) => seek(Number(event.target.value))}
               className="mt-3 w-full accent-[#d8ad56]"
             />
+            <div className="mt-5 border-t border-[#30483a] pt-4">
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div>
+                  <p className="text-[10px] font-black uppercase tracking-[0.28em] text-[#d8ad56]">Shared Watch derivatives</p>
+                  <p className="mt-1 text-sm text-[#8fa094]">Receipt-backed clip spans from the current Episode Room pass. The protected source baseline stays unchanged.</p>
+                </div>
+                <span className="rounded-full bg-[#14231b] px-3 py-1 text-xs font-black text-[#d7c69d]">
+                  {watchDerivatives.length} synced
+                </span>
+              </div>
+              <div className="relative mt-3 h-16 overflow-hidden rounded-2xl border border-[#30483a] bg-[#07100c]">
+                {placedWatchDerivatives.map((derivative) => (
+                  <button
+                    key={derivative.id}
+                    type="button"
+                    aria-label={`${derivative.name} at ${formatEditClock(derivative.startSeconds)}`}
+                    title={`${derivative.name} · source ${formatEditClock(derivative.sourceStartSeconds)}–${formatEditClock(derivative.sourceEndSeconds)} · receipts ${derivative.startReceiptId} / ${derivative.endReceiptId}`}
+                    className="absolute inset-y-2 min-w-1 rounded-md border border-white/20 opacity-90 hover:brightness-125"
+                    style={{
+                      left: `${(derivative.startSeconds / duration) * 100}%`,
+                      width: `${Math.max(0.15, (derivative.durationSeconds / duration) * 100)}%`,
+                      backgroundColor: derivative.color,
+                    }}
+                    onClick={() => seek(derivative.startSeconds)}
+                  />
+                ))}
+                {!placedWatchDerivatives.length ? (
+                  <p className="flex h-full items-center justify-center px-4 text-center text-xs font-semibold text-[#7f9787]">
+                    No current-pass watch derivatives are placed on this protected timeline yet.
+                  </p>
+                ) : null}
+                <div
+                  className="pointer-events-none absolute inset-y-0 w-0.5 bg-white/70"
+                  style={{ left: `${(playhead / duration) * 100}%` }}
+                />
+              </div>
+              {heldWatchDerivativeCount ? (
+                <p className="mt-2 rounded-xl border border-amber-300/25 bg-amber-300/10 px-3 py-2 text-xs font-semibold text-amber-100">
+                  {heldWatchDerivativeCount} watch {heldWatchDerivativeCount === 1 ? "span is" : "spans are"} outside this protected baseline and {heldWatchDerivativeCount === 1 ? "remains" : "remain"} held for alignment review.
+                </p>
+              ) : null}
+            </div>
           </div>
 
           {noteOpen ? (

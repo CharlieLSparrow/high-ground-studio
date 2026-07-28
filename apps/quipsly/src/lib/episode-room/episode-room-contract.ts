@@ -635,34 +635,38 @@ export type EpisodeRoomTimelineClip = {
 
 export function episodeRoomTimelineClips(state: EpisodeRoomState): EpisodeRoomTimelineClip[] {
   const clipsById = new Map(state.clips.map((clip) => [clip.assetId, clip]));
-  return state.segments.flatMap((segment) => {
-    const clip = clipsById.get(segment.clipId);
-    if (!clip) return [];
-    const sourceDuration = Math.max(0, segment.sourceEndSeconds - segment.sourceStartSeconds);
-    const episodeDuration = Math.max(0, segment.episodeEndSeconds - segment.episodeStartSeconds);
-    const duration = Math.min(sourceDuration || episodeDuration, episodeDuration || sourceDuration);
-    if (duration < 0.05) return [];
-    return [{
-      id: `episode-room-watch-${segment.id}`,
-      assetId: clip.assetId,
-      trackId: clip.kind === "audio" ? "A9" : "V9",
-      startIn: Number(segment.episodeStartSeconds.toFixed(3)),
-      duration: Number(duration.toFixed(3)),
-      sourceStart: Number(segment.sourceStartSeconds.toFixed(3)),
-      sourceEnd: Number((segment.sourceStartSeconds + duration).toFixed(3)),
-      name: `Watched · ${clip.title}`,
-      color: clip.kind === "audio" ? "#8f6fc2" : "#d37b43",
-      kind: clip.kind,
-      generatedFrom: EPISODE_ROOM_TIMELINE_SOURCE,
-      recordingSync: {
-        episodeRoomSessionId: segment.sessionId,
-        ...(segment.recordingRoomId ? { recordingRoomId: segment.recordingRoomId } : {}),
-        ...(segment.recordingStartedAt ? { recordingStartedAt: segment.recordingStartedAt } : {}),
-        watchSegmentId: segment.id,
-        startReceiptId: segment.startReceiptId,
-        endReceiptId: segment.endReceiptId,
-        watchedAt: segment.startedAt,
-      },
-    }];
-  });
+  const currentSessionId = state.session?.id;
+  if (!currentSessionId) return [];
+  return state.segments
+    .filter((segment) => segment.sessionId === currentSessionId)
+    .flatMap((segment) => {
+      const clip = clipsById.get(segment.clipId);
+      if (!clip) return [];
+      const sourceDuration = Math.max(0, segment.sourceEndSeconds - segment.sourceStartSeconds);
+      const episodeDuration = Math.max(0, segment.episodeEndSeconds - segment.episodeStartSeconds);
+      const duration = Math.min(sourceDuration || episodeDuration, episodeDuration || sourceDuration);
+      if (duration < 0.05) return [];
+      return [{
+        id: `episode-room-watch-${segment.id}`,
+        assetId: clip.assetId,
+        trackId: clip.kind === "audio" ? "A9" : "V9",
+        startIn: Number(segment.episodeStartSeconds.toFixed(3)),
+        duration: Number(duration.toFixed(3)),
+        sourceStart: Number(segment.sourceStartSeconds.toFixed(3)),
+        sourceEnd: Number((segment.sourceStartSeconds + duration).toFixed(3)),
+        name: `Watched · ${clip.title}`,
+        color: clip.kind === "audio" ? "#8f6fc2" : "#d37b43",
+        kind: clip.kind,
+        generatedFrom: EPISODE_ROOM_TIMELINE_SOURCE,
+        recordingSync: {
+          episodeRoomSessionId: segment.sessionId,
+          ...(segment.recordingRoomId ? { recordingRoomId: segment.recordingRoomId } : {}),
+          ...(segment.recordingStartedAt ? { recordingStartedAt: segment.recordingStartedAt } : {}),
+          watchSegmentId: segment.id,
+          startReceiptId: segment.startReceiptId,
+          endReceiptId: segment.endReceiptId,
+          watchedAt: segment.startedAt,
+        },
+      }];
+    });
 }

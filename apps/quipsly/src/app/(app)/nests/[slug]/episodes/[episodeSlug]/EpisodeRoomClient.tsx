@@ -143,7 +143,8 @@ export default function EpisodeRoomClient({
   const [candidates, setCandidates] = useState(initialPayload.importedCandidates);
   const [recordingSessions, setRecordingSessions] = useState(initialPayload.recordingSessions);
   const [selectedRecordingRoomId, setSelectedRecordingRoomId] = useState(
-    initialPayload.recordingSessions.find((session) => session.status === "RECORDING")?.id
+    initialPayload.room.session?.recordingRoomId
+      || initialPayload.recordingSessions.find((session) => session.status === "RECORDING")?.id
       || initialPayload.recordingSessions[0]?.id
       || "",
   );
@@ -166,6 +167,13 @@ export default function EpisodeRoomClient({
   const canEdit = initialPayload.canEdit;
   const clip = useMemo(() => selectedClip(room), [room]);
   const endpoint = `/api/nests/${encodeURIComponent(projectSlug)}/episode-room`;
+  const boundRecordingSession = room.session?.recordingRoomId
+    ? recordingSessions.find(
+      (session) => session.id === room.session?.recordingRoomId,
+    ) || null
+    : null;
+  const sharedClockIsLive = !room.session?.recordingRoomId
+    || boundRecordingSession?.status === "RECORDING";
 
   const refresh = useCallback(async (quiet = false) => {
     try {
@@ -205,7 +213,8 @@ export default function EpisodeRoomClient({
         setSelectedRecordingRoomId((current) => (
           payload.recordingSessions?.some((session) => session.id === current)
             ? current
-            : payload.recordingSessions?.find((session) => session.status === "RECORDING")?.id
+            : payload.room?.session?.recordingRoomId
+              || payload.recordingSessions?.find((session) => session.status === "RECORDING")?.id
               || payload.recordingSessions?.[0]?.id
               || ""
         ));
@@ -283,7 +292,7 @@ export default function EpisodeRoomClient({
     if (Number.isFinite(target) && Math.abs(media.currentTime - target) > 0.35) {
       media.currentTime = target;
     }
-    if (room.status === "playing") {
+    if (room.status === "playing" && sharedClockIsLive) {
       void media.play()
         .then(() => setLocalPlaybackBlocked(false))
         .catch(() => setLocalPlaybackBlocked(true));
@@ -291,17 +300,19 @@ export default function EpisodeRoomClient({
       media.pause();
       setLocalPlaybackBlocked(false);
     }
-  }, [clip, room]);
+  }, [clip, room, sharedClockIsLive]);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
       const media = mediaRef.current;
       setDisplayPosition(media && !media.paused
         ? media.currentTime
-        : projectedEpisodeRoomPosition(roomRef.current));
+        : sharedClockIsLive
+          ? projectedEpisodeRoomPosition(roomRef.current)
+          : roomRef.current.positionSeconds);
     }, 200);
     return () => window.clearInterval(interval);
-  }, []);
+  }, [sharedClockIsLive]);
 
   async function importFile(file: File) {
     const form = new FormData();
@@ -431,7 +442,9 @@ export default function EpisodeRoomClient({
 
   async function seek(position: number) {
     const media = mediaRef.current;
-    const fromPositionSeconds = media?.currentTime ?? projectedEpisodeRoomPosition(roomRef.current);
+    const fromPositionSeconds = roomRef.current.status === "playing"
+      ? undefined
+      : media?.currentTime ?? displayPosition;
     if (media) media.currentTime = position;
     setDisplayPosition(position);
     setDragPosition(null);
@@ -452,9 +465,17 @@ export default function EpisodeRoomClient({
     || recordingSessions.find((session) => session.status === "RECORDING")
     || recordingSessions[0]
     || null;
-  const boundRecordingSession = room.session?.recordingRoomId
-    ? recordingSessions.find((session) => session.id === room.session?.recordingRoomId) || null
-    : null;
+  const episodeClockSeconds = sharedClockIsLive && room.session
+    ? Math.max(
+      0,
+      (Date.now() - Date.parse(
+        room.session.recordingStartedAt || room.session.startedAt,
+      )) / 1_000,
+    )
+    : room.lastCommand?.episodeSeconds ?? 0;
+  const currentPassSegmentCount = room.session
+    ? room.segments.filter((segment) => segment.sessionId === room.session?.id).length
+    : 0;
 
   return (
     <main className="min-h-screen bg-[#07110d] px-3 py-4 text-[#f4eedf] sm:px-5 md:px-7 md:py-7">
@@ -497,7 +518,7 @@ export default function EpisodeRoomClient({
             {room.session ? (
               <>
                 <span aria-hidden="true">·</span>
-                <span>Episode clock {formatClock(Math.max(0, (Date.now() - Date.parse(room.session.recordingStartedAt || room.session.startedAt)) / 1_000))}</span>
+                <span>{sharedClockIsLive ? "Episode clock" : "Last clock receipt"} {formatClock(episodeClockSeconds)}</span>
               </>
             ) : null}
             <button type="button" onClick={() => void refresh()} className="ml-auto inline-flex min-h-9 items-center gap-2 rounded-full border border-[#40584c] px-3 text-[10px] font-black uppercase tracking-wide hover:border-[#d8ad56]">
@@ -644,6 +665,7 @@ export default function EpisodeRoomClient({
                       disabled={
                         !canEdit
                         || !recordingSession?.canUseRecordingClock
+                        || recordingSession.status !== "RECORDING"
                         || room.session?.recordingRoomId === recordingSession?.id
                         || status === "saving"
                       }
@@ -659,10 +681,14 @@ export default function EpisodeRoomClient({
                       {recordingSession?.recordingStartedAt
                         ? `${recordingSession.status === "RECORDING" ? "Recording now" : "Recorded"} · started ${new Date(recordingSession.recordingStartedAt).toLocaleString()} · ${recordingSession.provider}`
                         : "Recording has not started. Open this session in Quipsly Capture, confirm consent, and tap Record."}
-                      {recordingSession ? (
+                      {recordingSession?.canOpenSession ? (
                         <Link href={`/sessions/${encodeURIComponent(recordingSession.id)}?mode=prepare`} className="ml-2 font-black text-[#f6d68f] hover:underline">
                           Open session
                         </Link>
+                      ) : recordingSession ? (
+                        <span className="ml-2 text-[#91a298]">
+                          Capture access is separate; ask a session participant to add you if you need the raw room.
+                        </span>
                       ) : null}
                     </div>
                   </div>
@@ -679,6 +705,11 @@ export default function EpisodeRoomClient({
                     </button>
                   </div>
                 )}
+                {!sharedClockIsLive ? (
+                  <p className="mt-4 rounded-2xl border border-amber-300/25 bg-amber-300/10 px-4 py-3 text-xs font-semibold leading-5 text-amber-100">
+                    This recording clock is no longer live. Start a rehearsal clock before creating new shared-watch receipts, or begin a new Capture recording and bind that clock.
+                  </p>
+                ) : null}
 
                 {alignmentCandidates.length ? (
                   <div className="mt-4 border-t border-[#30483d] pt-4">
@@ -785,17 +816,22 @@ export default function EpisodeRoomClient({
                   <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      disabled={!canEdit}
-                      onClick={() => void sendCommand({
-                        type: room.status === "playing" ? "PAUSE" : "PLAY",
-                        positionSeconds: mediaRef.current?.currentTime ?? displayPosition,
-                      })}
+                      disabled={!canEdit || !sharedClockIsLive}
+                      onClick={() => void sendCommand(
+                        room.status === "playing"
+                          ? { type: "PAUSE" }
+                          : {
+                              type: "PLAY",
+                              positionSeconds:
+                                mediaRef.current?.currentTime ?? displayPosition,
+                            },
+                      )}
                       className="inline-flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#d8ad56] text-[#172018] disabled:opacity-40"
                       aria-label={room.status === "playing" ? "Pause for everyone" : "Play for everyone"}
                     >
                       {room.status === "playing" ? <Pause size={21} fill="currentColor" /> : <Play size={21} fill="currentColor" />}
                     </button>
-                    <button type="button" disabled={!canEdit} onClick={() => void seek(Math.max(0, displayPosition - 10))} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#40584c] disabled:opacity-40" aria-label="Back 10 seconds"><RotateCcw size={18} /></button>
+                    <button type="button" disabled={!canEdit || !sharedClockIsLive} onClick={() => void seek(Math.max(0, displayPosition - 10))} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#40584c] disabled:opacity-40" aria-label="Back 10 seconds"><RotateCcw size={18} /></button>
                     <div className="min-w-0 flex-1">
                       <input
                         type="range"
@@ -803,7 +839,7 @@ export default function EpisodeRoomClient({
                         max={Math.max(1, duration)}
                         step={0.01}
                         value={Math.min(Math.max(0, sliderPosition), Math.max(1, duration))}
-                        disabled={!canEdit || !duration}
+                        disabled={!canEdit || !sharedClockIsLive || !duration}
                         onChange={(event) => setDragPosition(Number(event.target.value))}
                         onPointerUp={(event) => void seek(Number(event.currentTarget.value))}
                         onKeyUp={(event) => {
@@ -819,7 +855,7 @@ export default function EpisodeRoomClient({
                         <span>{duration ? formatClock(duration) : "Duration loading"}</span>
                       </div>
                     </div>
-                    <button type="button" disabled={!canEdit} onClick={() => void seek(Math.min(duration || Number.MAX_SAFE_INTEGER, displayPosition + 10))} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#40584c] disabled:opacity-40" aria-label="Forward 10 seconds"><RotateCw size={18} /></button>
+                    <button type="button" disabled={!canEdit || !sharedClockIsLive} onClick={() => void seek(Math.min(duration || Number.MAX_SAFE_INTEGER, displayPosition + 10))} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#40584c] disabled:opacity-40" aria-label="Forward 10 seconds"><RotateCw size={18} /></button>
                   </div>
                   {localPlaybackBlocked && room.status === "playing" ? (
                     <button
@@ -934,8 +970,10 @@ export default function EpisodeRoomClient({
               <div className="mt-5 flex flex-col gap-3 rounded-3xl border border-[#d8ad56]/30 bg-[#d8ad56]/10 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="font-serif text-xl font-black">Watched clips → timeline</p>
-                  <p className="mt-1 text-xs font-semibold leading-5 text-[#d7c69d]">{room.segments.length} receipt-backed segments · {timelineClipCount} episode timeline clips now stored.</p>
-                  {room.timelineSync ? <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#d8ad56]">Last synced by {room.timelineSync.syncedBy} · {room.timelineSync.timelineClipCount} watch clips</p> : null}
+                  <p className="mt-1 text-xs font-semibold leading-5 text-[#d7c69d]">
+                    {currentPassSegmentCount} receipt-backed {currentPassSegmentCount === 1 ? "span" : "spans"} in this pass · {room.segments.length} total in history · {timelineClipCount} episode timeline {timelineClipCount === 1 ? "derivative" : "derivatives"} stored.
+                  </p>
+                  {room.timelineSync ? <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#d8ad56]">Last synced by {room.timelineSync.syncedBy} · {room.timelineSync.timelineClipCount} watch {room.timelineSync.timelineClipCount === 1 ? "clip" : "clips"}</p> : null}
                 </div>
                 <button
                   type="button"

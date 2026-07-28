@@ -2808,3 +2808,49 @@ This is an active-goal checkpoint, not a completion claim.
   normally finalize a new exact-route take. Canon R8 signal, MV7i headphone
   listening, two-participant LiveKit use, long drift, TestFlight, and
   physical-iPhone gates remain open.
+
+### 2026-07-27 rendered Episode Room collaboration closure
+
+- This is an active-goal checkpoint, not a completion claim.
+- Operated the real local
+  `/nests/high-ground-odyssey/episodes/episode-4-part-2` room with two
+  authenticated identities in separate browser contexts. Shared Play,
+  blocked-autoplay Pause, two-way episode chat, and canonical-manuscript
+  refresh all converged without navigation. The remote Pause now closes at
+  the server-authoritative projected position rather than sending a lagging
+  local-media position; both rooms settled at `1.07` seconds.
+- Removed the Episode Room's narrower duplicate Session-access policy. It now
+  uses the same canonical actor predicate as the Session workspace, so an
+  active project collaborator sees and can open the same accessible Capture
+  session in both surfaces.
+- Found and closed a dangerous stale-clock boundary. A Capture room with an
+  old `recordingStartedAt` but current status `OPEN` can no longer be bound as
+  recording authority or continue accepting `PLAY`. The rendered room shows
+  the stale-clock warning, stops its live ticker, disables Play/seek, and
+  requires an explicit rehearsal clock or a genuinely `RECORDING` room.
+- Changed timeline projection from all historical rehearsal passes to the
+  current Episode Room pass only. Historical segments remain preserved as
+  append-only room receipts. The corrected rehearsal sync replaced the
+  generated watch lane with one `V9` derivative at episode second `21.953`
+  for `1.072` seconds, retaining watch segment
+  `5ba93638-497b-4da3-9d71-3e90ec2ff952` and its start/end receipt IDs.
+- Made stored `quipsly-episode-room-watch.v1` derivatives real editor input.
+  The rendered shared editor now presents a **Shared Watch derivatives** lane
+  below the protected decision timeline, reports `1 synced`, and exposes the
+  receipt-bound `quipsly-episode-room-test.mp4` span. Complete derivatives
+  cannot mutate the protected source baseline; out-of-baseline derivatives
+  are held and called out instead.
+- The current rendered Episode Room reports one receipt-backed span in this
+  pass, ten total historical spans, and one stored derivative with correct
+  singular wording. Both the room and editor had zero browser-console errors.
+  Six focused suites pass 20/20, strict TypeScript and `git diff --check`
+  pass, strict repository health is healthy, the canonical local release gate
+  passes both Nest and High Ground Odyssey production builds, and the
+  coaching/capture schema probe passes against the exact local PostgreSQL
+  database used by the dogfood app.
+- This closes the local two-account Episode Room-to-editor derivative loop. It
+  does not prove physical iPhone/Mac clock alignment, Canon R8 live signal,
+  physical MV7i route-loss recovery, headphone monitoring, LiveKit
+  coexistence, cloud-worker media processing, production deployment,
+  TestFlight, or proof-watch/listen of a real episode artifact. Those gates
+  remain explicit.

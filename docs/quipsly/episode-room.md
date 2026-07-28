@@ -131,7 +131,11 @@ manuscript instead of silently implying that the visible subset is complete.
 Binding an Episode Room to an accessible podcast `CallRoom` establishes the
 recording epoch from that room's server-owned `recordingStartedAt`. The room
 selector is project- and episode-scoped, and the Episode Room cannot accept a
-client-invented recording timestamp. A rehearsal clock remains available for
+client-invented recording timestamp. The selected room must still be
+`RECORDING` when it is bound and before every subsequent `PLAY`; an old
+`recordingStartedAt` on an `OPEN` or stopped room cannot keep advancing an
+Episode Room clock. A stale recording clock is visibly held and its play and
+seek controls fail closed. A rehearsal clock remains available for
 non-recording preparation, but it is visibly labeled and is not recording
 evidence.
 
@@ -143,7 +147,19 @@ evidence.
 - start and end receipt IDs;
 - exact accepted timestamps and actors.
 
-`SYNC_TIMELINE` is explicit and is rejected while playback is active. It replaces only prior `quipsly-episode-room-watch.v1` derivatives and leaves every other timeline clip untouched. Video derivatives use track `V9`; audio derivatives use `A9`. The operation is deterministic and safe to repeat.
+`SYNC_TIMELINE` is explicit and is rejected while playback is active. It
+materializes only watch segments from the current Episode Room pass, replaces
+only prior `quipsly-episode-room-watch.v1` derivatives, and leaves every other
+timeline clip untouched. Historical passes remain preserved in the Episode
+Room receipt history instead of being stacked into the current editorial
+timeline. Video derivatives use track `V9`; audio derivatives use `A9`. The
+operation is deterministic and safe to repeat.
+
+The shared episode editor reads those derivatives as a dedicated **Shared
+Watch derivatives** lane below the protected decision timeline. Every rendered
+span keeps its watch-segment and start/end receipt identities. A derivative
+outside the protected source baseline is visibly held; it cannot expand or
+rewrite that baseline.
 
 Physical-device validation is still required before claiming sample-accurate alignment between the server episode clock and an iPhone recording clock. The current receipt model preserves enough evidence to measure and correct that offset rather than pretending it is zero.
 
@@ -207,10 +223,49 @@ This proves cross-surface canonical-document synchronization for one
 authenticated local editor. It does not replace the separate-account access
 proof already recorded above or claim conflict-free simultaneous text editing.
 
+Later on 2026-07-27 the rendered two-account workflow closed the remaining
+Episode Room-to-editor loop:
+
+- the canonical Session-access predicate was shared with Episode Room, so both
+  `codex@dev.test` and the separate `charlie.local@quipsly.test` collaborator
+  saw and could open the same accessible Capture session;
+- the persisted Capture room was correctly identified as `OPEN`, so its stale
+  recording epoch stopped ticking and Play/seek were disabled rather than
+  creating another far-future span;
+- a new rehearsal pass was started explicitly; one account played and the
+  other paused while its browser displayed the autoplay join control, and both
+  rooms converged at `1.07` seconds without the prior backward jump;
+- each account posted a new episode-thread message and both already-open rooms
+  refreshed without navigation;
+- the canonical manuscript was edited again in Writing and both open Episode
+  Rooms rendered the saved sentence without navigation;
+- explicit sync replaced the old generated watch derivatives with exactly one
+  current-pass `V9` derivative beginning at episode second `21.953` with
+  duration `1.072`, while all ten historical watch segments remained in the
+  Episode Room receipt history;
+- the rendered shared episode editor showed `1 synced`, the receipt-bound
+  `quipsly-episode-room-test.mp4` span, and the statement that the protected
+  source baseline stayed unchanged. Neither the Episode Room nor the editor
+  emitted a browser-console error.
+
+Focused contract and component verification passes 20/20, strict TypeScript
+passes, repository health is healthy, and the canonical local release gate
+passes both production builds and all static product/release contracts. The
+coaching/capture schema probe also passes when explicitly pointed at the local
+PostgreSQL database used for this dogfood run.
+
+This proves the current-pass timeline semantics, separate-account control,
+blocked-autoplay Pause authority, canonical Session access, and the rendered
+editor derivative lane. It still does not prove physical-iPhone alignment,
+provider egress, production deployment, or publication.
+
 ## Access and collaboration
 
 - Nest `OWNER` and `EDITOR` roles can control playback, attach media, sync the timeline, and post to episode chat.
 - `VIEWER` can read the text, follow room state, watch attached media, and read chat.
+- Active project collaborators use the same canonical Session-access
+  predicate in the Session workspace and Episode Room; the room does not carry
+  a narrower duplicate policy.
 - Episode chat is separate from the default Nest thread.
 - The global floating Nest chat is suppressed inside Episode Room because the episode thread is already present.
 
