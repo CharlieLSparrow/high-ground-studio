@@ -89,12 +89,16 @@ journey:
 
 ```bash
 node --test apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.test.mjs
+bash scripts/release/quipsly-capture-screenshots-from-commit.test.sh
+scripts/release/quipsly-capture-screenshots-from-commit.sh --revision <commit-sha>
 bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh
 ```
 
-The simulator command produces exact-size images plus a fail-closed receipt
-under `/tmp`; it does not approve assets or satisfy signed-candidate,
-physical-iPhone, or TestFlight proof.
+The preferred committed-source command produces exact-size images plus
+fail-closed draft and source-isolation receipts under `/tmp`. The lower-level
+simulator command is useful for current-worktree composition checks. Neither
+approves assets or satisfies signed-candidate, physical-iPhone, or TestFlight
+proof.
 
 The `release` lane archives, exports, and verifies without uploading.
 `scripts/deploy-testflight.sh` runs the `beta` lane and therefore requires an

@@ -508,6 +508,9 @@ remain red until approved screenshots and every delivery-layer proof exist.
   validator pass. A deterministic iPhone 17 Pro Max draft harness now operates
   the five real app surfaces, exports exact-size private-data-safe layout
   evidence, and records `submissionEligible:false`; run
-  `bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh`.
+  `scripts/release/quipsly-capture-screenshots-from-commit.sh --revision <candidate-source-sha>`
+  for detached exact-commit evidence, or the lower-level
+  `bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh`
+  for current-worktree composition checks.
   The stricter submission gate remains red until signed-candidate assets exist,
   are human-approved, and all delivery blockers are resolved.

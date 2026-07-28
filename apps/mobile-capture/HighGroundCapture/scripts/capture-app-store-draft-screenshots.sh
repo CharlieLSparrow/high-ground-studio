@@ -79,6 +79,7 @@ MATERIALIZER_ARGUMENTS=(
   --exported-directory "$ATTACHMENT_DIRECTORY"
   --output-directory "$OUTPUT_ROOT"
   --source-revision "$SOURCE_REVISION"
+  --source-isolation "${QUIPSLY_CAPTURE_SCREENSHOT_SOURCE_ISOLATION:-current-worktree}"
   --result-bundle "$RESULT_BUNDLE"
   --device-name "$DEVICE_NAME"
   --device-id "$DEVICE_ID"

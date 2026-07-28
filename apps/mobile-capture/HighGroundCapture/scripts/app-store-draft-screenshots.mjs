@@ -142,12 +142,18 @@ export function materializeDraftScreenshots({
   outputDirectory,
   sourceRevision,
   sourceDirty = false,
+  sourceIsolation = "current-worktree",
   resultBundlePath,
   deviceName,
   deviceId,
   capturedAt = new Date().toISOString(),
 }) {
   const metadata = readAppStoreMetadata(metadataPath);
+  if (!["current-worktree", "detached-worktree"].includes(sourceIsolation)) {
+    throw new Error(
+      "sourceIsolation must be current-worktree or detached-worktree.",
+    );
+  }
   const validation = validateAppStoreMetadata(metadata, {
     root: repositoryRoot,
   });
@@ -258,6 +264,7 @@ export function materializeDraftScreenshots({
       + "or its TestFlight install with the synthetic reviewer account.",
     sourceRevision,
     sourceDirty: Boolean(sourceDirty),
+    sourceIsolation,
     device: {
       class: metadata.screenshots.deviceClass,
       name: deviceName,
@@ -291,6 +298,7 @@ export function runDraftScreenshotCli(argv = process.argv.slice(2)) {
       outputDirectory: path.resolve(requiredOption(options, "output_directory")),
       sourceRevision: requiredOption(options, "source_revision"),
       sourceDirty: options.source_dirty === true,
+      sourceIsolation: options.source_isolation ?? "current-worktree",
       resultBundlePath: path.resolve(requiredOption(options, "result_bundle")),
       deviceName: requiredOption(options, "device_name"),
       deviceId: requiredOption(options, "device_id"),

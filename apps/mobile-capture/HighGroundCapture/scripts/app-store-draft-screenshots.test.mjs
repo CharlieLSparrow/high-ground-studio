@@ -68,6 +68,7 @@ test("materializes all five named 6.9-inch drafts with a fail-closed receipt", (
       outputDirectory: current.outputDirectory,
       sourceRevision: "a".repeat(40),
       sourceDirty: true,
+      sourceIsolation: "detached-worktree",
       resultBundlePath: path.join(current.root, "result.xcresult"),
       deviceName: "iPhone 17 Pro Max",
       deviceId: "fixture-device",
@@ -78,6 +79,7 @@ test("materializes all five named 6.9-inch drafts with a fail-closed receipt", (
     assert.equal(result.receipt.submissionEligible, false);
     assert.equal(result.receipt.status, "draft-layout-evidence");
     assert.equal(result.receipt.sourceDirty, true);
+    assert.equal(result.receipt.sourceIsolation, "detached-worktree");
     for (const planned of current.metadata.screenshots.planned) {
       assert.equal(
         fs.existsSync(path.join(result.screenshotDirectory, planned.filename)),

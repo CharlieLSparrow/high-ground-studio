@@ -22,6 +22,7 @@ const files = {
   deterministicUITests: path.join(iosRoot, "HighGroundCaptureUITests/CaptureExperienceUITests.swift"),
   appStoreDraftRunner: path.join(iosRoot, "scripts/capture-app-store-draft-screenshots.sh"),
   appStoreDraftMaterializer: path.join(iosRoot, "scripts/app-store-draft-screenshots.mjs"),
+  appStoreCommittedDraftRunner: path.join(root, "scripts/release/quipsly-capture-screenshots-from-commit.sh"),
   mobileCapturePreflight: path.join(root, "scripts/quipsly-mobile-capture-preflight.sh"),
   generatedMobileCaptureAuthSmoke: path.join(root, "scripts/quipsly-mobile-capture-generated-auth-smoke.mjs"),
   authManager: path.join(sourceRoot, "AuthManager.swift"),
@@ -139,6 +140,7 @@ const runtimeUISmokeTestsText = read(files.runtimeUISmokeTests);
 const deterministicUITestsText = read(files.deterministicUITests);
 const appStoreDraftRunnerText = read(files.appStoreDraftRunner);
 const appStoreDraftMaterializerText = read(files.appStoreDraftMaterializer);
+const appStoreCommittedDraftRunnerText = read(files.appStoreCommittedDraftRunner);
 const mobileCapturePreflightText = read(files.mobileCapturePreflight);
 const generatedMobileCaptureAuthSmokeText = read(files.generatedMobileCaptureAuthSmoke);
 const authText = read(files.authManager);
@@ -1026,6 +1028,11 @@ requireIncludes(
 );
 requireIncludes(
   listingDocText,
+  "scripts/release/quipsly-capture-screenshots-from-commit.sh",
+  "App Store listing documents exact-commit draft capture",
+);
+requireIncludes(
+  listingDocText,
   "`submissionEligible:false`",
   "App Store listing refuses to treat preview drafts as submission assets",
 );
@@ -1071,6 +1078,21 @@ requireIncludes(
   appStoreDraftMaterializerText,
   "submissionEligible: false",
   "draft screenshot receipt fails closed for App Store submission",
+);
+requireIncludes(
+  appStoreDraftMaterializerText,
+  "sourceIsolation",
+  "draft screenshot receipt records source isolation",
+);
+requireIncludes(
+  appStoreCommittedDraftRunnerText,
+  "git -C \"$repo_root\" worktree add --detach",
+  "committed draft runner materializes a detached source worktree",
+);
+requireIncludes(
+  appStoreCommittedDraftRunnerText,
+  "submissionEligible: false",
+  "committed draft runner preserves the draft-only boundary",
 );
 requireIncludes(
   appStoreDraftMaterializerText,

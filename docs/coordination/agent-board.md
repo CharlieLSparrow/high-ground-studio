@@ -85,6 +85,24 @@ Verified during the Codex application handoff prep on 2026-05-26.
 
 ## Active Lanes
 
+### 2026-07-28 Quipsly Capture Release
+
+- owner: Codex in this thread
+- branch: `codex/quipsly-product-20260724`
+- owned paths:
+  - `apps/mobile-capture/HighGroundCapture`
+  - `scripts/release/quipsly-capture-*`
+  - Capture release and App Store readiness docs
+- current goal:
+  - preserve Build 6 exact-source evidence, finish draft screenshot composition
+    review, physical TestFlight operation, reviewer/privacy metadata, and
+    authorized App Store delivery readback
+- current guardrails:
+  - DEBUG screenshot fixtures remain ineligible for submission
+  - no private HGO or coaching material in screenshots
+  - no automatic TestFlight distribution
+  - no physical-device or provider claim without readback from that boundary
+
 ### 2026-05-25 Sub-Agent Fanout
 
 - supervisor: Codex in this thread

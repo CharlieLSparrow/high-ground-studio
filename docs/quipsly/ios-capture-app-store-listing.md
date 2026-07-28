@@ -69,15 +69,26 @@ device identifiers, or another person's name. Crop only system chrome that is
 outside the product story; do not fabricate product state.
 
 Before the signed candidate is available, generate private-data-safe layout
-drafts from the app's deterministic preview state:
+drafts from the app's deterministic preview state. The preferred release
+boundary resolves one commit and excludes caller-worktree drift:
+
+```bash
+scripts/release/quipsly-capture-screenshots-from-commit.sh \
+  --revision <candidate-source-sha>
+```
+
+For local composition work against the current checkout, the lower-level
+runner remains available:
 
 ```bash
 bash apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh
 ```
 
-That command operates all five real iPhone surfaces on an iPhone 17 Pro Max
-simulator, exports `1320 x 2868` PNG attachments, hashes them, and writes a
-`draft-receipt.json` beside the images under `/tmp`. The receipt always records
+The preferred command uses a disposable detached worktree, operates all five
+real iPhone surfaces on an iPhone 17 Pro Max simulator, exports `1320 x 2868`
+PNG attachments, hashes them, and writes both `draft-receipt.json` and
+`committed-source-receipt.json` beside the images under `/tmp`. The receipts
+record the exact source revision, clean detached-source isolation, and
 `submissionEligible:false`. Drafts are for composition and clipping review;
 they do not satisfy the screenshot blocker and must never be copied into the
 canonical approved-assets directory. Re-run the same five stories on the exact
