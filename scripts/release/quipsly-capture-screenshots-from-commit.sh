@@ -110,14 +110,60 @@ echo "Screenshot evidence: ${output_directory}"
 )
 
 draft_receipt="${output_directory}/draft-receipt.json"
-[[ -f "$draft_receipt" ]] ||
-  fail "Committed screenshot runner returned without a draft receipt."
+materialization_mode="runner"
+if [[ ! -f "$draft_receipt" ]]; then
+  manifest_path="${output_directory}/xcresult-attachments/manifest.json"
+  result_bundle="${output_directory}/QuipslyCapture-AppStore-Drafts.xcresult"
+  attachment_directory="${output_directory}/xcresult-attachments"
+  materializer="${worktree_path}/apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.mjs"
+  metadata_path="${worktree_path}/release/app-store/quipsly-capture/en-US.json"
+  [[ -f "$manifest_path" ]] ||
+    fail "Committed screenshot runner returned without a receipt or attachment manifest."
+  [[ -d "$result_bundle" ]] ||
+    fail "Committed screenshot runner returned without a receipt or result bundle."
+  [[ -f "$materializer" && -f "$metadata_path" ]] ||
+    fail "Exact committed screenshot materializer inputs are unavailable."
 
-node - "$draft_receipt" "$output_directory" "$source_revision" <<'NODE'
+  IFS=$'\t' read -r manifest_device_name manifest_device_id < <(
+    node - "$manifest_path" <<'NODE'
+const fs = require("node:fs");
+const manifest = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+const attachment = manifest
+  .flatMap((test) => Array.isArray(test?.attachments) ? test.attachments : [])
+  .find((candidate) => candidate?.deviceName && candidate?.deviceId);
+if (!attachment) {
+  process.exit(2);
+}
+process.stdout.write(`${attachment.deviceName}\t${attachment.deviceId}\n`);
+NODE
+  ) || fail "Could not recover simulator identity from the attachment manifest."
+
+  echo "WARN Screenshot runner omitted its receipt; invoking the exact committed materializer."
+  node "$materializer" \
+    --metadata "$metadata_path" \
+    --manifest "$manifest_path" \
+    --exported-directory "$attachment_directory" \
+    --output-directory "$output_directory" \
+    --source-revision "$source_revision" \
+    --source-isolation "detached-worktree" \
+    --result-bundle "$result_bundle" \
+    --device-name "$manifest_device_name" \
+    --device-id "$manifest_device_id"
+  materialization_mode="exact-committed-recovery"
+fi
+[[ -f "$draft_receipt" ]] ||
+  fail "Exact committed screenshot materialization returned without a draft receipt."
+
+node - "$draft_receipt" "$output_directory" "$source_revision" "$materialization_mode" <<'NODE'
 const fs = require("node:fs");
 const path = require("node:path");
 
-const [draftReceiptPath, outputDirectory, sourceRevision] = process.argv.slice(2);
+const [
+  draftReceiptPath,
+  outputDirectory,
+  sourceRevision,
+  materializationMode,
+] = process.argv.slice(2);
 const draft = JSON.parse(fs.readFileSync(draftReceiptPath, "utf8"));
 if (draft.sourceRevision !== sourceRevision) {
   throw new Error(
@@ -150,6 +196,7 @@ const receipt = {
   sourceRevision,
   sourceDirty: false,
   sourceIsolation: "detached-worktree",
+  materializationMode,
   draftReceiptPath,
   screenshotCount: draft.screenshots.length,
 };

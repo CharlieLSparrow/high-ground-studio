@@ -21,7 +21,8 @@ fixture_artifacts="${fixture_root}/screenshot-output"
 runner_receipt="${fixture_root}/mock-runner-receipt.txt"
 mkdir -p \
   "${fixture_repo}/scripts/release" \
-  "${fixture_repo}/apps/mobile-capture/HighGroundCapture/scripts"
+  "${fixture_repo}/apps/mobile-capture/HighGroundCapture/scripts" \
+  "${fixture_repo}/release/app-store/quipsly-capture"
 cp "$subject" "${fixture_repo}/scripts/release/quipsly-capture-screenshots-from-commit.sh"
 
 cat >"${fixture_repo}/apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh" <<'MOCK'
@@ -47,7 +48,14 @@ if [[ "${MOCK_RUNNER_FAIL:-0}" == "1" ]]; then
   exit 42
 fi
 
-mkdir -p "$QUIPSLY_CAPTURE_SCREENSHOT_DIR"
+mkdir -p \
+  "$QUIPSLY_CAPTURE_SCREENSHOT_DIR/xcresult-attachments" \
+  "$QUIPSLY_CAPTURE_SCREENSHOT_DIR/QuipslyCapture-AppStore-Drafts.xcresult"
+printf '[{"attachments":[{"deviceName":"iPhone Test","deviceId":"fixture-device"}]}]\n' \
+  >"$QUIPSLY_CAPTURE_SCREENSHOT_DIR/xcresult-attachments/manifest.json"
+if [[ "${MOCK_SKIP_RECEIPT:-0}" == "1" ]]; then
+  exit 0
+fi
 node - "$QUIPSLY_CAPTURE_SCREENSHOT_DIR/draft-receipt.json" <<'NODE'
 const fs = require("node:fs");
 const receiptPath = process.argv[2];
@@ -64,16 +72,45 @@ fs.writeFileSync(receiptPath, `${JSON.stringify({
 }, null, 2)}\n`);
 NODE
 MOCK
+cat >"${fixture_repo}/apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.mjs" <<'MOCK'
+#!/usr/bin/env node
+import fs from "node:fs";
+import path from "node:path";
+import { execFileSync } from "node:child_process";
+
+const options = {};
+for (let index = 2; index < process.argv.length; index += 2) {
+  options[process.argv[index]] = process.argv[index + 1];
+}
+const outputDirectory = options["--output-directory"];
+fs.writeFileSync(
+  path.join(outputDirectory, "draft-receipt.json"),
+  `${JSON.stringify({
+    submissionEligible: false,
+    sourceRevision: options["--source-revision"]
+      ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+    sourceDirty: false,
+    sourceIsolation: options["--source-isolation"],
+    screenshots: Array.from({ length: 5 }, (_, index) => ({
+      order: index + 1,
+    })),
+  }, null, 2)}\n`,
+);
+MOCK
+printf '{}\n' >"${fixture_repo}/release/app-store/quipsly-capture/en-US.json"
 chmod +x \
   "${fixture_repo}/scripts/release/quipsly-capture-screenshots-from-commit.sh" \
-  "${fixture_repo}/apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh"
+  "${fixture_repo}/apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh" \
+  "${fixture_repo}/apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.mjs"
 
 git -C "$fixture_repo" init -q
 git -C "$fixture_repo" config user.name "Quipsly Screenshot Test"
 git -C "$fixture_repo" config user.email "screenshot-test@quipsly.invalid"
 git -C "$fixture_repo" add \
   scripts/release/quipsly-capture-screenshots-from-commit.sh \
-  apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh
+  apps/mobile-capture/HighGroundCapture/scripts/capture-app-store-draft-screenshots.sh \
+  apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.mjs \
+  release/app-store/quipsly-capture/en-US.json
 git -C "$fixture_repo" commit -qm "test: committed screenshot fixture"
 source_revision="$(git -C "$fixture_repo" rev-parse HEAD)"
 printf 'must not enter screenshot evidence\n' >"${fixture_repo}/uncommitted-only.txt"
@@ -127,6 +164,22 @@ worktree_count="$(
 )"
 [[ "$worktree_count" -eq 1 ]] ||
   fail "Disposable worktree registration was not removed."
+
+MOCK_RUNNER_RECEIPT_PATH="$runner_receipt" \
+MOCK_SKIP_RECEIPT=1 \
+QUIPSLY_CAPTURE_SCREENSHOT_ARTIFACT_ROOT="$fixture_artifacts" \
+QUIPSLY_CAPTURE_SCREENSHOT_RUN_ID="fallback-run" \
+"${fixture_repo}/scripts/release/quipsly-capture-screenshots-from-commit.sh" \
+  --revision "$source_revision" \
+  --device "iPhone Test"
+fallback_receipt="${canonical_fixture_artifacts}/${source_revision:0:12}/fallback-run/committed-source-receipt.json"
+node - "$fallback_receipt" <<'NODE'
+const fs = require("node:fs");
+const receipt = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+if (receipt.materializationMode !== "exact-committed-recovery") {
+  throw new Error("missing runner receipt did not use exact committed recovery");
+}
+NODE
 
 if MOCK_RUNNER_RECEIPT_PATH="$runner_receipt" \
   MOCK_RUNNER_FAIL=1 \
