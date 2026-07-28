@@ -34,6 +34,51 @@ public struct ProductionVideoRecordedFormat:
     }
 }
 
+public enum ProductionVideoSignalVerificationMethod:
+    String,
+    Codable,
+    Equatable,
+    Sendable
+{
+    case operatorLivePreview = "operator-live-preview"
+    case agentVisualReview = "agent-visual-review"
+}
+
+public struct ProductionVideoSignalVerification:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public static let maximumPreflightAge: TimeInterval = 300
+
+    public let deviceID: String
+    public let method: ProductionVideoSignalVerificationMethod
+    public let verifiedAt: Date
+    public let truth: String
+
+    public init(
+        deviceID: String,
+        method: ProductionVideoSignalVerificationMethod,
+        verifiedAt: Date = Date()
+    ) {
+        self.deviceID = deviceID
+        self.method = method
+        self.verifiedAt = verifiedAt
+        truth =
+            "A human operator or visual-review agent explicitly confirmed that the exact selected camera route displayed a moving live image instead of a disconnected or placeholder slate. Final media still requires start-to-stop visual review."
+    }
+
+    public func isValid(
+        for expectedDeviceID: String,
+        recordingStartedAt: Date
+    ) -> Bool {
+        let age = recordingStartedAt.timeIntervalSince(verifiedAt)
+        return deviceID == expectedDeviceID
+            && age >= 0
+            && age <= Self.maximumPreflightAge
+    }
+}
+
 public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
     public let recordingID: UUID
     public let captureGroupID: UUID
@@ -48,6 +93,8 @@ public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
     public let capturePurpose: String?
     public let clockSamples: [ProductionCaptureClockSample]
     public let videoDevice: CaptureVideoDeviceSnapshot
+    public let signalVerification:
+        ProductionVideoSignalVerification?
     public let rootDirectory: URL
 
     public init(
@@ -64,6 +111,8 @@ public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
         capturePurpose: String? = nil,
         clockSamples: [ProductionCaptureClockSample] = [],
         videoDevice: CaptureVideoDeviceSnapshot,
+        signalVerification:
+            ProductionVideoSignalVerification? = nil,
         rootDirectory: URL = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(
                 "Movies/QuipslyCaptures",
@@ -83,6 +132,7 @@ public struct ProductionVideoReferenceConfiguration: Equatable, Sendable {
         self.capturePurpose = capturePurpose
         self.clockSamples = clockSamples
         self.videoDevice = videoDevice
+        self.signalVerification = signalVerification
         self.rootDirectory = rootDirectory
     }
 }
@@ -105,6 +155,8 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
     public let sourceKind: String
     public let state: ProductionVideoReferenceState
     public let videoDevice: CaptureVideoDeviceSnapshot
+    public let signalVerification:
+        ProductionVideoSignalVerification?
     public let negotiatedFormat: CaptureVideoFormatSnapshot
     public let recordedFormat: ProductionVideoRecordedFormat?
     public let containsAudio: Bool
@@ -159,7 +211,8 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
         sha256: String?,
         failure: String?
     ) {
-        protocolVersion = 2
+        protocolVersion =
+            configuration.signalVerification == nil ? 2 : 3
         recordingID = configuration.recordingID
         captureGroupID = configuration.captureGroupID
         episodeSpaceID = configuration.episodeSpaceID
@@ -176,6 +229,7 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
         sourceKind = "local_video_reference"
         self.state = state
         videoDevice = configuration.videoDevice
+        signalVerification = configuration.signalVerification
         self.negotiatedFormat = negotiatedFormat
         self.recordedFormat = recordedFormat
         containsAudio = false
@@ -191,8 +245,9 @@ public struct ProductionVideoReferenceReceipt: Codable, Equatable, Sendable {
         self.partialVideoPath = partialVideoPath
         self.failure = failure
         if state == .finalized {
-            truth =
-                "This silent movie is a finalized local camera reference from the exact selected macOS route. Its hash, byte count, negotiated input format, recorded media format, and monotonic boundaries are verified. It is not proof of a Canon camera-card 4K master."
+            truth = configuration.signalVerification == nil
+                ? "This silent movie is a finalized local camera reference from the exact selected macOS route. Its hash, byte count, negotiated input format, recorded media format, and monotonic boundaries are verified, but no preflight live-image confirmation is recorded. Start-to-stop visual review is mandatory. It is not proof of a Canon camera-card 4K master."
+                : "This silent movie is a finalized local camera reference from the exact selected macOS route. Its hash, byte count, negotiated input format, recorded media format, monotonic boundaries, and fresh preflight live-image confirmation are preserved. Start-to-stop visual review is still mandatory. It is not proof of a Canon camera-card 4K master."
         } else {
             truth =
                 "This camera-reference receipt is not finalized. Preserve and explicitly review any partial movie; never treat it as a complete source or Canon camera-card master."

@@ -253,3 +253,52 @@ after cleanup. The next operated proof is still the human-present signed Mac
 MOV+WAV take, followed by real editor review and a deliberate
 stale-second-rendered-browser collision. No physical-source, cloud-worker,
 TestFlight, or publication claim is made by this checkpoint.
+
+## July 27 direct MV7i take and EOS disconnected-slate correction
+
+- The user connected the physical Shure MV7i and Canon R8. A live hardware
+  refresh exposed the direct USB MV7i as the same exact 48 kHz Core Audio UID
+  for input and output, separate from `MOTIV Mix Virtual`. EOS Webcam Utility
+  remained the Canon reference route; no direct R8 UVC identity was inferred.
+- Installed and ran the strict Apple Development signed arm64 Release app at
+  `/Users/wall-e/Applications/Quipsly Studio.app`. The previous installed app
+  remains recoverable under `/Users/wall-e/Applications/Quipsly Builds`.
+  Camera and microphone permissions read back authorized.
+- Operated a local-only take through the app-owned semantic surface with the
+  exact MV7i input/output and EOS route. The direct-MV7i WAV finalized at
+  19.3 seconds, mono 48 kHz/24-bit PCM, SHA-256
+  `e22e6a5c28e0fdd76f255f4d57da303fdebc008cb7e2e538ee5429cced76233f`,
+  peak -25.0 dBFS, and RMS -52.0 dBFS. This is real non-silent file proof, not
+  gain, headphone-monitoring, or endurance qualification.
+- The paired silent MOV finalized at 19.56153 seconds, 1920x1080 H.264,
+  approximately 29.09 fps, SHA-256
+  `63487734761f7ed28c2fe29559c0f76ad42b8af1a51a238abca43a01744e259d`.
+  Machine inspection passed bytes, shape, identity, and a -0.087-second
+  first-placement clue. Three independently extracted frames all showed
+  Canon's EOS Webcam Utility disconnected slate, so human visual review
+  rejects the reference. Both sources and the append-only audit receipt remain
+  preserved.
+- Corrected the uncovered truth defect instead of special-casing the slate.
+  Quipsly now labels AVFoundation success **Format negotiated**, requires a
+  fresh explicit moving-live-image confirmation for the exact camera route
+  before included-video recording, and records the method/device/time in a
+  protocol-v3 receipt. The confirmation expires after five minutes and never
+  replaces full final-media review.
+- Legacy camera receipts remain decodable. Their missing preflight proof is an
+  audit warning; malformed v3 proof is a hold. The local UI and semantic state
+  distinguish live-signal confirmation from byte verification.
+- QuipslyVideoCore passes 78/78 after this change. The next operated gate is a
+  real R8 image, a second sync take, direct MV7i headphone listen, and a longer
+  drift/route-loss rehearsal; the internal R8 4K card file remains the
+  authoritative video master.
+- The final optimized arm64 Release was re-signed throughout with Apple
+  Development team `585GUXMY5M`, installed at
+  `/Users/wall-e/Applications/Quipsly Studio.app`, and verified at CDHash
+  `f168436c68f84866d093a626a1159a6dc29acd34`. The replaced build is preserved
+  at `/Users/wall-e/Applications/Quipsly Builds/Quipsly
+  Studio-pre-live-signal-20260727-1833.app`.
+- Operated the fail-closed case again in that exact installed Release. Exact
+  direct MV7i input/output plus included EOS video and no signal confirmation
+  produced `canStartRecording=false`; a direct start was rejected as
+  `start-rejected-preflight-not-ready`, no engine started, and no new capture
+  file appeared.

@@ -17,6 +17,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var cameraPreviewMessage =
         "Choose a camera route to prepare a silent local reference."
     @Published private(set) var cameraPreviewError: String?
+    @Published private(set) var cameraSignalVerification:
+        ProductionVideoSignalVerification?
     @Published private(set) var activeVideoReceipt:
         ProductionVideoReferenceReceipt?
     @Published private(set) var lastFinalizedVideoReceipt:
@@ -235,6 +237,13 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     lastFinalizedVideoReceipt.byteCount ?? 0,
                 "sha256":
                     lastFinalizedVideoReceipt.sha256 ?? "",
+                "liveSignalVerified":
+                    lastFinalizedVideoReceipt
+                        .signalVerification != nil,
+                "liveSignalVerificationMethod":
+                    lastFinalizedVideoReceipt
+                        .signalVerification?
+                        .method.rawValue ?? "",
                 "negotiatedFormat": [
                     "width":
                         lastFinalizedVideoReceipt
@@ -276,6 +285,18 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             lastTakeAuditState = [:]
         }
 
+        let cameraSignalVerificationState: [String: Any]
+        if let verification = cameraSignalVerification {
+            cameraSignalVerificationState = [
+                "deviceID": verification.deviceID,
+                "method": verification.method.rawValue,
+                "verifiedAt": verification.verifiedAt.ISO8601Format(),
+                "truth": verification.truth,
+            ]
+        } else {
+            cameraSignalVerificationState = [:]
+        }
+
         let captureState: [String: Any] = [
             "episodeSpaceID": episodeSpaceID,
             "participantID": participantID,
@@ -296,6 +317,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 cameraPreviewFormat != nil
                     && videoRecorder.preparedDeviceID
                         == selectedVideoDeviceID,
+            "cameraSignalVerification":
+                cameraSignalVerificationState,
+            "cameraSignalVerified":
+                cameraSignalVerificationIsFresh,
             "cameraAuthorization":
                 inventory?.cameraAuthorization.rawValue
                     ?? "unknown",
@@ -330,6 +355,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             "agentCapabilityParity": [
                 "read exact camera, microphone, and output routes",
                 "prepare a local-only capture without joining a room",
+                "keep negotiated camera format separate from explicit live-image verification",
                 "start only when exact selected device IDs are reconfirmed",
                 "stop and finalize every active local source",
                 "run deterministic byte and media acceptance",
@@ -394,6 +420,14 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 (request.values["include_camera"] ?? "false")
                     .lowercased()
             )
+            let cameraSignalWasVisuallyVerified =
+                ["1", "true", "yes"].contains(
+                    (
+                        request.values[
+                            "camera_signal_verified"
+                        ] ?? "false"
+                    ).lowercased()
+                )
             if includeCamera,
                !inventory.videoDevices.contains(where: {
                    $0.id == videoID
@@ -407,6 +441,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             selectEpisodeRoom(nil)
             episodeSpaceID = episode
             participantID = participant
+            cameraSignalVerification = nil
             selectedAudioInputID = inputID
             selectedAudioOutputID = outputID
             selectedVideoDeviceID =
@@ -416,10 +451,19 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             publishAgentAcceptanceState()
             Task {
                 await prepareSelectedCameraReference()
+                if includeCamera,
+                   cameraSignalWasVisuallyVerified {
+                    confirmCameraSignal(
+                        method: .agentVisualReview
+                    )
+                }
                 agentCommandStatus =
-                    cameraPreviewError == nil
-                        ? "local-capture-prepared"
-                        : "local-capture-camera-not-ready"
+                    cameraPreviewError != nil
+                        ? "local-capture-camera-not-ready"
+                        : includeCamera
+                            && !cameraSignalVerificationIsFresh
+                            ? "local-capture-camera-signal-unverified"
+                            : "local-capture-prepared"
                 publishAgentAcceptanceState()
             }
         case "capture_start_local":
@@ -553,6 +597,17 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         return episodeRooms.first { $0.id == selectedEpisodeRoomID }
     }
 
+    var cameraSignalVerificationIsFresh: Bool {
+        guard let selectedVideoDeviceID,
+              let cameraSignalVerification else {
+            return false
+        }
+        return cameraSignalVerification.isValid(
+            for: selectedVideoDeviceID,
+            recordingStartedAt: Date()
+        )
+    }
+
     var canStartRecording: Bool {
         guard !isRecording,
               !isFinalizing,
@@ -587,7 +642,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                   cameraPreviewFormat != nil,
                   videoRecorder.preparedDeviceID
                     == selectedVideoDeviceID,
-                  cameraPreviewError == nil else {
+                  cameraPreviewError == nil,
+                  cameraSignalVerificationIsFresh else {
                 return false
             }
         }
@@ -718,6 +774,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     func refresh(requestAccess: Bool = false) async {
         guard !isRefreshing else { return }
         isRefreshing = true
+        cameraSignalVerification = nil
         message = requestAccess
             ? "Waiting for camera and microphone permission…"
             : "Reading exact Core Audio and camera routes…"
@@ -737,6 +794,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         guard !isRecording, !isFinalizing else { return }
         guard let device = selectedVideoDevice else {
             videoRecorder.stopPreview()
+            cameraSignalVerification = nil
             cameraPreviewFormat = nil
             cameraPreviewError = nil
             cameraPreviewMessage =
@@ -751,14 +809,50 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 deviceID: device.id
             )
             cameraPreviewFormat = format
-            cameraPreviewMessage =
-                "\(device.name) is live at \(format.label). Quipsly will record a silent reference only when Include camera reference is on."
+            if cameraSignalVerificationIsFresh {
+                cameraPreviewMessage =
+                    "\(device.name) negotiated \(format.label), and its moving live image was explicitly confirmed. Final media still requires visual review."
+            } else {
+                cameraPreviewMessage =
+                    "\(device.name) negotiated \(format.label). Inspect the preview and explicitly confirm a moving live image; format negotiation alone cannot reject a disconnected slate."
+            }
         } catch {
+            cameraSignalVerification = nil
             cameraPreviewFormat = nil
             cameraPreviewError = error.localizedDescription
             cameraPreviewMessage =
                 "The selected camera route is not ready."
         }
+    }
+
+    func selectedCameraDidChange() async {
+        if cameraSignalVerification?.deviceID
+            != selectedVideoDeviceID {
+            cameraSignalVerification = nil
+        }
+        await prepareSelectedCameraReference()
+    }
+
+    func confirmCameraSignal(
+        method: ProductionVideoSignalVerificationMethod =
+            .operatorLivePreview
+    ) {
+        guard !isRecording,
+              !isFinalizing,
+              cameraPreviewError == nil,
+              cameraPreviewFormat != nil,
+              videoRecorder.preparedDeviceID
+                == selectedVideoDeviceID,
+              let selectedVideoDeviceID else {
+            return
+        }
+        cameraSignalVerification =
+            ProductionVideoSignalVerification(
+                deviceID: selectedVideoDeviceID,
+                method: method
+            )
+        cameraPreviewMessage =
+            "Moving live image confirmed for the exact selected route. This fresh preflight proof will be written into the camera receipt; the finalized movie still requires start-to-stop review."
     }
 
     func stopCameraPreview() {
@@ -877,6 +971,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 
     func startRecording() async {
         roomReceiptError = nil
+        var verifiedCameraSignal:
+            ProductionVideoSignalVerification?
         if includeCameraReference {
             guard selectedVideoDevice != nil else {
                 recordingError =
@@ -891,6 +987,13 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                         ?? "The selected camera reference is not ready."
                 return
             }
+            guard cameraSignalVerificationIsFresh,
+                  let cameraSignalVerification else {
+                recordingError =
+                    "Confirm a moving live image in the exact camera preview before recording. Format negotiation alone cannot reject a disconnected slate."
+                return
+            }
+            verifiedCameraSignal = cameraSignalVerification
         }
         guard let input = selectedAudioInput else {
             recordingError =
@@ -1066,6 +1169,18 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 : "Nest START is applied · \(clockSamples.count) Mac clock sample(s) preserved for reviewed alignment."
         }
         recordingError = nil
+        if includeCameraReference {
+            guard let selectedVideoDeviceID,
+                  let verifiedCameraSignal,
+                  verifiedCameraSignal.isValid(
+                    for: selectedVideoDeviceID,
+                    recordingStartedAt: Date()
+                  ) else {
+                recordingError =
+                    "The live-image confirmation expired or the exact camera route changed while Quipsly prepared the take. Confirm the preview again."
+                return
+            }
+        }
         let recordingID = UUID()
         let videoRecordingID = UUID()
         do {
@@ -1099,6 +1214,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                                 roomCapture?.capturePurpose,
                             clockSamples: clockSamples,
                             videoDevice: videoDevice,
+                            signalVerification:
+                                verifiedCameraSignal,
                             rootDirectory: captureRoot
                         )
                 )
@@ -1181,7 +1298,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     recordingError =
                         "The microphone master did not start: \(startFailure)"
                     message =
-                        "The silent camera reference is finalized, verified, and attached; the microphone master did not start."
+                        "The silent camera reference is finalized, byte-verified, and attached; the microphone master did not start."
                 } catch {
                     recordingError =
                         "The microphone master did not start: \(startFailure) The camera reference is finalized and safe, but its editor attachment needs retry: \(error.localizedDescription)"
@@ -1291,7 +1408,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             ) {
             case (true, true):
                 message =
-                    "Local microphone master and camera reference finalized and verified. Closing the Nest recording boundary…"
+                    "Local microphone master and camera reference finalized and byte-verified. Closing the Nest recording boundary…"
             case (true, false):
                 message =
                     "Local microphone master finalized and verified. Closing the Nest recording boundary…"
@@ -1440,6 +1557,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         canonImportMessage = "New capture group ready."
         lastTakeAudit = nil
         takeAuditError = nil
+        cameraSignalVerification = nil
         elapsedSeconds = 0
         message = "New episode capture group ready."
     }
@@ -1649,7 +1767,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         guard let receipt = lastFinalizedVideoReceipt,
               let ownerAccountID = episodeRoomOwnerAccountID else {
             videoUploadError =
-                "A finalized Episode Room camera reference and verified Nest account are required before upload."
+                "A finalized, byte-verified Episode Room camera reference and verified Nest account are required before upload."
             return
         }
         do {
@@ -2457,7 +2575,7 @@ struct EpisodeCaptureSetupView: View {
             }
         }
         .task(id: model.selectedVideoDeviceID) {
-            await model.prepareSelectedCameraReference()
+            await model.selectedCameraDidChange()
         }
         .task {
             guard usesCaptureAgentAcceptance else { return }
@@ -2581,12 +2699,50 @@ struct EpisodeCaptureSetupView: View {
                         if let format =
                             model.cameraPreviewFormat {
                             Label(
-                                "\(format.width)×\(format.height) · \(format.maximumFrameRate.formatted(.number.precision(.fractionLength(0...2)))) fps · silent MOV",
+                                "Format negotiated · \(format.width)×\(format.height) · \(format.maximumFrameRate.formatted(.number.precision(.fractionLength(0...2)))) fps · silent MOV",
                                 systemImage:
-                                    "checkmark.circle.fill"
+                                    "info.circle.fill"
                             )
                             .font(.caption.monospacedDigit())
+                            .foregroundStyle(.blue)
+                        }
+
+                        if model.cameraSignalVerificationIsFresh {
+                            Label(
+                                "Moving live image confirmed for this exact route",
+                                systemImage:
+                                    "checkmark.seal.fill"
+                            )
+                            .font(.caption.weight(.semibold))
                             .foregroundStyle(.green)
+                        } else if model.cameraPreviewFormat != nil {
+                            Button {
+                                model.confirmCameraSignal()
+                            } label: {
+                                Label(
+                                    "Confirm moving live image",
+                                    systemImage:
+                                        "eye.circle.fill"
+                                )
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .disabled(
+                                model.isRecording
+                                    || model.isFinalizing
+                            )
+                            .accessibilityIdentifier(
+                                "EpisodeCaptureConfirmLiveCameraSignal"
+                            )
+
+                            Text(
+                                "Move in frame first. Do not confirm an EOS Webcam Utility disconnected slate, frozen frame, color bars, or placeholder."
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
                         }
 
                         Text(model.cameraPreviewMessage)
@@ -2625,7 +2781,7 @@ struct EpisodeCaptureSetupView: View {
                             .font(.title2)
                             .foregroundStyle(.green)
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Verified camera reference")
+                            Text("Byte-verified camera reference")
                                 .font(.headline)
                             Text(
                                 "\(formatDuration(receipt.durationSeconds)) · \(receipt.recordedFormat?.width ?? receipt.negotiatedFormat.width)×\(receipt.recordedFormat?.height ?? receipt.negotiatedFormat.height) recorded · \(ByteCountFormatter.string(fromByteCount: receipt.byteCount ?? 0, countStyle: .file))"

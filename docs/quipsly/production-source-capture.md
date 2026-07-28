@@ -988,3 +988,47 @@ approval, stale approval/undo refusal, protected replacement refusal, exact
 undo restoration, stale replay refusal, and zero-row cleanup readback. A real
 Mac MOV+WAV review and two rendered-browser collision rehearsal remain
 required; this local API/database proof does not satisfy either gate.
+
+## Implementation checkpoint — July 27, 2026 (physical MV7i and camera-signal truth)
+
+The signed production app has now operated a preserved local take with the
+actual Shure MV7i connected:
+
+- Core Audio exposed one direct USB `Shure MV7i` UID as both the 48 kHz input
+  and headphone output, distinct from `MOTIV Mix Virtual`. The 19.3-second
+  local master is mono, 48 kHz, 24-bit PCM; fresh SHA-256
+  `e22e6a5c28e0fdd76f255f4d57da303fdebc008cb7e2e538ee5429cced76233f`
+  and byte-count readback match its finalized receipt. Signal inspection
+  measured peak -25.0 dBFS and RMS -52.0 dBFS, so this proves a non-silent
+  direct-MV7i file but not production gain, headphone monitoring, or a long
+  take.
+- AVFoundation negotiated EOS Webcam Utility at 1920x1080/30 and wrote a
+  19.56-second silent H.264 MOV with matching fresh SHA-256
+  `63487734761f7ed28c2fe29559c0f76ad42b8af1a51a238abca43a01744e259d`.
+  Three sampled frames all showed Canon's disconnected USB slate. The MOV is
+  structurally valid and byte-verified but visually rejected; it is preserved
+  as failure evidence and is not an R8-signal qualification.
+- This exposed a production truth defect: camera format negotiation had been
+  labeled “live.” Quipsly now separates negotiated transport format from a
+  fresh, explicit moving-live-image confirmation tied to the exact camera
+  device. Recording with an included camera reference is held until that
+  confirmation exists.
+- Camera receipt protocol v3 preserves the verification device, method,
+  timestamp, and limited truth. The confirmation expires after five minutes,
+  cannot cross a device change, and still does not replace start-to-stop
+  visual review. Legacy v1/v2 receipts remain readable and produce a visible
+  audit warning instead of retroactive proof.
+- The machine auditor now passes an exact fresh confirmation, holds malformed
+  v3 evidence, and warns on legacy missing evidence. UI copy says
+  **Format negotiated** and **Byte-verified camera reference**; neither phrase
+  claims usable pictures.
+
+The next physical action is to make the R8 deliver a real image through its
+reference route, visually confirm movement, record another short sync take,
+listen through headphones connected to the MV7i, and repeat as a long take.
+For the EOS R8, Canon's product manual requires **Setup → Choose USB connection
+app → Video calls/streaming** before reconnecting the interface cable; that
+native UVC/UAC mode is specified as 1920×1080 at 30 fps. Quipsly must see the
+physical route and moving image after that change before the gate is approved.
+The authoritative video remains the internally recorded R8 4K card original,
+which must be imported, hashed, aligned, watched, and explicitly approved.

@@ -64,6 +64,12 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
             }
         )
         XCTAssertTrue(
+            receipt.checks.contains {
+                $0.id == "video-live-signal-preflight"
+                    && $0.status == .pass
+            }
+        )
+        XCTAssertTrue(
             FileManager.default.fileExists(
                 atPath: receipt.receiptPath
             )
@@ -264,6 +270,70 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
         )
     }
 
+    func testLegacyMissingLiveSignalIsWarningButMalformedV3IsHeld()
+        async throws
+    {
+        let fixture = try makeFixture(
+            videoSignalVerified: false
+        )
+        defer {
+            try? FileManager.default.removeItem(
+                at: fixture.root
+            )
+        }
+
+        let legacyAudit =
+            try await ProductionCaptureTakeAuditor.audit(
+                audio: fixture.audio,
+                video: fixture.video,
+                rootDirectory: fixture.root
+                    .appendingPathComponent(
+                        "legacy-audits",
+                        isDirectory: true
+                    )
+            )
+        XCTAssertTrue(
+            legacyAudit.checks.contains {
+                $0.id == "video-live-signal-preflight"
+                    && $0.status == .warning
+            }
+        )
+
+        let encoded = try JSONEncoder().encode(
+            fixture.video
+        )
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded)
+                as? [String: Any]
+        )
+        json["protocolVersion"] = 3
+        let malformedV3 = try JSONDecoder().decode(
+            ProductionVideoReferenceReceipt.self,
+            from:
+                JSONSerialization.data(
+                    withJSONObject: json
+                )
+        )
+        let malformedAudit =
+            try await ProductionCaptureTakeAuditor.audit(
+                audio: fixture.audio,
+                video: malformedV3,
+                rootDirectory: fixture.root
+                    .appendingPathComponent(
+                        "malformed-audits",
+                        isDirectory: true
+                    )
+            )
+
+        XCTAssertEqual(malformedAudit.disposition, .held)
+        XCTAssertTrue(
+            malformedAudit.checks.contains {
+                $0.id == "video-live-signal-preflight"
+                    && $0.status == .hold
+            }
+        )
+    }
+
     private struct Fixture {
         let root: URL
         let audio: ProductionAudioRecordingReceipt
@@ -275,7 +345,8 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
         divergentClockBurst: Bool = false,
         mismatchedTakeIdentity: Bool = false,
         mismatchedVideoShape: Bool = false,
-        silentAudio: Bool = false
+        silentAudio: Bool = false,
+        videoSignalVerified: Bool = true
     ) throws -> Fixture {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(
@@ -463,6 +534,19 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
                     roomBound ? "PODCAST" : nil,
                 clockSamples: videoSamples,
                 videoDevice: videoDevice,
+                signalVerification:
+                    videoSignalVerified
+                        ? ProductionVideoSignalVerification(
+                            deviceID: videoDevice.id,
+                            method:
+                                .operatorLivePreview,
+                            verifiedAt:
+                                Date(
+                                    timeIntervalSince1970:
+                                        99.8
+                                )
+                        )
+                        : nil,
                 rootDirectory: root
             )
         let videoReceipt =

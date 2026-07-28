@@ -160,6 +160,10 @@ public class AgentServer: ObservableObject {
                         request.query["video_device_id"] ?? "",
                     "include_camera":
                         request.query["include_camera"] ?? "false",
+                    "camera_signal_verified":
+                        request.query[
+                            "camera_signal_verified"
+                        ] ?? "false",
                 ]
                 Task { @MainActor in
                     let receipt = self?.enqueueCommand(
@@ -3929,7 +3933,7 @@ public class AgentServer: ObservableObject {
                 "GET /codex_editor_handoff",
                 "GET /editor_loop_proof",
                 "GET /capture_refresh_hardware",
-                "GET /capture_prepare_local?episode_space_id=<id>&participant_id=<id>&input_device_id=<exact-id>&output_device_id=<exact-id>&video_device_id=<exact-id>&include_camera=true|false",
+                "GET /capture_prepare_local?episode_space_id=<id>&participant_id=<id>&input_device_id=<exact-id>&output_device_id=<exact-id>&video_device_id=<exact-id>&include_camera=true|false&camera_signal_verified=true|false",
                 "GET /capture_start_local?input_device_id=<exact-id>&video_device_id=<exact-id>",
                 "GET /capture_stop_local",
                 "GET /capture_audit_local",

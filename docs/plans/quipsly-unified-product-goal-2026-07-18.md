@@ -2739,3 +2739,32 @@ This is an active-goal checkpoint, not a completion claim.
   no direct physical MV7i input/output UID or Canon R8 device. A real
   two-participant join, MV7i headphones, concurrent WAV, route-loss rehearsal,
   sync event, and long take therefore remain mandatory physical gates.
+
+### 2026-07-27 physical MV7i and camera live-signal checkpoint
+
+- This is an active-goal checkpoint, not a completion claim.
+- The signed arm64 Release app now sees the direct USB Shure MV7i as the same
+  exact 48 kHz Core Audio input/output UID and has created a preserved,
+  non-silent 19.3-second mono 24-bit WAV through it. Fresh hash, byte count,
+  media probe, and signal checks pass. Production gain, direct headphone
+  monitoring, route-loss behavior, and endurance remain unproved.
+- A paired 19.56-second 1920x1080 H.264 EOS reference also passed structural
+  and byte checks, but independent frame review showed only Canon's
+  disconnected Webcam Utility slate. It is visually rejected and preserved as
+  negative evidence; no R8 image or 4K-master claim is made.
+- The discovered false boundary is now corrected. Negotiated camera format is
+  not called live signal. Included video requires a fresh, exact-device,
+  explicit moving-image confirmation, and protocol-v3 source receipts preserve
+  its method and timestamp without replacing final watch review.
+- Legacy camera receipts decode with a visible missing-proof warning; malformed
+  v3 proof holds the take. Core verification passes 78/78.
+- The final optimized arm64 Release was signed throughout with Apple
+  Development team `585GUXMY5M`, installed at
+  `/Users/wall-e/Applications/Quipsly Studio.app`, and read back with CDHash
+  `f168436c68f84866d093a626a1159a6dc29acd34`. In that installed build, an
+  exact-MV7i/EOS prepare without live-image confirmation left
+  `canStartRecording=false`; a direct start request returned
+  `start-rejected-preflight-not-ready`, remained stopped, and created no files.
+- The next physical gate is a real R8 image and sync take, MV7i headphone
+  listen, long-take drift review, Canon internal-4K import/alignment, and real
+  two-participant audio-room route-loss rehearsal.

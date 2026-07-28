@@ -82,6 +82,13 @@ final class ProductionVideoReferenceRecorderTests: XCTestCase {
             episodeSlug: "episode-5",
             capturePurpose: "podcast",
             videoDevice: eosWebcamUtility,
+            signalVerification:
+                ProductionVideoSignalVerification(
+                    deviceID: eosWebcamUtility.id,
+                    method: .operatorLivePreview,
+                    verifiedAt:
+                        Date(timeIntervalSince1970: 999)
+                ),
             rootDirectory: URL(fileURLWithPath: "/tmp/quipsly-tests")
         )
 
@@ -118,14 +125,60 @@ final class ProductionVideoReferenceRecorderTests: XCTestCase {
         XCTAssertEqual(receipt.recordingConsentID, "consent-5")
         XCTAssertEqual(receipt.sourceKind, "local_video_reference")
         XCTAssertEqual(receipt.state, .finalized)
-        XCTAssertEqual(receipt.protocolVersion, 2)
+        XCTAssertEqual(receipt.protocolVersion, 3)
         XCTAssertFalse(receipt.containsAudio)
         XCTAssertEqual(receipt.negotiatedFormat, referenceFormat)
         XCTAssertEqual(receipt.recordedFormat?.codec, "avc1")
+        XCTAssertEqual(
+            receipt.signalVerification?.method,
+            .operatorLivePreview
+        )
         XCTAssertTrue(receipt.truth.contains("exact selected macOS route"))
         XCTAssertTrue(
             receipt.truth.contains(
+                "fresh preflight live-image confirmation"
+            )
+        )
+        XCTAssertTrue(
+            receipt.truth.contains(
                 "not proof of a Canon camera-card 4K master"
+            )
+        )
+    }
+
+    func testLiveSignalVerificationIsExactFreshAndPreStart() {
+        let verification = ProductionVideoSignalVerification(
+            deviceID: eosWebcamUtility.id,
+            method: .agentVisualReview,
+            verifiedAt: Date(timeIntervalSince1970: 1_000)
+        )
+
+        XCTAssertTrue(
+            verification.isValid(
+                for: eosWebcamUtility.id,
+                recordingStartedAt:
+                    Date(timeIntervalSince1970: 1_120)
+            )
+        )
+        XCTAssertFalse(
+            verification.isValid(
+                for: "another-camera",
+                recordingStartedAt:
+                    Date(timeIntervalSince1970: 1_120)
+            )
+        )
+        XCTAssertFalse(
+            verification.isValid(
+                for: eosWebcamUtility.id,
+                recordingStartedAt:
+                    Date(timeIntervalSince1970: 1_301)
+            )
+        )
+        XCTAssertFalse(
+            verification.isValid(
+                for: eosWebcamUtility.id,
+                recordingStartedAt:
+                    Date(timeIntervalSince1970: 999)
             )
         )
     }

@@ -266,6 +266,10 @@ public enum ProductionCaptureTakeAuditor {
             probe: videoAudit.videoProbe,
             checks: &checks
         )
+        appendVideoSignalVerificationCheck(
+            receipt: video,
+            checks: &checks
+        )
 
         let audioClock = audio.clockSamples ?? []
         let videoClock = video.clockSamples ?? []
@@ -660,6 +664,39 @@ public enum ProductionCaptureTakeAuditor {
                 summary: signalSummary
             )
         )
+    }
+
+    private static func appendVideoSignalVerificationCheck(
+        receipt: ProductionVideoReferenceReceipt,
+        checks: inout [ProductionCaptureTakeAuditCheck]
+    ) {
+        if let verification = receipt.signalVerification {
+            let valid = verification.isValid(
+                for: receipt.videoDevice.id,
+                recordingStartedAt: receipt.startedAt
+            )
+            checks.append(
+                ProductionCaptureTakeAuditCheck(
+                    id: "video-live-signal-preflight",
+                    status: valid ? .pass : .hold,
+                    summary: valid
+                        ? "A fresh live-image confirmation names the exact recorded camera route. Final visual review remains mandatory."
+                        : "The live-image confirmation is stale, post-start, or names a different camera route."
+                )
+            )
+        } else {
+            checks.append(
+                ProductionCaptureTakeAuditCheck(
+                    id: "video-live-signal-preflight",
+                    status: receipt.protocolVersion >= 3
+                        ? .hold
+                        : .warning,
+                    summary: receipt.protocolVersion >= 3
+                        ? "This v3 camera receipt is missing its required live-image confirmation."
+                        : "This legacy camera receipt predates explicit live-image confirmation. Watch the entire reference and reject placeholder or disconnected slates."
+                )
+            )
+        }
     }
 
     private static func appendVideoShapeChecks(
