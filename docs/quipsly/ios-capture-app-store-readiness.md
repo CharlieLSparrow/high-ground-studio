@@ -443,14 +443,19 @@ remain red until approved screenshots and every delivery-layer proof exist.
   The detached-source receipt records `candidateQualified: true` and the exact
   readable `.xcresult` path. See
   [`2026-07-28-capture-build-6-qualified-candidate.md`](../coordination/2026-07-28-capture-build-6-qualified-candidate.md).
-  No upload, Apple processing readback, tester assignment, or physical
-  installation has occurred.
+  Xcode Organizer uploaded that exact archive. App Store Connect provider
+  build `47e5e730-e5bd-4cfb-afae-baef86d3923c` reached `Complete` and
+  `Ready to Test` with no Missing Compliance gate. Build 6 is assigned to the
+  manually controlled `Quipsly Capture Internal` group with one Account Holder
+  tester at `Invited`; physical installation has not occurred. See
+  [`2026-07-28-capture-build-6-testflight-delivery.md`](../coordination/2026-07-28-capture-build-6-testflight-delivery.md).
 - 2026-07-28 production parity: Cloud Run revision `studio-00414-tut` is
   promoted from exact source `9d3faeccf1f469decaaddbcf3d3e9eabfe3cebde`.
   The post-promotion release gate and a fresh unauthenticated production audit
-  both pass all 104 mobile contracts. Authenticated lifecycle readback and any
-  future deployment still require refreshed Google Cloud/Firebase
-  credentials.
+  both pass all 104 mobile contracts. Google user, ADC, deploy-project,
+  Firebase-project, and Firebase Admin authorization were refreshed and pass.
+  Authenticated native lifecycle and separate-account privacy readback remain
+  open.
 - 2026-07-24 account deletion: the reviewed 30-day policy, request/status UI,
   inventory, fail-closed controlled executor, Firebase/GCS/email adapters,
   recovery states, durable receipts, and completion constraint are
@@ -471,17 +476,20 @@ remain red until approved screenshots and every delivery-layer proof exist.
   worktree afterward; this is not upload, App Store Connect readback, or
   physical-device proof.
 
-- 2026-07-21 release-readiness pass: local code/build evidence is healthy again, but TestFlight remains externally blocked. `scripts/quipsly-mobile-capture-preflight.sh` passes after repairing its stale recording-promotion static assertion and routing TypeScript execution through the repo TS extension loader. The focused session-evidence smoke passes, Quipsly TypeScript passes, and unsigned iOS simulator build with LiveKit linked passes. Current live probes for `nest.quipsly.com`, `nest.quipsly.com/privacy`, `nest.quipsly.com/api/mac/firebase-client-config`, `app.highgroundodyssey.com/api/health`, and `highgroundodyssey.com` all return Google Frontend HTTP 503 before application route contracts are reached.
-- 2026-07-21 Apple signing and upload gates cleared: after the account agreement was accepted, `xcodebuild ... -allowProvisioningUpdates archive` created the app and share-extension profiles and produced signed archive `/tmp/QuipslyCapture-20260721151703.xcarchive`. Automatic App Store Connect distribution export produced `/tmp/QuipslyCapture-AppStoreExport-20260721151703/HighGroundCapture.ipa`; strict signature verification passed with Apple Distribution profiles for both targets. Build `1.0 (1)` then uploaded successfully and entered App Store Connect processing. Xcode warned that the vendor LiveKitWebRTC and RustLiveKitUniFFI frameworks did not include matching dSYMs; the warning did not reject the upload but leaves third-party crash symbolication incomplete. This is upload evidence, not processing completion, tester availability, TestFlight installation, or physical-device proof.
 - 2026-07-21 physical-device blocker: Xcode/CoreDevice still does not see the plugged-in iPhone as an available destination. `xctrace` lists only the Mac plus offline iPads `Layla` and `Morbo`; `devicectl` lists the same unavailable iPads. Unlock/trust the iPhone, use a data-capable cable/direct port, and confirm it appears in Xcode Devices before claiming physical-device capture proof.
-- 2026-07-21 Cloud service blocker isolated: operator and ADC authentication now pass, all four Cloud Run services report Ready, and the expected domain mappings and 100% traffic targets remain intact. Current Cloud Run request logs fail with `The request failed because billing is disabled for this project.` The project remains linked to a billing account, but that account reports closed. Reopen or replace the billing account through an authorized billing administrator, then re-probe the generated Cloud Run URLs and public domains before changing application code or deploying.
-- Replace the superseded 2026-07-18/21 availability snapshot with exact-source
-  production parity: all 104 mobile checks, canonical policy redirects, health
-  revision, and separate-account privacy readback must pass.
+- Complete authenticated native lifecycle and separate-account privacy
+  readback against the current exact-source production revision. Public
+  production parity already passes all 104 mobile checks.
 - Apply `ops/quipsly-coaching-capture-additive.sql` and pass `scripts/quipsly-coaching-capture-schema-sync.mjs` against the target database before deploying backend code that reads or writes `CaptureRoomStateReceipt` or `MediaVaultUploadReservation`; upload capability issuance is launch-critical on the latter.
-- Apply the reviewed media-vault CORS policy and verify live bucket readback includes `x-goog-if-generation-match`. Local gcloud authentication could not mint a token during this audit, so the source policy is not deployment proof.
+- Apply or re-read the reviewed media-vault CORS policy and verify live bucket
+  readback includes `x-goog-if-generation-match`. Google authorization now
+  passes; source policy alone is still not deployment proof.
 - Add a real reviewer test account with at least one visible session, then smoke native email/password auth and the reviewer checklist against deployed `nest.quipsly.com`.
-- No reachable physical iPhone was available during this audit. Produce signed archive/TestFlight proof and validate microphone permission/fidelity, built-in/Bluetooth/USB routes, lock/background behavior, interruptions, route loss, force-quit recovery, failed-upload recovery, direct-GCS background transfer, and transcript packet creation on a physical device.
+- Install the assigned Build 6 from TestFlight and validate microphone
+  permission/fidelity, built-in/Bluetooth/USB routes, lock/background behavior,
+  interruptions, route loss, force-quit recovery, failed-upload recovery,
+  direct-GCS background transfer, and transcript packet creation on the
+  physical iPhone.
 - Join a real Nest-issued LiveKit room and prove LiveKit transport, CallKit activation/presentation, and local recording remain visibly separate through connect, timeout/failure, interruption, reconnect, and reset. Provider-egress START becomes a submission blocker only if provider recording enters release scope; otherwise prove it stays interlocked and absent from end-user Capture controls.
 - Operate the retention-aware deletion system in production with a disposable
   eligible account, read back its completion receipt/confirmation, and obtain
@@ -491,7 +499,10 @@ remain red until approved screenshots and every delivery-layer proof exist.
   canonical HTTPS URLs; reconcile their claims with the binary, App Store
   privacy answers, reviewer notes, and actual retention behavior.
 - Generate Xcode's privacy report from the signed archive and confirm `PrivacyInfo.xcprivacy` and all required-reason entries appear in the distributed app bundle.
-- Refresh local Firebase ADC or configure explicit local Firebase Admin service-account credentials for repeatable non-interactive generated-auth smokes; this is separate from restoring the deployed service.
+- Google ADC and Firebase Admin authorization pass. Run the generated-auth
+  production smoke with its controlled database configuration, or configure a
+  dedicated non-interactive service account before depending on unattended
+  release automation.
 - Capture and approve the five planned iPhone screenshots from the
   physical/TestFlight candidate. The canonical listing metadata and source
   validator pass. A deterministic iPhone 17 Pro Max draft harness now operates

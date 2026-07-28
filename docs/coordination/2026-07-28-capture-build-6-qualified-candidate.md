@@ -5,6 +5,11 @@
 complete; upload, Apple processing, tester assignment, and physical TestFlight
 operation remain open
 
+> Delivery status advanced later on 2026-07-28. Keep this file as the canonical
+> pre-upload qualification record and use
+> [`2026-07-28-capture-build-6-testflight-delivery.md`](./2026-07-28-capture-build-6-testflight-delivery.md)
+> for upload, processing, internal-group, and tester readback.
+
 ## Decision
 
 Quipsly Capture `1.0 (6)` is now a complete local upload candidate from exact

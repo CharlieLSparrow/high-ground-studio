@@ -3002,3 +3002,32 @@ This is an active-goal checkpoint, not a completion claim.
   capture/offline/relaunch/upload/transcript/same-ID operation, final
   screenshots, legal/privacy reconciliation, and App Store submission remain
   mandatory gates.
+
+### 2026-07-28 Quipsly Capture Build 6 TestFlight delivery checkpoint
+
+- This is an active-goal delivery checkpoint, not physical-device or App Store
+  submission proof.
+- Uploaded the exact qualified `1.0 (6)` archive through authenticated Xcode
+  Organizer without rebuilding or changing the source/build identity.
+  Organizer read back Build 6 as uploaded. Apple accepted the binary with two
+  non-rejecting vendor-symbol warnings for `LiveKitWebRTC.framework` and
+  `RustLiveKitUniFFI.framework`.
+- App Store Connect provider build
+  `47e5e730-e5bd-4cfb-afae-baef86d3923c` reached `Complete` and
+  `Ready to Test`, expires in 90 days, and has no Missing Compliance gate.
+  This proves the packaged `ITSAppUsesNonExemptEncryption = false` declaration
+  closed the manual-compliance defect left on Builds 2–4.
+- Saved focused tester instructions, created the manually controlled
+  `Quipsly Capture Internal` group, disabled automatic distribution, assigned
+  only Build 6, and added the Account Holder as the sole internal tester.
+  Provider readback reports one Build, one Tester, and tester status `Invited`.
+- Refreshed Google Cloud/ADC authorization and independently passed user-token,
+  ADC-token, deploy-project, Firebase-project, and Firebase Admin checks.
+- The exact receipt now records upload, processing, group, tester, and warning
+  readback while preserving
+  `physicalTestFlightInstallReadbackPerformed: false`. iPhone Mirroring is
+  currently waiting for the iPhone microphone to become free, and CoreDevice
+  still does not enumerate the iPhone. Open TestFlight directly or reconnect
+  Mirroring after the microphone is released, install Build 6, sign into
+  production Quipsly, and operate the full physical capture/offline/relaunch/
+  upload/transcript/same-ID checklist before closing the device gate.
