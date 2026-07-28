@@ -19,6 +19,39 @@ private func qStudioOptionalInt(_ value: Int?, fallback: Int = 0) -> Int {
     value ?? fallback
 }
 
+private func qStudioDurationEvidenceMatches(
+    _ lhs: Double?,
+    _ rhs: Double?,
+    tolerance: Double = 0.000_5
+) -> Bool {
+    switch (lhs, rhs) {
+    case (.none, .none):
+        return true
+    case let (.some(lhs), .some(rhs)):
+        return abs(lhs - rhs) <= tolerance
+    default:
+        return false
+    }
+}
+
+private func qStudioVideoTrackDuration(at url: URL) async throws -> Double {
+    let asset = AVURLAsset(url: url)
+    guard let track = try await asset
+        .loadTracks(withMediaType: .video)
+        .first else {
+        throw NSError(
+            domain: "QuipslyVideoProxyValidation",
+            code: 1,
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    "No video track exists at \(url.lastPathComponent)."
+            ]
+        )
+    }
+    let timeRange = try await track.load(.timeRange)
+    return CMTimeGetSeconds(timeRange.duration)
+}
+
 enum QuipslyStudioTheme {
     static let night = Color(red: 0.028, green: 0.038, blue: 0.034)
     static let forest = Color(red: 0.050, green: 0.125, blue: 0.092)
@@ -985,7 +1018,8 @@ struct WorkspaceView: View {
     @State private var lastProxyJobRefresh = Date.distantPast
     @State private var audioProxyValidationByPath: [String: String] = [:]
     @State private var audioProxyValidationInFlight: Set<String> = []
-    @State private var videoProxyValidationInFlight: Set<String> = []
+    @State private var videoProxyValidationByLaneAndPath: [String: String] = [:]
+    @State private var videoProxyValidationRunIDByLaneAndPath: [String: UUID] = [:]
     @State private var isInspectorVisible = false
     @State private var leftWorkbenchMode: LeftWorkbenchMode = .audio
     @State private var cutIntelligenceCadenceMode: CutIntelligenceMode = .warmConversation
@@ -1445,6 +1479,7 @@ struct WorkspaceView: View {
             case .success(let urls):
                 guard let url = urls.first else { return }
                 externalMediaAccess.grantAccess(to: url)
+                resetVideoProxyValidation()
                 lastMediaAction = "External media access granted for \(url.lastPathComponent)"
                 updateAgentState()
             case .failure(let error):
@@ -3677,8 +3712,12 @@ struct WorkspaceView: View {
                 Button(externalMediaAccess.rootPath.isEmpty ? "Grant originals later" : "Restore originals later") {
                     if externalMediaAccess.rootPath.isEmpty {
                         isShowingExternalMediaAccessImporter = true
-                    } else if !externalMediaAccess.restoreAccess() {
-                        isShowingExternalMediaAccessImporter = true
+                    } else {
+                        if externalMediaAccess.restoreAccess() {
+                            resetVideoProxyValidation()
+                        } else {
+                            isShowingExternalMediaAccessImporter = true
+                        }
                     }
                     updateAgentState()
                 }
@@ -22418,8 +22457,8 @@ struct WorkspaceView: View {
             #if os(macOS)
             if externalMediaAccess.rootPath.isEmpty {
                 isShowingExternalMediaAccessImporter = true
-            } else {
-                _ = externalMediaAccess.restoreAccess()
+            } else if externalMediaAccess.restoreAccess() {
+                resetVideoProxyValidation()
             }
             #endif
         } label: {
@@ -22474,7 +22513,9 @@ struct WorkspaceView: View {
                     .buttonStyle(.bordered)
 
                     Button("Restore") {
-                        _ = externalMediaAccess.restoreAccess()
+                        if externalMediaAccess.restoreAccess() {
+                            resetVideoProxyValidation()
+                        }
                     }
                     .buttonStyle(.bordered)
                     .disabled(externalMediaAccess.rootPath.isEmpty)
@@ -22489,6 +22530,7 @@ struct WorkspaceView: View {
 
                     Button("Clear") {
                         externalMediaAccess.clearAccess()
+                        resetVideoProxyValidation()
                         lastMediaAction = "External media access cleared"
                         updateAgentState()
                     }
@@ -23565,29 +23607,46 @@ struct WorkspaceView: View {
         }
 
         if let proxyPath, hasProxyFile {
-            if videoProxyValidationInFlight.contains(proxyPath) {
+            switch videoProxyValidationStatus(
+                lane: lane,
+                proxyPath: proxyPath,
+                expectedDuration: source.duration
+            ) {
+            case .ready:
+                break
+            case .pending(let detail):
                 return SourceReadiness(
                     label: "Proxy validating",
-                    detail: "Verifying this video proxy covers the whole source lane before production editing.",
+                    detail: detail,
                     systemImage: "video.badge.magnifyingglass",
                     color: .orange,
                     isReady: false,
                     playbackPath: proxyPath,
                     needsStorageAccess: needsStorageAccess
                 )
-            }
-
+            case .blocked(let detail):
                 return SourceReadiness(
-                    label: "Proxy ready",
-                    detail: needsStorageAccess
-                        ? "Proxy video available. Grant storage access only for relink, regeneration, or raw-source work."
-                        : "Proxy video available",
-                    systemImage: needsStorageAccess ? "externaldrive.badge.questionmark" : "bolt.fill",
-                    color: .green,
-                    isReady: true,
+                    label: "Proxy blocked",
+                    detail: detail,
+                    systemImage: "video.badge.exclamationmark",
+                    color: .red,
+                    isReady: false,
                     playbackPath: proxyPath,
                     needsStorageAccess: needsStorageAccess
                 )
+            }
+
+            return SourceReadiness(
+                label: "Proxy ready",
+                detail: needsStorageAccess
+                    ? "Proxy video-track duration verified. Grant storage access only for relink, regeneration, or raw-source work."
+                    : "Proxy video-track duration verified",
+                systemImage: needsStorageAccess ? "externaldrive.badge.questionmark" : "bolt.fill",
+                color: .green,
+                isReady: true,
+                playbackPath: proxyPath,
+                needsStorageAccess: needsStorageAccess
+            )
         }
 
         if source.proxyURL != nil {
@@ -23714,6 +23773,203 @@ struct WorkspaceView: View {
                 updateAgentState()
             }
         }
+    }
+
+    private func videoProxyValidationStatus(
+        lane: VideoLane,
+        proxyPath: String,
+        expectedDuration: Double
+    ) -> ProxyValidationStatus {
+        let validationKey = videoProxyValidationKey(
+            laneID: lane.id,
+            proxyPath: proxyPath
+        )
+        if let cached = videoProxyValidationByLaneAndPath[validationKey] {
+            return cached.isEmpty ? .ready : .blocked(cached)
+        }
+
+        scheduleVideoProxyValidation(
+            lane: lane,
+            proxyPath: proxyPath,
+            expectedDuration: expectedDuration
+        )
+        return .pending(
+            "Verifying proxy video-track coverage before production editing."
+        )
+    }
+
+    private func scheduleVideoProxyValidation(
+        lane: VideoLane,
+        proxyPath: String,
+        expectedDuration: Double
+    ) {
+        let validationKey = videoProxyValidationKey(
+            laneID: lane.id,
+            proxyPath: proxyPath
+        )
+        guard videoProxyValidationRunIDByLaneAndPath[validationKey] == nil else {
+            return
+        }
+
+        let validationRunID = UUID()
+        videoProxyValidationRunIDByLaneAndPath[validationKey] =
+            validationRunID
+        let laneID = lane.id
+        let laneName = lane.name
+        let sourcePath = lane.sourceVideo?.mediaURL.path ?? ""
+        let sourceURL = shouldProbeOriginalPath(sourcePath)
+            ? URL(fileURLWithPath: sourcePath)
+            : nil
+        let persistedSourceDuration =
+            lane.metadata?.sourceVideoTrackDuration
+
+        Task.detached(priority: .utility) {
+            let assessment: VideoProxyDurationAssessment
+            do {
+                let proxyDuration = try await qStudioVideoTrackDuration(
+                    at: URL(fileURLWithPath: proxyPath)
+                )
+                var sourceDuration = persistedSourceDuration
+                if let sourceURL,
+                   let probedDuration = try? await qStudioVideoTrackDuration(
+                       at: sourceURL
+                   ) {
+                    sourceDuration = probedDuration
+                }
+                assessment = VideoProxyDurationPolicy.assess(
+                    storedLaneDuration: expectedDuration,
+                    sourceVideoTrackDuration: sourceDuration,
+                    proxyVideoTrackDuration: proxyDuration
+                )
+            } catch {
+                assessment = VideoProxyDurationAssessment(
+                    status: .blocked,
+                    storedLaneDuration: expectedDuration,
+                    sourceVideoTrackDuration: persistedSourceDuration,
+                    proxyVideoTrackDuration: 0,
+                    canonicalLaneDuration: nil,
+                    toleranceSeconds:
+                        VideoProxyDurationPolicy.toleranceSeconds,
+                    detail:
+                        "Proxy video track could not be verified: \(error.localizedDescription)"
+                )
+            }
+
+            await MainActor.run {
+                guard videoProxyValidationRunIDByLaneAndPath[validationKey]
+                    == validationRunID else {
+                    return
+                }
+                videoProxyValidationRunIDByLaneAndPath.removeValue(
+                    forKey: validationKey
+                )
+                guard var sequence = projectStore.activeSequence,
+                      let laneIndex = sequence.lanes.firstIndex(
+                          where: { $0.id == laneID }
+                      ),
+                      var source = sequence.lanes[laneIndex].sourceVideo,
+                      source.proxyURL?.path == proxyPath else {
+                    return
+                }
+
+                guard assessment.isReady,
+                      let canonicalDuration =
+                        assessment.canonicalLaneDuration else {
+                    videoProxyValidationByLaneAndPath[validationKey] =
+                        assessment.detail
+                    proxyFailureByLaneId[laneID] = assessment.detail
+                    lastMediaAction =
+                        "Proxy verification blocked \(laneName): \(assessment.detail)"
+                    isShowingProductionDetails = true
+                    updateAgentState()
+                    return
+                }
+
+                videoProxyValidationByLaneAndPath[validationKey] = ""
+                proxyFailureByLaneId.removeValue(forKey: laneID)
+                var metadata = sequence.lanes[laneIndex].metadata
+                    ?? VideoLaneMetadata(mediaKind: "video", role: "camera")
+                let validationBasis = assessment.sourceVideoTrackDuration == nil
+                    ? "stored-lane-vs-proxy-video-track"
+                    : "source-video-track-vs-proxy-video-track"
+                let durationChanged =
+                    abs(source.duration - canonicalDuration) > 0.001
+                let evidenceChanged =
+                    !qStudioDurationEvidenceMatches(
+                        metadata.sourceVideoTrackDuration,
+                        assessment.sourceVideoTrackDuration
+                    )
+                    || !qStudioDurationEvidenceMatches(
+                        metadata.proxyVideoTrackDuration,
+                        assessment.proxyVideoTrackDuration
+                    )
+                    || metadata.proxyDurationValidationBasis
+                        != validationBasis
+                    || metadata.proxyDurationValidatedAt == nil
+
+                guard durationChanged || evidenceChanged else {
+                    lastMediaAction =
+                        "Verified video-track duration for \(laneName)"
+                    updateAgentState()
+                    return
+                }
+
+                source.duration = canonicalDuration
+                sequence.lanes[laneIndex].sourceVideo = source
+                metadata.sourceVideoTrackDuration =
+                    assessment.sourceVideoTrackDuration
+                metadata.proxyVideoTrackDuration =
+                    assessment.proxyVideoTrackDuration
+                metadata.proxyDurationValidatedAt = Date()
+                metadata.proxyDurationValidationBasis = validationBasis
+                sequence.lanes[laneIndex].metadata = metadata
+                projectStore.updateSequence(
+                    sequence,
+                    undoManager: nil,
+                    actionName: "Verify Proxy Video Duration"
+                )
+                playbackEngine.updateSourcePlayers(for: sequence)
+                playbackEngine.updateValidRanges(for: sequence)
+                lastMediaAction = durationChanged
+                    ? String(
+                        format:
+                            "Reconciled %@ video lane %.3fs -> %.3fs from source/proxy video-track evidence",
+                        laneName,
+                        expectedDuration,
+                        canonicalDuration
+                    )
+                    : "Persisted video-track validation for \(laneName)"
+                rebuildPlayer()
+                scheduleAutosave(
+                    reason: "verified proxy video-track duration"
+                )
+                updateAgentState()
+            }
+        }
+    }
+
+    private func videoProxyValidationKey(
+        laneID: UUID,
+        proxyPath: String
+    ) -> String {
+        "\(laneID.uuidString)|\(proxyPath)"
+    }
+
+    private func clearVideoProxyValidation(proxyPath: String) {
+        let suffix = "|\(proxyPath)"
+        videoProxyValidationByLaneAndPath =
+            videoProxyValidationByLaneAndPath.filter {
+                !$0.key.hasSuffix(suffix)
+            }
+        videoProxyValidationRunIDByLaneAndPath =
+            videoProxyValidationRunIDByLaneAndPath.filter {
+                !$0.key.hasSuffix(suffix)
+            }
+    }
+
+    private func resetVideoProxyValidation() {
+        videoProxyValidationByLaneAndPath.removeAll()
+        videoProxyValidationRunIDByLaneAndPath.removeAll()
     }
 
     private func isExternalOriginalPath(_ path: String) -> Bool {
@@ -26276,8 +26532,12 @@ struct WorkspaceView: View {
                     Button(externalMediaAccess.rootPath.isEmpty ? "Grant folder" : "Restore access") {
                         if externalMediaAccess.rootPath.isEmpty {
                             isShowingExternalMediaAccessImporter = true
-                        } else if !externalMediaAccess.restoreAccess() {
-                            isShowingExternalMediaAccessImporter = true
+                        } else {
+                            if externalMediaAccess.restoreAccess() {
+                                resetVideoProxyValidation()
+                            } else {
+                                isShowingExternalMediaAccessImporter = true
+                            }
                         }
                         updateAgentState()
                     }
@@ -26764,6 +27024,18 @@ struct WorkspaceView: View {
                 "trackIds": lane.metadata?.trackIds ?? [],
                 "sourceLabel": lane.metadata?.sourceLabel ?? "",
                 "assetFingerprint": lane.metadata?.assetFingerprint ?? "",
+                "sourceVideoTrackDurationSeconds":
+                    lane.metadata?.sourceVideoTrackDuration.map { $0 as Any }
+                        ?? NSNull(),
+                "proxyVideoTrackDurationSeconds":
+                    lane.metadata?.proxyVideoTrackDuration.map { $0 as Any }
+                        ?? NSNull(),
+                "proxyDurationValidatedAt":
+                    lane.metadata?.proxyDurationValidatedAt.map {
+                        formatter.string(from: $0)
+                    } ?? "",
+                "proxyDurationValidationBasis":
+                    lane.metadata?.proxyDurationValidationBasis ?? "",
                 "ignoreForProduction": lane.metadata?.ignoreForProduction == true,
                 "architectureInvariant": "This is a whole synced lane. Fix by relinking or attaching/generating a full-length proxy; do not replace it with a clipped media segment."
             ]
@@ -46376,6 +46648,18 @@ struct WorkspaceView: View {
                 "vaultRawPath": lane.metadata?.vaultRawPath ?? "",
                 "vaultProxyPath": lane.metadata?.vaultProxyPath ?? "",
                 "assetFingerprint": lane.metadata?.assetFingerprint ?? "",
+                "sourceVideoTrackDurationSeconds":
+                    lane.metadata?.sourceVideoTrackDuration.map { $0 as Any }
+                        ?? NSNull(),
+                "proxyVideoTrackDurationSeconds":
+                    lane.metadata?.proxyVideoTrackDuration.map { $0 as Any }
+                        ?? NSNull(),
+                "proxyDurationValidatedAt":
+                    lane.metadata?.proxyDurationValidatedAt.map {
+                        ISO8601DateFormatter().string(from: $0)
+                    } ?? "",
+                "proxyDurationValidationBasis":
+                    lane.metadata?.proxyDurationValidationBasis ?? "",
                 "ignoreForProduction": lane.metadata?.ignoreForProduction == true,
                 "sourceMonitorPlayerReady": playbackEngine.sourcePlayers[lane.id] != nil,
                 "sourcePlayerTimeSeconds": sourcePlayerTime ?? NSNull(),
@@ -47038,7 +47322,8 @@ struct WorkspaceView: View {
             proxyFailureByLaneId.removeAll()
             audioProxyValidationByPath.removeAll()
             audioProxyValidationInFlight.removeAll()
-            videoProxyValidationInFlight.removeAll()
+            videoProxyValidationByLaneAndPath.removeAll()
+            videoProxyValidationRunIDByLaneAndPath.removeAll()
             activeSessionName = sessionName
             pendingAutosaveSessionName = nil
             pendingAutosaveCheckpointName = nil
@@ -47178,6 +47463,7 @@ struct WorkspaceView: View {
                     updatedSource.mediaURL = originalURL
                     updatedSource.proxyURL = proxyURL
                     updatedSequence.lanes[laneIndex].sourceVideo = updatedSource
+                    clearVideoProxyValidation(proxyPath: proxyURL.path)
 
                     var metadata = updatedSequence.lanes[laneIndex].metadata ?? VideoLaneMetadata(
                         mediaKind: isAudio ? "audio" : "video",
@@ -47189,6 +47475,9 @@ struct WorkspaceView: View {
                     metadata.vaultProxyPath = proxyURL.path
                     metadata.assetFingerprint = fingerprint
                     metadata.declaredExists = true
+                    metadata.proxyVideoTrackDuration = nil
+                    metadata.proxyDurationValidatedAt = nil
+                    metadata.proxyDurationValidationBasis = nil
                     if metadata.sourceLabel == nil {
                         metadata.sourceLabel = originalURL.lastPathComponent
                     }
@@ -47276,6 +47565,10 @@ struct WorkspaceView: View {
         metadata.declaredExists = true
         metadata.sourceLabel = sourceURL.lastPathComponent
         metadata.mediaKind = isAudio ? "audio" : "video"
+        metadata.sourceVideoTrackDuration = nil
+        metadata.proxyVideoTrackDuration = nil
+        metadata.proxyDurationValidatedAt = nil
+        metadata.proxyDurationValidationBasis = nil
         if metadata.role == "unknown" {
             metadata.role = isAudio ? "audio" : "camera"
         }
@@ -47351,6 +47644,9 @@ struct WorkspaceView: View {
 
                     updatedSource.proxyURL = generatedProxyURL
                     updatedSequence.lanes[laneIndex].sourceVideo = updatedSource
+                    clearVideoProxyValidation(
+                        proxyPath: generatedProxyURL.path
+                    )
 
                     var metadata = updatedSequence.lanes[laneIndex].metadata ?? VideoLaneMetadata(
                         mediaKind: isAudioPath(sourceURL.path) ? "audio" : "video",
@@ -47358,6 +47654,9 @@ struct WorkspaceView: View {
                     )
                     metadata.assetFingerprint = fingerprint
                     metadata.vaultProxyPath = generatedProxyURL.path
+                    metadata.proxyVideoTrackDuration = nil
+                    metadata.proxyDurationValidatedAt = nil
+                    metadata.proxyDurationValidationBasis = nil
                     updatedSequence.lanes[laneIndex].metadata = metadata
                     proxyFailureByLaneId[relinkedLaneId] = nil
 
@@ -47438,6 +47737,9 @@ struct WorkspaceView: View {
         metadata.vaultProxyPath = expectedProxyURL.path
         metadata.assetFingerprint = LocalMediaVault.shared.assetFingerprint(for: originalURL)
         metadata.declaredExists = true
+        metadata.proxyVideoTrackDuration = nil
+        metadata.proxyDurationValidatedAt = nil
+        metadata.proxyDurationValidationBasis = nil
         if metadata.sourceLabel == nil {
             metadata.sourceLabel = originalURL.lastPathComponent
         }
@@ -47445,7 +47747,7 @@ struct WorkspaceView: View {
         proxyFailureByLaneId[lane.id] = nil
         audioProxyValidationByPath.removeValue(forKey: expectedProxyURL.path)
         audioProxyValidationInFlight.remove(expectedProxyURL.path)
-        videoProxyValidationInFlight.remove(expectedProxyURL.path)
+        clearVideoProxyValidation(proxyPath: expectedProxyURL.path)
         selectedLaneId = lane.id
         selectedTagId = nil
 
@@ -47457,64 +47759,14 @@ struct WorkspaceView: View {
             ? "Attached local audio proxy to \(updatedSequence.lanes[laneIndex].name); original source remains whole"
             : "Attached local video proxy to \(updatedSequence.lanes[laneIndex].name); original source remains whole"
         if !isAudioPath(originalURL.path) {
-            validateAttachedVideoProxy(
-                laneId: lane.id,
+            scheduleVideoProxyValidation(
+                lane: updatedSequence.lanes[laneIndex],
                 proxyPath: expectedProxyURL.path,
-                expectedDuration: updatedSource.duration,
-                laneName: updatedSequence.lanes[laneIndex].name
+                expectedDuration: updatedSource.duration
             )
         }
         scheduleAutosave(reason: "attached proxy")
         updateAgentState()
-    }
-
-    private func validateAttachedVideoProxy(laneId: UUID, proxyPath: String, expectedDuration: Double, laneName: String) {
-        guard expectedDuration.isFinite, expectedDuration > 10 else { return }
-        guard !videoProxyValidationInFlight.contains(proxyPath) else { return }
-
-        videoProxyValidationInFlight.insert(proxyPath)
-        Task.detached(priority: .utility) {
-            let issue: String
-            do {
-                let asset = AVURLAsset(url: URL(fileURLWithPath: proxyPath))
-                let videoTracks = try await asset.loadTracks(withMediaType: .video)
-                if videoTracks.isEmpty {
-                    issue = "Attached proxy has no video track. Attach a full-length video proxy for \(laneName)."
-                } else {
-                    let duration = try await asset.load(.duration)
-                    let proxyDuration = CMTimeGetSeconds(duration)
-                    if !proxyDuration.isFinite || proxyDuration <= 0 {
-                        issue = "Attached proxy duration could not be verified. Attach a readable full-length video proxy for \(laneName)."
-                    } else {
-                        let tolerance = max(2.0, expectedDuration * 0.01)
-                        if proxyDuration + tolerance < expectedDuration {
-                            issue = String(
-                                format: "Attached proxy is too short for this whole lane: proxy %.1fs vs source %.1fs. Attach or generate a full-length proxy; do not satisfy a whole lane with a clipped file.",
-                                proxyDuration,
-                                expectedDuration
-                            )
-                        } else {
-                            issue = ""
-                        }
-                    }
-                }
-            } catch {
-                issue = "Attached proxy could not be verified: \(error.localizedDescription). Attach a readable full-length video proxy for \(laneName)."
-            }
-
-            await MainActor.run {
-                videoProxyValidationInFlight.remove(proxyPath)
-                if issue.isEmpty {
-                    proxyFailureByLaneId.removeValue(forKey: laneId)
-                    lastMediaAction = "Verified full-length video proxy for \(laneName)"
-                } else {
-                    proxyFailureByLaneId[laneId] = issue
-                    lastMediaAction = "Proxy verification blocked \(laneName): \(issue)"
-                    isShowingProductionDetails = true
-                }
-                updateAgentState()
-            }
-        }
     }
 
     private func relinkExpectedMediaFromExternalFolder(rootPathOverride: String? = nil) {
@@ -47537,7 +47789,9 @@ struct WorkspaceView: View {
         }
 
         if rootPathOverride == nil {
-            _ = externalMediaAccess.restoreAccess()
+            if externalMediaAccess.restoreAccess() {
+                resetVideoProxyValidation()
+            }
         }
 
         let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)

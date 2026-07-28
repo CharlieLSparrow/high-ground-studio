@@ -2240,6 +2240,10 @@ public struct VideoLaneMetadata: Codable, Equatable {
     public var sourceLabel: String?
     public var isPremiereRescue: Bool
     public var ignoreForProduction: Bool?
+    public var sourceVideoTrackDuration: Double?
+    public var proxyVideoTrackDuration: Double?
+    public var proxyDurationValidatedAt: Date?
+    public var proxyDurationValidationBasis: String?
     public var programCrop16x9: ProgramCropAdjustment?
     public var programCrop9x16: ProgramCropAdjustment?
     public var programCropKeyframes16x9: [ProgramCropKeyframe]?
@@ -2264,6 +2268,10 @@ public struct VideoLaneMetadata: Codable, Equatable {
         sourceLabel: String? = nil,
         isPremiereRescue: Bool = false,
         ignoreForProduction: Bool? = nil,
+        sourceVideoTrackDuration: Double? = nil,
+        proxyVideoTrackDuration: Double? = nil,
+        proxyDurationValidatedAt: Date? = nil,
+        proxyDurationValidationBasis: String? = nil,
         programCrop16x9: ProgramCropAdjustment? = nil,
         programCrop9x16: ProgramCropAdjustment? = nil,
         programCropKeyframes16x9: [ProgramCropKeyframe]? = nil,
@@ -2287,6 +2295,10 @@ public struct VideoLaneMetadata: Codable, Equatable {
         self.sourceLabel = sourceLabel
         self.isPremiereRescue = isPremiereRescue
         self.ignoreForProduction = ignoreForProduction
+        self.sourceVideoTrackDuration = sourceVideoTrackDuration
+        self.proxyVideoTrackDuration = proxyVideoTrackDuration
+        self.proxyDurationValidatedAt = proxyDurationValidatedAt
+        self.proxyDurationValidationBasis = proxyDurationValidationBasis
         self.programCrop16x9 = programCrop16x9
         self.programCrop9x16 = programCrop9x16
         self.programCropKeyframes16x9 = programCropKeyframes16x9
@@ -2312,6 +2324,10 @@ public struct VideoLaneMetadata: Codable, Equatable {
         case sourceLabel
         case isPremiereRescue
         case ignoreForProduction
+        case sourceVideoTrackDuration
+        case proxyVideoTrackDuration
+        case proxyDurationValidatedAt
+        case proxyDurationValidationBasis
         case programCrop16x9
         case programCrop9x16
         case programCropKeyframes16x9
@@ -2339,6 +2355,10 @@ public struct VideoLaneMetadata: Codable, Equatable {
             sourceLabel: try container.decodeIfPresent(String.self, forKey: .sourceLabel),
             isPremiereRescue: try container.decodeIfPresent(Bool.self, forKey: .isPremiereRescue) ?? false,
             ignoreForProduction: try container.decodeIfPresent(Bool.self, forKey: .ignoreForProduction),
+            sourceVideoTrackDuration: try container.decodeIfPresent(Double.self, forKey: .sourceVideoTrackDuration),
+            proxyVideoTrackDuration: try container.decodeIfPresent(Double.self, forKey: .proxyVideoTrackDuration),
+            proxyDurationValidatedAt: try container.decodeIfPresent(Date.self, forKey: .proxyDurationValidatedAt),
+            proxyDurationValidationBasis: try container.decodeIfPresent(String.self, forKey: .proxyDurationValidationBasis),
             programCrop16x9: try container.decodeIfPresent(ProgramCropAdjustment.self, forKey: .programCrop16x9),
             programCrop9x16: try container.decodeIfPresent(ProgramCropAdjustment.self, forKey: .programCrop9x16),
             programCropKeyframes16x9: try container.decodeIfPresent([ProgramCropKeyframe].self, forKey: .programCropKeyframes16x9),
