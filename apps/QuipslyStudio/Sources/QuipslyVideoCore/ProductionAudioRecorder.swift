@@ -13,6 +13,120 @@ public enum ProductionAudioRecordingState: String, Codable, Equatable, Sendable 
     case failed
 }
 
+public enum ProductionAudioRouteContinuityStatus:
+    String,
+    Codable,
+    Equatable,
+    Sendable
+{
+    case locked
+    case lost
+}
+
+public enum ProductionAudioRouteContinuityReason:
+    String,
+    Codable,
+    Equatable,
+    Sendable
+{
+    case exactRoute = "exact-route"
+    case expectedRouteUnavailable =
+        "expected-route-unavailable"
+    case activeRouteMismatch = "active-route-mismatch"
+    case engineStopped = "engine-stopped"
+    case writerFailed = "writer-failed"
+    case frameFlowStalled = "frame-flow-stalled"
+}
+
+public struct ProductionAudioRouteContinuityEvidence:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let expectedInputUID: String
+    public let observedInputUID: String?
+    public let status: ProductionAudioRouteContinuityStatus
+    public let reason: ProductionAudioRouteContinuityReason
+    public let evaluatedAt: Date
+    public let truth: String
+
+    public var isLocked: Bool {
+        status == .locked
+            && reason == .exactRoute
+            && observedInputUID == expectedInputUID
+    }
+}
+
+public struct ProductionAudioRecordingLiveStatus:
+    Equatable,
+    Sendable
+{
+    public let recordingID: UUID
+    public let frameCount: Int64
+    public let durationSeconds: Double
+    public let byteCount: Int64?
+    public let routeContinuity:
+        ProductionAudioRouteContinuityEvidence
+}
+
+public enum ProductionAudioRouteContinuityPolicy {
+    public static func evaluate(
+        expectedInputUID: String,
+        expectedRouteIsAvailable: Bool,
+        observedInputUID: String?,
+        engineIsRunning: Bool,
+        requireRunningEngine: Bool = true,
+        writerFailure: String? = nil,
+        frameFlowIsStalled: Bool = false,
+        evaluatedAt: Date = Date()
+    ) -> ProductionAudioRouteContinuityEvidence {
+        let status: ProductionAudioRouteContinuityStatus
+        let reason: ProductionAudioRouteContinuityReason
+        let truth: String
+
+        if let writerFailure {
+            status = .lost
+            reason = .writerFailed
+            truth =
+                "The exact selected microphone route could no longer write the local master: \(writerFailure)"
+        } else if !expectedRouteIsAvailable {
+            status = .lost
+            reason = .expectedRouteUnavailable
+            truth =
+                "The exact selected microphone route disappeared from Core Audio. Quipsly held the take instead of accepting a fallback."
+        } else if observedInputUID != expectedInputUID {
+            status = .lost
+            reason = .activeRouteMismatch
+            truth =
+                "The active recorder route no longer matches the exact selected microphone UID. Quipsly held the take instead of accepting a fallback."
+        } else if requireRunningEngine && !engineIsRunning {
+            status = .lost
+            reason = .engineStopped
+            truth =
+                "The local-master audio engine stopped while the exact selected microphone route was required. Quipsly preserved the partial take for review."
+        } else if frameFlowIsStalled {
+            status = .lost
+            reason = .frameFlowStalled
+            truth =
+                "The local-master writer stopped receiving audio frames. Quipsly preserved the partial take instead of claiming uninterrupted capture."
+        } else {
+            status = .locked
+            reason = .exactRoute
+            truth =
+                "The exact selected microphone UID is available, remains assigned to the recorder, and is delivering the expected local-master route."
+        }
+
+        return ProductionAudioRouteContinuityEvidence(
+            expectedInputUID: expectedInputUID,
+            observedInputUID: observedInputUID,
+            status: status,
+            reason: reason,
+            evaluatedAt: evaluatedAt,
+            truth: truth
+        )
+    }
+}
+
 public struct ProductionAudioRecordingConfiguration: Equatable, Sendable {
     public let recordingID: UUID
     public let captureGroupID: UUID
@@ -81,6 +195,8 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
     public let sourceKind: String
     public let state: ProductionAudioRecordingState
     public let inputDevice: CaptureAudioDeviceSnapshot
+    public let routeContinuity:
+        ProductionAudioRouteContinuityEvidence?
     public let targetSampleRate: Double
     public let targetBitDepth: Int
     public let channelCount: Int
@@ -134,9 +250,12 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
         partialAudioPath: String?,
         byteCount: Int64?,
         sha256: String?,
-        failure: String?
+        failure: String?,
+        routeContinuity:
+            ProductionAudioRouteContinuityEvidence? = nil
     ) {
-        self.protocolVersion = 1
+        self.protocolVersion =
+            routeContinuity == nil ? 1 : 2
         self.recordingID = recordingID
         self.captureGroupID = configuration.captureGroupID
         self.episodeSpaceID = configuration.episodeSpaceID
@@ -153,6 +272,7 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
         self.sourceKind = "local_audio_master"
         self.state = state
         self.inputDevice = configuration.inputDevice
+        self.routeContinuity = routeContinuity
         self.targetSampleRate = ProductionAudioRecorder.targetSampleRate
         self.targetBitDepth = ProductionAudioRecorder.targetBitDepth
         self.channelCount = channelCount
@@ -173,12 +293,18 @@ public struct ProductionAudioRecordingReceipt: Codable, Equatable, Sendable {
                 .lowercased()
         let isVirtualRoute = normalizedDevice.contains("virtual")
             || normalizedDevice.contains("motiv mix")
-        if state == .finalized, isVirtualRoute {
+        if state == .finalized,
+           routeContinuity?.isLocked == true,
+           isVirtualRoute {
             self.truth =
-                "The WAV is finalized from the selected virtual Core Audio route. Hash, byte count, device UID, and monotonic boundaries describe this exact file, but the receipt does not prove a direct physical MV7i source."
+                "The WAV is finalized from the selected virtual Core Audio route. Hash, byte count, device UID, monotonic boundaries, and exact-route continuity describe this exact file, but the receipt does not prove a direct physical MV7i source."
+        } else if state == .finalized,
+                  routeContinuity?.isLocked == true {
+            self.truth =
+                "The WAV is a finalized local microphone master. Hash, byte count, device UID, monotonic boundaries, and exact-route continuity describe this exact file."
         } else if state == .finalized {
             self.truth =
-                "The WAV is a finalized local microphone master. Hash, byte count, device UID, and monotonic boundaries describe this exact file."
+                "The WAV is finalized, but this legacy receipt does not preserve exact-route continuity evidence. Hash, byte count, device UID, and monotonic boundaries describe the file; route review remains required."
         } else {
             self.truth =
                 "This receipt is not a finalized master. Preserve the partial audio and review it explicitly; never upload or publish it as complete."
@@ -216,6 +342,7 @@ public enum ProductionAudioRecorderError: LocalizedError, Equatable {
     case inputDeviceHasNoChannels(String)
     case unsupportedSampleRate(Double)
     case unableToSelectInputDevice(OSStatus)
+    case routeContinuityLost(String)
     case audioWriteFailed(String)
     case finalizationFailed(String)
 
@@ -235,6 +362,8 @@ public enum ProductionAudioRecorderError: LocalizedError, Equatable {
             "The selected input is running at \(Int(sampleRate.rounded())) Hz. Quipsly requires an exact 48 kHz local-master route."
         case .unableToSelectInputDevice(let status):
             "Core Audio could not select the requested input device (OSStatus \(status))."
+        case .routeContinuityLost(let detail):
+            "The exact microphone route was lost and the take was held: \(detail)"
         case .audioWriteFailed(let detail):
             "The local master stopped because audio could not be written: \(detail)"
         case .finalizationFailed(let detail):
@@ -257,11 +386,60 @@ public final class ProductionAudioRecorder {
     public private(set) var lastFinalizedReceipt: ProductionAudioRecordingReceipt?
     public var isRecording: Bool { session != nil }
     public private(set) var isFinalizing = false
+    public var liveStatus:
+        ProductionAudioRecordingLiveStatus? {
+        guard let session else { return nil }
+        let snapshot = session.writer.snapshot
+        return ProductionAudioRecordingLiveStatus(
+            recordingID: session.recordingID,
+            frameCount: snapshot.frameCount,
+            durationSeconds:
+                Double(snapshot.frameCount)
+                / Self.targetSampleRate,
+            byteCount: Self.fileSize(
+                at: session.partialAudioURL
+            ),
+            routeContinuity:
+                routeContinuityEvidence(
+                    expectedInputUID:
+                        session.configuration
+                            .inputDevice.id,
+                    writerFailure: snapshot.failure
+                )
+        )
+    }
+    public var onRouteContinuityLost:
+        (@MainActor (ProductionAudioRecordingReceipt) async -> Void)?
 
     private let engine = AVAudioEngine()
     private var session: RecordingSession?
+    private var continuityTask: Task<Void, Never>?
+    private var engineConfigurationObserver: NSObjectProtocol?
+    private var lastObservedFrameCount: Int64 = 0
+    private var lastFrameProgressMonotonicNanoseconds: UInt64 = 0
+    private var routeLossIsBeingHandled = false
 
-    public init() {}
+    public init() {
+        engineConfigurationObserver =
+            NotificationCenter.default.addObserver(
+                forName: .AVAudioEngineConfigurationChange,
+                object: engine,
+                queue: nil
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    await self?.evaluateActiveRouteContinuity()
+                }
+            }
+    }
+
+    deinit {
+        if let engineConfigurationObserver {
+            NotificationCenter.default.removeObserver(
+                engineConfigurationObserver
+            )
+        }
+        continuityTask?.cancel()
+    }
 
     @discardableResult
     public func start(
@@ -295,6 +473,15 @@ public final class ProductionAudioRecorder {
         guard abs(inputFormat.sampleRate - Self.targetSampleRate) < 1 else {
             throw ProductionAudioRecorderError.unsupportedSampleRate(
                 inputFormat.sampleRate
+            )
+        }
+        let preflightContinuity = routeContinuityEvidence(
+            expectedInputUID: configuration.inputDevice.id,
+            requireRunningEngine: false
+        )
+        guard preflightContinuity.isLocked else {
+            throw ProductionAudioRecorderError.routeContinuityLost(
+                preflightContinuity.truth
             )
         }
 
@@ -341,7 +528,8 @@ public final class ProductionAudioRecorder {
             partialAudioPath: partialAudioURL.path,
             byteCount: nil,
             sha256: nil,
-            failure: nil
+            failure: nil,
+            routeContinuity: preflightContinuity
         )
         try Self.writeReceipt(inProgress, to: receiptURL)
 
@@ -353,12 +541,30 @@ public final class ProductionAudioRecorder {
             writer.write(buffer)
         }
 
+        let lockedContinuity: ProductionAudioRouteContinuityEvidence
         do {
             engine.prepare()
             try engine.start()
+            let runningContinuity = routeContinuityEvidence(
+                expectedInputUID: configuration.inputDevice.id
+            )
+            guard runningContinuity.isLocked else {
+                throw ProductionAudioRecorderError
+                    .routeContinuityLost(
+                        runningContinuity.truth
+                    )
+            }
+            lockedContinuity = runningContinuity
         } catch {
             inputNode.removeTap(onBus: 0)
+            engine.stop()
             let writerSnapshot = writer.closeAndSnapshot()
+            let failedContinuity = routeContinuityEvidence(
+                expectedInputUID: configuration.inputDevice.id,
+                writerFailure:
+                    writerSnapshot.failure
+                        ?? error.localizedDescription
+            )
             let failed = ProductionAudioRecordingReceipt(
                 recordingID: recordingID,
                 configuration: configuration,
@@ -374,13 +580,37 @@ public final class ProductionAudioRecorder {
                 partialAudioPath: partialAudioURL.path,
                 byteCount: Self.fileSize(at: partialAudioURL),
                 sha256: nil,
-                failure: error.localizedDescription
+                failure: error.localizedDescription,
+                routeContinuity: failedContinuity
             )
             try? Self.writeReceipt(failed, to: receiptURL)
             activeReceipt = failed
             throw error
         }
 
+        let lockedInProgress =
+            ProductionAudioRecordingReceipt(
+                recordingID: recordingID,
+                configuration: configuration,
+                state: .inProgress,
+                channelCount: Int(inputFormat.channelCount),
+                startedAt: startedAt,
+                stoppedAt: nil,
+                startedMonotonicNanoseconds: startedMonotonic,
+                stoppedMonotonicNanoseconds: nil,
+                frameCount: 0,
+                recordingDirectoryPath: directory.path,
+                audioPath: finalizedAudioURL.path,
+                partialAudioPath: partialAudioURL.path,
+                byteCount: nil,
+                sha256: nil,
+                failure: nil,
+                routeContinuity: lockedContinuity
+            )
+        try Self.writeReceipt(
+            lockedInProgress,
+            to: receiptURL
+        )
         session = RecordingSession(
             configuration: configuration,
             recordingID: recordingID,
@@ -393,8 +623,9 @@ public final class ProductionAudioRecorder {
             receiptURL: receiptURL,
             writer: writer
         )
-        activeReceipt = inProgress
-        return inProgress
+        activeReceipt = lockedInProgress
+        beginRouteContinuityMonitoring()
+        return lockedInProgress
     }
 
     @discardableResult
@@ -402,7 +633,21 @@ public final class ProductionAudioRecorder {
         guard let session else {
             throw ProductionAudioRecorderError.notRecording
         }
+        let stopContinuity = routeContinuityEvidence(
+            expectedInputUID:
+                session.configuration.inputDevice.id,
+            writerFailure: session.writer.snapshot.failure
+        )
+        guard stopContinuity.isLocked else {
+            _ = await interruptForRouteContinuityLoss(
+                stopContinuity,
+                notifyCoordinator: false
+            )
+            throw ProductionAudioRecorderError
+                .routeContinuityLost(stopContinuity.truth)
+        }
 
+        stopRouteContinuityMonitoring()
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         self.session = nil
@@ -414,6 +659,20 @@ public final class ProductionAudioRecorder {
         let stoppedMonotonic = DispatchTime.now().uptimeNanoseconds
 
         if let writeFailure = writerSnapshot.failure {
+            let failedContinuity =
+                ProductionAudioRouteContinuityPolicy.evaluate(
+                    expectedInputUID:
+                        session.configuration.inputDevice.id,
+                    expectedRouteIsAvailable:
+                        MacAudioHardwareProbe.deviceID(
+                            forUID:
+                                session.configuration.inputDevice.id
+                        ) != nil,
+                    observedInputUID:
+                        currentInputDeviceUID(),
+                    engineIsRunning: false,
+                    writerFailure: writeFailure
+                )
             let failed = ProductionAudioRecordingReceipt(
                 recordingID: session.recordingID,
                 configuration: session.configuration,
@@ -429,7 +688,8 @@ public final class ProductionAudioRecorder {
                 partialAudioPath: session.partialAudioURL.path,
                 byteCount: Self.fileSize(at: session.partialAudioURL),
                 sha256: nil,
-                failure: writeFailure
+                failure: writeFailure,
+                routeContinuity: failedContinuity
             )
             try Self.writeReceipt(failed, to: session.receiptURL)
             activeReceipt = failed
@@ -469,7 +729,8 @@ public final class ProductionAudioRecorder {
                 partialAudioPath: nil,
                 byteCount: finalization.0,
                 sha256: finalization.1,
-                failure: nil
+                failure: nil,
+                routeContinuity: stopContinuity
             )
             try Self.writeReceipt(finalized, to: session.receiptURL)
             activeReceipt = finalized
@@ -497,7 +758,8 @@ public final class ProductionAudioRecorder {
                     ) ? session.finalizedAudioURL : session.partialAudioURL
                 ),
                 sha256: nil,
-                failure: error.localizedDescription
+                failure: error.localizedDescription,
+                routeContinuity: stopContinuity
             )
             try? Self.writeReceipt(interrupted, to: session.receiptURL)
             activeReceipt = interrupted
@@ -505,6 +767,180 @@ public final class ProductionAudioRecorder {
                 error.localizedDescription
             )
         }
+    }
+
+    private func beginRouteContinuityMonitoring() {
+        stopRouteContinuityMonitoring()
+        guard let session else { return }
+        lastObservedFrameCount =
+            session.writer.snapshot.frameCount
+        lastFrameProgressMonotonicNanoseconds =
+            DispatchTime.now().uptimeNanoseconds
+        continuityTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(
+                    for: .milliseconds(200)
+                )
+                guard !Task.isCancelled else { return }
+                await self?.evaluateActiveRouteContinuity()
+            }
+        }
+    }
+
+    private func stopRouteContinuityMonitoring() {
+        continuityTask?.cancel()
+        continuityTask = nil
+        lastObservedFrameCount = 0
+        lastFrameProgressMonotonicNanoseconds = 0
+    }
+
+    private func evaluateActiveRouteContinuity() async {
+        guard let session,
+              !isFinalizing,
+              !routeLossIsBeingHandled else {
+            return
+        }
+        let writerSnapshot = session.writer.snapshot
+        let now = DispatchTime.now().uptimeNanoseconds
+        if writerSnapshot.frameCount
+            > lastObservedFrameCount {
+            lastObservedFrameCount =
+                writerSnapshot.frameCount
+            lastFrameProgressMonotonicNanoseconds = now
+        }
+        let frameFlowIsStalled =
+            lastFrameProgressMonotonicNanoseconds > 0
+            && now
+                >= lastFrameProgressMonotonicNanoseconds
+                    + 3_000_000_000
+        let continuity = routeContinuityEvidence(
+            expectedInputUID:
+                session.configuration.inputDevice.id,
+            writerFailure: writerSnapshot.failure,
+            frameFlowIsStalled: frameFlowIsStalled
+        )
+        guard !continuity.isLocked else { return }
+        _ = await interruptForRouteContinuityLoss(
+            continuity,
+            notifyCoordinator: true
+        )
+    }
+
+    private func routeContinuityEvidence(
+        expectedInputUID: String,
+        requireRunningEngine: Bool = true,
+        writerFailure: String? = nil,
+        frameFlowIsStalled: Bool = false
+    ) -> ProductionAudioRouteContinuityEvidence {
+        ProductionAudioRouteContinuityPolicy.evaluate(
+            expectedInputUID: expectedInputUID,
+            expectedRouteIsAvailable:
+                MacAudioHardwareProbe.deviceID(
+                    forUID: expectedInputUID
+                ) != nil,
+            observedInputUID: currentInputDeviceUID(),
+            engineIsRunning: engine.isRunning,
+            requireRunningEngine: requireRunningEngine,
+            writerFailure: writerFailure,
+            frameFlowIsStalled: frameFlowIsStalled
+        )
+    }
+
+    private func currentInputDeviceUID() -> String? {
+        guard let audioUnit = engine.inputNode.audioUnit else {
+            return nil
+        }
+        var deviceID = AudioDeviceID(0)
+        var byteCount =
+            UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioUnitGetProperty(
+            audioUnit,
+            kAudioOutputUnitProperty_CurrentDevice,
+            kAudioUnitScope_Global,
+            0,
+            &deviceID,
+            &byteCount
+        )
+        guard status == noErr, deviceID != 0 else {
+            return nil
+        }
+        return MacAudioHardwareProbe.deviceUID(
+            for: deviceID
+        )
+    }
+
+    @discardableResult
+    private func interruptForRouteContinuityLoss(
+        _ continuity:
+            ProductionAudioRouteContinuityEvidence,
+        notifyCoordinator: Bool
+    ) async -> ProductionAudioRecordingReceipt? {
+        guard let session,
+              !routeLossIsBeingHandled else {
+            return activeReceipt
+        }
+        routeLossIsBeingHandled = true
+        stopRouteContinuityMonitoring()
+        engine.inputNode.removeTap(onBus: 0)
+        engine.stop()
+        self.session = nil
+        isFinalizing = true
+
+        let writerSnapshot =
+            session.writer.closeAndSnapshot()
+        let stoppedAt = Date()
+        let stoppedMonotonic =
+            DispatchTime.now().uptimeNanoseconds
+        let partialPath =
+            FileManager.default.fileExists(
+                atPath: session.partialAudioURL.path
+            )
+            ? session.partialAudioURL.path
+            : nil
+        let partialHash: String? =
+            await Task.detached(priority: .utility) {
+                guard partialPath != nil else { return nil }
+                return try? Self.sha256(
+                    at: session.partialAudioURL
+                )
+            }.value
+        let interrupted =
+            ProductionAudioRecordingReceipt(
+                recordingID: session.recordingID,
+                configuration: session.configuration,
+                state: .interrupted,
+                channelCount: session.channelCount,
+                startedAt: session.startedAt,
+                stoppedAt: stoppedAt,
+                startedMonotonicNanoseconds:
+                    session.startedMonotonicNanoseconds,
+                stoppedMonotonicNanoseconds:
+                    stoppedMonotonic,
+                frameCount: writerSnapshot.frameCount,
+                recordingDirectoryPath:
+                    session.directory.path,
+                audioPath:
+                    session.finalizedAudioURL.path,
+                partialAudioPath: partialPath,
+                byteCount: Self.fileSize(
+                    at: session.partialAudioURL
+                ),
+                sha256: partialHash,
+                failure: continuity.truth,
+                routeContinuity: continuity
+            )
+        try? Self.writeReceipt(
+            interrupted,
+            to: session.receiptURL
+        )
+        activeReceipt = interrupted
+        isFinalizing = false
+        routeLossIsBeingHandled = false
+        if notifyCoordinator,
+           let onRouteContinuityLost {
+            await onRouteContinuityLost(interrupted)
+        }
+        return interrupted
     }
 
     nonisolated public static func interruptedRecordings(

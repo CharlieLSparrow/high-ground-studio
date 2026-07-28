@@ -16,6 +16,7 @@ out/
 **/.build/
 .swiftpm/
 DerivedData/
+**/DerivedData*/
 *.xcresult
 *.xcuserstate
 *.app/

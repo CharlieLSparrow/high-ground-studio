@@ -1032,3 +1032,71 @@ native UVC/UAC mode is specified as 1920×1080 at 30 fps. Quipsly must see the
 physical route and moving image after that change before the gate is approved.
 The authoritative video remains the internally recorded R8 4K card original,
 which must be imported, hashed, aligned, watched, and explicitly approved.
+
+## Local microphone master continuity
+
+Selecting a professional microphone once is not enough. The recorder must own
+and prove that exact physical route until the last source frame has been
+accepted.
+
+The Mac recorder therefore has one fail-closed continuity loop:
+
+1. Before opening media, resolve the selected Core Audio UID to its current
+   `AudioDeviceID` and assign that exact ID to the recorder Audio Unit.
+2. After `AVAudioEngine` starts, read the Audio Unit's current device and require
+   the observed UID to equal the selected UID.
+3. While recording, re-evaluate every 200 milliseconds and on every
+   `AVAudioEngineConfigurationChange`.
+4. Require the selected UID to remain in Core Audio inventory, the active Audio
+   Unit UID to remain exact, the engine to remain running, the writer to remain
+   healthy, and frame count to advance within three seconds.
+5. Re-run the same check immediately before a deliberate Stop. Only an exact,
+   locked result may be finalized.
+
+Any failure closes the writer and preserves
+`local-mic-master.partial.wav`. The version-2 receipt records
+`state=interrupted`, expected and observed UIDs, a typed continuity reason,
+monotonic stop time, frame count, byte count, and a streamed partial-file hash
+when the bytes remain readable. The failure path never renames the partial file
+to `local-mic-master.wav`, never attaches it as an accepted editor lane, and
+never arms canonical upload.
+
+The capture coordinator also stops a paired camera reference, closes any active
+Nest recording boundary, and presents one explicit safety hold. A manual Stop
+that races route loss is resolved from the recorder's interrupted receipt, so
+the UI cannot fall through to a misleading local-only **finalized** message.
+
+The take auditor treats locked version-2 continuity as a required pass. A
+version-1 receipt predating this evidence remains readable with a warning;
+version 2 with missing, mismatched, or lost evidence is held.
+
+This design is grounded in Apple's documented
+[engine configuration-change notification](https://developer.apple.com/documentation/foundation/nsnotification/name-swift.struct/avaudioengineconfigurationchange),
+[Audio Unit current-device property](https://developer.apple.com/documentation/audiotoolbox/kaudiooutputunitproperty_currentdevice),
+and [Core Audio device inventory](https://developer.apple.com/documentation/coreaudio/kaudiohardwarepropertydevices).
+Names, format negotiation, and route availability are useful UX facts but are
+not continuity proof.
+
+Current implementation evidence is 80/80 QuipslyVideoCore tests plus complete
+signed Debug and optimized Release builds. A real direct-MV7i take remained
+exact through normal Stop and finalized at 657.7 seconds as mono
+48 kHz/24-bit PCM. Fresh probe, byte count `94,712,896`, and SHA-256
+`5649fb0b7ed4167e6c560e09b54cd53e6c6943e77705a665c05e4279b1cfcd2d`
+match the version-2 receipt; mean signal was -45.9 dBFS and peak was
+-11.4 dBFS. A second armed take exposed live frame count, bytes written, and
+exact-route status once per second, remained exact for 558.5 seconds, and was
+stopped normally when no human unplug arrived.
+
+The optimized signed Release is installed at
+`/Users/wall-e/Applications/Quipsly Studio.app` with Team `585GUXMY5M` and
+CDHash `4dc81468d7ef3e7261c99aaa3e60b5db5d6541f6`; its predecessor is preserved
+under `/Users/wall-e/Applications/Quipsly Builds`. That exact installed app
+completed a fresh five-second route-locked smoke whose 724,096-byte receipt,
+48 kHz/24-bit probe, and SHA-256
+`0ffe2fe4b900e414354bbcbf23e4020c7d229746d4e2b8bff21b0dddafdba1f6`
+all match.
+
+The deliberate unplug, interrupted-receipt readback, reconnect, and subsequent
+clean finalization are still mandatory physical gates. Re-arm the take only
+with a human ready at the MV7i cable; never substitute a software simulation for
+this acceptance result.

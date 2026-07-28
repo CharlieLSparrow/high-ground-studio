@@ -2768,3 +2768,43 @@ This is an active-goal checkpoint, not a completion claim.
 - The next physical gate is a real R8 image and sync take, MV7i headphone
   listen, long-take drift review, Canon internal-4K import/alignment, and real
   two-participant audio-room route-loss rehearsal.
+
+### 2026-07-27 local-master route-loss safety checkpoint
+
+- This is an active-goal checkpoint, not a completion claim.
+- The direct Mac WAV graph now proves exact input-device continuity after
+  assignment, after engine start, every 200 milliseconds during capture, on
+  AVAudioEngine configuration changes, and again at the manual stop boundary.
+  Its evidence combines current Core Audio inventory, the Audio Unit's observed
+  device UID, engine state, writer health, and advancing frame count.
+- Expected-device removal, silent fallback, engine stop, writer failure, or
+  stalled frames closes the graph and preserves a hashed partial WAV plus a
+  version-2 interruption receipt. The take cannot be renamed to a final master,
+  attached to the editor, or admitted to upload. A manual Stop racing the
+  watchdog resolves through the same interrupted receipt and produces explicit
+  **held** boundary copy.
+- The machine take auditor requires locked exact-route evidence for version-2
+  WAVs, warns on legacy version-1 absence, and holds malformed or lost
+  continuity. Focused QuipslyVideoCore verification passes 80/80, `git
+  diff --check` passes, and strict repository health reports healthy.
+- A real local-only direct-MV7i recording remained locked through normal Stop
+  and finalized at 657.7 seconds as mono 48 kHz/24-bit PCM. Fresh
+  94,712,896-byte readback and SHA-256
+  `5649fb0b7ed4167e6c560e09b54cd53e6c6943e77705a665c05e4279b1cfcd2d`
+  match the version-2 receipt; signal measured mean -45.9 dBFS and peak
+  -11.4 dBFS. A second signed take exposed once-per-second frame, byte, and
+  exact-route readback, remained locked for 558.5 seconds, and finalized
+  normally when no human unplug arrived. This is strong healthy-route evidence,
+  not the required failure-recovery proof.
+- The optimized Apple Development signed Release is installed at the canonical
+  app path with Team `585GUXMY5M`, CDHash
+  `4dc81468d7ef3e7261c99aaa3e60b5db5d6541f6`; the previous install is preserved.
+  That exact Release finalized a fresh five-second 48 kHz/24-bit exact-route
+  smoke whose 724,096-byte receipt and SHA-256
+  `0ffe2fe4b900e414354bbcbf23e4020c7d229746d4e2b8bff21b0dddafdba1f6`
+  match fresh file readback.
+- Re-arm with a human present, unplug only the MV7i USB cable, read back the
+  automatic hold and preserved receipt/file/hash, reconnect the device, then
+  normally finalize a new exact-route take. Canon R8 signal, MV7i headphone
+  listening, two-participant LiveKit use, long drift, TestFlight, and
+  physical-iPhone gates remain open.

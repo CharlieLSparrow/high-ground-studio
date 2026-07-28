@@ -34,6 +34,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var lastFinalizedReceipt: ProductionAudioRecordingReceipt?
     @Published private(set) var interruptedRecordings: [InterruptedProductionAudioRecording] = []
     @Published private(set) var elapsedSeconds = 0.0
+    @Published private(set) var activeAudioLiveStatus:
+        ProductionAudioRecordingLiveStatus?
     @Published private(set) var isFinalizing = false
     @Published private(set) var recordingError: String?
     @Published private(set) var captureGroupID = UUID()
@@ -123,6 +125,12 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         self.projectStore = projectStore
         self.playbackEngine = playbackEngine
         self.nativeAccountStore = nativeAccountStore
+        recorder.onRouteContinuityLost = {
+            [weak self] receipt in
+            await self?.stopRecording(
+                audioInterruption: receipt
+            )
+        }
         if !roomReceiptOutbox.isWritable {
             roomReceiptError =
                 roomReceiptOutbox.persistenceError
@@ -207,9 +215,62 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     lastFinalizedReceipt.byteCount ?? 0,
                 "sha256":
                     lastFinalizedReceipt.sha256 ?? "",
+                "routeContinuity":
+                    lastFinalizedReceipt
+                        .routeContinuity?
+                        .status.rawValue ?? "legacy-unproved",
             ]
         } else {
             lastAudioState = [:]
+        }
+
+        let activeAudioState: [String: Any]
+        if let activeReceipt {
+            let liveStatus = recorder.liveStatus
+            activeAudioState = [
+                "state": activeReceipt.state.rawValue,
+                "path":
+                    activeReceipt.partialAudioPath
+                        ?? activeReceipt.audioPath,
+                "durationSeconds":
+                    liveStatus?.durationSeconds
+                        ?? activeReceipt.durationSeconds,
+                "byteCount":
+                    liveStatus?.byteCount
+                        ?? activeReceipt.byteCount
+                        ?? 0,
+                "frameCount":
+                    liveStatus?.frameCount
+                        ?? activeReceipt.frameCount,
+                "sha256":
+                    activeReceipt.sha256 ?? "",
+                "failure": activeReceipt.failure ?? "",
+                "routeContinuity":
+                    liveStatus?.routeContinuity
+                        .status.rawValue
+                        ?? activeReceipt.routeContinuity?
+                        .status.rawValue
+                        ?? "legacy-unproved",
+                "routeContinuityReason":
+                    liveStatus?.routeContinuity
+                        .reason.rawValue
+                        ?? activeReceipt.routeContinuity?
+                        .reason.rawValue
+                        ?? "",
+                "expectedInputUID":
+                    liveStatus?.routeContinuity
+                        .expectedInputUID
+                        ?? activeReceipt.routeContinuity?
+                        .expectedInputUID
+                        ?? activeReceipt.inputDevice.id,
+                "observedInputUID":
+                    liveStatus?.routeContinuity
+                        .observedInputUID
+                        ?? activeReceipt.routeContinuity?
+                        .observedInputUID ?? "",
+            ]
+        } else {
+            activeAudioState = [:]
         }
 
         let lastVideoState: [String: Any]
@@ -333,6 +394,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             "availableInputs": availableInputs,
             "availableOutputs": availableOutputs,
             "availableVideoDevices": availableVideoDevices,
+            "activeAudio": activeAudioState,
             "lastAudio": lastAudioState,
             "lastVideo": lastVideoState,
             "lastTakeAudit": lastTakeAuditState,
@@ -1247,6 +1309,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             )
             activeRoomCapture = roomCapture
             activeReceipt = receipt
+            activeAudioLiveStatus =
+                recorder.liveStatus
             elapsedSeconds = 0
             message = includeCameraReference
                 ? "Writing the untouched microphone master and silent camera reference…"
@@ -1315,15 +1379,28 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         }
     }
 
-    func stopRecording() async {
-        guard isRecording, !isFinalizing else { return }
+    func stopRecording(
+        audioInterruption:
+            ProductionAudioRecordingReceipt? = nil
+    ) async {
+        guard (isRecording || audioInterruption != nil),
+              !isFinalizing else {
+            return
+        }
         let roomCapture = activeRoomCapture
+        var resolvedAudioInterruption =
+            audioInterruption
         elapsedTask?.cancel()
         elapsedTask = nil
+        activeAudioLiveStatus = nil
         isFinalizing = true
-        recordingError = nil
-        message =
-            "Stopping every local source, then hashing finalized media off the UI thread…"
+        activeReceipt = resolvedAudioInterruption
+            ?? activeReceipt
+        recordingError =
+            resolvedAudioInterruption?.failure
+        message = resolvedAudioInterruption == nil
+            ? "Stopping every local source, then hashing finalized media off the UI thread…"
+            : "The exact microphone route was lost. Preserving its partial WAV and stopping every paired source…"
         defer { isFinalizing = false }
 
         let videoStopTask:
@@ -1359,6 +1436,11 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 elapsedSeconds = receipt.durationSeconds
             } catch {
                 activeReceipt = recorder.activeReceipt
+                if recorder.activeReceipt?.state
+                    == .interrupted {
+                    resolvedAudioInterruption =
+                        recorder.activeReceipt
+                }
                 recordingError = error.localizedDescription
             }
         }
@@ -1436,7 +1518,9 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             }
         } else {
             roomReceiptMessage =
-                "Local-only source finalized without creating a Nest recording boundary."
+                resolvedAudioInterruption == nil
+                ? "Local-only source finalized without creating a Nest recording boundary."
+                : "Local-only take held after microphone-route loss; no Nest recording boundary was created."
         }
         captureGroupIsClosed = true
         activeRoomCapture = nil
@@ -1522,7 +1606,28 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     "Local sources are safe; editor attachment needs retry."
             }
         }
+        if let resolvedAudioInterruption {
+            activeReceipt = resolvedAudioInterruption
+            let cameraResult =
+                finalizedVideoReceipt == nil
+                    ? "No paired camera reference was finalized."
+                    : "The paired camera reference was finalized separately and remains review-only."
+            message =
+                "Microphone route safety hold. The partial WAV and interruption receipt are preserved; this take cannot become a finalized master. \(cameraResult)"
+            recordingError = [
+                resolvedAudioInterruption.failure,
+                recordingError,
+            ]
+            .compactMap { $0 }
+            .reduce(into: [String]()) {
+                if !$0.contains($1) {
+                    $0.append($1)
+                }
+            }
+            .joined(separator: " ")
+        }
         refreshInterruptedRecordings()
+        publishAgentAcceptanceState()
     }
 
     func beginNewCaptureGroup() {
@@ -1534,6 +1639,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         captureGroupID = UUID()
         captureGroupIsClosed = false
         activeReceipt = nil
+        activeAudioLiveStatus = nil
         lastFinalizedReceipt = nil
         activeVideoReceipt = nil
         lastFinalizedVideoReceipt = nil
@@ -2265,9 +2371,20 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     private func startElapsedClock(startedAt: Date) {
         elapsedTask?.cancel()
         elapsedTask = Task { [weak self] in
+            var lastPublishedWholeSecond = -1
             while !Task.isCancelled {
                 guard let self else { return }
                 self.elapsedSeconds = max(0, Date().timeIntervalSince(startedAt))
+                let wholeSecond =
+                    Int(self.elapsedSeconds.rounded(.down))
+                if wholeSecond
+                    != lastPublishedWholeSecond {
+                    self.activeAudioLiveStatus =
+                        self.recorder.liveStatus
+                    self.publishAgentAcceptanceState()
+                    lastPublishedWholeSecond =
+                        wholeSecond
+                }
                 try? await Task.sleep(for: .milliseconds(200))
             }
         }
@@ -3455,6 +3572,39 @@ struct EpisodeCaptureSetupView: View {
                         NSWorkspace.shared.open(model.captureRoot)
                     }
                     .accessibilityIdentifier("EpisodeCaptureShowCaptures")
+                }
+
+                if model.isRecording,
+                   let liveStatus =
+                    model.activeAudioLiveStatus {
+                    HStack(spacing: 8) {
+                        Label(
+                            liveStatus.routeContinuity.isLocked
+                                ? "Exact microphone route locked"
+                                : "Microphone route lost — holding take",
+                            systemImage:
+                                liveStatus.routeContinuity.isLocked
+                                ? "checkmark.shield.fill"
+                                : "exclamationmark.shield.fill"
+                        )
+                        .foregroundStyle(
+                            liveStatus.routeContinuity.isLocked
+                                ? .green
+                                : .red
+                        )
+                        Text(
+                            "\(liveStatus.frameCount.formatted()) frames · \(ByteCountFormatter.string(fromByteCount: liveStatus.byteCount ?? 0, countStyle: .file)) written"
+                        )
+                        .foregroundStyle(.secondary)
+                        Spacer()
+                    }
+                    .font(.caption.monospacedDigit())
+                    .accessibilityElement(
+                        children: .combine
+                    )
+                    .accessibilityIdentifier(
+                        "EpisodeCaptureAudioRouteContinuity"
+                    )
                 }
 
                 if let error = model.recordingError {

@@ -1068,6 +1068,15 @@ enum MacAudioHardwareProbe {
         }
     }
 
+    static func deviceUID(
+        for deviceID: AudioDeviceID
+    ) -> String? {
+        readString(
+            object: deviceID,
+            selector: kAudioDevicePropertyDeviceUID
+        )
+    }
+
     private static func address(
         selector: AudioObjectPropertySelector,
         scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal

@@ -59,6 +59,12 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
         )
         XCTAssertTrue(
             receipt.checks.contains {
+                $0.id == "audio-exact-route-continuity"
+                    && $0.status == .pass
+            }
+        )
+        XCTAssertTrue(
+            receipt.checks.contains {
                 $0.id == "video-recorded-format-receipt"
                     && $0.status == .pass
             }
@@ -334,6 +340,75 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
         )
     }
 
+    func testLegacyMissingAudioContinuityWarnsButMalformedV2IsHeld()
+        async throws
+    {
+        let fixture = try makeFixture()
+        defer {
+            try? FileManager.default.removeItem(
+                at: fixture.root
+            )
+        }
+        let encoded = try JSONEncoder().encode(
+            fixture.audio
+        )
+        var json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded)
+                as? [String: Any]
+        )
+        json.removeValue(forKey: "routeContinuity")
+        json["protocolVersion"] = 1
+        let legacyAudio = try JSONDecoder().decode(
+            ProductionAudioRecordingReceipt.self,
+            from:
+                JSONSerialization.data(
+                    withJSONObject: json
+                )
+        )
+        let legacyAudit =
+            try await ProductionCaptureTakeAuditor.audit(
+                audio: legacyAudio,
+                video: fixture.video,
+                rootDirectory: fixture.root
+                    .appendingPathComponent(
+                        "legacy-audio-audits",
+                        isDirectory: true
+                    )
+            )
+        XCTAssertTrue(
+            legacyAudit.checks.contains {
+                $0.id == "audio-exact-route-continuity"
+                    && $0.status == .warning
+            }
+        )
+
+        json["protocolVersion"] = 2
+        let malformedV2 = try JSONDecoder().decode(
+            ProductionAudioRecordingReceipt.self,
+            from:
+                JSONSerialization.data(
+                    withJSONObject: json
+                )
+        )
+        let malformedAudit =
+            try await ProductionCaptureTakeAuditor.audit(
+                audio: malformedV2,
+                video: fixture.video,
+                rootDirectory: fixture.root
+                    .appendingPathComponent(
+                        "malformed-audio-audits",
+                        isDirectory: true
+                    )
+            )
+        XCTAssertEqual(malformedAudit.disposition, .held)
+        XCTAssertTrue(
+            malformedAudit.checks.contains {
+                $0.id == "audio-exact-route-continuity"
+                    && $0.status == .hold
+            }
+        )
+    }
+
     private struct Fixture {
         let root: URL
         let audio: ProductionAudioRecordingReceipt
@@ -488,7 +563,20 @@ final class ProductionCaptureTakeAuditorTests: XCTestCase {
                 partialAudioPath: nil,
                 byteCount: try byteCount(at: audioURL),
                 sha256: try digest(at: audioURL),
-                failure: nil
+                failure: nil,
+                routeContinuity:
+                    ProductionAudioRouteContinuityPolicy
+                        .evaluate(
+                            expectedInputUID: input.id,
+                            expectedRouteIsAvailable: true,
+                            observedInputUID: input.id,
+                            engineIsRunning: true,
+                            evaluatedAt:
+                                Date(
+                                    timeIntervalSince1970:
+                                        100.1
+                                )
+                        )
             )
 
         let videoDevice = CaptureVideoDeviceSnapshot(

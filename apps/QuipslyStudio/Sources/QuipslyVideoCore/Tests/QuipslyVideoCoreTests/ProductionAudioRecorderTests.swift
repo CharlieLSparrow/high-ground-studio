@@ -19,6 +19,66 @@ final class ProductionAudioRecorderTests: XCTestCase {
         )
     }
 
+    func testRouteContinuityPolicyFailsClosedForEveryFallbackShape() {
+        let expectedUID = "physical-mv7i"
+        let exact =
+            ProductionAudioRouteContinuityPolicy.evaluate(
+                expectedInputUID: expectedUID,
+                expectedRouteIsAvailable: true,
+                observedInputUID: expectedUID,
+                engineIsRunning: true
+            )
+        XCTAssertTrue(exact.isLocked)
+
+        XCTAssertEqual(
+            ProductionAudioRouteContinuityPolicy.evaluate(
+                expectedInputUID: expectedUID,
+                expectedRouteIsAvailable: false,
+                observedInputUID: nil,
+                engineIsRunning: false
+            ).reason,
+            .expectedRouteUnavailable
+        )
+        XCTAssertEqual(
+            ProductionAudioRouteContinuityPolicy.evaluate(
+                expectedInputUID: expectedUID,
+                expectedRouteIsAvailable: true,
+                observedInputUID: "built-in-mic",
+                engineIsRunning: true
+            ).reason,
+            .activeRouteMismatch
+        )
+        XCTAssertEqual(
+            ProductionAudioRouteContinuityPolicy.evaluate(
+                expectedInputUID: expectedUID,
+                expectedRouteIsAvailable: true,
+                observedInputUID: expectedUID,
+                engineIsRunning: false
+            ).reason,
+            .engineStopped
+        )
+        XCTAssertEqual(
+            ProductionAudioRouteContinuityPolicy.evaluate(
+                expectedInputUID: expectedUID,
+                expectedRouteIsAvailable: true,
+                observedInputUID: expectedUID,
+                engineIsRunning: true,
+                writerFailure: "disk full"
+            ).reason,
+            .writerFailed
+        )
+        XCTAssertEqual(
+            ProductionAudioRouteContinuityPolicy.evaluate(
+                expectedInputUID: expectedUID,
+                expectedRouteIsAvailable: true,
+                observedInputUID: expectedUID,
+                engineIsRunning: true,
+                frameFlowIsStalled: true
+            ).reason,
+            .frameFlowStalled
+        )
+    }
+
     func testRecordingDirectoryKeepsEpisodeAndTakeIdentity() {
         let root = URL(fileURLWithPath: "/tmp/quipsly-captures")
         let recordingID = UUID(
@@ -152,7 +212,10 @@ final class ProductionAudioRecorderTests: XCTestCase {
             partialAudioPath: nil,
             byteCount: 576_044,
             sha256: String(repeating: "a", count: 64),
-            failure: nil
+            failure: nil,
+            routeContinuity: lockedEvidence(
+                inputUID: input.id
+            )
         )
 
         XCTAssertEqual(receipt.durationSeconds, 2, accuracy: 0.000_001)
@@ -177,6 +240,10 @@ final class ProductionAudioRecorderTests: XCTestCase {
         )
         XCTAssertEqual(receipt.episodeSlug, "episode-5")
         XCTAssertEqual(receipt.capturePurpose, "PODCAST")
+        XCTAssertEqual(receipt.protocolVersion, 2)
+        XCTAssertTrue(
+            receipt.routeContinuity?.isLocked == true
+        )
         XCTAssertNil(receipt.partialAudioPath)
         XCTAssertTrue(receipt.truth.contains("finalized"))
     }
@@ -212,7 +279,10 @@ final class ProductionAudioRecorderTests: XCTestCase {
             partialAudioPath: nil,
             byteCount: 576_044,
             sha256: String(repeating: "a", count: 64),
-            failure: nil
+            failure: nil,
+            routeContinuity: lockedEvidence(
+                inputUID: input.id
+            )
         )
 
         XCTAssertTrue(receipt.truth.contains("virtual Core Audio route"))
@@ -220,6 +290,19 @@ final class ProductionAudioRecorderTests: XCTestCase {
             receipt.truth.contains("does not prove a direct physical MV7i")
         )
         XCTAssertFalse(receipt.truth.contains("finalized local microphone master"))
+    }
+
+    private func lockedEvidence(
+        inputUID: String
+    ) -> ProductionAudioRouteContinuityEvidence {
+        ProductionAudioRouteContinuityPolicy.evaluate(
+            expectedInputUID: inputUID,
+            expectedRouteIsAvailable: true,
+            observedInputUID: inputUID,
+            engineIsRunning: true,
+            evaluatedAt:
+                Date(timeIntervalSince1970: 102)
+        )
     }
 
     func testLocalMasterFileIsActually48k24BitPCM() throws {

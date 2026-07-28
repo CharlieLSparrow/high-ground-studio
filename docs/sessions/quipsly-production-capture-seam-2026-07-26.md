@@ -302,3 +302,53 @@ TestFlight, or publication claim is made by this checkpoint.
   produced `canStartRecording=false`; a direct start was rejected as
   `start-rejected-preflight-not-ready`, no engine started, and no new capture
   file appeared.
+
+## July 27 local-master exact-route continuity
+
+- The independent WAV recorder now owns the selected route through the whole
+  recording boundary, not only during preflight. It reads the active Audio Unit
+  `AudioDeviceID`, resolves that device back to its Core Audio UID, and compares
+  it byte-for-byte with the selected input UID every 200 milliseconds.
+- A configuration change, expected-device removal, silent system fallback,
+  stopped engine, writer failure, or three seconds without advancing audio
+  frames ends eligibility immediately. Quipsly stops the local graph, preserves
+  the partial WAV, hashes the bytes when possible, and writes a version-2
+  `interrupted` receipt with expected/observed UIDs, the exact loss reason, and
+  monotonic stop evidence. It does not rename the partial into a finalized
+  master, attach it to the editor, arm upload, or imply that the take completed.
+- A manual Stop racing the watchdog follows the same hold path. Local and Nest
+  boundary copy now says **held**, not **finalized**, and any paired camera
+  reference remains a separate review-only source.
+- Finalized version-2 WAVs are auditable only when the receipt contains locked
+  exact-route continuity through the final stop boundary. Missing continuity
+  on a legacy version-1 receipt is a warning; missing or malformed continuity
+  on version 2 is a machine hold.
+- The production policy follows Apple's documented engine-configuration change
+  notification and the Audio Unit current-device property rather than treating
+  a device name or a preflight list entry as continuity proof:
+  [AVAudioEngine configuration change](https://developer.apple.com/documentation/foundation/nsnotification/name-swift.struct/avaudioengineconfigurationchange),
+  [current Audio Unit device](https://developer.apple.com/documentation/audiotoolbox/kaudiooutputunitproperty_currentdevice),
+  and [Core Audio device inventory](https://developer.apple.com/documentation/coreaudio/kaudiohardwarepropertydevices).
+- QuipslyVideoCore passes 80/80 tests and strict repository health passes. A
+  real direct-MV7i take remained locked through normal Stop and finalized at
+  657.7 seconds as mono 48 kHz/24-bit PCM. Fresh byte count `94,712,896`,
+  file probe, and SHA-256
+  `5649fb0b7ed4167e6c560e09b54cd53e6c6943e77705a665c05e4279b1cfcd2d`
+  match the version-2 receipt; signal measured mean -45.9 dBFS and peak
+  -11.4 dBFS. A second armed take remained exact for 558.5 seconds and
+  finalized with SHA-256
+  `453904bb67cc779f29ea9834317073c906f35438d0cacc4ed93d80e28e611197`
+  when no physical unplug arrived.
+- The optimized Apple Development signed Release is installed at
+  `/Users/wall-e/Applications/Quipsly Studio.app`, Team `585GUXMY5M`, CDHash
+  `4dc81468d7ef3e7261c99aaa3e60b5db5d6541f6`. The replaced app is preserved at
+  `/Users/wall-e/Applications/Quipsly Builds/Quipsly
+  Studio-pre-local-route-watch-20260727-190729.app`. That exact installed
+  Release exposed live locked UID/frame/byte state and finalized a fresh
+  five-second, 724,096-byte WAV whose receipt and fresh SHA-256
+  `0ffe2fe4b900e414354bbcbf23e4020c7d229746d4e2b8bff21b0dddafdba1f6`
+  match.
+- Deliberate physical USB removal and reconnect are still required before this
+  checkpoint may claim route-loss recovery. The unattended test was stopped
+  normally instead of consuming disk indefinitely; it must be re-armed when a
+  human is present, and no simulated unplug is substituted for it.

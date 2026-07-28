@@ -256,6 +256,10 @@ public enum ProductionCaptureTakeAuditor {
             expectedLabel: "MOV",
             checks: &checks
         )
+        appendAudioRouteContinuityCheck(
+            receipt: audio,
+            checks: &checks
+        )
         appendAudioShapeChecks(
             receipt: audio,
             probe: audioAudit.audioProbe,
@@ -694,6 +698,39 @@ public enum ProductionCaptureTakeAuditor {
                     summary: receipt.protocolVersion >= 3
                         ? "This v3 camera receipt is missing its required live-image confirmation."
                         : "This legacy camera receipt predates explicit live-image confirmation. Watch the entire reference and reject placeholder or disconnected slates."
+                )
+            )
+        }
+    }
+
+    private static func appendAudioRouteContinuityCheck(
+        receipt: ProductionAudioRecordingReceipt,
+        checks: inout [ProductionCaptureTakeAuditCheck]
+    ) {
+        if let continuity = receipt.routeContinuity {
+            let valid =
+                continuity.isLocked
+                && continuity.expectedInputUID
+                    == receipt.inputDevice.id
+            checks.append(
+                ProductionCaptureTakeAuditCheck(
+                    id: "audio-exact-route-continuity",
+                    status: valid ? .pass : .hold,
+                    summary: valid
+                        ? "The recorder preserved exact selected-microphone continuity through its final stop boundary."
+                        : "The audio receipt reports a lost, mismatched, or malformed exact-microphone route."
+                )
+            )
+        } else {
+            checks.append(
+                ProductionCaptureTakeAuditCheck(
+                    id: "audio-exact-route-continuity",
+                    status: receipt.protocolVersion >= 2
+                        ? .hold
+                        : .warning,
+                    summary: receipt.protocolVersion >= 2
+                        ? "This v2 audio receipt is missing its required exact-route continuity evidence."
+                        : "This legacy audio receipt predates exact-route continuity evidence. Device and waveform review remain mandatory."
                 )
             )
         }
