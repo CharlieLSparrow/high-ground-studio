@@ -2961,3 +2961,44 @@ This is an active-goal checkpoint, not a completion claim.
   real production Nest handoff, physical iPhone capture/upload, TestFlight,
   App Store submission, or the required real episode/coaching completion
   matrix. Those gates remain open.
+
+### 2026-07-28 Quipsly Capture Build 6 qualified-candidate checkpoint
+
+- This is an active-goal checkpoint, not a completion or distribution claim.
+- Closed a release-pipeline ownership gap: the canonical no-upload
+  `candidate` lane now runs the deterministic iPhone and Share Capture UI
+  suite before archiving, exporting, and independently verifying the same
+  exact detached commit. The lower-level `release` lane is explicitly
+  archive-only diagnosis, and `beta` reuses the complete candidate lane before
+  upload.
+- Exact committed source
+  `f10ceab5e83ce08e61092d3cf6a8e8ec2f457589` passed 32/32 serial UI tests on
+  iPhone 17 Pro Simulator 26.3.1. The readable result bundle reports zero
+  failed, skipped, or expected-failure tests at
+  `/tmp/quipsly-capture-ui-tests/f10ceab5e83c/20260728T213508Z-94009/HighGroundCapture.xcresult`.
+  The suite operated consent, permissions, recording boundaries,
+  accessibility, account safety, Home/session/project routing, canonical
+  tags, notes, Tasks, Goals, dates, recurrence, reminders, Today provenance,
+  transcript/AI truth, Safari sharing, and protected outbox recovery across
+  relaunch and owner switching.
+- The same source archived and exported signed `1.0 (6)`. Receipt
+  `20260728T213508Z-94009` records an 18,555,196-byte IPA at SHA-256
+  `080f8b9fa700a3270683a347419c0695cc9694e03b33b3c4cc34bef6b52c6c5a`,
+  `candidateQualified: true`, exact UI evidence, detached-worktree isolation,
+  and no upload, processing wait, tester assignment, or physical installation.
+  Independent readback matched the IPA hash and proved Apple Distribution
+  team `585GUXMY5M`, App Store profiles for app and extension, strict nested
+  signatures, distribution-safe entitlements, privacy manifest, bounded
+  permission strings, audio background mode, encryption declaration, and
+  matching app/extension versions.
+- The App Store static contract passes 701/701, the release source verifier
+  passes, and the detached-source regression excludes caller-worktree drift.
+  The branch and exact candidate commit are pushed. Production Nest remains on
+  the separately qualified revision `studio-00414-tut` and a fresh public
+  mobile contract run passes all 104 checks.
+- App Store Connect sign-in/API-key setup, Apple processing and tester
+  readback, native Firebase verification, refreshed Google credentials,
+  physical iPhone visibility, TestFlight installation, real device
+  capture/offline/relaunch/upload/transcript/same-ID operation, final
+  screenshots, legal/privacy reconciliation, and App Store submission remain
+  mandatory gates.

@@ -435,19 +435,22 @@ remain red until approved screenshots and every delivery-layer proof exist.
 
 ## Remaining blockers before App Store submission
 
-- 2026-07-24 signed Build 6: exact source
-  `e0525e68f9d2cedaa14c597ed978c4b66715b0f4` passes 30/30 serial
-  native UI scenarios, 80/80 safety contracts, and 635/635 App Store checks.
-  Its signed 18,058,977-byte `1.0 (6)` IPA has SHA-256
-  `5612531c7130a5815b10da2e5397d99cd0a2789a5e4956f230d90b59c77666cb`.
+- 2026-07-28 qualified Build 6: exact source
+  `f10ceab5e83ce08e61092d3cf6a8e8ec2f457589` passes 32/32 serial
+  native UI scenarios and 701/701 App Store checks. Its signed
+  18,555,196-byte `1.0 (6)` IPA has SHA-256
+  `080f8b9fa700a3270683a347419c0695cc9694e03b33b3c4cc34bef6b52c6c5a`.
+  The detached-source receipt records `candidateQualified: true` and the exact
+  readable `.xcresult` path. See
+  [`2026-07-28-capture-build-6-qualified-candidate.md`](../coordination/2026-07-28-capture-build-6-qualified-candidate.md).
   No upload, Apple processing readback, tester assignment, or physical
   installation has occurred.
-- 2026-07-24 production parity: the live mobile audit passes 96 and fails eight
-  newer protected routes with HTML 404. The Nest privacy/deletion URLs also
-  redirect to `https://quipsly.com:8080/...`. The committed proxy fix removes
-  the internal port, and production status now checks both canonical policy
-  pages plus the complete mobile contract. Preview, smoke, promotion, and
-  production readback require refreshed Google Cloud/Firebase credentials.
+- 2026-07-28 production parity: Cloud Run revision `studio-00414-tut` is
+  promoted from exact source `9d3faeccf1f469decaaddbcf3d3e9eabfe3cebde`.
+  The post-promotion release gate and a fresh unauthenticated production audit
+  both pass all 104 mobile contracts. Authenticated lifecycle readback and any
+  future deployment still require refreshed Google Cloud/Firebase
+  credentials.
 - 2026-07-24 account deletion: the reviewed 30-day policy, request/status UI,
   inventory, fail-closed controlled executor, Firebase/GCS/email adapters,
   recovery states, durable receipts, and completion constraint are
@@ -455,7 +458,18 @@ remain red until approved screenshots and every delivery-layer proof exist.
   Emulator loop passes 2/2, including refusal when another Home Nest
   collaborator exists. Production migration/provider/execution readback and
   account-holder retention approval remain open.
-- 2026-07-24 release-boundary hardening: `scripts/deploy-testflight.sh` now resolves one explicit commit and runs the pinned Capture release inside a disposable detached worktree. The release receipt distinguishes archive creation, upload return/processing wait, tester assignment, and physical TestFlight installation. The canonical procedure is [`ios-capture-release-runbook.md`](./ios-capture-release-runbook.md). Local regression proof excludes an uncommitted sentinel from the runner and removes the linked worktree afterward; this is not an upload, App Store Connect readback, or physical-device result.
+- 2026-07-28 release-boundary hardening:
+  `scripts/quipsly-capture-release-from-commit.sh candidate` now runs the
+  deterministic UI suite before signing and artifact verification;
+  `scripts/deploy-testflight.sh` reuses that complete candidate lane before
+  upload. Both operate in a disposable detached worktree. The receipt
+  distinguishes candidate qualification, archive creation, upload
+  return/processing wait, tester assignment, and physical TestFlight
+  installation. The canonical procedure is
+  [`ios-capture-release-runbook.md`](./ios-capture-release-runbook.md). Local
+  regression proof excludes an uncommitted sentinel and removes the linked
+  worktree afterward; this is not upload, App Store Connect readback, or
+  physical-device proof.
 
 - 2026-07-21 release-readiness pass: local code/build evidence is healthy again, but TestFlight remains externally blocked. `scripts/quipsly-mobile-capture-preflight.sh` passes after repairing its stale recording-promotion static assertion and routing TypeScript execution through the repo TS extension loader. The focused session-evidence smoke passes, Quipsly TypeScript passes, and unsigned iOS simulator build with LiveKit linked passes. Current live probes for `nest.quipsly.com`, `nest.quipsly.com/privacy`, `nest.quipsly.com/api/mac/firebase-client-config`, `app.highgroundodyssey.com/api/health`, and `highgroundodyssey.com` all return Google Frontend HTTP 503 before application route contracts are reached.
 - 2026-07-21 Apple signing and upload gates cleared: after the account agreement was accepted, `xcodebuild ... -allowProvisioningUpdates archive` created the app and share-extension profiles and produced signed archive `/tmp/QuipslyCapture-20260721151703.xcarchive`. Automatic App Store Connect distribution export produced `/tmp/QuipslyCapture-AppStoreExport-20260721151703/HighGroundCapture.ipa`; strict signature verification passed with Apple Distribution profiles for both targets. Build `1.0 (1)` then uploaded successfully and entered App Store Connect processing. Xcode warned that the vendor LiveKitWebRTC and RustLiveKitUniFFI frameworks did not include matching dSYMs; the warning did not reject the upload but leaves third-party crash symbolication incomplete. This is upload evidence, not processing completion, tester availability, TestFlight installation, or physical-device proof.
