@@ -1,6 +1,6 @@
 # Quipsly Episode Room
 
-Status: production vertical slice under local and device qualification
+Status: production deployed; physical capture and media qualification remain open
 Last updated: 2026-07-27
 
 ## Product promise
@@ -256,8 +256,54 @@ PostgreSQL database used for this dogfood run.
 
 This proves the current-pass timeline semantics, separate-account control,
 blocked-autoplay Pause authority, canonical Session access, and the rendered
-editor derivative lane. It still does not prove physical-iPhone alignment,
-provider egress, production deployment, or publication.
+editor derivative lane. At that local checkpoint it did not prove
+physical-iPhone alignment, provider egress, production deployment, or
+publication.
+
+## Production release evidence
+
+The Episode Room collaboration slice reached `nest.quipsly.com` on 2026-07-27
+through the committed-source, zero-traffic preview release train.
+
+- Source `0575a79ee83a82eaff72cd3afd24da5fbf314dc5` first deployed as
+  zero-traffic revision `studio-00412-gor`. Its signed reviewer journey passed
+  Firebase login, session-cookie and native-session checks, a database-backed
+  Capture Session workspace, Home Nest, Writing, Editor, Recorder, Research,
+  Publishing, logout, and both configured public hosts before it was promoted.
+- A read-only owner render then exercised the real production
+  `high-ground-odyssey-manuscript / episode-4` aggregate. Episode Room rendered
+  171 canonical manuscript blocks, the existing podcast Capture session, four
+  registered media candidates, the episode thread, and the Write/Record/Edit/
+  Publish handoffs. The shared editor rendered Episode 4's protected baseline
+  and an honest empty **Shared Watch derivatives** lane (`0 synced`); production
+  had no current-pass watch derivative to invent.
+- That rendered audit also caught two boundary defects missed by route smoke:
+  an obsolete/nonexistent Nest slug threw an unhandled server error instead of
+  the private 404 boundary, and locale-dependent server/client timestamp text
+  could emit React hydration error 418. The owner-visible canonical production
+  aggregate itself remained readable.
+- Repair source `9d3faeccf1f469decaaddbcf3d3e9eabfe3cebde`
+  classifies deliberate access failures without hiding infrastructure faults,
+  maps missing/denied private Episode Rooms to not found, and hydrates a
+  deterministic UTC timestamp before switching to the collaborator's local
+  presentation. New page and timestamp tests cover those seams.
+- The repair passed 742 app tests, 109 release contracts, strict TypeScript,
+  strict committed-source Next builds, repository health, and the complete
+  signed preview journey. Cloud Build
+  `96cce766-d602-4789-aef8-624181f91166` produced immutable runtime image
+  `sha256:60a1814125d5b08ce0f659db7edcb09d65e70a63fa5c6c8e27d4610c3a6a1a41`.
+  Zero-traffic revision `studio-00414-tut` was promoted only after that gate.
+- Production now sends 100% of Nest traffic to `studio-00414-tut`. Billing,
+  Cloud SQL, Cloud Run readiness, domain/certificate routing, public legal and
+  support pages, and all 104 mobile Capture release checks passed after
+  promotion. The promoted revision had no Cloud Run error-level entries in the
+  release observation window.
+
+This closes production deployment for the web Episode Room and shared-editor
+slice. It does not qualify physical iPhone/Mac clock alignment, Canon R8 live
+signal, MV7i headphone monitoring or unplug recovery, two-participant
+LiveKit coexistence, cloud proxy processing of a real long take, TestFlight,
+App Store submission, or proof-watch/listen of a published episode.
 
 ## Access and collaboration
 

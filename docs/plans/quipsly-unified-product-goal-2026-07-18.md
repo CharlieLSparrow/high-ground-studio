@@ -2854,3 +2854,46 @@ This is an active-goal checkpoint, not a completion claim.
   coexistence, cloud-worker media processing, production deployment,
   TestFlight, or proof-watch/listen of a real episode artifact. Those gates
   remain explicit.
+
+### 2026-07-27 Episode Room production promotion checkpoint
+
+- This is an active-goal checkpoint, not a completion claim.
+- Promoted the collaboration closure from exact committed source, not the
+  working tree. Initial source
+  `0575a79ee83a82eaff72cd3afd24da5fbf314dc5` passed the bounded release
+  manifest, strict committed-source production build, zero-traffic deploy,
+  revision-bound signed smoke, and post-promotion recovery gate as Cloud Run
+  revision `studio-00412-gor`.
+- A real signed-in owner render then opened production High Ground Odyssey
+  under its canonical current slug,
+  `/nests/high-ground-odyssey-manuscript/episodes/episode-4`. It rendered 171
+  manuscript blocks, the existing Capture session, registered episode media,
+  episode chat, and all four workflow handoffs. The shared editor rendered the
+  protected Episode 4 baseline and correctly reported `0 synced` current-pass
+  watch derivatives rather than projecting local dogfood data into production.
+- That boundary proof caught two missed defects: a nonexistent/obsolete Nest
+  slug produced an unhandled 500, and locale-dependent timestamp rendering
+  produced a React hydration mismatch. The repair maps missing or denied
+  private rooms to not found, rethrows infrastructure failures, and uses a
+  deterministic UTC hydration snapshot before presenting collaborator-local
+  time.
+- Repair commit
+  `9d3faeccf1f469decaaddbcf3d3e9eabfe3cebde` passed 742 app tests, 109 release
+  contracts, strict TypeScript, repository health, and both strict
+  committed-source builds. Cloud Build
+  `96cce766-d602-4789-aef8-624181f91166` produced runtime digest
+  `sha256:60a1814125d5b08ce0f659db7edcb09d65e70a63fa5c6c8e27d4610c3a6a1a41`.
+- Zero-traffic revision `studio-00414-tut` passed the complete signed reviewer
+  journey: Firebase login, session cookie, native session check,
+  database-backed Capture Session workspace, Home Nest, Writing, Editor,
+  Recorder, Research, Publishing, logout, and both public hosts. It was then
+  promoted to 100% traffic. The post-promotion gate passed billing, Cloud SQL,
+  Cloud Run, domain and certificate routing, public support/privacy/account
+  deletion, and all 104 mobile Capture contracts; no error-level entries were
+  present for the promoted revision in the release observation window.
+- The production web Episode Room and shared-editor slice is therefore
+  deployed. The goal remains active because physical Canon R8 signal, direct
+  MV7i headphones and unplug recovery, a real two-participant audio room, a
+  sync-marked long take, drift/alignment review, real cloud media processing,
+  physical iPhone qualification, TestFlight, App Store submission, and
+  proof-watch/listen/publish still remain open.
