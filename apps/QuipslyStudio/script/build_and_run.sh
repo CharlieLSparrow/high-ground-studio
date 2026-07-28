@@ -5,6 +5,7 @@ MODE="${1:-run}"
 APP_NAME="QuipslyMac"
 APP_DISPLAY_NAME="Quipsly Studio"
 APP_BUNDLE_ID="com.highground.QuipslyMac"
+EXPECTED_TEAM_ID="${QUIPSLY_MAC_DEVELOPMENT_TEAM:-585GUXMY5M}"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PROJECT="$ROOT_DIR/QuipslyStudio.xcodeproj"
 SCHEME="QuipslyMac"
@@ -40,6 +41,32 @@ build_app() {
     -configuration Debug \
     -derivedDataPath "$DERIVED_DATA" \
     build
+  verify_app_signature
+}
+
+verify_app_signature() {
+  codesign --verify --deep --strict "$APP_BUNDLE"
+
+  if [[ "${QUIPSLY_ALLOW_AD_HOC_SIGNING:-0}" == "1" ]]; then
+    echo "$APP_DISPLAY_NAME signature is structurally valid; team enforcement was explicitly disabled."
+    return
+  fi
+
+  local signing_info
+  local actual_team_id
+  signing_info="$(codesign -dv --verbose=4 "$APP_BUNDLE" 2>&1)"
+  actual_team_id="$(
+    printf '%s\n' "$signing_info" \
+      | awk -F= '/^TeamIdentifier=/{print $2; exit}'
+  )"
+
+  if [[ "$actual_team_id" != "$EXPECTED_TEAM_ID" ]]; then
+    echo "$APP_DISPLAY_NAME must be Apple-signed by Team $EXPECTED_TEAM_ID; observed TeamIdentifier=${actual_team_id:-missing}." >&2
+    echo "Install the product team's Apple Development identity, override QUIPSLY_MAC_DEVELOPMENT_TEAM, or explicitly set QUIPSLY_ALLOW_AD_HOC_SIGNING=1 for a non-TCC CI build." >&2
+    return 1
+  fi
+
+  echo "$APP_DISPLAY_NAME signature verified for Team $actual_team_id."
 }
 
 open_app() {

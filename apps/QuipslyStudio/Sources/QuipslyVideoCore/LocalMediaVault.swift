@@ -5,6 +5,7 @@ public enum LocalMediaVaultError: Error, LocalizedError {
     case couldNotCreateDirectory(URL)
     case copyFailed(source: URL, destination: URL, underlying: Error)
     case sessionNotFound(String)
+    case autosaveCannotTargetCheckpoint(String)
 
     public var errorDescription: String? {
         switch self {
@@ -16,6 +17,8 @@ public enum LocalMediaVaultError: Error, LocalizedError {
             return "Could not copy \(source.lastPathComponent) into the media vault at \(destination.path): \(underlying.localizedDescription)"
         case .sessionNotFound(let name):
             return "No native editor session found named \(name)."
+        case .autosaveCannotTargetCheckpoint(let name):
+            return "Autosave cannot update checkpoint \(name). Create or select a working session first."
         }
     }
 }
@@ -144,8 +147,16 @@ public actor LocalMediaVault {
         }
     }
 
-    public func saveSession(_ session: NativeEditorSession, named name: String) throws -> URL {
+    public func saveSession(
+        _ session: NativeEditorSession,
+        named name: String,
+        intent: NativeSessionSaveIntent = .explicitCheckpoint
+    ) throws -> URL {
         try ensureDirectories()
+        if intent == .autosave,
+           !NativeSessionNamePolicy.isMutableWorkingSession(name) {
+            throw LocalMediaVaultError.autosaveCannotTargetCheckpoint(name)
+        }
         let url = sessionURL(named: name)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

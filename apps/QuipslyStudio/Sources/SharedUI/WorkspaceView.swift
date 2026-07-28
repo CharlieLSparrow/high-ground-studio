@@ -971,6 +971,9 @@ struct WorkspaceView: View {
     @State private var lastMediaAction: String? = nil
     @AppStorage("quipsly.nativeEditor.activeSessionName") private var activeSessionName: String = "autosave"
     @State private var autosaveTask: Task<Void, Never>? = nil
+    @State private var autosaveRequestID: UUID? = nil
+    @State private var pendingAutosaveSessionName: String? = nil
+    @State private var pendingAutosaveCheckpointName: String? = nil
     @State private var autosaveStatus: String = "Autosave ready"
     @State private var lastSavedAt: Date? = nil
     @State private var recentSessions: [[String: String]] = []
@@ -26478,6 +26481,31 @@ struct WorkspaceView: View {
                 .textFieldStyle(.roundedBorder)
                 .frame(width: 220)
 
+            Text(NativeSessionNamePolicy.roleLabel(normalizedActiveSessionName()).uppercased())
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(
+                    NativeSessionNamePolicy.isMutableWorkingSession(normalizedActiveSessionName())
+                        ? Color.green
+                        : Color.orange
+                )
+                .padding(.horizontal, 7)
+                .padding(.vertical, 4)
+                .background(
+                    (
+                        NativeSessionNamePolicy.isMutableWorkingSession(normalizedActiveSessionName())
+                            ? Color.green
+                            : Color.orange
+                    )
+                    .opacity(0.12)
+                )
+                .clipShape(Capsule())
+                .help(
+                    NativeSessionNamePolicy.isMutableWorkingSession(normalizedActiveSessionName())
+                        ? "Autosave may update this working session."
+                        : "This checkpoint is protected from autosave. The first edit creates a unique working copy."
+                )
+
             Button("Save now") {
                 saveNativeSession(named: normalizedActiveSessionName())
             }
@@ -26524,7 +26552,11 @@ struct WorkspaceView: View {
         }
 
         let pathText = lastSessionPath.map { " Path: \($0)" } ?? ""
-        return "\(autosaveStatus) Active: \(normalizedActiveSessionName()). \(savedText)\(pathText)"
+        let protectionText = NativeSessionNamePolicy
+            .isMutableWorkingSession(normalizedActiveSessionName())
+            ? " Working session."
+            : " Checkpoint protected; the first edit forks a working copy."
+        return "\(autosaveStatus) Active: \(normalizedActiveSessionName()).\(protectionText) \(savedText)\(pathText)"
     }
 
     private func readinessStat(_ label: String, _ value: Int, _ color: Color) -> some View {
@@ -46293,6 +46325,10 @@ struct WorkspaceView: View {
                 "skipDecisionCount": 0,
                 "rawVaultCount": 0,
                 "activeSessionName": normalizedActiveSessionName(),
+                "activeSessionRole": NativeSessionNamePolicy.roleLabel(normalizedActiveSessionName()),
+                "pendingAutosaveSessionName": pendingAutosaveSessionName ?? "",
+                "pendingAutosaveCheckpointName": pendingAutosaveCheckpointName ?? "",
+                "checkpointProtection": "first_autosave_forks_unique_working_copy",
                 "autosaveStatus": autosaveStatus,
                 "lastSavedAt": lastSavedAt.map { ISO8601DateFormatter().string(from: $0) } ?? "",
                 "lastSessionPath": lastSessionPath ?? "",
@@ -46591,6 +46627,10 @@ struct WorkspaceView: View {
             "skipDecisionCount": readinessSummary.skipDecisionCount,
             "rawVaultCount": readinessSummary.rawVaultCount,
             "activeSessionName": normalizedActiveSessionName(),
+            "activeSessionRole": NativeSessionNamePolicy.roleLabel(normalizedActiveSessionName()),
+            "pendingAutosaveSessionName": pendingAutosaveSessionName ?? "",
+            "pendingAutosaveCheckpointName": pendingAutosaveCheckpointName ?? "",
+            "checkpointProtection": "first_autosave_forks_unique_working_copy",
             "autosaveStatus": autosaveStatus,
             "lastSavedAt": lastSavedAt.map { ISO8601DateFormatter().string(from: $0) } ?? "",
             "lastSessionPath": lastSessionPath ?? "",
@@ -46927,12 +46967,15 @@ struct WorkspaceView: View {
     private func saveNativeSession(named name: String) {
         let sessionName = normalizedSessionName(name)
         guard validateSessionSaveTarget(sessionName, isAutosave: false) else { return }
+        cancelScheduledAutosave(clearPendingWorkingCopy: true)
 
         Task {
             do {
                 let url = try await projectStore.saveNativeSession(named: sessionName)
                 await MainActor.run {
                     activeSessionName = sessionName
+                    pendingAutosaveSessionName = nil
+                    pendingAutosaveCheckpointName = nil
                     lastSessionPath = url.path
                     lastSavedAt = Date()
                     autosaveStatus = "Saved"
@@ -46957,8 +47000,7 @@ struct WorkspaceView: View {
         let sessionName = normalizedSessionName(name)
         prefersLeanAgentStatus = true
         leanAgentStatusReason = "native_session_restore"
-        autosaveTask?.cancel()
-        autosaveTask = nil
+        cancelScheduledAutosave(clearPendingWorkingCopy: true)
         resetExportStatusForSessionSwitch()
         autosaveStatus = "Loading"
         lastMediaAction = "Loading native session \(sessionName)"
@@ -46998,6 +47040,8 @@ struct WorkspaceView: View {
             audioProxyValidationInFlight.removeAll()
             videoProxyValidationInFlight.removeAll()
             activeSessionName = sessionName
+            pendingAutosaveSessionName = nil
+            pendingAutosaveCheckpointName = nil
             lastSessionPath = loadedURL.path
             lastSavedAt = nil
             autosaveStatus = "Loaded"
@@ -50836,8 +50880,7 @@ struct WorkspaceView: View {
     }
 
     private func loadDemoEdit() {
-        autosaveTask?.cancel()
-        autosaveTask = nil
+        cancelScheduledAutosave(clearPendingWorkingCopy: true)
         resetExportStatusForSessionSwitch()
         let demoDirectory = demoMediaDirectory()
         let charlieURL = demoDirectory.appendingPathComponent("Charlie.mp4")
@@ -50883,8 +50926,7 @@ struct WorkspaceView: View {
 
     private func loadPremierePacket(url: URL) {
         do {
-            autosaveTask?.cancel()
-            autosaveTask = nil
+            cancelScheduledAutosave(clearPendingWorkingCopy: true)
             resetExportStatusForSessionSwitch()
             let importedProject = try PremierePacketImporter.importProject(from: url)
             projectStore.replaceProject(importedProject, activeSequenceId: importedProject.sequences.first?.id)
@@ -52492,8 +52534,7 @@ struct WorkspaceView: View {
     }
 
     private func normalizedSessionName(_ value: String) -> String {
-        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? "autosave" : trimmed
+        NativeSessionNamePolicy.normalized(value)
     }
 
     private var timeOnlyFormatter: DateFormatter {
@@ -52505,26 +52546,72 @@ struct WorkspaceView: View {
 
     private func scheduleAutosave(reason: String) {
         autosaveTask?.cancel()
-        autosaveStatus = "Saving soon: \(reason)"
+        let sourceSessionName = normalizedActiveSessionName()
+        let targetSessionName: String
+        let checkpointName: String?
+        if NativeSessionNamePolicy.isMutableWorkingSession(sourceSessionName) {
+            targetSessionName = sourceSessionName
+            checkpointName = nil
+            pendingAutosaveSessionName = nil
+            pendingAutosaveCheckpointName = nil
+        } else if let pendingAutosaveSessionName,
+                  pendingAutosaveCheckpointName == sourceSessionName {
+            targetSessionName = pendingAutosaveSessionName
+            checkpointName = sourceSessionName
+        } else {
+            let workingCopyName = NativeSessionNamePolicy.workingCopyName(
+                checkpointName: sourceSessionName
+            )
+            pendingAutosaveSessionName = workingCopyName
+            pendingAutosaveCheckpointName = sourceSessionName
+            targetSessionName = workingCopyName
+            checkpointName = sourceSessionName
+        }
+
+        let requestID = UUID()
+        autosaveRequestID = requestID
+        if let checkpointName {
+            autosaveStatus = "Checkpoint \(checkpointName) protected; working copy pending"
+        } else {
+            autosaveStatus = "Saving soon: \(reason)"
+        }
         updateAgentState()
 
-        let sessionName = normalizedActiveSessionName()
         autosaveTask = Task {
             try? await Task.sleep(nanoseconds: 900_000_000)
             guard !Task.isCancelled else { return }
             guard await MainActor.run(body: {
-                validateSessionSaveTarget(sessionName, isAutosave: true)
+                autosaveRequestID == requestID
+                    && (
+                        normalizedActiveSessionName() == sourceSessionName
+                        || normalizedActiveSessionName() == targetSessionName
+                    )
+                    && validateSessionSaveTarget(
+                        targetSessionName,
+                        isAutosave: true
+                    )
             }) else {
                 return
             }
 
             do {
-                let url = try await projectStore.saveNativeSession(named: sessionName)
+                let url = try await projectStore.saveNativeSession(
+                    named: targetSessionName,
+                    intent: .autosave
+                )
                 await MainActor.run {
-                    activeSessionName = sessionName
+                    guard autosaveRequestID == requestID else { return }
+                    activeSessionName = targetSessionName
+                    pendingAutosaveSessionName = nil
+                    pendingAutosaveCheckpointName = nil
+                    autosaveRequestID = nil
                     lastSessionPath = url.path
                     lastSavedAt = Date()
-                    autosaveStatus = "Autosaved: \(reason)"
+                    if let checkpointName {
+                        autosaveStatus = "Forked \(checkpointName); autosaved: \(reason)"
+                    } else {
+                        autosaveStatus = "Autosaved: \(reason)"
+                    }
                     lastMediaAction = autosaveStatus
                     errorMessage = nil
                     showErrorAlert = false
@@ -52533,11 +52620,23 @@ struct WorkspaceView: View {
                 }
             } catch {
                 await MainActor.run {
+                    guard autosaveRequestID == requestID else { return }
+                    autosaveRequestID = nil
                     autosaveStatus = "Autosave failed"
                     lastMediaAction = "Autosave failed: \(error.localizedDescription)"
                     updateAgentState()
                 }
             }
+        }
+    }
+
+    private func cancelScheduledAutosave(clearPendingWorkingCopy: Bool) {
+        autosaveTask?.cancel()
+        autosaveTask = nil
+        autosaveRequestID = nil
+        if clearPendingWorkingCopy {
+            pendingAutosaveSessionName = nil
+            pendingAutosaveCheckpointName = nil
         }
     }
 

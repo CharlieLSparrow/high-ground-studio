@@ -118,9 +118,16 @@ public class ProjectStore: ObservableObject {
         return branchSequence.id
     }
 
-    public func saveNativeSession(named name: String) async throws -> URL {
+    public func saveNativeSession(
+        named name: String,
+        intent: NativeSessionSaveIntent = .explicitCheckpoint
+    ) async throws -> URL {
         let session = NativeEditorSession(activeSequenceId: activeSequenceId, project: project)
-        return try await LocalMediaVault.shared.saveSession(session, named: name)
+        return try await LocalMediaVault.shared.saveSession(
+            session,
+            named: name,
+            intent: intent
+        )
     }
 
     public func readNativeSession(named name: String) async throws -> (session: NativeEditorSession, url: URL) {
