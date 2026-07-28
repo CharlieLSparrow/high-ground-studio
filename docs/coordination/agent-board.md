@@ -94,13 +94,16 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - `scripts/release/quipsly-capture-*`
   - Capture release and App Store readiness docs
 - current goal:
-  - preserve Build 6 exact-source evidence, finish draft screenshot composition
-    review, physical TestFlight operation, reviewer/privacy metadata, and
-    authorized App Store delivery readback
+  - preserve Build 6 exact-source evidence, finish physical TestFlight
+    operation, synthetic reviewer/privacy metadata, legal/account-holder
+    decisions, approved screenshots, and authorized App Store delivery
+    readback
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
   - no private HGO or coaching material in screenshots
   - no automatic TestFlight distribution
+  - do not save legal, rating, DSA, pricing, territory, privacy, deletion, or
+    reviewer-credential answers without account-holder approval
   - no physical-device or provider claim without readback from that boundary
 
 ### 2026-05-25 Sub-Agent Fanout

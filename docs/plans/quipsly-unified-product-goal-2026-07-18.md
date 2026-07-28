@@ -3059,3 +3059,35 @@ This is an active-goal checkpoint, not a completion claim.
 - No image was promoted to the canonical screenshot asset directory. Final
   assets still require the TestFlight app on the physical iPhone and an
   approved synthetic reviewer account with no DEBUG badge or private material.
+
+### 2026-07-28 Quipsly Capture App Store Connect audit checkpoint
+
+- This is a read-only provider-audit checkpoint, not metadata save,
+  legal/privacy approval, or App Store submission.
+- The signed-in App Store Connect session is healthy. Build 6 remains processed,
+  `Ready to Test`, assigned to the manually controlled internal group, and
+  visible to one invited tester.
+- The provider submission surface is substantially unconfigured: subtitle,
+  categories, Content Rights, age rating, listing copy, URLs, screenshots, App
+  Store build selection, reviewer credentials/contact/notes, privacy URLs/data
+  answers, price, and territory availability are unset. Release behavior
+  defaults to automatic instead of the planned manual release.
+- After explicit account-holder approval, changed the App Store Connect record
+  name from `HighGroundCapture` to `Quipsly Capture`; the provider showed
+  `Saved` and returned the new value on readback. The signed app already used
+  `Quipsly Capture` as `CFBundleDisplayName`, so no bundle-ID, target, keychain,
+  app-group, or release-artifact migration was needed.
+- Separate empty macOS and visionOS `1.0 Prepare for Submission` shells exist,
+  while iOS compatibility distribution is also enabled for Apple silicon Mac
+  and Apple Vision Pro. The first product is iPhone-only; removing those
+  provider surfaces requires explicit destructive-action approval.
+- Corrected the checked-in reviewer and privacy docs, which still claimed
+  Build 6 was not uploaded and production passed only 96/104. The authoritative
+  read-only audit and recommended account-holder decisions are in
+  `docs/coordination/2026-07-28-capture-app-store-connect-audit.md`.
+- Google Cloud is authenticated. GitHub CLI and the prior local App Store
+  Connect API-key file are absent, but the branch is already pushed and the
+  browser session can read provider state. Native Studio remains unsigned-in
+  because its Firebase password field is empty. iPhone Mirroring repeatedly
+  reaches the phone but times out while the phone is used or its microphone is
+  held; CoreDevice still does not enumerate it.

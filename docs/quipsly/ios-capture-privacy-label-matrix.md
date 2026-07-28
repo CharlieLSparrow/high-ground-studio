@@ -1,6 +1,6 @@
 # Quipsly iOS capture privacy label and reviewer matrix
 
-Date: 2026-07-24
+Date: 2026-07-28
 Status: Build 6 candidate inventory, not legal-reviewed or App Store-submitted
 Target app: `apps/mobile-capture/HighGroundCapture`
 
@@ -17,13 +17,12 @@ This is not legal advice. Before submission, the final App Store Connect privacy
   `https://quipsly.com/privacy/account-deletion`
 - Mobile capture readiness endpoint: `GET https://nest.quipsly.com/api/mobile/capture/readiness`
 
-The two canonical marketing policy URLs currently return HTTP 200. The
-readiness endpoint returns HTTP 200, exposes configuration booleans and the
-equivalent Nest policy URLs, and does not expose secrets. The deployed Nest
-host currently redirects those marketing routes through an internal `:8080`
-port. Source now constructs an explicit canonical HTTPS origin and has a
-four-case host-routing regression, but production deployment and redirect
-readback remain required.
+The two canonical marketing policy URLs return HTTP 200 through production.
+The readiness endpoint returns HTTP 200, exposes configuration booleans and
+the equivalent Nest policy URLs, and does not expose secrets. Production
+revision `studio-00414-tut` is at 100% traffic and the complete public mobile
+contract passes 104/104. App Store Connect's Privacy Policy and User Privacy
+Choices URL fields are still empty.
 
 ## Data categories likely involved
 
@@ -104,16 +103,21 @@ Reviewer instructions should explicitly say:
 
 ## Current gaps before submission
 
-- Exact-source Nest deploy with all 104 mobile checks and both canonical policy
-  redirects green, plus a real reviewer account/session proof.
-- Production schema audit/migration proof for the matching backend deploy,
-  including account-deletion execution receipts.
-- Signed archive/TestFlight and physical-iPhone validation of microphone fidelity, Bluetooth/wired/USB routes, lock/background, interruption, route loss, force quit, reboot, and direct-GCS background recovery.
+- A real reviewer account/session proof and credentials stored only in App
+  Store Connect.
+- Production operation of the account-deletion executor against one disposable
+  eligible account, including completion confirmation and a sanitized durable
+  execution receipt.
+- Physical-iPhone TestFlight validation of microphone fidelity,
+  Bluetooth/wired/USB routes, lock/background, interruption, route loss, force
+  quit, reboot, and direct-GCS background recovery.
 - Real Nest-issued LiveKit/CallKit room validation and provider-egress reconciliation on device.
 - Production operation of one disposable eligible deletion through completion,
   plus account-holder approval of the retention matrix and final
   Terms/Privacy/App Store answers.
-- Final legal/privacy review, Xcode archive privacy report, and App Store Connect privacy-label reconciliation.
+- Final legal/privacy review, Xcode archive privacy report, and App Store
+  Connect privacy-label reconciliation. The live provider privacy workflow is
+  completely unstarted as of the 2026-07-28 read-only audit.
 - Five approved App Store screenshots from the physical/TestFlight candidate.
   The canonical listing metadata is maintained and source-valid; its strict
   submission gate remains red until those assets and delivery proofs exist.
