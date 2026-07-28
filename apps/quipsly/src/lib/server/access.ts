@@ -26,6 +26,17 @@ export type ProjectAccessAction =
   | "record"
   | "publish";
 
+export type ProjectAccessErrorCode = "UNAUTHORIZED" | "FORBIDDEN" | "NOT_FOUND";
+
+export function projectAccessErrorCode(error: unknown): ProjectAccessErrorCode | null {
+  if (!(error instanceof Error)) return null;
+  const separator = error.message.indexOf(":");
+  const candidate = separator >= 0 ? error.message.slice(0, separator) : error.message;
+  return candidate === "UNAUTHORIZED" || candidate === "FORBIDDEN" || candidate === "NOT_FOUND"
+    ? candidate
+    : null;
+}
+
 function toStudioProjectAccessAction(action: ProjectAccessAction): StudioProjectAccessAction {
   if (action === "read") return "read";
   if (action === "manage" || action === "publish") return "manage";

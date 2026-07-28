@@ -3,6 +3,8 @@
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, MessageCircle, Send } from "lucide-react";
 
+import LocalDateTime from "@/components/LocalDateTime";
+
 type Message = {
   id: string;
   authorName: string | null;
@@ -21,13 +23,6 @@ type ChatResponse = {
 
 function author(message: Message) {
   return message.authorName || message.authorEmail?.split("@")[0] || "Collaborator";
-}
-
-function clock(value: string) {
-  const date = new Date(value);
-  return Number.isFinite(date.getTime())
-    ? date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })
-    : "";
 }
 
 export default function EpisodeRoomChat({
@@ -121,7 +116,11 @@ export default function EpisodeRoomChat({
           <article key={message.id} className="rounded-2xl border border-[#30483d] bg-[#17251e] p-3">
             <div className="flex items-center justify-between gap-3">
               <p className="text-xs font-black text-[#f4eedf]">{author(message)}</p>
-              <time className="text-[10px] font-bold uppercase tracking-wide text-[#82958a]">{clock(message.createdAt)}</time>
+              <LocalDateTime
+                value={message.createdAt}
+                mode="time"
+                className="text-[10px] font-bold uppercase tracking-wide text-[#82958a]"
+              />
             </div>
             {message.body ? <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-[#d8e1da]">{message.body}</p> : null}
             {message.gifUrl ? <img src={message.gifUrl} alt="Shared GIF" className="mt-3 max-h-48 w-full rounded-xl object-contain" /> : null}

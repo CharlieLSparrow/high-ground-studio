@@ -5,7 +5,7 @@ import {
   resolveStudioProjectAccess,
 } from "@/lib/server/studio-project-access";
 
-import { requireProjectAccess } from "./access";
+import { projectAccessErrorCode, requireProjectAccess } from "./access";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
@@ -17,6 +17,14 @@ jest.mock("@/lib/server/studio-project-access", () => ({
 
 describe("project access boundary", () => {
   beforeEach(() => jest.clearAllMocks());
+
+  it("classifies only deliberate access-boundary errors", () => {
+    expect(projectAccessErrorCode(new Error("NOT_FOUND: Missing Nest"))).toBe("NOT_FOUND");
+    expect(projectAccessErrorCode(new Error("FORBIDDEN: View only"))).toBe("FORBIDDEN");
+    expect(projectAccessErrorCode(new Error("UNAUTHORIZED: Sign in"))).toBe("UNAUTHORIZED");
+    expect(projectAccessErrorCode(new Error("database connection failed"))).toBeNull();
+    expect(projectAccessErrorCode("FORBIDDEN: not an Error")).toBeNull();
+  });
 
   it("rejects unauthenticated access before reading the database in development", async () => {
     const original = process.env.NODE_ENV;

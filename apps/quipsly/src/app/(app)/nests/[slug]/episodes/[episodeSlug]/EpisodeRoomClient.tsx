@@ -32,6 +32,7 @@ import {
   useState,
 } from "react";
 
+import LocalDateTime from "@/components/LocalDateTime";
 import {
   projectedEpisodeRoomPosition,
   type EpisodeRoomClip,
@@ -541,7 +542,7 @@ export default function EpisodeRoomClient({
                   : `${initialPayload.transcriptSegments.length} recorded transcript segments available; writing has not been imported yet.`}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] font-black uppercase tracking-wide text-[#91a298]">
-                <span>Shared manuscript · {new Date(writing.updatedAt).toLocaleString()}</span>
+                <span>Shared manuscript · <LocalDateTime value={writing.updatedAt} /></span>
                 <Link
                   href={`/create?project=${encodeURIComponent(projectSlug)}&document=${encodeURIComponent(initialPayload.episode.documentId)}`}
                   className="rounded-full border border-[#40584c] px-2.5 py-1 text-[#f6d68f] hover:border-[#d8ad56]"
@@ -678,9 +679,15 @@ export default function EpisodeRoomClient({
                       <Clock3 size={16} /> Use recording clock
                     </button>
                     <div className="text-xs font-semibold leading-5 text-[#aab9af] md:col-span-2">
-                      {recordingSession?.recordingStartedAt
-                        ? `${recordingSession.status === "RECORDING" ? "Recording now" : "Recorded"} · started ${new Date(recordingSession.recordingStartedAt).toLocaleString()} · ${recordingSession.provider}`
-                        : "Recording has not started. Open this session in Quipsly Capture, confirm consent, and tap Record."}
+                      {recordingSession?.recordingStartedAt ? (
+                        <>
+                          {recordingSession.status === "RECORDING" ? "Recording now" : "Recorded"}
+                          {" · started "}
+                          <LocalDateTime value={recordingSession.recordingStartedAt} />
+                          {" · "}
+                          {recordingSession.provider}
+                        </>
+                      ) : "Recording has not started. Open this session in Quipsly Capture, confirm consent, and tap Record."}
                       {recordingSession?.canOpenSession ? (
                         <Link href={`/sessions/${encodeURIComponent(recordingSession.id)}?mode=prepare`} className="ml-2 font-black text-[#f6d68f] hover:underline">
                           Open session

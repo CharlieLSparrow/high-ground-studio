@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { requireProjectAccess } from "@/lib/server/access";
+import { projectAccessErrorCode, requireProjectAccess } from "@/lib/server/access";
 import { loadEpisodeRoomDesk } from "@/lib/server/episode-room-store";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
@@ -15,13 +15,27 @@ export default async function EpisodeRoomPage({
   params: Promise<{ slug: string; episodeSlug: string }>;
 }) {
   const { slug, episodeSlug } = await params;
-  await requireProjectAccess(slug, "read");
+  try {
+    await requireProjectAccess(slug, "read");
+  } catch (error) {
+    const code = projectAccessErrorCode(error);
+    if (code === "NOT_FOUND" || code === "FORBIDDEN") notFound();
+    throw error;
+  }
+
   let canEdit = false;
   try {
     await requireProjectAccess(slug, "write");
     canEdit = true;
-  } catch {
-    canEdit = false;
+  } catch (error) {
+    const code = projectAccessErrorCode(error);
+    if (code === "FORBIDDEN") {
+      canEdit = false;
+    } else if (code === "NOT_FOUND") {
+      notFound();
+    } else {
+      throw error;
+    }
   }
 
   const session = await getQuipslySession();
