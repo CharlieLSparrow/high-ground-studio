@@ -320,6 +320,19 @@ export function runDraftScreenshotCli(argv = process.argv.slice(2)) {
   }
 }
 
-if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
+function canonicalModulePath(value) {
+  const resolved = path.resolve(value);
+  try {
+    return fs.realpathSync(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+if (
+  process.argv[1]
+  && canonicalModulePath(process.argv[1])
+    === canonicalModulePath(fileURLToPath(import.meta.url))
+) {
   process.exitCode = runDraftScreenshotCli();
 }

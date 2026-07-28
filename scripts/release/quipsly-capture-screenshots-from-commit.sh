@@ -139,7 +139,7 @@ NODE
   ) || fail "Could not recover simulator identity from the attachment manifest."
 
   echo "WARN Screenshot runner omitted its receipt; invoking the exact committed materializer."
-  node "$materializer" \
+  node --input-type=module - "$materializer" \
     --metadata "$metadata_path" \
     --manifest "$manifest_path" \
     --exported-directory "$attachment_directory" \
@@ -148,7 +148,19 @@ NODE
     --source-isolation "detached-worktree" \
     --result-bundle "$result_bundle" \
     --device-name "$manifest_device_name" \
-    --device-id "$manifest_device_id"
+    --device-id "$manifest_device_id" <<'NODE'
+import { pathToFileURL } from "node:url";
+
+const [materializerPath, ...materializerArguments] = process.argv.slice(2);
+const materializer = await import(pathToFileURL(materializerPath).href);
+if (typeof materializer.runDraftScreenshotCli !== "function") {
+  throw new Error("Exact committed materializer does not export runDraftScreenshotCli.");
+}
+const result = materializer.runDraftScreenshotCli(materializerArguments);
+if (result !== 0) {
+  process.exit(result);
+}
+NODE
   materialization_mode="exact-committed-recovery"
 fi
 [[ -f "$draft_receipt" ]] ||

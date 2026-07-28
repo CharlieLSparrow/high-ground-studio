@@ -73,29 +73,31 @@ fs.writeFileSync(receiptPath, `${JSON.stringify({
 NODE
 MOCK
 cat >"${fixture_repo}/apps/mobile-capture/HighGroundCapture/scripts/app-store-draft-screenshots.mjs" <<'MOCK'
-#!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 
-const options = {};
-for (let index = 2; index < process.argv.length; index += 2) {
-  options[process.argv[index]] = process.argv[index + 1];
+export function runDraftScreenshotCli(argv) {
+  const options = {};
+  for (let index = 0; index < argv.length; index += 2) {
+    options[argv[index]] = argv[index + 1];
+  }
+  const outputDirectory = options["--output-directory"];
+  fs.writeFileSync(
+    path.join(outputDirectory, "draft-receipt.json"),
+    `${JSON.stringify({
+      submissionEligible: false,
+      sourceRevision: options["--source-revision"]
+        ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
+      sourceDirty: false,
+      sourceIsolation: options["--source-isolation"],
+      screenshots: Array.from({ length: 5 }, (_, index) => ({
+        order: index + 1,
+      })),
+    }, null, 2)}\n`,
+  );
+  return 0;
 }
-const outputDirectory = options["--output-directory"];
-fs.writeFileSync(
-  path.join(outputDirectory, "draft-receipt.json"),
-  `${JSON.stringify({
-    submissionEligible: false,
-    sourceRevision: options["--source-revision"]
-      ?? execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim(),
-    sourceDirty: false,
-    sourceIsolation: options["--source-isolation"],
-    screenshots: Array.from({ length: 5 }, (_, index) => ({
-      order: index + 1,
-    })),
-  }, null, 2)}\n`,
-);
 MOCK
 printf '{}\n' >"${fixture_repo}/release/app-store/quipsly-capture/en-US.json"
 chmod +x \

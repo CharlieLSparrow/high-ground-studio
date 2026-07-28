@@ -1085,6 +1085,11 @@ requireIncludes(
   "draft screenshot receipt records source isolation",
 );
 requireIncludes(
+  appStoreDraftMaterializerText,
+  "fs.realpathSync",
+  "draft screenshot CLI canonicalizes symlinked macOS paths",
+);
+requireIncludes(
   appStoreCommittedDraftRunnerText,
   "git -C \"$repo_root\" worktree add --detach",
   "committed draft runner materializes a detached source worktree",

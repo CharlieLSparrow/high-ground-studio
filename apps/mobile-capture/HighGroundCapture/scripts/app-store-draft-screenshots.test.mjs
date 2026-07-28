@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import { materializeDraftScreenshots } from "./app-store-draft-screenshots.mjs";
 import { readAppStoreMetadata } from "../../../../scripts/release/quipsly-capture-app-store-metadata.mjs";
@@ -136,5 +138,47 @@ test("fails when an attachment is missing or has the wrong dimensions", () => {
     );
   } finally {
     fs.rmSync(wrongSize.root, { recursive: true, force: true });
+  }
+});
+
+test("runs through a symlinked CLI path and materializes its receipt", () => {
+  const current = fixture();
+  try {
+    const cliPath = fileURLToPath(
+      new URL("./app-store-draft-screenshots.mjs", import.meta.url),
+    );
+    const symlinkPath = path.join(current.root, "materializer-link.mjs");
+    fs.symlinkSync(cliPath, symlinkPath);
+    const result = spawnSync(
+      process.execPath,
+      [
+        symlinkPath,
+        "--manifest",
+        current.manifestPath,
+        "--exported-directory",
+        current.exportedDirectory,
+        "--output-directory",
+        current.outputDirectory,
+        "--source-revision",
+        "d".repeat(40),
+        "--source-isolation",
+        "detached-worktree",
+        "--result-bundle",
+        path.join(current.root, "result.xcresult"),
+        "--device-name",
+        "iPhone 17 Pro Max",
+        "--device-id",
+        "fixture-device",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /PASS Materialized 5 draft App Store screenshots/);
+    assert.equal(
+      fs.existsSync(path.join(current.outputDirectory, "draft-receipt.json")),
+      true,
+    );
+  } finally {
+    fs.rmSync(current.root, { recursive: true, force: true });
   }
 });
