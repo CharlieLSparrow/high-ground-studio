@@ -34,12 +34,26 @@ clear_saved_state() {
 }
 
 build_app() {
+  local signing_overrides=(
+    "CODE_SIGN_IDENTITY=Apple Development"
+    "CODE_SIGN_STYLE=Automatic"
+    "DEVELOPMENT_TEAM=$EXPECTED_TEAM_ID"
+  )
+  if [[ "${QUIPSLY_ALLOW_AD_HOC_SIGNING:-0}" == "1" ]]; then
+    signing_overrides=(
+      "CODE_SIGN_IDENTITY=-"
+      "CODE_SIGN_STYLE=Manual"
+      "DEVELOPMENT_TEAM="
+    )
+  fi
+
   xcodebuild \
     -quiet \
     -project "$PROJECT" \
     -scheme "$SCHEME" \
     -configuration Debug \
     -derivedDataPath "$DERIVED_DATA" \
+    "${signing_overrides[@]}" \
     build
   verify_app_signature
 }
