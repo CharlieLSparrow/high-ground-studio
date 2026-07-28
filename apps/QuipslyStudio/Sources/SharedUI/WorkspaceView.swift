@@ -1908,7 +1908,19 @@ struct WorkspaceView: View {
                 handleAgentCommandDispatch(fallbackToLegacy: false)
             }
             agentServer.registerCommandExecutor { request in
+                lastDrainedAgentCommandSerial = agentServer.commandSerial
+                agentServer.recordCommandProcessing(
+                    request,
+                    status: "handling_by_registered_view_bridge",
+                    mode: "registered-view-bridge-direct"
+                )
                 handleAgentCommand(request)
+                agentServer.recordCommandProcessing(
+                    request,
+                    status: "handled_by_registered_view_bridge",
+                    mode: "registered-view-bridge-direct"
+                )
+                updateAgentState()
             }
             publishMountedAgentState()
             installKeyboardMonitorIfNeeded()

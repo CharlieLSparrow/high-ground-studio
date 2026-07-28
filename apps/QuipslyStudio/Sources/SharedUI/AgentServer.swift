@@ -4495,8 +4495,6 @@ public class AgentServer: ObservableObject {
     @discardableResult
     public func enqueueCommand(_ name: String, values: [String: String] = [:]) -> [String: Any] {
         let request = AgentCommandRequest(name: name, values: values)
-        commandToExecute = name
-        trigger = UUID()
         commandSerial += 1
         let executorRegistered = commandExecutor != nil
         var receipt: [String: Any] = [
@@ -4518,6 +4516,12 @@ public class AgentServer: ObservableObject {
             return receipt
         }
 
+        // The legacy command fields are a fallback for views that have not
+        // registered the typed command bridge. Mutating them on the direct path
+        // causes the same command to be applied a second time when `trigger`
+        // fires (and loses typed request values such as playback mode).
+        commandToExecute = name
+        trigger = UUID()
         pendingCommandRequests.append(request)
         NotificationCenter.default.post(name: .quipslyAgentCommandQueued, object: nil)
         receipt["status"] = "queued"
@@ -4682,14 +4686,18 @@ public class AgentServer: ObservableObject {
         return httpRequests + requests
     }
 
-    public func recordCommandProcessing(_ request: AgentCommandRequest, status: String) {
+    public func recordCommandProcessing(
+        _ request: AgentCommandRequest,
+        status: String,
+        mode: String = "view-drain"
+    ) {
         var receipt: [String: Any] = [
             "id": request.id.uuidString,
             "name": request.name,
             "serial": commandSerial,
             "values": request.values,
             "executorRegistered": commandExecutor != nil,
-            "mode": "view-drain",
+            "mode": mode,
             "status": status,
             "pendingCommandCount": pendingCommandRequests.count + Self.httpCommandCount()
         ]
