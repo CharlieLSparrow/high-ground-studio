@@ -2927,3 +2927,37 @@ This is an active-goal checkpoint, not a completion claim.
   deliberate unplug/recovery, a real Nest room and second participant,
   sync/drift review, real Canon image and card-master alignment, physical
   iPhone capture, TestFlight, and proof-listen/watch remain open.
+
+### 2026-07-28 Episode 4 native-session recovery checkpoint
+
+- This is an active-goal checkpoint, not a completion claim.
+- Recovered the 14-lane, 6,799.943-second Episode 4 Part 2 producer session in
+  the exact signed Mac app built from commit `8053fb3` (Team `585GUXMY5M`,
+  CDHash `b251846675f522f411790574e6a41cc1ad79bf23`).
+- Replaced file-exists and container-duration trust with fail-closed
+  video-track validation. Before source authorization, the app correctly held
+  the recap because stored/container duration was `57.200s` and proxy video
+  was `55.167s`. Restoring only the prior folder bookmark exposed the
+  `55.157s` source video track; the app reconciled and persisted the lane as
+  source-video-track versus proxy-video-track evidence.
+- Independent probing verified one video stream in every ready proxy and at
+  most `0.010s` app-to-proxy duration difference. The real session now reaches
+  ten ready videos, three proxy-safe audio lanes, one deliberately held source,
+  and `productionReady=true`.
+- Closed the real checkpoint-safety gate. A 21.6 MB explicit checkpoint
+  retained SHA-256
+  `f85550a2807afcb6dc64a60e722043bf120672487e4a9759f4825324e87d979b`;
+  the first non-editorial correction-note autosave forked unique working copy
+  `episode-4-session-safety-acceptance-v001-working-20260728T211324618Z-97d8758f`
+  instead of altering the checkpoint. Both hashes and the note survived a full
+  quit/relaunch and explicit reload.
+- Real playback testing found and fixed duplicate agent-command delivery:
+  typed commands no longer replay through the lossy legacy trigger, and state
+  now records handled serials. The cold-reloaded session held `Play Through`,
+  advanced from `600.000s` to `602.726s`, and paused at `603.347s`.
+- QuipslyVideoCore passes 96/96 and the signed Mac target builds. This proves
+  durable session recovery, media readiness, and app-owned playback control.
+  It does not prove a human proof-watch/listen, native account convergence,
+  real production Nest handoff, physical iPhone capture/upload, TestFlight,
+  App Store submission, or the required real episode/coaching completion
+  matrix. Those gates remain open.

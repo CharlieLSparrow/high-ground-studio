@@ -99,3 +99,40 @@ The app-level acceptance gate must additionally:
 6. relaunch and prove the reconciled working session survives.
 
 Automated tests alone do not close that gate.
+
+## 2026-07-28 Episode 4 acceptance
+
+The app-level gate passed in the Apple Development-signed Mac app built from
+commit `8053fb3` (CDHash
+`b251846675f522f411790574e6a41cc1ad79bf23`, Team `585GUXMY5M`).
+
+The cold pre-grant state truthfully reported:
+
+- nine video lanes `Proxy ready`;
+- one recap lane `Proxy blocked`;
+- three audio lanes `Audio proxy-safe`; and
+- one Office Space source `Held for recovery`.
+
+The recap was blocked because its stored/container duration was `57.200`
+seconds while its proxy video track was `55.167` seconds. The semantic
+`restore-media-access` command restored only the saved
+`/Volumes/My Passport/Quipsly Media Vault` bookmark. That explicit grant
+allowed the source video track to be probed at `55.157` seconds. The source and
+proxy video tracks differed by only about `0.010` seconds, so the app
+reconciled the lane to `55.157` seconds and persisted
+`source-video-track-vs-proxy-video-track` evidence.
+
+The settled session reported ten video lanes `Proxy ready`, three audio lanes
+`Audio proxy-safe`, one intentionally held lane, and `productionReady=true`.
+Independent `ffprobe` readback found exactly one video track in every ready
+proxy. Every app duration matched its proxy video track within `0.010`
+seconds. The recap readback was:
+
+- source video track: `55.156738` seconds;
+- proxy video track: `55.166667` seconds; and
+- source container: `57.200000` seconds.
+
+The reconciled evidence survived autosave, checkpoint fork, full app quit,
+relaunch, and explicit working-session reload. This closes the Episode 4
+duration-integrity acceptance gate. It does not approve the episode
+editorially or substitute for a human proof-watch/listen.

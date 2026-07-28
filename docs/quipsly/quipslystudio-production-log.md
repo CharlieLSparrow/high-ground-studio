@@ -820,3 +820,44 @@ Next best target:
 - Added a `/create` "You are here" card that shows the current Nest, document, document kind, and active section/whole-document state so the writing surface feels more like a stable notebook than an abstract filter workbench.
 - Added `/create` notebook rail counts and recovery actions: visible document count, writing page count, study source count, "Return to full document", and "Clear notebook search" so hidden/focused state is obvious and reversible.
 - Added `/create` structure creation from the notebook rail: `+ Chapter` and `+ Episode` dispatch into Tagger, which inserts a real tagged heading block through the editor's local block state and existing save/blur path instead of creating a parallel document mutation path.
+
+## 2026-07-28 - Episode 4 proxy, checkpoint, and playback acceptance
+
+- Recovered the real
+  `episode-4-part-2-proxy-recovery-working` native session in the exact
+  Apple Development-signed Mac app built from commit `8053fb3` (Team
+  `585GUXMY5M`, CDHash
+  `b251846675f522f411790574e6a41cc1ad79bf23`).
+- Fixed video readiness to use source/proxy video-track duration rather than
+  container duration. The Part 2 recap source container is `57.200000s`, but
+  its source video track is `55.156738s` and proxy video track is
+  `55.166667s`. After restoring only the previously granted media-folder
+  bookmark, the app reconciled the lane to `55.157s` with persisted
+  source-track/proxy-track evidence.
+- Independent `ffprobe` readback verified exactly one video stream in all ten
+  ready proxies. App duration versus proxy video-track duration differed by no
+  more than `0.010s`. Final readiness was ten ready video lanes, three
+  proxy-safe audio lanes, one intentionally held context lane, and
+  `productionReady=true`.
+- Proved checkpoint protection with the 21.6 MB real session. Explicit
+  checkpoint `episode-4-session-safety-acceptance-v001` retained SHA-256
+  `f85550a2807afcb6dc64a60e722043bf120672487e4a9759f4825324e87d979b`
+  before and after the first autosave. That autosave created unique working
+  copy
+  `episode-4-session-safety-acceptance-v001-working-20260728T211324618Z-97d8758f`
+  with SHA-256
+  `d46bb07c3cf44613fdc9edad6719bbc87d0c8b59227b20fc852e9b212a44f83a`.
+- A complete quit/relaunch and explicit load restored all 14 lanes, the
+  correction-note marker, production readiness, checkpoint role truth, and
+  hashes.
+- The first playback attempt exposed duplicate command ownership: a registered
+  typed command was executed and then replayed through the legacy trigger with
+  its playback parameters lost. Commit `8053fb3` makes registered commands
+  single-delivery and records handled command serials. The cold-reloaded real
+  session then held `Play Through`, advanced from `600.000s` to `602.726s`,
+  and paused at `603.347s`.
+- The complete QuipslyVideoCore suite passes 96/96 and the signed QuipslyMac
+  Debug target builds. This is app-owned playback proof, not human
+  proof-watch/listen. Native account verification, production Nest handoff,
+  physical iPhone qualification, TestFlight, and the broader end-to-end goal
+  remain open.

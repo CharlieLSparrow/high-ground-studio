@@ -133,3 +133,37 @@ CI that deliberately does not exercise stable TCC identity may set
 ad-hoc signing overrides and still performs structural signature validation.
 Ad-hoc builds are not valid microphone, camera, protected-folder, removable
 volume, or physical acceptance evidence.
+
+## 2026-07-28 real-session acceptance
+
+The app-level gate passed against the real Episode 4 Part 2 producer session,
+not a fixture:
+
+- Exact exercised source commit: `8053fb3`
+- Signed app CDHash: `b251846675f522f411790574e6a41cc1ad79bf23`
+- Signing team: `585GUXMY5M`
+- Input working session:
+  `episode-4-part-2-proxy-recovery-working`
+- Explicit checkpoint:
+  `episode-4-session-safety-acceptance-v001`
+- Checkpoint bytes: `21,648,131`
+- Checkpoint SHA-256:
+  `f85550a2807afcb6dc64a60e722043bf120672487e4a9759f4825324e87d979b`
+- First post-checkpoint edit: one correction note explicitly labeled
+  `session-safety-acceptance` and carrying no editorial meaning.
+- Forked working session:
+  `episode-4-session-safety-acceptance-v001-working-20260728T211324618Z-97d8758f`
+- Working bytes after the edit: `21,648,707`
+- Working SHA-256:
+  `d46bb07c3cf44613fdc9edad6719bbc87d0c8b59227b20fc852e9b212a44f83a`
+
+The checkpoint hash was identical before and after the autosave. A complete
+app quit and relaunch restored the remembered working-session name without
+materializing media, and an explicit load restored all 14 lanes plus the
+correction note. The checkpoint hash and working hash remained unchanged
+after relaunch.
+
+The same cold-reloaded session also passed real editor-control proof:
+`Play Through` advanced the playhead from `600.000` to `602.726` seconds,
+remained playing, and then paused at `603.347`. This proves app-owned playback
+operation and session survival. It is not a human proof-watch or proof-listen.
