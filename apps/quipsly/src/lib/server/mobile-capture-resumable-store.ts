@@ -319,7 +319,9 @@ async function createUploadUri(manifest: {
   const bucket = getMediaBucket(manifest.bucketName);
   const destination = bucket.file(manifest.objectName);
   const [uri] = await destination.createResumableUpload({
-    private: true,
+    // Privacy is enforced by the bucket's uniform IAM policy. Asking the GCS
+    // client for a per-object "private" ACL is both redundant and invalid on a
+    // uniform-bucket-level-access media vault.
     preconditionOpts: { ifGenerationMatch: 0 },
     metadata: {
       contentLength: manifest.expectedSizeBytes,

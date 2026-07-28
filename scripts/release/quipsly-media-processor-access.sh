@@ -50,8 +50,14 @@ done
 
 uniform_access="$(
   gcloud storage buckets describe "gs://${media_bucket}" \
-    --format='value(iamConfiguration.uniformBucketLevelAccess.enabled)'
+    --format='value(uniform_bucket_level_access)'
 )"
+if [[ -z "${uniform_access}" ]]; then
+  uniform_access="$(
+    gcloud storage buckets describe "gs://${media_bucket}" \
+      --format='value(iamConfiguration.uniformBucketLevelAccess.enabled)'
+  )"
+fi
 if [[ "${uniform_access}" != "True" && "${uniform_access}" != "true" ]]; then
   echo "The media bucket must use uniform bucket-level access." >&2
   exit 1

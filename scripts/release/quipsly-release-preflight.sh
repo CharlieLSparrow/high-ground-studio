@@ -156,7 +156,8 @@ for script in \
   scripts/release/quipsly-smoke-preview.sh \
   scripts/release/quipsly-promote-preview.sh \
   scripts/release/quipsly-rollback.sh \
-  scripts/release/quipsly-traffic.sh
+  scripts/release/quipsly-traffic.sh \
+  scripts/release/quipsly-nest-media-access.sh
 do
   release_script="${release_source_root}/${script}"
   if [[ -f "${release_script}" ]]; then
@@ -253,6 +254,19 @@ if [[ -n "${PROJECT_ID}" ]] && gcloud run services describe "${SERVICE_NAME}" --
   pass "Cloud Run service ${SERVICE_NAME} exists in ${REGION}."
 else
   fail "Could not describe Cloud Run service ${SERVICE_NAME} in ${REGION}."
+fi
+
+print_step "Mobile capture media access"
+
+if PROJECT_ID="${PROJECT_ID}" \
+  REGION="${REGION}" \
+  NEST_SERVICE_NAME="${SERVICE_NAME}" \
+  QUIPSLY_MEDIA_BUCKET="${QUIPSLY_MEDIA_BUCKET:-high-ground-odyssey-media}" \
+  APPLY=0 \
+  bash "${release_source_root}/scripts/release/quipsly-nest-media-access.sh"; then
+  pass "Nest can create immutable captures and update only its managed control folders."
+else
+  fail "Nest mobile-capture media IAM is incomplete. Run quipsly-nest-media-access.sh with APPLY=1 before release."
 fi
 
 print_step "Production recovery gate"

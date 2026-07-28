@@ -207,10 +207,10 @@ test("long-source verification state is optional for legacy reads and fail-close
   );
 });
 
-test("recording bytes go directly to a preconditioned private GCS resumable session", () => {
+test("recording bytes go directly to a preconditioned uniform-IAM GCS resumable session", () => {
   for (const required of [
     "createResumableUpload",
-    "private: true",
+    "Privacy is enforced by the bucket's uniform IAM policy",
     "ifGenerationMatch: 0",
     "contentLength: manifest.expectedSizeBytes",
     "quipslyExpectedSha256",
@@ -221,7 +221,15 @@ test("recording bytes go directly to a preconditioned private GCS resumable sess
     assert.ok(`${store}\n${read("apps/quipsly/src/lib/server/mobile-capture-security.ts")}`.includes(required), required);
   }
 
-  for (const forbidden of ["node:fs", "node:os", "tmpdir(", "assembledPath", "INGEST_ROOT"]) {
+  for (const forbidden of [
+    "private: true",
+    "predefinedAcl",
+    "node:fs",
+    "node:os",
+    "tmpdir(",
+    "assembledPath",
+    "INGEST_ROOT",
+  ]) {
     assert.equal(`${createRoute}\n${finalizeRoute}\n${store}`.includes(forbidden), false, forbidden);
   }
 });

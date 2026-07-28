@@ -26,6 +26,10 @@ const gcloudIgnore = fs.readFileSync(
   new URL("../../.gcloudignore", import.meta.url),
   "utf8",
 );
+const nestMediaAccess = fs.readFileSync(
+  new URL("./quipsly-nest-media-access.sh", import.meta.url),
+  "utf8",
+);
 
 test("standalone preflight materializes the committed Nest release context", () => {
   assert.match(preflight, /quipsly-build-context\.sh/);
@@ -39,6 +43,18 @@ test("preflight compiles the exact committed production bundle before Cloud Buil
   assert.match(preflight, /quipsly-verify-release-build\.sh/);
   assert.match(preflight, /Strict Nest production build succeeded from the materialized commit/);
   assert.doesNotMatch(deploy, /QUIPSLY_PREFLIGHT_BUILD=0/);
+});
+
+test("preflight proves scoped Nest access to the uniform-IAM media vault", () => {
+  assert.match(preflight, /quipsly-nest-media-access\.sh/);
+  assert.match(preflight, /Mobile capture media access/);
+  assert.match(nestMediaAccess, /iamConfiguration\.uniformBucketLevelAccess\.enabled/);
+  assert.match(nestMediaAccess, /media-vault\/recordings\//);
+  assert.match(nestMediaAccess, /roles\/storage\.objectCreator/);
+  assert.match(nestMediaAccess, /roles\/storage\.objectViewer/);
+  assert.match(nestMediaAccess, /media-vault\/control\/mobile-capture-resumable\//);
+  assert.match(nestMediaAccess, /roles\/storage\.objectUser/);
+  assert.doesNotMatch(nestMediaAccess, /roles\/storage\.objectAdmin/);
 });
 
 test("no-traffic preview can repair drift without weakening candidate checks", () => {
