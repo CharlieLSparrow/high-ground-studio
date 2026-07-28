@@ -1020,6 +1020,7 @@ struct WorkspaceView: View {
     @State private var audioProxyValidationInFlight: Set<String> = []
     @State private var videoProxyValidationByLaneAndPath: [String: String] = [:]
     @State private var videoProxyValidationRunIDByLaneAndPath: [String: UUID] = [:]
+    @State private var videoProxyValidationFailureByLaneID: [UUID: String] = [:]
     @State private var isInspectorVisible = false
     @State private var leftWorkbenchMode: LeftWorkbenchMode = .audio
     @State private var cutIntelligenceCadenceMode: CutIntelligenceMode = .warmConversation
@@ -23830,17 +23831,34 @@ struct WorkspaceView: View {
                     at: URL(fileURLWithPath: proxyPath)
                 )
                 var sourceDuration = persistedSourceDuration
-                if let sourceURL,
-                   let probedDuration = try? await qStudioVideoTrackDuration(
-                       at: sourceURL
-                   ) {
-                    sourceDuration = probedDuration
+                var sourceProbeFailure: String?
+                if let sourceURL {
+                    do {
+                        sourceDuration =
+                            try await qStudioVideoTrackDuration(at: sourceURL)
+                    } catch {
+                        sourceProbeFailure =
+                            "Source video track could not be verified after explicit folder access: \(error.localizedDescription)"
+                    }
                 }
-                assessment = VideoProxyDurationPolicy.assess(
-                    storedLaneDuration: expectedDuration,
-                    sourceVideoTrackDuration: sourceDuration,
-                    proxyVideoTrackDuration: proxyDuration
-                )
+                if let sourceProbeFailure {
+                    assessment = VideoProxyDurationAssessment(
+                        status: .blocked,
+                        storedLaneDuration: expectedDuration,
+                        sourceVideoTrackDuration: persistedSourceDuration,
+                        proxyVideoTrackDuration: proxyDuration,
+                        canonicalLaneDuration: nil,
+                        toleranceSeconds:
+                            VideoProxyDurationPolicy.toleranceSeconds,
+                        detail: sourceProbeFailure
+                    )
+                } else {
+                    assessment = VideoProxyDurationPolicy.assess(
+                        storedLaneDuration: expectedDuration,
+                        sourceVideoTrackDuration: sourceDuration,
+                        proxyVideoTrackDuration: proxyDuration
+                    )
+                }
             } catch {
                 assessment = VideoProxyDurationAssessment(
                     status: .blocked,
@@ -23877,7 +23895,8 @@ struct WorkspaceView: View {
                         assessment.canonicalLaneDuration else {
                     videoProxyValidationByLaneAndPath[validationKey] =
                         assessment.detail
-                    proxyFailureByLaneId[laneID] = assessment.detail
+                    videoProxyValidationFailureByLaneID[laneID] =
+                        assessment.detail
                     lastMediaAction =
                         "Proxy verification blocked \(laneName): \(assessment.detail)"
                     isShowingProductionDetails = true
@@ -23886,7 +23905,9 @@ struct WorkspaceView: View {
                 }
 
                 videoProxyValidationByLaneAndPath[validationKey] = ""
-                proxyFailureByLaneId.removeValue(forKey: laneID)
+                videoProxyValidationFailureByLaneID.removeValue(
+                    forKey: laneID
+                )
                 var metadata = sequence.lanes[laneIndex].metadata
                     ?? VideoLaneMetadata(mediaKind: "video", role: "camera")
                 let validationBasis = assessment.sourceVideoTrackDuration == nil
@@ -23955,7 +23976,10 @@ struct WorkspaceView: View {
         "\(laneID.uuidString)|\(proxyPath)"
     }
 
-    private func clearVideoProxyValidation(proxyPath: String) {
+    private func clearVideoProxyValidation(
+        laneID: UUID,
+        proxyPath: String
+    ) {
         let suffix = "|\(proxyPath)"
         videoProxyValidationByLaneAndPath =
             videoProxyValidationByLaneAndPath.filter {
@@ -23965,11 +23989,13 @@ struct WorkspaceView: View {
             videoProxyValidationRunIDByLaneAndPath.filter {
                 !$0.key.hasSuffix(suffix)
             }
+        videoProxyValidationFailureByLaneID.removeValue(forKey: laneID)
     }
 
     private func resetVideoProxyValidation() {
         videoProxyValidationByLaneAndPath.removeAll()
         videoProxyValidationRunIDByLaneAndPath.removeAll()
+        videoProxyValidationFailureByLaneID.removeAll()
     }
 
     private func isExternalOriginalPath(_ path: String) -> Bool {
@@ -27027,7 +27053,10 @@ struct WorkspaceView: View {
                 "needsStorageAccess": readiness.needsStorageAccess,
                 "recoveryCategory": mediaRecoveryCategory(for: lane, readiness: readiness),
                 "recoveryNextAction": mediaRecoveryNextStep(for: lane, readiness: readiness),
-                "proxyError": proxyFailureByLaneId[lane.id] ?? "",
+                "proxyError":
+                    proxyFailureByLaneId[lane.id]
+                        ?? videoProxyValidationFailureByLaneID[lane.id]
+                        ?? "",
                 "sourceProbePolicy": sourceProbePolicy,
                 "proxyProbePolicy": proxyProbePolicy,
                 "sourceMonitorPlayerReady": playbackEngine.sourcePlayers[lane.id] != nil,
@@ -46713,7 +46742,10 @@ struct WorkspaceView: View {
                 "sourceReady": readiness.isReady,
                 "sourceReadiness": readiness.label,
                 "sourceReadinessDetail": readiness.detail,
-                "proxyError": proxyFailureByLaneId[lane.id] ?? "",
+                "proxyError":
+                    proxyFailureByLaneId[lane.id]
+                        ?? videoProxyValidationFailureByLaneID[lane.id]
+                        ?? "",
                 "needsStorageAccess": readiness.needsStorageAccess,
                 "recoveryCategory": recoveryCategory,
                 "recoveryNextAction": recoveryNextAction,
@@ -47403,6 +47435,7 @@ struct WorkspaceView: View {
             audioProxyValidationInFlight.removeAll()
             videoProxyValidationByLaneAndPath.removeAll()
             videoProxyValidationRunIDByLaneAndPath.removeAll()
+            videoProxyValidationFailureByLaneID.removeAll()
             activeSessionName = sessionName
             pendingAutosaveSessionName = nil
             pendingAutosaveCheckpointName = nil
@@ -47542,7 +47575,10 @@ struct WorkspaceView: View {
                     updatedSource.mediaURL = originalURL
                     updatedSource.proxyURL = proxyURL
                     updatedSequence.lanes[laneIndex].sourceVideo = updatedSource
-                    clearVideoProxyValidation(proxyPath: proxyURL.path)
+                    clearVideoProxyValidation(
+                        laneID: lane.id,
+                        proxyPath: proxyURL.path
+                    )
 
                     var metadata = updatedSequence.lanes[laneIndex].metadata ?? VideoLaneMetadata(
                         mediaKind: isAudio ? "audio" : "video",
@@ -47724,6 +47760,7 @@ struct WorkspaceView: View {
                     updatedSource.proxyURL = generatedProxyURL
                     updatedSequence.lanes[laneIndex].sourceVideo = updatedSource
                     clearVideoProxyValidation(
+                        laneID: relinkedLaneId,
                         proxyPath: generatedProxyURL.path
                     )
 
@@ -47826,7 +47863,10 @@ struct WorkspaceView: View {
         proxyFailureByLaneId[lane.id] = nil
         audioProxyValidationByPath.removeValue(forKey: expectedProxyURL.path)
         audioProxyValidationInFlight.remove(expectedProxyURL.path)
-        clearVideoProxyValidation(proxyPath: expectedProxyURL.path)
+        clearVideoProxyValidation(
+            laneID: lane.id,
+            proxyPath: expectedProxyURL.path
+        )
         selectedLaneId = lane.id
         selectedTagId = nil
 

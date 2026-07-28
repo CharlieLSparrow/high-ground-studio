@@ -61,6 +61,12 @@ Each asynchronous validation has a unique run ID. Results from a superseded
 validation cannot mutate a newly loaded session or a lane whose proxy changed
 while the probe was running.
 
+Duration-validation failures have their own lane-scoped error channel. They do
+not reuse the proxy-generation failure map: otherwise a failed pre-grant probe
+can short-circuit readiness before a post-grant validation has a chance to run.
+An explicitly authorized source-probe failure is reported as such instead of
+silently falling back to stored duration.
+
 ## Safety and source ownership
 
 - Validation is read-only.
