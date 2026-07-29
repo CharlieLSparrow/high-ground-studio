@@ -372,6 +372,7 @@ final class VideoCaptureController: ObservableObject {
                 fileExtension: "mov",
                 startedAt: startedAt
             )
+            let runtimeEvidence = CaptureRuntimeEvidence.current()
             let sourceProfile = LocalRecordingSourceProfile(
                 schemaVersion: 3,
                 container: "mov",
@@ -387,6 +388,17 @@ final class VideoCaptureController: ObservableObject {
                 includesAudio: profile.includesAudio,
                 audioSampleRate: profile.audioSampleRate,
                 audioChannelCount: profile.audioChannelCount,
+                captureAppVersion: runtimeEvidence.appVersion,
+                captureAppBuild: runtimeEvidence.appBuild,
+                deviceModelIdentifier: runtimeEvidence.deviceModelIdentifier,
+                deviceSystemName: runtimeEvidence.systemName,
+                deviceSystemVersion: runtimeEvidence.systemVersion,
+                audioRouteName: profile.includesAudio
+                    ? runtimeEvidence.audioRouteName
+                    : nil,
+                audioRoutePortType: profile.includesAudio
+                    ? runtimeEvidence.audioRoutePortType
+                    : nil,
                 monotonicStartedNanoseconds: monotonicStarted,
                 clockSamples: clockSamples.isEmpty ? nil : clockSamples
             )
@@ -812,12 +824,16 @@ final class VideoCaptureController: ObservableObject {
         context: VideoCaptureContext,
         ownerAccountID: String
     ) throws {
-        _ = try receiptStore.enqueueDurably(
+        let stopReceipt = try receiptStore.enqueueDurably(
             captureID: recordingID,
             sessionID: context.sessionID,
             callRoomID: context.callRoomID,
             action: .stop,
             ownerAccountID: ownerAccountID
+        )
+        try library.markRoomStopReceiptIfPresent(
+            recordingID,
+            receiptID: stopReceipt.id
         )
     }
 

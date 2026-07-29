@@ -4124,6 +4124,15 @@ private struct CaptureLibraryView: View {
                     if model.usesPreviewData {
                         CaptureLibraryPreviewSourceCard()
                         NavigationLink {
+                            CaptureSourceEvidencePreviewView()
+                        } label: {
+                            Label("Review source evidence", systemImage: "checkmark.shield")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureSourceEvidencePreviewLink")
+                        NavigationLink {
                             CaptureTranscriptReviewView(
                                 roomID: "room-preview-coaching-ready",
                                 sessionTitle: "Demo coaching session",
@@ -6073,6 +6082,16 @@ private struct LocalRecordingRow: View {
                 .disabled(!recording.status.isPlaybackEligible)
                 .accessibilityIdentifier("CaptureTranscriptReviewLink_\(recording.id)")
             }
+
+            NavigationLink {
+                CaptureSourceEvidenceView(recordingID: recording.id)
+            } label: {
+                Label("Review source evidence", systemImage: "checkmark.shield")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityIdentifier("CaptureSourceEvidenceLink_\(recording.id)")
 
             HStack(spacing: 10) {
                 if let fileURL {

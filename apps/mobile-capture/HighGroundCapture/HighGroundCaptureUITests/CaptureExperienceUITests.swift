@@ -888,6 +888,23 @@ final class CaptureExperienceUITests: XCTestCase {
         ])
     }
 
+    func testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt() {
+        app.tabBars.buttons["Library"].tap()
+        XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
+
+        let evidenceLink = app.buttons["CaptureSourceEvidencePreviewLink"]
+        XCTAssertTrue(evidenceLink.waitForExistence(timeout: 5))
+        evidenceLink.tap()
+
+        XCTAssertTrue(app.scrollViews["CaptureSourceEvidenceView"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureSourceEvidenceRoomBoundaryStatus"].exists)
+        let previewBoundary = app.descendants(matching: .any)["CaptureSourceEvidencePreviewBoundary"]
+        XCTAssertTrue(previewBoundary.exists)
+        XCTAssertTrue(previewBoundary.label.contains("no evidence file created"))
+        XCTAssertFalse(app.buttons["CaptureSourceEvidencePrepare"].exists)
+        XCTAssertFalse(app.buttons["CaptureSourceEvidenceShare"].exists)
+    }
+
     func testTodayKeepsTranscriptDerivedGoalLinkedToExactSource() {
         let sourceLink = app.buttons["CaptureTodayGoalSourceLink_preview-goal"]
         reveal(sourceLink)

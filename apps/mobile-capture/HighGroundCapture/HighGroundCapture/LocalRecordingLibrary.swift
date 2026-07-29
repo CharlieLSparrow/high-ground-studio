@@ -40,6 +40,13 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     var audioChannelCount: Int?
     var audioCapturePipeline: String?
     var pauseTimelinePolicy: String?
+    var captureAppVersion: String?
+    var captureAppBuild: String?
+    var deviceModelIdentifier: String?
+    var deviceSystemName: String?
+    var deviceSystemVersion: String?
+    var audioRouteName: String?
+    var audioRoutePortType: String?
     var monotonicStartedNanoseconds: UInt64?
     var monotonicStoppedNanoseconds: UInt64?
     var clockSamples: [LocalRecordingClockSample]?
@@ -62,6 +69,13 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         audioChannelCount: Int? = nil,
         audioCapturePipeline: String? = nil,
         pauseTimelinePolicy: String? = nil,
+        captureAppVersion: String? = nil,
+        captureAppBuild: String? = nil,
+        deviceModelIdentifier: String? = nil,
+        deviceSystemName: String? = nil,
+        deviceSystemVersion: String? = nil,
+        audioRouteName: String? = nil,
+        audioRoutePortType: String? = nil,
         monotonicStartedNanoseconds: UInt64? = nil,
         monotonicStoppedNanoseconds: UInt64? = nil,
         clockSamples: [LocalRecordingClockSample]? = nil,
@@ -83,6 +97,13 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         self.audioChannelCount = audioChannelCount
         self.audioCapturePipeline = audioCapturePipeline
         self.pauseTimelinePolicy = pauseTimelinePolicy
+        self.captureAppVersion = captureAppVersion
+        self.captureAppBuild = captureAppBuild
+        self.deviceModelIdentifier = deviceModelIdentifier
+        self.deviceSystemName = deviceSystemName
+        self.deviceSystemVersion = deviceSystemVersion
+        self.audioRouteName = audioRouteName
+        self.audioRoutePortType = audioRoutePortType
         self.monotonicStartedNanoseconds = monotonicStartedNanoseconds
         self.monotonicStoppedNanoseconds = monotonicStoppedNanoseconds
         self.clockSamples = clockSamples
@@ -197,13 +218,22 @@ struct LocalRecording: Codable, Identifiable, Equatable {
     var mediaKind: LocalRecordingMediaKind? = nil
     var captureGroupId: UUID? = nil
     var roomStartReceiptId: UUID? = nil
+    var roomStopReceiptId: UUID? = nil
     var sourceProfile: LocalRecordingSourceProfile? = nil
     var recordingSegmentsJson: String?
     var sourceIntegrityHoldReason: String? = nil
 
     var uploadProgress: Double?
     var uploadedSourceId: String?
+    var uploadedMediaAssetId: String? = nil
+    var transcriptJobId: String? = nil
     var serverVerificationStatus: String?
+    var sourceSHA256: String? = nil
+    var verifiedCloudSHA256: String? = nil
+    var verifiedCloudSizeBytes: Int64? = nil
+    var verifiedCloudGeneration: String? = nil
+    var verifiedCloudAt: Date? = nil
+    var canonicalObjectPath: String? = nil
     var serverProcessingDisposition: String? = nil
     var serverProcessingHoldReason: String? = nil
     var serverTranscriptDisposition: String? = nil
@@ -783,7 +813,15 @@ final class LocalRecordingLibrary: ObservableObject {
     func markUploadFinished(
         _ id: UUID,
         sourceId: String?,
+        mediaAssetId: String? = nil,
+        transcriptJobId: String? = nil,
         serverVerificationStatus: String?,
+        sourceSHA256: String? = nil,
+        verifiedCloudSHA256: String? = nil,
+        verifiedCloudSizeBytes: Int64? = nil,
+        verifiedCloudGeneration: String? = nil,
+        verifiedCloudAt: Date? = nil,
+        canonicalObjectPath: String? = nil,
         processingDisposition: String? = nil,
         processingHoldReason: String? = nil,
         transcriptDisposition: String? = nil,
@@ -795,7 +833,19 @@ final class LocalRecordingLibrary: ObservableObject {
                 .lowercased()
             recording.uploadProgress = 1
             recording.uploadedSourceId = self.nonempty(sourceId)
+            recording.uploadedMediaAssetId = self.nonempty(mediaAssetId)
+            recording.transcriptJobId = self.nonempty(transcriptJobId)
             recording.serverVerificationStatus = self.nonempty(serverVerificationStatus)
+            recording.sourceSHA256 = self.normalizedSHA256(sourceSHA256)
+            recording.verifiedCloudSHA256 = self.normalizedSHA256(
+                verifiedCloudSHA256
+            )
+            recording.verifiedCloudSizeBytes = verifiedCloudSizeBytes
+            recording.verifiedCloudGeneration = self.nonempty(
+                verifiedCloudGeneration
+            )
+            recording.verifiedCloudAt = verifiedCloudAt
+            recording.canonicalObjectPath = self.nonempty(canonicalObjectPath)
             recording.serverProcessingDisposition = self.nonempty(processingDisposition)
             recording.serverProcessingHoldReason = self.nonempty(processingHoldReason)
             recording.serverTranscriptDisposition = self.nonempty(transcriptDisposition)
@@ -809,6 +859,28 @@ final class LocalRecordingLibrary: ObservableObject {
             recording.status = .uploadHeld
             recording.statusMessage = message
         }
+    }
+
+    func markRoomStopReceipt(_ id: UUID, receiptID: UUID) throws {
+        try mutate(id, allowInactiveOwner: true) { recording in
+            if let existing = recording.roomStopReceiptId,
+               existing != receiptID {
+                throw LibraryError.roomStopReceiptConflict
+            }
+            recording.roomStopReceiptId = receiptID
+        }
+    }
+
+    @discardableResult
+    func markRoomStopReceiptIfPresent(
+        _ id: UUID,
+        receiptID: UUID
+    ) throws -> Bool {
+        guard storedRecordings.contains(where: { $0.id == id }) else {
+            return false
+        }
+        try markRoomStopReceipt(id, receiptID: receiptID)
+        return true
     }
 
     func recording(id: UUID) -> LocalRecording? {
@@ -1152,7 +1224,7 @@ final class LocalRecordingLibrary: ObservableObject {
     private func mutate(
         _ id: UUID,
         allowInactiveOwner: Bool = false,
-        change: (inout LocalRecording) -> Void
+        change: (inout LocalRecording) throws -> Void
     ) throws {
         var updated = storedRecordings
         guard let index = updated.firstIndex(where: { $0.id == id }) else {
@@ -1164,7 +1236,7 @@ final class LocalRecordingLibrary: ObservableObject {
                 throw LibraryError.accountIdentityUnavailable
             }
         }
-        change(&updated[index])
+        try change(&updated[index])
         try persist(updated)
         storedRecordings = updated
         sortAndPublish()
@@ -1175,7 +1247,7 @@ final class LocalRecordingLibrary: ObservableObject {
             throw LibraryError.ledgerQuarantined
         }
 
-        let ledger = Ledger(schemaVersion: 5, recordings: recordings)
+        let ledger = Ledger(schemaVersion: 6, recordings: recordings)
         let data = try encoder.encode(ledger)
         do {
             // Owner/source identity is written independently before the aggregate
@@ -1201,7 +1273,7 @@ final class LocalRecordingLibrary: ObservableObject {
                 // not mint owner evidence that the app cannot actually prove.
                 continue
             }
-            let sidecar = SourceSidecar(schemaVersion: 2, recording: recording)
+            let sidecar = SourceSidecar(schemaVersion: 3, recording: recording)
             let data = try encoder.encode(sidecar)
             try data.write(
                 to: sourceSidecarURL(forFileName: recording.fileName),
@@ -1762,6 +1834,17 @@ final class LocalRecordingLibrary: ObservableObject {
         return normalized
     }
 
+    private func normalizedSHA256(_ value: String?) -> String? {
+        guard let normalized = nonempty(value)?.lowercased(),
+              normalized.range(
+                of: #"^[a-f0-9]{64}$"#,
+                options: .regularExpression
+              ) != nil else {
+            return nil
+        }
+        return normalized
+    }
+
     private func ownsActivePartition(_ recording: LocalRecording) -> Bool {
         guard let activeOwnerAccountID = normalizedOwnerID(activeOwnerAccountID),
               let recordingOwnerAccountID = normalizedOwnerID(recording.ownerAccountID) else {
@@ -1782,6 +1865,7 @@ final class LocalRecordingLibrary: ObservableObject {
         case ledgerQuarantined
         case invalidOrDuplicateRecordingIdentity
         case unsupportedSourceContainer
+        case roomStopReceiptConflict
 
         var errorDescription: String? {
             switch self {
@@ -1801,6 +1885,8 @@ final class LocalRecordingLibrary: ObservableObject {
                 return "Quipsly refused an unsafe or duplicate local recording identity."
             case .unsupportedSourceContainer:
                 return "Quipsly refused a source container that does not match the selected audio or video recording mode."
+            case .roomStopReceiptConflict:
+                return "Quipsly already preserved a different STOP receipt for this immutable source."
             }
         }
     }

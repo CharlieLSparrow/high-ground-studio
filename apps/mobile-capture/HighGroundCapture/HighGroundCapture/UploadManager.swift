@@ -125,6 +125,10 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
         var canonicalObjectPath: String?
         var expectedSHA256: String?
         var expectedSizeBytes: Int64?
+        var verifiedCloudSHA256: String? = nil
+        var verifiedCloudSizeBytes: Int64? = nil
+        var verifiedCloudGeneration: String? = nil
+        var verifiedCloudAt: Date? = nil
         var uploadContentType: String?
         var requiresFreshUploadSession: Bool? = nil
         let fileName: String
@@ -1418,6 +1422,12 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             uploadSession.protocolPhase = "verified"
             uploadSession.currentChunk = uploadSession.totalChunks
             uploadSession.lastServerVerificationStatus = "verified"
+            uploadSession.verifiedCloudSHA256 = expectedSHA256
+            uploadSession.verifiedCloudSizeBytes = expectedSizeBytes
+            uploadSession.verifiedCloudGeneration = nonempty(receipt.generation)
+            uploadSession.verifiedCloudAt = iso8601Date(
+                receipt.verifiedAt ?? envelope.serverVerification?.verifiedAt
+            )
             uploadSession.lastProcessingDisposition = processingDisposition
             uploadSession.lastProcessingHoldReason = processingHoldReason
             uploadSession.lastTranscriptDisposition = transcriptDisposition
@@ -1685,6 +1695,12 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
     }
 
     private func finalizeUpload(for sessionId: String) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { [weak self] in
+                self?.finalizeUpload(for: sessionId)
+            }
+            return
+        }
         guard sessionBelongsToActiveOwner(sessionId),
               var session = activeUploads[sessionId] else { return }
         endPreparationBackgroundTime(for: sessionId)
@@ -1757,29 +1773,120 @@ final class UploadManager: NSObject, ObservableObject, URLSessionTaskDelegate, U
             statusText = "Upload verified. Local original preserved until retention policy allows cleanup."
         }
 
+        var completionEvidence: [String: Any] = [
+            "success": true,
+            "ownerAccountID": session.ownerAccountID ?? "",
+            "localRecordingID": session.localRecordingID?.uuidString ?? "",
+            "sourceId": session.lastSourceId ?? "",
+            "mediaAssetId": session.lastMediaAssetId ?? "",
+            "transcriptJobId": session.lastTranscriptJobId ?? "",
+            "processingDisposition": session.lastProcessingDisposition ?? "",
+            "processingHoldReason": session.lastProcessingHoldReason ?? "",
+            "transcriptDisposition": session.lastTranscriptDisposition ?? "",
+            "sourceSHA256": session.expectedSHA256 ?? "",
+            "verifiedCloudSHA256": session.verifiedCloudSHA256 ?? "",
+            "verifiedCloudGeneration": session.verifiedCloudGeneration ?? "",
+            "canonicalObjectPath": session.canonicalObjectPath ?? "",
+        ]
+        if let verifiedCloudSizeBytes = session.verifiedCloudSizeBytes {
+            completionEvidence["verifiedCloudSizeBytes"] = NSNumber(value: verifiedCloudSizeBytes)
+        }
+        if let verifiedCloudAt = session.verifiedCloudAt {
+            completionEvidence["verifiedCloudAt"] = verifiedCloudAt
+        }
+
+        // Commit verified cloud evidence into the permanent source ledger before
+        // retiring the resumable job. A process death at any later boundary can
+        // replay the verified job idempotently, but can never erase the only
+        // durable hash/size/generation receipt.
+        do {
+            try MainActor.assumeIsolated {
+                try persistVerifiedSourceEvidence(session)
+            }
+        } catch {
+            session.isHeld = true
+            session.isAwaitingVerification = false
+            session.nextAttemptAt = nil
+            session.taskIdentifier = nil
+            session.lastLocalRetentionReason =
+                "Cloud bytes are verified, but the permanent source evidence ledger still needs a durable commit."
+            activeUploads[sessionId] = session
+            lastLocalRetentionReason = session.lastLocalRetentionReason
+            lastRecoveryDetail = error.localizedDescription
+            statusText = "Cloud verified. Local source and upload receipt preserved until evidence can be committed."
+            _ = saveActiveUploads()
+            refreshUploadActivity()
+            uploadCompletions.removeValue(forKey: sessionId)?(
+                false,
+                nil,
+                error.localizedDescription
+            )
+            NotificationCenter.default.post(
+                name: Notification.Name("BackgroundUploadFinished"),
+                object: nil,
+                userInfo: [
+                    "success": false,
+                    "ownerAccountID": session.ownerAccountID ?? "",
+                    "localRecordingID": session.localRecordingID?.uuidString ?? "",
+                    "error": "Cloud verification succeeded, but protected source evidence could not be committed. The local original and resumable receipt remain preserved.",
+                ]
+            )
+            return
+        }
+
         // Even verified uploads retain their local source. Only the pending upload
         // ledger entry is cleared; a separate explicit retention policy may prune later.
         retryWorkItems.removeValue(forKey: sessionId)?.cancel()
         activeUploads.removeValue(forKey: sessionId)
+        guard saveActiveUploads() else {
+            activeUploads[sessionId] = session
+            statusText = "Upload verified and source evidence saved. Protected job cleanup will retry."
+            lastRecoveryDetail = "The verified resumable job could not yet be retired from protected storage."
+            refreshUploadActivity()
+            return
+        }
         UploadLedgerStore.deleteCapability(for: sessionId)
-        saveActiveUploads()
         refreshUploadActivity()
 
         uploadCompletions.removeValue(forKey: sessionId)?(true, session.lastSourceId, nil)
         NotificationCenter.default.post(
             name: Notification.Name("BackgroundUploadFinished"),
             object: nil,
-            userInfo: [
-                "success": true,
-                "ownerAccountID": session.ownerAccountID ?? "",
-                "localRecordingID": session.localRecordingID?.uuidString ?? "",
-                "sourceId": session.lastSourceId ?? "",
-                "mediaAssetId": session.lastMediaAssetId ?? "",
-                "transcriptJobId": session.lastTranscriptJobId ?? "",
-                "processingDisposition": session.lastProcessingDisposition ?? "",
-                "processingHoldReason": session.lastProcessingHoldReason ?? "",
-                "transcriptDisposition": session.lastTranscriptDisposition ?? "",
-            ]
+            userInfo: completionEvidence
+        )
+    }
+
+    @MainActor
+    private func persistVerifiedSourceEvidence(_ session: UploadSession) throws {
+        guard let localRecordingID = session.localRecordingID else {
+            if session.protocolKind == canonicalProtocolKind {
+                throw NSError(
+                    domain: "QuipslyCaptureSourceEvidence",
+                    code: 1,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The verified upload has no durable local source identity. Its resumable receipt was preserved for recovery."
+                    ]
+                )
+            }
+            return
+        }
+        try LocalRecordingLibrary.shared.markUploadFinished(
+            localRecordingID,
+            sourceId: session.lastSourceId,
+            mediaAssetId: session.lastMediaAssetId,
+            transcriptJobId: session.lastTranscriptJobId,
+            serverVerificationStatus: session.lastServerVerificationStatus,
+            sourceSHA256: session.expectedSHA256,
+            verifiedCloudSHA256: session.verifiedCloudSHA256,
+            verifiedCloudSizeBytes: session.verifiedCloudSizeBytes,
+            verifiedCloudGeneration: session.verifiedCloudGeneration,
+            verifiedCloudAt: session.verifiedCloudAt,
+            canonicalObjectPath: session.canonicalObjectPath,
+            processingDisposition: session.lastProcessingDisposition,
+            processingHoldReason: session.lastProcessingHoldReason,
+            transcriptDisposition: session.lastTranscriptDisposition,
+            detail: session.lastServerVerificationDetail
         )
     }
 

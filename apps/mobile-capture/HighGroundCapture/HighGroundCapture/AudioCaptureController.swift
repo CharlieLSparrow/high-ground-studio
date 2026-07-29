@@ -375,7 +375,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
                     try localRecordingLibrary.markUploadFinished(
                         recordingID,
                         sourceId: sourceId,
+                        mediaAssetId: userInfo["mediaAssetId"] as? String,
+                        transcriptJobId: userInfo["transcriptJobId"] as? String,
                         serverVerificationStatus: UploadManager.shared.lastServerVerificationStatus,
+                        sourceSHA256: userInfo["sourceSHA256"] as? String,
+                        verifiedCloudSHA256: userInfo["verifiedCloudSHA256"] as? String,
+                        verifiedCloudSizeBytes: (userInfo["verifiedCloudSizeBytes"] as? NSNumber)?.int64Value,
+                        verifiedCloudGeneration: userInfo["verifiedCloudGeneration"] as? String,
+                        verifiedCloudAt: userInfo["verifiedCloudAt"] as? Date,
+                        canonicalObjectPath: userInfo["canonicalObjectPath"] as? String,
                         processingDisposition: userInfo["processingDisposition"] as? String,
                         processingHoldReason: userInfo["processingHoldReason"] as? String,
                         transcriptDisposition: userInfo["transcriptDisposition"] as? String,
@@ -845,6 +853,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
         #else
         let usesProviderPCM = false
         #endif
+        let runtimeEvidence = CaptureRuntimeEvidence.current(
+            audioSession: audioSession
+        )
 
         localFallbackSessionId = "local-recording-\(UUID().uuidString.lowercased())"
         let context = LocalRecordingSessionContext(
@@ -879,6 +890,13 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 pauseTimelinePolicy: usesProviderPCM
                     ? "silence-preserves-wall-clock"
                     : "recorder-native-pause",
+                captureAppVersion: runtimeEvidence.appVersion,
+                captureAppBuild: runtimeEvidence.appBuild,
+                deviceModelIdentifier: runtimeEvidence.deviceModelIdentifier,
+                deviceSystemName: runtimeEvidence.systemName,
+                deviceSystemVersion: runtimeEvidence.systemVersion,
+                audioRouteName: runtimeEvidence.audioRouteName,
+                audioRoutePortType: runtimeEvidence.audioRoutePortType,
                 monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds,
                 clockSamples: captureIntent.clockSamples.isEmpty
                     ? nil
@@ -1606,7 +1624,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
               let sessionID = intent.sessionID,
               let callRoomID = intent.callRoomID else { return }
         do {
-            try receiptStore.enqueueDurably(
+            let stopReceipt = try receiptStore.enqueueDurably(
                 captureID: intent.captureID,
                 sessionID: sessionID,
                 callRoomID: callRoomID,
@@ -1614,8 +1632,12 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 occurredAt: date,
                 ownerAccountID: intent.ownerSnapshot.ownerAccountID
             )
+            try localRecordingLibrary.markRoomStopReceipt(
+                intent.captureID,
+                receiptID: stopReceipt.id
+            )
         } catch {
-            let message = "The local source is preserved, but Quipsly could not journal its Nest STOP boundary: \(error.localizedDescription)"
+            let message = "The local source is preserved, but Quipsly could not finish its protected Nest STOP evidence: \(error.localizedDescription)"
             lastErrorMessage = [lastErrorMessage, message]
                 .compactMap { $0 }
                 .joined(separator: " ")
