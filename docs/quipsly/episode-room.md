@@ -124,6 +124,11 @@ The native transport follows these production boundaries:
   route such as wired, Bluetooth, or USB headphones. The phone speaker is
   rejected so the separately preserved reference source is not recorded back
   into the microphone master.
+- Losing that private route immediately holds local playback. During shared
+  playback the affected editor also issues one revision-safe Pause for
+  everyone, so another device cannot silently keep advancing while that
+  participant reconnects. A private preview remains local-only and never
+  mutates the room.
 - Three consecutive failed polls pause local playback, release its audio
   lease, disable shared controls, and explain that the protected source remains
   on the phone. A successful poll resynchronizes against the authoritative room

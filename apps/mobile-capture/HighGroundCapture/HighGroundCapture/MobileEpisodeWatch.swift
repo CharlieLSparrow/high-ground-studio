@@ -672,9 +672,31 @@ final class MobileEpisodeWatchClient: ObservableObject {
     private func holdForUnsafeAudioRoute(_ message: String) {
         guard sharedAudioLeaseActive else { return }
         player?.pause()
-        sharedAudioLeaseActive = false
+        endSharedAudioLease()
+        if localPreviewActive {
+            localPreviewActive = false
+            errorMessage = message
+            statusMessage =
+                "Private preview paused on this iPhone. Shared Watch did not change."
+            return
+        }
         errorMessage = message
-        statusMessage = "Reconnect headphones, then press Play together to resume."
+        statusMessage =
+            "Pausing shared Watch for everyone because the private listening route disconnected."
+        guard room?.status == "playing", let currentSession else { return }
+        let heldPosition = displayPosition
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let paused = await self.sendCommand(
+                type: "PAUSE",
+                session: currentSession,
+                positionSeconds: heldPosition
+            )
+            self.errorMessage = message
+            self.statusMessage = paused
+                ? "Shared Watch paused for everyone. Reconnect headphones before resuming together."
+                : "Shared Watch paused on this iPhone. Reconnect headphones and refresh before resuming together."
+        }
     }
 
     private func stopPlayer() {

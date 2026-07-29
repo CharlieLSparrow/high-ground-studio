@@ -197,7 +197,7 @@ check(
     && watch.match(/!client\.sharedConnectionReady/g)?.length >= 3,
 );
 check(
-  "recording playback refuses the speaker route and requires private listening",
+  "recording playback refuses the speaker route and route loss pauses everyone",
   audio.includes("hasPrivateListeningRoute")
     && audio.includes("Connect headphones before shared Watch playback")
     && audio.includes("AVAudioSession.routeChangeNotification")
@@ -206,7 +206,16 @@ check(
     && audio.includes(".headphones")
     && audio.includes(".bluetoothA2DP")
     && audio.includes(".usbAudio")
-    && watch.includes("Reconnect headphones, then press Play together to resume."),
+    && watch.includes("Shared Watch paused for everyone. Reconnect headphones before resuming together.")
+    && watch.includes('type: "PAUSE"')
+    && watch.includes("positionSeconds: heldPosition"),
+);
+check(
+  "unsafe-route recovery preserves private preview as a local-only action",
+  watch.includes("if localPreviewActive")
+    && watch.includes("Private preview paused on this iPhone. Shared Watch did not change.")
+    && watch.indexOf("if localPreviewActive")
+      < watch.indexOf("positionSeconds: heldPosition"),
 );
 check(
   "Watch playback can coexist with provider and local source recording",

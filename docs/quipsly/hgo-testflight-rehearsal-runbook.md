@@ -196,10 +196,14 @@ With the Episode Room open in both collaborators' authenticated Nest sessions:
 4. Homer presses **Pause for everyone** from the second device.
 5. Confirm both players converge on the paused position and the latest receipt
    names Homer as the actor.
-6. Seek to a useful moment, resume, and pause again.
-7. Repeat with Lucy or Samwise only if the Be Curious pass is clean.
-8. While paused, choose **Sync watched spans**.
-9. Open **Edit** and confirm the watched source ranges appear in the dedicated
+6. Resume, briefly disconnect one iPhone's private listening route, and confirm
+   both players converge on the resulting authoritative Pause. Reconnect
+   headphones before continuing; the phone speaker must never carry the
+   reference clip during local or provider recording.
+7. Seek to a useful moment, resume, and pause again.
+8. Repeat with Lucy or Samwise only if the Be Curious pass is clean.
+9. While paused, choose **Sync watched spans**.
+10. Open **Edit** and confirm the watched source ranges appear in the dedicated
    Shared Watch derivative lane without changing the original clips.
 
 If a browser blocks remote autoplay, tap **Join playback** on that device. That
