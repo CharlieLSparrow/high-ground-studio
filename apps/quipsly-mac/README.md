@@ -1,30 +1,9 @@
-# Quipsly Mac
+# [QUARANTINED] Quipsly Mac Legacy App
 
-Native macOS cockpit for the Quipsly local engine.
+This native macOS prototype directory has been archived and quarantined following the Zero Data Loss protocol.
 
-This app is intentionally separate from the existing Electron `desktop-companion`.
-The local TypeScript engine remains the shared power plant on `ws://localhost:4000`;
-the native app is the long-term shell for video editing, local ingest, safe offload,
-and opt-in research workflows such as Vision Lab.
+- **Archived Copy**: `/Users/wall-e/Dev/_quipsly-legacy-archives/2026-07-28/quipsly-mac`
+- **Git Backup Branch**: `backup/pre-quarantine-2026-07-28`
+- **Canonical Active Native Editor**: Use [`apps/QuipslyStudio`](file:///Users/wall-e/Dev/high-ground-studio/apps/QuipslyStudio).
 
-## Run
-
-```bash
-pnpm --filter local-engine exec ts-node src/index.ts
-cd apps/quipsly-mac
-swift run QuipslyMac
-```
-
-## Current modules
-
-- Dashboard: engine connection and capability status.
-- Media Engine: ingest, proxy, editing, and safe-offload cockpit placeholder.
-- Vision Lab: gated research dashboard for local image identification workflows.
-- Local Files: future native file browser and watched-folder controls.
-- Cloud Sync: durable vault/offload status.
-- Settings: Nest URL, local engine URL, and experimental module visibility.
-
-## Product rule
-
-Nest stays the collaborative cloud workspace. Quipsly Mac stays the local power
-tool for files, media, proxies, ML jobs, and hardware-adjacent workflows.
+Do not add new feature work to this directory.

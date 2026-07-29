@@ -971,8 +971,8 @@ export async function saveBlockContent(blockId: string, newText: string) {
   try {
     prisma = getPrismaClient();
   } catch (error) {
-    console.warn("DATABASE_URL is not set; skipping offline saveBlockContent.", error);
-    return;
+    console.error("DATABASE_UNAVAILABLE: Cannot perform saveBlockContent without database connection.", error);
+    throw new Error("DATABASE_UNAVAILABLE: Database connection is not available.");
   }
 
   if (blockId.startsWith("offline-")) return;
@@ -1024,8 +1024,8 @@ export async function archiveBlock(blockId: string) {
   try {
     prisma = getPrismaClient();
   } catch (error) {
-    console.warn("DATABASE_URL is not set; skipping offline archiveBlock.", error);
-    return;
+    console.error("DATABASE_UNAVAILABLE: Cannot perform archiveBlock without database connection.", error);
+    throw new Error("DATABASE_UNAVAILABLE: Database connection is not available.");
   }
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return;
@@ -1082,8 +1082,8 @@ export async function unarchiveBlock(blockId: string) {
   try {
     prisma = getPrismaClient();
   } catch (error) {
-    console.warn("DATABASE_URL is not set; skipping offline unarchiveBlock.", error);
-    return;
+    console.error("DATABASE_UNAVAILABLE: Cannot perform unarchiveBlock without database connection.", error);
+    throw new Error("DATABASE_UNAVAILABLE: Database connection is not available.");
   }
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return;
@@ -1141,8 +1141,8 @@ export async function restoreBlockState(
   try {
     prisma = getPrismaClient();
   } catch (error) {
-    console.warn("DATABASE_URL is not set; skipping offline restoreBlockState.", error);
-    return;
+    console.error("DATABASE_UNAVAILABLE: Cannot perform restoreBlockState without database connection.", error);
+    throw new Error("DATABASE_UNAVAILABLE: Database connection is not available.");
   }
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return;
@@ -1424,8 +1424,8 @@ export async function splitBlockAtOffset(
   try {
     prisma = getPrismaClient();
   } catch (error) {
-    console.warn("DATABASE_URL is not set; skipping offline splitBlockAtOffset.", error);
-    return null;
+    console.error("DATABASE_UNAVAILABLE: Cannot perform splitBlockAtOffset without database connection.", error);
+    throw new Error("DATABASE_UNAVAILABLE: Database connection is not available.");
   }
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return null;
@@ -1586,8 +1586,8 @@ export async function mergeBlockWithPrevious(blockId: string) {
   try {
     prisma = getPrismaClient();
   } catch (error) {
-    console.warn("DATABASE_URL is not set; skipping offline mergeBlockWithPrevious.", error);
-    return null;
+    console.error("DATABASE_UNAVAILABLE: Cannot perform mergeBlockWithPrevious without database connection.", error);
+    throw new Error("DATABASE_UNAVAILABLE: Database connection is not available.");
   }
 
   if (blockId.startsWith("offline-") || blockId.startsWith("pending-")) return null;

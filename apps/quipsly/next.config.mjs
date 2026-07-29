@@ -36,6 +36,30 @@ const config = {
     "@remotion/renderer",
     "esbuild",
   ],
+  async redirects() {
+    return [
+      {
+        source: "/manuscript",
+        destination: "/create",
+        permanent: false,
+      },
+      {
+        source: "/manuscripts",
+        destination: "/create",
+        permanent: false,
+      },
+      {
+        source: "/write",
+        destination: "/create",
+        permanent: false,
+      },
+      {
+        source: "/study",
+        destination: "/create",
+        permanent: false,
+      },
+    ];
+  },
   typescript: {
     ignoreBuildErrors: ignoreBuildTypeErrors,
   },
