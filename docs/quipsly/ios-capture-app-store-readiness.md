@@ -579,3 +579,25 @@ remain red until approved screenshots and every delivery-layer proof exist.
   does not yet have external approval, tester notification, installation,
   app-owned version readback, or physical audio/video/camera-switch/upload/
   assembled-playback proof. Those statements remain intentionally open.
+
+## 2026-07-29 Quipsly Capture Build 9 qualified-candidate checkpoint
+
+- Exact committed source
+  `b44e2a90968a7cccc6a3bae137fc97039050cc4b` produced signed
+  `Quipsly Capture 1.0 (9)` from a disposable detached worktree.
+- Full preflight, strict TypeScript 7, the universal LiveKit-linked simulator
+  build, 729/729 App Store checks, and all 36 deterministic native UI
+  scenarios pass.
+- The 20,023,041-byte IPA has SHA-256
+  `365fd2e8d90d3b1558fbfd7212d8d9459d2ddeeac7557407a56e898254ff972c`
+  and passes signing, App Store provisioning, app/extension version parity,
+  entitlement, privacy-manifest, purpose-string, background-mode, and
+  export-compliance inspection.
+- This checkpoint is not an upload or TestFlight claim. The exact release
+  receipt records `uploadAttempted: false`, `uploadPerformed: false`,
+  `testerAssignmentPerformed: false`, and
+  `physicalTestFlightInstallReadbackPerformed: false`.
+- Build 8 remains the current external-beta submission until a fresh
+  App Store Connect login/API key permits Build 9 upload and provider readback.
+  See
+  [`2026-07-29-capture-build-9-qualified-candidate.md`](../coordination/2026-07-29-capture-build-9-qualified-candidate.md).

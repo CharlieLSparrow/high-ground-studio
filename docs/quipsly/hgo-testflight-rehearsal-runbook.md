@@ -101,9 +101,10 @@ needs to prove.
   Lucy and Samwise also probe cleanly, and no `.crdownload`, `.download`, or
   `.part` file remains.
 
-## Next candidate without changing tonight's lane
+## Qualified Build 9 candidate without changing the current TestFlight lane
 
-Current iPhone candidate checkpoint `b9fe4a5d` combines the
+Exact committed Build 9 source
+`b44e2a90968a7cccc6a3bae137fc97039050cc4b` combines the
 production-architected
 **Podcast audio + video** mode from `5920e525` with native shared Episode Watch:
 separate local AAC microphone and video-only MOV masters under one
@@ -164,17 +165,24 @@ rehearsal-readiness contract is 12/12 and its collapsed-to-expanded iPhone 17
 Pro simulator journey passes.
 The source-evidence contract is 23/23 and its no-false-receipt iPhone 17 Pro
 simulator journey passes.
-The targeted Record accessibility, episode-script reader, and shared-Watch UI
-journeys plus the static, simulator, privacy, server-preview, native-bearer,
-and protected-media gates are green, but the candidate has not been assigned
-a new build number or uploaded to TestFlight. The exact server projection is
-deployed separately from `1ac5bd3d` on zero-traffic preview
-`studio-00430-fop`; Build 8 remains the rehearsal instruction set below until
-physical-iPhone capture, route, playback, upload, relaunch, and editor-sync
-proof qualify the candidate.
+The targeted Record accessibility, episode-script reader, shared-Watch, and
+source-evidence UI journeys plus the static, simulator, privacy,
+server-preview, native-bearer, and protected-media gates are green. A detached
+exact-commit release run qualified signed `1.0 (9)` with 36/36 deterministic
+native UI scenarios and a 20,023,041-byte IPA at SHA-256
+`365fd2e8d90d3b1558fbfd7212d8d9459d2ddeeac7557407a56e898254ff972c`.
+The receipt truth remains `uploadAttempted: false`,
+`testerAssignmentPerformed: false`, and
+`physicalTestFlightInstallReadbackPerformed: false`. The exact server
+projection is deployed separately from `1ac5bd3d` on zero-traffic preview
+`studio-00430-fop`; Build 8 remains the externally submitted rehearsal
+instruction set below until Build 9 upload, processing, assignment, and
+physical-iPhone proof occur.
 
 See
-[`../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md`](../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md).
+[`../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md`](../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md)
+and the exact
+[`Build 9 qualification record`](../coordination/2026-07-29-capture-build-9-qualified-candidate.md).
 
 Build 8 has been submitted correctly. Apple must approve the external beta
 before Homer receives the usable invitation. Apple documents that external

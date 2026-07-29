@@ -5,7 +5,8 @@ Date: 2026-07-29
 ## Exact source
 
 - Branch: `codex/quipsly-product-20260724`
-- Current iPhone candidate checkpoint: `b9fe4a5d`
+- Current iPhone candidate checkpoint:
+  `b44e2a90968a7cccc6a3bae137fc97039050cc4b`
 - Feature commit: `5920e525`
 - Commit subject:
   `feat(capture): coordinate local podcast audio and video`
@@ -37,10 +38,14 @@ Date: 2026-07-29
 - Portable source-evidence checkpoint: `b9fe4a5d`
 - Commit subject:
   `feat(capture): preserve portable source evidence`
-- App Store version/build in source: `1.0 (8)`
-- Release decision: do not upload or assign this feature as Build 9 until its
-  physical-iPhone gate is complete. Build 8 remains the honest external
-  rehearsal lane.
+- Build 9 version checkpoint: `b44e2a90`
+- Commit subject:
+  `chore(capture): cut build 9 candidate`
+- App Store version/build in source: `1.0 (9)`
+- Release decision: the exact source is a signed, qualified candidate, but do
+  not describe it as uploaded, assigned, installed, or physically qualified.
+  Build 8 remains the honest external rehearsal lane until App Store Connect
+  delivery and physical-iPhone readback prove the Build 9 transitions.
 
 ## Product outcome
 
@@ -373,6 +378,15 @@ LiveKit-linked universal simulator build, and targeted no-false-receipt UI
 journey pass. Physical media, route, background upload, relaunch, and cloud
 readback remain deliberately unclaimed.
 
+Build checkpoint `b44e2a90` assigns the unique `1.0 (9)` version and qualifies
+the exact commit through the complete detached release lane. All 36
+deterministic native UI scenarios pass. The signed 20,023,041-byte IPA has
+SHA-256
+`365fd2e8d90d3b1558fbfd7212d8d9459d2ddeeac7557407a56e898254ff972c`.
+The release receipt explicitly records that no upload, tester assignment, or
+physical TestFlight installation readback has occurred. See
+[`2026-07-29-capture-build-9-qualified-candidate.md`](./2026-07-29-capture-build-9-qualified-candidate.md).
+
 ## Current external TestFlight readback
 
 Read-only App Store Connect API evidence at
@@ -414,9 +428,11 @@ Do not call this production-qualified until one real iPhone proves:
 11. Exercise backgrounding, route loss, camera interruption, constrained
     storage, and a warm-device stop without accepting a false success state.
 
-Only after that gate should the release lane bump to Build 9, create an archive
-from an exact committed SHA, verify the IPA/privacy/entitlements/source
-receipt, upload it, and deliberately assign it to the external rehearsal group.
+The release lane has now reserved Build 9 and qualified a signed archive from
+an exact committed SHA. That is useful delivery preparation, not a substitute
+for this gate. Upload, external-group assignment, tester installation, and
+release claims must remain separately evidenced; physical qualification still
+requires every check above.
 
 ## Architecture
 
