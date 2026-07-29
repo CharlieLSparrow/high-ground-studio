@@ -3435,3 +3435,40 @@ This is an active-goal checkpoint, not a completion claim.
   headphone/microphone route, connected conversation, first PCM, simultaneous
   local AAC plus video-only MOV, Pause/Resume/Flip, playback, receipts,
   recovery, upload verification, and assembled editor sync.
+
+### 2026-07-29 portable Capture source-evidence checkpoint
+
+- Exact candidate `b9fe4a5d` makes source truth durable beyond the transient
+  upload job. Every new recording snapshots the capture app version/build,
+  iPhone hardware and OS, active audio route, source profile, capture group,
+  room START/STOP receipt IDs, and the final server-verified hash, byte count,
+  object generation, verification time, canonical path, source/media IDs, and
+  transcript job ID.
+- Verified finalization now commits that cloud proof into the protected,
+  owner-partitioned source ledger before retiring the upload job or its
+  this-device-only Keychain capability. A ledger failure holds the verified
+  job; a cleanup-ledger failure restores it for idempotent replay. The local
+  original remains preserved.
+- Library exposes one plain-language evidence review. Preparing a portable
+  `quipsly-capture-source-evidence` version 1 receipt streams every local byte
+  through SHA-256 and fails closed if the account, source, file, room boundary,
+  or claimed cloud proof changes. The receipt excludes account identifiers,
+  credentials, signed/resumable URLs, sandbox paths, and media bytes.
+- Verification passed: 23/23 source-evidence checks, 79/79 durability checks,
+  15/15 account-isolation checks, 23/23 coordinated-capture checks, the full
+  mobile preflight, a universal LiveKit-linked simulator build, and the
+  operated evidence journey on iPhone 17 Pro simulator.
+- This remains simulator and committed-source evidence, not physical-iPhone
+  proof. The rehearsal must prepare and share receipts from real standalone
+  and room-bound takes, relaunch, upload, and compare the phone evidence with
+  canonical Nest readback before the source-evidence gate closes.
+
+### 2026-07-29 Quipsly Capture Build 9 version checkpoint
+
+- The app and Share Capture extension now declare the same explicit
+  `1.0 (9)` version. Automation does not silently increment it.
+- Build 9 is the first release candidate that contains both the single
+  microphone-owner live-room topology and portable source evidence. Merely
+  changing the committed build number does not prove an archive, upload,
+  App Store Connect processing, tester assignment, installation, or physical
+  operation.
