@@ -58,7 +58,7 @@ type StudioAccessIdentity = {
   roles: string[];
 };
 
-async function resolveStudioAccessIdentity(
+export async function resolveStudioAccessIdentity(
   email: string,
   prisma: PrismaClient,
 ): Promise<StudioAccessIdentity> {
@@ -91,7 +91,7 @@ async function resolveStudioAccessIdentity(
   };
 }
 
-function strongestAccessGrant<T extends { role: StudioProjectAccessRole | string }>(
+export function strongestAccessGrant<T extends { role: StudioProjectAccessRole | string }>(
   grants: T[],
 ): T | undefined {
   const rank: Record<string, number> = { VIEWER: 1, EDITOR: 2, OWNER: 3 };

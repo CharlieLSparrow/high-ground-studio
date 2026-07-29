@@ -7,6 +7,8 @@ import { getPrismaClient } from "@/lib/prisma";
 import {
   ensureStudioProjectOwnerGrant,
   normalizeAccessEmail,
+  resolveStudioAccessIdentity,
+  strongestAccessGrant,
 } from "@/lib/server/studio-project-access";
 import {
   ensureStudioWorkspace,
@@ -159,9 +161,10 @@ export async function listProjectsVisibleToEmail(
   const normalizedEmail = normalizeAccessEmail(email);
   if (!normalizedEmail) return [];
 
+  const identity = await resolveStudioAccessIdentity(normalizedEmail, prisma);
   const rows = await prisma.studioProjectAccessGrant.findMany({
     where: {
-      email: normalizedEmail,
+      email: { in: identity.emails },
       status: "ACTIVE",
     },
     include: {
@@ -193,6 +196,12 @@ export async function listProjectsVisibleToEmail(
   }>();
 
   for (const row of rows) {
+    const existing = byId.get(row.project.id);
+    const effectiveGrant = strongestAccessGrant(existing
+      ? [{ role: existing.role, row: existing }, { role: row.role, row }]
+      : [{ role: row.role, row }]);
+    if (!effectiveGrant || effectiveGrant.row === existing) continue;
+
     byId.set(row.project.id, {
       ...row.project,
       role: row.role,
