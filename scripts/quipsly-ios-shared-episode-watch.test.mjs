@@ -181,6 +181,15 @@ check(
     && watch.includes('type: "ENDED"'),
 );
 check(
+  "either editor can select another episode clip only while playback is paused",
+  watch.includes("CaptureEpisodeWatchClipMenu")
+    && watch.includes("func selectClip(")
+    && watch.includes('type: "SELECT_CLIP"')
+    && watch.includes('body["clipId"] = clipID')
+    && watch.includes('room?.status != "playing"')
+    && watch.includes("selected for everyone at the beginning."),
+);
+check(
   "receipt-backed watched spans can be sent explicitly to the editor from iPhone",
   watch.includes("CaptureEpisodeWatchSyncTimelineButton")
     && watch.includes("func syncWatchedSpans(")

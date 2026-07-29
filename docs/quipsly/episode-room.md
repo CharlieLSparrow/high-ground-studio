@@ -111,6 +111,10 @@ The native transport follows these production boundaries:
 - Authoritative Pause never depends on local media readiness. An editor who
   has not downloaded the clip still receives an immediate **Pause everyone**
   control; only Play requires a validated local source.
+- While playback is paused, either editor can choose another episode source
+  from the iPhone clip menu. Selection uses the same idempotent,
+  revision-checked `SELECT_CLIP` command as Nest, resets to source start, and
+  invalidates or restores the local cache through the full clip identity.
 - A prepared clip downloads through the authenticated streaming URLSession
   path to a temporary file. The app validates the response byte count, computes
   SHA-256 in 1 MiB chunks, writes a receipt, applies iOS file protection,

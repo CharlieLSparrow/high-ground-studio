@@ -493,6 +493,31 @@ final class MobileEpisodeWatchClient: ObservableObject {
         await sendCommand(type: "SYNC_TIMELINE", session: session)
     }
 
+    func selectClip(
+        _ clip: MobileEpisodeWatchClip,
+        session: MobileCaptureSession
+    ) async {
+        guard canEdit, sharedConnectionReady else {
+            errorMessage = "Wait for shared Watch to reconnect before choosing a clip."
+            return
+        }
+        guard room?.status != "playing" else {
+            errorMessage = "Pause shared Watch before choosing the next clip."
+            return
+        }
+        guard selectedClip?.assetId != clip.assetId else {
+            statusMessage = "\(clip.title) is already selected."
+            errorMessage = nil
+            return
+        }
+        await sendCommand(
+            type: "SELECT_CLIP",
+            session: session,
+            positionSeconds: 0,
+            clipID: clip.assetId
+        )
+    }
+
     func toggleSharedPlayback(
         session: MobileCaptureSession,
         captureIsActive: Bool
@@ -569,6 +594,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
         positionSeconds: TimeInterval? = nil,
         fromPositionSeconds: TimeInterval? = nil,
         recordingRoomId: String? = nil,
+        clipID: String? = nil,
         clientRequestID: UUID = UUID(),
         retryConflict: Bool = true
     ) async -> Bool {
@@ -595,6 +621,9 @@ final class MobileEpisodeWatchClient: ObservableObject {
             if let recordingRoomId {
                 body["recordingRoomId"] = recordingRoomId
             }
+            if let clipID {
+                body["clipId"] = clipID
+            }
             var request = URLRequest(url: context.endpoint)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -617,6 +646,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
                     positionSeconds: positionSeconds,
                     fromPositionSeconds: fromPositionSeconds,
                     recordingRoomId: recordingRoomId,
+                    clipID: clipID,
                     clientRequestID: clientRequestID,
                     retryConflict: false
                 )
@@ -1090,6 +1120,10 @@ final class MobileEpisodeWatchClient: ObservableObject {
         case "SYNC_TIMELINE":
             let count = room?.watchedSegmentCount ?? 0
             return "\(count) watched \(count == 1 ? "span" : "spans") sent to the non-destructive editor lane."
+        case "SELECT_CLIP":
+            return selectedClip.map {
+                "\($0.title) selected for everyone at the beginning."
+            } ?? "Shared Watch clip selected."
         default:
             return "Shared Watch updated."
         }
@@ -1123,6 +1157,48 @@ struct MobileEpisodeWatchCard: View {
                 ProgressView("Loading episode Watch…")
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else if let clip = client.selectedClip {
+                if let clips = client.room?.clips, clips.count > 1 {
+                    Menu {
+                        ForEach(clips) { candidate in
+                            Button {
+                                Task {
+                                    await client.selectClip(
+                                        candidate,
+                                        session: session
+                                    )
+                                }
+                            } label: {
+                                if candidate.assetId == clip.assetId {
+                                    Label(
+                                        candidate.title,
+                                        systemImage: "checkmark"
+                                    )
+                                } else {
+                                    Text(candidate.title)
+                                }
+                            }
+                        }
+                    } label: {
+                        Label(
+                            "Choose episode clip",
+                            systemImage: "rectangle.stack"
+                        )
+                    }
+                    .disabled(
+                        client.isMutating
+                            || !client.canEdit
+                            || !client.sharedConnectionReady
+                            || client.isSharedPlaying
+                            || previewOnly
+                    )
+                    .accessibilityHint(
+                        "Changes the shared selection for both editors only while playback is paused."
+                    )
+                    .accessibilityIdentifier(
+                        "CaptureEpisodeWatchClipMenu"
+                    )
+                }
+
                 VStack(alignment: .leading, spacing: 3) {
                     Text(clip.title)
                         .font(.subheadline.weight(.bold))
