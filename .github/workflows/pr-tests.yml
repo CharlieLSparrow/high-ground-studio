@@ -79,6 +79,10 @@ jobs:
         if: steps.changes.outputs.quipsly == 'true'
         run: pnpm --filter quipsly typecheck
 
+      - name: Verify Session recording evidence
+        if: steps.changes.outputs.quipsly == 'true'
+        run: pnpm quipsly:session-evidence:test
+
       - name: Build and fault-test Quipsly media verifier
         if: steps.changes.outputs.media_verifier == 'true'
         run: |

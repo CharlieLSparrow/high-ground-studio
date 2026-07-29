@@ -21,6 +21,7 @@ import {
   type SessionNoteVisibility,
 } from "./session-notes-model";
 import { buildSessionPreparationState } from "./session-preparation-model";
+import { buildSessionSourceEvidence } from "./session-source-evidence-model";
 import { parseSessionWorkspaceMode } from "./session-workspace-model";
 
 export const dynamic = "force-dynamic";
@@ -87,7 +88,24 @@ export default async function SessionReviewPage({
         tagLinks: { orderBy: { createdAt: "asc" }, select: { tag: { select: { id: true, label: true, slug: true, category: true, projectId: true } } } },
         recordingAssets: {
           orderBy: { createdAt: "asc" },
-          select: { id: true, fileName: true, kind: true, status: true, durationSeconds: true, localManifestJson: true, segmentsJson: true },
+          select: {
+            id: true,
+            roomId: true,
+            fileName: true,
+            kind: true,
+            status: true,
+            contentType: true,
+            byteSize: true,
+            durationSeconds: true,
+            storageBucket: true,
+            storageObjectPath: true,
+            checksum: true,
+            verifiedAt: true,
+            recordedStartedAt: true,
+            recordedStoppedAt: true,
+            localManifestJson: true,
+            segmentsJson: true,
+          },
         },
         recordingConsents: {
           select: {
@@ -108,12 +126,44 @@ export default async function SessionReviewPage({
         stateReceipts: {
           where: { captureId: { not: null } },
           orderBy: { sequence: "asc" },
-          select: { captureId: true, action: true, outcome: true, stateApplied: true, occurredAt: true, receivedAt: true },
+          select: {
+            receiptId: true,
+            captureId: true,
+            actorUserId: true,
+            action: true,
+            outcome: true,
+            stateApplied: true,
+            occurredAt: true,
+            receivedAt: true,
+          },
         },
       },
     });
     if (!room) notFound();
 
+    const finalizationReceipts = await prisma.mobileCaptureFinalizationReceipt.findMany({
+      where: { roomId: room.id },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        uploadSessionId: true,
+        captureId: true,
+        roomId: true,
+        actorUserId: true,
+        startReceiptId: true,
+        processingDisposition: true,
+        transcriptDisposition: true,
+        recordingAssetId: true,
+        metadataJson: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+    const sourceEvidence = buildSessionSourceEvidence({
+      roomId: room.id,
+      recordingAssets: room.recordingAssets,
+      finalizationReceipts,
+      stateReceipts: room.stateReceipts,
+    });
     const {
       preparation: sessionPreparation,
       consentSnapshot,
@@ -123,6 +173,8 @@ export default async function SessionReviewPage({
       captureId: string;
       startedAt: string | null;
       stoppedAt: string | null;
+      startReceiptId: string | null;
+      stopReceiptId: string | null;
       lastReceivedAt: string;
     }>();
     for (const receipt of room.stateReceipts) {
@@ -132,10 +184,18 @@ export default async function SessionReviewPage({
         captureId,
         startedAt: null,
         stoppedAt: null,
+        startReceiptId: null,
+        stopReceiptId: null,
         lastReceivedAt: receipt.receivedAt.toISOString(),
       };
-      if (receipt.action === "START_RECORDING") current.startedAt = receipt.occurredAt.toISOString();
-      if (receipt.action === "STOP_RECORDING") current.stoppedAt = receipt.occurredAt.toISOString();
+      if (receipt.action === "START_RECORDING") {
+        current.startedAt = receipt.occurredAt.toISOString();
+        current.startReceiptId = receipt.receiptId;
+      }
+      if (receipt.action === "STOP_RECORDING") {
+        current.stoppedAt = receipt.occurredAt.toISOString();
+        current.stopReceiptId = receipt.receiptId;
+      }
       current.lastReceivedAt = receipt.receivedAt.toISOString();
       captureReceiptGroups.set(captureId, current);
     }
@@ -293,7 +353,7 @@ export default async function SessionReviewPage({
         };
       }),
     } : null;
-    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
+    return <main className="min-h-full bg-transparent px-6 py-8 lg:px-10"><div className="mx-auto max-w-[1240px]"><nav aria-label="Session navigation" className="mb-6 text-sm font-bold text-[#765f40]"><Link href="/schedule" className="hover:underline">Calendar</Link><span aria-hidden="true"> / </span><span>Session workspace</span></nav><SessionReviewClient roomId={room.id} sessionTitle={room.title || "Capture session"} mode={workspaceMode} notesView={sessionNoteView} preparation={sessionPreparation} consentSnapshot={consentSnapshot} contentReadiness={contentReadiness} sourceEvidence={sourceEvidence} sessionTaxonomy={sessionTaxonomy} studioHandoff={studioHandoff} sessionNotes={sessionNotes} canUseProjectTeamNotes={canViewProjectTeamNotes} sessionQuickEntries={sessionQuickEntries} captureReceipts={captureReceipts} sessionContinuity={sessionContinuity} /></div></main>;
   } catch (error) {
     unstable_rethrow(error);
     console.error("[session-review] failed to load scoped session", error);

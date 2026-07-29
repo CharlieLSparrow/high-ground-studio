@@ -19,6 +19,7 @@ import {
 import { SessionContinuityCard } from "./session-continuity-card";
 import type { SessionContinuityState } from "./session-continuity-model";
 import type { SessionPreparation } from "./session-preparation-model";
+import type { SessionSourceEvidence } from "./session-source-evidence-model";
 import { SessionNotesWorkspace } from "./session-notes-workspace";
 import type {
   SessionNoteView,
@@ -134,6 +135,8 @@ export type SessionCaptureReceipts = {
     status: "START_AND_STOP_RECEIVED" | "START_ONLY" | "STOP_ONLY";
     startedAt: string | null;
     stoppedAt: string | null;
+    startReceiptId: string | null;
+    stopReceiptId: string | null;
     lastReceivedAt: string;
   }>;
 };
@@ -161,6 +164,15 @@ function durationLabel(seconds: number | null) {
   const minutes = Math.floor(seconds / 60);
   const remainder = Math.round(seconds % 60);
   return `${minutes}m ${remainder}s`;
+}
+
+function byteSizeLabel(value: string | null) {
+  if (!value || !/^\d+$/.test(value)) return "Exact size absent";
+  try {
+    return `${BigInt(value).toLocaleString()} bytes`;
+  } catch {
+    return "Exact size absent";
+  }
 }
 
 function SessionContentReadinessCard({ readiness }: { readiness: SessionContentReadiness }) {
@@ -301,7 +313,10 @@ function SessionCaptureReceiptCard({ receipts }: { receipts: SessionCaptureRecei
     return <article key={capture.captureId} className="rounded-xl border border-amber-200 bg-white p-4">
       <div className="flex flex-wrap items-start justify-between gap-2"><div><p className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Local source ID</p><p className="mt-1 break-all font-mono text-xs font-black text-[#3d3122]">{capture.captureId}</p></div><span className={`rounded-full border px-2 py-1 text-[10px] font-black uppercase ${statusTone(complete ? "COMPLETED" : "HELD")}`}>{complete ? "Start + stop received" : humanize(capture.status)}</span></div>
       <p className="mt-3 text-xs font-bold leading-5 text-[#765f40]">{complete ? "The take closed cleanly in Nest; its immutable audio source remains on the iPhone until upload succeeds." : "This receipt trail is incomplete. Reopen Capture so local recovery can reconcile the take before relying on it."}</p>
-      <dl className="mt-3 grid gap-1 text-[10px] font-bold text-[#8a7354]"><div><dt className="inline font-black">Started </dt><dd className="inline">{capture.startedAt ? new Date(capture.startedAt).toLocaleString() : "not received"}</dd></div><div><dt className="inline font-black">Stopped </dt><dd className="inline">{capture.stoppedAt ? new Date(capture.stoppedAt).toLocaleString() : "not received"}</dd></div></dl>
+      <dl className="mt-3 grid gap-2 text-[10px] font-bold text-[#8a7354]">
+        <div><dt className="inline font-black">Started </dt><dd className="inline">{capture.startedAt ? new Date(capture.startedAt).toLocaleString() : "not received"}</dd>{capture.startReceiptId ? <dd className="mt-0.5 break-all font-mono text-[9px]">{capture.startReceiptId}</dd> : null}</div>
+        <div><dt className="inline font-black">Stopped </dt><dd className="inline">{capture.stoppedAt ? new Date(capture.stoppedAt).toLocaleString() : "not received"}</dd>{capture.stopReceiptId ? <dd className="mt-0.5 break-all font-mono text-[9px]">{capture.stopReceiptId}</dd> : null}</div>
+      </dl>
     </article>;
   };
   return <section className="rounded-2xl border border-amber-200 bg-amber-50/45 p-5" aria-labelledby="capture-receipt-heading">
@@ -311,6 +326,61 @@ function SessionCaptureReceiptCard({ receipts }: { receipts: SessionCaptureRecei
       {receipts.captures.length === 0 && <div className="rounded-xl border border-dashed border-amber-200 bg-white/70 p-4 text-xs font-bold text-amber-900">No phone capture boundary receipts exist for this Session. Quipsly does not infer a recording from consent alone.</div>}
     </div>
     {olderCaptures.length > 0 && <details className="mt-4 rounded-xl border border-amber-200 bg-white/75 p-3"><summary className="cursor-pointer text-xs font-black text-amber-950">Show {olderCaptures.length} older receipt trail{olderCaptures.length === 1 ? "" : "s"}</summary><div className="mt-3 grid gap-3 lg:grid-cols-2">{olderCaptures.map(receiptArticle)}</div></details>}
+  </section>;
+}
+
+function SessionSourceEvidenceCard({ evidence }: { evidence: SessionSourceEvidence }) {
+  const exact = evidence.counts.VERIFIED_MATCH;
+  const held = evidence.counts.HELD;
+  const needsReview = evidence.counts.DRIFT + evidence.counts.INCOMPLETE;
+  const sourceArticle = (source: SessionSourceEvidence["sources"][number]) => {
+    const verified = source.status === "VERIFIED_MATCH";
+    const drift = source.status === "DRIFT";
+    const tone = verified ? "COMPLETED" : drift ? "FAILED" : "NOT_READY";
+    const appLabel = source.captureRuntime.appVersion
+      ? `Quipsly Capture ${source.captureRuntime.appVersion}${source.captureRuntime.appBuild ? ` (${source.captureRuntime.appBuild})` : ""}`
+      : "Capture build not preserved";
+    return <article key={source.recordingAssetId} className={`rounded-xl border bg-white p-4 ${drift ? "border-rose-300" : verified ? "border-emerald-200" : "border-amber-200"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">{humanize(source.kind)} · {humanize(source.recordingStatus)}</p>
+          <h3 className="mt-1 break-words font-black text-[#3d3122]">{source.fileName}</h3>
+          <p className="mt-1 break-all font-mono text-[10px] font-bold text-[#765f40]">Asset {source.recordingAssetId}</p>
+        </div>
+        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${statusTone(tone)}`}>{humanize(source.status)}</span>
+      </div>
+
+      <dl className="mt-4 grid gap-2 sm:grid-cols-2">
+        <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Capture runtime</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">{appLabel}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{[source.captureRuntime.deviceModel, source.captureRuntime.operatingSystem].filter(Boolean).join(" · ") || "Device/OS not preserved"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{source.captureRuntime.audioRoute || "No captured audio route"}</dd></div>
+        <div className="rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3"><dt className="text-[10px] font-black uppercase tracking-wide text-[#8a7354]">Cloud copy</dt><dd className="mt-1 text-xs font-black text-[#3d3122]">{byteSizeLabel(source.cloud.byteSize)} · generation {source.cloud.generation || "absent"}</dd><dd className="mt-1 text-[10px] font-semibold leading-4 text-[#765f40]">{source.cloud.verifiedAt ? `Verified ${new Date(source.cloud.verifiedAt).toLocaleString()}` : "No server verification time"}</dd></div>
+      </dl>
+
+      <div className="mt-3 grid gap-2 text-[10px] font-bold text-[#765f40] sm:grid-cols-2">
+        <div><p className="font-black uppercase tracking-wide text-[#8a7354]">Capture / group</p><p className="mt-1 break-all font-mono">{source.captureId || "Capture ID absent"}</p><p className="mt-1 break-all font-mono">{source.captureGroupId || "Group ID absent"}</p></div>
+        <div><p className="font-black uppercase tracking-wide text-[#8a7354]">Server boundaries</p><p className="mt-1 break-all font-mono">START {source.startBoundary?.receiptId || "absent"}</p><p className="mt-1 break-all font-mono">STOP {source.stopBoundary?.receiptId || "absent"}</p></div>
+      </div>
+
+      {source.issues.length ? <ul className={`mt-4 space-y-1 rounded-lg border p-3 text-xs font-bold leading-5 ${drift ? "border-rose-200 bg-rose-50 text-rose-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>{source.issues.map((issue) => <li key={issue}>• {issue}</li>)}</ul> : verified ? <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs font-black leading-5 text-emerald-950">Nest independently matched the immutable receipt, RecordingAsset, exact server SHA-256 and byte count, cloud object generation, and applied START/STOP boundaries.</p> : <p className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs font-black leading-5 text-amber-950">The immutable source identity matches, but its processing policy remains held. Review the saved disposition before creating transcript or output work.</p>}
+
+      <details className="mt-3 rounded-lg border border-[#eadfc9] bg-[#fffdf8] p-3">
+        <summary className="cursor-pointer text-xs font-black text-[#5b472f]">Inspect exact cloud identity</summary>
+        <dl className="mt-3 grid gap-2 text-[10px] font-bold text-[#765f40]">
+          <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Upload session</dt><dd className="mt-1 break-all font-mono">{source.uploadSessionId || "absent"}</dd></div>
+          <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">SHA-256</dt><dd className="mt-1 break-all font-mono">{source.cloud.sha256 || "absent"}</dd></div>
+          <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Private object</dt><dd className="mt-1 break-all font-mono">{source.cloud.bucket && source.cloud.objectPath ? `${source.cloud.bucket}/${source.cloud.objectPath}` : "absent"}</dd></div>
+          <div><dt className="font-black uppercase tracking-wide text-[#8a7354]">Dispositions</dt><dd className="mt-1">{humanize(source.processingDisposition)} processing · {humanize(source.transcriptDisposition)} transcript</dd></div>
+        </dl>
+      </details>
+    </article>;
+  };
+
+  return <section className="rounded-2xl border border-emerald-200 bg-emerald-50/35 p-5" aria-labelledby="source-evidence-heading">
+    <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="flex items-start gap-3"><span className="rounded-xl bg-white p-2 text-emerald-700"><ShieldCheck aria-hidden="true" /></span><div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-800">Independent source comparison</p><h2 id="source-evidence-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">Phone → cloud → Nest evidence</h2><p className="mt-1 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">This projection recomputes the match from Nest’s immutable finalization receipt, canonical recording row, private cloud identity, and room boundaries. It does not trust or import a phone-exported receipt as authority.</p></div></div>
+      <div className="flex flex-wrap gap-2 text-[10px] font-black uppercase tracking-wide"><span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-emerald-800">{exact} exact</span><span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-amber-900">{held} held</span><span className="rounded-full border border-rose-200 bg-white px-2.5 py-1 text-rose-900">{needsReview} review</span></div>
+    </div>
+    <div className="mt-4 grid gap-3 xl:grid-cols-2">{evidence.sources.map(sourceArticle)}</div>
+    {evidence.sources.length === 0 ? <div className="mt-4 rounded-xl border border-dashed border-emerald-200 bg-white/70 p-4 text-xs font-bold text-emerald-950">No canonical local capture source exists for this Session. A receipt slot, consent row, or provider join is not shown as source media.</div> : null}
   </section>;
 }
 
@@ -802,7 +872,7 @@ function SessionWorkspaceOverview({
   );
 }
 
-export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", preparation = null, consentSnapshot, contentReadiness = null, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
+export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", notesView = "all", preparation = null, consentSnapshot, contentReadiness = null, sourceEvidence = { sources: [], counts: { VERIFIED_MATCH: 0, HELD: 0, DRIFT: 0, INCOMPLETE: 0 } }, sessionTaxonomy = null, studioHandoff = null, sessionNotes = [], canUseProjectTeamNotes = false, sessionQuickEntries = [], captureReceipts = { captures: [] }, sessionContinuity = null }: {
   roomId: string;
   sessionTitle: string;
   mode?: SessionWorkspaceMode;
@@ -810,6 +880,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
   preparation?: SessionPreparation | null;
   consentSnapshot: { total: number; granted: number; transcriptionPermitted: number };
   contentReadiness?: SessionContentReadiness | null;
+  sourceEvidence?: SessionSourceEvidence;
   sessionTaxonomy?: SessionTaxonomy | null;
   studioHandoff?: SessionStudioHandoff | null;
   sessionNotes?: SessionWorkspaceNote[];
@@ -966,6 +1037,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       {mode === "recordings" ? <>
         {contentReadiness ? <SessionContentReadinessCard readiness={contentReadiness} /> : <WorkspaceEmptyState title="Recording truth unavailable" detail="Quipsly could not derive a source-media readiness snapshot for this Session. No substitute recording state is shown." />}
         <SessionCaptureReceiptCard receipts={captureReceipts} />
+        <SessionSourceEvidenceCard evidence={sourceEvidence} />
       </> : null}
 
       {mode === "notes" ? <SessionNotesWorkspace

@@ -517,6 +517,8 @@ describe("Session review goal candidates", () => {
           status: "START_AND_STOP_RECEIVED",
           startedAt: "2026-07-19T15:30:26.000Z",
           stoppedAt: "2026-07-19T15:30:35.000Z",
+          startReceiptId: "start-receipt-1",
+          stopReceiptId: "stop-receipt-1",
           lastReceivedAt: "2026-07-19T15:30:35.704Z",
         }],
       }}
@@ -524,9 +526,65 @@ describe("Session review goal candidates", () => {
     expect(await screen.findByRole("heading", { name: "1 phone capture receipt trail" })).toBeInTheDocument();
     expect(screen.getByText("08a8241e-bc80-4410-a917-2b84d285769d")).toBeInTheDocument();
     expect(screen.getByText("Start + stop received")).toBeInTheDocument();
+    expect(screen.getByText("start-receipt-1")).toBeInTheDocument();
+    expect(screen.getByText("stop-receipt-1")).toBeInTheDocument();
     expect(screen.getByText(/do not claim the audio uploaded/i)).toBeInTheDocument();
     expect(screen.getByText(/remains on the iPhone until upload succeeds/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /upload|retry|transcribe/i })).not.toBeInTheDocument();
+  });
+
+  it("shows an independently matched phone-to-cloud source without leaking actor identity", () => {
+    global.fetch = jest.fn() as typeof fetch;
+    const sourceEvidence = {
+      sources: [{
+        recordingAssetId: "asset-1",
+        fileName: "homer-camera.mov",
+        kind: "LOCAL_VIDEO",
+        recordingStatus: "VERIFIED",
+        status: "VERIFIED_MATCH" as const,
+        captureId: "capture-1",
+        captureGroupId: "group-1",
+        uploadSessionId: "upload-1",
+        startBoundary: { receiptId: "start-receipt-1", occurredAt: "2026-07-29T15:00:00.000Z" },
+        stopBoundary: { receiptId: "stop-receipt-1", occurredAt: "2026-07-29T15:04:00.000Z" },
+        cloud: {
+          sha256: "a".repeat(64),
+          byteSize: "4096",
+          generation: "1742",
+          bucket: "quipsly-private-media",
+          objectPath: "mobile/room-1/homer-camera.mov",
+          verifiedAt: "2026-07-29T15:05:00.000Z",
+        },
+        captureRuntime: {
+          appVersion: "1.0",
+          appBuild: "9",
+          deviceModel: "iPhone17,3",
+          operatingSystem: "iOS 26.2",
+          audioRoute: "Shure MV7i · USBAudio",
+        },
+        processingDisposition: "RELEASED",
+        transcriptDisposition: "HELD",
+        issues: [],
+      }],
+      counts: { VERIFIED_MATCH: 1, HELD: 0, DRIFT: 0, INCOMPLETE: 0 },
+    };
+    render(<SessionReviewClient
+      roomId="room-1"
+      sessionTitle="Episode rehearsal"
+      mode="recordings"
+      consentSnapshot={{ total: 1, granted: 1, transcriptionPermitted: 1 }}
+      sourceEvidence={sourceEvidence}
+    />);
+
+    expect(screen.getByRole("heading", { name: "Phone → cloud → Nest evidence" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "homer-camera.mov" })).toBeInTheDocument();
+    expect(screen.getByText("Verified Match")).toBeInTheDocument();
+    expect(screen.getByText("Quipsly Capture 1.0 (9)")).toBeInTheDocument();
+    expect(screen.getByText("iPhone17,3 · iOS 26.2")).toBeInTheDocument();
+    expect(screen.getByText("Shure MV7i · USBAudio")).toBeInTheDocument();
+    expect(screen.getByText("4,096 bytes · generation 1742")).toBeInTheDocument();
+    expect(screen.getByText(/does not trust or import a phone-exported receipt as authority/i)).toBeInTheDocument();
+    expect(screen.queryByText(/actor-private/i)).not.toBeInTheDocument();
   });
 
   it("shows simulator uploads as plumbing proof rather than usable production content", async () => {

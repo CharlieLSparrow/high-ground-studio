@@ -150,6 +150,15 @@ else
   fail "Retired owner override is still reachable from Nest runtime source."
 fi
 
+if (
+  cd "${release_source_root}"
+  corepack pnpm quipsly:session-evidence:test
+); then
+  pass "Session recording evidence compares phone, room, cloud, and canonical source identities."
+else
+  fail "Session recording evidence model or authenticated Recordings UI failed."
+fi
+
 for script in \
   scripts/release/quipsly-schema-sync.sh \
   scripts/release/quipsly-deploy-preview.sh \

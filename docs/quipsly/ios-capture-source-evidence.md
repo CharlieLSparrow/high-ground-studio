@@ -126,6 +126,26 @@ the full local hash succeeds.
 Preview mode is intentionally non-operational. It demonstrates the layout,
 labels itself synthetic, and exposes neither prepare nor share controls.
 
+Nest exposes the other side of the comparison in the authenticated Session
+**Recordings** workspace:
+
+- it reads the canonical `RecordingAsset`, applied room START/STOP receipts, and
+  latest `MobileCaptureFinalizationReceipt` for the source;
+- it independently compares room, capture, upload-session, actor, recording,
+  START-receipt, SHA-256, byte-size, bucket, object-path, and object-generation
+  identity;
+- it whitelists only capture app/build, hardware model, OS, and microphone
+  route from the reported source profile;
+- it never sends actor IDs, signed/resumable URLs, camera unique IDs, or raw
+  metadata JSON to the browser; and
+- it reports `Verified match`, `Held`, `Drift`, or `Incomplete` rather than
+  collapsing transport, policy, and integrity into one success badge.
+
+This is a read-only projection over existing canonical rows. It adds no table,
+migration, copied evidence store, or phone-controlled authority. The phone
+receipt is useful for side-by-side rehearsal review, but Nest recomputes its
+own result instead of importing that receipt as truth.
+
 ## Security and failure policy
 
 Evidence preparation fails closed when:
@@ -150,6 +170,11 @@ review screen and receipt checks. It is never silently upgraded into success.
 - Operated iPhone 17 Pro simulator journey:
   `testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt`:
   passed.
+- Nest source-evidence model and Session Recordings UI: 25/25 focused tests
+  pass alongside the existing Session review suite.
+- Strict Quipsly TypeScript check: passed.
+- Quipsly production build with the release build-time database boundary:
+  passed, including all 150 App Router pages.
 - Full mobile preflight remains the release gate and includes the new source
   evidence contract.
 
