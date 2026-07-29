@@ -277,5 +277,10 @@ describe("Episode Room runtime route", () => {
       },
       "writing-version-7",
     );
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      canEdit: true,
+      room: { revision: 8 },
+    });
   });
 });

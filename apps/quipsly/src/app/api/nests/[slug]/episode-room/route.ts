@@ -133,7 +133,10 @@ export async function GET(
     if (!runtime) {
       return NextResponse.json({ ok: false, error: "Episode production not found." }, { status: 404 });
     }
-    return NextResponse.json({ ok: true, ...runtime });
+    const canEdit = readAccess.access.role
+      ? roleAllowsAction(readAccess.access.role, "write")
+      : false;
+    return NextResponse.json({ ok: true, ...runtime, canEdit });
   }
   const canEdit = readAccess.access.role
     ? roleAllowsAction(readAccess.access.role, "write")

@@ -2,8 +2,7 @@ import "server-only";
 
 import type { PrismaClient } from "@prisma/client";
 
-import { auth } from "@/auth";
-
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
   normalizeAccessEmail,
   resolveStudioProjectAccess,
@@ -16,7 +15,13 @@ export type EpisodeProductionActor = {
   email: string;
   name: string;
   isStaff: boolean;
-  source: "embedded-cookie" | "mac-access-token" | "mac-session-token" | "mac-web-session" | "none";
+  source:
+    | "embedded-cookie"
+    | "firebase-bearer"
+    | "mac-access-token"
+    | "mac-session-token"
+    | "mac-web-session"
+    | "none";
 };
 
 export type EpisodeProductionAccessResult =
@@ -39,17 +44,24 @@ function cleanString(value?: string | null) {
 }
 
 export async function resolveEpisodeProductionActor(request: Request): Promise<EpisodeProductionActor> {
-  const session = await auth();
+  const session = await getQuipslySessionFromRequest(request);
   const email = normalizeAccessEmail(
     session?.user?.primaryEmail
       || session?.user?.email,
   );
+  const usesBearer = request.headers
+    .get("authorization")
+    ?.startsWith("Bearer ") === true;
   return {
     id: cleanString(session?.user?.id),
     email,
     name: cleanString(session?.user?.name || email),
     isStaff: session?.user?.isStaff === true,
-    source: session?.user?.id ? "embedded-cookie" : "none",
+    source: session?.user?.id
+      ? usesBearer
+        ? "firebase-bearer"
+        : "embedded-cookie"
+      : "none",
   };
 }
 
