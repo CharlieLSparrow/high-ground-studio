@@ -124,6 +124,13 @@ passes `--allow-create-external-group`; do not pass that flag when assigning a
 new build to an established rehearsal group. This prevents a transient empty
 Apple response from creating a duplicate group.
 
+Likewise, a build-level `processingState: VALID` is not sufficient for beta
+mutation. Apple must also publish the build's `buildBetaDetail` relationship.
+If that relationship is absent, the tool exits before changing localization,
+groups, testers, notification, review details, or submissions. This protects
+against the partial App Store Connect state where a build page exists but all
+Test Details and group controls remain disabled.
+
 ## Candidate preflight
 
 Start from the intended commit, not an uncommitted working-tree snapshot:

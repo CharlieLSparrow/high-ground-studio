@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertBuildBetaMutationReady,
   assertExternalGroupMutationAuthorized,
   buildExternalGroupBody,
   buildPlan,
@@ -97,6 +98,20 @@ test("requires a separate explicit authorization before creating an external gro
       },
       { createExternalGroup: true },
     ),
+  );
+});
+
+test("refuses every beta mutation until Apple publishes buildBetaDetail", () => {
+  assert.throws(
+    () => assertBuildBetaMutationReady({
+      targets: { buildBetaDetailId: "" },
+    }),
+    /No beta metadata, group, tester, notification, or review mutation was attempted/,
+  );
+  assert.doesNotThrow(
+    () => assertBuildBetaMutationReady({
+      targets: { buildBetaDetailId: "detail-10" },
+    }),
   );
 });
 

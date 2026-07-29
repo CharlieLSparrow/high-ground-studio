@@ -618,6 +618,15 @@ export function assertExternalGroupMutationAuthorized(options, plan) {
   );
 }
 
+export function assertBuildBetaMutationReady(state) {
+  if (state.targets.buildBetaDetailId) return;
+  fail(
+    "Build is VALID but Apple has not published its buildBetaDetail relationship. "
+    + "No beta metadata, group, tester, notification, or review mutation was attempted. "
+    + "Wait for App Store Connect processing and obtain a fresh provider read.",
+  );
+}
+
 async function applyChanges(options, key, initialState, reviewerPassword) {
   const operations = [];
   let state = initialState;
@@ -632,6 +641,7 @@ async function applyChanges(options, key, initialState, reviewerPassword) {
     state,
     reviewerPasswordPresent: Boolean(reviewerPassword),
   });
+  assertBuildBetaMutationReady(state);
   assertExternalGroupMutationAuthorized(options, plan);
   if (plan.createBetaAppLocalization) {
     await apply(
@@ -814,6 +824,7 @@ function receiptFor(options, state, plan, operations, mode) {
     externalBuildState: betaDetail?.attributes?.externalBuildState || null,
     betaReviewSubmissionId: submission?.id || null,
     betaReviewState: submission?.attributes?.betaReviewState || null,
+    providerBuildReadyForBetaMutation: Boolean(state.targets.buildBetaDetailId),
     operations,
     plan,
     externalGroupCreationAuthorized: options.allowCreateExternalGroup === true,
