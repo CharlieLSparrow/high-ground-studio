@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 13:51 UTC
+Last verified: 2026-07-29 14:21 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -93,10 +93,17 @@ needs to prove.
   revision 5, paused at zero, with Be Curious first and selected, no session,
   no active segment, and no watched segment. The redacted mode-0600 receipt is
   `/private/tmp/quipsly-watch-preview-1ac5bd3d-current-receipt.json`.
+- At 14:00 UTC, the final Chrome security-check download was read back from
+  disk. `Ted Lasso Be Curious.mp4` is complete rather than a partial browser
+  file and still probes as 254.630 seconds of H.264 1280×638 video plus AAC
+  44.1 kHz stereo audio. It is still exactly 19,100,059 bytes at SHA-256
+  `acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`.
+  Lucy and Samwise also probe cleanly, and no `.crdownload`, `.download`, or
+  `.part` file remains.
 
 ## Next candidate without changing tonight's lane
 
-Current iPhone candidate checkpoint `29c68a86` combines the
+Current iPhone candidate checkpoint `b9fe4a5d` combines the
 production-architected
 **Podcast audio + video** mode from `5920e525` with native shared Episode Watch:
 separate local AAC microphone and video-only MOV masters under one
@@ -139,12 +146,24 @@ the already-owned local-input PCM and waits for its first real callback before
 claiming capture. Standalone audio still uses `AVAudioRecorder`; callback
 starvation pauses visibly and closes the coordinated camera boundary.
 
+The candidate now preserves rehearsal proof on the source itself instead of
+leaving it in transient upload or in-process notification state. Capture-time
+app/build, iPhone/OS, microphone route, room STOP receipt, canonical IDs, and
+verified cloud SHA-256/size/generation/time survive relaunch in the protected
+owner-partitioned source ledger. Library exposes **Review source evidence** and
+can prepare a redacted, versioned JSON receipt only after streaming every
+local byte through SHA-256 and proving that the file stayed unchanged. Verified
+cloud proof commits to that permanent source row before the resumable job is
+retired; failed job-ledger cleanup rolls back for safe replay.
+
 The current Watch contract is 38/38, the manuscript contract is 10/10, and the
 read-only rehearsal verifier is 7/7. Capture durability is 79/79,
 coordinated-capture is 23/23, account isolation is 15/15, and the complete
 mobile preflight plus LiveKit-linked arm64/x86_64 simulator build pass. The
 rehearsal-readiness contract is 12/12 and its collapsed-to-expanded iPhone 17
 Pro simulator journey passes.
+The source-evidence contract is 23/23 and its no-false-receipt iPhone 17 Pro
+simulator journey passes.
 The targeted Record accessibility, episode-script reader, and shared-Watch UI
 journeys plus the static, simulator, privacy, server-preview, native-bearer,
 and protected-media gates are green, but the candidate has not been assigned
@@ -327,6 +346,10 @@ clock.
    a transcript, alignment proposal, or final edit without source playback.
 8. Record the app version/build, iPhone model/OS, route names, failures, and
    exact recovery actions.
+9. In Library, open **Review source evidence** for every take. Prepare and
+   share the JSON receipt, then confirm its local SHA-256/byte count, START and
+   STOP IDs, capture group, app/device/route snapshot, and verified cloud proof
+   match the Session and editor readback.
 
 ## Pass criteria
 
@@ -338,7 +361,7 @@ The rehearsal passes only when:
 - both people independently granted the intended consent choices;
 - both joined and left the exact Session;
 - each local audio take has START and STOP evidence, local playback, upload
-  verification, and post-relaunch readback;
+  verification, a portable source-evidence receipt, and post-relaunch readback;
 - the video test preserves front/back sources in one capture group and both
   pieces play;
 - Charlie can play the reference clip and Homer can pause it;

@@ -5,7 +5,7 @@ Date: 2026-07-29
 ## Exact source
 
 - Branch: `codex/quipsly-product-20260724`
-- Current iPhone candidate checkpoint: `29c68a86`
+- Current iPhone candidate checkpoint: `b9fe4a5d`
 - Feature commit: `5920e525`
 - Commit subject:
   `feat(capture): coordinate local podcast audio and video`
@@ -34,6 +34,9 @@ Date: 2026-07-29
 - Single microphone-owner correction: `29c68a86`
 - Commit subject:
   `fix(capture): unify live-room microphone ownership`
+- Portable source-evidence checkpoint: `b9fe4a5d`
+- Commit subject:
+  `feat(capture): preserve portable source evidence`
 - App Store version/build in source: `1.0 (8)`
 - Release decision: do not upload or assign this feature as Build 9 until its
   physical-iPhone gate is complete. Build 8 remains the honest external
@@ -125,6 +128,29 @@ Malformed alignment metadata is omitted rather than promoted into the editor.
 No source bytes are mutated and no proposal is automatically locked to the
 timeline.
 
+## Permanent source evidence
+
+Checkpoint `b9fe4a5d` closes the evidence-lifetime gap between the transient
+upload ledger and the permanent recording row:
+
+- capture-time app/build, hardware/OS, and exact audio input route join the
+  immutable source profile;
+- each local source retains both durable room START and STOP receipt IDs;
+- canonical source/media/transcript IDs plus server-computed SHA-256, byte
+  count, storage generation, verification time, and object path survive upload
+  job retirement and relaunch;
+- verified proof commits to the protected owner-partitioned source ledger
+  before resumable-job deletion, and failed job-ledger deletion rolls back for
+  safe replay;
+- Library exposes plain-language source, device, room, and cloud evidence; and
+- a real finalized source can export a protected, redacted, versioned JSON
+  receipt only after streaming every local byte through SHA-256 and confirming
+  that the file stayed unchanged.
+
+The portable receipt never includes a raw account ID, email, token,
+resumable/signed URL, absolute sandbox path, or media bytes. Preview mode is
+explicitly synthetic and exposes no receipt-creation or sharing action.
+
 ## Privacy and pipeline corrections
 
 - The bundled privacy manifest now declares Apple's specific
@@ -142,6 +168,7 @@ timeline.
 - App Store static gate: **721/721**.
 - Coordinated podcast capture contract: **23/23**.
 - Capture durability contract: **79/79**.
+- Source evidence contract: **23/23**.
 - Account isolation contract: **15/15**.
 - Universal iOS simulator build with LiveKit and Google dependencies: passed
   for the canonical simulator architectures.
@@ -166,6 +193,10 @@ timeline.
   `CaptureExperienceUITests.testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord`:
   passed on the iPhone 17 Pro simulator, including the compact collapsed
   summary and explicit expanded evidence.
+- Source-evidence UI test:
+  `CaptureExperienceUITests.testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt`:
+  passed on the iPhone 17 Pro simulator, including the complete room-boundary
+  review and the absence of false prepare/share controls in preview.
 
 The UI test proves that the four-mode picker is reachable and that Podcast A/V
 shows the separate microphone status and two-source truth before asking for a
@@ -336,6 +367,12 @@ not reconfigure live audio. The 12/12 static contract and targeted
 collapsed-to-expanded UI journey pass. These checks harden the candidate but
 do not replace the physical-iPhone gate.
 
+Candidate `b9fe4a5d` then adds the permanent source-evidence transaction and
+Library review/export surface. Its 23/23 contract, full mobile preflight,
+LiveKit-linked universal simulator build, and targeted no-false-receipt UI
+journey pass. Physical media, route, background upload, relaunch, and cloud
+readback remain deliberately unclaimed.
+
 ## Current external TestFlight readback
 
 Read-only App Store Connect API evidence at
@@ -369,9 +406,12 @@ Do not call this production-qualified until one real iPhone proves:
 7. Verify distinct audio/video source UUIDs and one shared capture-group UUID.
 8. Verify START/STOP receipts, upload jobs, exact cloud verification, relaunch
    recovery, and preservation of local originals.
-9. Import the sources into the Episode timeline, review clock placement and
+9. Prepare and share each Library source-evidence receipt; compare its freshly
+   computed local hash/size, capture-time app/device/route, room boundary, group
+   identity, and cloud generation against the Session and server readback.
+10. Import the sources into the Episode timeline, review clock placement and
    waveform sync, and audition the assembled result.
-10. Exercise backgrounding, route loss, camera interruption, constrained
+11. Exercise backgrounding, route loss, camera interruption, constrained
     storage, and a warm-device stop without accepting a false success state.
 
 Only after that gate should the release lane bump to Build 9, create an archive
@@ -382,6 +422,8 @@ receipt, upload it, and deliberately assign it to the external rehearsal group.
 
 The full implementation and acceptance contract is
 [`../quipsly/ios-coordinated-podcast-capture.md`](../quipsly/ios-coordinated-podcast-capture.md).
+The source-evidence transaction and portable receipt contract is
+[`../quipsly/ios-capture-source-evidence.md`](../quipsly/ios-capture-source-evidence.md).
 
 Apple boundaries used by the design:
 
