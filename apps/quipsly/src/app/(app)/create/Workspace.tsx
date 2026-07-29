@@ -243,6 +243,7 @@ export default function Workspace({
 
 
   const [publisherMode, setPublisherMode] = useState(false);
+  const [zenMode, setZenMode] = useState(false);
   const [saveState, setSaveState] = useState<"saved" | "saving" | "unsaved">("saved");
   // Optional ad-hoc tag filters still exist as data plumbing, but the author-facing
   // sidebar now treats Chapter/Episode heading tags as the primary navigation model.
@@ -405,6 +406,17 @@ export default function Workspace({
     return () => window.removeEventListener("quipsly:save-state", handleSaveState);
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.altKey && (event.key === "z" || event.key === "Z")) {
+        event.preventDefault();
+        setZenMode((prev) => !prev);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   const handleActiveViewChange = (view: ViewDefinition) => {
     setActiveBoundaryId(null);
     setActiveView(view);
@@ -492,19 +504,21 @@ export default function Workspace({
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-[#fdfaf6] text-[#3d3122]">
       {/* Left sidebar - ViewFilter */}
-      <ViewFilter
-         activeView={activeView}
-         setActiveView={handleActiveViewChange}
-         views={views}
-         documentBoundaries={documentBoundaries}
-         activeBoundaryId={activeBoundaryId}
-         setActiveBoundaryId={handleActiveBoundaryChange}
-         scrolledBoundaryId={scrolledBoundaryId}
-         workflowSystem={resolvedWorkflowSystem}
-         projectDocuments={projectDocuments}
-         activeDocumentId={documentId}
-         projectSlug={activeProjectSlug}
-      />
+      {!zenMode ? (
+        <ViewFilter
+           activeView={activeView}
+           setActiveView={handleActiveViewChange}
+           views={views}
+           documentBoundaries={documentBoundaries}
+           activeBoundaryId={activeBoundaryId}
+           setActiveBoundaryId={handleActiveBoundaryChange}
+           scrolledBoundaryId={scrolledBoundaryId}
+           workflowSystem={resolvedWorkflowSystem}
+           projectDocuments={projectDocuments}
+           activeDocumentId={documentId}
+           projectSlug={activeProjectSlug}
+        />
+      ) : null}
       {/* Main editor area */}
       <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-3 md:p-6 relative">
         <div className="max-w-5xl mx-auto">
@@ -599,6 +613,18 @@ export default function Workspace({
                   Publisher Mode On
                 </button>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setZenMode(!zenMode)}
+                title="Toggle distraction-free writing canvas (Alt+Z)"
+                className={`rounded-full border px-3 py-1 text-xs font-bold shadow-sm transition-colors ${
+                  zenMode
+                    ? "border-purple-300 bg-purple-100 text-purple-900 hover:bg-purple-200"
+                    : "border-[#d9c7a5] bg-white text-[#6b5b45] hover:bg-[#f8f1e3]"
+                }`}
+              >
+                {zenMode ? "🧘 Exit Zen Mode" : "🧘 Zen Mode"}
+              </button>
             </div>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2">
               <p className="text-[11px] leading-5 text-[#526b43]">
@@ -828,18 +854,20 @@ export default function Workspace({
           </div>
         </div>
       </div>
-      <QuipslyAssistantSidebar
-        projectId={projectId}
-        projectSlug={activeProjectSlug}
-        documentId={documentId}
-        documentTitle={documentTitle}
-        projectDocuments={projectDocuments}
-        activeBoundary={activeBoundary}
-        activeView={activeView}
-        visibleBlocks={visibleAssistantBlocks}
-        patreonHref={process.env.NEXT_PUBLIC_PATREON_URL}
-        assistant={assistant}
-      />
+      {!zenMode ? (
+        <QuipslyAssistantSidebar
+          projectId={projectId}
+          projectSlug={activeProjectSlug}
+          documentId={documentId}
+          documentTitle={documentTitle}
+          projectDocuments={projectDocuments}
+          activeBoundary={activeBoundary}
+          activeView={activeView}
+          visibleBlocks={visibleAssistantBlocks}
+          patreonHref={process.env.NEXT_PUBLIC_PATREON_URL}
+          assistant={assistant}
+        />
+      ) : null}
     </div>
   );
 }
