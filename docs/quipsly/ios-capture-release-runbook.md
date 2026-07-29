@@ -90,6 +90,26 @@ authentication and waits for build processing when
 `skip_waiting_for_build_processing: false`; see
 [upload_to_testflight](https://docs.fastlane.tools/actions/upload_to_testflight/).
 
+Prove the provider state with the repository-owned, read-only boundary:
+
+```bash
+export QUIPSLY_CAPTURE_TESTER_EMAIL='<expected internal tester>'
+pnpm quipsly:capture:app-store-readback -- \
+  --version 1.0 \
+  --build 6 \
+  --group 'Quipsly Capture Internal' \
+  --expect-tester-state INSTALLED \
+  --output /absolute/private/evidence/app-store-connect-readback.json
+```
+
+The command refuses a group- or world-readable API-key JSON, signs a five-minute
+ES256 JWT whose scope contains only the four required `GET` requests, verifies
+the immutable app/build/group relationships, and writes a redacted mode-0600
+receipt. It never prints the API key, JWT, or tester email. An `INVITED`
+readback proves assignment only; `INSTALLED` proves provider-side installation.
+Require app-owned version/build readback and TestFlight/device operation
+separately before changing the physical-operation receipt.
+
 ## Candidate preflight
 
 Start from the intended commit, not an uncommitted working-tree snapshot:

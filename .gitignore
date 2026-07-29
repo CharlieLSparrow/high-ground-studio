@@ -96,6 +96,9 @@ gcs-key.json
 *.gcs-key.json
 *.json.key
 credentials.json
+AuthKey_*.p8
+*app-store-connect-api-key*.json
+.appstoreconnect/
 
 # Cleanup scripts and temp directories
 dev.db

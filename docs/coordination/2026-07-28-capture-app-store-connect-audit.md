@@ -1,7 +1,7 @@
 # Quipsly Capture App Store Connect audit
 
 Date: 2026-07-28
-Observed at: 2026-07-28T22:48:22Z
+Observed at: 2026-07-29T01:34:08Z
 Provider app ID: `6780995957`
 Bundle ID: `com.highgroundodyssey.HighGroundCapture`
 Observed app record name: `Quipsly Capture`
@@ -18,9 +18,12 @@ uploaded, build was installed, or version was submitted.
 
 The exact TestFlight binary remains `1.0 (6)` from source
 `f10ceab5e83ce08e61092d3cf6a8e8ec2f457589`, provider build
-`47e5e730-e5bd-4cfb-afae-baef86d3923c`. Apple reports that build as processed
-and ready to test. The manually controlled `Quipsly Capture Internal` group has
-one build and one invited internal tester.
+`47e5e730-e5bd-4cfb-afae-baef86d3923c`. A scoped App Store Connect API
+readback now reports `processingState: VALID`,
+`internalBuildState: IN_BETA_TESTING`, and
+`externalBuildState: READY_FOR_BETA_SUBMISSION`. The manually controlled
+`Quipsly Capture Internal` group contains exactly this build and one assigned
+internal tester.
 
 ## Live provider state
 
@@ -76,8 +79,15 @@ substitute for the account holder's final App Store privacy answers.
 - Beta description, feedback email, Marketing URL, Privacy Policy URL, review
   contact information, sign-in information, and review notes are empty.
 - Build 6 is assigned only to the internal group.
-- The sole tester remains `Invited`; no TestFlight session or device readback
-  is present.
+- App Store Connect API access is approved. The `QuipslyAdmin` Team Admin key
+  is stored outside the repository in owner-only files and passed a live
+  HTTP-200 app-identity request. The repository-owned readback uses an
+  explicitly scoped five-minute JWT and emits a redacted receipt.
+- App Store Connect now reports the sole tester as `INSTALLED` at
+  `2026-07-29T01:34:08Z`. That is provider-side proof that Build `1.0 (6)` was
+  installed after the reinvited tester opened the correct TestFlight card. It
+  is not proof that Quipsly Capture launched, displayed its own version/build,
+  signed in, or completed a production workflow on that device.
 
 ## Recommended account-holder decisions
 

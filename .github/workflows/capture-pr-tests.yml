@@ -15,6 +15,8 @@ on:
       - release/app-store/quipsly-capture/**
       - release/manifests/capture.json
       - scripts/quipsly-ios-capture-app-store-static-smoke.mjs
+      - scripts/release/quipsly-app-store-connect-readback.mjs
+      - scripts/release/quipsly-app-store-connect-readback.test.mjs
       - scripts/release/quipsly-capture-app-store-metadata.mjs
       - scripts/release/quipsly-capture-app-store-metadata.test.mjs
       - .github/workflows/capture-pr-tests.yml
@@ -51,6 +53,7 @@ jobs:
       - name: Validate Capture release source
         run: |
           bash apps/mobile-capture/HighGroundCapture/scripts/verify-release-source.sh
+          node --test scripts/release/quipsly-app-store-connect-readback.test.mjs
           node --test scripts/release/quipsly-capture-app-store-metadata.test.mjs
           node scripts/release/quipsly-capture-app-store-metadata.mjs
 

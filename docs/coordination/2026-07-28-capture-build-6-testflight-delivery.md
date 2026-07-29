@@ -1,8 +1,8 @@
 # Capture Build 6 TestFlight delivery checkpoint
 
 **Date:** 2026-07-28  
-**Status:** exact qualified Build 6 uploaded, processed, and assigned to one
-internal tester; physical TestFlight installation and operation remain open
+**Status:** exact qualified Build 6 uploaded, processed, assigned, and reported
+`INSTALLED` by App Store Connect; physical app launch and operation remain open
 
 ## Delivery decision
 
@@ -100,13 +100,38 @@ now records candidate qualification, Xcode Organizer upload, provider
 processing, internal group assignment, tester invitation, vendor warnings, and
 `physicalTestFlightInstallReadbackPerformed: false`.
 
-## Authorization and environment readback
+## Authorization and API readback
 
 App Store Connect authentication was completed through the account holder's
-passkey. The organization has not yet enabled App Store Connect API access; the
-UI presents a one-time `Request Access` action. Creating persistent API access
-or accepting related terms still requires explicit account-holder approval.
-This does not invalidate the current Organizer upload.
+passkey. The account holder subsequently requested and received App Store
+Connect API access, generated one Team Admin key, and downloaded it once. The
+private `.p8` and Fastlane JSON now live outside the repository under
+owner-only permissions. No private-key content, JWT, or tester email is
+included in source, receipts, or logs.
+
+A live API identity request returned HTTP 200 for:
+
+- app ID `6780995957`;
+- name `Quipsly Capture`;
+- bundle ID `com.highgroundodyssey.HighGroundCapture`.
+
+The repository-owned scoped readback then proved:
+
+- provider build `47e5e730-e5bd-4cfb-afae-baef86d3923c`;
+- marketing version `1.0`, build `6`;
+- processing state `VALID`;
+- internal state `IN_BETA_TESTING`;
+- exact manually controlled internal group and build relationship;
+- one assigned tester in state `INSTALLED`.
+
+Evidence:
+
+`/tmp/quipsly-capture-app-store-connect/f15fe8f40395/build-6-installed-readback.json`
+
+The readback tool signs a five-minute ES256 JWT restricted to the required
+read-only App Store Connect endpoints, refuses an overly permissive credential
+file, redacts the tester email, and is covered in both Capture and repository
+PR checks.
 
 Google Cloud authentication was refreshed without exposing tokens. Current
 readback passes:
@@ -122,25 +147,30 @@ The Firebase ADC quota project is `quipsly-reef`.
 
 ## Remaining physical gate
 
-iPhone Mirroring currently reports:
+iPhone Mirroring connected and displayed the phone. App Store Connect's
+Reinvite action delivered a new inbox message to the same Apple Account shown
+in TestFlight settings. Opening the Apple invitation link on the mirrored
+iPhone reached the correct Quipsly Capture `1.0 (6)` card, with the expected
+owl icon, developer, 90-day expiry, tester instructions, and `Install` button.
+The scoped App Store Connect API subsequently reported the tester as
+`INSTALLED`.
 
-`iPhone Microphone in Use — iPhone Mirroring will connect when iPhone microphone is no longer in use.`
+The current iPhone Mirroring boundary says `iPhone in Use — Lock your iPhone
+to connect`; the app will reconnect when the physical phone is locked.
+CoreDevice also still does not enumerate the iPhone over Xcode's device
+channel. Provider state therefore closes installation but cannot substitute
+for app-owned launch, build readback, or workflow evidence.
 
-CoreDevice still does not enumerate the iPhone over Xcode's device channel.
-Neither state blocks installing an internal build directly through TestFlight
-on the phone, but both prevent agent-operated physical readback right now.
+Required sequence:
 
-After the microphone is released:
-
-1. open TestFlight on the iPhone under the invited Apple Account;
-2. accept the invitation if Apple presents one;
-3. install Quipsly Capture `1.0 (6)`;
-4. read back the installed version and build in the app;
-5. sign into the production Quipsly account;
-6. operate the physical checklist in
+1. lock the physical iPhone and let iPhone Mirroring reconnect;
+2. open the installed Quipsly Capture app;
+3. read back version `1.0` and build `6` from the app-owned surface;
+4. sign into the production Quipsly account;
+5. operate the physical checklist in
    [`ios-capture-reviewer-smoke-checklist.md`](../quipsly/ios-capture-reviewer-smoke-checklist.md);
-7. update the exact receipt only after observed installation and operation.
+6. update the exact receipt only after observed app operation.
 
-Do not claim the physical gate from provider invitation, an Organizer upload,
-or simulator tests. Build 6 is distributed to internal testing, but physical
-installation and real-device behavior remain unproved.
+Do not claim app operation from provider installation, an Organizer upload, or
+simulator tests. Build 6 is installed for its internal tester, but real-device
+Quipsly behavior remains unproved.
