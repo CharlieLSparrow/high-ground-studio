@@ -3300,3 +3300,33 @@ This is an active-goal checkpoint, not a completion claim.
   iPhone 17 Pro simulator. The first collapsed-disclosure test exposed a
   SwiftUI accessibility reachability issue; replacing it with an explicit
   full-width button produced the passing user path.
+
+### 2026-07-29 canonical iPhone document-note tagging checkpoint
+
+- This is a native/web contract and simulator checkpoint, not a production
+  deployment, TestFlight Build 9 upload, physical-iPhone proof, or completion
+  of the unified-product goal.
+- Exact candidate `b669f3f6` corrects the Work projection’s tag-ownership
+  boundary. Note-level classification now reads `StudioDocumentTagLink` and
+  its optimistic `tagRevision`; anchored `StudioTaggedSpan` labels remain
+  passage evidence and are no longer misrepresented as document identity.
+- Existing document notes can now edit the same active, project-scoped
+  canonical vocabulary as Tasks and Goals from iPhone Work. The complete
+  desired tag set enters the existing owner-partitioned, file-protected
+  outbox before sync, retains one request UUID and document tag revision
+  across relaunch/retry, and holds conflicts or mismatched acknowledgements
+  for review.
+- Work’s tag counts now describe the Task, Goal, and document Note records
+  the lens can actually reveal. Rows, text search, and tag filtering use the
+  outbox’s effective selection immediately, so an offline queued decision is
+  visible and filterable without pretending Nest has acknowledged it.
+- New response fields are optional on the native decoder so a protected
+  Build 8 Work snapshot survives upgrade. Old cached notes remain readable
+  but cannot expose a document-tag mutation until a current Nest projection
+  supplies revision and permission evidence.
+- Verification passed: Quipsly TypeScript typecheck; 3/3 mobile Work route
+  tests; protected outbox relaunch/owner-isolation/document-revision harness;
+  74/74 mobile source contracts; clean dual-architecture iOS simulator build;
+  and targeted
+  `testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether` on iPhone 17 Pro
+  simulator after the final offline-lens adjustment.
