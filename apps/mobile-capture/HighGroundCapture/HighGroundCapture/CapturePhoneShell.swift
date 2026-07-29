@@ -2242,6 +2242,7 @@ private struct CaptureRecorderView: View {
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var recordingMode: CaptureRecordingMode = .audio
     @State private var cameraPosition: VideoCaptureCameraPosition = .front
+    @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
 
     var body: some View {
@@ -2287,6 +2288,22 @@ private struct CaptureRecorderView: View {
 
                     if session.projectSlug?.nonempty != nil,
                        session.episodeSlug?.nonempty != nil {
+                        MobileEpisodeManuscriptCard(
+                            client: episodeManuscript,
+                            session: session,
+                            previewOnly: model.usesPreviewData
+                        )
+                        .task(
+                            id:
+                                "manuscript|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                        ) {
+                            if model.usesPreviewData {
+                                episodeManuscript.loadPreview(session: session)
+                            } else {
+                                await episodeManuscript.load(session: session)
+                            }
+                        }
+
                         MobileEpisodeWatchCard(
                             client: episodeWatch,
                             session: session,

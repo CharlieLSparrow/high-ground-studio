@@ -125,6 +125,19 @@ export type EpisodeRoomWatchRuntimePayload = {
   updatedAt: string;
 };
 
+export type EpisodeRoomWritingRuntimePayload = {
+  episode: {
+    id: string;
+    slug: string;
+    title: string;
+    status: string;
+    updatedAt: string;
+    documentId: string;
+    documentTitle: string;
+  };
+  writing: EpisodeRoomWritingState;
+};
+
 export type EpisodeRoomCommandInput =
   | {
       type: "ADD_CLIP";
@@ -706,6 +719,62 @@ export async function loadEpisodeRoomRuntime(
     ),
     timelineClipCount: timelineRows(production.productionJson).length,
     updatedAt: production.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Lightweight canonical-manuscript projection for native and offline readers.
+ *
+ * This intentionally avoids proxy reconciliation, Watch state, imported media,
+ * recording sessions, and timeline construction. A matching opaque version
+ * returns metadata only so clients can retain their protected cached blocks.
+ */
+export async function loadEpisodeRoomWritingRuntime(
+  projectSlug: string,
+  episodeSlug: string,
+  knownWritingVersion?: string,
+): Promise<EpisodeRoomWritingRuntimePayload | null> {
+  const prisma = getPrismaClient();
+  const production = await prisma.studioEpisodeProduction.findFirst({
+    where: {
+      slug: episodeSlug,
+      project: { slug: projectSlug },
+    },
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      status: true,
+      updatedAt: true,
+      documentId: true,
+      boundaryStartOrder: true,
+      boundaryEndOrder: true,
+      document: {
+        select: {
+          title: true,
+          updatedAt: true,
+        },
+      },
+    },
+  });
+  if (!production) return null;
+  return {
+    episode: {
+      id: production.id,
+      slug: production.slug,
+      title: production.title,
+      status: production.status,
+      updatedAt: production.updatedAt.toISOString(),
+      documentId: production.documentId,
+      documentTitle: production.document.title,
+    },
+    writing: await loadEpisodeRoomWriting(prisma, {
+      documentId: production.documentId,
+      documentUpdatedAt: production.document.updatedAt,
+      boundaryStartOrder: production.boundaryStartOrder,
+      boundaryEndOrder: production.boundaryEndOrder,
+      knownVersion: knownWritingVersion,
+    }),
   };
 }
 

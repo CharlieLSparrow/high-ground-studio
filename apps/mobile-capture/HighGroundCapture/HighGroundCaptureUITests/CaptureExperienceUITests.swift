@@ -88,6 +88,44 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(boundary.label.contains("private preview never changes shared state"))
     }
 
+    func testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy() {
+        app.tabBars.buttons["Record"].tap()
+
+        let card = app.descendants(matching: .any)["CaptureEpisodeManuscriptCard"]
+        reveal(card)
+        XCTAssertTrue(
+            card.waitForExistence(timeout: 5),
+            "An episode-bound Capture session should expose its canonical manuscript before the shared Watch controls."
+        )
+        XCTAssertTrue(app.staticTexts["The Swear Jar"].exists)
+        XCTAssertTrue(
+            app.staticTexts["34 blocks · read-only on iPhone"].exists,
+            "The phone must state the read-only boundary instead of implying it owns another editable script."
+        )
+
+        let open = app.buttons["CaptureEpisodeManuscriptOpenButton"]
+        reveal(open)
+        XCTAssertTrue(open.isHittable)
+        open.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureEpisodeManuscriptReader"]
+                .waitForExistence(timeout: 5)
+        )
+        let boundary = app.descendants(matching: .any)["CaptureEpisodeManuscriptBoundary"]
+        XCTAssertTrue(boundary.exists)
+        XCTAssertTrue(boundary.label.contains("Canonical Nest manuscript"))
+        XCTAssertTrue(boundary.label.contains("Read-only here"))
+        XCTAssertTrue(app.staticTexts["Homer"].exists)
+        XCTAssertTrue(app.staticTexts["Charlie"].exists)
+        XCTAssertTrue(app.staticTexts["Clip · Be Curious"].exists)
+        XCTAssertTrue(app.buttons["Refresh episode script"].exists)
+        XCTAssertFalse(
+            app.buttons["Refresh episode script"].isEnabled,
+            "Deterministic preview must never imply it performed a canonical network refresh."
+        )
+    }
+
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
         app.tabBars.buttons["Work"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]

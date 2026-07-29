@@ -7,6 +7,7 @@ import {
   EpisodeRoomRevisionConflict,
   applyEpisodeRoomStoreCommand,
   loadEpisodeRoomRuntime,
+  loadEpisodeRoomWritingRuntime,
   loadEpisodeRoomWatchRuntime,
 } from "@/lib/server/episode-room-store";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
@@ -37,6 +38,7 @@ jest.mock("@/lib/server/episode-room-store", () => {
     importEpisodeRoomText: jest.fn(),
     loadEpisodeRoomDesk: jest.fn(),
     loadEpisodeRoomRuntime: jest.fn(),
+    loadEpisodeRoomWritingRuntime: jest.fn(),
     loadEpisodeRoomWatchRuntime: jest.fn(),
   };
 });
@@ -322,6 +324,70 @@ describe("Episode Room runtime route", () => {
       ok: true,
       canEdit: true,
       room: { revision: 8, status: "paused" },
+      serverNow: expect.any(String),
+    });
+  });
+
+  it("serves the native manuscript without loading Watch or the full editor runtime", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: true,
+      actor: {
+        id: "user-1",
+        email: "editor@example.test",
+        name: "Episode Editor",
+        isStaff: false,
+        source: "firebase-bearer",
+      },
+      access: {
+        allowed: true,
+        projectId: "project-1",
+        role: "EDITOR",
+      },
+    } as never);
+    jest.mocked(loadEpisodeRoomWritingRuntime).mockResolvedValue({
+      episode: {
+        id: "episode-1",
+        slug: "episode-4-part-2",
+        title: "The Swear Jar",
+        status: "WRITING",
+        updatedAt: "2026-07-29T10:00:00.000Z",
+        documentId: "document-1",
+        documentTitle: "High Ground Odyssey Episode 4",
+      },
+      writing: {
+        version: "writing-version-8",
+        updatedAt: "2026-07-29T10:00:00.000Z",
+        blockCount: 34,
+        visibleBlockCount: 34,
+        truncated: false,
+        textBlocks: [{
+          id: "block-1",
+          stableId: "swear-jar-opening",
+          order: 1,
+          title: "Homer",
+          body: "Opening rehearsal line.",
+        }],
+      },
+    });
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nests/high-ground-odyssey/episode-room?episode=episode-4-part-2&writing=1&writingVersion=writing-version-7",
+      { headers: { authorization: "Bearer firebase-id-token" } },
+    ), params);
+
+    expect(response.status).toBe(200);
+    expect(loadEpisodeRoomWritingRuntime).toHaveBeenCalledWith(
+      "high-ground-odyssey",
+      "episode-4-part-2",
+      "writing-version-7",
+    );
+    expect(loadEpisodeRoomRuntime).not.toHaveBeenCalled();
+    expect(loadEpisodeRoomWatchRuntime).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      canEdit: true,
+      episode: { title: "The Swear Jar" },
+      writing: { version: "writing-version-8", blockCount: 34 },
       serverNow: expect.any(String),
     });
   });

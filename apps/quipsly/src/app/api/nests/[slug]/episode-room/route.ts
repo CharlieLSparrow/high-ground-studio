@@ -8,6 +8,7 @@ import {
   importEpisodeRoomText,
   loadEpisodeRoomDesk,
   loadEpisodeRoomRuntime,
+  loadEpisodeRoomWritingRuntime,
   loadEpisodeRoomWatchRuntime,
 } from "@/lib/server/episode-room-store";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
@@ -123,6 +124,28 @@ export async function GET(
   }
   if (request.nextUrl.searchParams.get("watch") === "1") {
     const runtime = await loadEpisodeRoomWatchRuntime(slug, episodeSlug);
+    if (!runtime) {
+      return NextResponse.json({ ok: false, error: "Episode production not found." }, { status: 404 });
+    }
+    const canEdit = readAccess.access.role
+      ? roleAllowsAction(readAccess.access.role, "write")
+      : false;
+    return NextResponse.json({
+      ok: true,
+      ...runtime,
+      canEdit,
+      serverNow: new Date().toISOString(),
+    });
+  }
+  if (request.nextUrl.searchParams.get("writing") === "1") {
+    const knownWritingVersion = text(
+      request.nextUrl.searchParams.get("writingVersion"),
+    ).slice(0, 128);
+    const runtime = await loadEpisodeRoomWritingRuntime(
+      slug,
+      episodeSlug,
+      knownWritingVersion || undefined,
+    );
     if (!runtime) {
       return NextResponse.json({ ok: false, error: "Episode production not found." }, { status: 404 });
     }
