@@ -260,6 +260,7 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
       where: { id: `mobile-note-${requestIds[10]}` },
       include: {
         blocks: { orderBy: { order: "asc" } },
+        tagLinks: { include: { tag: true } },
         taggedSpans: { include: { tag: true } },
         documentOperations: true,
       },
@@ -268,6 +269,16 @@ runLocalDatabaseSmoke("iPhone quick-entry local database smoke", () => {
       projectId: homeProjectId,
       title,
       sourceLabel: "document-kind:note;origin:ios-capture",
+      tagRevision: 1,
+      tagLinks: [{
+        createdByUserId: actorUserId,
+        tag: { label: tagLabel },
+        sourceJson: {
+          schema: "quipsly-record-tag-link-v1",
+          surface: "ios-capture",
+          explicitHumanCapture: true,
+        },
+      }],
       blocks: [
         { id: `mobile-note-${requestIds[10]}-title`, body: title },
         { id: `mobile-note-${requestIds[10]}-body`, body },

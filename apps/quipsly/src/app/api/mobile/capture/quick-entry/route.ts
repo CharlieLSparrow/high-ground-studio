@@ -156,6 +156,7 @@ async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUs
         stableId,
         title,
         sourceLabel: "document-kind:note;origin:ios-capture",
+        tagRevision: tags.length ? 1 : 0,
         blocks: {
           create: [
             {
@@ -196,26 +197,37 @@ async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUs
       },
     });
     if (tags.length) {
-      await tx.studioTaggedSpan.createMany({
-        data: tags.map((tag) => ({
-          id: `${bodyBlockId}-${tag.id}`,
-          documentId: document.id,
-          blockId: bodyBlockId,
-          tagId: tag.id,
-          startOffset: 0,
-          endOffset: input.body.length,
-          selectedText: input.body,
-          documentStableId: stableId,
-          documentTitleSnapshot: title,
-          blockStableId: `${stableId}-body`,
-          blockTitleSnapshot: null,
-          sourceLabel: "document-kind:note;origin:ios-capture",
-          projectionStatus: "private",
-          isPrivate: true,
-          createdByLabel: actorEmail,
-        })),
-        skipDuplicates: true,
-      });
+      await Promise.all([
+        tx.studioDocumentTagLink.createMany({
+          data: tags.map((tag) => ({
+            documentId: document.id,
+            tagId: tag.id,
+            createdByUserId: actorUserId,
+            sourceJson: linkSource,
+          })),
+          skipDuplicates: true,
+        }),
+        tx.studioTaggedSpan.createMany({
+          data: tags.map((tag) => ({
+            id: `${bodyBlockId}-${tag.id}`,
+            documentId: document.id,
+            blockId: bodyBlockId,
+            tagId: tag.id,
+            startOffset: 0,
+            endOffset: input.body.length,
+            selectedText: input.body,
+            documentStableId: stableId,
+            documentTitleSnapshot: title,
+            blockStableId: `${stableId}-body`,
+            blockTitleSnapshot: null,
+            sourceLabel: "document-kind:note;origin:ios-capture",
+            projectionStatus: "private",
+            isPrivate: true,
+            createdByLabel: actorEmail,
+          })),
+          skipDuplicates: true,
+        }),
+      ]);
     }
     return { row: { ...document, body: input.body }, model: "document-note" };
   }

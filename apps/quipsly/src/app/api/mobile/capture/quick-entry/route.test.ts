@@ -61,6 +61,7 @@ function harness(existing: any = null) {
         project: { id: "project-direct", name: "High Ground Odyssey" },
       }),
     },
+    studioDocumentTagLink: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
     studioTaggedSpan: { createMany: jest.fn().mockResolvedValue({ count: 0 }) },
     studioDocument: {
       findUnique: jest.fn(async ({ where }: any) => personalDocuments.get(where.id) || null),
@@ -231,6 +232,7 @@ describe("mobile Capture quick-entry route", () => {
         stableId: `mobile-document-note-${requestId}`,
         title: "Field thought",
         sourceLabel: "document-kind:note;origin:ios-capture",
+        tagRevision: 1,
         documentOperations: {
           create: expect.objectContaining({
             id: `mobile-note-operation-${requestId}`,
@@ -258,6 +260,18 @@ describe("mobile Capture quick-entry route", () => {
       })],
       skipDuplicates: true,
     }));
+    expect(tx.studioDocumentTagLink.createMany).toHaveBeenCalledWith({
+      data: [expect.objectContaining({
+        documentId: `mobile-note-${requestId}`,
+        createdByUserId: "user-1",
+        sourceJson: expect.objectContaining({
+          schema: "quipsly-record-tag-link-v1",
+          surface: "ios-capture",
+          explicitHumanCapture: true,
+        }),
+      })],
+      skipDuplicates: true,
+    });
   });
 
   it("commits personal iPhone tasks and goals to the Home Nest without inventing a Session", async () => {

@@ -204,6 +204,44 @@ async function firebaseSelfServeSignup(env, baseUrl, email, password) {
   return body;
 }
 
+async function markGeneratedFirebaseEmailVerified(env, email, firebaseUid) {
+  if (!isGeneratedMobileEmail(email)) {
+    throw new Error(`Refusing to verify non-generated mobile capture smoke email: ${email}`);
+  }
+
+  const firebaseProjectId =
+    env.FIREBASE_PROJECT_ID || env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "quipsly-reef";
+  if (!getApps().length) {
+    initializeApp({ projectId: firebaseProjectId });
+  }
+
+  const firebaseUser = await getAuth().getUser(firebaseUid);
+  assert(
+    String(firebaseUser.email || "").trim().toLowerCase() === email.toLowerCase(),
+    "Generated Firebase UID did not resolve to the disposable smoke email.",
+  );
+  await getAuth().updateUser(firebaseUid, { emailVerified: true });
+}
+
+async function firebasePasswordSignIn(env, baseUrl, email, password) {
+  const firebaseApiKey = await fetchFirebaseApiKey(env, baseUrl);
+  const response = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${encodeURIComponent(firebaseApiKey)}`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password, returnSecureToken: true }),
+    },
+  );
+  const body = await response.json();
+  assert(
+    response.ok && body.idToken && body.localId,
+    `Firebase generated mobile capture verified sign-in failed with HTTP ${response.status}`,
+    { firebaseErrorCode: body?.error?.message || undefined },
+  );
+  return body;
+}
+
 async function deleteFirebaseUserWithRest(env, baseUrl, idToken) {
   if (!idToken) return false;
   const firebaseApiKey = await fetchFirebaseApiKey(env, baseUrl);
@@ -236,6 +274,7 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
     deletedInvites: 0,
     deletedGrants: 0,
     deletedCallRooms: 0,
+    deletedCreatedProjects: 0,
     deletedHomeProjects: 0,
     deletedMemberships: 0,
     deletedUsers: 0,
@@ -276,6 +315,31 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
     }
 
     cleanup.deletedInvites = (await prisma.studioNestInvite.deleteMany({ where: { email } })).count;
+
+    const createdProjects = await prisma.studioProject.findMany({
+      where: {
+        sourceLabel: { not: "nest-kind:home" },
+        accessGrants: {
+          some: {
+            email,
+            role: "OWNER",
+            status: "ACTIVE",
+          },
+        },
+        documentOperations: {
+          some: {
+            actorEmail: email,
+            operationType: "create-nest",
+          },
+        },
+      },
+      select: { id: true },
+    });
+    for (const project of createdProjects) {
+      await prisma.studioProject.delete({ where: { id: project.id } });
+      cleanup.deletedCreatedProjects += 1;
+    }
+
     cleanup.deletedGrants = (await prisma.studioProjectAccessGrant.deleteMany({ where: { email } })).count;
 
     const homeProjects = await prisma.studioProject.findMany({
@@ -402,6 +466,256 @@ async function createGeneratedCaptureSession(env, email, sessionBody) {
   } finally {
     await prisma.$disconnect();
   }
+}
+
+async function assertGeneratedProjectWork(baseUrl, idToken, suffix) {
+  const authorization = `Bearer ${idToken}`;
+  const name = `Codex mobile project ${suffix}`;
+  const clientRequestId = crypto.randomUUID();
+  const projectRequest = {
+    name,
+    description: "Disposable generated acceptance for iPhone project, work, and tag persistence.",
+    nestKind: "production",
+    clientRequestId,
+  };
+  const created = await requestJson(`${baseUrl}/api/mobile/capture/projects`, {
+    method: "POST",
+    headers: {
+      authorization,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(projectRequest),
+  });
+  assert(
+    created.response.status === 200
+      && created.body?.ok === true
+      && created.body?.project?.role === "OWNER"
+      && created.body?.project?.canWrite === true
+      && created.body?.boundaries?.canonicalProjectCreated === true
+      && created.body?.boundaries?.slugCollisionCannotGrantExistingOwnership === true,
+    `Generated project creation failed with HTTP ${created.response.status}: ${created.text.slice(0, 240)}`,
+    { body: created.body },
+  );
+  const projectId = created.body.project.id;
+  assert(
+    typeof projectId === "string" && projectId.length > 0,
+    "Generated project creation did not return a canonical project ID.",
+    { body: created.body },
+  );
+
+  const replay = await requestJson(`${baseUrl}/api/mobile/capture/projects`, {
+    method: "POST",
+    headers: {
+      authorization,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(projectRequest),
+  });
+  assert(
+    replay.response.status === 200
+      && replay.body?.ok === true
+      && replay.body?.idempotentReplay === true
+      && replay.body?.project?.id === projectId
+      && replay.body?.receiptId === created.body?.receiptId,
+    `Generated project retry did not return the original project. HTTP ${replay.response.status}`,
+    { body: replay.body },
+  );
+
+  const conflict = await requestJson(`${baseUrl}/api/mobile/capture/projects`, {
+    method: "POST",
+    headers: {
+      authorization,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      ...projectRequest,
+      name: `${name} changed`,
+    }),
+  });
+  assert(
+    conflict.response.status === 409
+      && conflict.body?.ok === false
+      && conflict.body?.code === "PROJECT_REQUEST_ID_CONFLICT",
+    `Generated project retry identity conflict returned HTTP ${conflict.response.status}.`,
+    { body: conflict.body },
+  );
+
+  const capturedAt = new Date().toISOString();
+  const taskRequest = {
+    clientRequestId: crypto.randomUUID(),
+    callRoomId: null,
+    projectId,
+    kind: "TASK",
+    title: "Prepare the first Quipsly recording",
+    body: "Confirm local originals, consent, and assembled playback.",
+    tagIds: [],
+    newTagLabels: ["Episode workflow", "Proof listen"],
+    capturedAt,
+    dueAt: null,
+    reminderAt: null,
+    recurrence: null,
+  };
+  const task = await requestJson(`${baseUrl}/api/mobile/capture/quick-entry`, {
+    method: "POST",
+    headers: {
+      authorization,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(taskRequest),
+  });
+  assert(
+    task.response.status === 200
+      && task.body?.ok === true
+      && task.body?.entry?.projectId === projectId
+      && task.body?.entry?.destination === "NEST"
+      && task.body?.tagVocabulary?.createdCount === 2
+      && Array.isArray(task.body?.entry?.tags)
+      && task.body.entry.tags.length === 2,
+    `Generated project task and tag creation failed with HTTP ${task.response.status}: ${task.text.slice(0, 240)}`,
+    { body: task.body },
+  );
+
+  const taskReplay = await requestJson(`${baseUrl}/api/mobile/capture/quick-entry`, {
+    method: "POST",
+    headers: {
+      authorization,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(taskRequest),
+  });
+  assert(
+    taskReplay.response.status === 200
+      && taskReplay.body?.ok === true
+      && taskReplay.body?.idempotentReplay === true
+      && taskReplay.body?.entry?.id === task.body?.entry?.id,
+    `Generated project task retry did not return the original record. HTTP ${taskReplay.response.status}`,
+    { body: taskReplay.body },
+  );
+
+  const episodeTag = task.body.entry.tags.find((tag) => tag.label === "Episode workflow");
+  const proofTag = task.body.entry.tags.find((tag) => tag.label === "Proof listen");
+  assert(
+    typeof episodeTag?.id === "string" && typeof proofTag?.id === "string",
+    "Generated project task did not return both canonical tag identities.",
+    { tags: task.body.entry.tags },
+  );
+
+  const note = await requestJson(`${baseUrl}/api/mobile/capture/quick-entry`, {
+    method: "POST",
+    headers: {
+      authorization,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      clientRequestId: crypto.randomUUID(),
+      callRoomId: null,
+      projectId,
+      kind: "NOTE",
+      title: "Recording rehearsal notes",
+      body: "The iPhone copy must survive interruption until verified upload.",
+      tagIds: [episodeTag.id],
+      newTagLabels: ["Field notes"],
+      capturedAt,
+      dueAt: null,
+      reminderAt: null,
+      recurrence: null,
+    }),
+  });
+  assert(
+    note.response.status === 200
+      && note.body?.ok === true
+      && note.body?.entry?.projectId === projectId
+      && note.body?.tagVocabulary?.createdCount === 1
+      && note.body?.tagVocabulary?.reusedCount === 0
+      && note.body?.entry?.tags?.some((tag) => tag.id === episodeTag.id)
+      && note.body?.entry?.tags?.some((tag) => tag.label === "Field notes"),
+    `Generated project note and mixed tag assignment failed with HTTP ${note.response.status}: ${note.text.slice(0, 240)}`,
+    { body: note.body },
+  );
+
+  const goal = await requestJson(`${baseUrl}/api/mobile/capture/quick-entry`, {
+    method: "POST",
+    headers: {
+      authorization,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      clientRequestId: crypto.randomUUID(),
+      callRoomId: null,
+      projectId,
+      kind: "GOAL",
+      title: "Complete a trustworthy physical-device rehearsal",
+      body: "Review every source and the assembled timeline before publication.",
+      tagIds: [proofTag.id],
+      newTagLabels: [],
+      capturedAt,
+      dueAt: null,
+      reminderAt: null,
+      recurrence: null,
+    }),
+  });
+  assert(
+    goal.response.status === 200
+      && goal.body?.ok === true
+      && goal.body?.entry?.projectId === projectId
+      && goal.body?.tagVocabulary?.createdCount === 0
+      && goal.body?.tagVocabulary?.reusedCount === 0
+      && goal.body?.entry?.tags?.some((tag) => tag.id === proofTag.id),
+    `Generated project goal and canonical tag reuse failed with HTTP ${goal.response.status}: ${goal.text.slice(0, 240)}`,
+    { body: goal.body },
+  );
+
+  const work = await requestJson(
+    `${baseUrl}/api/mobile/capture/work?projectId=${encodeURIComponent(projectId)}`,
+    {
+      headers: { authorization },
+    },
+  );
+  assert(
+    work.response.status === 200
+      && work.body?.ok === true
+      && work.body?.selectedProjectId === projectId
+      && work.body?.workspace?.project?.id === projectId,
+    `Generated project Work readback failed with HTTP ${work.response.status}: ${work.text.slice(0, 240)}`,
+    { body: work.body },
+  );
+  const tasks = Array.isArray(work.body?.workspace?.tasks) ? work.body.workspace.tasks : [];
+  const notes = Array.isArray(work.body?.workspace?.notes) ? work.body.workspace.notes : [];
+  const goals = Array.isArray(work.body?.workspace?.goals) ? work.body.workspace.goals : [];
+  const tags = Array.isArray(work.body?.workspace?.tags) ? work.body.workspace.tags : [];
+  assert(
+    tasks.some((entry) => entry.id === task.body.entry.id)
+      && notes.some((entry) => entry.id === note.body.entry.id)
+      && goals.some((entry) => entry.id === goal.body.entry.id),
+    "Generated project Work readback did not retain its exact task, note, and goal identities.",
+    {
+      taskCount: tasks.length,
+      noteCount: notes.length,
+      goalCount: goals.length,
+    },
+  );
+  assert(
+    tags.length === 3
+      && tags.some((tag) => tag.id === episodeTag.id && tag.usageCount === 2)
+      && tags.some((tag) => tag.id === proofTag.id && tag.usageCount === 2)
+      && tags.some((tag) => tag.label === "Field notes" && tag.usageCount === 1),
+    "Generated project Work readback did not preserve the canonical reusable tag vocabulary and usage counts.",
+    { tags },
+  );
+
+  return {
+    projectIdPresent: true,
+    ownerRole: created.body.project.role,
+    projectRetrySafe: replay.body.idempotentReplay === true,
+    projectConflictHeld: conflict.body.code === "PROJECT_REQUEST_ID_CONFLICT",
+    taskRetrySafe: taskReplay.body.idempotentReplay === true,
+    taskPersisted: true,
+    notePersisted: true,
+    goalPersisted: true,
+    canonicalTagCount: tags.length,
+    tagUsageCountsProven: true,
+    externalSideEffects: false,
+  };
 }
 
 async function assertGeneratedRoomJoin(baseUrl, idToken, room) {
@@ -644,14 +958,27 @@ async function main() {
   let generatedFirebaseUserCreated = false;
   let contractReport = null;
   let sessionBody = null;
+  let projectWorkProof = null;
   let roomJoinProof = null;
   let sessionContextProof = null;
   let runtimeUISmoke = { requested: shouldRunRuntimeUISmoke, passed: false };
 
   try {
     await assertServerFirebaseAdminPreflight(baseUrl);
-    const firebaseBody = await firebaseSelfServeSignup(env, baseUrl, email, password);
+    const firebaseSignup = await firebaseSelfServeSignup(env, baseUrl, email, password);
     generatedFirebaseUserCreated = true;
+    firebaseDeleteIdToken = firebaseSignup.idToken;
+    await markGeneratedFirebaseEmailVerified(
+      env,
+      email,
+      firebaseSignup.localId,
+    );
+    const firebaseBody = await firebasePasswordSignIn(
+      env,
+      baseUrl,
+      email,
+      password,
+    );
     firebaseDeleteIdToken = firebaseBody.idToken;
 
     const sessionStart = await requestJson(`${baseUrl}/api/auth/session`, {
@@ -671,6 +998,11 @@ async function main() {
     );
     sessionBody = sessionStart.body;
 
+    projectWorkProof = await assertGeneratedProjectWork(
+      baseUrl,
+      firebaseBody.idToken,
+      suffix,
+    );
     const generatedRoom = await createGeneratedCaptureSession(env, email, sessionBody);
     roomJoinProof = await assertGeneratedRoomJoin(baseUrl, firebaseBody.idToken, generatedRoom);
     sessionContextProof = await assertGeneratedSessionContext(baseUrl, firebaseBody.idToken, generatedRoom);
@@ -700,6 +1032,7 @@ async function main() {
           freeTierStatus: sessionBody.onboarding?.freeMembershipStatus || "",
         }
         : null,
+      projectWork: projectWorkProof,
       roomJoin: roomJoinProof,
       sessionContext: sessionContextProof,
       runtimeUISmoke,
