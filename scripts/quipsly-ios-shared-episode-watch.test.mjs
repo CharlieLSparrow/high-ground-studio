@@ -103,7 +103,10 @@ check(
     && watch.includes("candidate.host?.lowercased() == baseURL.host?.lowercased()")
     && watch.includes("candidate.port == baseURL.port")
     && watch.includes("candidate.user == nil")
-    && watch.includes("candidate.password == nil"),
+    && watch.includes("candidate.password == nil")
+    && watch.includes("let finalURL = response.url")
+    && watch.includes("resolvedPlaybackURL(finalURL.absoluteString)")
+    && watch.includes("redirected outside the configured Nest origin"),
 );
 check(
   "episode endpoints accept safe path-segment slugs instead of permissive URL path characters",

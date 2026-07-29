@@ -106,8 +106,9 @@ The native transport follows these production boundaries:
   fails closed and is never replaced by a browser cookie.
 - The bearer transport accepts only same-origin Nest playback URLs with no
   embedded user information, and project/episode API paths accept validated
-  slug segments rather than permissive URL path characters. Room data cannot
-  redirect a Quipsly credential to another origin.
+  slug segments rather than permissive URL path characters. Capture also
+  validates the final response URL after HTTP redirects. Room data cannot
+  redirect a Quipsly credential or substitute media from another origin.
 - Authoritative Pause never depends on local media readiness. An editor who
   has not downloaded the clip still receives an immediate **Pause everyone**
   control; only Play requires a validated local source.

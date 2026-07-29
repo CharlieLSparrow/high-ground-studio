@@ -392,6 +392,17 @@ final class MobileEpisodeWatchClient: ObservableObject {
                     expectedOwnerAccountID: owner.ownerAccountID
                 )
             defer { try? FileManager.default.removeItem(at: temporaryURL) }
+            guard let finalURL = response.url,
+                  resolvedPlaybackURL(finalURL.absoluteString) != nil else {
+                throw NSError(
+                    domain: "MobileEpisodeWatch",
+                    code: 3,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The protected Watch source redirected outside the configured Nest origin."
+                    ]
+                )
+            }
             guard response.statusCode < 400 else {
                 throw NSError(
                     domain: "MobileEpisodeWatch",
