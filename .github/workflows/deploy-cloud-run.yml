@@ -18,6 +18,21 @@ on:
         required: true
         default: false
         type: boolean
+      source_ref:
+        description: Exact committed source ref for a Studio release (defaults to this workflow ref)
+        required: false
+        default: ""
+        type: string
+      run_authenticated_smoke:
+        description: Run the signed-in preview acceptance gate
+        required: true
+        default: false
+        type: boolean
+      promote:
+        description: Promote the proven immutable preview to production
+        required: true
+        default: false
+        type: boolean
 
 concurrency:
   group: cloud-run-deploy-${{ github.ref }}
@@ -60,6 +75,9 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ github.event.inputs.target || 'auto' }}
+          APPLY_SCHEMA_CHANGES: ${{ inputs.apply_schema_changes }}
+          RUN_AUTHENTICATED_SMOKE: ${{ inputs.run_authenticated_smoke }}
+          PROMOTE: ${{ inputs.promote }}
         run: |
           set -euo pipefail
 
@@ -68,11 +86,16 @@ jobs:
           schema=false
           summary="No deployable app changes detected."
 
+          if [[ "$TARGET" == "auto" && "$PROMOTE" == "true" ]]; then
+            echo "Automatic planning cannot authorize production promotion; choose an explicit target." >&2
+            exit 1
+          fi
+
           case "$TARGET" in
             all)
               web=true
               studio=true
-              schema=true
+              schema="$APPLY_SCHEMA_CHANGES"
               summary="Manual deploy requested for web and studio."
               ;;
             web)
@@ -81,7 +104,7 @@ jobs:
               ;;
             studio)
               studio=true
-              schema=true
+              schema="$APPLY_SCHEMA_CHANGES"
               summary="Manual deploy requested for studio."
               ;;
             auto)
@@ -103,6 +126,11 @@ jobs:
               ;;
           esac
 
+          if [[ "$studio" == "true" && "$PROMOTE" == "true" && "$RUN_AUTHENTICATED_SMOKE" != "true" ]]; then
+            echo "Studio production promotion requires run_authenticated_smoke=true." >&2
+            exit 1
+          fi
+
           echo "web=$web" >> "$GITHUB_OUTPUT"
           echo "studio=$studio" >> "$GITHUB_OUTPUT"
           echo "schema=$schema" >> "$GITHUB_OUTPUT"
@@ -121,6 +149,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Setup pnpm
         uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
@@ -153,6 +183,7 @@ jobs:
         run: pnpm web:cloudrun:deploy
 
       - name: Promote Web Preview to Production
+        if: inputs.promote == true
         env:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
@@ -167,6 +198,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
@@ -185,16 +218,30 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
 
+      - name: Resolve Exact Studio Release Source
+        shell: bash
+        env:
+          REQUESTED_SOURCE_REF: ${{ inputs.source_ref }}
+        run: |
+          set -euo pipefail
+          source_ref="${REQUESTED_SOURCE_REF:-$GITHUB_SHA}"
+          source_sha="$(git rev-parse --verify "${source_ref}^{commit}")"
+          git cat-file -e "${source_sha}^{commit}"
+          echo "RELEASE_SOURCE_SHA=${source_sha}" >> "$GITHUB_ENV"
+          echo "Resolved exact Studio release source ${source_sha}."
+
       - name: Run Release Preflight
         env:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
-        run: bash scripts/release/quipsly-release-preflight.sh
+        run: |
+          SOURCE_REF="$RELEASE_SOURCE_SHA" \
+            bash scripts/release/quipsly-release-preflight.sh
 
       - name: Materialize Exact Quipsly Release Context
         run: |
           set -euo pipefail
-          release_context="$(bash scripts/release/quipsly-build-context.sh "${GITHUB_SHA}")"
+          release_context="$(bash scripts/release/quipsly-build-context.sh "${RELEASE_SOURCE_SHA}")"
           echo "QUIPSLY_RELEASE_CONTEXT=${release_context}" >>"${GITHUB_ENV}"
 
       - name: Refuse unapproved schema changes
@@ -210,9 +257,10 @@ jobs:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
           MODE: migrate
-          IMAGE_TAG: ${{ github.sha }}
-          SOURCE_REF: ${{ github.sha }}
-        run: bash scripts/release/quipsly-schema-job.sh
+        run: |
+          IMAGE_TAG="$RELEASE_SOURCE_SHA" \
+            SOURCE_REF="$RELEASE_SOURCE_SHA" \
+            bash scripts/release/quipsly-schema-job.sh
 
       - name: Apply targeted additive schema syncs
         if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes == true
@@ -220,26 +268,24 @@ jobs:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
           MODE: targeted
-          IMAGE_TAG: ${{ github.sha }}
-          SOURCE_REF: ${{ github.sha }}
           SKIP_BUILD: "1"
-        run: bash scripts/release/quipsly-schema-job.sh
+        run: |
+          IMAGE_TAG="$RELEASE_SOURCE_SHA" \
+            SOURCE_REF="$RELEASE_SOURCE_SHA" \
+            bash scripts/release/quipsly-schema-job.sh
 
       - name: Build Studio Image
-        env:
-          IMAGE_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/studio:${{ github.sha }}
-          LATEST_URI: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT }}/high-ground-studio/studio:latest
         run: |
           set -euo pipefail
+          IMAGE_URI="${GCP_REGION}-docker.pkg.dev/${GCP_PROJECT}/high-ground-studio/studio:${RELEASE_SOURCE_SHA}"
           test -f "${QUIPSLY_RELEASE_CONTEXT}/quipsly-release-source.json"
           docker buildx build \
             --file "${QUIPSLY_RELEASE_CONTEXT}/apps/quipsly/Dockerfile" \
             --build-arg NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app \
             --build-arg STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app \
             --build-arg QUIPSLY_DOCKER_IGNORE_TYPE_ERRORS=0 \
-            --build-arg QUIPSLY_BUILD_ID="${GITHUB_SHA}" \
+            --build-arg QUIPSLY_BUILD_ID="${RELEASE_SOURCE_SHA}" \
             --tag "$IMAGE_URI" \
-            --tag "$LATEST_URI" \
             --push \
             "${QUIPSLY_RELEASE_CONTEXT}"
 
@@ -247,11 +293,13 @@ jobs:
         env:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
-          IMAGE_TAG: ${{ github.sha }}
-          SOURCE_SHA: ${{ github.sha }}
           DEPLOYED_BY: "GitHub Actions"
           SKIP_BUILD: "1"
-        run: bash scripts/release/quipsly-deploy-preview.sh
+        run: |
+          IMAGE_TAG="$RELEASE_SOURCE_SHA" \
+            SOURCE_SHA="$RELEASE_SOURCE_SHA" \
+            SOURCE_REF="$RELEASE_SOURCE_SHA" \
+            bash scripts/release/quipsly-deploy-preview.sh
 
       - name: Resolve Preview URL
         run: |
@@ -264,10 +312,80 @@ jobs:
           echo "Resolved PREVIEW_URL: $PREVIEW_URL"
           echo "PREVIEW_URL=$PREVIEW_URL" >> "$GITHUB_ENV"
 
+      - name: Read Back Preview Source and Safety Boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          receipt="$(mktemp)"
+          service="$(mktemp)"
+          trap 'rm -f "$receipt" "$service"' EXIT
+          curl -fsS --max-time 30 "${PREVIEW_URL}/api/healthz" -o "$receipt"
+          gcloud run services describe studio \
+            --project="${GCP_PROJECT}" \
+            --region="${GCP_REGION}" \
+            --format=json >"$service"
+          node - "$receipt" "$service" "$RELEASE_SOURCE_SHA" <<'NODE'
+          const fs = require("node:fs");
+          const body = JSON.parse(fs.readFileSync(process.argv[2], "utf8"));
+          const service = JSON.parse(fs.readFileSync(process.argv[3], "utf8"));
+          const expectedSource = process.argv[4];
+          if (body?.ok !== true) throw new Error("Preview health did not return ok:true.");
+          if (body?.release?.sourceSha !== expectedSource) {
+            throw new Error(
+              `Preview source ${body?.release?.sourceSha || "<missing>"} does not match ${expectedSource}.`,
+            );
+          }
+          if (body?.release?.releaseChannel !== "preview") {
+            throw new Error("Preview release channel is not preview.");
+          }
+          if (!body?.runtime?.revisionName) {
+            throw new Error("Preview health omitted its immutable revision name.");
+          }
+          const previewTraffic = (service?.status?.traffic || []).find(
+            (entry) => entry?.tag === "quipsly-preview",
+          );
+          if (previewTraffic?.revisionName !== body.runtime.revisionName) {
+            throw new Error("Mutable preview tag does not resolve to the exercised revision.");
+          }
+          if (Number(previewTraffic?.percent || 0) !== 0) {
+            throw new Error("Preview revision unexpectedly receives production traffic.");
+          }
+          process.stdout.write(
+            `Preview ${body.runtime.revisionName} serves exact source ${expectedSource} at 0% traffic.\n`,
+          );
+          NODE
+
+      - name: Load Release Smoke Signing Secret
+        if: inputs.run_authenticated_smoke == true
+        shell: bash
+        run: |
+          set -euo pipefail
+          value="$(
+            gcloud secrets versions access latest \
+              --secret=quipsly-release-smoke-secret \
+              --project="${GCP_PROJECT}"
+          )"
+          test -n "$value"
+          echo "::add-mask::$value"
+          echo "QUIPSLY_RELEASE_SMOKE_SECRET=$value" >> "$GITHUB_ENV"
+
       - name: Smoke Test Preview
-        run: bash scripts/release/quipsly-smoke-preview.sh
+        if: inputs.run_authenticated_smoke == true
+        env:
+          QUIPSLY_AUTH_SMOKE_EMAIL: ${{ secrets.QUIPSLY_AUTH_SMOKE_EMAIL }}
+          QUIPSLY_AUTH_SMOKE_PASSWORD: ${{ secrets.QUIPSLY_AUTH_SMOKE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          test -n "${QUIPSLY_AUTH_SMOKE_EMAIL}"
+          test -n "${QUIPSLY_AUTH_SMOKE_PASSWORD}"
+          bash scripts/release/quipsly-smoke-preview.sh
 
       - name: Promote Preview to Production
+        if: inputs.promote == true
         env:
           REGION: ${{ env.GCP_REGION }}
-        run: bash scripts/release/quipsly-promote-preview.sh
+          QUIPSLY_AUTH_SMOKE_EMAIL: ${{ secrets.QUIPSLY_AUTH_SMOKE_EMAIL }}
+          QUIPSLY_AUTH_SMOKE_PASSWORD: ${{ secrets.QUIPSLY_AUTH_SMOKE_PASSWORD }}
+        run: |
+          SOURCE_REF="$RELEASE_SOURCE_SHA" \
+            bash scripts/release/quipsly-promote-preview.sh
