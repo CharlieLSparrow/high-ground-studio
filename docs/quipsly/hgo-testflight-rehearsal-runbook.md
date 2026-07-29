@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29
+Last verified: 2026-07-29 09:28 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -29,6 +29,11 @@ needs to prove.
   the current local files byte-for-byte; unauthenticated playback returns
   HTTP 401. Be Curious remains first, selected, paused, with zero watched
   segments and no started rehearsal session.
+- The 09:28 UTC idempotent production staging pass made no content or room
+  changes. The selected Be Curious object returned the exact 19,100,059 local
+  bytes at SHA-256
+  `acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`;
+  the exact 34-block manuscript and all three Watch sources passed again.
 
 ## Next candidate without changing tonight's lane
 
@@ -47,6 +52,11 @@ Build 8 has been submitted correctly. Apple must approve the external beta
 before Homer receives the usable invitation. Apple documents that external
 testing can begin only after TestFlight App Review approves the build. With
 automatic notification enabled, the tester notification follows approval:
+
+The 09:28 UTC API readback still reports
+`WAITING_FOR_BETA_REVIEW` / `WAITING_FOR_REVIEW`; the intended tester and
+Build 8 remain assigned to the rehearsal group, automatic notification remains
+enabled, and Apple reports no missing review phone or reviewer password.
 
 - [Apple: Invite external testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers)
 - [Apple: TestFlight overview](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview)

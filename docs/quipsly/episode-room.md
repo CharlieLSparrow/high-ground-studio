@@ -332,6 +332,9 @@ TestFlight rehearsal:
 
 The redacted apply receipt is
 `/private/tmp/quipsly-capture-rehearsal/hgo-stage-apply-20260729.json`.
+An idempotent 09:28 UTC rerun against the current downloaded sources made no
+changes and repeated the exact authenticated-byte, outsider-denial, manuscript,
+Watch-order, paused-state, and no-session-start proofs.
 The staging command is idempotent for matching writing and media, refuses
 different existing writing, refuses unexpected Watch clips, and refuses to
 reorder a room that has playback history. It does not store the manuscript or
