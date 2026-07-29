@@ -99,6 +99,7 @@ export function parseExternalBetaArguments(argv) {
     apply: false,
     submitForReview: false,
     allowCreateExternalGroup: false,
+    publicLinkOnly: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -118,6 +119,10 @@ export function parseExternalBetaArguments(argv) {
     }
     if (flag === "--allow-create-external-group") {
       options.allowCreateExternalGroup = true;
+      continue;
+    }
+    if (flag === "--public-link-only") {
+      options.publicLinkOnly = true;
       continue;
     }
 
@@ -153,6 +158,9 @@ export function parseExternalBetaArguments(argv) {
   if (options.submitForReview && !options.apply) {
     fail("--submit-for-review requires --apply.");
   }
+  if (options.publicLinkOnly && clean(options.testerEmail)) {
+    fail("--public-link-only cannot be combined with --tester-email.");
+  }
   return options;
 }
 
@@ -160,7 +168,8 @@ function usage() {
   return `Usage:
   APP_STORE_CONNECT_API_KEY_PATH=/absolute/private/key.json \\
     node scripts/release/quipsly-app-store-connect-external-beta.mjs \\
-      --tester-email <email> [--apply] [--submit-for-review] [options]
+      (--tester-email <email> | --public-link-only) \\
+      [--apply] [--submit-for-review] [options]
 
 Without --apply, the command is a read-only plan.
 
@@ -174,6 +183,10 @@ Options:
   --tester-email <email>                    External tester Apple Account.
   --tester-first-name <name>                Optional tester first name.
   --tester-last-name <name>                 Optional tester last name.
+  --public-link-only                        Assign the build to an existing,
+                                             already-enabled public-link group
+                                             without creating or assigning a
+                                             named tester.
   --reviewer-email <email>                  Quipsly demo-account email.
   --reviewer-password-keychain-service <s>  macOS Keychain service.
   --reviewer-password-keychain-account <a>  macOS Keychain account.
@@ -478,11 +491,13 @@ async function discover(options, key) {
       ["include", "builds,betaTesters"],
       ["limit", "50"],
     ]),
-    testers: makeRequest("/v1/betaTesters", [
-      ["filter[email]", options.testerEmail],
-      ["include", "betaGroups"],
-      ["limit", "10"],
-    ]),
+    testers: options.publicLinkOnly
+      ? null
+      : makeRequest("/v1/betaTesters", [
+        ["filter[email]", options.testerEmail],
+        ["include", "betaGroups"],
+        ["limit", "10"],
+      ]),
     appLocalizations: makeRequest("/v1/betaAppLocalizations", [
       ["filter[app]", options.appId],
       ["filter[locale]", options.locale],
@@ -500,7 +515,9 @@ async function discover(options, key) {
     await Promise.all([
       requestJson(requests.builds, key),
       requestJson(requests.groups, key),
-      requestJson(requests.testers, key),
+      requests.testers
+        ? requestJson(requests.testers, key)
+        : Promise.resolve({ data: [] }),
       requestJson(requests.appLocalizations, key),
       requestJson(requests.reviewDetails, key),
     ]);
@@ -563,8 +580,12 @@ export function buildPlan({ options, state, reviewerPasswordPresent }) {
   return {
     createExternalGroup: !state.targets.group,
     assignBuildToGroup: !state.targets.groupHasBuild,
-    createTester: !state.targets.tester,
-    assignTesterToGroup: Boolean(state.targets.tester && !state.targets.testerInGroup),
+    createTester: !options.publicLinkOnly && !state.targets.tester,
+    assignTesterToGroup: Boolean(
+      !options.publicLinkOnly
+      && state.targets.tester
+      && !state.targets.testerInGroup
+    ),
     createBetaAppLocalization: !state.appLocalization,
     updateBetaAppLocalization: Boolean(
       state.appLocalization
@@ -627,6 +648,23 @@ export function assertBuildBetaMutationReady(state) {
   );
 }
 
+export function assertPublicLinkDistributionReady(options, state) {
+  if (!options.publicLinkOnly) return;
+  if (!state.targets.group) {
+    fail(
+      `Public-link-only distribution requires the existing external group `
+      + `"${options.groupName}". No mutations were attempted.`,
+    );
+  }
+  if (state.targets.group.attributes?.publicLinkEnabled !== true) {
+    fail(
+      `External group "${options.groupName}" does not have its public link enabled. `
+      + "Enable and verify the link in App Store Connect before assigning a build. "
+      + "No mutations were attempted.",
+    );
+  }
+}
+
 async function applyChanges(options, key, initialState, reviewerPassword) {
   const operations = [];
   let state = initialState;
@@ -643,6 +681,7 @@ async function applyChanges(options, key, initialState, reviewerPassword) {
   });
   assertBuildBetaMutationReady(state);
   assertExternalGroupMutationAuthorized(options, plan);
+  assertPublicLinkDistributionReady(options, state);
   if (plan.createBetaAppLocalization) {
     await apply(
       "create-beta-app-localization",
@@ -812,7 +851,12 @@ function receiptFor(options, state, plan, operations, mode) {
     buildId: state.targets.buildId,
     groupName: options.groupName,
     groupId: state.targets.groupId || null,
-    testerEmailDigest: emailDigest(options.testerEmail),
+    distributionMode: options.publicLinkOnly ? "public-link-only" : "named-tester",
+    publicLinkEnabled:
+      state.targets.group?.attributes?.publicLinkEnabled === true,
+    testerEmailDigest: options.publicLinkOnly
+      ? null
+      : emailDigest(options.testerEmail),
     testerId: state.targets.testerId || null,
     testerState: state.targets.tester?.attributes?.state || null,
     testerInviteType: state.targets.tester?.attributes?.inviteType || null,
@@ -831,8 +875,11 @@ function receiptFor(options, state, plan, operations, mode) {
     passed: Boolean(
       state.targets.group
       && state.targets.groupHasBuild
-      && state.targets.tester
-      && state.targets.testerInGroup
+      && (
+        options.publicLinkOnly
+          ? state.targets.group.attributes?.publicLinkEnabled === true
+          : state.targets.tester && state.targets.testerInGroup
+      )
       && state.appLocalization
       && state.buildLocalization
       && betaDetail?.attributes?.autoNotifyEnabled === true
@@ -856,8 +903,13 @@ async function main() {
     process.stdout.write(usage());
     return;
   }
-  if (!clean(options.testerEmail)) fail("--tester-email is required.");
-  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(options.testerEmail)) {
+  if (!options.publicLinkOnly && !clean(options.testerEmail)) {
+    fail("--tester-email or --public-link-only is required.");
+  }
+  if (
+    !options.publicLinkOnly
+    && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(options.testerEmail)
+  ) {
     fail("--tester-email must be a valid email address.");
   }
   options.reviewerPasswordKeychainAccount =

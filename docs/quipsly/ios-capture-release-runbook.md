@@ -131,6 +131,23 @@ groups, testers, notification, review details, or submissions. This protects
 against the partial App Store Connect state where a build page exists but all
 Test Details and group controls remain disabled.
 
+Prefer the existing public rehearsal link when testers do not need individual
+assignment:
+
+```bash
+node scripts/release/quipsly-app-store-connect-external-beta.mjs \
+  --build <number> \
+  --group 'Quipsly Capture Rehearsal' \
+  --public-link-only
+```
+
+The public-link-only mode never queries, creates, or assigns a named tester and
+does not print or hash a tester email. It also never creates or enables a public
+link. Before `--apply`, it requires the exact existing external group to be
+visible with `publicLinkEnabled: true`; otherwise it exits before any mutation.
+This keeps build delivery independent of a tester's invitation email while
+preserving the manually controlled public-link boundary.
+
 ## Candidate preflight
 
 Start from the intended commit, not an uncommitted working-tree snapshot:

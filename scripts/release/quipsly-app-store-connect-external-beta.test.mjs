@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   assertBuildBetaMutationReady,
   assertExternalGroupMutationAuthorized,
+  assertPublicLinkDistributionReady,
   buildExternalGroupBody,
   buildPlan,
   buildTesterBody,
@@ -26,6 +27,7 @@ const options = {
   reviewContactPhone: "",
   reviewerEmail: "reviewer@example.test",
   feedbackEmail: "feedback@example.test",
+  publicLinkOnly: false,
 };
 
 const buildDocument = {
@@ -63,6 +65,21 @@ test("requires apply before a beta-review submission", () => {
   assert.throws(
     () => parseExternalBetaArguments(["--submit-for-review"]),
     /requires --apply/,
+  );
+});
+
+test("makes public-link-only distribution explicit and mutually exclusive with tester email", () => {
+  assert.equal(
+    parseExternalBetaArguments(["--public-link-only"]).publicLinkOnly,
+    true,
+  );
+  assert.throws(
+    () => parseExternalBetaArguments([
+      "--public-link-only",
+      "--tester-email",
+      "homer@example.test",
+    ]),
+    /cannot be combined/,
   );
 });
 
@@ -112,6 +129,41 @@ test("refuses every beta mutation until Apple publishes buildBetaDetail", () => 
     () => assertBuildBetaMutationReady({
       targets: { buildBetaDetailId: "detail-10" },
     }),
+  );
+});
+
+test("requires a verified existing public link before public-link-only mutation", () => {
+  const publicOptions = {
+    ...options,
+    publicLinkOnly: true,
+  };
+  assert.throws(
+    () => assertPublicLinkDistributionReady(
+      publicOptions,
+      { targets: { group: null } },
+    ),
+    /requires the existing external group/,
+  );
+  assert.throws(
+    () => assertPublicLinkDistributionReady(
+      publicOptions,
+      {
+        targets: {
+          group: { attributes: { publicLinkEnabled: false } },
+        },
+      },
+    ),
+    /does not have its public link enabled/,
+  );
+  assert.doesNotThrow(
+    () => assertPublicLinkDistributionReady(
+      publicOptions,
+      {
+        targets: {
+          group: { attributes: { publicLinkEnabled: true } },
+        },
+      },
+    ),
   );
 });
 
@@ -216,4 +268,48 @@ test("plans missing setup and preserves the contact-phone gate", () => {
   assert.equal(plan.submitForReview, true);
   assert.equal(plan.missingReviewContactPhone, true);
   assert.equal(plan.missingReviewerPassword, false);
+});
+
+test("public-link-only plan never creates or assigns a named tester", () => {
+  const publicOptions = {
+    ...options,
+    testerEmail: "",
+    publicLinkOnly: true,
+  };
+  const targets = resolveExternalBetaTargets({
+    options: publicOptions,
+    buildDocument,
+    groupDocument: {
+      data: [{
+        type: "betaGroups",
+        id: "external-group",
+        attributes: {
+          name: options.groupName,
+          isInternalGroup: false,
+          publicLinkEnabled: true,
+        },
+        relationships: {
+          builds: { data: [] },
+          betaTesters: { data: [] },
+        },
+      }],
+    },
+    testerDocument: { data: [] },
+  });
+  const plan = buildPlan({
+    options: publicOptions,
+    state: {
+      builds: buildDocument,
+      targets,
+      appLocalization: null,
+      buildLocalization: null,
+      reviewDetail: { id: options.appId, attributes: {} },
+      submissions: { data: [] },
+    },
+    reviewerPasswordPresent: true,
+  });
+
+  assert.equal(plan.assignBuildToGroup, true);
+  assert.equal(plan.createTester, false);
+  assert.equal(plan.assignTesterToGroup, false);
 });
