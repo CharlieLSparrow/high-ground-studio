@@ -1219,11 +1219,26 @@ final class CaptureExperienceUITests: XCTestCase {
            element.frame.maxY <= visibleBottom {
             return
         }
+        // On iPad, an iPhone-first app can run inside a movable window whose
+        // origin does not match the SpringBoard screen. A gesture synthesized
+        // against XCUIApplication can then land on the desktop behind the app.
+        // Anchor scrolling to the app's actual vertical ScrollView so the same
+        // reachability assertion exercises both full-screen iPhone and
+        // windowed iPad layouts.
+        let scrollSurface = app.scrollViews.firstMatch
         for _ in 0..<8 {
             if element.exists, element.frame.maxY <= app.frame.minY + 72 {
-                app.swipeDown()
+                if scrollSurface.exists {
+                    scrollSurface.swipeDown()
+                } else {
+                    app.swipeDown()
+                }
             } else {
-                app.swipeUp()
+                if scrollSurface.exists {
+                    scrollSurface.swipeUp()
+                } else {
+                    app.swipeUp()
+                }
             }
             if element.exists,
                element.isHittable,
