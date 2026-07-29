@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 18:40 UTC
+Last verified: 2026-07-29 20:20 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -15,8 +15,10 @@ needs to prove.
 - Apple state: `IN_BETA_TESTING` / `APPROVED`
 - Public installation link:
   `https://testflight.apple.com/join/XwRRcYUm`
-- Public-link capacity: limited to 10 testers
+- Public-link capacity: limited to 100 testers
 - Automatic tester notification: enabled
+- Named external tester: the intended `shomers@icloud.com` TestFlight identity
+  is assigned to the rehearsal group and Apple reports `INVITED`
 - Private Nest:
   `https://nest.quipsly.com/nests/high-ground-odyssey-rehearsal/episodes/testflight-rehearsal`
 - Session: **High Ground Odyssey TestFlight Rehearsal**
@@ -197,9 +199,31 @@ installation path:
 
 `https://testflight.apple.com/join/XwRRcYUm`
 
-The link returned HTTP 200 at the 18:35 UTC readback and is capped at 10
-testers. Opening it on the iPhone presents **Start Testing** and hands off to
-TestFlight without an invitation email or redemption code.
+At 20:20 UTC the external group contains the intended named tester with
+`inviteType: EMAIL` and `state: INVITED`. That named TestFlight assignment is
+separate from Scott's accepted App Store Connect team membership.
+
+The public page briefly returned **This beta isn't accepting any new testers
+right now** even though Build 8 was approved, unexpired, and assigned, the
+group was enabled, and Apple's public-link metrics reported zero accepted
+testers. The existing 10-person cap was raised to 100 and the link activation
+was cycled off and back on without changing its ID. Fresh uncached iPhone and
+desktop HTTP readback now returns **Join the Quipsly Capture beta**, the exact
+Quipsly beta description, and the TestFlight handoff. Opening it on the iPhone
+presents **Start Testing** and hands off to TestFlight without an invitation
+email or redemption code.
+
+Operators and release agents must verify that human-facing boundary directly,
+not infer it from `publicLinkEnabled`:
+
+```bash
+pnpm quipsly:capture:testflight-public-link-readback \
+  --output /private/tmp/quipsly-testflight-public-link-current.json
+```
+
+The verifier fails when Apple returns its generic closed page with HTTP 200 and
+passes only when the exact Quipsly title, beta heading, and `itms-beta`
+TestFlight handoff are all present. The optional receipt is mode 0600.
 
 - [Apple: Invite external testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers)
 - [Apple: TestFlight overview](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview)
