@@ -30,6 +30,10 @@ const nestMediaAccess = fs.readFileSync(
   new URL("./quipsly-nest-media-access.sh", import.meta.url),
   "utf8",
 );
+const cloudRunWorkflow = fs.readFileSync(
+  new URL("../../.github/workflows/deploy-cloud-run.yml", import.meta.url),
+  "utf8",
+);
 
 test("standalone preflight materializes the committed Nest release context", () => {
   assert.match(preflight, /quipsly-build-context\.sh/);
@@ -72,6 +76,25 @@ test("no-traffic preview can repair drift without weakening candidate checks", (
     /Current production has blockers; continuing only because a no-traffic preview may repair them/,
   );
   assert.match(preflight, /QUIPSLY_PREFLIGHT_PURPOSE.*audit\|preview/s);
+});
+
+test("manual Studio workflow installs pinned tooling and preserves the exact-source preview boundary", () => {
+  assert.match(
+    cloudRunWorkflow,
+    /deploy-studio:.*Setup pnpm.*cache: 'pnpm'.*REQUESTED_SOURCE_REF: \$\{\{ inputs\.source_ref \}\}.*RELEASE_SOURCE_SHA=\$\{source_sha\}.*QUIPSLY_PREFLIGHT_PURPOSE: preview/s,
+  );
+  assert.match(
+    cloudRunWorkflow,
+    /Read Back Preview Source and Safety Boundary.*body\?\.release\?\.sourceSha !== expectedSource.*Number\(previewTraffic\?\.percent \|\| 0\) !== 0/s,
+  );
+  assert.match(
+    cloudRunWorkflow,
+    /Smoke Test Preview\s+if: inputs\.run_authenticated_smoke == true/s,
+  );
+  assert.match(
+    cloudRunWorkflow,
+    /Promote Preview to Production\s+if: inputs\.promote == true/s,
+  );
 });
 
 test("promotion smokes and promotes one immutable source-bound revision", () => {
