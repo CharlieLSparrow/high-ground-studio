@@ -3226,3 +3226,43 @@ This is an active-goal checkpoint, not a completion claim.
   simultaneous same-iPhone local audio plus local video during a live room.
   Use a separate camera for the first production rehearsal while the
   coordinated multi-source native slice is designed and qualified.
+
+### 2026-07-29 native canonical episode-manuscript checkpoint
+
+- This is a zero-traffic preview and simulator checkpoint, not production
+  promotion, physical-iPhone proof, a new TestFlight upload, participant
+  consent, or rehearsal completion.
+- Exact server source
+  `8fa86d46977074f90386663fae92ea2fe0166167` adds a narrow,
+  version-aware canonical-writing projection to Episode Room. It returns only
+  episode/document metadata and stable private blocks, omits block bodies when
+  the client already has the current opaque writing version, and does not join
+  the one-second shared-Watch polling path.
+- Quipsly Capture now exposes that canonical manuscript beside Record as a
+  searchable, read-only reader. Its offline copy is partitioned by verified
+  owner, project, and episode; uses complete file protection; is excluded from
+  backup; is never refreshed while network actions are disallowed; and is
+  purged on sign-out. It opens the exact Nest Episode Room for editing rather
+  than creating an iPhone fork.
+- Follow-up source `613b2243` recognizes the real manuscript heading whether
+  it is carried by a block title or the first line of the block body. The
+  staged rehearsal therefore presents **The Swear Jar** instead of the generic
+  `Testflight Rehearsal` episode shell or
+  `High Ground Odyssey Rehearsal Production Document` document shell.
+- Cloud Build `258aa168-2cef-43df-afe9-09935eab9db5` produced image
+  `preview-8fa86d46-20260729` at manifest digest
+  `sha256:3bd922d8f1a7da53aa54cae9caf1bdf98ed6f7ff9e4581d146876a3dd3c44f5c`.
+  Zero-traffic revision `studio-00429-niv` passed the full signed preview
+  smoke while production remained 100% on `studio-00425-gij`.
+- A GET-only native rehearsal proof denied outsiders, returned all 34 exact
+  canonical blocks to the authenticated host, proved unique stable IDs,
+  ascending order, complete bodies, exact heading `**THE SWEAR JAR**`, and
+  metadata-only behavior for the unchanged version. It also re-streamed and
+  byte/hash-matched Be Curious, Lucy, and Samwise while leaving Watch revision
+  5 paused at zero with no session, watched spans, recording, consent change,
+  or provider join.
+- The server/route tests, 10/10 native manuscript static contract, 7/7
+  rehearsal verifier contract, simulator build, and targeted
+  `testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy`
+  UI journey pass. The mode-0600 receipt remains outside Git at
+  `/private/tmp/quipsly-native-rehearsal-preview-8fa86d46-receipt.json`.

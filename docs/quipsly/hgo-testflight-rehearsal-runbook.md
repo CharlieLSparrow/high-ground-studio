@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 11:11 UTC
+Last verified: 2026-07-29 11:50 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -72,10 +72,24 @@ needs to prove.
   email. The redacted receipt is
   `/private/tmp/quipsly-capture-rehearsal/homer-identity-readback.json`, mode
   0600.
+- At 11:49 UTC, zero-traffic preview `studio-00429-niv` proved the complete
+  read-only native rehearsal boundary from exact deployed source
+  `8fa86d46977074f90386663fae92ea2fe0166167`. An outsider received HTTP 401
+  for the canonical manuscript, Watch projection, and every protected media
+  object. The authenticated projection returned all 34 canonical blocks,
+  unique stable IDs, ascending orders, every body, and the exact first heading
+  `**THE SWEAR JAR**`. A second request with the same opaque writing version
+  returned metadata only instead of retransmitting the script. All three
+  protected videos again matched their pinned local bytes and SHA-256 values.
+  Watch remained revision 5, selected on Be Curious, paused at zero, with no
+  session, active segment, watched span, recording, consent mutation, or
+  provider join. The GET-only receipt is
+  `/private/tmp/quipsly-native-rehearsal-preview-8fa86d46-receipt.json`, mode
+  0600.
 
 ## Next candidate without changing tonight's lane
 
-Current iPhone candidate checkpoint `3c1e6055` combines the
+Current iPhone candidate checkpoint `613b2243` combines the
 production-architected
 **Podcast audio + video** mode from `5920e525` with native shared Episode Watch:
 separate local AAC microphone and video-only MOV masters under one
@@ -92,12 +106,25 @@ removes the unusable copy, and exposes a retry. The deterministic preview
 mirrors the exact three-clip lineup, and the Watch header reflows instead of
 clipping at accessibility text sizes. The authenticated media response must
 also finish on the configured Nest origin, so an HTTP redirect cannot
-substitute external bytes. The current Watch contract is
-38/38; the targeted Record accessibility audit and full static, simulator,
-privacy, UI, server preview,
-native-bearer, and protected-media gates are green, but it has not been
-assigned a new build number or uploaded to TestFlight. The server proof remains pinned separately to
-`96eebffc`; Build 8 remains the rehearsal instruction set below until
+substitute external bytes.
+
+The candidate also places the canonical episode manuscript beside the Record
+surface as a searchable, read-only reader. Its owner/project/episode-partitioned
+offline copy uses complete file protection, is excluded from backup, is purged
+on sign-out, and never turns the iPhone into an editable fork. The title is
+derived from the real first canonical heading even when the import stores that
+heading in the block body rather than its optional title field. The reader
+does not join Watch's one-second polling path; unchanged requests return
+metadata only.
+
+The current Watch contract is 38/38, the manuscript contract is 10/10, and the
+read-only rehearsal verifier is 7/7. The targeted Record accessibility,
+episode-script reader, and shared-Watch UI journeys plus the static, simulator,
+privacy, server-preview, native-bearer, and protected-media gates are green,
+but the candidate has not been assigned a new build number or uploaded to
+TestFlight. The exact server projection is deployed separately from
+`8fa86d46` on zero-traffic preview `studio-00429-niv`; Build 8 remains the
+rehearsal instruction set below until
 physical-iPhone capture, route, playback, upload, relaunch, and editor-sync
 proof qualify the candidate.
 

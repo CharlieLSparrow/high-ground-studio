@@ -5,7 +5,7 @@ Date: 2026-07-29
 ## Exact source
 
 - Branch: `codex/quipsly-product-20260724`
-- Current iPhone candidate checkpoint: `3c1e6055`
+- Current iPhone candidate checkpoint: `613b2243`
 - Feature commit: `5920e525`
 - Commit subject:
   `feat(capture): coordinate local podcast audio and video`
@@ -28,6 +28,8 @@ Date: 2026-07-29
 - Rehearsal preview-parity commit: `956ec3b4`
 - Large-text Watch header commit: `926cda63`
 - Final-response origin confinement commit: `3c1e6055`
+- Canonical episode-manuscript commit: `8fa86d46`
+- Canonical-heading readback commit: `613b2243`
 - App Store version/build in source: `1.0 (8)`
 - Release decision: do not upload or assign this feature as Build 9 until its
   physical-iPhone gate is complete. Build 8 remains the honest external
@@ -121,6 +123,11 @@ timeline.
 - Native Watch UI test:
   `CaptureExperienceUITests.testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation`:
   passed on the iPhone 16e simulator.
+- Canonical episode-manuscript static contract: **10/10**.
+- Read-only rehearsal verifier contract: **7/7**.
+- Episode-manuscript UI test:
+  `CaptureExperienceUITests.testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy`:
+  passed on the iPhone 17 Pro simulator.
 
 The UI test proves that the four-mode picker is reachable and that Podcast A/V
 shows the separate microphone status and two-source truth before asking for a
@@ -204,6 +211,35 @@ The new redacted v2 receipt is
 `/private/tmp/quipsly-watch-preview-96eebffc-all-media-receipt.json`, mode
 0600.
 
+The exact canonical-writing projection at commit
+`8fa86d46977074f90386663fae92ea2fe0166167` built successfully in Cloud Build
+`258aa168-2cef-43df-afe9-09935eab9db5` as image
+`preview-8fa86d46-20260729`, manifest digest
+`sha256:3bd922d8f1a7da53aa54cae9caf1bdf98ed6f7ff9e4581d146876a3dd3c44f5c`.
+Cloud Run revision `studio-00429-niv` is ready behind `quipsly-preview` at
+**0%** production traffic. Its full signed smoke passed public, signed-out,
+Firebase/native-session, authenticated Nest, writing, editor, recorder,
+research, publishing, logout, and configured-host checks. Production remains
+100% on `studio-00425-gij`.
+
+At 11:49 UTC, the v3 native rehearsal verifier used GET requests only and
+proved:
+
+- the manuscript projection denies an outsider with HTTP 401 and returns HTTP
+  200 to a short-lived Firebase bearer;
+- all 34 canonical private blocks are present with unique stable IDs,
+  ascending orders, non-empty bodies, and exact heading
+  `**THE SWEAR JAR**`;
+- a request carrying the current opaque writing version returns metadata only,
+  not another copy of the block bodies;
+- the Watch projection still has Be Curious first and selected, revision 5,
+  paused at zero, with no session or watched spans; and
+- all three protected media objects deny outsiders, accept the bearer, and
+  match their exact pinned local byte counts and SHA-256 values.
+
+The redacted mode-0600 receipt is
+`/private/tmp/quipsly-native-rehearsal-preview-8fa86d46-receipt.json`.
+
 After that exact server proof, the iPhone candidate was hardened without
 changing the deployed Watch API:
 
@@ -231,10 +267,20 @@ changing the deployed Watch API:
 - the authenticated media response must finish on the configured Nest origin;
   an HTTP redirect cannot silently substitute external bytes.
 
-The native Watch contract is now **38/38**. The targeted Record accessibility
-audit and full mobile preflight, strict
-TypeScript, privacy/App Store static gates, and LiveKit-linked universal iOS
-simulator build all pass at `3c1e6055`. These checks harden the candidate but
+The native Watch contract is now **38/38**. Capture also has a protected,
+searchable, read-only canonical manuscript surface beside Record. It uses a
+separate version-aware request rather than the one-second Watch poll, keeps an
+owner/project/episode-partitioned complete-file-protection cache for offline
+reading, excludes it from backup, and purges it at sign-out. The first
+canonical heading is recognized whether the importer placed it in the optional
+block title or the block body's first line; generic episode/document shell
+names remain metadata rather than replacing the manuscript's visible title.
+
+The full mobile preflight, strict TypeScript, privacy/App Store static gates,
+and LiveKit-linked universal iOS simulator build passed at `8fa86d46`. The
+follow-up heading change at `613b2243` then passed a clean simulator build,
+the 10/10 manuscript contract, the 7/7 rehearsal verifier contract, and the
+targeted episode-manuscript UI journey. These checks harden the candidate but
 do not replace the physical-iPhone gate.
 
 ## Current external TestFlight readback
