@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertExternalGroupMutationAuthorized,
   buildExternalGroupBody,
   buildPlan,
   buildTesterBody,
@@ -61,6 +62,41 @@ test("requires apply before a beta-review submission", () => {
   assert.throws(
     () => parseExternalBetaArguments(["--submit-for-review"]),
     /requires --apply/,
+  );
+});
+
+test("requires a separate explicit authorization before creating an external group", () => {
+  assert.equal(
+    parseExternalBetaArguments(["--tester-email", "homer@example.test"])
+      .allowCreateExternalGroup,
+    false,
+  );
+  assert.equal(
+    parseExternalBetaArguments([
+      "--tester-email",
+      "homer@example.test",
+      "--allow-create-external-group",
+    ]).allowCreateExternalGroup,
+    true,
+  );
+  assert.throws(
+    () => assertExternalGroupMutationAuthorized(
+      {
+        groupName: "Quipsly Capture Rehearsal",
+        allowCreateExternalGroup: false,
+      },
+      { createExternalGroup: true },
+    ),
+    /empty provider read can be transient/,
+  );
+  assert.doesNotThrow(
+    () => assertExternalGroupMutationAuthorized(
+      {
+        groupName: "Brand New Group",
+        allowCreateExternalGroup: true,
+      },
+      { createExternalGroup: true },
+    ),
   );
 });
 

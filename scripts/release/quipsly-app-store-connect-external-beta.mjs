@@ -98,6 +98,7 @@ export function parseExternalBetaArguments(argv) {
     outputPath: "",
     apply: false,
     submitForReview: false,
+    allowCreateExternalGroup: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -113,6 +114,10 @@ export function parseExternalBetaArguments(argv) {
     }
     if (flag === "--submit-for-review") {
       options.submitForReview = true;
+      continue;
+    }
+    if (flag === "--allow-create-external-group") {
+      options.allowCreateExternalGroup = true;
       continue;
     }
 
@@ -177,6 +182,9 @@ Options:
   --review-contact-email <email>             Apple review contact.
   --review-contact-phone <phone>             Apple review contact.
   --feedback-email <email>                   TestFlight feedback email.
+  --allow-create-external-group              Explicitly authorize creating a
+                                             missing external group. Omit for
+                                             ordinary build assignment.
   --output <path>                            Redacted mode-0600 receipt.
   --apply                                    Apply idempotent changes.
   --submit-for-review                        Submit Build for beta review.
@@ -600,6 +608,16 @@ export function buildPlan({ options, state, reviewerPasswordPresent }) {
   };
 }
 
+export function assertExternalGroupMutationAuthorized(options, plan) {
+  if (!plan.createExternalGroup || options.allowCreateExternalGroup) return;
+  fail(
+    `External group "${options.groupName}" was not visible. `
+    + "No mutations were attempted because an empty provider read can be transient. "
+    + "Verify the group in App Store Connect and retry. Use "
+    + "--allow-create-external-group only when creating a genuinely new group.",
+  );
+}
+
 async function applyChanges(options, key, initialState, reviewerPassword) {
   const operations = [];
   let state = initialState;
@@ -614,6 +632,7 @@ async function applyChanges(options, key, initialState, reviewerPassword) {
     state,
     reviewerPasswordPresent: Boolean(reviewerPassword),
   });
+  assertExternalGroupMutationAuthorized(options, plan);
   if (plan.createBetaAppLocalization) {
     await apply(
       "create-beta-app-localization",
@@ -797,6 +816,7 @@ function receiptFor(options, state, plan, operations, mode) {
     betaReviewState: submission?.attributes?.betaReviewState || null,
     operations,
     plan,
+    externalGroupCreationAuthorized: options.allowCreateExternalGroup === true,
     passed: Boolean(
       state.targets.group
       && state.targets.groupHasBuild

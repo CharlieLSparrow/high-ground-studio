@@ -110,6 +110,20 @@ readback proves assignment only; `INSTALLED` proves provider-side installation.
 Require app-owned version/build readback and TestFlight/device operation
 separately before changing the physical-operation receipt.
 
+Use a dedicated **App Manager** Team key for routine Quipsly release automation
+rather than an Admin key. Apple documents App Manager as an app-development and
+delivery role, and App Store Connect API keys can be revoked independently:
+
+- [Apple role permissions](https://developer.apple.com/help/app-store-connect/reference/account-management/role-permissions/)
+- [Apple App Store Connect API](https://developer.apple.com/help/app-store-connect/get-started/app-store-connect-api/)
+
+The external-beta tool treats a missing group as a read-consistency hazard.
+`--apply` fails before any mutation if the requested external group is absent
+from discovery. The tool creates a group only when the operator separately
+passes `--allow-create-external-group`; do not pass that flag when assigning a
+new build to an established rehearsal group. This prevents a transient empty
+Apple response from creating a duplicate group.
+
 ## Candidate preflight
 
 Start from the intended commit, not an uncommitted working-tree snapshot:
