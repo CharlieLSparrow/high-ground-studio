@@ -823,6 +823,12 @@ async function ensureRoomParticipantsAndEpisode(
 
 function receipt(options, state, mode, operations, liveApi) {
   const plan = planFor(state, options);
+  const guestFirebaseLinked = Boolean(state.guest?.firebaseUid);
+  const guestJustInTimeGoogleLinkReady = Boolean(
+    state.guest?.isActive
+      && !guestFirebaseLinked
+      && Object.values(plan).every((operationRequired) => !operationRequired),
+  );
   const hostParticipant = state.room?.participants.find(
     (participant) => participant.userId === state.host?.id,
   );
@@ -837,7 +843,17 @@ function receipt(options, state, mode, operations, liveApi) {
     baseUrl: options.baseUrl,
     hostEmailDigest: createHash("sha256").update(options.hostEmail).digest("hex"),
     guestEmailDigest: createHash("sha256").update(options.guestEmail).digest("hex"),
-    guestFirebaseLinked: Boolean(state.guest?.firebaseUid),
+    guestFirebaseLinked,
+    guestSignIn: {
+      state: guestFirebaseLinked
+        ? "FIREBASE_LINKED"
+        : guestJustInTimeGoogleLinkReady
+          ? "AWAITING_FIRST_VERIFIED_GOOGLE_SIGN_IN"
+          : "NOT_READY",
+      justInTimeGoogleLinkReady: guestJustInTimeGoogleLinkReady,
+      verificationEmailRequired: false,
+      identityAuthority: "firebase:quipsly-reef",
+    },
     project: state.project
       ? {
           id: state.project.id,

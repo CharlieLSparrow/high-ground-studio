@@ -62,6 +62,16 @@ needs to prove.
   no started Watch session, and no watched spans. The receipt is
   `/private/tmp/quipsly-watch-preview-96eebffc-all-media-receipt.json`, mode
   0600.
+- At 10:57 UTC, the read-only production identity rehearsal found Homer's
+  canonical Quipsly user, active free membership, editor grant, invite ledger,
+  room participant, and REQUESTED consent already present; it proposed zero
+  repairs. `shomers@gmail.com` is intentionally not Firebase-linked until
+  Homer completes **Continue with Google** once. That verified Google subject
+  is transactionally attached to the existing Quipsly user by email, so Homer
+  should not use password signup and does not need a Quipsly verification
+  email. The redacted receipt is
+  `/private/tmp/quipsly-capture-rehearsal/homer-identity-readback.json`, mode
+  0600.
 
 ## Next candidate without changing tonight's lane
 
