@@ -98,6 +98,21 @@ check(
     && auth.includes("statusCode == 401"),
 );
 check(
+  "Firebase bearer media downloads cannot leave the configured Nest origin",
+  watch.includes("candidate.scheme?.lowercased() == baseURL.scheme?.lowercased()")
+    && watch.includes("candidate.host?.lowercased() == baseURL.host?.lowercased()")
+    && watch.includes("candidate.port == baseURL.port")
+    && watch.includes("candidate.user == nil")
+    && watch.includes("candidate.password == nil"),
+);
+check(
+  "episode endpoints accept safe path-segment slugs instead of permissive URL path characters",
+  watch.includes("private static func safePathSlug(")
+    && watch.includes('#"^[A-Za-z0-9][A-Za-z0-9_-]{0,159}$"#')
+    && watch.includes(".appendingPathComponent(projectSlug, isDirectory: true)")
+    && !watch.includes("withAllowedCharacters: .urlPathAllowed"),
+);
+check(
   "a second rejected bearer signs out instead of exposing stale-account media",
   auth.includes("guard retryResult.1.statusCode != 401")
     && auth.includes("removeItem(at: retryResult.0)")
@@ -136,6 +151,13 @@ check(
     && watch.includes("receipt.sourceId == clip.sourceId")
     && watch.includes("receipt.playbackUrl == clip.playbackUrl")
     && watch.includes("response.expectedContentLength != receipt.byteCount"),
+);
+check(
+  "an already-open player is invalidated when the full selected source identity changes",
+  watch.includes("preparedClipIdentity == selectedClip")
+    && watch.includes("let previousClip = room?.selectedClip")
+    && watch.includes("if previousClip != nextRoom.selectedClip")
+    && watch.includes("preparedClipIdentity = nil"),
 );
 check(
   "private preview is explicitly outside shared state",

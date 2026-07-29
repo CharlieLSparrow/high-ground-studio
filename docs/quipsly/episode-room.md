@@ -104,6 +104,10 @@ The native transport follows these production boundaries:
 - Both the room projection and protected media route accept the verified
   Firebase bearer already owned by Quipsly Capture. A supplied invalid bearer
   fails closed and is never replaced by a browser cookie.
+- The bearer transport accepts only same-origin Nest playback URLs with no
+  embedded user information, and project/episode API paths accept validated
+  slug segments rather than permissive URL path characters. Room data cannot
+  redirect a Quipsly credential to another origin.
 - A prepared clip downloads through the authenticated streaming URLSession
   path to a temporary file. The app validates the response byte count, computes
   SHA-256 in 1 MiB chunks, writes a receipt, applies iOS file protection,
@@ -116,6 +120,10 @@ The native transport follows these production boundaries:
 - Changing accounts immediately hides and stops the prior owner's source. A
   cached source is reused only when owner, asset, source, playback URL, byte
   count, and SHA-256 all match.
+- An already-open player retains the full selected clip identity, not only its
+  asset ID. A changed source, protected URL, duration, or title under the same
+  asset ID closes the player and revalidates the owner-partitioned cache before
+  any further playback.
 - `serverNow` accompanies room reads and accepted commands. The iPhone maps
   that server time to the midpoint of its request/response interval, retains
   the half-round-trip uncertainty, and projects `effectiveAt` using the

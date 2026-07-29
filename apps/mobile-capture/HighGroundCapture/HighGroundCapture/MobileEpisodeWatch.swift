@@ -126,6 +126,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
     private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
     private var currentContextKey: String?
     private var currentSession: MobileCaptureSession?
+    private var preparedClipIdentity: MobileEpisodeWatchClip?
     private var timeObserver: Any?
     private var completionObserver: NSObjectProtocol?
     private var accountCancellable: AnyCancellable?
@@ -170,7 +171,9 @@ final class MobileEpisodeWatchClient: ObservableObject {
     var selectedClip: MobileEpisodeWatchClip? { room?.selectedClip }
     var isPrepared: Bool {
         guard let selectedClip else { return false }
-        return preparedAssetID == selectedClip.assetId && player != nil
+        return preparedAssetID == selectedClip.assetId
+            && preparedClipIdentity == selectedClip
+            && player != nil
     }
     var isSharedPlaying: Bool {
         room?.status == "playing" && !localPreviewActive
@@ -644,10 +647,10 @@ final class MobileEpisodeWatchClient: ObservableObject {
     }
 
     private func apply(_ nextRoom: MobileEpisodeWatchRoom) {
-        let previousAssetID = room?.selectedClipId
+        let previousClip = room?.selectedClip
         room = nextRoom
         displayPosition = projectedPosition(nextRoom)
-        if previousAssetID != nextRoom.selectedClipId {
+        if previousClip != nextRoom.selectedClip {
             stopPlayer()
             if let clip = nextRoom.selectedClip,
                let owner = AuthManager.shared.stableOwnerSnapshot() {
@@ -703,6 +706,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
         }
         player = nextPlayer
         preparedAssetID = clip.assetId
+        preparedClipIdentity = clip
         timeObserver = nextPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
             queue: .main
@@ -790,6 +794,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             self.completionObserver = nil
         }
         preparedAssetID = nil
+        preparedClipIdentity = nil
         localPreviewActive = false
         endedAssetID = nil
         endSharedAudioLease()
@@ -843,19 +848,15 @@ final class MobileEpisodeWatchClient: ObservableObject {
     private func context(
         for session: MobileCaptureSession
     ) -> (key: String, episodeSlug: String, endpoint: URL)? {
-        guard let projectSlug = session.projectSlug?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !projectSlug.isEmpty,
-              let episodeSlug = session.episodeSlug?
-                .trimmingCharacters(in: .whitespacesAndNewlines),
-              !episodeSlug.isEmpty else { return nil }
-        let encodedProject = projectSlug.addingPercentEncoding(
-            withAllowedCharacters: .urlPathAllowed
-        ) ?? projectSlug
-        guard let endpoint = URL(
-            string: "/api/nests/\(encodedProject)/episode-room",
-            relativeTo: baseURL
-        )?.absoluteURL else { return nil }
+        guard let projectSlug = Self.safePathSlug(session.projectSlug),
+              let episodeSlug = Self.safePathSlug(session.episodeSlug) else {
+            return nil
+        }
+        let endpoint = baseURL
+            .appendingPathComponent("api", isDirectory: true)
+            .appendingPathComponent("nests", isDirectory: true)
+            .appendingPathComponent(projectSlug, isDirectory: true)
+            .appendingPathComponent("episode-room", isDirectory: false)
         return (
             key: "\(projectSlug)|\(episodeSlug)",
             episodeSlug: episodeSlug,
@@ -864,7 +865,26 @@ final class MobileEpisodeWatchClient: ObservableObject {
     }
 
     private func resolvedPlaybackURL(_ value: String) -> URL? {
-        URL(string: value, relativeTo: baseURL)?.absoluteURL
+        guard let candidate = URL(
+            string: value,
+            relativeTo: baseURL
+        )?.absoluteURL,
+        candidate.scheme?.lowercased() == baseURL.scheme?.lowercased(),
+        candidate.host?.lowercased() == baseURL.host?.lowercased(),
+        candidate.port == baseURL.port,
+        candidate.user == nil,
+        candidate.password == nil else { return nil }
+        return candidate
+    }
+
+    private static func safePathSlug(_ value: String?) -> String? {
+        guard let slug = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              slug.range(
+                of: #"^[A-Za-z0-9][A-Za-z0-9_-]{0,159}$"#,
+                options: .regularExpression
+              ) != nil else { return nil }
+        return slug
     }
 
     private func restoreCachedClip(
