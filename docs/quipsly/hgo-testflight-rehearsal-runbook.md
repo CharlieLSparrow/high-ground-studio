@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 10:55 UTC
+Last verified: 2026-07-29 11:06 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -75,7 +75,7 @@ needs to prove.
 
 ## Next candidate without changing tonight's lane
 
-Current iPhone candidate checkpoint `14070670` combines the
+Current iPhone candidate checkpoint `926cda63` combines the
 production-architected
 **Podcast audio + video** mode from `5920e525` with native shared Episode Watch:
 separate local AAC microphone and video-only MOV masters under one
@@ -88,8 +88,11 @@ While paused, either editor can choose the next staged clip directly in
 Capture; Be Curious remains first and selected. Download completion is no
 longer treated as playback readiness: iOS must confirm the protected file is
 decodable, and a fatal decoder failure pauses shared Watch when authorized,
-removes the unusable copy, and exposes a retry. The current Watch contract is
-37/37 and the full static, simulator, privacy, UI, server preview,
+removes the unusable copy, and exposes a retry. The deterministic preview
+mirrors the exact three-clip lineup, and the Watch header reflows instead of
+clipping at accessibility text sizes. The current Watch contract is
+38/38; the targeted Record accessibility audit and full static, simulator,
+privacy, UI, server preview,
 native-bearer, and protected-media gates are green, but it has not been
 assigned a new build number or uploaded to TestFlight. The server proof remains pinned separately to
 `96eebffc`; Build 8 remains the rehearsal instruction set below until

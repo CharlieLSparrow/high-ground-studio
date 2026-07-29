@@ -5,7 +5,7 @@ Date: 2026-07-29
 ## Exact source
 
 - Branch: `codex/quipsly-product-20260724`
-- Current iPhone candidate checkpoint: `14070670`
+- Current iPhone candidate checkpoint: `926cda63`
 - Feature commit: `5920e525`
 - Commit subject:
   `feat(capture): coordinate local podcast audio and video`
@@ -25,6 +25,8 @@ Date: 2026-07-29
 - Shared clip-selector commit: `ecec25e8`
 - AVPlayer readiness gate commit: `3533af94`
 - Fatal shared-playback recovery commit: `14070670`
+- Rehearsal preview-parity commit: `956ec3b4`
+- Large-text Watch header commit: `926cda63`
 - App Store version/build in source: `1.0 (8)`
 - Release decision: do not upload or assign this feature as Build 9 until its
   physical-iPhone gate is complete. Build 8 remains the honest external
@@ -221,10 +223,15 @@ changing the deployed Watch API:
   actually decodable; and
 - a fatal decoder failure removes the unusable copy and pauses the shared
   clock for everyone when that collaborator has editor authority.
+- deterministic iPhone preview mirrors the exact three-clip rehearsal order;
+  the targeted UI journey verifies the selector without faking a mutation; and
+- the Watch heading and status reflow at accessibility text sizes instead of
+  clipping.
 
-The native Watch contract is now **37/37**. The full mobile preflight, strict
+The native Watch contract is now **38/38**. The targeted Record accessibility
+audit and full mobile preflight, strict
 TypeScript, privacy/App Store static gates, and LiveKit-linked universal iOS
-simulator build all pass at `14070670`. These checks harden the candidate but
+simulator build all pass at `926cda63`. These checks harden the candidate but
 do not replace the physical-iPhone gate.
 
 ## Current external TestFlight readback
