@@ -24,6 +24,12 @@ echo "Installing the exact committed Nest release context."
   CI=1 corepack pnpm install --frozen-lockfile
 )
 
+echo "Testing Session recording evidence in the exact committed Nest release context."
+(
+  cd "${release_context}"
+  corepack pnpm quipsly:session-evidence:test
+)
+
 echo "Generating Prisma clients in the exact committed Nest release context."
 (
   cd "${release_context}"
