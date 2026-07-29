@@ -241,6 +241,14 @@ check(
     && !watch.includes("Task.sleep(for: .milliseconds(250))"),
 );
 check(
+  "downloaded media must become AVPlayer-ready before Watch exposes playback",
+  watch.includes("playerItemReady")
+    && watch.includes("item.publisher(for: \\.status)")
+    && watch.includes("case .readyToPlay:")
+    && watch.includes("case .failed:")
+    && watch.includes("The unusable downloaded copy was removed."),
+);
+check(
   "both editors get reachable shared Play Pause and seek controls",
   watch.includes("CaptureEpisodeWatchPlayPauseButton")
     && watch.includes("Pause everyone")

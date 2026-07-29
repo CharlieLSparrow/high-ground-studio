@@ -118,6 +118,9 @@ The native transport follows these production boundaries:
 - A prepared clip downloads through the authenticated streaming URLSession
   path to a temporary file. The app validates the response byte count, computes
   SHA-256 in 1 MiB chunks, writes a receipt, applies iOS file protection,
+  then waits for `AVPlayerItem` to report `readyToPlay` before exposing playback.
+  A file that is byte-valid but cannot be decoded is removed with a visible
+  retry path instead of being represented as ready.
   excludes the cache from backup, and partitions it by a one-way digest of the
   stable Quipsly owner identity.
 - A visible **Remove downloaded copy** action removes only the selected

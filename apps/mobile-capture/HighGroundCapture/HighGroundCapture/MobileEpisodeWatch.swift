@@ -116,6 +116,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
     @Published private(set) var isPreparingClip = false
     @Published private(set) var preparedAssetID: String?
     @Published private(set) var player: AVPlayer?
+    @Published private(set) var playerItemReady = false
     @Published private(set) var displayPosition: TimeInterval = 0
     @Published private(set) var localPreviewActive = false
     @Published private(set) var sharedConnectionReady = false
@@ -129,6 +130,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
     private var preparedClipIdentity: MobileEpisodeWatchClip?
     private var timeObserver: Any?
     private var completionObserver: NSObjectProtocol?
+    private var itemStatusCancellable: AnyCancellable?
     private var accountCancellable: AnyCancellable?
     private var routeCancellable: AnyCancellable?
     private var sharedAudioLeaseActive = false
@@ -174,12 +176,17 @@ final class MobileEpisodeWatchClient: ObservableObject {
         return preparedAssetID == selectedClip.assetId
             && preparedClipIdentity == selectedClip
             && player != nil
+            && playerItemReady
+    }
+    var isCheckingPlayback: Bool {
+        player != nil && !playerItemReady
     }
     var isSharedPlaying: Bool {
         room?.status == "playing" && !localPreviewActive
     }
     var statusLabel: String {
         if isPreparingClip { return "Preparing clip" }
+        if isCheckingPlayback { return "Checking playback" }
         if localPreviewActive { return "Private preview" }
         switch room?.status {
         case "playing": return isPrepared ? "Playing together" : "Playing · prepare needed"
@@ -341,8 +348,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             return
         }
         if restoreCachedClip(clip: clip, owner: owner) {
-            synchronizePlayerToRoom()
-            statusMessage = "\(clip.title) is prepared on this iPhone."
+            statusMessage = "Checking \(clip.title) for playback…"
             errorMessage = nil
             return
         }
@@ -416,9 +422,8 @@ final class MobileEpisodeWatchClient: ObservableObject {
                     ]
                 )
             }
-            synchronizePlayerToRoom()
             statusMessage =
-                "\(clip.title) prepared · \(ByteCountFormatter.string(fromByteCount: receipt.byteCount, countStyle: .file))."
+                "\(clip.title) downloaded · \(ByteCountFormatter.string(fromByteCount: receipt.byteCount, countStyle: .file)). Checking playback…"
         } catch {
             errorMessage = error.localizedDescription
             statusMessage = nil
@@ -725,6 +730,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
         let item = AVPlayerItem(url: fileURL)
         let nextPlayer = AVPlayer(playerItem: item)
         nextPlayer.actionAtItemEnd = .pause
+        playerItemReady = false
         completionObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemDidPlayToEndTime,
             object: item,
@@ -737,6 +743,38 @@ final class MobileEpisodeWatchClient: ObservableObject {
         player = nextPlayer
         preparedAssetID = clip.assetId
         preparedClipIdentity = clip
+        itemStatusCancellable = item.publisher(for: \.status)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self, weak item] status in
+                Task { @MainActor in
+                    guard let self,
+                          let item,
+                          self.player?.currentItem === item,
+                          self.preparedClipIdentity == clip else { return }
+                    switch status {
+                    case .readyToPlay:
+                        self.playerItemReady = true
+                        self.statusMessage = "\(clip.title) is ready to play."
+                        self.errorMessage = nil
+                        self.synchronizePlayerToRoom()
+                    case .failed:
+                        let detail = item.error?.localizedDescription
+                            ?? "The downloaded media format could not be decoded."
+                        if let owner = AuthManager.shared.stableOwnerSnapshot() {
+                            self.removeCachedClip(clip: clip, owner: owner)
+                        }
+                        self.stopPlayer()
+                        self.statusMessage =
+                            "The unusable downloaded copy was removed. Tap Prepare to try again."
+                        self.errorMessage =
+                            "\(clip.title) could not be prepared for playback. \(detail)"
+                    case .unknown:
+                        break
+                    @unknown default:
+                        break
+                    }
+                }
+            }
         timeObserver = nextPlayer.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
             queue: .main
@@ -814,11 +852,14 @@ final class MobileEpisodeWatchClient: ObservableObject {
 
     private func stopPlayer() {
         player?.pause()
+        itemStatusCancellable?.cancel()
+        itemStatusCancellable = nil
         if let timeObserver, let player {
             player.removeTimeObserver(timeObserver)
             self.timeObserver = nil
         }
         player = nil
+        playerItemReady = false
         if let completionObserver {
             NotificationCenter.default.removeObserver(completionObserver)
             self.completionObserver = nil
@@ -1433,7 +1474,7 @@ struct MobileEpisodeWatchCard: View {
                     Button {
                         Task { await client.prepareSelectedClip() }
                     } label: {
-                        if client.isPreparingClip {
+                        if client.isPreparingClip || client.isCheckingPlayback {
                             ProgressView()
                                 .frame(maxWidth: .infinity)
                         } else {
@@ -1445,7 +1486,11 @@ struct MobileEpisodeWatchCard: View {
                         }
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(client.isPreparingClip || previewOnly)
+                    .disabled(
+                        client.isPreparingClip
+                            || client.isCheckingPlayback
+                            || previewOnly
+                    )
                     .accessibilityHint(
                         "Downloads an authenticated, owner-partitioned local copy for reliable shared playback."
                     )
