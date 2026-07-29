@@ -110,6 +110,7 @@ export type PortableNestNote = {
   sourcePath: string | null;
   projectionStatus: string;
   isPrivate: boolean;
+  tagIds: string[];
   blocks: PortableNestNoteBlock[];
   createdAt: string;
   updatedAt: string;
@@ -462,12 +463,17 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     const sourceLabel = nullableString(raw.sourceLabel, 2_000);
     const sourcePath = nullableString(raw.sourcePath, 4_000);
     const projectionStatus = stringValue(raw.projectionStatus, 100);
+    const documentTagIds = stringArray(raw.tagIds ?? [], MAX_TAGS);
     const createdAt = dateString(raw.createdAt);
     const updatedAt = dateString(raw.updatedAt);
     if (!id || !stableId || !title || sourceLabel === undefined || sourcePath === undefined
-      || !projectionStatus || !PROJECTION_STATUSES.has(projectionStatus)
+      || !projectionStatus || !PROJECTION_STATUSES.has(projectionStatus) || !documentTagIds
+      || documentTagIds.some((tagId) => !tagIds.has(tagId))
       || typeof raw.isPrivate !== "boolean" || !createdAt || !updatedAt) {
       return { ok: false, error: "A note document in the Nest bundle is incomplete." };
+    }
+    if (new Set(documentTagIds).size !== documentTagIds.length) {
+      return { ok: false, error: "A note document repeats a document-level tag reference." };
     }
     const blocks: PortableNestNoteBlock[] = [];
     for (const rawBlock of raw.blocks) {
@@ -555,6 +561,7 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
       sourcePath,
       projectionStatus,
       isPrivate: raw.isPrivate,
+      tagIds: documentTagIds,
       blocks,
       createdAt,
       updatedAt,

@@ -90,6 +90,11 @@ export async function buildPortableNestExport(
         isPrivate: true,
         createdAt: true,
         updatedAt: true,
+        tagLinks: {
+          where: { tag: { projectId: project.id } },
+          orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+          select: { tagId: true },
+        },
         blocks: {
           orderBy: [{ order: "asc" }, { id: "asc" }],
           select: {
@@ -313,6 +318,7 @@ export async function buildPortableNestExport(
       sourcePath: note.sourcePath,
       projectionStatus: note.projectionStatus,
       isPrivate: note.isPrivate,
+      tagIds: note.tagLinks.map((link) => link.tagId),
       blocks: note.blocks.map((block) => ({
         id: block.id,
         stableId: block.stableId,

@@ -476,6 +476,7 @@ model User {
   coachingNotesAuthored         CoachingNote[]                       @relation("CoachingNoteAuthor")
   coachingNoteRevisionsAuthored CoachingNoteRevision[]               @relation("CoachingNoteRevisionActor")
   coachingNoteTagsCreated       CoachingNoteTagLink[]                @relation("CoachingNoteTagCreatedBy")
+  documentTagsCreated           StudioDocumentTagLink[]              @relation("StudioDocumentTagCreatedBy")
   actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
   taskReminders                 TaskReminder[]                       @relation("TaskReminderOwner")
   taskReminderRevisionsAuthored TaskReminderRevision[]               @relation("TaskReminderRevisionActor")
@@ -640,9 +641,9 @@ model UserAuthIdentity {
   provider        String?
   emailAtLink     String?
   emailVerifiedAt DateTime?
-  lastSeenAt      DateTime   @default(now())
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  lastSeenAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -2289,10 +2290,12 @@ model StudioDocument {
   sourcePath       String?
   projectionStatus StudioProjectionStatus @default(private)
   isPrivate        Boolean                @default(true)
+  tagRevision      Int                    @default(0)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
   project              StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  tagLinks             StudioDocumentTagLink[]
   blocks               StudioDocumentBlock[]
   taggedSpans          StudioTaggedSpan[]
   knowledgeNodes       StudioKnowledgeNode[]
@@ -3061,6 +3064,7 @@ model StudioTag {
   mediaClips            MediaClip[]
   sourceAnnotations     StudioSourceAnnotationTag[]
   coachingNotes         CoachingNoteTagLink[]
+  documents             StudioDocumentTagLink[]
   actionItems           ActionItemTagLink[]
   goals                 GoalTagLink[]
   callRooms             CallRoomTagLink[]
@@ -3225,6 +3229,25 @@ model CoachingNoteTagLink {
   createdBy User?        @relation("CoachingNoteTagCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
   @@id([noteId, tagId])
+  @@index([tagId, createdAt])
+  @@index([createdByUserId, createdAt])
+}
+
+// Document-level classification is distinct from excerpt-level evidence.
+// StudioTaggedSpan remains the anchored passage overlay; this explicit join
+// classifies the durable document identity without manufacturing a text range.
+model StudioDocumentTagLink {
+  documentId      String
+  tagId           String
+  createdByUserId String?
+  sourceJson      Json     @default("{}")
+  createdAt       DateTime @default(now())
+
+  document  StudioDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  tag       StudioTag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+  createdBy User?          @relation("StudioDocumentTagCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@id([documentId, tagId])
   @@index([tagId, createdAt])
   @@index([createdByUserId, createdAt])
 }

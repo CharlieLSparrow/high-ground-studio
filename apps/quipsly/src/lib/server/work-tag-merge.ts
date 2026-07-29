@@ -7,6 +7,7 @@ import { listProjectsVisibleToEmail } from "./home-nest";
 const RELATION_LIMIT = 5_000;
 
 type MergeCountKey =
+  | "documents"
   | "tasks"
   | "goals"
   | "sessions"
@@ -21,7 +22,7 @@ export type WorkTagMergePreview = {
   source: { id: string; label: string; slug: string; updatedAt: Date };
   target: { id: string; label: string; slug: string; updatedAt: Date };
   counts: Record<MergeCountKey, number> & { aliases: number; totalUses: number };
-  deduplicated: Pick<Record<MergeCountKey, number>, "tasks" | "goals" | "sessions" | "coachingNotes" | "annotations" | "mediaClips">;
+  deduplicated: Pick<Record<MergeCountKey, number>, "documents" | "tasks" | "goals" | "sessions" | "coachingNotes" | "annotations" | "mediaClips">;
   blockingConflicts: {
     anchoredSpanCollisions: number;
     aliasCollisions: Array<{ label: string; slug: string; conflictingLabel: string }>;
@@ -100,6 +101,7 @@ async function buildMergePreview(prisma: any, input: {
 
   const whereEither = { tagId: { in: [source.id, target.id] } };
   const [
+    documentLinks,
     taskLinks,
     goalLinks,
     sessionLinks,
@@ -109,6 +111,7 @@ async function buildMergePreview(prisma: any, input: {
     knowledgeNodes,
     mediaClips,
   ] = await Promise.all([
+    prisma.studioDocumentTagLink.findMany({ where: whereEither, orderBy: [{ documentId: "asc" }, { tagId: "asc" }], take: RELATION_LIMIT + 1 }),
     prisma.actionItemTagLink.findMany({ where: whereEither, orderBy: [{ actionItemId: "asc" }, { tagId: "asc" }], take: RELATION_LIMIT + 1 }),
     prisma.goalTagLink.findMany({ where: whereEither, orderBy: [{ goalId: "asc" }, { tagId: "asc" }], take: RELATION_LIMIT + 1 }),
     prisma.callRoomTagLink.findMany({ where: whereEither, orderBy: [{ roomId: "asc" }, { tagId: "asc" }], take: RELATION_LIMIT + 1 }),
@@ -134,7 +137,7 @@ async function buildMergePreview(prisma: any, input: {
     }),
   ]);
 
-  const relationLimitExceeded = [taskLinks, goalLinks, sessionLinks, coachingNoteLinks, annotationLinks, taggedSpans, knowledgeNodes, mediaClips]
+  const relationLimitExceeded = [documentLinks, taskLinks, goalLinks, sessionLinks, coachingNoteLinks, annotationLinks, taggedSpans, knowledgeNodes, mediaClips]
     .some((rows) => rows.length > RELATION_LIMIT);
   const sourceRows = (rows: any[]) => rows.filter((row) => row.tagId === source.id);
   const targetRows = (rows: any[]) => rows.filter((row) => row.tagId === target.id);
@@ -170,6 +173,7 @@ async function buildMergePreview(prisma: any, input: {
     return conflictingLabel ? [{ label: candidate.label, slug: candidate.slug, conflictingLabel }] : [];
   });
 
+  const sourceDocumentRows = sourceRows(documentLinks);
   const sourceTaskRows = sourceRows(taskLinks);
   const sourceGoalRows = sourceRows(goalLinks);
   const sourceSessionRows = sourceRows(sessionLinks);
@@ -178,6 +182,7 @@ async function buildMergePreview(prisma: any, input: {
   const sourceSpanRows = sourceRows(taggedSpans);
   const sourceNodeRows = sourceRows(knowledgeNodes);
   const counts = {
+    documents: sourceDocumentRows.length,
     tasks: sourceTaskRows.length,
     goals: sourceGoalRows.length,
     sessions: sourceSessionRows.length,
@@ -187,10 +192,11 @@ async function buildMergePreview(prisma: any, input: {
     knowledgeNodes: sourceNodeRows.length,
     mediaClips: sourceMediaIds.length,
     aliases: aliasCandidates.length,
-    totalUses: sourceTaskRows.length + sourceGoalRows.length + sourceSessionRows.length + sourceCoachingRows.length
+    totalUses: sourceDocumentRows.length + sourceTaskRows.length + sourceGoalRows.length + sourceSessionRows.length + sourceCoachingRows.length
       + sourceAnnotationRows.length + sourceSpanRows.length + sourceNodeRows.length + sourceMediaIds.length,
   };
   const deduplicated = {
+    documents: overlapCount(sourceDocumentRows.map((row: any) => row.documentId), targetRows(documentLinks).map((row: any) => row.documentId)),
     tasks: overlapCount(sourceTaskRows.map((row: any) => row.actionItemId), targetRows(taskLinks).map((row: any) => row.actionItemId)),
     goals: overlapCount(sourceGoalRows.map((row: any) => row.goalId), targetRows(goalLinks).map((row: any) => row.goalId)),
     sessions: overlapCount(sourceSessionRows.map((row: any) => row.roomId), targetRows(sessionLinks).map((row: any) => row.roomId)),
@@ -201,6 +207,7 @@ async function buildMergePreview(prisma: any, input: {
   const impact = {
     source: { ...source, aliases: source.aliases },
     target: { ...target, aliases: target.aliases },
+    documentLinks: sourceDocumentRows,
     taskLinks: sourceTaskRows,
     goalLinks: sourceGoalRows,
     sessionLinks: sourceSessionRows,
@@ -210,6 +217,7 @@ async function buildMergePreview(prisma: any, input: {
     knowledgeNodes: sourceNodeRows,
     mediaClipIds: sourceMediaIds,
     exactTargetAssociations: {
+      documentLinks: targetRows(documentLinks),
       taskLinks: targetRows(taskLinks),
       goalLinks: targetRows(goalLinks),
       sessionLinks: targetRows(sessionLinks),
@@ -224,6 +232,7 @@ async function buildMergePreview(prisma: any, input: {
     source: { id: source.id, updatedAt: source.updatedAt.toISOString() },
     target: { id: target.id, updatedAt: target.updatedAt.toISOString() },
     rows: {
+      documents: documentLinks.map((row: any) => `${row.documentId}:${row.tagId}`),
       tasks: taskLinks.map((row: any) => `${row.actionItemId}:${row.tagId}`),
       goals: goalLinks.map((row: any) => `${row.goalId}:${row.tagId}`),
       sessions: sessionLinks.map((row: any) => `${row.roomId}:${row.tagId}`),
@@ -351,6 +360,16 @@ export async function applyWorkTagMerge(input: {
       if (createRows.length) await model.createMany({ data: createRows, skipDuplicates: true });
       await model.deleteMany({ where: { tagId: source.id, [idField]: { in: rows.map((row) => row[idField]) } } });
     };
+    await moveExplicitLinks(tx.studioDocumentTagLink, fresh.impact.documentLinks, "documentId");
+    const affectedDocumentIds = [...new Set<string>(
+      fresh.impact.documentLinks.map((row: any) => String(row.documentId)),
+    )];
+    if (affectedDocumentIds.length) {
+      await tx.studioDocument.updateMany({
+        where: { id: { in: affectedDocumentIds }, projectId: source.projectId },
+        data: { tagRevision: { increment: 1 } },
+      });
+    }
     await moveExplicitLinks(tx.actionItemTagLink, fresh.impact.taskLinks, "actionItemId");
     await moveExplicitLinks(tx.goalTagLink, fresh.impact.goalLinks, "goalId");
     await moveExplicitLinks(tx.callRoomTagLink, fresh.impact.sessionLinks, "roomId");

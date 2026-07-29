@@ -306,6 +306,7 @@ export async function createNestQuickNoteAction(input: {
           sourceLabel,
           projectionStatus: "private",
           isPrivate: true,
+          tagRevision: tagResolution.tags.length > 0 ? 1 : 0,
           blocks: {
             create: [{
               id: blockId,
@@ -322,23 +323,18 @@ export async function createNestQuickNoteAction(input: {
       });
 
       if (tagResolution.tags.length > 0) {
-        await tx.studioTaggedSpan.createMany({
+        await tx.studioDocumentTagLink.createMany({
           data: tagResolution.tags.map((tag) => ({
-            id: `project-note-tag:${clientRequestId}:${tag.id}`,
             documentId: document.id,
-            blockId,
             tagId: tag.id,
-            startOffset: 0,
-            endOffset: body.length,
-            selectedText: body,
-            documentStableId: stableId,
-            documentTitleSnapshot: title,
-            blockStableId: blockId,
-            blockTitleSnapshot: null,
-            sourceLabel,
-            projectionStatus: "private",
-            isPrivate: true,
-            createdByLabel: actorEmail,
+            createdByUserId: actorUserId,
+            sourceJson: {
+              source: "quipsly-project-quick-note-v2",
+              clientRequestId,
+              documentLevel: true,
+              sourceMutated: false,
+              externalSideEffects: false,
+            },
           })),
         });
       }

@@ -17,7 +17,7 @@ describe("production core readiness", () => {
     }));
     expect(PRODUCTION_CORE_FEATURE_GROUPS).toContainEqual(expect.objectContaining({
       id: "work-session-taxonomy",
-      tables: ["ActionItemTagLink", "GoalTagLink", "CallRoomTagLink"],
+      tables: ["StudioDocumentTagLink", "ActionItemTagLink", "CoachingNoteTagLink", "GoalTagLink", "CallRoomTagLink"],
     }));
   });
 

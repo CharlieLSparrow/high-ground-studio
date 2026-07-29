@@ -53,9 +53,10 @@ function payload(): PortableNestBundlePayload {
       title: "Episode proof note",
       sourceLabel: "document-kind:note",
       sourcePath: null,
-      projectionStatus: "private",
-      isPrivate: true,
-      blocks: [{
+          projectionStatus: "private",
+          isPrivate: true,
+          tagIds: ["tag-1"],
+          blocks: [{
         id: "block-1",
         stableId: "block-stable-1",
         order: 0,

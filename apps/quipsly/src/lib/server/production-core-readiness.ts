@@ -27,6 +27,8 @@ export const REQUIRED_PRODUCTION_CORE_TABLES = [
   "GoalProgressReceipt",
   "WorkPlanBlock",
   "ActionItemTagLink",
+  "CoachingNoteTagLink",
+  "StudioDocumentTagLink",
   "GoalTagLink",
   "CallRoomTagLink",
   "TranscriptCorrection",
@@ -79,8 +81,8 @@ export const PRODUCTION_CORE_FEATURE_GROUPS = [
   },
   {
     id: "work-session-taxonomy",
-    label: "Canonical work and session tags",
-    tables: ["ActionItemTagLink", "GoalTagLink", "CallRoomTagLink"],
+    label: "Canonical document, work, note, and session tags",
+    tables: ["StudioDocumentTagLink", "ActionItemTagLink", "CoachingNoteTagLink", "GoalTagLink", "CallRoomTagLink"],
   },
   {
     id: "transcript-evidence",

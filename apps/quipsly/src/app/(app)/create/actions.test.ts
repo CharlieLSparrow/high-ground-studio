@@ -14,6 +14,7 @@ import {
   retractEpisodeCandidateAction,
   updateCandidatePacketAction,
 } from "./actions";
+import { DEV_PROJECT_SLUG } from "./projectConfig";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
@@ -78,7 +79,7 @@ describe("writing desk persistence truth", () => {
       throw new Error("DATABASE_URL unavailable");
     });
 
-    const result = await seedTonightPack("high-ground-odyssey");
+    const result = await seedTonightPack(DEV_PROJECT_SLUG);
 
     expect(result).toEqual({
       ok: false,
@@ -89,6 +90,18 @@ describe("writing desk persistence truth", () => {
     expect(result).not.toHaveProperty("projectId");
     expect(result).not.toHaveProperty("documentId");
     warn.mockRestore();
+  });
+
+  it("refuses to inject development tags and views into an ordinary Nest", async () => {
+    const result = await seedTonightPack("high-ground-odyssey");
+
+    expect(result).toEqual({
+      ok: false,
+      state: "rejected",
+      code: "DEVELOPMENT_SEED_FORBIDDEN",
+      error: "Development starter data can only be created inside the isolated Quipsly development Nest.",
+    });
+    expect(getPrismaClient).not.toHaveBeenCalled();
   });
 
   it("persists a complete authorized reorder and its reversible operation receipt", async () => {

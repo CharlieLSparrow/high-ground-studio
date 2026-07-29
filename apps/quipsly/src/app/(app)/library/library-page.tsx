@@ -149,6 +149,11 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
           select: { id: true, title: true, body: true },
         },
         episodeProductions: { orderBy: { updatedAt: "desc" }, take: 1, select: { slug: true, title: true, status: true } },
+        tagLinks: {
+          where: { tag: { projectId: { in: projectIds }, isActive: true } },
+          orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+          select: { tag: { select: { id: true, label: true, slug: true } } },
+        },
         _count: { select: { blocks: { where: { archivedAt: null } } } },
       },
     }) : Promise.resolve([]),

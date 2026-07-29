@@ -350,8 +350,8 @@ describe("Work Queue interactions", () => {
         projectId: "project-1",
         source: { id: "tag-rough", label: "Rough cut", slug: "rough-cut", updatedAt: "2026-07-18T18:00:00.000Z" },
         target: { id: "tag-edit", label: "Episode edit", slug: "episode-edit", updatedAt: "2026-07-18T18:01:00.000Z" },
-        counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
-        deduplicated: { tasks: 1, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
+        counts: { documents: 0, tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
+        deduplicated: { documents: 0, tasks: 1, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
         blockingConflicts: { anchoredSpanCollisions: 0, aliasCollisions: [], relationLimitExceeded: false },
         impactHash: "a".repeat(64),
         canMerge: true,
@@ -365,8 +365,8 @@ describe("Work Queue interactions", () => {
       targetTag: { id: "tag-edit", label: "Episode edit", slug: "episode-edit", updatedAt: "2026-07-18T18:02:00.000Z" },
       receiptId: "merge-receipt",
       impactHash: "a".repeat(64),
-      counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
-      deduplicated: { tasks: 1, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
+      counts: { documents: 0, tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
+      deduplicated: { documents: 0, tasks: 1, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
     });
     render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
     await user.click(screen.getByRole("button", { name: "Manage Rough cut" }));
@@ -408,9 +408,9 @@ describe("Work Queue interactions", () => {
         projectId: "project-1",
         source: { id: "tag-rough", label: "Rough cut", slug: "rough-cut", updatedAt: "2026-07-18T18:02:00.000Z" },
         target: { id: "tag-edit", label: "Episode edit", slug: "episode-edit", updatedAt: "2026-07-18T18:02:00.000Z" },
-        counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
-        targetRelationshipsPreserved: { tasks: 1, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
-        targetRelationshipsRemoved: { tasks: 1, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, mediaClips: 1 },
+        counts: { documents: 0, tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
+        targetRelationshipsPreserved: { documents: 0, tasks: 1, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
+        targetRelationshipsRemoved: { documents: 0, tasks: 1, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, mediaClips: 1 },
         blockingConflicts: [],
         previewHash: "b".repeat(64),
         canRollback: true,
@@ -425,7 +425,7 @@ describe("Work Queue interactions", () => {
       mergeReceiptId: "merge-receipt",
       rollbackReceiptId: "rollback-receipt",
       previewHash: "b".repeat(64),
-      counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
+      counts: { documents: 0, tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
     });
     render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
     await user.click(screen.getByRole("checkbox", { name: "Show archived" }));

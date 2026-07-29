@@ -25,6 +25,7 @@ export type NestRestorePlan = {
   noteReuses: number;
   blockCreates: number;
   spanCreates: number;
+  documentTagLinkCreates: number;
   taskCreates: number;
   taskReuses: number;
   goalCreates: number;
@@ -323,6 +324,9 @@ export async function buildNestRestorePlan(
     spanCreates: input.bundle.notes
       .filter((note) => !existingNoteIds.has(restoredNoteStableId(input.projectId, input.bundle, note)))
       .reduce((count, note) => count + note.blocks.reduce((blockCount, block) => blockCount + block.spans.length, 0), 0),
+    documentTagLinkCreates: input.bundle.notes
+      .filter((note) => !existingNoteIds.has(restoredNoteStableId(input.projectId, input.bundle, note)))
+      .reduce((count, note) => count + note.tagIds.length, 0),
     taskCreates: taskIds.filter((id) => !existingTaskIds.has(id)).length,
     taskReuses: taskIds.filter((id) => existingTaskIds.has(id)).length,
     goalCreates: goalIds.filter((id) => !existingGoalIds.has(id)).length,
@@ -474,9 +478,30 @@ export async function applyNestRestore(
             sourcePath: note.sourcePath,
             projectionStatus: "private",
             isPrivate: true,
+            tagRevision: note.tagIds.length > 0 ? 1 : 0,
           },
           select: { id: true, projectId: true },
         });
+        if (note.tagIds.length) {
+          await tx.studioDocumentTagLink.createMany({
+            data: note.tagIds.map((originalTagId) => {
+              const tagId = tagIds.get(originalTagId);
+              if (!tagId) throw new Error(`Portable document tag mapping is missing for ${originalTagId}.`);
+              return {
+                documentId: document!.id,
+                tagId,
+                createdByUserId: input.actorUserId,
+                sourceJson: toPrismaJson({
+                  source: "quipsly-portable-document-tags-v1",
+                  manifestSha256: input.bundle.manifestSha256,
+                  originalDocumentId: note.id,
+                  originalTagId,
+                  externalSideEffects: false,
+                }),
+              };
+            }),
+          });
+        }
         const createdBlockStableIds: string[] = [];
         for (const block of note.blocks) {
           const blockStableId = restoredBlockStableId(input.projectId, input.bundle, note.id, block);

@@ -1,6 +1,6 @@
 import Workspace from "./Workspace";
 import { loadWorkbenchStateWithScope, seedTonightPack } from "./actions";
-import { listStudioProjectOptions } from "./projectConfig";
+import { DEV_PROJECT_SLUG, listStudioProjectOptions } from "./projectConfig";
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import {
@@ -84,7 +84,7 @@ export default async function CreatePage({
 
   let state: Awaited<ReturnType<typeof loadWorkbenchStateWithScope>>;
   try {
-    if (canWriteProject) {
+    if (canWriteProject && projectSlug === DEV_PROJECT_SLUG) {
       const seedResult = await seedTonightPack(projectSlug);
       if (!seedResult.ok) {
         console.warn(`Could not seed ${projectSlug}: ${seedResult.error}`);
@@ -162,11 +162,14 @@ export default async function CreatePage({
     initialBlocks={state.blocks}
     initialViews={state.views}
     projectTags={state.projectTags}
+    initialDocumentTags={state.documentTags}
     projectId={state.projectId}
     projectSlug={state.projectSlug}
     projectName={state.projectName}
     documentId={state.documentId}
     documentTitle={state.documentTitle}
+    documentUpdatedAt={state.documentUpdatedAt}
+    documentTagRevision={state.documentTagRevision}
     notebookSectionLabel={notebookSectionLabel}
     persistenceMode={state.persistenceMode}
     projectNestKind={state.projectNestKind}

@@ -24,6 +24,7 @@ import {
 } from "@/lib/studio/project-registry";
 import { createHgoEpisodeDraftShellAction, type HgoSourceKey } from "../nests/[slug]/actions";
 import DocumentSafetyPanel from "./DocumentSafetyPanel";
+import DocumentTagEditor from "./DocumentTagEditor";
 
 export const DEFAULT_VIEW: ViewDefinition = {
   id: "default",
@@ -184,6 +185,7 @@ export default function Workspace({
   initialBlocks,
   initialViews,
   projectTags,
+  initialDocumentTags,
   projectId,
   projectSlug,
   projectName,
@@ -191,6 +193,8 @@ export default function Workspace({
   workflowSystem,
   documentId,
   documentTitle,
+  documentUpdatedAt,
+  documentTagRevision,
   notebookSectionLabel,
   projectDocuments = [],
   persistenceMode = "database",
@@ -202,6 +206,7 @@ export default function Workspace({
   initialBlocks: Block[],
   initialViews: ViewDefinition[],
   projectTags: WorkbenchTagPayload[],
+  initialDocumentTags: WorkbenchTagPayload[],
   projectId: string,
   projectSlug?: string,
   projectName?: string,
@@ -209,6 +214,8 @@ export default function Workspace({
   workflowSystem?: "data-ingestion" | "knowledge-processing" | "content-creation" | "content-publishing",
   documentId: string,
   documentTitle?: string,
+  documentUpdatedAt: string,
+  documentTagRevision: number,
   notebookSectionLabel?: string,
   projectDocuments?: { id: string; title: string; sourceLabel: string | null; updatedAt: string | Date }[],
   persistenceMode?: "database" | "unavailable",
@@ -554,6 +561,16 @@ export default function Workspace({
                 <p className="mt-1 max-w-2xl text-xs leading-5 text-[#6b5b45]">
                   {activeDocumentKindGuidance}
                 </p>
+                <DocumentTagEditor
+                  key={documentId}
+                  documentId={documentId}
+                  projectId={projectId}
+                  projectSlug={activeProjectSlug}
+                  projectTags={projectTags}
+                  initialDocumentTags={initialDocumentTags}
+                  initialUpdatedAt={documentUpdatedAt}
+                  initialTagRevision={documentTagRevision}
+                />
               </div>
               <span
                 title={WORKFLOW_SYSTEM_DESCRIPTIONS[resolvedWorkflowSystem]}

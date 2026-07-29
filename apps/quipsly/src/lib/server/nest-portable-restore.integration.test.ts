@@ -169,6 +169,14 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
         createdByLabel: actorEmail,
       },
     });
+    await prisma.studioDocumentTagLink.create({
+      data: {
+        documentId: note.id,
+        tagId: sourceTag.id,
+        createdByUserId: actorUserId,
+        sourceJson: { source: "integration-smoke", documentLevel: true },
+      },
+    });
 
     const [task, otherTask, goal] = await Promise.all([
       prisma.actionItem.create({
@@ -316,6 +324,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       aliasCreates: 1,
       aliasesDeferred: 1,
       noteCreates: 1,
+      documentTagLinkCreates: 1,
       taskCreates: 1,
       goalCreates: 1,
       progressReceiptCreates: 1,
@@ -360,6 +369,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       aliasesDeferred: 1,
       noteCreates: 0,
       noteReuses: 1,
+      documentTagLinkCreates: 0,
       taskCreates: 0,
       taskReuses: 1,
       goalCreates: 0,
@@ -393,7 +403,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       prisma.workPlanBlock.findUnique({ where: { id: restoredPlanId } }),
       prisma.studioDocument.findUnique({
         where: { id: first.restoredNoteDocumentIds[exported.notes[0].id] },
-        include: { blocks: { include: { taggedSpans: true } } },
+        include: { tagLinks: { include: { tag: true } }, blocks: { include: { taggedSpans: true } } },
       }),
       prisma.taskReminder.count({ where: { actionItemId: restoredTaskId } }),
       prisma.studioTag.findMany({
@@ -437,6 +447,8 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       title: "Episode proof note",
       projectionStatus: "private",
       isPrivate: true,
+      tagRevision: 1,
+      tagLinks: [{ tag: { label: "Destination owner edit" } }],
       blocks: [{ body: "Listen to the full episode before delivery.", taggedSpans: [{ selectedText: "Listen" }] }],
     });
     expect(reminderCount).toBe(0);

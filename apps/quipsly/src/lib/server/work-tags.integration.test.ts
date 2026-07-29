@@ -27,10 +27,12 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
   let goalId = "";
   let roomId = "";
   let noteId = "";
+  let documentId = "";
   let taskUpdatedAt = new Date(0);
   let goalUpdatedAt = new Date(0);
   let roomUpdatedAt = new Date(0);
   let noteUpdatedAt = new Date(0);
+  let documentUpdatedAt = new Date(0);
   let tagId = "";
   let otherTagId = "";
 
@@ -66,10 +68,20 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     roomId = room.id;
     const note = await prisma.coachingNote.create({ data: { roomId, authorUserId: actorUserId, kind: "SESSION_NOTE", title: "Opening note", body: "Let the first question breathe." } });
     noteId = note.id;
+    const document = await prisma.studioDocument.create({
+      data: {
+        projectId,
+        stableId: `work-tags-document-${nonce}`,
+        title: "Episode acceptance notes",
+        sourceLabel: "document-kind:note;origin:work-tags-smoke",
+      },
+    });
+    documentId = document.id;
     taskUpdatedAt = task.updatedAt;
     goalUpdatedAt = goal.updatedAt;
     roomUpdatedAt = room.updatedAt;
     noteUpdatedAt = note.updatedAt;
+    documentUpdatedAt = document.updatedAt;
   });
 
   afterAll(async () => {
@@ -84,27 +96,126 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     }
   });
 
-  it("persists explicit same-Nest joins for an owned task, goal, session, and note", async () => {
+  it("persists explicit same-Nest joins for a document, task, goal, session, and note", async () => {
+    const documentResult = await replaceWorkEntityTags({ prisma, actorUserId, actorEmail, entityKind: "document", entityId: documentId, tagIds: [tagId], expectedUpdatedAt: documentUpdatedAt, expectedTagRevision: 0 });
     const taskResult = await replaceWorkEntityTags({ prisma, actorUserId, actorEmail, entityKind: "task", entityId: taskId, tagIds: [tagId], expectedUpdatedAt: taskUpdatedAt });
     const goalResult = await replaceWorkEntityTags({ prisma, actorUserId, actorEmail, entityKind: "goal", entityId: goalId, tagIds: [tagId], expectedUpdatedAt: goalUpdatedAt });
     const roomResult = await replaceWorkEntityTags({ prisma, actorUserId, actorEmail, entityKind: "session", entityId: roomId, tagIds: [tagId], expectedUpdatedAt: roomUpdatedAt });
     const noteResult = await replaceWorkEntityTags({ prisma, actorUserId, actorEmail, entityKind: "note", entityId: noteId, tagIds: [tagId], expectedUpdatedAt: noteUpdatedAt });
+    expect(documentResult).toMatchObject({ ok: true, projectId, tagIds: [tagId], tagRevision: 1, receiptId: expect.any(String) });
     expect(taskResult).toMatchObject({ ok: true, projectId, tagIds: [tagId], receiptId: expect.any(String) });
     expect(goalResult).toMatchObject({ ok: true, projectId, tagIds: [tagId], receiptId: expect.any(String) });
     expect(roomResult).toMatchObject({ ok: true, projectId, tagIds: [tagId], receiptId: expect.any(String) });
     expect(noteResult).toMatchObject({ ok: true, projectId, tagIds: [tagId], receiptId: expect.any(String) });
-    const [task, goal, room, note] = await Promise.all([
+    const [document, task, goal, room, note] = await Promise.all([
+      prisma.studioDocument.findUnique({ where: { id: documentId }, include: { tagLinks: { include: { tag: true } }, documentOperations: true } }),
       prisma.actionItem.findUnique({ where: { id: taskId }, include: { tagLinks: { include: { tag: true } } } }),
       prisma.goal.findUnique({ where: { id: goalId }, include: { tagLinks: { include: { tag: true } } } }),
       prisma.callRoom.findUnique({ where: { id: roomId }, include: { tagLinks: { include: { tag: true } } } }),
       prisma.coachingNote.findUnique({ where: { id: noteId }, include: { tagLinks: { include: { tag: true } } } }),
     ]);
+    expect(document?.tagLinks.map((link) => link.tag.label)).toEqual(["Proof listen"]);
+    expect(document?.tagRevision).toBe(1);
+    expect(document?.documentOperations.at(-1)?.afterJson).toMatchObject({
+      entityKind: "document",
+      externalSideEffects: false,
+      sourceMutated: false,
+      projectId,
+      tagIds: [tagId],
+    });
     expect(task?.tagLinks.map((link) => link.tag.label)).toEqual(["Proof listen"]);
     expect(goal?.tagLinks.map((link) => link.tag.label)).toEqual(["Proof listen"]);
     expect(room?.tagLinks.map((link) => link.tag.label)).toEqual(["Proof listen"]);
     expect(note?.tagLinks.map((link) => link.tag.label)).toEqual(["Proof listen"]);
     expect(note?.sourceJson).toMatchObject({ lastTagReceipt: { externalSideEffects: false, projectId, tagIds: [tagId] } });
     expect(task?.sourceJson).toMatchObject({ lastTagReceipt: { externalSideEffects: false, projectId, tagIds: [tagId] } });
+  });
+
+  it("locks document classification on its own revision and rejects a superseded replay", async () => {
+    const document = await prisma.studioDocument.create({
+      data: {
+        projectId,
+        stableId: `work-tags-revision-${nonce}`,
+        title: "Revision-isolated document",
+      },
+    });
+    const originalUpdatedAt = document.updatedAt;
+    await prisma.studioDocument.update({
+      where: { id: document.id },
+      data: {
+        title: "Revision-isolated document with unrelated prose metadata",
+        updatedAt: new Date(originalUpdatedAt.getTime() + 1_000),
+      },
+    });
+    const clientRequestId = randomUUID();
+    const first = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "document",
+      entityId: document.id,
+      tagIds: [tagId],
+      expectedUpdatedAt: originalUpdatedAt,
+      expectedTagRevision: 0,
+      clientRequestId,
+      surface: "nest-writing",
+    });
+    expect(first).toMatchObject({
+      ok: true,
+      tagIds: [tagId],
+      tagRevision: 1,
+      idempotentReplay: false,
+    });
+
+    const replay = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "document",
+      entityId: document.id,
+      tagIds: [tagId],
+      expectedUpdatedAt: originalUpdatedAt,
+      expectedTagRevision: 0,
+      clientRequestId,
+      surface: "nest-writing",
+    });
+    expect(replay).toMatchObject({
+      ok: true,
+      tagRevision: 1,
+      idempotentReplay: true,
+    });
+
+    const changed = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "document",
+      entityId: document.id,
+      tagIds: [],
+      expectedUpdatedAt: first.ok ? first.updatedAt : originalUpdatedAt,
+      expectedTagRevision: 1,
+      clientRequestId: randomUUID(),
+      surface: "nest-writing",
+    });
+    expect(changed).toMatchObject({ ok: true, tagIds: [], tagRevision: 2 });
+
+    const supersededReplay = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "document",
+      entityId: document.id,
+      tagIds: [tagId],
+      expectedUpdatedAt: originalUpdatedAt,
+      expectedTagRevision: 0,
+      clientRequestId,
+      surface: "nest-writing",
+    });
+    expect(supersededReplay).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      error: expect.stringContaining("superseded"),
+    });
   });
 
   it("replays one iPhone tag decision exactly and rejects identity reuse for different tags", async () => {
@@ -195,6 +306,42 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     expect(denied).toMatchObject({ ok: false, code: "NOT_FOUND" });
     await expect(prisma.coachingNoteTagLink.findUnique({
       where: { noteId_tagId: { noteId, tagId: created.ok ? created.tag.id : "unreachable" } },
+    })).resolves.toBeTruthy();
+  });
+
+  it("creates reusable vocabulary on a document and rejects a non-member without writes", async () => {
+    const document = await prisma.studioDocument.findUniqueOrThrow({ where: { id: documentId } });
+    const created = await createAndAssignWorkEntityTag({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "document",
+      entityId: documentId,
+      label: `Recording day ${nonce}`,
+      expectedUpdatedAt: document.updatedAt,
+      expectedTagRevision: document.tagRevision,
+    });
+    expect(created).toMatchObject({
+      ok: true,
+      entityKind: "document",
+      projectId,
+      created: true,
+      tag: { label: `Recording day ${nonce}` },
+    });
+    const fresh = await prisma.studioDocument.findUniqueOrThrow({ where: { id: documentId } });
+    const denied = await replaceWorkEntityTags({
+      prisma,
+      actorUserId: otherUserId,
+      actorEmail: `work-tags-other-${nonce}@example.test`,
+      entityKind: "document",
+      entityId: documentId,
+      tagIds: [],
+      expectedUpdatedAt: fresh.updatedAt,
+      expectedTagRevision: fresh.tagRevision,
+    });
+    expect(denied).toMatchObject({ ok: false, code: "FORBIDDEN" });
+    await expect(prisma.studioDocumentTagLink.findUnique({
+      where: { documentId_tagId: { documentId, tagId: created.ok ? created.tag.id : "unreachable" } },
     })).resolves.toBeTruthy();
   });
 

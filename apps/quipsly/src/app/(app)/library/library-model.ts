@@ -82,6 +82,7 @@ export function buildLibraryEntries(input: {
     projectionStatus: string;
     updatedAt: Date | string;
     project: { name: string; slug: string };
+    tagLinks?: Array<{ tag: { id: string; label: string; slug: string } }>;
     blocks?: Array<{ id: string; title?: string | null; body: string }>;
     episodeProductions: Array<{ slug: string; title: string; status: string }>;
     _count?: { blocks: number };
@@ -188,6 +189,8 @@ export function buildLibraryEntries(input: {
         && (!writingNote || body !== clean(document.title));
     }) ?? document.blocks?.[0] ?? null;
     const preview = clean(previewBlock?.body);
+    const documentTags = (document.tagLinks ?? []).map((link) => link.tag);
+    const tagBadges = documentTags.map((tag) => `#${clean(tag.label)}`).filter((tag) => tag !== "#");
     entries.push({
       id: `document:${document.id}`,
       kind: writingNote ? "NOTE" : "DOCUMENT",
@@ -206,8 +209,8 @@ export function buildLibraryEntries(input: {
         : `/create?project=${encode(document.project.slug)}&document=${encode(document.id)}`,
       updatedAt: iso(document.updatedAt),
       stateLabel: writingNote ? "Writing note" : episode ? `Episode ${clean(episode.status).replaceAll("_", " ")}` : clean(document.projectionStatus).replaceAll("_", " "),
-      badges: [writingNote ? "Document-kernel note" : episode ? "Episode manuscript" : "Document", `${blockCount} blocks`, "Stable document identity"],
-      searchText: [document.title, document.projectionStatus, document.project.name, episode?.title, episode?.status, ...(document.blocks ?? []).flatMap((block) => [block.title, block.body])].map(clean).join(" "),
+      badges: [writingNote ? "Document-kernel note" : episode ? "Episode manuscript" : "Document", ...tagBadges, `${blockCount} blocks`, "Stable document identity"],
+      searchText: [document.title, document.projectionStatus, document.project.name, episode?.title, episode?.status, ...documentTags.flatMap((tag) => [tag.label, tag.slug]), ...(document.blocks ?? []).flatMap((block) => [block.title, block.body])].map(clean).join(" "),
     });
   }
 

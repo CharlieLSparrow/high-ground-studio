@@ -105,6 +105,7 @@ export async function searchWorkspace(
     { title: { contains: query, mode: "insensitive" } },
     { sourceLabel: { contains: query, mode: "insensitive" } },
     { blocks: { some: { archivedAt: null, OR: documentBlockMatches } } },
+    ...(projectIds.length ? [{ tagLinks: { some: { tag: visibleTagMatch } } } satisfies Prisma.StudioDocumentWhereInput] : []),
     ...(projectIds.length ? [{ taggedSpans: { some: { tag: visibleTagMatch } } } satisfies Prisma.StudioDocumentWhereInput] : []),
   ];
   const visibleAssignedTags = {
@@ -173,6 +174,7 @@ export async function searchWorkspace(
       select: {
         id: true, title: true, sourceLabel: true, projectionStatus: true,
         project: { select: { name: true, slug: true } },
+        tagLinks: visibleAssignedTags,
         blocks: {
           where: { archivedAt: null, OR: documentBlockMatches },
           orderBy: { order: "asc" },

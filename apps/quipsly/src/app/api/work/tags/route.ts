@@ -24,15 +24,27 @@ export async function POST(request: Request) {
   const entityKind = text(body.entityKind, 20) as WorkTagEntityKind;
   const entityId = text(body.entityId);
   const expectedUpdatedAt = new Date(text(body.expectedUpdatedAt, 80));
+  const expectedTagRevision = Number(body.expectedTagRevision);
   const operation = text(body.operation, 40);
   const label = text(body.label, 120);
   const clientRequestId = text(body.clientRequestId, 80).toLowerCase();
   if (operation === "CREATE_AND_ASSIGN") {
-    if (!["task", "goal", "session", "note"].includes(entityKind) || !entityId || !label || !Number.isFinite(expectedUpdatedAt.getTime())) {
+    if (!["task", "goal", "session", "note", "document"].includes(entityKind) || !entityId || !label
+      || !Number.isFinite(expectedUpdatedAt.getTime())
+      || (entityKind === "document" && (!Number.isInteger(expectedTagRevision) || expectedTagRevision < 0))) {
       return NextResponse.json({ ok: false, code: "INVALID_INPUT", error: "The reusable tag request is incomplete or invalid." }, { status: 400 });
     }
     try {
-      const result = await createAndAssignWorkEntityTag({ prisma: getPrismaClient(), actorUserId: session.user.id, actorEmail, entityKind, entityId, label, expectedUpdatedAt });
+      const result = await createAndAssignWorkEntityTag({
+        prisma: getPrismaClient(),
+        actorUserId: session.user.id,
+        actorEmail,
+        entityKind,
+        entityId,
+        label,
+        expectedUpdatedAt,
+        expectedTagRevision: entityKind === "document" ? expectedTagRevision : undefined,
+      });
       if (!result.ok) {
         const status = result.code === "NOT_FOUND" ? 404
           : result.code === "CONFLICT" || result.code === "SLUG_CONFLICT" || result.code === "ARCHIVED" ? 409
@@ -46,10 +58,11 @@ export async function POST(request: Request) {
     }
   }
   const tagIds = Array.isArray(body.tagIds) ? body.tagIds.map((value) => text(value)).filter(Boolean) : null;
-  if (!["task", "goal", "session", "note"].includes(entityKind)
+  if (!["task", "goal", "session", "note", "document"].includes(entityKind)
       || !entityId
       || !tagIds
       || !Number.isFinite(expectedUpdatedAt.getTime())
+      || (entityKind === "document" && (!Number.isInteger(expectedTagRevision) || expectedTagRevision < 0))
       || (clientRequestId && !UUID_PATTERN.test(clientRequestId))) {
     return NextResponse.json({ ok: false, code: "INVALID_INPUT", error: "The tag decision is incomplete or invalid." }, { status: 400 });
   }
@@ -62,6 +75,7 @@ export async function POST(request: Request) {
       entityId,
       tagIds,
       expectedUpdatedAt,
+      expectedTagRevision: entityKind === "document" ? expectedTagRevision : undefined,
       clientRequestId: clientRequestId || undefined,
       surface: clientRequestId ? "ios-capture-today" : "nest-work",
     });

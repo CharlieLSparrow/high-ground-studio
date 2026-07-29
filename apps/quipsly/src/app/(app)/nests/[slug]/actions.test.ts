@@ -202,7 +202,7 @@ describe("project quick note capture", () => {
     }));
   });
 
-  it("creates full-body canonical tag anchors inside the same note transaction", async () => {
+  it("creates document-level canonical tag links inside the same note transaction", async () => {
     signedIn();
     jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
       allowed: true,
@@ -220,7 +220,7 @@ describe("project quick note capture", () => {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue({ id: "document-1" }),
       },
-      studioTaggedSpan: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      studioDocumentTagLink: { createMany: jest.fn().mockResolvedValue({ count: 1 }) },
       studioDocumentOperation: { create: jest.fn().mockResolvedValue({ id: "operation-1" }) },
     };
     jest.mocked(getPrismaClient).mockReturnValue({
@@ -243,15 +243,17 @@ describe("project quick note capture", () => {
       tagIds: ["tag-episode"],
       newTagLabels: [],
     }));
-    expect(tx.studioTaggedSpan.createMany).toHaveBeenCalledWith({
+    expect(tx.studioDocumentTagLink.createMany).toHaveBeenCalledWith({
       data: [expect.objectContaining({
         documentId: "document-1",
-        blockId: `project-note:user-1:${requestId}:body`,
         tagId: "tag-episode",
-        startOffset: 0,
-        endOffset: 38,
-        selectedText: "Keep this exact source-linked thought.",
-        isPrivate: true,
+        createdByUserId: "user-1",
+        sourceJson: expect.objectContaining({
+          source: "quipsly-project-quick-note-v2",
+          documentLevel: true,
+          sourceMutated: false,
+          externalSideEffects: false,
+        }),
       })],
     });
     expect(tx.studioDocumentOperation.create).toHaveBeenCalledWith({

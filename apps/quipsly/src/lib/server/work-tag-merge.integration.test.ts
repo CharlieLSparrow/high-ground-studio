@@ -30,6 +30,7 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
   let goalId = "";
   let roomId = "";
   let noteId = "";
+  let documentId = "";
   let annotationId = "";
   let spanId = "";
   let nodeId = "";
@@ -81,6 +82,15 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
     const document = await prisma.studioDocument.create({
       data: { projectId, stableId: `tag-merge-document-${nonce}`, title: "Episode edit source" },
     });
+    documentId = document.id;
+    await prisma.studioDocumentTagLink.create({
+      data: {
+        documentId,
+        tagId: sourceTagId,
+        createdByUserId: actorUserId,
+        sourceJson: { fixture: "document-source-only" },
+      },
+    });
     const block = await prisma.studioDocumentBlock.create({
       data: { documentId: document.id, stableId: `tag-merge-block-${nonce}`, order: 1, body: "A precise episode editing passage." },
     });
@@ -95,7 +105,7 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
         blockId: block.id,
         createdByUserId: actorUserId,
         body: "This belongs in the edit.",
-        selectorKind: "text",
+        selectorKind: "text-quote",
         startOffset: 2,
         endOffset: 9,
         exactText: "precise",
@@ -178,6 +188,7 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
       preview: {
         canMerge: true,
         counts: {
+          documents: 1,
           tasks: 2,
           goals: 1,
           sessions: 1,
@@ -187,7 +198,7 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
           knowledgeNodes: 1,
           mediaClips: 1,
           aliases: 2,
-          totalUses: 9,
+          totalUses: 10,
         },
         deduplicated: { tasks: 1 },
         boundaries: { sourcePreservedAsRedirect: true, exactRollbackSnapshot: true, immutableSourceTextMutated: false, externalSideEffects: false },
@@ -209,12 +220,14 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
       ok: true,
       sourceTag: { id: sourceTagId, isActive: false, mergedIntoTagId: targetTagId },
       targetTag: { id: targetTagId },
-      counts: { totalUses: 9 },
+      counts: { totalUses: 10 },
       deduplicated: { tasks: 1 },
     });
 
-    const [source, taskLinks, goalLinks, roomLinks, noteLinks, annotationLinks, span, node, mediaClip, aliases, receipt] = await Promise.all([
+    const [source, mergedDocument, documentLinks, taskLinks, goalLinks, roomLinks, noteLinks, annotationLinks, span, node, mediaClip, aliases, receipt] = await Promise.all([
       prisma.studioTag.findUniqueOrThrow({ where: { id: sourceTagId } }),
+      prisma.studioDocument.findUniqueOrThrow({ where: { id: documentId } }),
+      prisma.studioDocumentTagLink.findMany({ where: { documentId } }),
       prisma.actionItemTagLink.findMany({ where: { actionItemId: { in: [taskId, duplicateTaskId] } }, orderBy: { actionItemId: "asc" } }),
       prisma.goalTagLink.findMany({ where: { goalId } }),
       prisma.callRoomTagLink.findMany({ where: { roomId } }),
@@ -227,6 +240,8 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
       prisma.studioTagMergeReceipt.findUniqueOrThrow({ where: { id: result.ok ? result.receiptId : "unreachable" } }),
     ]);
     expect(source).toMatchObject({ isActive: false, mergedIntoTagId: targetTagId, mergedAt: expect.any(Date) });
+    expect(mergedDocument.tagRevision).toBe(1);
+    expect(documentLinks).toEqual([expect.objectContaining({ documentId, tagId: targetTagId })]);
     expect(taskLinks).toHaveLength(2);
     expect(taskLinks.every((link) => link.tagId === targetTagId)).toBe(true);
     expect(goalLinks).toEqual([expect.objectContaining({ tagId: targetTagId })]);
@@ -241,6 +256,7 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
     expect(receipt.snapshotJson).toMatchObject({
       kind: "quipsly-tag-merge-v2",
       exactMovedAssociations: {
+        documentLinks: [expect.objectContaining({ documentId, tagId: sourceTagId, sourceJson: { fixture: "document-source-only" } })],
         taskLinks: expect.arrayContaining([expect.objectContaining({ actionItemId: taskId, tagId: sourceTagId, sourceJson: { fixture: "source-only" } })]),
         taggedSpans: [expect.objectContaining({ id: spanId, tagId: sourceTagId })],
         knowledgeNodes: [expect.objectContaining({ id: nodeId, tagId: sourceTagId })],
@@ -271,9 +287,9 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
       preview: {
         receiptId: result.ok ? result.receiptId : "unreachable",
         canRollback: true,
-        counts: { tasks: 2, goals: 1, sessions: 1, coachingNotes: 1, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, totalUses: 9 },
+        counts: { documents: 1, tasks: 2, goals: 1, sessions: 1, coachingNotes: 1, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, totalUses: 10 },
         targetRelationshipsPreserved: { tasks: 1 },
-        targetRelationshipsRemoved: { tasks: 1, goals: 1, sessions: 1, coachingNotes: 1, annotations: 1, mediaClips: 1 },
+        targetRelationshipsRemoved: { documents: 1, tasks: 1, goals: 1, sessions: 1, coachingNotes: 1, annotations: 1, mediaClips: 1 },
         boundaries: { exactReceiptRequired: true, laterEditsFailClosed: true, immutableSourceTextMutated: false, externalSideEffects: false },
       },
     });
@@ -311,8 +327,10 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
       rollbackReceiptId: expect.any(String),
     });
 
-    const [rolledBackTaskLinks, rolledBackGoalLinks, rolledBackRoomLinks, rolledBackNoteLinks, rolledBackAnnotationLinks,
+    const [rolledBackDocument, rolledBackDocumentLinks, rolledBackTaskLinks, rolledBackGoalLinks, rolledBackRoomLinks, rolledBackNoteLinks, rolledBackAnnotationLinks,
       rolledBackSpan, rolledBackNode, rolledBackClip, sourceAliases, targetAliases, rollbackRevision] = await Promise.all([
+      prisma.studioDocument.findUniqueOrThrow({ where: { id: documentId } }),
+      prisma.studioDocumentTagLink.findMany({ where: { documentId } }),
       prisma.actionItemTagLink.findMany({ where: { actionItemId: { in: [taskId, duplicateTaskId] } }, orderBy: [{ actionItemId: "asc" }, { tagId: "asc" }] }),
       prisma.goalTagLink.findMany({ where: { goalId } }),
       prisma.callRoomTagLink.findMany({ where: { roomId } }),
@@ -325,6 +343,8 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
       prisma.studioTagAlias.findMany({ where: { tagId: targetTagId }, orderBy: { label: "asc" } }),
       prisma.studioTagRevision.findFirstOrThrow({ where: { tagId: sourceTagId, operation: "merge-rollback" }, orderBy: { revision: "desc" } }),
     ]);
+    expect(rolledBackDocument.tagRevision).toBe(2);
+    expect(rolledBackDocumentLinks).toEqual([expect.objectContaining({ documentId, tagId: sourceTagId, sourceJson: { fixture: "document-source-only" } })]);
     expect(rolledBackTaskLinks).toEqual(expect.arrayContaining([
       expect.objectContaining({ actionItemId: taskId, tagId: sourceTagId, sourceJson: { fixture: "source-only" } }),
       expect.objectContaining({ actionItemId: duplicateTaskId, tagId: sourceTagId, sourceJson: { fixture: "source-duplicate" } }),

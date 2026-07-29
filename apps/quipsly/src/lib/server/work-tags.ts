@@ -7,10 +7,20 @@ import { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 
 export { normalizeWorkTagLabel, workTagSlug } from "./work-tag-normalization";
 
-export type WorkTagEntityKind = "task" | "goal" | "session" | "note";
+export type WorkTagEntityKind = "task" | "goal" | "session" | "note" | "document";
 
 export type ReplaceWorkTagsResult =
-  | { ok: true; entityKind: WorkTagEntityKind; entityId: string; projectId: string; tagIds: string[]; updatedAt: Date; receiptId: string; idempotentReplay: boolean }
+  | {
+      ok: true;
+      entityKind: WorkTagEntityKind;
+      entityId: string;
+      projectId: string;
+      tagIds: string[];
+      updatedAt: Date;
+      tagRevision: number | null;
+      receiptId: string;
+      idempotentReplay: boolean;
+    }
   | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT"; error: string };
 
 export type CreateAndAssignWorkTagResult =
@@ -21,7 +31,9 @@ export type CreateAndAssignWorkTagResult =
       projectId: string;
       tag: { id: string; label: string; slug: string; category: string; projectId: string };
       created: boolean;
+      assignmentChanged: boolean;
       updatedAt: Date;
+      tagRevision: number | null;
       receiptId: string;
     }
   | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ARCHIVED"; error: string };
@@ -189,6 +201,8 @@ function entityWhere(entityKind: WorkTagEntityKind, entityId: string, actorUserI
       ? { id: entityId, ownerUserId: actorUserId }
       : entityKind === "note"
         ? { id: entityId, authorUserId: actorUserId }
+        : entityKind === "document"
+          ? { id: entityId }
         : { id: entityId, createdByUserId: actorUserId };
 }
 
@@ -199,11 +213,21 @@ function entityModel(prisma: any, entityKind: WorkTagEntityKind) {
       ? prisma.goal
       : entityKind === "note"
         ? prisma.coachingNote
+        : entityKind === "document"
+          ? prisma.studioDocument
         : prisma.callRoom;
 }
 
 function entitySourceField(entityKind: WorkTagEntityKind) {
-  return entityKind === "session" ? "metadataJson" : "sourceJson";
+  return entityKind === "document"
+    ? null
+    : entityKind === "session"
+      ? "metadataJson"
+      : "sourceJson";
+}
+
+function entityMutationLabel(entityKind: WorkTagEntityKind) {
+  return entityKind === "document" ? "Nest editor" : `${entityKind} owner`;
 }
 
 async function findOwnedTagEntity(
@@ -213,6 +237,8 @@ async function findOwnedTagEntity(
   actorUserId: string,
   expectedUpdatedAt?: Date,
   expectedProjectId?: string,
+  receiptId?: string,
+  expectedTagRevision?: number,
 ) {
   const where: any = {
     ...entityWhere(entityKind, entityId, actorUserId),
@@ -226,7 +252,39 @@ async function findOwnedTagEntity(
     });
     return note ? { ...note, projectId: note.room?.projectId ?? null } : null;
   }
-  const sourceField = entitySourceField(entityKind);
+  if (entityKind === "document") {
+    return prisma.studioDocument.findFirst({
+      where: {
+        ...where,
+        ...(expectedProjectId ? { projectId: expectedProjectId } : {}),
+        ...(expectedTagRevision !== undefined ? { tagRevision: expectedTagRevision } : {}),
+      },
+      select: {
+        id: true,
+        projectId: true,
+        updatedAt: true,
+        tagRevision: true,
+        tagLinks: {
+          orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+          select: { tagId: true },
+        },
+        documentOperations: receiptId ? {
+          where: {
+            groupId: receiptId,
+            operationType: { in: ["create-document-tag", "replace-document-tags"] },
+          },
+          orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+          take: 1,
+          select: { afterJson: true },
+        } : {
+          where: { id: "__no-document-tag-receipt__" },
+          take: 1,
+          select: { afterJson: true },
+        },
+      },
+    });
+  }
+  const sourceField = entitySourceField(entityKind) ?? "sourceJson";
   return entityModel(prisma, entityKind).findFirst({
     where: {
       ...where,
@@ -249,13 +307,17 @@ export async function createAndAssignWorkEntityTag(input: {
   entityId: string;
   label: string;
   expectedUpdatedAt: Date;
+  expectedTagRevision?: number;
 }): Promise<CreateAndAssignWorkTagResult> {
   const actorUserId = cleanId(input.actorUserId);
   const actorEmail = typeof input.actorEmail === "string" ? input.actorEmail.trim().toLowerCase() : "";
   const entityId = cleanId(input.entityId);
   const label = normalizeWorkTagLabel(input.label);
   const slug = label ? workTagSlug(label) : "";
-  if (!actorUserId || !actorEmail || !entityId || !label || !slug || !Number.isFinite(input.expectedUpdatedAt?.getTime())) {
+  const documentRevisionValid = input.entityKind !== "document"
+    || (Number.isInteger(input.expectedTagRevision) && Number(input.expectedTagRevision) >= 0);
+  if (!actorUserId || !actorEmail || !entityId || !label || !slug
+    || !Number.isFinite(input.expectedUpdatedAt?.getTime()) || !documentRevisionValid) {
     return { ok: false, code: "INVALID_INPUT", error: "Enter a reusable tag name of 80 characters or fewer." };
   }
 
@@ -263,9 +325,15 @@ export async function createAndAssignWorkEntityTag(input: {
   const ownerWhere = entityWhere(input.entityKind, entityId, actorUserId);
   const sourceField = entitySourceField(input.entityKind);
   const entity = await findOwnedTagEntity(prisma, input.entityKind, entityId, actorUserId);
-  if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only the ${input.entityKind} owner can create and apply its tags.` };
+  if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only a ${entityMutationLabel(input.entityKind)} can create and apply these tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before creating a reusable tag." };
-  if (entity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before creating a tag." };
+  if (input.entityKind === "document") {
+    if (entity.tagRevision !== input.expectedTagRevision) {
+      return { ok: false, code: "CONFLICT", error: "These document tags changed elsewhere. Refresh before creating a tag." };
+    }
+  } else if (entity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before creating a tag." };
+  }
 
   const writableProjects = await writableProjectIds(input.prisma, actorEmail);
   if (!writableProjects.has(entity.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to create tags." };
@@ -284,8 +352,10 @@ export async function createAndAssignWorkEntityTag(input: {
       input.entityKind,
       entityId,
       actorUserId,
-      input.expectedUpdatedAt,
+      input.entityKind === "document" ? undefined : input.expectedUpdatedAt,
       entity.projectId,
+      undefined,
+      input.entityKind === "document" ? input.expectedTagRevision : undefined,
     );
     if (!currentEntity) return { kind: "conflict" as const };
 
@@ -316,28 +386,91 @@ export async function createAndAssignWorkEntityTag(input: {
       changedByUserId: actorUserId,
       externalSideEffects: false,
     };
+    const sourceJson = { source: "quipsly-work-tag-create-v1", receiptId, externalSideEffects: false };
+    if (input.entityKind === "document") {
+      const beforeTagIds = currentEntity.tagLinks.map((link: { tagId: string }) => link.tagId).sort();
+      const alreadyAssigned = beforeTagIds.includes(tag.id);
+      let updatedAt = currentEntity.updatedAt as Date;
+      if (!alreadyAssigned) {
+        const update = await tx.studioDocument.updateMany({
+          where: {
+            id: entityId,
+            projectId: entity.projectId,
+            tagRevision: input.expectedTagRevision,
+          },
+          data: { tagRevision: { increment: 1 } },
+        });
+        if (update.count !== 1) return { kind: "conflict" as const };
+        await tx.studioDocumentTagLink.create({
+          data: { documentId: entityId, tagId: tag.id, createdByUserId: actorUserId, sourceJson },
+        });
+        updatedAt = (await tx.studioDocument.findUnique({
+          where: { id: entityId },
+          select: { updatedAt: true },
+        })).updatedAt as Date;
+      }
+      const afterTagIds = [...new Set([...beforeTagIds, tag.id])].sort();
+      await tx.studioDocumentOperation.create({
+        data: {
+          projectId: entity.projectId,
+          documentId: entityId,
+          groupId: receiptId,
+          actorEmail,
+          origin: "human",
+          operationType: "create-document-tag",
+          status: alreadyAssigned ? "no-op" : "applied",
+          beforeJson: { tagIds: beforeTagIds, tagRevision: currentEntity.tagRevision },
+          afterJson: {
+            ...receipt,
+            tagIds: afterTagIds,
+            tagRevision: alreadyAssigned ? currentEntity.tagRevision : currentEntity.tagRevision + 1,
+          },
+          payloadJson: {
+            schema: "quipsly-document-tag-create-v1",
+            sourceMutated: false,
+            externalSideEffects: false,
+          },
+          reversible: true,
+        },
+      });
+      return {
+        kind: "saved" as const,
+        tag,
+        created,
+        assignmentChanged: !alreadyAssigned,
+        updatedAt,
+        tagRevision: alreadyAssigned ? currentEntity.tagRevision : currentEntity.tagRevision + 1,
+      };
+    }
+
     const update = await entityModel(tx, input.entityKind).updateMany({
       where: {
         ...ownerWhere,
         ...(input.entityKind === "note" ? { room: { projectId: entity.projectId } } : { projectId: entity.projectId }),
         updatedAt: input.expectedUpdatedAt,
       },
-      data: { [sourceField]: { ...safeRecord(currentEntity[sourceField]), lastTagReceipt: receipt } },
+      data: { [sourceField!]: { ...safeRecord(currentEntity[sourceField!]), lastTagReceipt: receipt } },
     });
     if (update.count !== 1) return { kind: "conflict" as const };
 
-    const sourceJson = { source: "quipsly-work-tag-create-v1", receiptId, externalSideEffects: false };
     if (input.entityKind === "task") {
       await tx.actionItemTagLink.createMany({ data: [{ actionItemId: entityId, tagId: tag.id, createdByUserId: actorUserId, sourceJson }], skipDuplicates: true });
     } else if (input.entityKind === "goal") {
       await tx.goalTagLink.createMany({ data: [{ goalId: entityId, tagId: tag.id, createdByUserId: actorUserId, sourceJson }], skipDuplicates: true });
     } else if (input.entityKind === "note") {
       await tx.coachingNoteTagLink.createMany({ data: [{ noteId: entityId, tagId: tag.id, createdByUserId: actorUserId, sourceJson }], skipDuplicates: true });
-    } else {
+    } else if (input.entityKind === "session") {
       await tx.callRoomTagLink.createMany({ data: [{ roomId: entityId, tagId: tag.id, createdByUserId: actorUserId, sourceJson }], skipDuplicates: true });
     }
     const saved = await entityModel(tx, input.entityKind).findUnique({ where: { id: entityId }, select: { updatedAt: true } });
-    return { kind: "saved" as const, tag, created, updatedAt: saved.updatedAt as Date };
+    return {
+      kind: "saved" as const,
+      tag,
+      created,
+      assignmentChanged: true,
+      updatedAt: saved.updatedAt as Date,
+      tagRevision: null,
+    };
   });
 
   if (result.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to create tags." };
@@ -351,7 +484,9 @@ export async function createAndAssignWorkEntityTag(input: {
     projectId: entity.projectId,
     tag: { id: result.tag.id, label: result.tag.label, slug: result.tag.slug, category: String(result.tag.category), projectId: result.tag.projectId },
     created: result.created,
+    assignmentChanged: result.assignmentChanged,
     updatedAt: result.updatedAt,
+    tagRevision: result.tagRevision,
     receiptId,
   };
 }
@@ -369,28 +504,42 @@ export async function replaceWorkEntityTags(input: {
   entityId: string;
   tagIds: string[];
   expectedUpdatedAt: Date;
+  expectedTagRevision?: number;
   clientRequestId?: string;
-  surface?: "nest-work" | "ios-capture-today";
+  surface?: "nest-work" | "nest-writing" | "ios-capture-today";
 }): Promise<ReplaceWorkTagsResult> {
   const actorUserId = cleanId(input.actorUserId);
   const actorEmail = typeof input.actorEmail === "string" ? input.actorEmail.trim().toLowerCase() : "";
   const entityId = cleanId(input.entityId);
   const tagIds = normalizedTagIds(input.tagIds);
   const clientRequestId = cleanId(input.clientRequestId);
+  const documentRevisionValid = input.entityKind !== "document"
+    || (Number.isInteger(input.expectedTagRevision) && Number(input.expectedTagRevision) >= 0);
   if (!actorUserId || !actorEmail || !entityId || !tagIds || !Number.isFinite(input.expectedUpdatedAt?.getTime())
+    || !documentRevisionValid
     || (clientRequestId && !UUID_PATTERN.test(clientRequestId))) {
     return { ok: false, code: "INVALID_INPUT", error: "The tag decision is incomplete or invalid." };
   }
 
   const writableProjects = await writableProjectIds(input.prisma, actorEmail);
   const prisma = input.prisma as any;
-  const entity = await findOwnedTagEntity(prisma, input.entityKind, entityId, actorUserId);
+  const receiptId = clientRequestId ? `work-tags-${clientRequestId}` : randomUUID();
+  const entity = await findOwnedTagEntity(
+    prisma,
+    input.entityKind,
+    entityId,
+    actorUserId,
+    undefined,
+    undefined,
+    input.entityKind === "document" ? receiptId : undefined,
+  );
 
-  if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only the ${input.entityKind} owner can change these tags.` };
+  if (!entity) return { ok: false, code: "NOT_FOUND", error: `Only a ${entityMutationLabel(input.entityKind)} can change these tags.` };
   if (!entity.projectId) return { ok: false, code: "PROJECT_REQUIRED", error: "Choose a Nest before adding its tags." };
   if (!writableProjects.has(entity.projectId)) return { ok: false, code: "FORBIDDEN", error: "Editor access to this Nest is required to change tags." };
-  const priorReceipt = safeRecord(safeRecord(entity[entitySourceField(input.entityKind)]).lastTagReceipt);
-  const receiptId = clientRequestId ? `work-tags-${clientRequestId}` : randomUUID();
+  const priorReceipt = input.entityKind === "document"
+    ? safeRecord(entity.documentOperations[0]?.afterJson)
+    : safeRecord(safeRecord(entity[entitySourceField(input.entityKind)!]).lastTagReceipt);
   if (priorReceipt.id === receiptId) {
     const priorTagIds = normalizedTagIds(priorReceipt.tagIds);
     const sameRequest = priorReceipt.entityKind === input.entityKind
@@ -399,6 +548,19 @@ export async function replaceWorkEntityTags(input: {
       && priorReceipt.clientRequestId === clientRequestId
       && JSON.stringify(priorTagIds) === JSON.stringify(tagIds);
     if (!sameRequest) return { ok: false, code: "CONFLICT", error: "That phone request identity is already bound to a different tag decision." };
+    const receiptRevision = Number(priorReceipt.tagRevision);
+    if (input.entityKind === "document") {
+      const currentTagIds = entity.tagLinks.map((link: { tagId: string }) => link.tagId).sort();
+      if (!Number.isInteger(receiptRevision)
+        || entity.tagRevision !== receiptRevision
+        || JSON.stringify(currentTagIds) !== JSON.stringify(tagIds)) {
+        return {
+          ok: false,
+          code: "CONFLICT",
+          error: "That saved document-tag request was superseded by a later change. Refresh before continuing.",
+        };
+      }
+    }
     return {
       ok: true,
       entityKind: input.entityKind,
@@ -406,11 +568,18 @@ export async function replaceWorkEntityTags(input: {
       projectId: entity.projectId,
       tagIds,
       updatedAt: entity.updatedAt,
+      tagRevision: input.entityKind === "document" ? receiptRevision : null,
       receiptId,
       idempotentReplay: true,
     };
   }
-  if (entity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before changing tags." };
+  if (input.entityKind === "document") {
+    if (entity.tagRevision !== input.expectedTagRevision) {
+      return { ok: false, code: "CONFLICT", error: "These document tags changed elsewhere. Refresh before changing tags." };
+    }
+  } else if (entity.updatedAt.getTime() !== input.expectedUpdatedAt.getTime()) {
+    return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before changing tags." };
+  }
 
   if (tagIds.length) {
     const validTags = await prisma.studioTag.findMany({
@@ -445,6 +614,78 @@ export async function replaceWorkEntityTags(input: {
     if (tagIds.length) {
       const validTagCount = await tx.studioTag.count({ where: { id: { in: tagIds }, projectId: entity.projectId, isActive: true } });
       if (validTagCount !== tagIds.length) return { kind: "forbidden" as const };
+    }
+    if (input.entityKind === "document") {
+      const currentDocument = await findOwnedTagEntity(
+        tx,
+        "document",
+        entityId,
+        actorUserId,
+        undefined,
+        entity.projectId,
+        receiptId,
+        input.expectedTagRevision,
+      );
+      if (!currentDocument) return { kind: "conflict" as const };
+      const beforeTagIds = currentDocument.tagLinks
+        .map((link: { tagId: string }) => link.tagId)
+        .sort();
+      const changed = JSON.stringify(beforeTagIds) !== JSON.stringify(tagIds);
+      if (changed) {
+        const update = await tx.studioDocument.updateMany({
+          where: {
+            id: entityId,
+            projectId: entity.projectId,
+            tagRevision: input.expectedTagRevision,
+          },
+          data: { tagRevision: { increment: 1 } },
+        });
+        if (update.count !== 1) return { kind: "conflict" as const };
+        await tx.studioDocumentTagLink.deleteMany({ where: { documentId: entityId } });
+        if (tagIds.length) {
+          await tx.studioDocumentTagLink.createMany({
+            data: tagIds.map((tagId) => ({
+              documentId: entityId,
+              tagId,
+              createdByUserId: actorUserId,
+              sourceJson: { source: "quipsly-document-tags-v1", receiptId, externalSideEffects: false },
+            })),
+          });
+        }
+      }
+      await tx.studioDocumentOperation.create({
+        data: {
+          projectId: entity.projectId,
+          documentId: entityId,
+          groupId: receiptId,
+          actorEmail,
+          origin: "human",
+          operationType: "replace-document-tags",
+          status: changed ? "applied" : "no-op",
+          beforeJson: {
+            tagIds: beforeTagIds,
+            tagRevision: currentDocument.tagRevision,
+          },
+          afterJson: {
+            ...receipt,
+            tagRevision: currentDocument.tagRevision + (changed ? 1 : 0),
+            sourceMutated: false,
+          },
+          payloadJson: {
+            schema: "quipsly-document-tags-v1",
+            sourceMutated: false,
+            externalSideEffects: false,
+          },
+          reversible: true,
+        },
+      });
+      return {
+        kind: "saved" as const,
+        entity: await tx.studioDocument.findUnique({
+          where: { id: entityId },
+          select: { updatedAt: true, tagRevision: true },
+        }),
+      };
     }
     const update = input.entityKind === "task"
       ? await tx.actionItem.updateMany({ where: { id: entityId, assignedUserId: actorUserId, projectId: entity.projectId, updatedAt: input.expectedUpdatedAt }, data: { sourceJson: { ...safeRecord(entity.sourceJson), lastTagReceipt: receipt } } })
@@ -483,9 +724,10 @@ export async function replaceWorkEntityTags(input: {
     entityKind: input.entityKind,
     entityId,
     projectId: entity.projectId,
-    tagIds,
-    updatedAt: saved.entity.updatedAt,
-    receiptId,
+      tagIds,
+      updatedAt: saved.entity.updatedAt,
+      tagRevision: input.entityKind === "document" ? saved.entity.tagRevision : null,
+      receiptId,
     idempotentReplay: false,
   };
 }

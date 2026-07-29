@@ -29,7 +29,9 @@ import type {
   WorkbenchScopedState,
 } from "./types";
 import {
+  createAndAssignWorkEntityTag,
   normalizeWorkTagLabel,
+  replaceWorkEntityTags,
   resolveReusableProjectTag,
 } from "@/lib/server/work-tags";
 import { revalidatePath } from "next/cache";
@@ -65,6 +67,41 @@ import {
 const UNAVAILABLE_PROJECT_ID = "unavailable-quipsly";
 const UNAVAILABLE_DOCUMENT_ID = "unavailable-document";
 const STRUCTURE_TAG_SLUGS = ["chapter", "episode"];
+
+export type DocumentTagActionResult =
+  | {
+      ok: true;
+      documentId: string;
+      projectId: string;
+      tagIds: string[];
+      updatedAt: string;
+      tagRevision: number;
+      receiptId: string;
+      idempotentReplay: boolean;
+    }
+  | {
+      ok: false;
+      code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT" | "UNAVAILABLE";
+      error: string;
+    };
+
+export type CreateDocumentTagActionResult =
+  | {
+      ok: true;
+      documentId: string;
+      projectId: string;
+      tag: { id: string; label: string; slug: string; category: string; projectId: string };
+      created: boolean;
+      assignmentChanged: boolean;
+      updatedAt: string;
+      tagRevision: number;
+      receiptId: string;
+    }
+  | {
+      ok: false;
+      code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ARCHIVED" | "UNAVAILABLE";
+      error: string;
+    };
 
 // Make sure these match AVAILABLE_TAGS in ViewFilter/Tagger
 const SEED_TAGS = [
@@ -488,11 +525,14 @@ function createUnavailableWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG): Wo
     blocks: [],
     views: [],
     projectTags: [],
+    documentTags: [],
     projectId: UNAVAILABLE_PROJECT_ID,
     projectSlug: config.slug,
     projectName: config.name,
     documentId: UNAVAILABLE_DOCUMENT_ID,
     documentTitle: "Writing desk unavailable",
+    documentUpdatedAt: new Date(0).toISOString(),
+    documentTagRevision: 0,
     persistenceMode: "unavailable" as const
   };
 }
@@ -598,6 +638,15 @@ async function ensureDevLabShowTags(
 
 export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
   const config = projectConfig(projectSlug);
+  if (config.slug !== DEV_PROJECT_SLUG) {
+    return {
+      ok: false as const,
+      state: "rejected" as const,
+      code: "DEVELOPMENT_SEED_FORBIDDEN" as const,
+      error: "Development starter data can only be created inside the isolated Quipsly development Nest.",
+    };
+  }
+
   let prisma: ReturnType<typeof getPrismaClient>;
   try {
     prisma = getPrismaClient();
@@ -611,6 +660,7 @@ export async function seedTonightPack(projectSlug = DEFAULT_PROJECT_SLUG) {
     };
   }
 
+  await requireProjectAccessBySlug(prisma, config.slug, "write");
   const { project, document } = await lookupStudioProjectDocument(prisma, config.slug);
   const seedNestKind = nestKindFromSourceLabel(project.sourceLabel) || config.nestKind;
 
@@ -713,12 +763,15 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
     return createUnavailableWorkbenchState(projectSlug);
   }
 
+  const normalizedProjectSlug = projectConfig(projectSlug).slug;
+  await requireProjectAccessBySlug(prisma, normalizedProjectSlug, "read");
+
   // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
   // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
   let project = null;
   try {
     project = await prisma.studioProject.findFirst({
-      where: { slug: projectConfig(projectSlug).slug },
+      where: { slug: normalizedProjectSlug },
       include: {
         tags: true,
         viewDefinitions: true,
@@ -726,6 +779,10 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
           where: documentId ? { id: documentId } : undefined,
           orderBy: { updatedAt: "desc" },
           include: {
+            tagLinks: {
+              orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+              include: { tag: true },
+            },
             blocks: {
               where: { archivedAt: null },
               include: {
@@ -742,13 +799,17 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
   } catch (e) {
     console.warn("Falling back to query without viewDefinitions. Is schema pushed?");
     project = await prisma.studioProject.findFirst({
-      where: { slug: projectConfig(projectSlug).slug },
+      where: { slug: normalizedProjectSlug },
       include: {
         tags: true,
         documents: {
           where: documentId ? { id: documentId } : undefined,
           orderBy: { updatedAt: "desc" },
           include: {
+            tagLinks: {
+              orderBy: [{ createdAt: "asc" }, { tagId: "asc" }],
+              include: { tag: true },
+            },
             blocks: {
               where: { archivedAt: null },
               include: {
@@ -831,11 +892,23 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
       ...(tag.description ? { description: tag.description } : {}),
     }))
     .sort((left, right) => left.label.localeCompare(right.label));
+  const documentTags = (document.tagLinks ?? [])
+    .map((link) => link.tag)
+    .filter((tag) => tag.projectId === project.id && tag.isActive && !tag.archivedAt && !tag.mergedIntoTagId)
+    .map((tag) => ({
+      id: tag.id,
+      slug: tag.slug,
+      label: tag.label,
+      category: quipslyCategoryForTag(tag),
+      ...(tag.description ? { description: tag.description } : {}),
+    }))
+    .sort((left, right) => left.label.localeCompare(right.label));
 
   return {
     blocks,
     views: effectiveViews,
     projectTags,
+    documentTags,
     projectId: project.id,
     projectSlug: project.slug,
     projectName: project.name,
@@ -843,6 +916,8 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
     workflowSystem: workflowSystemForNestKind(project.sourceLabel),
     documentId: document.id,
     documentTitle: document.title,
+    documentUpdatedAt: (document.updatedAt instanceof Date ? document.updatedAt : new Date(document.updatedAt ?? 0)).toISOString(),
+    documentTagRevision: document.tagRevision ?? 0,
     projectDocuments,
     persistenceMode: "database" as const
   };
@@ -1723,6 +1798,106 @@ export type ToggleBlockTagResult =
       code: "INVALID_INPUT" | "ACCESS_NOT_VERIFIED" | "NOT_FOUND" | "IDENTITY_MISMATCH" | "PERSISTENCE_UNAVAILABLE";
       error: string;
     };
+
+export async function replaceDocumentTagsAction(input: {
+  documentId: string;
+  tagIds: string[];
+  expectedUpdatedAt: string;
+  expectedTagRevision: number;
+  clientRequestId?: string;
+}): Promise<DocumentTagActionResult> {
+  const session = await auth();
+  const actorUserId = session?.user?.id;
+  const actorEmail = (session?.user?.primaryEmail || session?.user?.email || "").trim().toLowerCase();
+  if (!actorUserId || !actorEmail) {
+    return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before changing document tags." };
+  }
+
+  try {
+    const result = await replaceWorkEntityTags({
+      prisma: getPrismaClient(),
+      actorUserId,
+      actorEmail,
+      entityKind: "document",
+      entityId: input?.documentId,
+      tagIds: input?.tagIds,
+      expectedUpdatedAt: new Date(input?.expectedUpdatedAt),
+      expectedTagRevision: input?.expectedTagRevision,
+      clientRequestId: input?.clientRequestId,
+      surface: "nest-writing",
+    });
+    if (!result.ok) return result;
+    revalidatePath("/create");
+    revalidatePath("/notebooks");
+    revalidatePath("/library");
+    revalidatePath("/find");
+    if (result.tagRevision === null) {
+      return { ok: false, code: "UNAVAILABLE", error: "Quipsly did not return the document-tag revision. Your saved tags remain on the server; refresh before editing them again." };
+    }
+    return {
+      ok: true,
+      documentId: result.entityId,
+      projectId: result.projectId,
+      tagIds: result.tagIds,
+      updatedAt: result.updatedAt.toISOString(),
+      tagRevision: result.tagRevision,
+      receiptId: result.receiptId,
+      idempotentReplay: result.idempotentReplay,
+    };
+  } catch (error) {
+    console.error("Could not replace canonical document tags.", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Document tags are unavailable right now. Your prior tags were not changed." };
+  }
+}
+
+export async function createAndAssignDocumentTagAction(input: {
+  documentId: string;
+  label: string;
+  expectedUpdatedAt: string;
+  expectedTagRevision: number;
+}): Promise<CreateDocumentTagActionResult> {
+  const session = await auth();
+  const actorUserId = session?.user?.id;
+  const actorEmail = (session?.user?.primaryEmail || session?.user?.email || "").trim().toLowerCase();
+  if (!actorUserId || !actorEmail) {
+    return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before expanding this Nest’s vocabulary." };
+  }
+
+  try {
+    const result = await createAndAssignWorkEntityTag({
+      prisma: getPrismaClient(),
+      actorUserId,
+      actorEmail,
+      entityKind: "document",
+      entityId: input?.documentId,
+      label: input?.label,
+      expectedUpdatedAt: new Date(input?.expectedUpdatedAt),
+      expectedTagRevision: input?.expectedTagRevision,
+    });
+    if (!result.ok) return result;
+    revalidatePath("/create");
+    revalidatePath("/notebooks");
+    revalidatePath("/library");
+    revalidatePath("/find");
+    if (result.tagRevision === null) {
+      return { ok: false, code: "UNAVAILABLE", error: "Quipsly did not return the document-tag revision. The tag may have been applied; refresh before editing tags again." };
+    }
+    return {
+      ok: true,
+      documentId: result.entityId,
+      projectId: result.projectId,
+      tag: result.tag,
+      created: result.created,
+      assignmentChanged: result.assignmentChanged,
+      updatedAt: result.updatedAt.toISOString(),
+      tagRevision: result.tagRevision,
+      receiptId: result.receiptId,
+    };
+  } catch (error) {
+    console.error("Could not create a canonical document tag.", error);
+    return { ok: false, code: "UNAVAILABLE", error: "The Nest vocabulary is unavailable right now. No tag was created." };
+  }
+}
 
 export async function toggleBlockTag(
   blockId: string,

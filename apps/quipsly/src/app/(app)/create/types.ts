@@ -69,11 +69,14 @@ export type WorkbenchBaseState = {
   blocks: WorkbenchBlockPayload[];
   views: ViewDefinition[];
   projectTags: WorkbenchTagPayload[];
+  documentTags: WorkbenchTagPayload[];
   projectId: string;
   projectSlug: string;
   projectName: string;
   documentId: string;
   documentTitle?: string;
+  documentUpdatedAt: string;
+  documentTagRevision: number;
   projectDocuments?: WorkbenchProjectDocumentSummary[];
   projectNestKind?: string;
   workflowSystem?: "data-ingestion" | "knowledge-processing" | "content-creation" | "content-publishing";

@@ -5,6 +5,7 @@ import type { PrismaClient } from "@prisma/client";
 import { listProjectsVisibleToEmail } from "./home-nest";
 
 type RollbackCountKey =
+  | "documents"
   | "tasks"
   | "goals"
   | "sessions"
@@ -52,13 +53,14 @@ export type ApplyWorkTagMergeRollbackResult =
   | { ok: false; code: "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "UNSUPPORTED" | "CONFLICT" | "BLOCKED"; error: string; preview?: WorkTagMergeRollbackPreview };
 
 type ExplicitRelation = {
-  key: "tasks" | "goals" | "sessions" | "coachingNotes" | "annotations";
-  sourceField: "taskLinks" | "goalLinks" | "sessionLinks" | "coachingNoteLinks" | "annotationLinks";
-  idField: "actionItemId" | "goalId" | "roomId" | "noteId" | "annotationId";
-  model: "actionItemTagLink" | "goalTagLink" | "callRoomTagLink" | "coachingNoteTagLink" | "studioSourceAnnotationTag";
+  key: "documents" | "tasks" | "goals" | "sessions" | "coachingNotes" | "annotations";
+  sourceField: "documentLinks" | "taskLinks" | "goalLinks" | "sessionLinks" | "coachingNoteLinks" | "annotationLinks";
+  idField: "documentId" | "actionItemId" | "goalId" | "roomId" | "noteId" | "annotationId";
+  model: "studioDocumentTagLink" | "actionItemTagLink" | "goalTagLink" | "callRoomTagLink" | "coachingNoteTagLink" | "studioSourceAnnotationTag";
 };
 
 const EXPLICIT_RELATIONS: ExplicitRelation[] = [
+  { key: "documents", sourceField: "documentLinks", idField: "documentId", model: "studioDocumentTagLink" },
   { key: "tasks", sourceField: "taskLinks", idField: "actionItemId", model: "actionItemTagLink" },
   { key: "goals", sourceField: "goalLinks", idField: "goalId", model: "goalTagLink" },
   { key: "sessions", sourceField: "sessionLinks", idField: "roomId", model: "callRoomTagLink" },
@@ -179,9 +181,9 @@ async function buildRollbackPreview(prisma: any, sourceTagId: string): Promise<
         projectId: receipt.projectId,
         source: { id: receipt.sourceTagId, label: safeString(parsed.sourceTag.label), slug: safeString(parsed.sourceTag.slug), updatedAt: new Date(0) },
         target: { id: receipt.targetTagId, label: safeString(parsed.targetTag.label), slug: safeString(parsed.targetTag.slug), updatedAt: new Date(0) },
-        counts: { tasks: 0, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, taggedSpans: 0, knowledgeNodes: 0, mediaClips: 0, aliases: 0, totalUses: 0 },
-        targetRelationshipsPreserved: { tasks: 0, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
-        targetRelationshipsRemoved: { tasks: 0, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
+        counts: { documents: 0, tasks: 0, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, taggedSpans: 0, knowledgeNodes: 0, mediaClips: 0, aliases: 0, totalUses: 0 },
+        targetRelationshipsPreserved: { documents: 0, tasks: 0, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
+        targetRelationshipsRemoved: { documents: 0, tasks: 0, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
         blockingConflicts,
         previewHash,
         canRollback: false,
@@ -317,6 +319,7 @@ async function buildRollbackPreview(prisma: any, sourceTagId: string): Promise<
   }
 
   const counts = {
+    documents: safeRows(parsed.moved.documentLinks).length,
     tasks: safeRows(parsed.moved.taskLinks).length,
     goals: safeRows(parsed.moved.goalLinks).length,
     sessions: safeRows(parsed.moved.sessionLinks).length,
@@ -326,11 +329,12 @@ async function buildRollbackPreview(prisma: any, sourceTagId: string): Promise<
     knowledgeNodes: sourceNodes.length,
     mediaClips: sourceMediaIds.length,
     aliases: originalSourceAliases.length + (sourceNameWasRedundant ? 0 : 1),
-    totalUses: safeRows(parsed.moved.taskLinks).length + safeRows(parsed.moved.goalLinks).length
+    totalUses: safeRows(parsed.moved.documentLinks).length + safeRows(parsed.moved.taskLinks).length + safeRows(parsed.moved.goalLinks).length
       + safeRows(parsed.moved.sessionLinks).length + safeRows(parsed.moved.coachingNoteLinks).length
       + safeRows(parsed.moved.annotationLinks).length + sourceSpans.length + sourceNodes.length + sourceMediaIds.length,
   };
   const targetRelationshipsPreserved = {
+    documents: preserveTargetIds.documents.length,
     tasks: preserveTargetIds.tasks.length,
     goals: preserveTargetIds.goals.length,
     sessions: preserveTargetIds.sessions.length,
@@ -339,6 +343,7 @@ async function buildRollbackPreview(prisma: any, sourceTagId: string): Promise<
     mediaClips: sourceMediaIds.filter((id) => targetMediaBeforeIds.has(id)).length,
   };
   const targetRelationshipsRemoved = {
+    documents: removeTargetIds.documents.length,
     tasks: removeTargetIds.tasks.length,
     goals: removeTargetIds.goals.length,
     sessions: removeTargetIds.sessions.length,
@@ -482,6 +487,15 @@ export async function applyWorkTagMergeRollback(input: {
       if (removeIds.length) {
         await tx[relation.model].deleteMany({ where: { [relation.idField]: { in: removeIds }, tagId: target.id } });
       }
+    }
+    const affectedDocumentIds = [...new Set<string>(
+      safeRows(parsed.moved.documentLinks).map((row) => safeString(row.documentId)).filter(Boolean),
+    )];
+    if (affectedDocumentIds.length) {
+      await tx.studioDocument.updateMany({
+        where: { id: { in: affectedDocumentIds }, projectId: source.projectId },
+        data: { tagRevision: { increment: 1 } },
+      });
     }
     if (sourceSpans.length) {
       for (const span of sourceSpans) {
