@@ -9,6 +9,12 @@ import { getPrismaClient } from "@/lib/prisma";
 import { promoteRecordingAssetToStudioMedia } from "./recording-media-promotion";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
+jest.mock("@/lib/firebase/firebase-admin", () => ({
+  adminAuth: {
+    verifySessionCookie: jest.fn(),
+    verifyIdToken: jest.fn(),
+  },
+}));
 
 const runLocalDatabaseSmoke = process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
 if (process.env.QUIPSLY_LOCAL_DB_SMOKE === "1") {

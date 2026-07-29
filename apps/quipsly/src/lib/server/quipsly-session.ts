@@ -14,6 +14,7 @@ export const QUIPSLY_SESSION_COOKIE_NAME = "session";
 export type QuipslySession = {
   user: {
     id: string;
+    firebaseUid: string;
     email: string;
     primaryEmail: string;
     name: string | null;
@@ -56,6 +57,7 @@ async function sessionFromFirebaseIdentity(
   return {
     user: {
       id: identity.id,
+      firebaseUid: decoded.uid,
       email: identity.primaryEmail,
       primaryEmail: identity.primaryEmail,
       name: identity.name,

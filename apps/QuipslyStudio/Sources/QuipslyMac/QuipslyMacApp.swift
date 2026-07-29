@@ -53,6 +53,22 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
         false
     }
 
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard let callback = urls.first(where: {
+            $0.scheme?.lowercased() == "quipslymac"
+                && $0.host?.lowercased() == "auth"
+                && $0.path == "/session"
+        }) else {
+            return
+        }
+
+        ensureMainWindow(reason: "native-auth-callback")
+        NSApp.activate(ignoringOtherApps: true)
+        Task {
+            _ = await nativeAccountStore.handleBrowserSignInCallback(callback)
+        }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         if let keyboardEventMonitor {
             NSEvent.removeMonitor(keyboardEventMonitor)

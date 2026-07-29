@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Quipsly Studio</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Quipsly Studio</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.highground.QuipslyMac.auth</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>quipslymac</string>
+			</array>
+		</dict>
+	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Quipsly Studio uses the camera you explicitly select for episode framing and locally recorded source media.</string>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>Quipsly Studio can read legacy media or export packets from Desktop when you explicitly grant access.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>Quipsly Studio can import documents you choose for writing, research, and production work.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>Quipsly Studio can import downloaded media or research files that you choose.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Quipsly Studio records the microphone you explicitly select as an untouched local episode master and call source.</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>Quipsly Studio needs access to external media drives so it can read originals, build proxies, and export episodes without mutating source files.</string>
+</dict>
+</plist>

@@ -421,8 +421,10 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 585GUXMY5M;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/QuipslyMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
 				INFOPLIST_KEY_CFBundleName = "Quipsly Studio";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Quipsly Studio uses the camera you explicitly select for episode framing and locally recorded source media.";
@@ -438,6 +440,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.highground.QuipslyMac;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;
@@ -451,8 +454,10 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 585GUXMY5M;
-				GENERATE_INFOPLIST_FILE = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Sources/QuipslyMac/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Quipsly Studio";
 				INFOPLIST_KEY_CFBundleName = "Quipsly Studio";
 				INFOPLIST_KEY_NSCameraUsageDescription = "Quipsly Studio uses the camera you explicitly select for episode framing and locally recorded source media.";
@@ -468,6 +473,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.highground.QuipslyMac;
 				SDKROOT = macosx;
 				SWIFT_VERSION = 5.9;

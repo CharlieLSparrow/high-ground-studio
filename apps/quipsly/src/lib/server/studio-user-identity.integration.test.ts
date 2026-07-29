@@ -103,9 +103,16 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
       emailVerified: true,
       provider: "google.com",
     });
+    const nativeHandoffIdentity = await ensureStudioUserFromFirebaseIdentity({
+      firebaseUid: `firebase-primary-${nonce}`,
+      email: primaryEmail,
+      emailVerified: true,
+      provider: "custom",
+    });
 
     expect(primaryIdentity.id).toBe(user.id);
     expect(aliasIdentity.id).toBe(user.id);
+    expect(nativeHandoffIdentity.id).toBe(user.id);
     await expect(
       prisma.user.findUnique({
         where: { id: user.id },

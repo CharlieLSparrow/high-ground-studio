@@ -1,40 +1,114 @@
 # Quipsly Mac native auth
 
-Quipsly Mac uses a native-device session flow. Do not replace it with copied browser cookies or durable bearer tokens.
+Quipsly Studio for Mac uses the same Firebase person as Nest and Quipsly
+Capture. Do not replace this flow with copied browser cookies, email-only
+account matching, an embedded Google login, or a second Quipsly identity
+system.
 
-## Intended flow
+## Production flow
 
-1. The Mac app opens the normal Nest browser sign-in flow.
-2. Nest authenticates the user with the web app session.
-3. `/api/mac/session-handoff` creates a short-lived one-time code and serves an "Open Quipsly Mac" handoff page that attempts `quipslymac://auth/session#code=...&state=...`.
-4. The Mac app verifies the callback `state` and posts the one-time code to `/api/mac/session-exchange`.
-5. Nest consumes the code, creates a `StudioNativeDeviceSession`, and returns:
-   - short-lived access token
-   - refresh token
-   - device session id
-   - user/profile metadata
-6. The Mac app stores refresh tokens per profile in the local profile vault and stores only the current short-lived access token for API calls.
-7. The Mac app refreshes through `/api/mac/session-refresh`; refresh tokens rotate on use.
+1. The Mac app generates 256 bits of random `state` and a separate PKCE
+   verifier. Only the verifier and the Nest origin are stored in the
+   device-local Keychain.
+2. The app opens the normal Nest system-browser flow at
+   `/api/mac/session-handoff`. The request contains the allowlisted
+   `quipslymac` callback scheme, `state`, and the SHA-256 PKCE challenge.
+3. Nest authenticates through its normal Firebase/Google web session. If the
+   browser is unsigned, Nest redirects through `/login` and preserves only the
+   relative handoff callback.
+4. Nest proves that the browser session's immutable Firebase UID is already
+   bound to the canonical Quipsly user through the verified
+   `firebase:quipsly-reef` identity row.
+5. Nest writes a five-minute `StudioNativeAuthCode` containing hashes and
+   identity metadata, then opens:
+
+   ```text
+   quipslymac://auth/session#code=<one-time-code>&state=<state>&expiresAt=<iso-date>
+   ```
+
+6. The Mac accepts only that exact scheme, host, path, and fragment shape. It
+   rejects query-string credentials, duplicates, short values, expired
+   callbacks, and state mismatches.
+7. The Mac posts the code, state, and device-only PKCE verifier to
+   `/api/mac/session-exchange`.
+8. Nest atomically consumes the code, verifies the state, callback allowlist,
+   expiry, PKCE proof, canonical user, and exact Firebase UID. Concurrent or
+   replayed exchanges fail closed.
+9. Firebase Admin confirms that the UID still exists, is enabled, and still has
+   a verified email before it creates a custom token. A stale database binding
+   can therefore never recreate a deleted Firebase account.
+10. The Mac
+   exchanges it directly with Firebase for the ordinary ID token and rotating
+   refresh token used by Capture and native Nest APIs.
+11. The Mac calls `/api/mac/session-check` before saving anything. It stores
+    only the verified refresh token in the device-bound macOS data-protection
+    Keychain; the ID token remains memory-only.
 
 ## Durable records
 
-- `StudioNativeAuthCode`: one-time code ledger. Codes expire quickly and can be consumed once.
-- `StudioNativeDeviceSession`: revocable native device session. This is the server-side truth for Mac profile access.
+- `UserAuthIdentity`: canonical binding between one Quipsly user and the
+  verified Firebase UID. Email is display/recovery data, not the merge key.
+- `StudioNativeAuthCode`: one-time handoff ledger. Codes expire after five
+  minutes and conditional consumption permits exactly one successful exchange.
+- Firebase refresh-token state: Firebase remains the revocation and credential
+  authority for the Mac session. Existing `StudioNativeDeviceSession` rows are
+  retained for legacy compatibility but are not created by the Google/Firebase
+  handoff.
 
 ## Product rules
 
-- Browser identity, native device session, and API access token are separate concepts.
-- A profile switch should select a saved device session, not copy web cookies.
-- Native API access should use short-lived access tokens.
-- Refresh credentials live in the profile vault, not as loose browser cookies or copied durable bearer tokens.
-- Manual recovery may paste a one-time code, never a durable bearer token.
+- Google/Firebase is the primary user-facing sign-in path. Email/password is an
+  explicitly disclosed recovery and diagnostics path.
+- A matching email must never substitute for a matching verified Firebase UID.
+- The callback code must never appear in a URL query, referrer, log, analytics
+  payload, UserDefaults, or a copy/paste recovery UI.
+- Handoff and exchange responses are `no-store`; the handoff page uses a
+  restrictive CSP and `no-referrer`.
+- The Mac must verify the returned Firebase bearer against Nest before
+  committing the refresh token.
+- Disconnecting this Mac deletes both current data-protection-keychain records
+  and any older legacy-keychain copies. Upgrades migrate legacy records only
+  after a protected write succeeds.
+- Native API calls use short-lived Firebase ID tokens and retry once after a
+  refresh on `401`.
 
-## Development storage note
+## Runtime requirements
 
-Local unsigned development builds currently use `~/Library/Application Support/QuipslyMac/nest-session-vault.json` with user-only permissions. This avoids macOS Keychain prompts caused by changing ad-hoc signing identities during rapid local development.
+- The Mac target must register `quipslymac` in its signed `Info.plist` and route
+  `NSApplicationDelegate.application(_:open:)` into the same
+  `QuipslyNativeAccountStore` used by the visible workspace.
+- Production Nest must expose Firebase client config, handoff, exchange, and
+  session-check routes.
+- The Cloud Run runtime identity must be able to sign Firebase custom tokens.
+  Prefer a narrowly scoped runtime service account. When Application Default
+  Credentials cannot sign locally, grant only the documented service-account
+  token-signing permission to the actual runtime identity rather than shipping
+  a private key.
+- Preview hosts may exercise the flow, but the Mac accepts HTTP only for exact
+  loopback hosts. Every non-loopback Nest origin must be HTTPS.
 
-Non-debug builds keep the same profile-vault API but use macOS Keychain as the storage backend once the bundle identifier, signing identity, and access group are stable.
+## Verification contract
 
-## Current compatibility
+Automated proof:
 
-Legacy v1 Mac bearer tokens are still accepted temporarily by `resolveMacSessionActor` so existing in-flight local sessions do not break during rollout. New sessions should use the v2 device-session flow.
+- route tests cover unsigned login continuation, exact-UID handoff, malformed
+  input rejection, safe retry, JSON enforcement, PKCE exchange, and replay
+  errors;
+- server tests cover expiry, callback/state/PKCE mismatches, identity mismatch,
+  and atomic one-time consumption;
+- Swift tests cover the exact custom-URL parser and reject query tokens,
+  duplicates, low entropy, wrong routes, and expiry;
+- the signed app's final `Info.plist` and Team identifier are read back from the
+  built `.app`.
+
+Operational proof:
+
+1. Begin sign-in from the signed Mac app.
+2. Choose a real Google account in the system browser.
+3. Confirm the callback returns to the app without copy/paste.
+4. Confirm `/api/mac/session-check` reports that same account and only its
+   authorized Nests.
+5. Relaunch and prove refresh survives while browser cookies are absent.
+6. Disconnect and prove the saved session is gone.
+7. Sign in as a separate account and prove private projects do not cross the
+   identity boundary.

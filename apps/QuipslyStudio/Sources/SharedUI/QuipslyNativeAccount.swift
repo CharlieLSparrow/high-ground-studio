@@ -1,6 +1,12 @@
 import Foundation
 import Security
 import SwiftUI
+import QuipslyVideoCore
+import CryptoKit
+
+#if os(macOS)
+import AppKit
+#endif
 
 private struct FirebaseClientConfigEnvelope: Decodable {
     struct FirebaseClientConfig: Decodable {
@@ -30,6 +36,38 @@ private struct FirebaseRefreshResponse: Decodable {
     let refresh_token: String
     let expires_in: String
     let user_id: String
+}
+
+private struct FirebaseCustomTokenSignInResponse: Decodable {
+    let idToken: String
+    let refreshToken: String
+    let expiresIn: String
+    let localId: String
+}
+
+private struct NativeBrowserExchangeEnvelope: Decodable {
+    struct ExchangeUser: Decodable {
+        let id: String
+        let email: String
+    }
+
+    let ok: Bool
+    let customToken: String?
+    let user: ExchangeUser?
+    let code: String?
+    let error: String?
+}
+
+private struct NativeBrowserExchange {
+    let customToken: String
+    let user: NativeBrowserExchangeEnvelope.ExchangeUser
+}
+
+private struct PendingNativeBrowserHandoff: Codable {
+    let state: String
+    let codeVerifier: String
+    let createdAt: Date
+    let baseURL: String
 }
 
 struct NativeSessionCheckEnvelope: Decodable {
@@ -121,47 +159,136 @@ struct NativeSessionCheckEnvelope: Decodable {
 private enum QuipslyNativeAccountKeychain {
     static let service = "com.highground.QuipslyStudio.nativeAuth"
     static let refreshTokenAccount = "firebaseRefreshToken"
+    static let browserHandoffAccount = "pendingBrowserHandoff"
 
     static func saveRefreshToken(_ refreshToken: String) throws {
         guard let data = refreshToken.data(using: .utf8) else { return }
-        deleteRefreshToken()
-
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: refreshTokenAccount,
-            kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-        ]
-
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else {
-            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: [
-                NSLocalizedDescriptionKey: "Keychain refused to save the native refresh token.",
-            ])
-        }
+        try save(data, account: refreshTokenAccount)
     }
 
     static func loadRefreshToken() -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: refreshTokenAccount,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
-
-        var result: AnyObject?
-        let status = SecItemCopyMatching(query as CFDictionary, &result)
-        guard status == errSecSuccess, let data = result as? Data else { return nil }
+        guard let data = load(account: refreshTokenAccount) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
     static func deleteRefreshToken() {
+        delete(account: refreshTokenAccount)
+    }
+
+    static func saveBrowserHandoff(_ handoff: PendingNativeBrowserHandoff) throws {
+        try save(JSONEncoder().encode(handoff), account: browserHandoffAccount)
+    }
+
+    static func loadBrowserHandoff() -> PendingNativeBrowserHandoff? {
+        guard let data = load(account: browserHandoffAccount) else { return nil }
+        return try? JSONDecoder().decode(PendingNativeBrowserHandoff.self, from: data)
+    }
+
+    static func deleteBrowserHandoff() {
+        delete(account: browserHandoffAccount)
+    }
+
+    private static func save(_ data: Data, account: String) throws {
+        let identityQuery: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String: true,
+        ]
+        let updateStatus = SecItemUpdate(
+            identityQuery as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+        if updateStatus == errSecSuccess {
+            return
+        }
+        guard updateStatus == errSecItemNotFound else {
+            throw NSError(
+                domain: NSOSStatusErrorDomain,
+                code: Int(updateStatus),
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Keychain refused to update the native Quipsly credential.",
+                ]
+            )
+        }
+
+        var addQuery = identityQuery
+        addQuery[kSecValueData as String] = data
+        addQuery[kSecAttrAccessible as String] =
+            kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        let status = SecItemAdd(addQuery as CFDictionary, nil)
+        guard status == errSecSuccess else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: [
+                NSLocalizedDescriptionKey: "Keychain refused to save the native Quipsly credential.",
+            ])
+        }
+    }
+
+    private static func load(account: String) -> Data? {
+        if let protected = load(
+            account: account,
+            useDataProtectionKeychain: true
+        ) {
+            return protected
+        }
+
+        // Builds before the stable signing/keychain cut used the legacy macOS
+        // keychain. Read it once, migrate it into the device-bound data
+        // protection keychain, and delete the legacy copy only after the new
+        // write succeeds. This keeps upgrades working without weakening new
+        // credentials.
+        guard let legacy = load(
+            account: account,
+            useDataProtectionKeychain: false
+        ) else {
+            return nil
+        }
+        do {
+            try save(legacy, account: account)
+            delete(account: account, useDataProtectionKeychain: false)
+        } catch {
+            // The caller may still use the legacy credential for this launch.
+            // A later successful save will retry the migration.
+        }
+        return legacy
+    }
+
+    private static func load(
+        account: String,
+        useDataProtectionKeychain: Bool
+    ) -> Data? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
-            kSecAttrAccount as String: refreshTokenAccount,
+            kSecAttrAccount as String: account,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+            kSecUseDataProtectionKeychain as String:
+                useDataProtectionKeychain,
+        ]
+
+        var result: AnyObject?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        guard status == errSecSuccess else { return nil }
+        return result as? Data
+    }
+
+    private static func delete(account: String) {
+        delete(account: account, useDataProtectionKeychain: true)
+        delete(account: account, useDataProtectionKeychain: false)
+    }
+
+    private static func delete(
+        account: String,
+        useDataProtectionKeychain: Bool
+    ) {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String:
+                useDataProtectionKeychain,
         ]
         SecItemDelete(query as CFDictionary)
     }
@@ -194,6 +321,7 @@ final class QuipslyNativeAccountStore: ObservableObject {
 
     private static let baseURLKey = "quipsly.nativeAccount.baseURL"
     private static let emailKey = "quipsly.nativeAccount.email"
+    private static let browserHandoffLifetime: TimeInterval = 10 * 60
     private var idToken: String = ""
     private var idTokenExpiresAt: Date = .distantPast
     private var refreshToken: String?
@@ -204,6 +332,11 @@ final class QuipslyNativeAccountStore: ObservableObject {
         refreshToken = QuipslyNativeAccountKeychain.loadRefreshToken()
         if refreshToken != nil {
             statusMessage = "Saved native refresh token found. Check session to verify it with Nest."
+        } else if let pending = QuipslyNativeAccountKeychain.loadBrowserHandoff(),
+                  Date().timeIntervalSince(pending.createdAt) <= Self.browserHandoffLifetime {
+            statusMessage = "Finish the Google sign-in in your browser. Quipsly Studio is waiting for the secure return."
+        } else {
+            QuipslyNativeAccountKeychain.deleteBrowserHandoff()
         }
     }
 
@@ -248,7 +381,7 @@ final class QuipslyNativeAccountStore: ObservableObject {
             "lastVerifiedAt": lastVerifiedAt?.ISO8601Format() ?? "",
             "statusMessage": statusMessage,
             "errorMessage": errorMessage,
-            "truth": "Native Mac API calls use Firebase bearer tokens and saved Keychain refresh tokens. Browser Google login remains a separate user-facing check, converging by email in Quipsly."
+            "truth": "Google signs in through Nest, which issues a state-bound one-time handoff for the exact existing Firebase UID. The Mac exchanges it for the same Firebase bearer/refresh-token identity and stores only the refresh token in the device-local Keychain."
         ]
     }
 
@@ -264,15 +397,147 @@ final class QuipslyNativeAccountStore: ObservableObject {
         return await runAuthAction(start: "Signing in with Firebase...") {
             let config = try await fetchFirebaseClientConfig()
             let signIn = try await signInWithPassword(config: config)
-            idToken = signIn.idToken
-            idTokenExpiresAt = Date().addingTimeInterval(
-                TimeInterval(Int(signIn.expiresIn) ?? 3_600)
-            )
-            refreshToken = signIn.refreshToken
-            try QuipslyNativeAccountKeychain.saveRefreshToken(signIn.refreshToken)
-            password = ""
             try await verifyNativeSession(idToken: signIn.idToken)
+            try commitVerifiedFirebaseSession(
+                idToken: signIn.idToken,
+                refreshToken: signIn.refreshToken,
+                expiresIn: signIn.expiresIn
+            )
+            password = ""
             return "Native session verified for \(userEmail). Home Nest: \(homeNestSlug)."
+        }
+    }
+
+    @discardableResult
+    func beginBrowserSignIn() async -> String {
+        await runAuthAction(start: "Preparing secure Google sign-in...") {
+            guard let base = normalizedBaseURL else {
+                throw NSError(domain: "QuipslyNativeAccount", code: 10, userInfo: [
+                    NSLocalizedDescriptionKey: "Nest base URL is not valid.",
+                ])
+            }
+            guard base.scheme == "https" || isLoopback(base) else {
+                throw NSError(domain: "QuipslyNativeAccount", code: 11, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Browser sign-in requires HTTPS, except for a local development server.",
+                ])
+            }
+
+            let state = try makeBrowserHandoffState()
+            let codeVerifier = try makeBrowserHandoffState()
+            let codeChallenge = Data(
+                SHA256.hash(data: Data(codeVerifier.utf8))
+            )
+                .base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+            let pending = PendingNativeBrowserHandoff(
+                state: state,
+                codeVerifier: codeVerifier,
+                createdAt: Date(),
+                baseURL: base.absoluteString
+            )
+            try QuipslyNativeAccountKeychain.saveBrowserHandoff(pending)
+
+            var components = URLComponents(
+                url: base.appending(path: "/api/mac/session-handoff"),
+                resolvingAgainstBaseURL: false
+            )
+            components?.queryItems = [
+                URLQueryItem(name: "native", value: "1"),
+                URLQueryItem(name: "callbackScheme", value: "quipslymac"),
+                URLQueryItem(name: "state", value: state),
+                URLQueryItem(name: "codeChallenge", value: codeChallenge),
+                URLQueryItem(name: "deviceLabel", value: Host.current().localizedName ?? "Quipsly Studio for Mac"),
+            ]
+            guard let handoffURL = components?.url else {
+                QuipslyNativeAccountKeychain.deleteBrowserHandoff()
+                throw NSError(domain: "QuipslyNativeAccount", code: 12, userInfo: [
+                    NSLocalizedDescriptionKey: "Quipsly Studio could not build the Nest sign-in URL.",
+                ])
+            }
+
+            #if os(macOS)
+            guard NSWorkspace.shared.open(handoffURL) else {
+                QuipslyNativeAccountKeychain.deleteBrowserHandoff()
+                throw NSError(domain: "QuipslyNativeAccount", code: 13, userInfo: [
+                    NSLocalizedDescriptionKey: "macOS could not open the Nest sign-in page.",
+                ])
+            }
+            #else
+            QuipslyNativeAccountKeychain.deleteBrowserHandoff()
+            throw NSError(domain: "QuipslyNativeAccount", code: 14, userInfo: [
+                NSLocalizedDescriptionKey: "Browser handoff is currently available in Quipsly Studio for Mac.",
+            ])
+            #endif
+
+            return "Finish Google sign-in in your browser. This Mac will verify the same Firebase identity automatically."
+        }
+    }
+
+    @discardableResult
+    func handleBrowserSignInCallback(_ url: URL) async -> String {
+        await runAuthAction(start: "Verifying the browser return with Nest...") {
+            defer { QuipslyNativeAccountKeychain.deleteBrowserHandoff() }
+
+            guard let pending = QuipslyNativeAccountKeychain.loadBrowserHandoff() else {
+                throw NSError(domain: "QuipslyNativeAccount", code: 15, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "No browser sign-in is pending on this Mac. Start again from Quipsly Studio.",
+                ])
+            }
+            guard Date().timeIntervalSince(pending.createdAt) <= Self.browserHandoffLifetime else {
+                throw NSError(domain: "QuipslyNativeAccount", code: 16, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "That browser sign-in attempt expired. Start again from Quipsly Studio.",
+                ])
+            }
+
+            let handoff = try MacFirebaseBrowserHandoffParser.parse(url)
+            guard handoff.state == pending.state else {
+                throw NSError(domain: "QuipslyNativeAccount", code: 17, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The browser return did not match the sign-in started by this Mac.",
+                ])
+            }
+            guard let handoffBaseURL = URL(string: pending.baseURL) else {
+                throw NSError(domain: "QuipslyNativeAccount", code: 18, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The pending Nest origin is no longer valid. Start sign-in again.",
+                ])
+            }
+
+            let exchange = try await exchangeBrowserHandoff(
+                baseURL: handoffBaseURL,
+                handoff: handoff,
+                codeVerifier: pending.codeVerifier
+            )
+            let config = try await fetchFirebaseClientConfig(baseURL: handoffBaseURL)
+            let signIn = try await signInWithCustomToken(
+                config: config,
+                customToken: exchange.customToken
+            )
+            try await verifyNativeSession(
+                idToken: signIn.idToken,
+                baseURL: handoffBaseURL
+            )
+            guard userEmail.caseInsensitiveCompare(exchange.user.email) == .orderedSame else {
+                clearVerifiedIdentity()
+                throw NSError(domain: "QuipslyNativeAccount", code: 19, userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Nest and Firebase returned different Quipsly users. Nothing was saved; start sign-in again.",
+                ])
+            }
+
+            baseURL = handoffBaseURL.absoluteString
+            email = userEmail
+            try commitVerifiedFirebaseSession(
+                idToken: signIn.idToken,
+                refreshToken: signIn.refreshToken,
+                expiresIn: signIn.expiresIn
+            )
+            return "Google sign-in verified for \(userEmail). Home Nest: \(homeNestSlug)."
         }
     }
 
@@ -285,13 +550,12 @@ final class QuipslyNativeAccountStore: ObservableObject {
         return await runAuthAction(start: "Refreshing Firebase token...") {
             let config = try await fetchFirebaseClientConfig()
             let refreshed = try await refreshFirebaseToken(config: config, refreshToken: refreshToken)
-            idToken = refreshed.id_token
-            idTokenExpiresAt = Date().addingTimeInterval(
-                TimeInterval(Int(refreshed.expires_in) ?? 3_600)
-            )
-            self.refreshToken = refreshed.refresh_token
-            try QuipslyNativeAccountKeychain.saveRefreshToken(refreshed.refresh_token)
             try await verifyNativeSession(idToken: refreshed.id_token)
+            try commitVerifiedFirebaseSession(
+                idToken: refreshed.id_token,
+                refreshToken: refreshed.refresh_token,
+                expiresIn: refreshed.expires_in
+            )
             return "Saved native session is valid for \(userEmail). Home Nest: \(homeNestSlug)."
         }
     }
@@ -321,6 +585,7 @@ final class QuipslyNativeAccountStore: ObservableObject {
         errorMessage = ""
         statusMessage = "Local native session cleared. Firebase/Quipsly account was not deleted."
         QuipslyNativeAccountKeychain.deleteRefreshToken()
+        QuipslyNativeAccountKeychain.deleteBrowserHandoff()
         return statusMessage
     }
 
@@ -393,6 +658,75 @@ final class QuipslyNativeAccountStore: ObservableObject {
         return message
     }
 
+    private func commitFirebaseSession(
+        idToken: String,
+        refreshToken: String,
+        expiresIn: String
+    ) throws {
+        try QuipslyNativeAccountKeychain.saveRefreshToken(refreshToken)
+        self.idToken = idToken
+        idTokenExpiresAt = Date().addingTimeInterval(
+            TimeInterval(Int(expiresIn) ?? 3_600)
+        )
+        self.refreshToken = refreshToken
+    }
+
+    private func commitVerifiedFirebaseSession(
+        idToken: String,
+        refreshToken: String,
+        expiresIn: String
+    ) throws {
+        do {
+            try commitFirebaseSession(
+                idToken: idToken,
+                refreshToken: refreshToken,
+                expiresIn: expiresIn
+            )
+        } catch {
+            clearVerifiedIdentity()
+            throw error
+        }
+    }
+
+    private func clearVerifiedIdentity() {
+        userEmail = ""
+        userName = ""
+        homeNestSlug = ""
+        homeNestName = ""
+        freeTierStatus = ""
+        visibleProjects = []
+        studioEvidenceHandoffs = []
+        studioTranscriptCorrections = []
+        isStaff = false
+        lastVerifiedAt = nil
+    }
+
+    private func makeBrowserHandoffState() throws -> String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        let status = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &bytes)
+        guard status == errSecSuccess else {
+            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: [
+                NSLocalizedDescriptionKey:
+                    "macOS could not generate a secure browser sign-in state.",
+            ])
+        }
+        return Data(bytes)
+            .base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+
+    private func isLoopback(_ url: URL) -> Bool {
+        guard url.scheme == "http" else { return false }
+        switch url.host?.lowercased() {
+        case "localhost", "127.0.0.1", "::1", "[::1]":
+            return true
+        default:
+            return false
+        }
+    }
+
     private func validIDToken() async throws -> String {
         if !idToken.isEmpty,
            idTokenExpiresAt.timeIntervalSinceNow > 60 {
@@ -429,13 +763,18 @@ final class QuipslyNativeAccountStore: ObservableObject {
     }
 
     private func fetchFirebaseClientConfig() async throws -> FirebaseClientConfigEnvelope.FirebaseClientConfig {
-        guard let base = normalizedBaseURL else {
+        guard let baseURL = normalizedBaseURL else {
             throw NSError(domain: "QuipslyNativeAccount", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Nest base URL is not valid.",
             ])
         }
+        return try await fetchFirebaseClientConfig(baseURL: baseURL)
+    }
 
-        let url = base.appending(path: "/api/mac/firebase-client-config")
+    private func fetchFirebaseClientConfig(
+        baseURL: URL
+    ) async throws -> FirebaseClientConfigEnvelope.FirebaseClientConfig {
+        let url = baseURL.appending(path: "/api/mac/firebase-client-config")
         let (data, response) = try await URLSession.shared.data(from: url)
         guard let http = response as? HTTPURLResponse else {
             throw NSError(domain: "QuipslyNativeAccount", code: 2, userInfo: [
@@ -450,6 +789,91 @@ final class QuipslyNativeAccountStore: ObservableObject {
             ])
         }
         return firebase
+    }
+
+    private func exchangeBrowserHandoff(
+        baseURL: URL,
+        handoff: MacFirebaseBrowserHandoff,
+        codeVerifier: String
+    ) async throws -> NativeBrowserExchange {
+        var request = URLRequest(
+            url: baseURL.appending(path: "/api/mac/session-exchange")
+        )
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.setValue("application/json", forHTTPHeaderField: "accept")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "code": handoff.code,
+            "state": handoff.state,
+            "codeVerifier": codeVerifier,
+            "deviceLabel": Host.current().localizedName ?? "Quipsly Studio for Mac",
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(domain: "QuipslyNativeAccount", code: 20, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Nest did not return an HTTP response for the one-time sign-in.",
+            ])
+        }
+        let envelope = try JSONDecoder().decode(
+            NativeBrowserExchangeEnvelope.self,
+            from: data
+        )
+        guard
+            (200 ..< 300).contains(http.statusCode),
+            envelope.ok,
+            let customToken = envelope.customToken,
+            !customToken.isEmpty,
+            let exchangeUser = envelope.user
+        else {
+            throw NSError(domain: "QuipslyNativeAccount", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey:
+                    envelope.error
+                    ?? "Nest rejected the one-time Mac sign-in. Start again.",
+            ])
+        }
+        return NativeBrowserExchange(
+            customToken: customToken,
+            user: exchangeUser
+        )
+    }
+
+    private func signInWithCustomToken(
+        config: FirebaseClientConfigEnvelope.FirebaseClientConfig,
+        customToken: String
+    ) async throws -> FirebaseCustomTokenSignInResponse {
+        let url = URL(
+            string:
+                "https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=\(config.apiKey)"
+        )!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "content-type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "token": customToken,
+            "returnSecureToken": true,
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            throw NSError(domain: "QuipslyNativeAccount", code: 21, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Firebase did not return an HTTP response for the Mac sign-in.",
+            ])
+        }
+        guard (200 ..< 300).contains(http.statusCode) else {
+            throw NSError(domain: "QuipslyNativeAccount", code: http.statusCode, userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Firebase could not exchange the one-time Quipsly credential. Start sign-in again.",
+            ])
+        }
+        return try JSONDecoder().decode(
+            FirebaseCustomTokenSignInResponse.self,
+            from: data
+        )
     }
 
     private func signInWithPassword(
@@ -506,14 +930,19 @@ final class QuipslyNativeAccountStore: ObservableObject {
         return try JSONDecoder().decode(FirebaseRefreshResponse.self, from: data)
     }
 
-    private func verifyNativeSession(idToken: String) async throws {
-        guard let base = normalizedBaseURL else {
+    private func verifyNativeSession(
+        idToken: String,
+        baseURL explicitBaseURL: URL? = nil
+    ) async throws {
+        guard let baseURL = explicitBaseURL ?? normalizedBaseURL else {
             throw NSError(domain: "QuipslyNativeAccount", code: 5, userInfo: [
                 NSLocalizedDescriptionKey: "Nest base URL is not valid.",
             ])
         }
 
-        var request = URLRequest(url: base.appending(path: "/api/mac/session-check"))
+        var request = URLRequest(
+            url: baseURL.appending(path: "/api/mac/session-check")
+        )
         request.setValue("Bearer \(idToken)", forHTTPHeaderField: "authorization")
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
@@ -556,6 +985,7 @@ final class QuipslyNativeAccountStore: ObservableObject {
 struct QuipslyNativeAccountWorkbenchView: View {
     @ObservedObject var accountStore: QuipslyNativeAccountStore
     var onStatus: (String) -> Void
+    @State private var showsPasswordRecovery = false
     @Environment(\.openURL) private var openURL
 
     var body: some View {
@@ -588,14 +1018,14 @@ struct QuipslyNativeAccountWorkbenchView: View {
                     Text("Native Account")
                         .font(.headline)
                         .fontWeight(.black)
-                    Text("Firebase proves identity. Nest confirms Home Nest and project access.")
+                    Text("One Google/Firebase identity across Nest, Capture, and Studio.")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
 
-            Text("This is the boring permanent path: no manual cookies, no hidden WebView session guessing, no Patreon-as-login contortions.")
+            Text("The browser returns a five-minute, one-use code for the exact Firebase UID. No browser cookie or password is copied into the app.")
                 .font(.caption2)
                 .foregroundStyle(QuipslyStudioTheme.sage)
                 .fixedSize(horizontal: false, vertical: true)
@@ -616,82 +1046,99 @@ struct QuipslyNativeAccountWorkbenchView: View {
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("quipsly.account.baseURL")
 
-            Text("Native API calls currently use Firebase email/password plus a Keychain refresh token. Use the browser login button for the Google account chooser; both paths should converge into the same Quipsly user by email.")
+            Text("Choose the same Google account you use for Nest. Quipsly Studio verifies the immutable Firebase identity before saving a device-local refresh token.")
                 .font(.caption2)
                 .foregroundStyle(QuipslyStudioTheme.sage)
                 .fixedSize(horizontal: false, vertical: true)
 
-            TextField("Email", text: $accountStore.email)
-                .textFieldStyle(.roundedBorder)
-                .textContentType(.emailAddress)
-                .accessibilityIdentifier("quipsly.account.email")
-
-            SecureField("Firebase password", text: $accountStore.password)
-                .textFieldStyle(.roundedBorder)
-                .accessibilityIdentifier("quipsly.account.password")
+            #if os(macOS)
+            Button {
+                Task {
+                    let message = await accountStore.beginBrowserSignIn()
+                    onStatus(message)
+                }
+            } label: {
+                Label("Continue with Google", systemImage: "person.badge.key.fill")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(accountStore.isBusy)
+            .help("Open Nest in the browser, choose a Google account, and return a one-time Firebase handoff to this Mac.")
+            .accessibilityIdentifier("quipsly.account.googleSignIn")
+            #endif
 
             HStack(spacing: 8) {
-                Button {
-                    Task {
-                        let message = await accountStore.signInAndVerify()
-                        onStatus(message)
-                    }
-                } label: {
-                    Label("Sign in + verify", systemImage: "checkmark.shield.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-                .disabled(accountStore.isBusy)
-                .help("Sign in with Firebase email/password, store the refresh token in Keychain, then verify Nest access.")
-
                 Button {
                     Task {
                         let message = await accountStore.checkSavedSession()
                         onStatus(message)
                     }
                 } label: {
-                    Label("Check saved", systemImage: "arrow.clockwise")
+                    Label("Check saved connection", systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .disabled(accountStore.isBusy || !accountStore.hasSavedSession)
-                .help("Refresh the saved Firebase session and call /api/mac/session-check.")
-            }
-
-            HStack(spacing: 8) {
-                Button {
-                    Task {
-                        let message = await accountStore.fetchConfigOnly()
-                        onStatus(message)
-                    }
-                } label: {
-                    Label("Check config", systemImage: "gearshape.2.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-                .disabled(accountStore.isBusy)
+                .help("Refresh the device-local Firebase session and verify Nest access.")
 
                 Button(role: .destructive) {
                     let message = accountStore.clearLocalSession()
                     onStatus(message)
                 } label: {
-                    Label("Clear local", systemImage: "trash")
+                    Label("Disconnect this Mac", systemImage: "rectangle.portrait.and.arrow.right")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)
                 .disabled(accountStore.isBusy && !accountStore.hasSavedSession)
             }
 
-            Button {
-                if let base = accountStore.normalizedBaseURL {
-                    openURL(base.appending(path: "/login"))
+            DisclosureGroup(
+                "Email/password recovery and diagnostics",
+                isExpanded: $showsPasswordRecovery
+            ) {
+                VStack(alignment: .leading, spacing: 9) {
+                    Text("Use this only if Google is unavailable or support asks you to diagnose Firebase. It resolves to the same Firebase identity boundary.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    TextField("Email", text: $accountStore.email)
+                        .textFieldStyle(.roundedBorder)
+                        .textContentType(.emailAddress)
+                        .accessibilityIdentifier("quipsly.account.email")
+
+                    SecureField("Firebase password", text: $accountStore.password)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityIdentifier("quipsly.account.password")
+
+                    HStack(spacing: 8) {
+                        Button {
+                            Task {
+                                let message = await accountStore.signInAndVerify()
+                                onStatus(message)
+                            }
+                        } label: {
+                            Label("Sign in with email", systemImage: "envelope.badge.shield.half.filled")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(accountStore.isBusy)
+
+                        Button {
+                            Task {
+                                let message = await accountStore.fetchConfigOnly()
+                                onStatus(message)
+                            }
+                        } label: {
+                            Label("Check config", systemImage: "gearshape.2.fill")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(accountStore.isBusy)
+                    }
                 }
-            } label: {
-                Label("Open Nest login in browser", systemImage: "safari")
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
-            .help("Use this for Google/browser login checks. Native API calls still use Firebase bearer tokens.")
+            .font(.caption)
         }
         .padding(12)
         .background(QuipslyStudioTheme.cardGradient)

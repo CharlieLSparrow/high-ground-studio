@@ -296,10 +296,18 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
       }
 
       if (authIdentity) {
+        const observedProvider = input.provider?.trim() || null;
         await tx.userAuthIdentity.update({
           where: { id: authIdentity.id },
           data: {
-            provider: input.provider?.trim() || authIdentity.provider,
+            // A native browser handoff signs the already-bound Firebase UID
+            // back in with a custom token. Preserve the underlying Google or
+            // password provider instead of mislabeling that durable identity
+            // as a new "custom" credential.
+            provider:
+              observedProvider && observedProvider !== "custom"
+                ? observedProvider
+                : authIdentity.provider,
             emailAtLink: normalizedEmail,
             emailVerifiedAt: new Date(),
             lastSeenAt: new Date(),

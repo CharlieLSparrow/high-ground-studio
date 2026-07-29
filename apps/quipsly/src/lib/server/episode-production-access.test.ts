@@ -29,6 +29,7 @@ describe("Episode production shared authentication", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: {
         id: "user-homer",
+        firebaseUid: "firebase-homer",
         email: "shomers@gmail.com",
         primaryEmail: "shomers@gmail.com",
         name: "Homer",
