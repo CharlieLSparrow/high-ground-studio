@@ -73,6 +73,7 @@ node --check "${ROOT_DIR}/scripts/quipsly-admin-user-management-static-smoke.mjs
 node --check "${ROOT_DIR}/scripts/quipsly-ios-native-auth-static-smoke.mjs"
 node --check "${ROOT_DIR}/scripts/quipsly-ios-capture-app-store-static-smoke.mjs"
 node --check "${ROOT_DIR}/scripts/quipsly-ios-coordinated-podcast-capture.test.mjs"
+node --check "${ROOT_DIR}/scripts/quipsly-ios-shared-episode-watch.test.mjs"
 node --check "${ROOT_DIR}/scripts/hgo-quipsly-coaching-handoff-static-smoke.mjs"
 node --check "${ROOT_DIR}/scripts/hgo-quipsly-public-integration-smoke.mjs"
 node "${ROOT_DIR}/scripts/quipsly-admin-user-management-static-smoke.mjs"
@@ -88,6 +89,7 @@ node "${ROOT_DIR}/scripts/quipsly-recording-podcast-attachment-static-smoke.mjs"
 node "${ROOT_DIR}/scripts/quipsly-ios-native-auth-static-smoke.mjs"
 node "${ROOT_DIR}/scripts/quipsly-ios-capture-app-store-static-smoke.mjs"
 node "${ROOT_DIR}/scripts/quipsly-ios-coordinated-podcast-capture.test.mjs"
+node "${ROOT_DIR}/scripts/quipsly-ios-shared-episode-watch.test.mjs"
 node "${ROOT_DIR}/scripts/hgo-quipsly-coaching-handoff-static-smoke.mjs"
 
 echo

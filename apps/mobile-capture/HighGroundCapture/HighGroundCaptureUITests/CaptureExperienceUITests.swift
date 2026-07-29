@@ -47,6 +47,38 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Account"].waitForExistence(timeout: 5))
     }
 
+    func testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation() {
+        app.tabBars.buttons["Record"].tap()
+
+        let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
+        reveal(card)
+        XCTAssertTrue(
+            card.waitForExistence(timeout: 5),
+            "An episode-bound Capture session should expose its shared Watch room on the primary recorder."
+        )
+        XCTAssertTrue(app.staticTexts["Ted Lasso · Be Curious"].exists)
+        XCTAssertEqual(
+            app.staticTexts["CaptureEpisodeWatchStatus"].label,
+            "Paused together"
+        )
+
+        let prepare = app.buttons["CaptureEpisodeWatchPrepareButton"]
+        XCTAssertTrue(prepare.exists)
+        XCTAssertFalse(
+            prepare.isEnabled,
+            "Deterministic preview must show the prepared workflow without downloading protected production media."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureEpisodeWatchPlayPauseButton"].exists,
+            "Shared playback controls should appear only after this iPhone validates its protected local copy."
+        )
+
+        let boundary = app.staticTexts["CaptureEpisodeWatchBoundary"]
+        XCTAssertTrue(boundary.exists)
+        XCTAssertTrue(boundary.label.contains("Start recording before Play together"))
+        XCTAssertTrue(boundary.label.contains("private preview never changes shared state"))
+    }
+
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
         app.tabBars.buttons["Work"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]

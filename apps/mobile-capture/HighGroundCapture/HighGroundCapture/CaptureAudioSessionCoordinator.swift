@@ -19,8 +19,11 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     @Published private(set) var isProviderRoomActive = false
     @Published private(set) var isCallKitAudioActive = false
     @Published private(set) var isLocalPlaybackActive = false
+    @Published private(set) var isSharedWatchPlaybackActive = false
+    @Published private(set) var sharedWatchRouteFailureMessage: String?
 
     private let audioSession = AVAudioSession.sharedInstance()
+    private var routeChangeObserver: NSObjectProtocol?
 
     private init() {
         #if canImport(LiveKit)
@@ -30,6 +33,15 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         AudioManager.shared.audioSession.isAutomaticConfigurationEnabled = false
         try? AudioManager.shared.setEngineAvailability(.none)
         #endif
+        routeChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: audioSession,
+            queue: .main
+        ) { _ in
+            Task { @MainActor [weak self] in
+                self?.holdSharedWatchForUnsafeRoute()
+            }
+        }
     }
 
     func prepareLocalCaptureRoute() throws {
@@ -112,6 +124,9 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
                 try applySharedCategory()
                 try audioSession.setPreferredSampleRate(48_000)
                 try audioSession.setActive(true)
+            } else if isSharedWatchPlaybackActive {
+                try applySharedCategory()
+                try audioSession.setActive(true)
             } else if !isLocalPlaybackActive {
                 try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
             }
@@ -132,7 +147,10 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     }
 
     func beginLocalPlayback() throws {
-        guard !isLocalCaptureActive, !isProviderRoomActive, !isCallKitAudioActive else {
+        guard !isLocalCaptureActive,
+              !isProviderRoomActive,
+              !isCallKitAudioActive,
+              !isSharedWatchPlaybackActive else {
             throw NSError(
                 domain: "CaptureAudioSession",
                 code: 1,
@@ -154,6 +172,82 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         reconcileAfterLeaseChange()
     }
 
+    /// Shared Watch is allowed beside LiveKit and local capture. Every
+    /// participant plays the separately preserved reference source through the
+    /// current route; headphones keep that source out of the microphone master.
+    func beginSharedWatchPlayback() throws {
+        if (isLocalCaptureActive || isProviderRoomActive || isCallKitAudioActive),
+           !hasPrivateListeningRoute {
+            throw NSError(
+                domain: "CaptureAudioSession",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Connect headphones before shared Watch playback so the clip stays out of the microphone master."
+                ]
+            )
+        }
+        sharedWatchRouteFailureMessage = nil
+        isSharedWatchPlaybackActive = true
+        do {
+            try applySharedCategory()
+            if !isCallKitAudioActive {
+                try audioSession.setActive(true)
+            }
+            try requirePrivateRouteDuringCapture()
+        } catch {
+            isSharedWatchPlaybackActive = false
+            throw error
+        }
+    }
+
+    private var hasPrivateListeningRoute: Bool {
+        audioSession.currentRoute.outputs.contains { output in
+            switch output.portType {
+            case .headphones,
+                 .bluetoothA2DP,
+                 .bluetoothHFP,
+                 .bluetoothLE,
+                 .usbAudio:
+                true
+            default:
+                false
+            }
+        }
+    }
+
+    func endSharedWatchPlayback() {
+        isSharedWatchPlaybackActive = false
+        reconcileAfterLeaseChange()
+    }
+
+    private func requirePrivateRouteDuringCapture() throws {
+        guard isLocalCaptureActive || isProviderRoomActive || isCallKitAudioActive else {
+            return
+        }
+        guard hasPrivateListeningRoute else {
+            throw NSError(
+                domain: "CaptureAudioSession",
+                code: 2,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "Shared Watch paused because its private headphone route is no longer available."
+                ]
+            )
+        }
+    }
+
+    private func holdSharedWatchForUnsafeRoute() {
+        guard isSharedWatchPlaybackActive else { return }
+        do {
+            try requirePrivateRouteDuringCapture()
+        } catch {
+            isSharedWatchPlaybackActive = false
+            sharedWatchRouteFailureMessage = error.localizedDescription
+            reconcileAfterLeaseChange()
+        }
+    }
+
     private func applySharedCategory() throws {
         let mode: AVAudioSession.Mode = (isProviderRoomActive || isCallKitAudioActive) ? .voiceChat : .videoRecording
         try audioSession.setCategory(
@@ -172,6 +266,9 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
                 if isLocalCaptureActive && !isCallKitAudioActive {
                     try audioSession.setActive(true)
                 }
+            } else if isSharedWatchPlaybackActive {
+                try applySharedCategory()
+                try audioSession.setActive(true)
             } else if isProviderRoomActive {
                 // A connected provider room may stay signaled between CallKit
                 // activation windows, but its audio engine must remain held.

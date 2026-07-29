@@ -1,0 +1,1208 @@
+import AVFoundation
+import AVKit
+import Combine
+import CryptoKit
+import SwiftUI
+
+struct MobileEpisodeWatchClip: Codable, Hashable, Identifiable {
+    let assetId: String
+    let sourceId: String?
+    let title: String
+    let kind: String
+    let playbackUrl: String
+    let durationSeconds: TimeInterval?
+
+    var id: String { assetId }
+    var isVideo: Bool { kind.lowercased() == "video" }
+}
+
+struct MobileEpisodeWatchSession: Codable, Hashable {
+    let id: String
+    let startedAt: String
+    let startedBy: String
+    let recordingRoomId: String?
+    let recordingStartedAt: String?
+}
+
+struct MobileEpisodeWatchRoom: Codable, Hashable {
+    let revision: Int
+    let status: String
+    let selectedClipId: String?
+    let positionSeconds: TimeInterval
+    let effectiveAt: String
+    let durationSeconds: TimeInterval?
+    let session: MobileEpisodeWatchSession?
+    let clips: [MobileEpisodeWatchClip]
+
+    var selectedClip: MobileEpisodeWatchClip? {
+        clips.first { $0.assetId == selectedClipId }
+    }
+
+    func projectedPosition(at date: Date = Date()) -> TimeInterval {
+        let elapsed: TimeInterval
+        if status == "playing", let effectiveDate = Self.parseDate(effectiveAt) {
+            elapsed = max(0, date.timeIntervalSince(effectiveDate))
+        } else {
+            elapsed = 0
+        }
+        let projected = max(0, positionSeconds + elapsed)
+        guard let durationSeconds else { return projected }
+        return min(projected, max(0, durationSeconds))
+    }
+
+    private static func parseDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value)
+            ?? ISO8601DateFormatter().date(from: value)
+    }
+}
+
+private struct MobileEpisodeWatchResponse: Codable {
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let room: MobileEpisodeWatchRoom?
+    let canEdit: Bool?
+    let currentRevision: Int?
+    let serverNow: String?
+}
+
+private struct MobileEpisodeWatchCacheReceipt: Codable {
+    let schemaVersion: Int
+    let ownerDigest: String
+    let assetId: String
+    let sourceId: String?
+    let playbackUrl: String
+    let byteCount: Int64
+    let sha256: String
+    let downloadedAt: Date
+}
+
+@MainActor
+final class MobileEpisodeWatchClient: ObservableObject {
+    @Published private(set) var room: MobileEpisodeWatchRoom?
+    @Published private(set) var canEdit = false
+    @Published private(set) var isLoading = false
+    @Published private(set) var isMutating = false
+    @Published private(set) var isPreparingClip = false
+    @Published private(set) var preparedAssetID: String?
+    @Published private(set) var player: AVPlayer?
+    @Published private(set) var displayPosition: TimeInterval = 0
+    @Published private(set) var localPreviewActive = false
+    @Published private(set) var sharedConnectionReady = false
+    @Published private(set) var statusMessage: String?
+    @Published private(set) var errorMessage: String?
+
+    private let baseURL: URL
+    private let audioSessionCoordinator = CaptureAudioSessionCoordinator.shared
+    private var currentContextKey: String?
+    private var currentSession: MobileCaptureSession?
+    private var timeObserver: Any?
+    private var completionObserver: NSObjectProtocol?
+    private var accountCancellable: AnyCancellable?
+    private var routeCancellable: AnyCancellable?
+    private var sharedAudioLeaseActive = false
+    private var endedAssetID: String?
+    private var consecutivePollFailures = 0
+    private var serverClockOffsetSeconds: TimeInterval = 0
+    private var serverClockUncertaintySeconds: TimeInterval?
+
+    init() {
+        let rawBaseURL = normalizedNestBaseURL(
+            Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL")
+                as? String
+                ?? "https://nest.quipsly.com"
+        )
+        baseURL = URL(string: rawBaseURL)
+            ?? URL(string: "https://nest.quipsly.com")!
+        accountCancellable = NotificationCenter.default.publisher(
+            for: .quipslyCaptureAccountIdentityDidChange
+        ).sink { [weak self] _ in
+            Task { @MainActor in
+                self?.resetForAccountChange()
+            }
+        }
+        routeCancellable = audioSessionCoordinator
+            .$sharedWatchRouteFailureMessage
+            .compactMap { $0 }
+            .sink { [weak self] message in
+                Task { @MainActor in
+                    self?.holdForUnsafeAudioRoute(message)
+                }
+            }
+    }
+
+    deinit {
+        if let completionObserver {
+            NotificationCenter.default.removeObserver(completionObserver)
+        }
+    }
+
+    var selectedClip: MobileEpisodeWatchClip? { room?.selectedClip }
+    var isPrepared: Bool {
+        guard let selectedClip else { return false }
+        return preparedAssetID == selectedClip.assetId && player != nil
+    }
+    var isSharedPlaying: Bool {
+        room?.status == "playing" && !localPreviewActive
+    }
+    var statusLabel: String {
+        if isPreparingClip { return "Preparing clip" }
+        if localPreviewActive { return "Private preview" }
+        switch room?.status {
+        case "playing": return isPrepared ? "Playing together" : "Playing · prepare needed"
+        case "paused": return "Paused together"
+        case "ended": return "Watch complete"
+        case "idle": return "Choose a clip"
+        default: return "Loading Watch"
+        }
+    }
+
+    func loadPreview(session: MobileCaptureSession) {
+        currentSession = session
+        currentContextKey = "preview|\(session.id)"
+        canEdit = true
+        sharedConnectionReady = true
+        room = MobileEpisodeWatchRoom(
+            revision: 8,
+            status: "paused",
+            selectedClipId: "preview-be-curious",
+            positionSeconds: 43.2,
+            effectiveAt: ISO8601DateFormatter().string(from: Date()),
+            durationSeconds: 254.63,
+            session: nil,
+            clips: [
+                MobileEpisodeWatchClip(
+                    assetId: "preview-be-curious",
+                    sourceId: "preview-source-be-curious",
+                    title: "Ted Lasso · Be Curious",
+                    kind: "video",
+                    playbackUrl: "/preview/be-curious.mp4",
+                    durationSeconds: 254.63
+                )
+            ]
+        )
+        displayPosition = 43.2
+        statusMessage = "Lead clip is staged for the episode rehearsal."
+        errorMessage = nil
+    }
+
+    func stop() {
+        stopPlayer()
+    }
+
+    func sharedClockReady(
+        for session: MobileCaptureSession,
+        captureIsActive: Bool
+    ) -> Bool {
+        room?.session?.recordingRoomId == session.callRoomId || captureIsActive
+    }
+
+    func load(session: MobileCaptureSession, quiet: Bool = false) async {
+        guard let context = context(for: session) else {
+            resetForContextChange()
+            errorMessage = "This Session is not attached to an episode Watch room."
+            return
+        }
+        currentSession = session
+        if currentContextKey != context.key {
+            resetForContextChange()
+            currentContextKey = context.key
+            currentSession = session
+        }
+        if !quiet { isLoading = true }
+        defer { if !quiet { isLoading = false } }
+
+        do {
+            var components = URLComponents(
+                url: context.endpoint,
+                resolvingAgainstBaseURL: false
+            )
+            components?.queryItems = [
+                URLQueryItem(name: "episode", value: context.episodeSlug),
+                URLQueryItem(name: "watch", value: "1"),
+            ]
+            guard let url = components?.url else { throw URLError(.badURL) }
+            var request = URLRequest(url: url)
+            request.httpMethod = "GET"
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            let requestStartedAt = Date()
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request
+            )
+            let payload = try JSONDecoder().decode(
+                MobileEpisodeWatchResponse.self,
+                from: data
+            )
+            guard response.statusCode < 400, payload.ok, let nextRoom = payload.room else {
+                throw NSError(
+                    domain: "MobileEpisodeWatch",
+                    code: response.statusCode,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            payload.error ?? "The shared Watch room is unavailable."
+                    ]
+                )
+            }
+            let recoveredFromStaleConnection =
+                quiet && (consecutivePollFailures >= 3 || !sharedConnectionReady)
+            canEdit = payload.canEdit == true
+            consecutivePollFailures = 0
+            sharedConnectionReady = true
+            updateServerClock(
+                serverNow: payload.serverNow,
+                requestStartedAt: requestStartedAt
+            )
+            apply(nextRoom)
+            if !quiet {
+                statusMessage = selectedClip.map {
+                    "\($0.title) is ready in the shared episode room."
+                }
+                errorMessage = nil
+            } else if recoveredFromStaleConnection {
+                statusMessage = "Shared Watch reconnected to the episode room."
+                errorMessage = nil
+            }
+        } catch {
+            if quiet {
+                consecutivePollFailures += 1
+                if consecutivePollFailures >= 3 {
+                    sharedConnectionReady = false
+                    player?.pause()
+                    endSharedAudioLease()
+                    errorMessage =
+                        "Shared Watch lost contact with Nest. Local media is preserved and playback is paused while Quipsly reconnects."
+                }
+            } else {
+                sharedConnectionReady = false
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    func poll(session: MobileCaptureSession) async {
+        while !Task.isCancelled {
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return
+            }
+            guard context(for: session)?.key == currentContextKey else { return }
+            await load(session: session, quiet: true)
+        }
+    }
+
+    func prepareSelectedClip() async {
+        guard let clip = selectedClip else {
+            errorMessage = "Choose a shared Watch clip first."
+            return
+        }
+        guard let owner = AuthManager.shared.stableOwnerSnapshot() else {
+            errorMessage = "Sign in again before protecting this shared clip on the iPhone."
+            return
+        }
+        if restoreCachedClip(clip: clip, owner: owner) {
+            synchronizePlayerToRoom()
+            statusMessage = "\(clip.title) is prepared on this iPhone."
+            errorMessage = nil
+            return
+        }
+        guard let playbackURL = resolvedPlaybackURL(clip.playbackUrl) else {
+            errorMessage = "Quipsly returned an invalid Watch playback URL."
+            return
+        }
+
+        isPreparingClip = true
+        errorMessage = nil
+        statusMessage = "Downloading the protected Watch source…"
+        defer { isPreparingClip = false }
+
+        do {
+            var request = URLRequest(url: playbackURL)
+            request.httpMethod = "GET"
+            request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            let (temporaryURL, response) = try await AuthManager.shared
+                .authenticatedDownload(
+                    for: request,
+                    expectedOwnerAccountID: owner.ownerAccountID
+                )
+            defer { try? FileManager.default.removeItem(at: temporaryURL) }
+            guard response.statusCode < 400 else {
+                throw NSError(
+                    domain: "MobileEpisodeWatch",
+                    code: response.statusCode,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The protected Watch source returned HTTP \(response.statusCode)."
+                    ]
+                )
+            }
+            guard AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
+                throw NSError(
+                    domain: "MobileEpisodeWatch",
+                    code: 401,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The Quipsly account changed before the Watch source could be protected."
+                    ]
+                )
+            }
+            let receipt = try preserveDownloadedClip(
+                temporaryURL: temporaryURL,
+                clip: clip,
+                owner: owner
+            )
+            if response.expectedContentLength > 0,
+               response.expectedContentLength != receipt.byteCount {
+                removeCachedClip(clip: clip, owner: owner)
+                throw NSError(
+                    domain: "MobileEpisodeWatch",
+                    code: 2,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The Watch download ended at a different byte count than the protected server response."
+                    ]
+                )
+            }
+            guard receipt.byteCount > 0,
+                  AuthManager.shared.matchesStableOwnerSnapshot(owner),
+                  restoreCachedClip(clip: clip, owner: owner) else {
+                removeCachedClip(clip: clip, owner: owner)
+                throw NSError(
+                    domain: "MobileEpisodeWatch",
+                    code: 2,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The downloaded Watch source could not be validated and was removed."
+                    ]
+                )
+            }
+            synchronizePlayerToRoom()
+            statusMessage =
+                "\(clip.title) prepared · \(ByteCountFormatter.string(fromByteCount: receipt.byteCount, countStyle: .file))."
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = nil
+        }
+    }
+
+    func togglePreview() {
+        guard let player, isPrepared else {
+            errorMessage = "Prepare the selected clip before previewing it."
+            return
+        }
+        if localPreviewActive {
+            player.pause()
+            localPreviewActive = false
+            endSharedAudioLease()
+            statusMessage = "Private preview paused. Shared Watch did not change."
+            return
+        }
+        do {
+            try beginSharedAudioLease()
+            localPreviewActive = true
+            endedAssetID = nil
+            player.play()
+            statusMessage = "Private iPhone preview · not added to the shared timeline."
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func toggleSharedPlayback(
+        session: MobileCaptureSession,
+        captureIsActive: Bool
+    ) async {
+        guard canEdit else {
+            errorMessage = "This Quipsly account can follow Watch but cannot control it."
+            return
+        }
+        guard sharedConnectionReady else {
+            errorMessage = "Wait for shared Watch to reconnect before controlling the episode."
+            return
+        }
+        if !isPrepared {
+            await prepareSelectedClip()
+            if !isPrepared { return }
+        }
+        if room?.status == "playing" {
+            await sendCommand(
+                type: "PAUSE",
+                session: session,
+                positionSeconds: displayPosition
+            )
+            return
+        }
+        guard sharedClockReady(for: session, captureIsActive: captureIsActive) else {
+            errorMessage =
+                "Start the episode recording first so Watch has the same durable timeline clock. Use Preview to check the clip without changing the room."
+            return
+        }
+
+        if room?.session?.recordingRoomId != session.callRoomId {
+            let bound = await sendCommand(
+                type: "START_SESSION",
+                session: session,
+                recordingRoomId: session.callRoomId
+            )
+            if !bound { return }
+        }
+        await sendCommand(
+            type: "PLAY",
+            session: session,
+            positionSeconds: displayPosition
+        )
+    }
+
+    func seekShared(
+        by delta: TimeInterval,
+        session: MobileCaptureSession,
+        captureIsActive: Bool
+    ) async {
+        guard canEdit,
+              sharedConnectionReady,
+              sharedClockReady(for: session, captureIsActive: captureIsActive)
+        else {
+            errorMessage = "Start the episode recording before changing shared Watch position."
+            return
+        }
+        let target = min(
+            max(0, displayPosition + delta),
+            selectedClip?.durationSeconds ?? .greatestFiniteMagnitude
+        )
+        await sendCommand(
+            type: "SEEK",
+            session: session,
+            positionSeconds: target,
+            fromPositionSeconds: displayPosition
+        )
+    }
+
+    @discardableResult
+    private func sendCommand(
+        type: String,
+        session: MobileCaptureSession,
+        positionSeconds: TimeInterval? = nil,
+        fromPositionSeconds: TimeInterval? = nil,
+        recordingRoomId: String? = nil,
+        clientRequestID: UUID = UUID(),
+        retryConflict: Bool = true
+    ) async -> Bool {
+        guard let context = context(for: session), let room else {
+            errorMessage = "Refresh the shared Watch room before controlling it."
+            return false
+        }
+        isMutating = true
+        defer { isMutating = false }
+
+        do {
+            var body: [String: Any] = [
+                "episodeSlug": context.episodeSlug,
+                "type": type,
+                "clientRequestId": "capture-watch-\(clientRequestID.uuidString.lowercased())",
+                "expectedRevision": room.revision,
+            ]
+            if let positionSeconds {
+                body["positionSeconds"] = max(0, positionSeconds)
+            }
+            if let fromPositionSeconds {
+                body["fromPositionSeconds"] = max(0, fromPositionSeconds)
+            }
+            if let recordingRoomId {
+                body["recordingRoomId"] = recordingRoomId
+            }
+            var request = URLRequest(url: context.endpoint)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let requestStartedAt = Date()
+            let (data, response) = try await AuthManager.shared.authenticatedData(
+                for: request
+            )
+            let payload = try JSONDecoder().decode(
+                MobileEpisodeWatchResponse.self,
+                from: data
+            )
+            if response.statusCode == 409,
+               retryConflict,
+               payload.currentRevision != nil {
+                await load(session: session, quiet: true)
+                return await sendCommand(
+                    type: type,
+                    session: session,
+                    positionSeconds: positionSeconds,
+                    fromPositionSeconds: fromPositionSeconds,
+                    recordingRoomId: recordingRoomId,
+                    clientRequestID: clientRequestID,
+                    retryConflict: false
+                )
+            }
+            guard response.statusCode < 400, payload.ok, let nextRoom = payload.room else {
+                throw NSError(
+                    domain: "MobileEpisodeWatch",
+                    code: response.statusCode,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            payload.error ?? "Shared Watch could not save that control."
+                    ]
+                )
+            }
+            localPreviewActive = false
+            updateServerClock(
+                serverNow: payload.serverNow,
+                requestStartedAt: requestStartedAt
+            )
+            apply(nextRoom)
+            statusMessage = commandStatusMessage(type)
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    private func apply(_ nextRoom: MobileEpisodeWatchRoom) {
+        let previousAssetID = room?.selectedClipId
+        room = nextRoom
+        displayPosition = projectedPosition(nextRoom)
+        if previousAssetID != nextRoom.selectedClipId {
+            stopPlayer()
+            if let clip = nextRoom.selectedClip,
+               let owner = AuthManager.shared.stableOwnerSnapshot() {
+                _ = restoreCachedClip(clip: clip, owner: owner)
+            }
+        }
+        synchronizePlayerToRoom()
+    }
+
+    private func synchronizePlayerToRoom() {
+        guard !localPreviewActive, let room, let player, isPrepared else { return }
+        let target = projectedPosition(room)
+        displayPosition = target
+        let current = player.currentTime().seconds
+        if current.isFinite, abs(current - target) > 0.5 {
+            player.seek(
+                to: CMTime(seconds: target, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            )
+        }
+        if room.status == "playing" {
+            do {
+                try beginSharedAudioLease()
+                endedAssetID = nil
+                player.play()
+            } catch {
+                player.pause()
+                errorMessage = error.localizedDescription
+            }
+        } else {
+            player.pause()
+            endSharedAudioLease()
+        }
+    }
+
+    private func preparePlayer(
+        fileURL: URL,
+        clip: MobileEpisodeWatchClip
+    ) {
+        stopPlayer()
+        let item = AVPlayerItem(url: fileURL)
+        let nextPlayer = AVPlayer(playerItem: item)
+        nextPlayer.actionAtItemEnd = .pause
+        completionObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.handlePlaybackEnded()
+            }
+        }
+        player = nextPlayer
+        preparedAssetID = clip.assetId
+        timeObserver = nextPlayer.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            queue: .main
+        ) { time in
+            let seconds = time.seconds
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if seconds.isFinite {
+                    self.displayPosition = max(0, seconds)
+                }
+            }
+        }
+    }
+
+    private func handlePlaybackEnded() async {
+        player?.pause()
+        endSharedAudioLease()
+        if localPreviewActive {
+            localPreviewActive = false
+            statusMessage = "Private preview finished. Shared Watch did not change."
+            return
+        }
+        guard room?.status == "playing",
+              endedAssetID != preparedAssetID,
+              let currentSession else { return }
+        endedAssetID = preparedAssetID
+        await sendCommand(
+            type: "ENDED",
+            session: currentSession,
+            positionSeconds: selectedClip?.durationSeconds ?? displayPosition
+        )
+    }
+
+    private func beginSharedAudioLease() throws {
+        guard !sharedAudioLeaseActive else { return }
+        try audioSessionCoordinator.beginSharedWatchPlayback()
+        sharedAudioLeaseActive = true
+    }
+
+    private func endSharedAudioLease() {
+        guard sharedAudioLeaseActive else { return }
+        sharedAudioLeaseActive = false
+        audioSessionCoordinator.endSharedWatchPlayback()
+    }
+
+    private func holdForUnsafeAudioRoute(_ message: String) {
+        guard sharedAudioLeaseActive else { return }
+        player?.pause()
+        sharedAudioLeaseActive = false
+        errorMessage = message
+        statusMessage = "Reconnect headphones, then press Play together to resume."
+    }
+
+    private func stopPlayer() {
+        player?.pause()
+        if let timeObserver, let player {
+            player.removeTimeObserver(timeObserver)
+            self.timeObserver = nil
+        }
+        player = nil
+        if let completionObserver {
+            NotificationCenter.default.removeObserver(completionObserver)
+            self.completionObserver = nil
+        }
+        preparedAssetID = nil
+        localPreviewActive = false
+        endedAssetID = nil
+        endSharedAudioLease()
+    }
+
+    private func projectedPosition(
+        _ room: MobileEpisodeWatchRoom
+    ) -> TimeInterval {
+        room.projectedPosition(
+            at: Date().addingTimeInterval(serverClockOffsetSeconds)
+        )
+    }
+
+    private func updateServerClock(
+        serverNow: String?,
+        requestStartedAt: Date
+    ) {
+        guard let serverNow,
+              let serverDate = Self.parseServerDate(serverNow) else { return }
+        let receivedAt = Date()
+        let roundTrip = max(0, receivedAt.timeIntervalSince(requestStartedAt))
+        let localMidpoint = requestStartedAt.addingTimeInterval(roundTrip / 2)
+        serverClockOffsetSeconds = serverDate.timeIntervalSince(localMidpoint)
+        serverClockUncertaintySeconds = roundTrip / 2
+    }
+
+    private static func parseServerDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value)
+            ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    private func resetForContextChange() {
+        stopPlayer()
+        room = nil
+        canEdit = false
+        sharedConnectionReady = false
+        consecutivePollFailures = 0
+        displayPosition = 0
+        statusMessage = nil
+        errorMessage = nil
+    }
+
+    private func resetForAccountChange() {
+        currentContextKey = nil
+        currentSession = nil
+        resetForContextChange()
+    }
+
+    private func context(
+        for session: MobileCaptureSession
+    ) -> (key: String, episodeSlug: String, endpoint: URL)? {
+        guard let projectSlug = session.projectSlug?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !projectSlug.isEmpty,
+              let episodeSlug = session.episodeSlug?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !episodeSlug.isEmpty else { return nil }
+        let encodedProject = projectSlug.addingPercentEncoding(
+            withAllowedCharacters: .urlPathAllowed
+        ) ?? projectSlug
+        guard let endpoint = URL(
+            string: "/api/nests/\(encodedProject)/episode-room",
+            relativeTo: baseURL
+        )?.absoluteURL else { return nil }
+        return (
+            key: "\(projectSlug)|\(episodeSlug)",
+            episodeSlug: episodeSlug,
+            endpoint: endpoint
+        )
+    }
+
+    private func resolvedPlaybackURL(_ value: String) -> URL? {
+        URL(string: value, relativeTo: baseURL)?.absoluteURL
+    }
+
+    private func restoreCachedClip(
+        clip: MobileEpisodeWatchClip,
+        owner: AuthManager.StableOwnerSnapshot
+    ) -> Bool {
+        guard let locations = cacheLocations(clip: clip, owner: owner),
+              let receiptData = try? Data(contentsOf: locations.receipt),
+              let receipt = try? JSONDecoder().decode(
+                MobileEpisodeWatchCacheReceipt.self,
+                from: receiptData
+              ),
+              receipt.schemaVersion == 1,
+              receipt.ownerDigest == Self.digest(owner.ownerAccountID),
+              receipt.assetId == clip.assetId,
+              receipt.sourceId == clip.sourceId,
+              receipt.playbackUrl == clip.playbackUrl,
+              receipt.byteCount > 0,
+              FileManager.default.fileExists(atPath: locations.media.path),
+              let attributes = try? FileManager.default.attributesOfItem(
+                atPath: locations.media.path
+              ),
+              (attributes[.size] as? NSNumber)?.int64Value
+                == receipt.byteCount,
+              let verification = try? Self.hashAndByteCount(
+                at: locations.media
+              ),
+              verification.byteCount == receipt.byteCount,
+              verification.sha256 == receipt.sha256,
+              AuthManager.shared.matchesStableOwnerSnapshot(owner) else {
+            return false
+        }
+        preparePlayer(fileURL: locations.media, clip: clip)
+        return true
+    }
+
+    private func preserveDownloadedClip(
+        temporaryURL: URL,
+        clip: MobileEpisodeWatchClip,
+        owner: AuthManager.StableOwnerSnapshot
+    ) throws -> MobileEpisodeWatchCacheReceipt {
+        guard let locations = cacheLocations(clip: clip, owner: owner) else {
+            throw NSError(
+                domain: "MobileEpisodeWatch",
+                code: 3,
+                userInfo: [
+                    NSLocalizedDescriptionKey:
+                        "The Watch source identity is not safe for local storage."
+                ]
+            )
+        }
+        try FileManager.default.createDirectory(
+            at: locations.directory,
+            withIntermediateDirectories: true,
+            attributes: [
+                .protectionKey:
+                    FileProtectionType.completeUntilFirstUserAuthentication
+            ]
+        )
+        var directoryValues = URLResourceValues()
+        directoryValues.isExcludedFromBackup = true
+        var mutableDirectory = locations.directory
+        try mutableDirectory.setResourceValues(directoryValues)
+
+        try? FileManager.default.removeItem(at: locations.media)
+        try? FileManager.default.removeItem(at: locations.receipt)
+        try FileManager.default.moveItem(
+            at: temporaryURL,
+            to: locations.media
+        )
+        try FileManager.default.setAttributes(
+            [
+                .protectionKey:
+                    FileProtectionType.completeUntilFirstUserAuthentication
+            ],
+            ofItemAtPath: locations.media.path
+        )
+        var mediaValues = URLResourceValues()
+        mediaValues.isExcludedFromBackup = true
+        var mutableMedia = locations.media
+        try mutableMedia.setResourceValues(mediaValues)
+
+        let verification = try Self.hashAndByteCount(at: locations.media)
+        let receipt = MobileEpisodeWatchCacheReceipt(
+            schemaVersion: 1,
+            ownerDigest: Self.digest(owner.ownerAccountID),
+            assetId: clip.assetId,
+            sourceId: clip.sourceId,
+            playbackUrl: clip.playbackUrl,
+            byteCount: verification.byteCount,
+            sha256: verification.sha256,
+            downloadedAt: Date()
+        )
+        let receiptData = try JSONEncoder().encode(receipt)
+        try receiptData.write(
+            to: locations.receipt,
+            options: [
+                .atomic,
+                .completeFileProtectionUntilFirstUserAuthentication,
+            ]
+        )
+        var receiptValues = URLResourceValues()
+        receiptValues.isExcludedFromBackup = true
+        var mutableReceipt = locations.receipt
+        try mutableReceipt.setResourceValues(receiptValues)
+        return receipt
+    }
+
+    private func removeCachedClip(
+        clip: MobileEpisodeWatchClip,
+        owner: AuthManager.StableOwnerSnapshot
+    ) {
+        guard let locations = cacheLocations(clip: clip, owner: owner) else {
+            return
+        }
+        try? FileManager.default.removeItem(at: locations.media)
+        try? FileManager.default.removeItem(at: locations.receipt)
+    }
+
+    private func cacheLocations(
+        clip: MobileEpisodeWatchClip,
+        owner: AuthManager.StableOwnerSnapshot
+    ) -> (directory: URL, media: URL, receipt: URL)? {
+        guard clip.assetId.range(
+            of: #"^[A-Za-z0-9_-]{1,160}$"#,
+            options: .regularExpression
+        ) != nil,
+        let applicationSupport = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first else { return nil }
+        let directory = applicationSupport
+            .appendingPathComponent("QuipslyCapture", isDirectory: true)
+            .appendingPathComponent("SharedWatchCache", isDirectory: true)
+            .appendingPathComponent(
+                Self.digest(owner.ownerAccountID),
+                isDirectory: true
+            )
+        let sourceExtension = URL(
+            string: clip.playbackUrl
+        )?.pathExtension.lowercased()
+        let safeExtension = [
+            "mp4", "mov", "m4v", "m4a", "aac", "mp3", "wav",
+        ].contains(sourceExtension ?? "")
+            ? sourceExtension!
+            : clip.isVideo ? "mp4" : "m4a"
+        return (
+            directory,
+            directory.appendingPathComponent(
+                "\(clip.assetId).\(safeExtension)",
+                isDirectory: false
+            ),
+            directory.appendingPathComponent(
+                "\(clip.assetId).json",
+                isDirectory: false
+            )
+        )
+    }
+
+    private static func digest(_ value: String) -> String {
+        SHA256.hash(data: Data(value.utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+    }
+
+    private static func hashAndByteCount(
+        at url: URL
+    ) throws -> (byteCount: Int64, sha256: String) {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        var byteCount: Int64 = 0
+        while true {
+            let chunk = try handle.read(upToCount: 1_048_576) ?? Data()
+            if chunk.isEmpty { break }
+            byteCount += Int64(chunk.count)
+            hasher.update(data: chunk)
+        }
+        return (
+            byteCount,
+            hasher.finalize()
+                .map { String(format: "%02x", $0) }
+                .joined()
+        )
+    }
+
+    private func commandStatusMessage(_ type: String) -> String {
+        switch type {
+        case "START_SESSION":
+            return "Watch is bound to the current Capture recording clock."
+        case "PLAY":
+            return "Playing together. Each participant can pause."
+        case "PAUSE":
+            return "Paused for everyone at \(displayPosition.watchTimestamp)."
+        case "SEEK":
+            return "Shared Watch moved to \(displayPosition.watchTimestamp)."
+        case "ENDED":
+            return "Shared Watch completed and preserved its timeline segment."
+        default:
+            return "Shared Watch updated."
+        }
+    }
+}
+
+struct MobileEpisodeWatchCard: View {
+    @ObservedObject var client: MobileEpisodeWatchClient
+    let session: MobileCaptureSession
+    let captureIsActive: Bool
+    let previewOnly: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 10) {
+                Label("Watch together", systemImage: "play.rectangle.on.rectangle")
+                    .font(.headline)
+                Spacer()
+                Text(client.statusLabel)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(
+                        client.isSharedPlaying ? Color.green : Color.secondary
+                    )
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
+                    .background(.secondary.opacity(0.1), in: Capsule())
+                    .accessibilityIdentifier("CaptureEpisodeWatchStatus")
+            }
+
+            if client.isLoading && client.room == nil {
+                ProgressView("Loading episode Watch…")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else if let clip = client.selectedClip {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(clip.title)
+                        .font(.subheadline.weight(.bold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("CaptureEpisodeWatchClipTitle")
+                    Text(
+                        "\(client.displayPosition.watchTimestamp) / \((clip.durationSeconds ?? 0).watchTimestamp)"
+                    )
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                }
+
+                if let player = client.player, client.isPrepared {
+                    VideoPlayer(player: player)
+                        .allowsHitTesting(false)
+                        .aspectRatio(16 / 9, contentMode: .fit)
+                        .clipShape(
+                            RoundedRectangle(
+                                cornerRadius: 16,
+                                style: .continuous
+                            )
+                        )
+                        .accessibilityLabel(
+                            "Shared Watch video \(clip.title)"
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureEpisodeWatchPlayer"
+                        )
+
+                    HStack(spacing: 8) {
+                        Button {
+                            Task {
+                                await client.seekShared(
+                                    by: -10,
+                                    session: session,
+                                    captureIsActive: captureIsActive
+                                )
+                            }
+                        } label: {
+                            Label("Back 10", systemImage: "gobackward.10")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(
+                            client.isMutating
+                                || !client.canEdit
+                                || !client.sharedConnectionReady
+                                || !client.sharedClockReady(
+                                    for: session,
+                                    captureIsActive: captureIsActive
+                                )
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureEpisodeWatchBackButton"
+                        )
+
+                        Button {
+                            Task {
+                                await client.toggleSharedPlayback(
+                                    session: session,
+                                    captureIsActive: captureIsActive
+                                )
+                            }
+                        } label: {
+                            Label(
+                                client.isSharedPlaying
+                                    ? "Pause everyone"
+                                    : "Play together",
+                                systemImage: client.isSharedPlaying
+                                    ? "pause.fill"
+                                    : "play.fill"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(
+                            client.isMutating
+                                || !client.canEdit
+                                || !client.sharedConnectionReady
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureEpisodeWatchPlayPauseButton"
+                        )
+
+                        Button {
+                            Task {
+                                await client.seekShared(
+                                    by: 10,
+                                    session: session,
+                                    captureIsActive: captureIsActive
+                                )
+                            }
+                        } label: {
+                            Label("Forward 10", systemImage: "goforward.10")
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(
+                            client.isMutating
+                                || !client.canEdit
+                                || !client.sharedConnectionReady
+                                || !client.sharedClockReady(
+                                    for: session,
+                                    captureIsActive: captureIsActive
+                                )
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureEpisodeWatchForwardButton"
+                        )
+                    }
+                    .labelStyle(.iconOnly)
+
+                    if !client.sharedClockReady(
+                        for: session,
+                        captureIsActive: captureIsActive
+                    ) {
+                        Button {
+                            client.togglePreview()
+                        } label: {
+                            Label(
+                                client.localPreviewActive
+                                    ? "Pause private preview"
+                                    : "Preview on this iPhone",
+                                systemImage: client.localPreviewActive
+                                    ? "pause.circle"
+                                    : "iphone.gen3"
+                            )
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier(
+                            "CaptureEpisodeWatchPreviewButton"
+                        )
+                    }
+                } else {
+                    Button {
+                        Task { await client.prepareSelectedClip() }
+                    } label: {
+                        if client.isPreparingClip {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Label(
+                                "Prepare \(clip.title)",
+                                systemImage: "arrow.down.circle.fill"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(client.isPreparingClip || previewOnly)
+                    .accessibilityHint(
+                        "Downloads an authenticated, owner-partitioned local copy for reliable shared playback."
+                    )
+                    .accessibilityIdentifier(
+                        "CaptureEpisodeWatchPrepareButton"
+                    )
+                }
+
+                Text(boundaryMessage)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier(
+                        "CaptureEpisodeWatchBoundary"
+                    )
+            } else {
+                Text(
+                    "This episode does not have a selected Watch clip yet. Add one in Nest, then refresh."
+                )
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            }
+
+            if let statusMessage = client.statusMessage {
+                Label(statusMessage, systemImage: "checkmark.circle")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if let errorMessage = client.errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureEpisodeWatchError")
+            }
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureEpisodeWatchCard")
+    }
+
+    private var boundaryMessage: String {
+        if client.room?.session?.recordingRoomId == session.callRoomId {
+            return "Bound to this recording clock. Play, pause, and seek receipts become reviewed Watch segments for the episode timeline."
+        }
+        if captureIsActive {
+            return "The first shared Play binds Watch to this active Capture clock. Headphones keep the separately preserved clip out of the microphone master."
+        }
+        return "Prepare and preview before the take. Start recording before Play together so the clip lands on the episode timeline; private preview never changes shared state."
+    }
+}
+
+private extension TimeInterval {
+    var watchTimestamp: String {
+        let total = max(0, Int(self.rounded(.down)))
+        let hours = total / 3_600
+        let minutes = (total % 3_600) / 60
+        let seconds = total % 60
+        return hours > 0
+            ? String(format: "%02d:%02d:%02d", hours, minutes, seconds)
+            : String(format: "%02d:%02d", minutes, seconds)
+    }
+}

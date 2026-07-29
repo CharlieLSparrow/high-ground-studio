@@ -36,6 +36,7 @@ const files = {
   videoCaptureController: path.join(sourceRoot, "VideoCaptureController.swift"),
   videoCaptureService: path.join(sourceRoot, "VideoCaptureService.swift"),
   captureAudioSessionCoordinator: path.join(sourceRoot, "CaptureAudioSessionCoordinator.swift"),
+  episodeWatch: path.join(sourceRoot, "MobileEpisodeWatch.swift"),
   uploadManager: path.join(sourceRoot, "UploadManager.swift"),
   uploadLedgerStore: path.join(sourceRoot, "UploadLedgerStore.swift"),
   providerRoomController: path.join(sourceRoot, "ProviderRoomController.swift"),
@@ -156,6 +157,7 @@ const audioText = read(files.audioCapture);
 const videoCaptureControllerText = read(files.videoCaptureController);
 const videoCaptureServiceText = read(files.videoCaptureService);
 const captureAudioSessionCoordinatorText = read(files.captureAudioSessionCoordinator);
+const episodeWatchText = read(files.episodeWatch);
 const uploadText = read(files.uploadManager);
 const uploadLedgerText = read(files.uploadLedgerStore);
 const providerRoomText = read(files.providerRoomController);
@@ -311,6 +313,14 @@ requireIncludes(generatedMobileCaptureAuthSmokeText, "Runtime UI smoke used gene
 requireIncludes(generatedMobileCaptureAuthSmokeText, "password and tokens were not printed", "generated auth smoke must not expose runtime UI secrets");
 requireIncludes(mobileCapturePreflightText, "validate-livekit-provider-room.sh", "mobile capture preflight uses the bounded LiveKit provider-room validator");
 requireIncludes(mobileCapturePreflightText, "--build-simulator", "mobile capture preflight runs the bounded simulator build proof");
+requireIncludes(mobileCapturePreflightText, "quipsly-ios-shared-episode-watch.test.mjs", "mobile capture preflight preserves shared Episode Watch boundaries");
+requireIncludes(episodeWatchText, "authenticatedDownload(", "shared Watch streams protected media under native auth");
+requireIncludes(episodeWatchText, 'URLQueryItem(name: "watch", value: "1")', "shared Watch polls the bounded native projection");
+requireIncludes(episodeWatchText, '"expectedRevision": room.revision', "shared Watch mutations are revision guarded");
+requireIncludes(episodeWatchText, 'type: "START_SESSION"', "shared Watch binds to an authoritative Capture clock");
+requireIncludes(episodeWatchText, "serverClockOffsetSeconds", "shared Watch projects the server clock instead of trusting device wall time");
+requireIncludes(episodeWatchText, "Shared Watch lost contact with Nest.", "shared Watch exposes stale connectivity");
+requireIncludes(episodeWatchText, "CaptureEpisodeWatchPlayPauseButton", "shared Watch has a reachable native play and pause control");
 
 const authCombined = `${authText}\n${loginText}`;
 requireIncludes(authText, "SecItemUpdate(lookup as CFDictionary, replacement as CFDictionary)", "Keychain rotation updates by stable item identity instead of matching the replacement secret value");

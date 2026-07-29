@@ -8,6 +8,7 @@ import {
   importEpisodeRoomText,
   loadEpisodeRoomDesk,
   loadEpisodeRoomRuntime,
+  loadEpisodeRoomWatchRuntime,
 } from "@/lib/server/episode-room-store";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { getPrismaClient } from "@/lib/prisma";
@@ -120,6 +121,21 @@ export async function GET(
       error: readAccess.error,
     }, { status: readAccess.status });
   }
+  if (request.nextUrl.searchParams.get("watch") === "1") {
+    const runtime = await loadEpisodeRoomWatchRuntime(slug, episodeSlug);
+    if (!runtime) {
+      return NextResponse.json({ ok: false, error: "Episode production not found." }, { status: 404 });
+    }
+    const canEdit = readAccess.access.role
+      ? roleAllowsAction(readAccess.access.role, "write")
+      : false;
+    return NextResponse.json({
+      ok: true,
+      ...runtime,
+      canEdit,
+      serverNow: new Date().toISOString(),
+    });
+  }
   if (request.nextUrl.searchParams.get("runtime") === "1") {
     const knownWritingVersion = text(
       request.nextUrl.searchParams.get("writingVersion"),
@@ -136,7 +152,12 @@ export async function GET(
     const canEdit = readAccess.access.role
       ? roleAllowsAction(readAccess.access.role, "write")
       : false;
-    return NextResponse.json({ ok: true, ...runtime, canEdit });
+    return NextResponse.json({
+      ok: true,
+      ...runtime,
+      canEdit,
+      serverNow: new Date().toISOString(),
+    });
   }
   const canEdit = readAccess.access.role
     ? roleAllowsAction(readAccess.access.role, "write")
@@ -189,7 +210,11 @@ export async function POST(
         isStaff: access.actor.isStaff,
       },
     });
-    return NextResponse.json({ ok: true, ...result });
+    return NextResponse.json({
+      ok: true,
+      ...result,
+      serverNow: new Date().toISOString(),
+    });
   } catch (error) {
     if (error instanceof EpisodeRoomRevisionConflict) {
       return NextResponse.json({

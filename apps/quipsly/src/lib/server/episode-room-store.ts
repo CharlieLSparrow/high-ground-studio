@@ -120,6 +120,11 @@ export type EpisodeRoomRuntimePayload = {
   updatedAt: string;
 };
 
+export type EpisodeRoomWatchRuntimePayload = {
+  room: EpisodeRoomState;
+  updatedAt: string;
+};
+
 export type EpisodeRoomCommandInput =
   | {
       type: "ADD_CLIP";
@@ -700,6 +705,37 @@ export async function loadEpisodeRoomRuntime(
       room.session?.recordingRoomId,
     ),
     timelineClipCount: timelineRows(production.productionJson).length,
+    updatedAt: production.updatedAt.toISOString(),
+  };
+}
+
+/**
+ * Lightweight shared-playback projection for native clients.
+ *
+ * The one-second transport poll must not reconcile proxies, load manuscript
+ * blocks, enumerate recording sessions, or construct editor candidates. Those
+ * belong to the full Episode Room runtime. Attached Watch clips already carry
+ * the released playback identity needed by the native player.
+ */
+export async function loadEpisodeRoomWatchRuntime(
+  projectSlug: string,
+  episodeSlug: string,
+): Promise<EpisodeRoomWatchRuntimePayload | null> {
+  const prisma = getPrismaClient();
+  const production = await prisma.studioEpisodeProduction.findFirst({
+    where: {
+      slug: episodeSlug,
+      project: { slug: projectSlug },
+    },
+    select: {
+      productionJson: true,
+      updatedAt: true,
+    },
+  });
+  if (!production) return null;
+  const now = new Date().toISOString();
+  return {
+    room: productionRoomState(production.productionJson, now),
     updatedAt: production.updatedAt.toISOString(),
   };
 }

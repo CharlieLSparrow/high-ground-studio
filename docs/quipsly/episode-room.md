@@ -83,9 +83,69 @@ Commands:
 - `ENDED`
 - `SYNC_TIMELINE`
 
-Clients poll the lightweight runtime state every 750 ms. The protocol can later travel over a LiveKit data channel without changing command semantics or persisted receipts.
+The browser polls its lightweight runtime state every 750 ms; the native
+iPhone projection polls its narrower Watch-only read model once per second.
+The protocol can later travel over a LiveKit data channel without changing
+command semantics or persisted receipts.
 
 Browser autoplay policies can block remote audio playback. A blocked participant sees a deliberate `Tap to join playback on this device` control. Remote Pause always remains enforceable because pausing media is not autoplay-restricted.
+
+### Native iPhone shared Watch
+
+Quipsly Capture projects the same Episode Room protocol into the primary
+recorder; it does not create a second mobile-only room.
+
+The native transport follows these production boundaries:
+
+- `GET .../episode-room?watch=1` is a one-second, read-only projection that
+  loads only the persisted Watch room and episode update time. It deliberately
+  does not reconcile proxies, load manuscript blocks, enumerate recording
+  sessions, or build editor candidates on every phone poll.
+- Both the room projection and protected media route accept the verified
+  Firebase bearer already owned by Quipsly Capture. A supplied invalid bearer
+  fails closed and is never replaced by a browser cookie.
+- A prepared clip downloads through the authenticated streaming URLSession
+  path to a temporary file. The app validates the response byte count, computes
+  SHA-256 in 1 MiB chunks, writes a receipt, applies iOS file protection,
+  excludes the cache from backup, and partitions it by a one-way digest of the
+  stable Quipsly owner identity.
+- Changing accounts immediately hides and stops the prior owner's source. A
+  cached source is reused only when owner, asset, source, playback URL, byte
+  count, and SHA-256 all match.
+- `serverNow` accompanies room reads and accepted commands. The iPhone maps
+  that server time to the midpoint of its request/response interval, retains
+  the half-round-trip uncertainty, and projects `effectiveAt` using the
+  resulting offset. `AVPlayer` supplies supported periodic playback-time
+  observation; a drift over 500 ms is corrected to the shared position.
+- The first shared Play during a take binds the room to the active
+  server-owned Capture recording clock. A private preflight preview never
+  starts a room, grants consent, starts recording, or writes a Watch receipt.
+- Playback during local or provider recording requires a private listening
+  route such as wired, Bluetooth, or USB headphones. The phone speaker is
+  rejected so the separately preserved reference source is not recorded back
+  into the microphone master.
+- Three consecutive failed polls pause local playback, release its audio
+  lease, disable shared controls, and explain that the protected source remains
+  on the phone. A successful poll resynchronizes against the authoritative room
+  before playback can continue.
+
+This matches Apple's intended division of responsibility: `AVPlayer` owns
+local media transport and timed observation, while `AVAudioSession` declares
+simultaneous recording/playback behavior through `playAndRecord`.
+
+- [Apple AVPlayer](https://developer.apple.com/documentation/avfoundation/avplayer)
+- [Apple monitoring playback progress](https://developer.apple.com/documentation/avfoundation/monitoring-playback-progress-in-your-app)
+- [Apple playAndRecord audio-session category](https://developer.apple.com/documentation/avfaudio/avaudiosession/category-swift.struct/playandrecord)
+
+The media itself remains a distinct source, not sound baked into a participant
+track. Riverside similarly treats locally recorded participant media and
+shared media as separate high-quality tracks, and explains aligned tracks as
+raw sources plus timeline padding. Quipsly records the equivalent alignment as
+explicit source/episode ranges and receipt identities.
+
+- [Riverside recording file formats](https://support.riverside.fm/hc/en-us/articles/5260131045917-Video-and-audio-file-formats-Overview)
+- [Riverside raw versus aligned tracks](https://support.riverside.fm/hc/en-us/articles/6518046195613-What-is-the-difference-between-an-aligned-track-and-a-raw-track)
+- [Riverside host recording checklist](https://support.riverside.fm/hc/en-us/articles/5706937784861-Host-checklist-and-tips-Recording-on-computer)
 
 ## Shared writing protocol
 

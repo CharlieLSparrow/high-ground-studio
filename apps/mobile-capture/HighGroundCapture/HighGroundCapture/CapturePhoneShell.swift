@@ -2242,6 +2242,7 @@ private struct CaptureRecorderView: View {
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var recordingMode: CaptureRecordingMode = .audio
     @State private var cameraPosition: VideoCaptureCameraPosition = .front
+    @StateObject private var episodeWatch = MobileEpisodeWatchClient()
 
     var body: some View {
         ScrollView {
@@ -2283,6 +2284,28 @@ private struct CaptureRecorderView: View {
                     }
                     .captureCard()
                     .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls.")
+
+                    if session.projectSlug?.nonempty != nil,
+                       session.episodeSlug?.nonempty != nil {
+                        MobileEpisodeWatchCard(
+                            client: episodeWatch,
+                            session: session,
+                            captureIsActive: captureIsActive,
+                            previewOnly: model.usesPreviewData
+                        )
+                        .task(
+                            id:
+                                "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                        ) {
+                            if model.usesPreviewData {
+                                episodeWatch.loadPreview(session: session)
+                            } else {
+                                await episodeWatch.load(session: session)
+                                await episodeWatch.poll(session: session)
+                            }
+                        }
+                        .onDisappear { episodeWatch.stop() }
+                    }
 
                     ConsentStrip(
                         session: session,
@@ -6565,7 +6588,7 @@ private enum CapturePalette {
     )
 }
 
-private extension View {
+extension View {
     func captureCard(contentPadding: CGFloat = 16) -> some View {
         self
             .padding(contentPadding)

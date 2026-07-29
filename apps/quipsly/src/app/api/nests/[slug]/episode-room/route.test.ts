@@ -7,6 +7,7 @@ import {
   EpisodeRoomRevisionConflict,
   applyEpisodeRoomStoreCommand,
   loadEpisodeRoomRuntime,
+  loadEpisodeRoomWatchRuntime,
 } from "@/lib/server/episode-room-store";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 
@@ -36,6 +37,7 @@ jest.mock("@/lib/server/episode-room-store", () => {
     importEpisodeRoomText: jest.fn(),
     loadEpisodeRoomDesk: jest.fn(),
     loadEpisodeRoomRuntime: jest.fn(),
+    loadEpisodeRoomWatchRuntime: jest.fn(),
   };
 });
 
@@ -281,6 +283,46 @@ describe("Episode Room runtime route", () => {
       ok: true,
       canEdit: true,
       room: { revision: 8 },
+    });
+  });
+
+  it("serves the native Watch poll without loading the writing or editor runtime", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: true,
+      actor: {
+        id: "user-1",
+        email: "editor@example.test",
+        name: "Episode Editor",
+        isStaff: false,
+        source: "firebase-bearer",
+      },
+      access: {
+        allowed: true,
+        projectId: "project-1",
+        role: "EDITOR",
+      },
+    } as never);
+    jest.mocked(loadEpisodeRoomWatchRuntime).mockResolvedValue({
+      room: { revision: 8, status: "paused" },
+      updatedAt: "2026-07-29T10:00:00.000Z",
+    } as never);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nests/high-ground-odyssey/episode-room?episode=episode-4-part-2&watch=1",
+      { headers: { authorization: "Bearer firebase-id-token" } },
+    ), params);
+
+    expect(response.status).toBe(200);
+    expect(loadEpisodeRoomWatchRuntime).toHaveBeenCalledWith(
+      "high-ground-odyssey",
+      "episode-4-part-2",
+    );
+    expect(loadEpisodeRoomRuntime).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      canEdit: true,
+      room: { revision: 8, status: "paused" },
+      serverNow: expect.any(String),
     });
   });
 });

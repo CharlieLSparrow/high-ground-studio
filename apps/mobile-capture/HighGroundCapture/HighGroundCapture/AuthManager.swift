@@ -737,6 +737,115 @@ final class AuthManager: ObservableObject {
         return retryResult
     }
 
+    /// Downloads a potentially large authenticated source without first
+    /// materializing its bytes in memory. The same verified-owner, proactive
+    /// refresh, one-time 401 replay, and account-switch rules as
+    /// authenticatedData apply. Callers must move or delete the returned
+    /// temporary file after validating the HTTP status.
+    func authenticatedDownload(
+        for originalRequest: URLRequest,
+        session: URLSession = .shared,
+        allowOfflineRecovery: Bool = false,
+        expectedOwnerAccountID: String? = nil
+    ) async throws -> (URL, HTTPURLResponse) {
+        guard getKeychainItem(account: "refreshToken") != nil else {
+            setSignedOutState()
+            throw AuthenticatedRequestError.signInRequired
+        }
+        let ownerBinding = try authenticatedOwnerBinding(
+            expectedOwnerAccountID: expectedOwnerAccountID
+        )
+
+        if accessMode == .offlineCachedIdentity && !allowOfflineRecovery {
+            throw AuthenticatedRequestError.offlineAccess
+        }
+
+        let refreshedForInitialRequest = await refreshAccessTokenIfNeeded(
+            force: false,
+            allowOfflineRecovery: allowOfflineRecovery
+        )
+        try validateAuthenticatedOwnerBinding(ownerBinding)
+        guard refreshedForInitialRequest, let firstToken = getAccessToken() else {
+            throw hasProtectedOfflineAccess
+                ? AuthenticatedRequestError.offlineAccess
+                : AuthenticatedRequestError.refreshFailed
+        }
+        try validateAuthenticatedOwnerBinding(ownerBinding)
+
+        let firstResult: (URL, HTTPURLResponse)
+        do {
+            firstResult = try await sendAuthenticatedDownload(
+                originalRequest,
+                token: firstToken,
+                session: session
+            )
+        } catch {
+            try validateAuthenticatedOwnerBinding(ownerBinding)
+            if isNetworkAvailabilityError(error) {
+                enterProtectedOfflineAccess(reason: error.localizedDescription)
+                throw AuthenticatedRequestError.offlineAccess
+            }
+            throw error
+        }
+        do {
+            try validateAuthenticatedOwnerBinding(ownerBinding)
+        } catch {
+            try? FileManager.default.removeItem(at: firstResult.0)
+            throw error
+        }
+        guard firstResult.1.statusCode == 401 else {
+            return firstResult
+        }
+        try? FileManager.default.removeItem(at: firstResult.0)
+
+        let retryToken: String
+        if let currentToken = getAccessToken(), currentToken != firstToken {
+            retryToken = currentToken
+        } else {
+            let refreshedForRetry = await refreshAccessTokenIfNeeded(
+                force: true,
+                allowOfflineRecovery: allowOfflineRecovery
+            )
+            try validateAuthenticatedOwnerBinding(ownerBinding)
+            guard refreshedForRetry, let refreshedToken = getAccessToken() else {
+                throw hasProtectedOfflineAccess
+                    ? AuthenticatedRequestError.offlineAccess
+                    : AuthenticatedRequestError.refreshFailed
+            }
+            retryToken = refreshedToken
+        }
+        try validateAuthenticatedOwnerBinding(ownerBinding)
+
+        let retryResult: (URL, HTTPURLResponse)
+        do {
+            retryResult = try await sendAuthenticatedDownload(
+                originalRequest,
+                token: retryToken,
+                session: session
+            )
+        } catch {
+            try validateAuthenticatedOwnerBinding(ownerBinding)
+            if isNetworkAvailabilityError(error) {
+                enterProtectedOfflineAccess(reason: error.localizedDescription)
+                throw AuthenticatedRequestError.offlineAccess
+            }
+            throw error
+        }
+        do {
+            try validateAuthenticatedOwnerBinding(ownerBinding)
+        } catch {
+            try? FileManager.default.removeItem(at: retryResult.0)
+            throw error
+        }
+        guard retryResult.1.statusCode != 401 else {
+            try? FileManager.default.removeItem(at: retryResult.0)
+            signOut()
+            errorMessage = AuthenticatedRequestError.sessionRejected.localizedDescription
+            throw AuthenticatedRequestError.sessionRejected
+        }
+        return retryResult
+    }
+
     func stableOwnerSnapshot() -> StableOwnerSnapshot? {
         guard let ownerAccountID = Self.currentStoredOwnerID(),
               Self.normalizedOwnerID(accountOwnerID) == ownerAccountID else {
@@ -891,6 +1000,21 @@ final class AuthManager: ObservableObject {
             throw URLError(.badServerResponse)
         }
         return (data, http)
+    }
+
+    private func sendAuthenticatedDownload(
+        _ originalRequest: URLRequest,
+        token: String,
+        session: URLSession
+    ) async throws -> (URL, HTTPURLResponse) {
+        var request = originalRequest
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (temporaryURL, response) = try await session.download(for: request)
+        guard let http = response as? HTTPURLResponse else {
+            try? FileManager.default.removeItem(at: temporaryURL)
+            throw URLError(.badServerResponse)
+        }
+        return (temporaryURL, http)
     }
 
     func signOut() {
