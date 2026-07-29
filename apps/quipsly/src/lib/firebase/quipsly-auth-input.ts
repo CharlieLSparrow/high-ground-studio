@@ -47,7 +47,10 @@ export function quipslyEmailActionSettings({
   let safeOrigin = "https://nest.quipsly.com";
   try {
     const candidate = new URL(origin);
-    if (candidate.protocol === "https:" || candidate.hostname === "localhost") {
+    const isLoopbackHost = candidate.hostname === "localhost"
+      || candidate.hostname === "127.0.0.1"
+      || candidate.hostname === "[::1]";
+    if (candidate.protocol === "https:" || (candidate.protocol === "http:" && isLoopbackHost)) {
       safeOrigin = candidate.origin;
     }
   } catch {

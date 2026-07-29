@@ -118,5 +118,27 @@ describe("Quipsly Firebase session completion", () => {
         + "?emailAction=reset&callbackUrl=%2Fwork&inviteToken=qinv_valid",
       handleCodeInApp: false,
     });
+    expect(
+      quipslyEmailActionSettings({
+        origin: "http://127.0.0.1:3012",
+        callbackUrl: "/projects",
+        action: "verify",
+      }),
+    ).toEqual({
+      url:
+        "http://127.0.0.1:3012/login"
+        + "?emailAction=verify&callbackUrl=%2Fprojects",
+      handleCodeInApp: false,
+    });
+    expect(
+      quipslyEmailActionSettings({
+        origin: "http://192.168.1.50:3012",
+        callbackUrl: "/projects",
+        action: "verify",
+      }).url,
+    ).toBe(
+      "https://nest.quipsly.com/login"
+      + "?emailAction=verify&callbackUrl=%2Fprojects",
+    );
   });
 });
