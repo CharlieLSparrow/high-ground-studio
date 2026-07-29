@@ -790,10 +790,17 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("CaptureQuickEntrySyncCard(model: model)")
       && capturePhoneShellText.includes("CaptureWorkTaskTagsEdit_")
       && capturePhoneShellText.includes("CaptureWorkGoalTagsEdit_")
+      && capturePhoneShellText.includes("CaptureWorkNoteTagsEdit_")
+      && capturePhoneShellText.includes("expectedTagRevision: note.tagRevision")
+      && capturePhoneShellText.includes("kind: .document")
+      && capturePhoneShellText.includes("canonicalTagIDs: note.tagIds")
       && capturePhoneShellText.includes("availableTags: workTagCatalog")
+      && workRouteText.includes("tagRevision: note.tagRevision")
+      && workRouteText.includes("canEditTags: project.canWrite")
+      && workRouteText.includes("const tags = note.tagLinks.map")
       && capturePhoneShellText.includes("workTagDecisionStatus"),
     "nativeCanonicalProjectWorkWorkspace",
-    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, and reconciles existing Task/Goal tag sets through the canonical phone outbox.",
+    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, and reconciles Task, Goal, and document-level Note tag sets through the canonical phone outbox.",
   );
 }
 

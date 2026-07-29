@@ -217,6 +217,10 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(noteTitle)
         XCTAssertTrue(noteTitle.exists)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "CaptureWorkNote_preview-work-note").firstMatch.exists)
+        let noteTagEditor = app.buttons["Edit tags for Opening idea"]
+        reveal(noteTagEditor)
+        XCTAssertTrue(noteTagEditor.exists)
+        XCTAssertFalse(noteTagEditor.isEnabled, "Preview Work must expose canonical document-tag ownership without pretending a mutation is available.")
 
         let quickTask = app.buttons["CaptureWorkQuickEntry_TASK"]
         for _ in 0..<8 where !quickTask.isHittable { app.swipeDown() }

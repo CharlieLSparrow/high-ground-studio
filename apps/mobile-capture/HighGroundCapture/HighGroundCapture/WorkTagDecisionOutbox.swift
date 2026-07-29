@@ -5,6 +5,7 @@ struct PendingWorkTagDecision: Codable, Equatable, Identifiable {
     enum EntityKind: String, Codable {
         case task
         case goal
+        case document
     }
 
     enum Disposition: String, Codable {
@@ -19,6 +20,7 @@ struct PendingWorkTagDecision: Codable, Equatable, Identifiable {
     let projectID: String
     let tagIDs: [String]
     let expectedUpdatedAt: String
+    let expectedTagRevision: Int?
     let capturedAt: Date
     var disposition: Disposition
     var attemptCount: Int
@@ -134,6 +136,7 @@ final class WorkTagDecisionOutbox: ObservableObject {
         projectID: String,
         tagIDs: [String],
         expectedUpdatedAt: String,
+        expectedTagRevision: Int? = nil,
         capturedAt: Date = Date()
     ) throws -> PendingWorkTagDecision {
         guard ledgerIsWritable else { throw WorkTagDecisionStoreError.ledgerUnavailable }
@@ -147,6 +150,7 @@ final class WorkTagDecisionOutbox: ObservableObject {
         guard !cleanEntityID.isEmpty,
               !cleanProjectID.isEmpty,
               !expectedUpdatedAt.isEmpty,
+              entityKind != .document || expectedTagRevision.map({ $0 >= 0 }) == true,
               cleanTagIDs.count == tagIDs.count,
               cleanTagIDs.count <= 24 else {
             throw WorkTagDecisionStoreError.invalidDecision
@@ -163,6 +167,7 @@ final class WorkTagDecisionOutbox: ObservableObject {
             projectID: cleanProjectID,
             tagIDs: cleanTagIDs,
             expectedUpdatedAt: expectedUpdatedAt,
+            expectedTagRevision: expectedTagRevision,
             capturedAt: capturedAt,
             disposition: .pending,
             attemptCount: 0,

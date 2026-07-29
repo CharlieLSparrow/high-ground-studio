@@ -296,6 +296,7 @@ private struct CaptureWorkView: View {
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var taskTagsToEdit: MobileCaptureTodayTask?
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
+    @State private var noteTagsToEdit: MobileCaptureWorkNote?
 
     init(model: CaptureExperienceModel) {
         self.model = model
@@ -330,21 +331,36 @@ private struct CaptureWorkView: View {
 
     private var visibleTasks: [MobileCaptureTodayTask] {
         (workspace?.tasks ?? []).filter { task in
-            (showsCompletedTasks || task.status == "OPEN")
-                && matches([task.title, task.detail] + (task.tagLabels ?? []), tagIDs: task.tagIds ?? [])
+            let effectiveTagIDs = model.todayClient.effectiveTagIDs(
+                kind: .task,
+                entityID: task.id,
+                canonicalTagIDs: task.tagIds ?? []
+            )
+            return (showsCompletedTasks || task.status == "OPEN")
+                && matches([task.title, task.detail] + tagLabels(for: effectiveTagIDs), tagIDs: effectiveTagIDs)
         }
     }
 
     private var visibleGoals: [MobileCaptureTodayGoal] {
         (workspace?.goals ?? []).filter { goal in
-            goal.status == "ACTIVE"
-                && matches([goal.title, goal.description, goal.progressNote] + (goal.tagLabels ?? []), tagIDs: goal.tagIds ?? [])
+            let effectiveTagIDs = model.todayClient.effectiveTagIDs(
+                kind: .goal,
+                entityID: goal.id,
+                canonicalTagIDs: goal.tagIds ?? []
+            )
+            return goal.status == "ACTIVE"
+                && matches([goal.title, goal.description, goal.progressNote] + tagLabels(for: effectiveTagIDs), tagIDs: effectiveTagIDs)
         }
     }
 
     private var visibleNotes: [MobileCaptureWorkNote] {
         (workspace?.notes ?? []).filter { note in
-            matches([note.title, note.excerpt] + note.tagLabels, tagIDs: note.tagIds)
+            let effectiveTagIDs = model.todayClient.effectiveTagIDs(
+                kind: .document,
+                entityID: note.id,
+                canonicalTagIDs: note.tagIds
+            )
+            return matches([note.title, note.excerpt] + tagLabels(for: effectiveTagIDs), tagIDs: effectiveTagIDs)
         }
     }
 
@@ -466,6 +482,26 @@ private struct CaptureWorkView: View {
                     project: project,
                     canonicalTagIDs: goal.tagIds ?? [],
                     expectedUpdatedAt: goal.updatedAt,
+                    availableTags: workTagCatalog,
+                    onSaved: reloadSelectedWork
+                )
+            }
+        }
+        .sheet(item: $noteTagsToEdit) { note in
+            if let project = selectedProject {
+                TodayWorkTagSheet(
+                    client: model.todayClient,
+                    kind: .document,
+                    entityID: note.id,
+                    entityTitle: note.title,
+                    project: MobileCaptureTodayProject(
+                        id: project.id,
+                        name: project.name,
+                        slug: project.slug
+                    ),
+                    canonicalTagIDs: note.tagIds,
+                    expectedUpdatedAt: note.updatedAt,
+                    expectedTagRevision: note.tagRevision,
                     availableTags: workTagCatalog,
                     onSaved: reloadSelectedWork
                 )
@@ -845,19 +881,49 @@ private struct CaptureWorkView: View {
     @ViewBuilder
     private func workNoteRow(_ note: MobileCaptureWorkNote) -> some View {
         let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
-        if let url = URL(string: "\(baseURL)\(note.webPath)") {
-            Link(destination: url) {
-                workNoteContent(note)
+        let pendingTags = model.todayClient.pendingWorkTagDecision(kind: .document, entityID: note.id)
+        let visibleTagIDs = model.todayClient.effectiveTagIDs(
+            kind: .document,
+            entityID: note.id,
+            canonicalTagIDs: note.tagIds
+        )
+        let visibleTagLabels = tagLabels(for: visibleTagIDs)
+        VStack(alignment: .leading, spacing: 8) {
+            if let url = URL(string: "\(baseURL)\(note.webPath)") {
+                Link(destination: url) {
+                    workNoteContent(note, tagLabels: visibleTagLabels)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(client.isUsingProtectedCache ? "Requires a connection to open the canonical Nest note." : "Opens the canonical note in Nest.")
+                .accessibilityIdentifier("CaptureWorkNote_\(note.id)")
+            } else {
+                workNoteContent(note, tagLabels: visibleTagLabels)
             }
-            .buttonStyle(.plain)
-            .accessibilityHint(client.isUsingProtectedCache ? "Requires a connection to open the canonical Nest note." : "Opens the canonical note in Nest.")
-            .accessibilityIdentifier("CaptureWorkNote_\(note.id)")
-        } else {
-            workNoteContent(note)
+            workTagDecisionStatus(kind: .document, entityID: note.id)
+            if note.canEditTags == true, note.tagRevision != nil {
+                Button {
+                    noteTagsToEdit = note
+                } label: {
+                    Label("Edit tags", systemImage: "tag")
+                        .frame(minHeight: 44)
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.bordered)
+                .disabled(model.usesPreviewData || model.todayClient.isMutating || pendingTags != nil)
+                .accessibilityLabel("Edit tags for \(note.title)")
+                .accessibilityIdentifier("CaptureWorkNoteTagsEdit_\(note.id)")
+                .accessibilityHint("Protects the complete document tag selection on this iPhone before reconciling it with the same Nest.")
+            }
+        }
+        .padding(14)
+        .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.primary.opacity(0.07))
         }
     }
 
-    private func workNoteContent(_ note: MobileCaptureWorkNote) -> some View {
+    private func workNoteContent(_ note: MobileCaptureWorkNote, tagLabels: [String]) -> some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "note.text")
                 .font(.title3)
@@ -867,18 +933,12 @@ private struct CaptureWorkView: View {
                 if !note.excerpt.isEmpty {
                     Text(note.excerpt).font(.caption).foregroundStyle(.secondary).lineLimit(4)
                 }
-                workTagLabels(note.tagLabels)
+                workTagLabels(tagLabels)
             }
             Spacer(minLength: 0)
             Image(systemName: "arrow.up.right")
                 .font(.caption.weight(.bold))
                 .foregroundStyle(.secondary)
-        }
-        .padding(14)
-        .background(.background, in: RoundedRectangle(cornerRadius: 18))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.primary.opacity(0.07))
         }
     }
 
@@ -1745,6 +1805,7 @@ private struct TodayWorkTagSheet: View {
     let project: MobileCaptureTodayProject
     let canonicalTagIDs: [String]
     let expectedUpdatedAt: String
+    let expectedTagRevision: Int?
     let availableTags: [MobileCaptureTodayTag]?
     let onSaved: (() -> Void)?
 
@@ -1759,6 +1820,7 @@ private struct TodayWorkTagSheet: View {
         project: MobileCaptureTodayProject,
         canonicalTagIDs: [String],
         expectedUpdatedAt: String,
+        expectedTagRevision: Int? = nil,
         availableTags: [MobileCaptureTodayTag]? = nil,
         onSaved: (() -> Void)? = nil
     ) {
@@ -1769,6 +1831,7 @@ private struct TodayWorkTagSheet: View {
         self.project = project
         self.canonicalTagIDs = canonicalTagIDs
         self.expectedUpdatedAt = expectedUpdatedAt
+        self.expectedTagRevision = expectedTagRevision
         self.availableTags = availableTags
         self.onSaved = onSaved
         _selectedTagIDs = State(initialValue: Set(canonicalTagIDs))
@@ -1918,6 +1981,7 @@ private struct TodayWorkTagSheet: View {
                 projectID: project.id,
                 tagIDs: selection,
                 expectedUpdatedAt: expectedUpdatedAt,
+                expectedTagRevision: expectedTagRevision,
                 availableTagIDs: Set(tagCatalog.filter(\.isActive).map(\.id))
             )
             if saved {

@@ -163,6 +163,7 @@ export async function GET(request: Request) {
         id: true,
         stableId: true,
         title: true,
+        tagRevision: true,
         updatedAt: true,
         blocks: {
           where: { archivedAt: null },
@@ -170,7 +171,7 @@ export async function GET(request: Request) {
           take: 4,
           select: { id: true, order: true, title: true, body: true },
         },
-        taggedSpans: {
+        tagLinks: {
           where: { tag: { projectId: selectedProject.id } },
           orderBy: { createdAt: "asc" },
           select: { tag: { select: { id: true, label: true } } },
@@ -187,15 +188,6 @@ export async function GET(request: Request) {
         slug: true,
         label: true,
         isActive: true,
-        _count: {
-          select: {
-            actionItems: true,
-            goals: true,
-            coachingNotes: true,
-            callRooms: true,
-            taggedSpans: true,
-          },
-        },
       },
     }),
   ]);
@@ -271,26 +263,34 @@ export async function GET(request: Request) {
   const notes = noteRows.map((note) => {
     const bodyBlocks = note.blocks.filter((block) => block.order > 0 || block.title !== "Note Title");
     const noteText = bodyBlocks.map((block) => block.body).join("\n\n") || note.blocks.map((block) => block.body).join("\n\n");
-    const tags = [...new Map(note.taggedSpans.map((span) => [span.tag.id, span.tag])).values()];
+    const tags = note.tagLinks.map((link) => link.tag);
     return {
       id: note.id,
       stableId: note.stableId,
       title: note.title,
       excerpt: excerpt(noteText),
+      tagRevision: note.tagRevision,
       updatedAt: note.updatedAt.toISOString(),
+      canEditTags: project.canWrite,
       tagIds: tags.map((tag) => tag.id),
       tagLabels: tags.map((tag) => tag.label),
       webPath: `/create?project=${encodeURIComponent(selectedProject.slug)}&document=${encodeURIComponent(note.id)}`,
     };
   });
 
+  const usageCounts = new Map<string, number>();
+  for (const entity of [...tasks, ...goals, ...notes]) {
+    for (const tagId of entity.tagIds) {
+      usageCounts.set(tagId, (usageCounts.get(tagId) ?? 0) + 1);
+    }
+  }
   const tags = tagRows.map((tag) => ({
     id: tag.id,
     projectId: tag.projectId,
     slug: tag.slug,
     label: tag.label,
     isActive: tag.isActive,
-    usageCount: Object.values(tag._count).reduce((sum, count) => sum + count, 0),
+    usageCount: usageCounts.get(tag.id) ?? 0,
   }));
 
   return NextResponse.json({

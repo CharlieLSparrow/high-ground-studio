@@ -73,6 +73,18 @@ private struct WorkTagDecisionOutboxHarness {
         require(relaunched.pendingCount == 1, "Relaunch must recover an unresolved protected decision.")
         require(relaunched.entries.first?.id == decision.id, "Relaunch must preserve the exact replay identity.")
 
+        let documentDecision = try relaunched.enqueue(
+            entityKind: .document,
+            entityID: "document-1",
+            projectID: "project-1",
+            tagIDs: ["tag-a"],
+            expectedUpdatedAt: "2027-01-15T00:00:00.000Z",
+            expectedTagRevision: 4,
+            capturedAt: capturedAt
+        )
+        require(documentDecision.expectedTagRevision == 4, "Document tag retries must preserve the optimistic tag revision.")
+        relaunched.markAcknowledged(documentDecision.id)
+
         relaunched.markHeld(decision.id, code: "CONFLICT", message: "Changed in Nest.", at: capturedAt)
         require(relaunched.pendingCount == 0 && relaunched.heldCount == 1, "A permanent conflict must remain visible and stop automatic retries.")
         require(relaunched.entries.first?.lastErrorCode == "CONFLICT", "Held decisions must preserve their conflict reason.")

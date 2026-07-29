@@ -100,16 +100,17 @@ describe("mobile Capture Work contract", () => {
         id: "note-1",
         stableId: "mobile-note-1",
         title: "Opening idea",
+        tagRevision: 3,
         updatedAt,
         blocks: [
           { id: "title-block", order: 0, title: "Note Title", body: "Opening idea" },
           { id: "body-block", order: 1, title: null, body: "Begin with the surprising admission." },
         ],
-        taggedSpans: [{ tag: { id: "tag-1", label: "Episode 4" } }],
+        tagLinks: [{ tag: { id: "tag-1", label: "Episode 4" } }],
       }]) },
       studioTag: { findMany: jest.fn().mockResolvedValue([
-        { id: "tag-1", projectId: "project-1", slug: "episode-4", label: "Episode 4", isActive: true, _count: { actionItems: 1, goals: 1, coachingNotes: 0, callRooms: 0, taggedSpans: 1 } },
-        { id: "tag-old", projectId: "project-1", slug: "old", label: "Old", isActive: false, _count: { actionItems: 0, goals: 0, coachingNotes: 0, callRooms: 0, taggedSpans: 0 } },
+        { id: "tag-1", projectId: "project-1", slug: "episode-4", label: "Episode 4", isActive: true },
+        { id: "tag-old", projectId: "project-1", slug: "old", label: "Old", isActive: false },
       ]) },
     };
     jest.mocked(getPrismaClient).mockReturnValue(prisma as never);
@@ -134,6 +135,8 @@ describe("mobile Capture Work contract", () => {
         notes: [{
           id: "note-1",
           excerpt: "Begin with the surprising admission.",
+          tagRevision: 3,
+          canEditTags: true,
           tagLabels: ["Episode 4"],
           webPath: "/create?project=high-ground&document=note-1",
         }],

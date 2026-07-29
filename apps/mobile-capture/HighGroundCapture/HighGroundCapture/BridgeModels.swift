@@ -1049,6 +1049,7 @@ struct MobileCaptureWorkTagMutationResponse: Codable {
     let projectId: String?
     let tagIds: [String]?
     let updatedAt: String?
+    let tagRevision: Int?
     let receiptId: String?
     let idempotentReplay: Bool?
 }
@@ -1082,7 +1083,9 @@ struct MobileCaptureWorkNote: Codable, Identifiable, Hashable {
     let stableId: String
     let title: String
     let excerpt: String
+    let tagRevision: Int?
     let updatedAt: String
+    let canEditTags: Bool?
     let tagIds: [String]
     let tagLabels: [String]
     let webPath: String
@@ -2952,6 +2955,7 @@ final class CaptureTodayClient: ObservableObject {
         projectID: String,
         tagIDs: [String],
         expectedUpdatedAt: String,
+        expectedTagRevision: Int? = nil,
         availableTagIDs: Set<String>? = nil
     ) async -> Bool {
         let allowedTagIDs = availableTagIDs
@@ -2969,7 +2973,8 @@ final class CaptureTodayClient: ObservableObject {
                 entityID: entityID,
                 projectID: projectID,
                 tagIDs: normalized,
-                expectedUpdatedAt: expectedUpdatedAt
+                expectedUpdatedAt: expectedUpdatedAt,
+                expectedTagRevision: expectedTagRevision
             )
             publishWorkTagDecisionCounts()
             guard AuthManager.shared.networkActionsAllowed else {
@@ -3230,13 +3235,17 @@ final class CaptureTodayClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
+            var body: [String: Any] = [
                 "entityKind": decision.entityKind.rawValue,
                 "entityId": decision.entityID,
                 "tagIds": decision.tagIDs,
                 "expectedUpdatedAt": decision.expectedUpdatedAt,
                 "clientRequestId": decision.clientRequestID,
-            ])
+            ]
+            if let expectedTagRevision = decision.expectedTagRevision {
+                body["expectedTagRevision"] = expectedTagRevision
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(MobileCaptureWorkTagMutationResponse.self, from: data)
             guard response.statusCode < 400, payload.ok else {
@@ -3250,10 +3259,20 @@ final class CaptureTodayClient: ObservableObject {
                 publishWorkTagDecisionCounts()
                 return false
             }
+            let documentRevisionMatches: Bool = {
+                guard decision.entityKind == .document else { return true }
+                guard let expectedTagRevision = decision.expectedTagRevision,
+                      let acknowledgedTagRevision = payload.tagRevision else {
+                    return false
+                }
+                return acknowledgedTagRevision == expectedTagRevision
+                    || acknowledgedTagRevision == expectedTagRevision + 1
+            }()
             guard payload.entityKind == decision.entityKind.rawValue,
                   payload.entityId == decision.entityID,
                   payload.projectId == decision.projectID,
                   payload.tagIds?.sorted() == decision.tagIDs,
+                  documentRevisionMatches,
                   payload.receiptId == "work-tags-\(decision.clientRequestID)" else {
                 let message = "Nest returned a different tag identity or selection. The protected phone decision is held for review."
                 workTagDecisionOutbox.markHeld(decision.id, code: "ACKNOWLEDGEMENT_MISMATCH", message: message)
@@ -3467,7 +3486,9 @@ final class CaptureWorkClient: ObservableObject {
                         stableId: "preview-work-note",
                         title: "Opening idea",
                         excerpt: "Begin with the moment the obvious answer stopped being obvious.",
+                        tagRevision: 0,
                         updatedAt: now,
+                        canEditTags: true,
                         tagIds: ["preview-episode-4"],
                         tagLabels: ["Episode 4"],
                         webPath: "/create?project=preview-high-ground&document=preview-work-note"
