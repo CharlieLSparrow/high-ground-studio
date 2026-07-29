@@ -175,6 +175,14 @@ check(
     && watch.includes("client.room?.timelineIsCurrent == true"),
 );
 check(
+  "a current sync links to the exact non-destructive Nest episode editor",
+  watch.includes("CaptureEpisodeWatchOpenEditorLink")
+    && watch.includes('components.path = "/editor"')
+    && watch.includes('URLQueryItem(name: "project", value: projectSlug)')
+    && watch.includes('URLQueryItem(name: "episode", value: episodeSlug)')
+    && watch.includes("Open assembled episode in Nest"),
+);
+check(
   "one revision conflict reloads truth and retries the same command identity once",
   watch.includes("response.statusCode == 409")
     && watch.includes("clientRequestID: clientRequestID")

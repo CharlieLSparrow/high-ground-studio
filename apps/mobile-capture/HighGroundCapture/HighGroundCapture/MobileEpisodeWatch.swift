@@ -1256,12 +1256,31 @@ struct MobileEpisodeWatchCard: View {
                                 || !client.sharedConnectionReady
                                 || client.isSharedPlaying
                                 || client.room?.timelineIsCurrent == true
+                                || previewOnly
                         )
                         .accessibilityHint(
                             "Materializes receipt-backed derivatives in the episode editor without changing the source clip."
                         )
                         .accessibilityIdentifier(
                             "CaptureEpisodeWatchSyncTimelineButton"
+                        )
+                    }
+
+                    if client.room?.timelineIsCurrent == true,
+                       let editorURL {
+                        Link(destination: editorURL) {
+                            Label(
+                                "Open assembled episode in Nest",
+                                systemImage: "rectangle.portrait.and.arrow.forward"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityHint(
+                            "Opens the exact non-destructive episode editor for these watched spans."
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureEpisodeWatchOpenEditorLink"
                         )
                     }
 
@@ -1360,6 +1379,31 @@ struct MobileEpisodeWatchCard: View {
             return "\(count) watched \(count == 1 ? "span" : "spans") in editor"
         }
         return "Send \(count) watched \(count == 1 ? "span" : "spans") to editor"
+    }
+
+    private var editorURL: URL? {
+        guard let projectSlug = session.projectSlug?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !projectSlug.isEmpty,
+              let episodeSlug = session.episodeSlug?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !episodeSlug.isEmpty else { return nil }
+        let rawBaseURL = normalizedNestBaseURL(
+            Bundle.main.object(
+                forInfoDictionaryKey: "QUIPSLY_API_BASE_URL"
+            ) as? String ?? "https://nest.quipsly.com"
+        )
+        guard let baseURL = URL(string: rawBaseURL),
+              var components = URLComponents(
+                url: baseURL,
+                resolvingAgainstBaseURL: false
+              ) else { return nil }
+        components.path = "/editor"
+        components.queryItems = [
+            URLQueryItem(name: "project", value: projectSlug),
+            URLQueryItem(name: "episode", value: episodeSlug),
+        ]
+        return components.url
     }
 }
 

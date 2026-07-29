@@ -143,6 +143,8 @@ The native transport follows these production boundaries:
   is already materialized, and cannot run while playback is active. The action
   replaces only prior `quipsly-episode-room-watch.v1` derivatives and never
   modifies source media or unrelated timeline clips.
+- A successful current sync exposes **Open assembled episode in Nest**, linked
+  to the exact project and episode editor rather than a generic dashboard.
 
 This matches Apple's intended division of responsibility: `AVPlayer` owns
 local media transport and timed observation, while `AVAudioSession` declares
