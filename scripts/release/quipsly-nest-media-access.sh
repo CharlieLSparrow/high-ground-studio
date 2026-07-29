@@ -101,11 +101,13 @@ NODE
 }
 
 recordings_folder="media-vault/recordings/"
+raw_imports_folder="media-vault/raw/"
 manifest_folder="media-vault/control/mobile-capture-resumable/"
 verification_queue_folder="media-vault/control/mobile-capture-verification-queue/"
 
 for folder in \
   "${recordings_folder}" \
+  "${raw_imports_folder}" \
   "${manifest_folder}" \
   "${verification_queue_folder}"; do
   ensure_managed_folder "${folder}"
@@ -115,6 +117,12 @@ done
 # contract deliberately grants no overwrite or delete permission.
 ensure_binding "${recordings_folder}" "roles/storage.objectCreator"
 ensure_binding "${recordings_folder}" "roles/storage.objectViewer"
+
+# Nest and Episode Room imports use UUID-bound raw object paths. The runtime
+# may create and play those originals, but it has no reason to overwrite or
+# delete them after import.
+ensure_binding "${raw_imports_folder}" "roles/storage.objectCreator"
+ensure_binding "${raw_imports_folder}" "roles/storage.objectViewer"
 
 # Control manifests are generation-preconditioned state machines and therefore
 # need scoped update access. Long-video queue receipts use the same constraint.
