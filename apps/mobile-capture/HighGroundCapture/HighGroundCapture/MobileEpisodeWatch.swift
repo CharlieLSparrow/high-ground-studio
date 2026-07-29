@@ -24,6 +24,23 @@ struct MobileEpisodeWatchSession: Codable, Hashable {
     let recordingStartedAt: String?
 }
 
+struct MobileEpisodeWatchSegment: Codable, Hashable, Identifiable {
+    let id: String
+    let clipId: String
+    let sourceStartSeconds: TimeInterval
+    let sourceEndSeconds: TimeInterval
+    let episodeStartSeconds: TimeInterval
+    let episodeEndSeconds: TimeInterval
+}
+
+struct MobileEpisodeWatchTimelineSync: Codable, Hashable {
+    let syncedAt: String
+    let syncedBy: String
+    let sourceRevision: Int
+    let segmentCount: Int
+    let timelineClipCount: Int
+}
+
 struct MobileEpisodeWatchRoom: Codable, Hashable {
     let revision: Int
     let status: String
@@ -33,9 +50,20 @@ struct MobileEpisodeWatchRoom: Codable, Hashable {
     let durationSeconds: TimeInterval?
     let session: MobileEpisodeWatchSession?
     let clips: [MobileEpisodeWatchClip]
+    let segments: [MobileEpisodeWatchSegment]?
+    let timelineSync: MobileEpisodeWatchTimelineSync?
 
     var selectedClip: MobileEpisodeWatchClip? {
         clips.first { $0.assetId == selectedClipId }
+    }
+
+    var watchedSegmentCount: Int { segments?.count ?? 0 }
+
+    var timelineIsCurrent: Bool {
+        guard watchedSegmentCount > 0, let timelineSync else { return false }
+        return timelineSync.sourceRevision == revision
+            && timelineSync.segmentCount == watchedSegmentCount
+            && timelineSync.timelineClipCount == watchedSegmentCount
     }
 
     func projectedPosition(at date: Date = Date()) -> TimeInterval {
@@ -181,7 +209,9 @@ final class MobileEpisodeWatchClient: ObservableObject {
                     playbackUrl: "/preview/be-curious.mp4",
                     durationSeconds: 254.63
                 )
-            ]
+            ],
+            segments: [],
+            timelineSync: nil
         )
         displayPosition = 43.2
         statusMessage = "Lead clip is staged for the episode rehearsal."
@@ -436,6 +466,28 @@ final class MobileEpisodeWatchClient: ObservableObject {
         statusMessage =
             "Downloaded copy removed from this iPhone. The protected Nest source is unchanged."
         errorMessage = nil
+    }
+
+    func syncWatchedSpans(session: MobileCaptureSession) async {
+        guard canEdit, sharedConnectionReady else {
+            errorMessage = "Wait for shared Watch to reconnect before sending spans to the editor."
+            return
+        }
+        guard let room, room.watchedSegmentCount > 0 else {
+            errorMessage = "Watch and pause part of a clip before sending spans to the editor."
+            return
+        }
+        guard room.status != "playing" else {
+            errorMessage = "Pause shared Watch before sending watched spans to the editor."
+            return
+        }
+        if room.timelineIsCurrent {
+            statusMessage =
+                "\(room.watchedSegmentCount) watched \(room.watchedSegmentCount == 1 ? "span is" : "spans are") already in the editor."
+            errorMessage = nil
+            return
+        }
+        await sendCommand(type: "SYNC_TIMELINE", session: session)
     }
 
     func toggleSharedPlayback(
@@ -1015,6 +1067,9 @@ final class MobileEpisodeWatchClient: ObservableObject {
             return "Shared Watch moved to \(displayPosition.watchTimestamp)."
         case "ENDED":
             return "Shared Watch completed and preserved its timeline segment."
+        case "SYNC_TIMELINE":
+            let count = room?.watchedSegmentCount ?? 0
+            return "\(count) watched \(count == 1 ? "span" : "spans") sent to the non-destructive editor lane."
         default:
             return "Shared Watch updated."
         }
@@ -1179,6 +1234,37 @@ struct MobileEpisodeWatchCard: View {
                         "CaptureEpisodeWatchRemoveDownloadButton"
                     )
 
+                    if (client.room?.watchedSegmentCount ?? 0) > 0 {
+                        Button {
+                            Task {
+                                await client.syncWatchedSpans(session: session)
+                            }
+                        } label: {
+                            Label(
+                                timelineButtonLabel,
+                                systemImage: client.room?.timelineIsCurrent == true
+                                    ? "checkmark.circle.fill"
+                                    : "timeline.selection"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(client.room?.timelineIsCurrent == true ? .green : nil)
+                        .disabled(
+                            client.isMutating
+                                || !client.canEdit
+                                || !client.sharedConnectionReady
+                                || client.isSharedPlaying
+                                || client.room?.timelineIsCurrent == true
+                        )
+                        .accessibilityHint(
+                            "Materializes receipt-backed derivatives in the episode editor without changing the source clip."
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureEpisodeWatchSyncTimelineButton"
+                        )
+                    }
+
                     if !client.sharedClockReady(
                         for: session,
                         captureIsActive: captureIsActive
@@ -1266,6 +1352,14 @@ struct MobileEpisodeWatchCard: View {
             return "The first shared Play binds Watch to this active Capture clock. Headphones keep the separately preserved clip out of the microphone master."
         }
         return "Prepare and preview before the take. Start recording before Play together so the clip lands on the episode timeline; private preview never changes shared state."
+    }
+
+    private var timelineButtonLabel: String {
+        let count = client.room?.watchedSegmentCount ?? 0
+        if client.room?.timelineIsCurrent == true {
+            return "\(count) watched \(count == 1 ? "span" : "spans") in editor"
+        }
+        return "Send \(count) watched \(count == 1 ? "span" : "spans") to editor"
     }
 }
 

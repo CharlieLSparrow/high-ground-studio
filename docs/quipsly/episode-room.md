@@ -137,6 +137,12 @@ The native transport follows these production boundaries:
   lease, disable shared controls, and explain that the protected source remains
   on the phone. A successful poll resynchronizes against the authoritative room
   before playback can continue.
+- Once one or more receipt-backed spans have closed, the paused iPhone surface
+  exposes **Send watched spans to editor**. It invokes the same explicit,
+  revisioned `SYNC_TIMELINE` command as Nest, shows when the current revision
+  is already materialized, and cannot run while playback is active. The action
+  replaces only prior `quipsly-episode-room-watch.v1` derivatives and never
+  modifies source media or unrelated timeline clips.
 
 This matches Apple's intended division of responsibility: `AVPlayer` owns
 local media transport and timed observation, while `AVAudioSession` declares

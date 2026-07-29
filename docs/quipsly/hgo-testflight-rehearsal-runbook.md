@@ -202,7 +202,8 @@ With the Episode Room open in both collaborators' authenticated Nest sessions:
    reference clip during local or provider recording.
 7. Seek to a useful moment, resume, and pause again.
 8. Repeat with Lucy or Samwise only if the Be Curious pass is clean.
-9. While paused, choose **Sync watched spans**.
+9. While paused, choose **Send watched spans to editor** on the iPhone
+   candidate, or **Sync watched spans** in Nest on Build 8.
 10. Open **Edit** and confirm the watched source ranges appear in the dedicated
    Shared Watch derivative lane without changing the original clips.
 

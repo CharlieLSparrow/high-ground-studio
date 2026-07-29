@@ -159,6 +159,22 @@ check(
     && watch.includes('type: "ENDED"'),
 );
 check(
+  "receipt-backed watched spans can be sent explicitly to the editor from iPhone",
+  watch.includes("CaptureEpisodeWatchSyncTimelineButton")
+    && watch.includes("func syncWatchedSpans(")
+    && watch.includes('sendCommand(type: "SYNC_TIMELINE"')
+    && watch.includes("room.watchedSegmentCount > 0")
+    && watch.includes('room.status != "playing"')
+    && watch.includes("non-destructive editor lane"),
+);
+check(
+  "a current timeline sync is visible and cannot be repeated accidentally",
+  watch.includes("var timelineIsCurrent: Bool")
+    && watch.includes("timelineSync.sourceRevision == revision")
+    && watch.includes("timelineSync.segmentCount == watchedSegmentCount")
+    && watch.includes("client.room?.timelineIsCurrent == true"),
+);
+check(
   "one revision conflict reloads truth and retries the same command identity once",
   watch.includes("response.statusCode == 409")
     && watch.includes("clientRequestID: clientRequestID")
