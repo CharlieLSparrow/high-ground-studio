@@ -8,12 +8,20 @@ source "${script_dir}/quipsly-recovery-lab-state.sh"
 state_dir="$(quipsly_recovery_lab_state_dir)"
 database_container="quipsly-portable-recovery-lab-db"
 database_label="com.quipsly.recovery-lab"
+docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
+docker_start_timeout_seconds="$(quipsly_local_docker_start_timeout_seconds)"
 nest_label="com.quipsly.recovery-lab.nest"
 firebase_label="com.quipsly.recovery-lab.firebase"
 
 if [[ $# -gt 0 ]]; then
   echo "Usage: $0" >&2
   exit 64
+fi
+
+if ! quipsly_local_docker_ready "${docker_timeout_seconds}"; then
+  echo "Docker is not ready or its CLI did not answer within ${docker_timeout_seconds}s." >&2
+  echo "No recovery-lab processes, state, or containers were changed." >&2
+  exit 1
 fi
 
 descendants() {
@@ -90,15 +98,21 @@ else
   stop_owned_process "firebase"
 fi
 
-if docker inspect "${database_container}" >/dev/null 2>&1; then
+if quipsly_local_run_docker \
+  "${docker_timeout_seconds}" \
+  inspect "${database_container}" >/dev/null 2>&1; then
   actual_database_label="$(
-    docker inspect --format "{{ index .Config.Labels \"${database_label}\" }}" "${database_container}"
+    quipsly_local_run_docker \
+      "${docker_timeout_seconds}" \
+      inspect --format "{{ index .Config.Labels \"${database_label}\" }}" "${database_container}"
   )"
   if [[ "${actual_database_label}" != "true" ]]; then
     echo "REFUSE database: ${database_container} lacks the exact recovery-lab ownership label." >&2
     exit 1
   fi
-  docker stop "${database_container}" >/dev/null
+  quipsly_local_run_docker \
+    "${docker_start_timeout_seconds}" \
+    stop "${database_container}" >/dev/null
   printf "DELETE %-24s disposable container %s\n" "Recovery database" "${database_container}"
 else
   printf "SKIP  %-24s container is not present\n" "Recovery database"

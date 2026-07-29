@@ -12,6 +12,7 @@ database_label="com.quipsly.recovery-lab"
 nest_url="http://127.0.0.1:3022"
 firebase_url="http://127.0.0.1:9199"
 firebase_project="quipsly-recovery-lab"
+docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
 failed=0
 
 if [[ $# -gt 0 ]]; then
@@ -63,12 +64,26 @@ else
   failed=1
 fi
 
-actual_label="$(docker inspect --format "{{ index .Config.Labels \"${database_label}\" }}" "${database_container}" 2>/dev/null || true)"
-if [[ "${actual_label}" == "true" ]] && docker exec "${database_container}" \
-  pg_isready -U postgres -d quipsly_portable_recovery_lab >/dev/null 2>&1; then
-  printf "PASS  %-26s container %s\n" "Disposable PostgreSQL" "${database_container}"
+if quipsly_local_docker_ready "${docker_timeout_seconds}"; then
+  printf "PASS  %-26s CLI answered within %ss\n" "Docker engine" "${docker_timeout_seconds}"
+  actual_label="$(
+    quipsly_local_run_docker \
+      "${docker_timeout_seconds}" \
+      inspect --format "{{ index .Config.Labels \"${database_label}\" }}" "${database_container}" \
+      2>/dev/null || true
+  )"
+  if [[ "${actual_label}" == "true" ]] && quipsly_local_run_docker \
+    "${docker_timeout_seconds}" \
+    exec "${database_container}" \
+    pg_isready -U postgres -d quipsly_portable_recovery_lab >/dev/null 2>&1; then
+    printf "PASS  %-26s container %s\n" "Disposable PostgreSQL" "${database_container}"
+  else
+    printf "FAIL  %-26s container %s\n" "Disposable PostgreSQL" "${database_container}"
+    failed=1
+  fi
 else
-  printf "FAIL  %-26s container %s\n" "Disposable PostgreSQL" "${database_container}"
+  printf "FAIL  %-26s no response within %ss\n" "Docker engine" "${docker_timeout_seconds}"
+  printf "SKIP  %-26s Docker engine unavailable\n" "Disposable PostgreSQL"
   failed=1
 fi
 

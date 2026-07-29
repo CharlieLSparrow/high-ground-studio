@@ -46,7 +46,11 @@ test("shutdown is confined to exact owned jobs and the disposable database", () 
     assert.match(source, /com\.quipsly\.recovery-lab/);
   }
   assert.match(down, /actual_database_label/);
-  assert.match(down, /docker stop "\$\{database_container\}"/);
+  assert.match(
+    down,
+    /quipsly_local_run_docker[\s\S]*stop "\$\{database_container\}"/,
+  );
+  assert.match(down, /No recovery-lab processes, state, or containers were changed/);
   assert.doesNotMatch(down, /docker compose down/);
   assert.doesNotMatch(down, /high-ground-db/);
 });
@@ -56,4 +60,16 @@ test("acceptance defaults to a clean exact committed revision", () => {
   assert.match(up, /git rev-parse HEAD >"\$\{state_dir\}\/source-revision"/);
   assert.match(doctor, /Exact source revision/);
   assert.match(doctor, /clean committed source/);
+});
+
+test("every recovery-lab Docker control-plane call is bounded", () => {
+  for (const source of [up, doctor, down]) {
+    assert.match(source, /quipsly_local_run_docker/);
+    assert.doesNotMatch(
+      source,
+      /(^|\n)\s*docker (info|ps|inspect|exec|run|logs|stop)/,
+    );
+  }
+  assert.match(up, /quipsly_local_docker_ready/);
+  assert.match(doctor, /Docker engine unavailable/);
 });

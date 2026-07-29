@@ -62,6 +62,8 @@ firebase_url="${QUIPSLY_LOCAL_FIREBASE_AUTH_URL:-http://127.0.0.1:9099}"
 database_container="${QUIPSLY_LOCAL_DATABASE_CONTAINER:-high-ground-db}"
 compose_project="${QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio}"
 local_database_url="${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
+docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
+docker_start_timeout_seconds="$(quipsly_local_docker_start_timeout_seconds)"
 firebase_label="com.quipsly.local.firebase"
 nest_label="com.quipsly.local.nest"
 umask 077
@@ -192,25 +194,35 @@ if [[ "${replace_existing}" == "1" ]]; then
   replace_macos_jobs
 fi
 
-if ! docker info >/dev/null 2>&1; then
+if ! quipsly_local_docker_ready "${docker_timeout_seconds}"; then
   if [[ "$(uname -s)" == "Darwin" ]] && command -v open >/dev/null 2>&1; then
     echo "Starting Docker Desktop..."
     open -a Docker
     for _ in $(seq 1 60); do
-      docker info >/dev/null 2>&1 && break
+      quipsly_local_docker_ready 2 && break
       sleep 1
     done
   fi
 fi
 
-if ! docker info >/dev/null 2>&1; then
-  echo "Docker is not ready. Start Docker Desktop, then run this command again." >&2
+if ! quipsly_local_docker_ready "${docker_timeout_seconds}"; then
+  echo "Docker is not ready or its CLI did not answer within ${docker_timeout_seconds}s." >&2
+  echo "Open Docker Desktop, wait for the engine to report ready, then run this command again." >&2
   exit 1
 fi
+printf "PASS  %-24s CLI answered within %ss\n" "Docker engine" "${docker_timeout_seconds}"
 
 echo "Starting or reusing local PostgreSQL..."
-docker compose --project-name "${compose_project}" up -d postgres
-if ! docker exec "${database_container}" pg_isready -U postgres -d high_ground_studio >/dev/null 2>&1; then
+if ! quipsly_local_run_docker \
+  "${docker_start_timeout_seconds}" \
+  compose --project-name "${compose_project}" up -d postgres; then
+  echo "PostgreSQL startup did not complete within ${docker_start_timeout_seconds}s." >&2
+  exit 1
+fi
+if ! quipsly_local_run_docker \
+  "${docker_timeout_seconds}" \
+  exec "${database_container}" \
+  pg_isready -U postgres -d high_ground_studio >/dev/null 2>&1; then
   echo "PostgreSQL container ${database_container} is not ready." >&2
   exit 1
 fi

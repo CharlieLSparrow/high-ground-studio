@@ -16,6 +16,8 @@ Environment overrides:
   TARGET_URL                         Nest base URL
   QUIPSLY_LOCAL_FIREBASE_AUTH_URL    Firebase Auth emulator URL
   QUIPSLY_LOCAL_DATABASE_CONTAINER   PostgreSQL container name
+  QUIPSLY_LOCAL_DOCKER_TIMEOUT_SECONDS
+                                     Docker CLI timeout (default: 8)
 
 Options:
   -h, --help                         Show this help without probing services
@@ -50,6 +52,7 @@ state_dir="$(quipsly_local_state_dir)"
 nest_url="${TARGET_URL:-http://127.0.0.1:3012}"
 firebase_url="${QUIPSLY_LOCAL_FIREBASE_AUTH_URL:-http://127.0.0.1:9099}"
 database_container="${QUIPSLY_LOCAL_DATABASE_CONTAINER:-high-ground-db}"
+docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
 failed=0
 
 http_status() {
@@ -120,11 +123,20 @@ else
   failed=1
 fi
 
-if docker exec "${database_container}" pg_isready -U postgres -d high_ground_studio \
-  >/dev/null 2>&1; then
-  printf "PASS  %-24s container %s\n" "PostgreSQL" "${database_container}"
+if quipsly_local_docker_ready "${docker_timeout_seconds}"; then
+  printf "PASS  %-24s CLI answered within %ss\n" "Docker engine" "${docker_timeout_seconds}"
+  if quipsly_local_run_docker \
+    "${docker_timeout_seconds}" \
+    exec "${database_container}" \
+    pg_isready -U postgres -d high_ground_studio >/dev/null 2>&1; then
+    printf "PASS  %-24s container %s\n" "PostgreSQL" "${database_container}"
+  else
+    printf "FAIL  %-24s container %s\n" "PostgreSQL" "${database_container}"
+    failed=1
+  fi
 else
-  printf "FAIL  %-24s container %s\n" "PostgreSQL" "${database_container}"
+  printf "FAIL  %-24s no response within %ss\n" "Docker engine" "${docker_timeout_seconds}"
+  printf "SKIP  %-24s Docker engine unavailable\n" "PostgreSQL"
   failed=1
 fi
 

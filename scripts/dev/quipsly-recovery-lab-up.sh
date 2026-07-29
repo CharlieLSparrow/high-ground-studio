@@ -70,6 +70,8 @@ fi
 cd "${repo_root}"
 umask 077
 mkdir -p "${state_dir}"
+docker_timeout_seconds="$(quipsly_local_docker_timeout_seconds)"
+docker_start_timeout_seconds="$(quipsly_local_docker_start_timeout_seconds)"
 
 dirty_source="$(git status --porcelain=v1 --untracked-files=all)"
 if [[ -n "${dirty_source}" && "${QUIPSLY_RECOVERY_LAB_ALLOW_DIRTY:-0}" != "1" ]]; then
@@ -82,26 +84,38 @@ if [[ "${replace_existing}" == "1" ]]; then
   bash "${script_dir}/quipsly-recovery-lab-down.sh"
 fi
 
-if ! docker info >/dev/null 2>&1; then
-  echo "Docker is not ready. Start Docker Desktop, then run this command again." >&2
+if ! quipsly_local_docker_ready "${docker_timeout_seconds}"; then
+  echo "Docker is not ready or its CLI did not answer within ${docker_timeout_seconds}s." >&2
+  echo "Start Docker Desktop, wait for the engine to report ready, then run this command again." >&2
   exit 1
 fi
+printf "PASS  %-24s CLI answered within %ss\n" "Docker engine" "${docker_timeout_seconds}"
 
-container_exists="$(docker ps -a --filter "name=^${database_container}$" --format '{{.Names}}')"
+container_exists="$(
+  quipsly_local_run_docker \
+    "${docker_timeout_seconds}" \
+    ps -a --filter "name=^${database_container}$" --format '{{.Names}}'
+)"
 if [[ -n "${container_exists}" ]]; then
-  actual_label="$(docker inspect --format "{{ index .Config.Labels \"${database_label}\" }}" "${database_container}")"
+  actual_label="$(
+    quipsly_local_run_docker \
+      "${docker_timeout_seconds}" \
+      inspect --format "{{ index .Config.Labels \"${database_label}\" }}" "${database_container}"
+  )"
   if [[ "${actual_label}" != "true" ]]; then
     echo "Container ${database_container} is not owned by the Quipsly recovery lab." >&2
     exit 1
   fi
-  if ! docker exec "${database_container}" \
+  if ! quipsly_local_run_docker \
+    "${docker_timeout_seconds}" \
+    exec "${database_container}" \
     pg_isready -U postgres -d quipsly_portable_recovery_lab >/dev/null 2>&1; then
     echo "Owned recovery database container exists but is not ready. Use --replace." >&2
     exit 1
   fi
   printf "REUSE %-24s container %s\n" "Disposable PostgreSQL" "${database_container}"
 else
-  docker run -d --rm \
+  quipsly_local_run_docker "${docker_start_timeout_seconds}" run -d --rm \
     --name "${database_container}" \
     --label "${database_label}=true" \
     -e POSTGRES_USER=postgres \
@@ -112,7 +126,9 @@ else
 
   readiness_streak=0
   for _ in $(seq 1 120); do
-    if docker exec "${database_container}" \
+    if quipsly_local_run_docker \
+      "${docker_timeout_seconds}" \
+      exec "${database_container}" \
       psql -U postgres -d quipsly_portable_recovery_lab -Atc "select 1" \
       >/dev/null 2>&1; then
       readiness_streak="$((readiness_streak + 1))"
@@ -125,7 +141,9 @@ else
     sleep 0.5
   done
   if [[ "${readiness_streak}" -lt 2 ]]; then
-    docker logs --tail 80 "${database_container}" >&2 || true
+    quipsly_local_run_docker \
+      "${docker_timeout_seconds}" \
+      logs --tail 80 "${database_container}" >&2 || true
     exit 1
   fi
   printf "PASS  %-24s container %s\n" "Disposable PostgreSQL" "${database_container}"

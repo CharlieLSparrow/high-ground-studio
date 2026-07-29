@@ -33,7 +33,10 @@ test("machine-wide services use machine-wide ownership state", () => {
     up,
     /QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio/,
   );
-  assert.match(up, /docker compose --project-name "\$\{compose_project\}"/);
+  assert.match(
+    up,
+    /compose --project-name "\$\{compose_project\}" up -d postgres/,
+  );
   assert.match(up, /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}"/);
   assert.doesNotMatch(up, /source "\$\{local_env_file\}"/);
   assert.match(up, /"Nest projects shell"/);
@@ -42,6 +45,37 @@ test("machine-wide services use machine-wide ownership state", () => {
     2,
     "both local Nest launch paths must opt in to the development-only media vault",
   );
+});
+
+test("Docker control-plane calls are bounded and fail closed", () => {
+  assert.match(stateHelper, /quipsly_local_run_bounded/);
+  assert.match(stateHelper, /quipsly_local_run_docker/);
+  assert.match(stateHelper, /QUIPSLY_LOCAL_DOCKER_START_TIMEOUT_SECONDS/);
+  assert.match(stateHelper, /return 124/);
+  assert.match(up, /quipsly_local_docker_ready/);
+  assert.match(up, /docker_start_timeout_seconds/);
+  assert.match(doctor, /Docker engine unavailable/);
+  assert.doesNotMatch(up, /(^|\n)docker info/);
+  assert.doesNotMatch(doctor, /(^|\n)docker exec/);
+});
+
+test("bounded commands terminate an unresponsive child", () => {
+  const startedAt = Date.now();
+  const result = spawnSync(
+    "bash",
+    [
+      "-c",
+      'source "$1"; quipsly_local_run_bounded 1 sleep 20',
+      "quipsly-local-timeout-test",
+      stateHelperPath,
+    ],
+    { encoding: "utf8", timeout: 5_000 },
+  );
+  const elapsedMs = Date.now() - startedAt;
+
+  assert.equal(result.status, 124, result.stderr);
+  assert.ok(elapsedMs >= 900, `returned too early after ${elapsedMs}ms`);
+  assert.ok(elapsedMs < 4_000, `returned too late after ${elapsedMs}ms`);
 });
 
 test("the state-directory override remains deterministic for isolated tests", () => {
