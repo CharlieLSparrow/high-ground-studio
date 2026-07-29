@@ -58,8 +58,10 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             if !isCallKitAudioActive {
                 try audioSession.setActive(true)
             }
+            try requirePrivateRouteDuringCapture()
         } catch {
             isLocalCaptureActive = false
+            reconcileAfterLeaseChange()
             throw error
         }
     }
@@ -80,8 +82,10 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             if isLocalCaptureActive {
                 try audioSession.setActive(true)
             }
+            try requirePrivateRouteDuringCapture()
         } catch {
             isProviderRoomActive = false
+            reconcileAfterLeaseChange()
             throw error
         }
     }
@@ -101,6 +105,10 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         try AudioManager.shared.setEngineAvailability(.default)
         #endif
         isCallKitAudioActive = true
+        // providerWillConnect already required a private route. If the route
+        // changed during CallKit activation, preserve the call and hold Watch
+        // immediately instead of allowing reference audio onto the microphone.
+        holdSharedWatchForUnsafeRoute()
     }
 
     func callKitDidDeactivate() throws {

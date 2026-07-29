@@ -290,6 +290,14 @@ check(
     && audio.includes("isLocalCaptureActive || isProviderRoomActive || isCallKitAudioActive"),
 );
 check(
+  "starting capture or a call cannot inherit speaker-based Watch playback",
+  audio.match(/try requirePrivateRouteDuringCapture\(\)/g)?.length >= 4
+    && audio.includes("func activateLocalCapture() throws")
+    && audio.includes("func providerWillConnect() throws")
+    && audio.includes("changed during CallKit activation")
+    && audio.includes("holdSharedWatchForUnsafeRoute()"),
+);
+check(
   "leaving Record stops playback and releases the shared audio lease",
   shell.includes(".onDisappear { episodeWatch.stop() }")
     && watch.includes("func stop()")

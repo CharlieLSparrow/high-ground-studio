@@ -139,6 +139,10 @@ The native transport follows these production boundaries:
   route such as wired, Bluetooth, or USB headphones. The phone speaker is
   rejected so the separately preserved reference source is not recorded back
   into the microphone master.
+- The inverse transition is protected too: local capture and provider join
+  cannot start while an existing Watch preview is using a non-private route.
+  If the route changes in the narrow CallKit activation window, the call is
+  preserved and Watch is held immediately.
 - Losing that private route immediately holds local playback. During shared
   playback the affected editor also issues one revision-safe Pause for
   everyone, so another device cannot silently keep advancing while that
