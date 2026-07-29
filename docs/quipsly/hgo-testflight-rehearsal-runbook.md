@@ -25,6 +25,23 @@ needs to prove.
   2. `I love lucy.mp4`
   3. `LOTR Ring Back.mp4`
 - Lead clip: **Ted Lasso Be Curious**, selected and paused
+- 2026-07-29 authenticated media readback: all three production objects match
+  the current local files byte-for-byte; unauthenticated playback returns
+  HTTP 401. Be Curious remains first, selected, paused, with zero watched
+  segments and no started rehearsal session.
+
+## Next candidate without changing tonight's lane
+
+Source commit `5920e525` adds a production-architected **Podcast audio + video**
+mode: separate local AAC microphone and video-only MOV masters under one
+capture-group identity while LiveKit remains the call. Its full static,
+simulator, privacy, and UI gates are green, but it has not been assigned a new
+build number or uploaded to TestFlight. Build 8 remains the rehearsal
+instruction set below until physical-iPhone capture, route, playback, upload,
+relaunch, and editor-sync proof qualify the new mode.
+
+See
+[`../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md`](../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md).
 
 Build 8 has been submitted correctly. Apple must approve the external beta
 before Homer receives the usable invitation. Apple documents that external
