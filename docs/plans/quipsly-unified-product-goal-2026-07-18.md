@@ -3330,3 +3330,42 @@ This is an active-goal checkpoint, not a completion claim.
   and targeted
   `testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether` on iPhone 17 Pro
   simulator after the final offline-lens adjustment.
+
+### 2026-07-29 atomic iPhone vocabulary-authoring checkpoint
+
+- This is a committed native/server contract and operated simulator
+  checkpoint, not a production deployment, TestFlight Build 9 upload,
+  signed database-backed runtime journey, physical-iPhone proof, or completion
+  of the unified-product goal.
+- Exact candidate `91b38b82` lets iPhone Work create or reuse one private
+  project tag while saving the record's complete selection. The human intent
+  is normalized and persisted in the existing owner-partitioned,
+  file-protected outbox before any network request.
+- Vocabulary resolution, optimistic record validation, explicit join-table
+  replacement, and receipt persistence now happen in one database
+  transaction. An exact retry returns the original final tag identities;
+  reusing the same request UUID for different vocabulary conflicts; a stale
+  record rolls the whole transaction back instead of leaving an unassigned
+  tag behind.
+- The acknowledgement proves the original selected IDs, requested labels,
+  requested-to-resolved mapping, final ID union, project/entity identity,
+  document tag revision where applicable, and exact receipt UUID before the
+  phone removes its protected decision. Queued new labels remain visible in
+  Work, Today, search, and filtering without implying Nest acknowledgement.
+- Preview data can safely open and type into the real tag editor for UX
+  inspection, but it carries a visible preview boundary and keeps Save
+  disabled. Bulk rename, merge, archive, and restore remain in Nest, where
+  impact and rollback receipts are visible.
+- Verification passed: Quipsly TypeScript typecheck; 9/9 focused route and
+  atomic service tests; protected outbox normalization/relaunch harness;
+  74/74 mobile source contracts; and the operated
+  `testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether` journey on iPhone 17
+  Pro simulator. A real PostgreSQL integration case is committed but remains
+  unexecuted because the local Docker runtime was nonresponsive; rerun it with
+  `QUIPSLY_LOCAL_DB_SMOKE=1` and `QUIPSLY_LOCAL_DATABASE_URL` after Docker
+  recovers.
+- The newly unlocked local `Ted Lasso Be Curious.mp4` is byte-identical to the
+  protected first rehearsal source: 19,100,059 bytes, SHA-256
+  `acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`.
+  Rehearsal Watch remains paused at zero with Be Curious first and no session,
+  span, consent, or recording mutation.
