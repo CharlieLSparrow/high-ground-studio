@@ -45,16 +45,21 @@ needs to prove.
 
 ## Next candidate without changing tonight's lane
 
-Candidate checkpoint `96eebffc` combines the production-architected
+Current iPhone candidate checkpoint `5b456ec0` combines the
+production-architected
 **Podcast audio + video** mode from `5920e525` with native shared Episode Watch:
 separate local AAC microphone and video-only MOV masters under one
 capture-group identity while LiveKit remains the call, plus protected
 preparation and revision-safe Play/Pause/Seek from the iPhone Record surface.
+It also holds shared playback for everyone on private-route loss, manages
+derived downloads visibly, sends paused receipt-backed spans to the
+non-destructive editor lane, and opens the exact assembled episode in Nest.
 Its full static, simulator, privacy, UI, server preview, native-bearer, and
 protected-media gates are green, but it has not been assigned a new build
-number or uploaded to TestFlight. Build 8 remains the rehearsal instruction
-set below until physical-iPhone capture, route, playback, upload, relaunch, and
-editor-sync proof qualify the candidate.
+number or uploaded to TestFlight. The server proof remains pinned separately to
+`96eebffc`; Build 8 remains the rehearsal instruction set below until
+physical-iPhone capture, route, playback, upload, relaunch, and editor-sync
+proof qualify the candidate.
 
 See
 [`../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md`](../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md).

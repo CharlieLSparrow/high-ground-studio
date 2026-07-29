@@ -5,7 +5,7 @@ Date: 2026-07-29
 ## Exact source
 
 - Branch: `codex/quipsly-product-20260724`
-- Current candidate checkpoint: `96eebffc`
+- Current iPhone candidate checkpoint: `5b456ec0`
 - Feature commit: `5920e525`
 - Commit subject:
   `feat(capture): coordinate local podcast audio and video`
@@ -15,6 +15,10 @@ Date: 2026-07-29
 - Native Episode Watch commit: `96eebffc`
 - Commit subject:
   `feat(capture): add shared episode watch`
+- Watch route-loss safety commit: `7dc8cdab`
+- Protected-download management commit: `0aab884e`
+- Native editor-sync commit: `73fd92f2`
+- Exact episode-editor handoff commit: `5b456ec0`
 - App Store version/build in source: `1.0 (8)`
 - Release decision: do not upload or assign this feature as Build 9 until its
   physical-iPhone gate is complete. Build 8 remains the honest external
@@ -174,6 +178,24 @@ against the real rehearsal:
 The redacted, mode-0600 receipt was written outside the repository at
 `/private/tmp/quipsly-watch-preview-96eebffc-receipt.json`. Production remains
 100% on `studio-00425-gij`; the newer preview is also intentionally unpromoted.
+
+After that exact server proof, the iPhone candidate was hardened without
+changing the deployed Watch API:
+
+- losing a private listening route now issues one revision-safe Pause for
+  everyone instead of allowing another participant to keep advancing;
+- private preview route loss remains local-only;
+- prepared Watch downloads have an explicit local removal control and signing
+  out purges the derived cache without touching canonical Nest media;
+- closed receipt-backed spans can be sent explicitly to the non-destructive
+  editor lane only while playback is paused;
+- a current sync is visible, cannot be repeated accidentally, and links to the
+  exact project/episode editor.
+
+The native Watch contract is now **29/29**. The full mobile preflight, strict
+TypeScript, privacy/App Store static gates, and LiveKit-linked universal iOS
+simulator build all pass at `5b456ec0`. These checks harden the candidate but
+do not replace the physical-iPhone gate.
 
 ## Current external TestFlight readback
 
