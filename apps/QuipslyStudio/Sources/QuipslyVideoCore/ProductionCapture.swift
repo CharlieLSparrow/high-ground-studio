@@ -998,6 +998,69 @@ public enum ProductionCaptureInventoryProbe {
 }
 
 #if os(macOS)
+public struct MacAudioSystemDefaultRoute: Equatable, Sendable {
+    public let inputUID: String?
+    public let outputUID: String?
+
+    public init(inputUID: String?, outputUID: String?) {
+        self.inputUID = inputUID
+        self.outputUID = outputUID
+    }
+}
+
+public enum MacAudioSystemRouteError: LocalizedError, Equatable {
+    case missingInput(String)
+    case missingOutput(String)
+    case inputHasNoChannels(String)
+    case outputHasNoChannels(String)
+    case coreAudioWrite(String, Int32)
+    case verificationFailed(
+        expectedInput: String,
+        expectedOutput: String,
+        observedInput: String?,
+        observedOutput: String?
+    )
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingInput(let uid):
+            "Core Audio no longer exposes the selected microphone UID \(uid)."
+        case .missingOutput(let uid):
+            "Core Audio no longer exposes the selected headphone UID \(uid)."
+        case .inputHasNoChannels(let uid):
+            "The selected microphone UID \(uid) has no input channels."
+        case .outputHasNoChannels(let uid):
+            "The selected headphone UID \(uid) has no output channels."
+        case .coreAudioWrite(let route, let status):
+            "macOS refused to change the system-default \(route) (Core Audio status \(status))."
+        case .verificationFailed(
+            let expectedInput,
+            let expectedOutput,
+            let observedInput,
+            let observedOutput
+        ):
+            "macOS did not retain the requested system call route. Expected \(expectedInput) / \(expectedOutput), observed \(observedInput ?? "none") / \(observedOutput ?? "none")."
+        }
+    }
+}
+
+public enum MacAudioSystemRouteController {
+    public static func currentDefaultRoute() -> MacAudioSystemDefaultRoute {
+        MacAudioHardwareProbe.systemDefaultRoute()
+    }
+
+    @discardableResult
+    public static func makeSystemDefault(
+        inputUID: String,
+        outputUID: String
+    ) throws -> MacAudioSystemDefaultRoute {
+        try MacAudioHardwareProbe.makeSystemDefault(
+            inputUID: inputUID,
+            outputUID: outputUID
+        )
+    }
+}
+
 enum MacAudioHardwareProbe {
     static func snapshot() -> [CaptureAudioDeviceSnapshot] {
         let system = AudioObjectID(kAudioObjectSystemObject)
@@ -1077,6 +1140,100 @@ enum MacAudioHardwareProbe {
         )
     }
 
+    static func systemDefaultRoute() -> MacAudioSystemDefaultRoute {
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        let input = readDeviceID(
+            object: system,
+            selector: kAudioHardwarePropertyDefaultInputDevice
+        ).flatMap(deviceUID(for:))
+        let output = readDeviceID(
+            object: system,
+            selector: kAudioHardwarePropertyDefaultOutputDevice
+        ).flatMap(deviceUID(for:))
+        return MacAudioSystemDefaultRoute(
+            inputUID: input,
+            outputUID: output
+        )
+    }
+
+    static func makeSystemDefault(
+        inputUID: String,
+        outputUID: String
+    ) throws -> MacAudioSystemDefaultRoute {
+        guard let inputID = deviceID(forUID: inputUID) else {
+            throw MacAudioSystemRouteError.missingInput(inputUID)
+        }
+        guard let outputID = deviceID(forUID: outputUID) else {
+            throw MacAudioSystemRouteError.missingOutput(outputUID)
+        }
+        guard channelCount(
+            deviceID: inputID,
+            scope: kAudioDevicePropertyScopeInput
+        ) > 0 else {
+            throw MacAudioSystemRouteError.inputHasNoChannels(inputUID)
+        }
+        guard channelCount(
+            deviceID: outputID,
+            scope: kAudioDevicePropertyScopeOutput
+        ) > 0 else {
+            throw MacAudioSystemRouteError.outputHasNoChannels(outputUID)
+        }
+
+        let system = AudioObjectID(kAudioObjectSystemObject)
+        let previousInput = readDeviceID(
+            object: system,
+            selector: kAudioHardwarePropertyDefaultInputDevice
+        )
+        let previousOutput = readDeviceID(
+            object: system,
+            selector: kAudioHardwarePropertyDefaultOutputDevice
+        )
+
+        do {
+            try writeDeviceID(
+                inputID,
+                object: system,
+                selector: kAudioHardwarePropertyDefaultInputDevice,
+                routeLabel: "microphone"
+            )
+            try writeDeviceID(
+                outputID,
+                object: system,
+                selector: kAudioHardwarePropertyDefaultOutputDevice,
+                routeLabel: "headphone output"
+            )
+            let observed = systemDefaultRoute()
+            guard observed.inputUID == inputUID,
+                  observed.outputUID == outputUID else {
+                throw MacAudioSystemRouteError.verificationFailed(
+                    expectedInput: inputUID,
+                    expectedOutput: outputUID,
+                    observedInput: observed.inputUID,
+                    observedOutput: observed.outputUID
+                )
+            }
+            return observed
+        } catch {
+            if let previousInput {
+                try? writeDeviceID(
+                    previousInput,
+                    object: system,
+                    selector: kAudioHardwarePropertyDefaultInputDevice,
+                    routeLabel: "microphone rollback"
+                )
+            }
+            if let previousOutput {
+                try? writeDeviceID(
+                    previousOutput,
+                    object: system,
+                    selector: kAudioHardwarePropertyDefaultOutputDevice,
+                    routeLabel: "headphone rollback"
+                )
+            }
+            throw error
+        }
+    }
+
     private static func address(
         selector: AudioObjectPropertySelector,
         scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal
@@ -1129,6 +1286,31 @@ enum MacAudioHardwareProbe {
             &value
         ) == noErr else { return nil }
         return value
+    }
+
+    private static func writeDeviceID(
+        _ deviceID: AudioDeviceID,
+        object: AudioObjectID,
+        selector: AudioObjectPropertySelector,
+        routeLabel: String
+    ) throws {
+        var property = address(selector: selector)
+        var value = deviceID
+        let byteCount = UInt32(MemoryLayout<AudioDeviceID>.size)
+        let status = AudioObjectSetPropertyData(
+            object,
+            &property,
+            0,
+            nil,
+            byteCount,
+            &value
+        )
+        guard status == noErr else {
+            throw MacAudioSystemRouteError.coreAudioWrite(
+                routeLabel,
+                status
+            )
+        }
     }
 
     private static func readString(

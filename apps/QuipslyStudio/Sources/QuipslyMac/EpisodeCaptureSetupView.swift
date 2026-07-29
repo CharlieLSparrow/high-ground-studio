@@ -3974,9 +3974,34 @@ struct EpisodeCaptureSetupView: View {
                     ) {
                         audioRoom.refreshProviderDevices()
                     }
-                    .disabled(audioRoom.isActive)
+                    .disabled(
+                        audioRoom.isActive
+                            || audioRoom.isRefreshingDevices
+                            || model.isRecording
+                    )
                     .accessibilityIdentifier(
                         "EpisodeCaptureRefreshProviderRoutes"
+                    )
+
+                    Button("Use selected devices for calls") {
+                        let updated =
+                            audioRoom.makeSelectedDevicesSystemCallRoute(
+                                coreAudioInput: model.selectedAudioInput,
+                                coreAudioOutput: model.selectedAudioOutput
+                            )
+                        guard updated else { return }
+                        Task {
+                            await model.refresh()
+                            audioRoom.refreshProviderDevices()
+                        }
+                    }
+                    .disabled(
+                        audioRoom.isActive
+                            || audioRoom.isRefreshingDevices
+                            || model.isRecording
+                    )
+                    .accessibilityIdentifier(
+                        "EpisodeCaptureMakeSystemCallRoute"
                     )
                 }
 
@@ -4046,7 +4071,7 @@ struct EpisodeCaptureSetupView: View {
                 .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 10))
 
                 Text(
-                    "The native WAV graph writes the selected mic without call processing or software sidetone. Monitor your own voice in MV7i hardware; Quipsly sends only the separate realtime copy to LiveKit."
+                    "The native WAV graph writes the selected mic without call processing or software sidetone. Monitor your own voice in MV7i hardware; Quipsly sends only the separate realtime copy to LiveKit. When LiveKit exposes only its Default proxies, “Use selected devices for calls” changes the macOS system input/output and requires exact Core Audio UID readback before Quipsly can join."
                 )
                 .font(.caption)
                 .foregroundStyle(.secondary)

@@ -28,6 +28,8 @@ private struct ActiveMacAudioRoomContext {
     let providerInputDeviceID: String
     let providerOutputDeviceID: String
     let directPhysicalMV7iClaimed: Bool
+    let usesSystemDefaultInputProxy: Bool
+    let usesSystemDefaultOutputProxy: Bool
     let captureRoot: URL
 }
 
@@ -78,6 +80,41 @@ final class MacAudioRoomController: NSObject, ObservableObject {
         AudioManager.prepare()
         readProviderDevices()
         isRefreshingDevices = false
+    }
+
+    func makeSelectedDevicesSystemCallRoute(
+        coreAudioInput: CaptureAudioDeviceSnapshot?,
+        coreAudioOutput: CaptureAudioDeviceSnapshot?
+    ) -> Bool {
+        guard !isActive else {
+            fail("Leave the episode room before changing the macOS call route.")
+            return false
+        }
+        guard let coreAudioInput, coreAudioInput.hasInput else {
+            fail("Select a connected microphone before changing the macOS call route.")
+            return false
+        }
+        guard let coreAudioOutput, coreAudioOutput.hasOutput else {
+            fail("Select a connected headphone output before changing the macOS call route.")
+            return false
+        }
+
+        do {
+            let route = try MacAudioSystemRouteController.makeSystemDefault(
+                inputUID: coreAudioInput.id,
+                outputUID: coreAudioOutput.id
+            )
+            lastError = nil
+            AudioManager.prepare()
+            readProviderDevices(updateStatus: false)
+            statusText =
+                "macOS verified \(coreAudioInput.name) as the system microphone and \(coreAudioOutput.name) as the system output. LiveKit will follow those exact UIDs through its default-device proxies."
+            return route.inputUID == coreAudioInput.id
+                && route.outputUID == coreAudioOutput.id
+        } catch {
+            fail(error.localizedDescription)
+            return false
+        }
     }
 
     func routeResolution(
@@ -174,6 +211,10 @@ final class MacAudioRoomController: NSObject, ObservableObject {
             providerInputDeviceID: providerInput.id,
             providerOutputDeviceID: providerOutput.id,
             directPhysicalMV7iClaimed: resolution.directPhysicalMV7iClaimed,
+            usesSystemDefaultInputProxy:
+                resolution.usesSystemDefaultInputProxy,
+            usesSystemDefaultOutputProxy:
+                resolution.usesSystemDefaultOutputProxy,
             captureRoot: captureRoot
         )
 
@@ -182,7 +223,15 @@ final class MacAudioRoomController: NSObject, ObservableObject {
             AudioManager.shared.outputDevice = liveKitOutput
             let selectedRoute = activeProviderRouteIntegrity(
                 expectedInputDeviceID: providerInput.id,
-                expectedOutputDeviceID: providerOutput.id
+                expectedOutputDeviceID: providerOutput.id,
+                expectedCoreAudioInputUID:
+                    resolution.usesSystemDefaultInputProxy
+                        ? coreAudioInput.id
+                        : nil,
+                expectedCoreAudioOutputUID:
+                    resolution.usesSystemDefaultOutputProxy
+                        ? coreAudioOutput.id
+                        : nil
             )
             guard selectedRoute.status == .verified else {
                 throw roomError(selectedRoute.truth, code: 4)
@@ -252,6 +301,10 @@ final class MacAudioRoomController: NSObject, ObservableObject {
                 providerOutputDeviceID: providerOutput.id,
                 directPhysicalMV7iClaimed:
                     resolution.directPhysicalMV7iClaimed,
+                usesSystemDefaultInputProxy:
+                    resolution.usesSystemDefaultInputProxy,
+                usesSystemDefaultOutputProxy:
+                    resolution.usesSystemDefaultOutputProxy,
                 captureRoot: captureRoot
             )
             activeContext = receiptContext
@@ -352,14 +405,22 @@ final class MacAudioRoomController: NSObject, ObservableObject {
         )
     }
 
-    private func readProviderDevices() {
+    private func readProviderDevices(updateStatus: Bool = true) {
         providerInputs = AudioManager.shared.inputDevices.map {
-            ProviderAudioDeviceSnapshot(id: $0.deviceId, name: $0.name)
+            ProviderAudioDeviceSnapshot(
+                id: $0.deviceId,
+                name: $0.name,
+                isDefault: $0.isDefault
+            )
         }
         providerOutputs = AudioManager.shared.outputDevices.map {
-            ProviderAudioDeviceSnapshot(id: $0.deviceId, name: $0.name)
+            ProviderAudioDeviceSnapshot(
+                id: $0.deviceId,
+                name: $0.name,
+                isDefault: $0.isDefault
+            )
         }
-        if !isActive {
+        if updateStatus, !isActive {
             statusText =
                 "\(providerInputs.count) LiveKit input route(s) · \(providerOutputs.count) output route(s). Exact Core Audio UID agreement is required."
         }
@@ -381,15 +442,27 @@ final class MacAudioRoomController: NSObject, ObservableObject {
     ) -> MacAudioRoomRouteIntegrity {
         activeProviderRouteIntegrity(
             expectedInputDeviceID: context.providerInputDeviceID,
-            expectedOutputDeviceID: context.providerOutputDeviceID
+            expectedOutputDeviceID: context.providerOutputDeviceID,
+            expectedCoreAudioInputUID:
+                context.usesSystemDefaultInputProxy
+                    ? context.coreAudioInputUID
+                    : nil,
+            expectedCoreAudioOutputUID:
+                context.usesSystemDefaultOutputProxy
+                    ? context.coreAudioOutputUID
+                    : nil
         )
     }
 
     private func activeProviderRouteIntegrity(
         expectedInputDeviceID: String,
-        expectedOutputDeviceID: String
+        expectedOutputDeviceID: String,
+        expectedCoreAudioInputUID: String? = nil,
+        expectedCoreAudioOutputUID: String? = nil
     ) -> MacAudioRoomRouteIntegrity {
-        MacAudioRoomRoutePolicy.verifyActiveProviderRoute(
+        let currentDefaults = MacAudioSystemRouteController
+            .currentDefaultRoute()
+        return MacAudioRoomRoutePolicy.verifyActiveProviderRoute(
             expectedInputDeviceID: expectedInputDeviceID,
             expectedOutputDeviceID: expectedOutputDeviceID,
             providerInputs: providerInputs,
@@ -397,7 +470,11 @@ final class MacAudioRoomController: NSObject, ObservableObject {
             activeInputDeviceID:
                 AudioManager.shared.inputDevice.deviceId,
             activeOutputDeviceID:
-                AudioManager.shared.outputDevice.deviceId
+                AudioManager.shared.outputDevice.deviceId,
+            expectedCoreAudioInputUID: expectedCoreAudioInputUID,
+            expectedCoreAudioOutputUID: expectedCoreAudioOutputUID,
+            observedDefaultCoreAudioInputUID: currentDefaults.inputUID,
+            observedDefaultCoreAudioOutputUID: currentDefaults.outputUID
         )
     }
 

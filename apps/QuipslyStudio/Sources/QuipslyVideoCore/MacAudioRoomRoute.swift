@@ -4,10 +4,16 @@ import Foundation
 public struct ProviderAudioDeviceSnapshot: Identifiable, Equatable, Sendable {
     public let id: String
     public let name: String
+    public let isDefault: Bool
 
-    public init(id: String, name: String) {
+    public init(
+        id: String,
+        name: String,
+        isDefault: Bool = false
+    ) {
         self.id = id
         self.name = name
+        self.isDefault = isDefault
     }
 }
 
@@ -22,6 +28,11 @@ public struct MacAudioRoomRouteResolution: Equatable, Sendable {
     public let providerInput: ProviderAudioDeviceSnapshot?
     public let providerOutput: ProviderAudioDeviceSnapshot?
     public let directPhysicalMV7iClaimed: Bool
+    public let usesSystemDefaultInputProxy: Bool
+    public let usesSystemDefaultOutputProxy: Bool
+    public var usesSystemDefaultProxy: Bool {
+        usesSystemDefaultInputProxy || usesSystemDefaultOutputProxy
+    }
     public let truth: String
 
     public init(
@@ -29,12 +40,16 @@ public struct MacAudioRoomRouteResolution: Equatable, Sendable {
         providerInput: ProviderAudioDeviceSnapshot?,
         providerOutput: ProviderAudioDeviceSnapshot?,
         directPhysicalMV7iClaimed: Bool,
+        usesSystemDefaultInputProxy: Bool,
+        usesSystemDefaultOutputProxy: Bool,
         truth: String
     ) {
         self.status = status
         self.providerInput = providerInput
         self.providerOutput = providerOutput
         self.directPhysicalMV7iClaimed = directPhysicalMV7iClaimed
+        self.usesSystemDefaultInputProxy = usesSystemDefaultInputProxy
+        self.usesSystemDefaultOutputProxy = usesSystemDefaultOutputProxy
         self.truth = truth
     }
 }
@@ -86,21 +101,41 @@ public enum MacAudioRoomRoutePolicy {
                 "Select both the exact call microphone and headphone output before preparing the room."
             )
         }
-        guard let providerInput = providerInputs.first(where: {
+        let exactProviderInput = providerInputs.first {
             $0.id == coreAudioInput.id
-        }) else {
+        }
+        let providerInput =
+            exactProviderInput
+            ?? (
+                coreAudioInput.isDefaultInput
+                    ? providerInputs.first(where: \.isDefault)
+                    : nil
+            )
+        guard let providerInput else {
             return blocked(
-                "LiveKit does not expose the selected Core Audio input UID. Quipsly will not join with a name-guessed microphone."
+                "LiveKit does not expose the selected Core Audio input UID, and that input is not the verified macOS system default. Quipsly will not join with a name-guessed microphone."
             )
         }
-        guard let providerOutput = providerOutputs.first(where: {
+        let exactProviderOutput = providerOutputs.first {
             $0.id == coreAudioOutput.id
-        }) else {
+        }
+        let providerOutput =
+            exactProviderOutput
+            ?? (
+                coreAudioOutput.isDefaultOutput
+                    ? providerOutputs.first(where: \.isDefault)
+                    : nil
+            )
+        guard let providerOutput else {
             return blocked(
-                "LiveKit does not expose the selected Core Audio output UID. Quipsly will not join with a name-guessed headphone route."
+                "LiveKit does not expose the selected Core Audio output UID, and that output is not the verified macOS system default. Quipsly will not join with a name-guessed headphone route."
             )
         }
 
+        let usesSystemDefaultInputProxy = exactProviderInput == nil
+        let usesSystemDefaultOutputProxy = exactProviderOutput == nil
+        let usesSystemDefaultProxy =
+            usesSystemDefaultInputProxy || usesSystemDefaultOutputProxy
         let routeText =
             "\(coreAudioInput.manufacturer ?? "") \(coreAudioInput.name) \(coreAudioOutput.manufacturer ?? "") \(coreAudioOutput.name) \(providerInput.name) \(providerOutput.name)"
                 .lowercased()
@@ -112,8 +147,12 @@ public enum MacAudioRoomRoutePolicy {
                 providerInput: providerInput,
                 providerOutput: providerOutput,
                 directPhysicalMV7iClaimed: false,
+                usesSystemDefaultInputProxy: usesSystemDefaultInputProxy,
+                usesSystemDefaultOutputProxy: usesSystemDefaultOutputProxy,
                 truth:
-                    "LiveKit and Core Audio agree on the exact virtual input/output IDs. This can rehearse call transport, but it does not prove direct physical MV7i capture or headphone monitoring."
+                    usesSystemDefaultProxy
+                        ? "Core Audio proves the selected virtual input/output UIDs are the macOS system defaults, and LiveKit is bound to its default-device proxies. This can rehearse call transport, but it does not prove direct physical MV7i capture or headphone monitoring."
+                        : "LiveKit and Core Audio agree on the exact virtual input/output IDs. This can rehearse call transport, but it does not prove direct physical MV7i capture or headphone monitoring."
             )
         }
 
@@ -125,9 +164,15 @@ public enum MacAudioRoomRoutePolicy {
             providerInput: providerInput,
             providerOutput: providerOutput,
             directPhysicalMV7iClaimed: directPhysicalMV7i,
+            usesSystemDefaultInputProxy: usesSystemDefaultInputProxy,
+            usesSystemDefaultOutputProxy: usesSystemDefaultOutputProxy,
             truth: directPhysicalMV7i
-                ? "LiveKit and Core Audio agree on the exact direct MV7i device UID for microphone input and headphone output. The call feed remains separate from the local WAV recorder."
-                : "LiveKit and Core Audio agree on both exact device UIDs. The route is ready for an audio-only call, but Quipsly does not label it as a physical MV7i path."
+                ? usesSystemDefaultProxy
+                    ? "Core Audio proves the direct MV7i UID is the macOS system default for both microphone and headphones, and LiveKit is bound to its default-device proxies. The call feed remains separate from the local WAV recorder."
+                    : "LiveKit and Core Audio agree on the exact direct MV7i device UID for microphone input and headphone output. The call feed remains separate from the local WAV recorder."
+                : usesSystemDefaultProxy
+                    ? "Core Audio proves the selected input/output UIDs are the macOS system defaults, and LiveKit is bound to its default-device proxies. The route is ready for an audio-only call, but Quipsly does not label it as a physical MV7i path."
+                    : "LiveKit and Core Audio agree on both exact device UIDs. The route is ready for an audio-only call, but Quipsly does not label it as a physical MV7i path."
         )
     }
 
@@ -137,7 +182,11 @@ public enum MacAudioRoomRoutePolicy {
         providerInputs: [ProviderAudioDeviceSnapshot],
         providerOutputs: [ProviderAudioDeviceSnapshot],
         activeInputDeviceID: String?,
-        activeOutputDeviceID: String?
+        activeOutputDeviceID: String?,
+        expectedCoreAudioInputUID: String? = nil,
+        expectedCoreAudioOutputUID: String? = nil,
+        observedDefaultCoreAudioInputUID: String? = nil,
+        observedDefaultCoreAudioOutputUID: String? = nil
     ) -> MacAudioRoomRouteIntegrity {
         let inputStillAvailable = providerInputs.contains {
             $0.id == expectedInputDeviceID
@@ -149,11 +198,19 @@ public enum MacAudioRoomRoutePolicy {
             activeInputDeviceID == expectedInputDeviceID
         let exactOutputStillActive =
             activeOutputDeviceID == expectedOutputDeviceID
+        let coreAudioInputStillDefault =
+            expectedCoreAudioInputUID == nil
+            || observedDefaultCoreAudioInputUID == expectedCoreAudioInputUID
+        let coreAudioOutputStillDefault =
+            expectedCoreAudioOutputUID == nil
+            || observedDefaultCoreAudioOutputUID == expectedCoreAudioOutputUID
 
         guard inputStillAvailable,
               outputStillAvailable,
               exactInputStillActive,
-              exactOutputStillActive else {
+              exactOutputStillActive,
+              coreAudioInputStillDefault,
+              coreAudioOutputStillDefault else {
             var reasons: [String] = []
             if !inputStillAvailable {
                 reasons.append("the selected call microphone disappeared")
@@ -164,6 +221,12 @@ public enum MacAudioRoomRoutePolicy {
                 reasons.append("the selected headphone output disappeared")
             } else if !exactOutputStillActive {
                 reasons.append("LiveKit changed the headphone output")
+            }
+            if !coreAudioInputStillDefault {
+                reasons.append("macOS changed the system-default microphone")
+            }
+            if !coreAudioOutputStillDefault {
+                reasons.append("macOS changed the system-default headphone output")
             }
             return MacAudioRoomRouteIntegrity(
                 status: .lost,
@@ -183,7 +246,9 @@ public enum MacAudioRoomRoutePolicy {
             observedInputDeviceID: activeInputDeviceID,
             observedOutputDeviceID: activeOutputDeviceID,
             truth:
-                "The active LiveKit call microphone and headphone output still match the exact locked Core Audio device UIDs."
+                expectedCoreAudioInputUID == nil
+                    ? "The active LiveKit call microphone and headphone output still match the exact locked Core Audio device UIDs."
+                    : "The active LiveKit default-device proxies remain selected, and macOS still reports the exact locked Core Audio microphone and headphone UIDs as its system defaults."
         )
     }
 
@@ -195,6 +260,8 @@ public enum MacAudioRoomRoutePolicy {
             providerInput: nil,
             providerOutput: nil,
             directPhysicalMV7iClaimed: false,
+            usesSystemDefaultInputProxy: false,
+            usesSystemDefaultOutputProxy: false,
             truth: truth
         )
     }
