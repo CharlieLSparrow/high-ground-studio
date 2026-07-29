@@ -27,8 +27,10 @@ import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server
 import { ensureQuipslyStarterStateForUser } from "@/lib/server/quipsly-onboarding";
 import {
   ensureStudioProjectOwnerGrant,
+  normalizeAccessEmail,
   resolveStudioProjectAccess,
 } from "@/lib/server/studio-project-access";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { ensureInvitedStudioUserByEmail } from "@/lib/server/studio-user-identity";
 import {
   defaultDocumentTitleForNest,
@@ -52,6 +54,15 @@ export class QuipslyNestWriteAccessError extends Error {
   constructor(readonly nestSlug: string) {
     super(`You do not have write access to ${nestSlug}.`);
     this.name = "QuipslyNestWriteAccessError";
+  }
+}
+
+export class QuipslyNestCreateIdentityConflictError extends Error {
+  readonly status = 409;
+
+  constructor() {
+    super("That project-creation retry identity already belongs to a different Nest request.");
+    this.name = "QuipslyNestCreateIdentityConflictError";
   }
 }
 
@@ -252,92 +263,175 @@ export async function createNestWithOwner(input: {
   documentTitle?: string | null;
   ownerEmail: string;
   description?: string | null;
+  clientRequestId?: string | null;
   prisma?: PrismaClient;
 }) {
   const prisma = db(input.prisma);
-  const workspace = await ensureStudioWorkspace(prisma);
+  const name = input.name.trim().replace(/\s+/g, " ");
+  const ownerEmail = normalizeAccessEmail(input.ownerEmail);
+  const clientRequestId = String(input.clientRequestId || "").trim().toLowerCase();
   const kind = normalizeNestKind(input.nestKind);
-  const slugBase = slugifyProjectName(input.name);
-  const slug = normalizeNestSlug(slugBase);
+  const slugBase = normalizeNestSlug(slugifyProjectName(name));
   const title =
     input.documentTitle?.trim() ||
-    defaultDocumentTitleForNest(input.name, kind as Parameters<typeof defaultDocumentTitleForNest>[1]);
-  const config = projectConfig(slug);
+    defaultDocumentTitleForNest(name, kind as Parameters<typeof defaultDocumentTitleForNest>[1]);
 
-  const project = await prisma.studioProject.upsert({
-    where: {
-      workspaceId_slug: {
-        workspaceId: workspace.id,
-        slug,
-      },
-    },
-    create: {
-      workspaceId: workspace.id,
-      slug,
-      name: input.name.trim(),
-      description: input.description ?? null,
-      sourceLabel: `nest-kind:${kind}`,
-      isPrivate: true,
-    },
-    update: {
-      name: input.name.trim(),
-      description: input.description ?? undefined,
-      sourceLabel: `nest-kind:${kind}`,
-      isPrivate: true,
-    },
-  });
-
-
-  const document = await prisma.studioDocument.upsert({
-    where: { stableId: config.documentStableId },
-    create: {
-      projectId: project.id,
-      stableId: config.documentStableId,
-      title,
-      sourceLabel: `nest-kind:${kind}`,
-      isPrivate: true,
-    },
-    update: {
-      projectId: project.id,
-      title,
-      sourceLabel: `nest-kind:${kind}`,
-      isPrivate: true,
-    },
-  });
-
-  const existingBlocksCount = await prisma.studioDocumentBlock.count({ where: { documentId: document.id } });
-  if (existingBlocksCount === 0) {
-    const createId = () => crypto.randomUUID();
-    await prisma.studioDocumentBlock.create({
-      data: {
-        documentId: document.id,
-        stableId: createId(),
-        body: `# ${title}`,
-        order: 0,
-      }
-    });
-    await prisma.studioDocumentBlock.create({
-      data: {
-        documentId: document.id,
-        stableId: createId(),
-        body: `Welcome to your new Nest! This is the primary living document.\n\nWrite notes, script lines, or chapters here. Try typing \`/\` to add media, insert a scene tag, or drop a quote from your research.`,
-        order: 1000,
-      }
-    });
+  if (!name || name.length > 120 || !slugBase) {
+    throw new Error("A project needs a readable name of 120 characters or fewer.");
+  }
+  if (!ownerEmail) throw new Error("A project owner email is required.");
+  if (title.length > 240) throw new Error("A project document title must be 240 characters or fewer.");
+  if (clientRequestId && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(clientRequestId)) {
+    throw new Error("A project retry identity must be a UUID.");
   }
 
+  const requestGroupId = clientRequestId
+    ? `create-nest:${clientRequestId}`
+    : `create-nest:${crypto.randomUUID()}`;
+  const description = input.description?.trim().slice(0, 2_000) || null;
 
-  await ensureStudioProjectOwnerGrant({
-    prisma,
-    projectId: project.id,
-    ownerEmail: input.ownerEmail,
-    createdByEmail: input.ownerEmail,
-  });
+  const commit = () => prisma.$transaction(async (transaction) => {
+    const workspace = await ensureStudioWorkspace(transaction as unknown as PrismaClient);
 
-  return {
-    nest: toNestRef(project),
-    document: toDocumentRef(project, document),
-  };
+    if (clientRequestId) {
+      await acquirePrismaAdvisoryTransactionLock(
+        transaction,
+        `quipsly:nest-create-request:${ownerEmail}:${clientRequestId}`,
+      );
+      const prior = await transaction.studioDocumentOperation.findFirst({
+        where: {
+          groupId: requestGroupId,
+          actorEmail: ownerEmail,
+          operationType: "create-nest",
+        },
+        orderBy: { createdAt: "asc" },
+        include: { project: true, document: true },
+      });
+      if (prior) {
+        const payload =
+          prior.payloadJson && typeof prior.payloadJson === "object" && !Array.isArray(prior.payloadJson)
+            ? prior.payloadJson as Record<string, unknown>
+            : {};
+        if (
+          payload.name !== name
+          || payload.nestKind !== kind
+          || payload.documentTitle !== title
+          || payload.ownerEmail !== ownerEmail
+          || payload.description !== description
+        ) {
+          throw new QuipslyNestCreateIdentityConflictError();
+        }
+        return {
+          nest: toNestRef(prior.project),
+          document: toDocumentRef(prior.project, prior.document),
+          idempotentReplay: true,
+          receiptId: prior.id,
+        };
+      }
+    }
+
+    // Human-readable slugs are not ownership identities. Serialize allocation
+    // for one workspace/name and suffix collisions instead of ever reopening
+    // an existing project and granting another actor ownership.
+    await acquirePrismaAdvisoryTransactionLock(
+      transaction,
+      `quipsly:nest-create-slug:${workspace.id}:${slugBase}`,
+    );
+    let slug = slugBase;
+    let suffix = 2;
+    while (await transaction.studioProject.findUnique({
+      where: { workspaceId_slug: { workspaceId: workspace.id, slug } },
+      select: { id: true },
+    })) {
+      slug = `${slugBase}-${suffix}`;
+      suffix += 1;
+    }
+
+    const project = await transaction.studioProject.create({
+      data: {
+        workspaceId: workspace.id,
+        slug,
+        name,
+        description,
+        sourceLabel: `nest-kind:${kind}`,
+        isPrivate: true,
+      },
+    });
+    const document = await transaction.studioDocument.create({
+      data: {
+        projectId: project.id,
+        stableId: `doc-${slug}`,
+        title,
+        sourceLabel: `nest-kind:${kind};document-kind:living`,
+        isPrivate: true,
+      },
+    });
+    await transaction.studioDocumentBlock.createMany({
+      data: [
+        {
+          documentId: document.id,
+          stableId: crypto.randomUUID(),
+          body: `# ${title}`,
+          order: 0,
+        },
+        {
+          documentId: document.id,
+          stableId: crypto.randomUUID(),
+          body: "Welcome to your new Nest! This is the primary living document.\n\nWrite notes, script lines, or chapters here. Try typing `/` to add media, insert a scene tag, or drop a quote from your research.",
+          order: 1000,
+        },
+      ],
+    });
+    await ensureStudioProjectOwnerGrant({
+      prisma: transaction as unknown as PrismaClient,
+      projectId: project.id,
+      ownerEmail,
+      createdByEmail: ownerEmail,
+    });
+    const receipt = await transaction.studioDocumentOperation.create({
+      data: {
+        projectId: project.id,
+        documentId: document.id,
+        groupId: requestGroupId,
+        actorEmail: ownerEmail,
+        origin: "human",
+        operationType: "create-nest",
+        status: "applied",
+        afterJson: {
+          projectId: project.id,
+          projectSlug: project.slug,
+          documentId: document.id,
+        },
+        payloadJson: {
+          schema: "quipsly-create-nest-v1",
+          clientRequestId: clientRequestId || null,
+          name,
+          nestKind: kind,
+          documentTitle: title,
+          ownerEmail,
+          description,
+        },
+        reversible: false,
+      },
+    });
+
+    return {
+      nest: toNestRef(project),
+      document: toDocumentRef(project, document),
+      idempotentReplay: false,
+      receiptId: receipt.id,
+    };
+  }, { isolationLevel: "Serializable" });
+
+  try {
+    return await commit();
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error
+      ? String(error.code)
+      : "";
+    if (code !== "P2002" && code !== "P2034") throw error;
+    return commit();
+  }
 }
 
 export async function getLivingDocumentForNest(input: {

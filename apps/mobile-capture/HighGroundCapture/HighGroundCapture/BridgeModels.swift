@@ -1089,6 +1089,26 @@ struct MobileCaptureWorkProject: Codable, Identifiable, Hashable {
     let updatedAt: String
 }
 
+struct MobileCaptureCreatedProject: Codable, Identifiable, Hashable {
+    let id: String
+    let slug: String
+    let name: String
+    let role: String
+    let canWrite: Bool
+    let isHomeNest: Bool
+    let kind: String
+}
+
+struct MobileCaptureProjectCreateResponse: Codable {
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let schema: String?
+    let idempotentReplay: Bool?
+    let receiptId: String?
+    let project: MobileCaptureCreatedProject?
+}
+
 struct MobileCaptureWorkNote: Codable, Identifiable, Hashable {
     let id: String
     let stableId: String
@@ -3417,6 +3437,7 @@ final class CaptureTodayClient: ObservableObject {
 final class CaptureWorkClient: ObservableObject {
     @Published private(set) var brief: MobileCaptureWorkResponse?
     @Published private(set) var isLoading = false
+    @Published private(set) var isCreatingProject = false
     @Published private(set) var isUsingProtectedCache = false
     @Published var errorMessage: String?
 
@@ -3432,6 +3453,64 @@ final class CaptureWorkClient: ObservableObject {
     var projects: [MobileCaptureWorkProject] { brief?.projects ?? [] }
     var workspace: MobileCaptureWorkWorkspace? { brief?.workspace }
     var selectedProjectID: String? { brief?.selectedProjectId }
+
+    func createProject(
+        name: String,
+        nestKind: String,
+        description: String,
+        clientRequestID: UUID
+    ) async -> MobileCaptureCreatedProject? {
+        guard !isCreatingProject,
+              !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed,
+              let url = URL(string: "\(baseURL)/api/mobile/capture/projects") else {
+            errorMessage = "Reconnect to Nest before creating a canonical project."
+            return nil
+        }
+        isCreatingProject = true
+        defer { isCreatingProject = false }
+        errorMessage = nil
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "name": name,
+                "nestKind": nestKind,
+                "description": description,
+                "clientRequestId": clientRequestID.uuidString.lowercased(),
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureProjectCreateResponse.self, from: data)
+            guard response.statusCode < 400,
+                  payload.ok,
+                  payload.schema == "quipsly-mobile-project-create-v1",
+                  let project = payload.project,
+                  project.role == "OWNER",
+                  project.canWrite,
+                  !project.id.isEmpty,
+                  !project.slug.isEmpty else {
+                throw NSError(
+                    domain: "CaptureWork",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "The project could not be created safely."]
+                )
+            }
+            await load(projectID: project.id)
+            guard selectedProjectID == project.id else {
+                throw NSError(
+                    domain: "CaptureWork",
+                    code: 409,
+                    userInfo: [NSLocalizedDescriptionKey: "Nest created the project, but the canonical Work readback did not select the same identity."]
+                )
+            }
+            return project
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
 
     func loadPreview(projectID: String? = nil) {
         let now = ISO8601DateFormatter().string(from: Date())

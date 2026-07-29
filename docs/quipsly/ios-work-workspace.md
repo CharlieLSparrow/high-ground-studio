@@ -1,6 +1,6 @@
 # iPhone Work Workspace
 
-Last verified: 2026-07-24
+Last verified: 2026-07-29
 
 ## Product job
 
@@ -32,6 +32,10 @@ The iPhone root destinations are:
 
 Work starts with a project picker, an honest count summary, direct Task/Note/Goal capture, tag lenses, then the project records. It does not put taxonomy administration or production tooling in the first-use path.
 
+An Owner can also open **New project** directly from Work. The phone creates a
+real private Nest and selects the exact server-returned project after a
+canonical readback; it never inserts a local-only placeholder project.
+
 ## Canonical read contract
 
 `GET /api/mobile/capture/work`
@@ -57,6 +61,34 @@ The endpoint:
 - has no external side effects.
 
 The API advertises the route through both Capture readiness and Session discovery responses.
+
+## Canonical project-creation contract
+
+`POST /api/mobile/capture/projects`
+
+The request includes a human-readable name, supported Nest kind, optional
+description, and a device-generated UUID retained for every retry. The response
+kind is `quipsly-mobile-project-create-v1`.
+
+The endpoint:
+
+- requires a verified beta-enabled Quipsly actor;
+- creates a private `StudioProject`, primary living `StudioDocument`, two
+  starter blocks, and an active Owner grant in one serializable transaction;
+- records an actor-bound `create-nest` operation receipt;
+- serializes retries by actor and request UUID;
+- returns the original project only when every protected request field matches;
+- rejects a reused request UUID with changed content;
+- treats a readable slug as presentation, never ownership identity;
+- suffixes same-name collisions rather than reopening an existing project or
+  granting its ownership to another actor;
+- performs no invitation, message, calendar, provider-room, media, or
+  publishing side effect.
+
+After a successful POST, Capture reloads Work by the exact returned project ID
+and considers creation complete only when that canonical project is selected.
+If the response or readback is interrupted, the sheet remains open and Retry
+reuses the same UUID, so a completed project cannot be duplicated.
 
 ## Capture and mutation contract
 
@@ -118,6 +150,21 @@ The follow-on Work-native retag checkpoint additionally proved:
 - deletion of seven superseded failed-run synthetic Task rows after confirming they had no Goal, occurrence, reminder, or work-plan dependencies.
 
 The successful proof Task remains; temporary credentials and the temporary verified Firebase emulator user were removed.
+
+The 2026-07-29 project-creation checkpoint additionally proved:
+
+- same-name project collision allocation without reopening an existing Nest;
+- exact request replay without a second project, document, grant, or receipt;
+- conflict rejection when a request UUID is reused with changed content;
+- signed-out and beta-access denial plus actor-bound canonical route input;
+- four focused route/kernel suites passing 24/24;
+- TypeScript 7 application typecheck;
+- production iOS target simulator build with LiveKit linked;
+- the deterministic Work UI journey passing on iPhone 16e, including a
+  reachable New Project control that cannot pretend to write in preview mode.
+
+Production deployment and a signed physical-iPhone creation/readback remain
+release gates; this checkpoint does not claim them.
 
 ## Open release gates
 

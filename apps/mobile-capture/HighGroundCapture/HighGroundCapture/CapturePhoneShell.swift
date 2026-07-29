@@ -294,6 +294,7 @@ private struct CaptureWorkView: View {
     @State private var selectedTagID: String?
     @State private var showsCompletedTasks = false
     @State private var quickEntryKind: MobileQuickEntryKind?
+    @State private var showsNewProject = false
     @State private var taskTagsToEdit: MobileCaptureTodayTask?
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var noteTagsToEdit: MobileCaptureWorkNote?
@@ -397,6 +398,13 @@ private struct CaptureWorkView: View {
         model.usesPreviewData || client.isUsingProtectedCache || !AuthManager.shared.networkActionsAllowed
     }
 
+    private var projectCreationDisabled: Bool {
+        model.usesPreviewData
+            || client.isUsingProtectedCache
+            || !AuthManager.shared.networkActionsAllowed
+            || client.isCreatingProject
+    }
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
@@ -466,6 +474,10 @@ private struct CaptureWorkView: View {
             )
             .presentationDetents([.large])
         }
+        .sheet(isPresented: $showsNewProject) {
+            NewCaptureProjectSheet(client: client)
+                .presentationDetents([.large])
+        }
         .sheet(item: $taskTagsToEdit) { task in
             if let project = task.project {
                 TodayWorkTagSheet(
@@ -525,13 +537,37 @@ private struct CaptureWorkView: View {
         .onChange(of: client.selectedProjectID) { _, newValue in
             selectedProjectID = newValue
         }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showsNewProject = true
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                }
+                .disabled(projectCreationDisabled)
+                .accessibilityLabel("New private project")
+                .accessibilityHint("Creates a canonical private Nest owned by this Quipsly account.")
+                .accessibilityIdentifier("CaptureWorkNewProject")
+            }
+        }
         .accessibilityIdentifier("CaptureWorkView")
     }
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Your projects")
-                .font(.largeTitle.weight(.bold))
+            HStack(alignment: .firstTextBaseline) {
+                Text("Your projects")
+                    .font(.largeTitle.weight(.bold))
+                Spacer()
+                Button {
+                    showsNewProject = true
+                } label: {
+                    Label("New", systemImage: "plus")
+                }
+                .buttonStyle(.bordered)
+                .disabled(projectCreationDisabled)
+                .accessibilityIdentifier("CaptureWorkNewProjectInline")
+            }
             Text("Every task, goal, note, and tag stays attached to its canonical Nest.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -2405,6 +2441,170 @@ private struct TodayGoalCheckInControls: View {
             .accessibilityHint("Opens a progress and evidence form. Opening it does not change this goal.")
             .accessibilityIdentifier("CaptureTodayGoalCheckIn_\(goal.id)")
         }
+    }
+}
+
+private struct NewCaptureProjectSheet: View {
+    private struct KindOption: Identifiable {
+        let id: String
+        let title: String
+        let detail: String
+        let systemImage: String
+    }
+
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var client: CaptureWorkClient
+    @State private var name = ""
+    @State private var description = ""
+    @State private var selectedKind = "mixed"
+    @State private var clientRequestID = UUID()
+
+    private let kinds = [
+        KindOption(
+            id: "mixed",
+            title: "Flexible project",
+            detail: "Notes, tasks, goals, sessions, and mixed source material.",
+            systemImage: "square.grid.2x2"
+        ),
+        KindOption(
+            id: "production",
+            title: "Podcast or video",
+            detail: "Episode preparation, recordings, clips, editing, and delivery.",
+            systemImage: "waveform.and.person.filled"
+        ),
+        KindOption(
+            id: "writing",
+            title: "Writing",
+            detail: "Manuscripts, scripts, drafts, sources, and revisions.",
+            systemImage: "text.book.closed"
+        ),
+        KindOption(
+            id: "research",
+            title: "Research",
+            detail: "Sources, evidence, annotations, notes, and writing uses.",
+            systemImage: "books.vertical"
+        ),
+        KindOption(
+            id: "study",
+            title: "Study",
+            detail: "Reading, learning notes, questions, and durable takeaways.",
+            systemImage: "graduationcap"
+        ),
+    ]
+
+    private var normalizedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var saveDisabled: Bool {
+        normalizedName.isEmpty
+            || normalizedName.count > 120
+            || client.isCreatingProject
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Project name", text: $name)
+                        .textInputAutocapitalization(.words)
+                        .submitLabel(.next)
+                        .accessibilityIdentifier("CaptureWorkProjectName")
+                    TextField(
+                        "What belongs here? (optional)",
+                        text: $description,
+                        axis: .vertical
+                    )
+                    .lineLimit(2...5)
+                    .accessibilityIdentifier("CaptureWorkProjectDescription")
+                    if normalizedName.count > 120 {
+                        Label("Keep the project name to 120 characters.", systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                    }
+                } header: {
+                    Text("Private project")
+                } footer: {
+                    Text("A project is a canonical Nest—not a folder copied only onto this phone.")
+                }
+
+                Section("Start with") {
+                    ForEach(kinds) { kind in
+                        Button {
+                            selectedKind = kind.id
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: kind.systemImage)
+                                    .font(.title3)
+                                    .frame(width: 28)
+                                    .foregroundStyle(CapturePalette.accent)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(kind.title)
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                    Text(kind.detail)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Image(systemName: selectedKind == kind.id ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(selectedKind == kind.id ? CapturePalette.accent : .secondary)
+                            }
+                            .frame(minHeight: 48)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("CaptureWorkProjectKind_\(kind.id)")
+                        .accessibilityValue(selectedKind == kind.id ? "Selected" : "Not selected")
+                    }
+                }
+
+                Section {
+                    Label("Private by default", systemImage: "lock.fill")
+                    Label("You become the owner", systemImage: "person.badge.key.fill")
+                    Label("No messages, calendar events, or publishing", systemImage: "hand.raised.fill")
+                } footer: {
+                    Text("Creating requires Nest. If the response is interrupted, Retry uses the same protected request identity and cannot take ownership of an existing same-name project.")
+                }
+
+                if let errorMessage = client.errorMessage {
+                    Section {
+                        Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("CaptureWorkProjectCreateError")
+                    } header: {
+                        Text("Couldn’t create project")
+                    } footer: {
+                        Text("Check your connection, then tap Create again. Capture safely reuses this request without duplicating a completed project.")
+                    }
+                }
+            }
+            .navigationTitle("New project")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(client.isCreatingProject ? "Creating…" : "Create") {
+                        Task {
+                            let project = await client.createProject(
+                                name: normalizedName,
+                                nestKind: selectedKind,
+                                description: description.trimmingCharacters(in: .whitespacesAndNewlines),
+                                clientRequestID: clientRequestID
+                            )
+                            if project != nil {
+                                dismiss()
+                            }
+                        }
+                    }
+                    .disabled(saveDisabled)
+                    .accessibilityIdentifier("CaptureWorkProjectCreate")
+                }
+            }
+        }
+        .interactiveDismissDisabled(client.isCreatingProject)
     }
 }
 

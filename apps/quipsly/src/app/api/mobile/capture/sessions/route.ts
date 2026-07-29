@@ -305,6 +305,7 @@ export async function GET(request: Request) {
     links: {
       today: "/api/mobile/capture/today",
       work: "/api/mobile/capture/work",
+      projects: "/api/mobile/capture/projects",
       readiness: "/api/mobile/capture/readiness",
       consent: "/api/mobile/capture/consent",
       join: "/api/mobile/capture/rooms/join",

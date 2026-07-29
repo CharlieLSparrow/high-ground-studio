@@ -189,6 +189,15 @@ final class CaptureExperienceUITests: XCTestCase {
         app.tabBars.buttons["Work"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]
         XCTAssertTrue(workScroll.waitForExistence(timeout: 5))
+        let newProject = app.buttons["CaptureWorkNewProjectInline"]
+        XCTAssertTrue(
+            newProject.exists,
+            "Work must keep canonical project creation directly reachable beside the project list."
+        )
+        XCTAssertFalse(
+            newProject.isEnabled,
+            "Deterministic preview must expose New Project without pretending to create a canonical Nest."
+        )
         XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectPicker"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectSummary"].exists)
         XCTAssertTrue(app.staticTexts["High Ground Odyssey"].exists)

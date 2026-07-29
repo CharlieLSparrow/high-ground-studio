@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 14:21 UTC
+Last verified: 2026-07-29 18:40 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -10,8 +10,12 @@ needs to prove.
 
 - App: **Quipsly Capture 1.0 (8)**
 - External TestFlight group: **Quipsly Capture Rehearsal**
-- Intended tester: `shomers@gmail.com`
-- Apple state: `WAITING_FOR_BETA_REVIEW` / `WAITING_FOR_REVIEW`
+- TestFlight Apple Account: `shomers@icloud.com`
+- Quipsly Google identity: `shomers@gmail.com`
+- Apple state: `IN_BETA_TESTING` / `APPROVED`
+- Public installation link:
+  `https://testflight.apple.com/join/XwRRcYUm`
+- Public-link capacity: limited to 10 testers
 - Automatic tester notification: enabled
 - Private Nest:
   `https://nest.quipsly.com/nests/high-ground-odyssey-rehearsal/episodes/testflight-rehearsal`
@@ -184,32 +188,32 @@ See
 and the exact
 [`Build 9 qualification record`](../coordination/2026-07-29-capture-build-9-qualified-candidate.md).
 
-Build 8 has been submitted correctly. Apple must approve the external beta
-before Homer receives the usable invitation. Apple documents that external
-testing can begin only after TestFlight App Review approves the build. With
-automatic notification enabled, the tester notification follows approval:
+Apple approved Build 8 for external TestFlight testing. The 18:34 UTC API
+readback reports `IN_BETA_TESTING` / `APPROVED`; Build 8 remains assigned to
+the external `Quipsly Capture Rehearsal` group and the group is ready for
+testing. Email delivery and the internal-tester invitation state are no longer
+rehearsal blockers. The enabled public external-testing link is the canonical
+installation path:
 
-The 13:49 UTC API readback still reports
-`WAITING_FOR_BETA_REVIEW` / `WAITING_FOR_REVIEW`; the intended tester and
-Build 8 remain assigned to the rehearsal group, automatic notification remains
-enabled, and Apple reports no missing review phone or reviewer password. The
-tester remains `NOT_INVITED` because external invitations cannot become usable
-until this beta review passes; this is not an email-address or group-assignment
-failure.
+`https://testflight.apple.com/join/XwRRcYUm`
+
+The link returned HTTP 200 at the 18:35 UTC readback and is capped at 10
+testers. Opening it on the iPhone presents **Start Testing** and hands off to
+TestFlight without an invitation email or redemption code.
 
 - [Apple: Invite external testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers)
 - [Apple: TestFlight overview](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview)
 
 ## Message to send Homer
 
-> We are testing Quipsly Capture. Apple is still reviewing this first external
-> beta, so the invitation may not arrive until it approves the build.
+> We are testing Quipsly Capture. Apple has approved the external beta.
 >
 > 1. Install **TestFlight** from the App Store.
-> 2. Watch `shomers@gmail.com` for an Apple/TestFlight invitation to
->    **Quipsly Capture**. Check Spam and Promotions too.
-> 3. Open the invitation on the iPhone and tap **View in TestFlight** or
->    **Start Testing**, then install Quipsly Capture.
+> 2. On the iPhone, open
+>    `https://testflight.apple.com/join/XwRRcYUm` in Safari.
+> 3. Tap **Start Testing**, open TestFlight, then accept and install
+>    **Quipsly Capture**. Ignore the Redeem button; this path does not require
+>    an email or code.
 > 4. Open Quipsly Capture and tap **Continue with Google**.
 > 5. Choose `shomers@gmail.com`. Do not create a password account and do not
 >    wait for a Quipsly verification email; Google sign-in is the intended
@@ -218,20 +222,19 @@ failure.
 > 7. Stop there if Charlie is not with you. We will choose the exact rehearsal
 >    Session and make the recording-consent choices together.
 
-The email used for a TestFlight invitation does not have to be the same as the
-Apple Account signed into the device. Apple records the invitation email
-separately from the device's Apple Account. The intended invitation address is
-still `shomers@gmail.com` so delivery and tester readback stay unambiguous.
+The Apple Account signed into TestFlight is `shomers@icloud.com`; the Quipsly
+account selected inside Capture is `shomers@gmail.com`. They identify Scott at
+different provider boundaries and are intentionally not merged by email. The
+public TestFlight link avoids the unreliable private-email invitation path
+entirely.
 
-If Apple has approved Build 8 but the invitation is absent:
+If the public link does not hand off to TestFlight:
 
-1. search the mailbox for `TestFlight`, `Apple`, and `Quipsly Capture`;
-2. check Spam, Promotions, and All Mail;
-3. confirm TestFlight is installed and the iPhone can open App Store links;
-4. ask Charlie/Codex to inspect tester status and use App Store Connect's
-   **Reinvite** action. Apple exposes `Invited`, `Accepted`, and `Installed`
-   tester states:
-   [Apple: View and manage tester information](https://developer.apple.com/help/app-store-connect/test-a-beta-version/view-and-manage-tester-information).
+1. copy and paste the exact link into Safari on the iPhone;
+2. confirm TestFlight is installed and signed into the intended Apple Account;
+3. tap **Start Testing** and then **Open in TestFlight**;
+4. report the exact Safari/TestFlight screen before changing accounts or
+   entering a redemption code.
 
 ## Ten-minute preflight
 
@@ -385,7 +388,6 @@ The rehearsal passes only when:
 
 ## Current blockers that are not Homer failures
 
-- Apple still has Build 8 in TestFlight Beta App Review.
 - Homer's first Google sign-in is the only remaining live identity-link step.
 - A physical two-account rehearsal is still required; simulator and server
   tests do not substitute for it.
