@@ -278,6 +278,14 @@ proved:
 The redacted mode-0600 receipt is
 `/private/tmp/quipsly-native-rehearsal-preview-8fa86d46-receipt.json`.
 
+At 13:50 UTC, the v3 verifier passed again against the newest zero-traffic
+preview `studio-00430-fop`, immutable server source
+`1ac5bd3d441a07938239f2073add2f6e2ed0a0eb`. The complete manuscript and all
+three protected media streams still match their pinned evidence. Watch remains
+revision 5, paused at zero, with Be Curious first and selected, no session,
+active segment, or watched segment. The GET-only redacted receipt is
+`/private/tmp/quipsly-watch-preview-1ac5bd3d-current-receipt.json`, mode 0600.
+
 After that exact server proof, the iPhone candidate was hardened without
 changing the deployed Watch API:
 
@@ -331,7 +339,7 @@ do not replace the physical-iPhone gate.
 ## Current external TestFlight readback
 
 Read-only App Store Connect API evidence at
-`2026-07-29T11:58:46.849Z` confirms:
+`2026-07-29T13:49:55.057Z` confirms:
 
 - version/build `1.0 (8)` is still assigned to
   `Quipsly Capture Rehearsal`;
@@ -340,7 +348,9 @@ Read-only App Store Connect API evidence at
 - external build state is `WAITING_FOR_BETA_REVIEW`; and
 - beta review state is `WAITING_FOR_REVIEW`.
 
-No App Store Connect mutation was needed or made.
+The tester remains `NOT_INVITED` until Apple completes external beta review;
+the tester, build, and group assignments themselves are present. No App Store
+Connect mutation was needed or made.
 
 ## Physical-iPhone gate
 
