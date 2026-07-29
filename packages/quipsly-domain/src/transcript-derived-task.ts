@@ -1,6 +1,43 @@
 export const TRANSCRIPT_DERIVED_TASK_SCHEMA = "quipsly-transcript-derived-task-v1" as const;
 export const TRANSCRIPT_DERIVED_GOAL_SCHEMA = "quipsly-transcript-derived-goal-v1" as const;
 
+export type TaskStatus = "INBOX" | "TODO" | "IN_PROGRESS" | "COMPLETED" | "CANCELLED" | "DEFERRED";
+
+export type QuipslyCanonicalTask = {
+  id: string;
+  title: string;
+  detail?: string | null;
+  status: TaskStatus;
+  ownerAccountId: string;
+  projectId?: string | null;
+  sourceAnchorId?: string | null;
+  availableAt?: string | null;
+  deadlineAt?: string | null;
+  scheduledTimeBlock?: {
+    startAt: string;
+    endAt: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TaskStatusEventKind =
+  | "TASK_CREATED"
+  | "TASK_STATUS_CHANGED"
+  | "TASK_RESCHEDULED"
+  | "TASK_COMPLETED";
+
+export type TaskStatusChangeEvent = {
+  id: string;
+  taskId: string;
+  kind: TaskStatusEventKind;
+  previousStatus?: TaskStatus | null;
+  nextStatus: TaskStatus;
+  actorAccountId: string;
+  reason?: string | null;
+  timestamp: string;
+};
+
 export type TranscriptDerivedTaskSourceAnchor = {
   schema: typeof TRANSCRIPT_DERIVED_TASK_SCHEMA;
   roomId: string;

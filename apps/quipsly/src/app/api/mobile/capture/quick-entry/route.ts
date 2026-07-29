@@ -43,6 +43,7 @@ function publicEntry(kind: MobileCaptureQuickEntryInput["kind"], row: any, room:
     status: model === "task" || model === "goal" ? row.status : "CAPTURED",
     noteKind: model === "note" ? row.kind : null,
     noteVisibility: model === "note" ? row.visibility : null,
+    documentKind: model === "note" || model === "document-note" ? "note" : "manuscript",
     callRoomId: room?.id || null,
     sessionTitle: room?.id ? room.title : null,
     projectId: room?.projectId || null,

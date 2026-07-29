@@ -20,6 +20,12 @@ export type DocumentNodeType =
   | "transcriptSegment"
   | "mediaReference";
 
+export type QuipslyDocumentKind =
+  | "manuscript"
+  | "draft"
+  | "fixed-source"
+  | "note";
+
 export type DocumentNode = {
   id: string;
   type: DocumentNodeType;
@@ -141,6 +147,7 @@ export type QuipslyDocument = {
   schemaVersion: QuipslyDocumentSchemaVersion;
   id: string;
   title: string;
+  kind?: QuipslyDocumentKind;
   nodes: DocumentNode[];
   boundaries: BoundaryMarker[];
   regions: Region[];
@@ -154,6 +161,7 @@ export type QuipslyDocument = {
 export type CreateDocumentInput = {
   id: string;
   title: string;
+  kind?: QuipslyDocumentKind;
   nodes?: DocumentNode[];
   metadata?: KernelMetadata;
   now?: string;
@@ -168,6 +176,7 @@ export function createQuipslyDocument(
     schemaVersion: QUIPSLY_DOCUMENT_SCHEMA_VERSION,
     id: input.id,
     title: input.title,
+    kind: input.kind ?? "manuscript",
     nodes: input.nodes ?? [],
     boundaries: [],
     regions: [],

@@ -124,6 +124,16 @@ export type ManuscriptQuoteSourceType =
 export type ManuscriptFilterVisualMode =
   (typeof manuscriptFilterVisualModeDefinitions)[number]["id"];
 
+export const quipslyDocumentKindDefinitions = [
+  { id: "manuscript", label: "Manuscript", description: "Living manuscript spine" },
+  { id: "draft", label: "Draft", description: "Branched working draft" },
+  { id: "fixed-source", label: "Study Source", description: "Immutable or source-preserved reference material" },
+  { id: "note", label: "Note", description: "Quick capture scratchpad" },
+] as const;
+
+export type QuipslyDomainDocumentKind =
+  (typeof quipslyDocumentKindDefinitions)[number]["id"];
+
 export type ManuscriptEditorJson = {
   type?: string;
   attrs?: Record<string, unknown>;
