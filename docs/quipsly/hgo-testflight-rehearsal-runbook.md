@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 10:48 UTC
+Last verified: 2026-07-29 10:55 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -48,6 +48,20 @@ needs to prove.
   streams begin at 0, the container is 254.630 seconds, and full video/audio
   decode completed with no errors. Its 19,100,059 bytes still hash to the
   exact protected-cloud SHA-256 above.
+- At 10:55 UTC, the upgraded native bearer-only verifier streamed **all three**
+  protected sources from the same exact preview revision. Every source denied
+  an outsider with HTTP 401, returned HTTP 200 to the short-lived Firebase
+  bearer, and matched its local byte count and SHA-256:
+  - Be Curious: 19,100,059 bytes,
+    `acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`
+  - Lucy: 10,880,177 bytes,
+    `7ea7a14735b99cd6e4c5b4c35aecfb97a97df04a7c6f7ba61cf9d3623bcc8078`
+  - Samwise: 28,459,489 bytes,
+    `0cd069b802ff719859673878061d63daee89dd7743a245c360a0f05d857d08bf`
+  The room remained revision 5 and paused, with Be Curious first and selected,
+  no started Watch session, and no watched spans. The receipt is
+  `/private/tmp/quipsly-watch-preview-96eebffc-all-media-receipt.json`, mode
+  0600.
 
 ## Next candidate without changing tonight's lane
 

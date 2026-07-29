@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   assertRehearsalState,
+  expectedMediaForClip,
   parseArguments,
 } from "./quipsly-verify-hgo-native-watch.mjs";
 
@@ -68,6 +69,18 @@ test("accepts the exact paused, session-free rehearsal Watch state", () => {
   assert.equal(result.state.sessionStarted, false);
   assert.equal(result.state.watchedSegmentCount, 0);
   assert.equal(result.selectedClip.assetId, "be-curious");
+  assert.equal(result.clips.length, 3);
+});
+
+test("pins every staged clip to its immutable local media identity", () => {
+  assert.deepEqual(
+    CLIPS.map((clip) => expectedMediaForClip(clip).byteCount),
+    [19_100_059, 10_880_177, 28_459_489],
+  );
+  assert.throws(
+    () => expectedMediaForClip({ title: "Unreviewed surprise.mp4" }),
+    /No immutable rehearsal media identity is pinned/,
+  );
 });
 
 test("rejects a reordered lead clip", () => {

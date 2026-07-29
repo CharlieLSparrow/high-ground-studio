@@ -14,14 +14,29 @@ import { getAuth } from "firebase-admin/auth";
 const FIREBASE_PROJECT_ID = "quipsly-reef";
 const FIREBASE_SIGNER_SERVICE_ACCOUNT =
   "firebase-adminsdk-fbsvc@quipsly-reef.iam.gserviceaccount.com";
-const EXPECTED_CLIP_TITLES = Object.freeze([
-  "Ted Lasso Be Curious.mp4",
-  "I love lucy.mp4",
-  "LOTR Ring Back.mp4",
+const EXPECTED_MEDIA = Object.freeze([
+  Object.freeze({
+    title: "Ted Lasso Be Curious.mp4",
+    byteCount: 19_100_059,
+    sha256:
+      "acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3",
+  }),
+  Object.freeze({
+    title: "I love lucy.mp4",
+    byteCount: 10_880_177,
+    sha256:
+      "7ea7a14735b99cd6e4c5b4c35aecfb97a97df04a7c6f7ba61cf9d3623bcc8078",
+  }),
+  Object.freeze({
+    title: "LOTR Ring Back.mp4",
+    byteCount: 28_459_489,
+    sha256:
+      "0cd069b802ff719859673878061d63daee89dd7743a245c360a0f05d857d08bf",
+  }),
 ]);
-const EXPECTED_LEAD_BYTES = 19_100_059;
-const EXPECTED_LEAD_SHA256 =
-  "acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3";
+const EXPECTED_CLIP_TITLES = Object.freeze(
+  EXPECTED_MEDIA.map((media) => media.title),
+);
 const DEFAULTS = Object.freeze({
   hostEmail: "charlie@highgroundodyssey.com",
   projectSlug: "high-ground-odyssey-rehearsal",
@@ -118,7 +133,7 @@ This proof is intentionally read-only. It:
   - mints a short-lived Firebase token for the configured rehearsal host;
   - exercises the native bearer-auth Watch projection;
   - proves the same Watch and media routes deny an outsider;
-  - verifies the exact Be Curious bytes and SHA-256 while streaming; and
+  - verifies all three exact clip byte counts and SHA-256 values while streaming; and
   - asserts that no Watch session or watched segment has been invented.
 
 Options:
@@ -288,7 +303,7 @@ function assertRehearsalState(watch) {
   if (!passed) {
     fail(`The rehearsal Watch state failed its safety contract: ${JSON.stringify(state)}`);
   }
-  return { state, selectedClip };
+  return { state, selectedClip, clips };
 }
 
 async function streamSha256(response) {
@@ -305,8 +320,18 @@ async function streamSha256(response) {
   };
 }
 
-async function verifyLeadMedia(options, idToken, selectedClip) {
-  const playbackUrl = new URL(clean(selectedClip?.playbackUrl), options.baseUrl);
+function expectedMediaForClip(clip) {
+  const title = clean(clip?.title);
+  const expected = EXPECTED_MEDIA.find((media) => media.title === title);
+  if (!expected) {
+    fail(`No immutable rehearsal media identity is pinned for ${title || "an untitled clip"}.`);
+  }
+  return expected;
+}
+
+async function verifyProtectedClip(options, idToken, clip) {
+  const expected = expectedMediaForClip(clip);
+  const playbackUrl = new URL(clean(clip?.playbackUrl), options.baseUrl);
   if (playbackUrl.origin !== new URL(options.baseUrl).origin) {
     fail("Protected playback URL left the verified preview origin.");
   }
@@ -322,12 +347,14 @@ async function verifyLeadMedia(options, idToken, selectedClip) {
       Accept: "*/*",
       Authorization: `Bearer ${idToken}`,
     },
+    redirect: "manual",
   });
   const streamed = await streamSha256(authenticatedResponse);
   const contentLength = Number(
     authenticatedResponse.headers.get("content-length"),
   );
   const evidence = {
+    title: expected.title,
     outsiderStatus: outsiderResponse.status,
     outsiderDenied: [401, 403, 404].includes(outsiderResponse.status),
     authenticatedStatus: authenticatedResponse.status,
@@ -340,13 +367,21 @@ async function verifyLeadMedia(options, idToken, selectedClip) {
     streamedSha256: streamed.sha256,
     exactBytesMatch:
       authenticatedResponse.status === 200
-      && streamed.byteCount === EXPECTED_LEAD_BYTES
-      && streamed.sha256 === EXPECTED_LEAD_SHA256,
+      && streamed.byteCount === expected.byteCount
+      && streamed.sha256 === expected.sha256,
   };
   if (!evidence.outsiderDenied || !evidence.exactBytesMatch) {
-    fail(`Protected Be Curious playback failed its boundary proof: ${JSON.stringify(evidence)}`);
+    fail(`Protected ${expected.title} playback failed its boundary proof: ${JSON.stringify(evidence)}`);
   }
   return evidence;
+}
+
+async function verifyProtectedMedia(options, idToken, clips) {
+  const media = [];
+  for (const clip of clips) {
+    media.push(await verifyProtectedClip(options, idToken, clip));
+  }
+  return media;
 }
 
 async function readRelease(options) {
@@ -393,10 +428,10 @@ async function main() {
   const release = await readRelease(options);
   const idToken = await firebaseIdToken(options);
   const watch = await readWatch(options, idToken);
-  const { state, selectedClip } = assertRehearsalState(watch);
-  const media = await verifyLeadMedia(options, idToken, selectedClip);
+  const { state, selectedClip, clips } = assertRehearsalState(watch);
+  const media = await verifyProtectedMedia(options, idToken, clips);
   const value = {
-    schema: "quipsly-hgo-native-watch-read-only-proof-v1",
+    schema: "quipsly-hgo-native-watch-read-only-proof-v2",
     auditedAt: new Date().toISOString(),
     mode: "read-only",
     baseUrl: options.baseUrl,
@@ -413,7 +448,10 @@ async function main() {
       roundTripMilliseconds: watch.roundTripMilliseconds,
       ...state,
     },
-    leadMedia: media,
+    leadMedia:
+      media.find((entry) => entry.title === clean(selectedClip?.title))
+      ?? null,
+    protectedMedia: media,
     safety: {
       methodsUsed: ["GET"],
       databaseAccessedDirectly: false,
@@ -430,10 +468,11 @@ async function main() {
 
 export {
   assertRehearsalState,
+  expectedMediaForClip,
   parseArguments,
   readRelease,
   readWatch,
-  verifyLeadMedia,
+  verifyProtectedMedia,
 };
 
 const launchedDirectly =

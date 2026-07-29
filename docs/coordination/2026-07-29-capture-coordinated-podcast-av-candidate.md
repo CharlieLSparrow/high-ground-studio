@@ -191,6 +191,16 @@ stereo audio both start at zero, the 254.630-second container produced no
 decode errors, and the file still matches the protected object byte count and
 SHA-256 above.
 
+At 10:55 UTC, the native bearer verifier was upgraded and rerun to stream all
+three protected rehearsal sources, not just the lead. Each source returned 401
+without credentials and 200 with the short-lived Firebase bearer, and every
+stream matched its pinned local byte count and SHA-256. Lucy and Samwise also
+completed full local FFmpeg decode with zero errors. The room remained
+revision 5, paused, with Be Curious selected and no session or watched spans.
+The new redacted v2 receipt is
+`/private/tmp/quipsly-watch-preview-96eebffc-all-media-receipt.json`, mode
+0600.
+
 After that exact server proof, the iPhone candidate was hardened without
 changing the deployed Watch API:
 
