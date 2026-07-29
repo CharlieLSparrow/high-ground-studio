@@ -53,6 +53,56 @@ function isStaffRole(role: string) {
   return normalized === "OWNER" || normalized === "ADMIN" || normalized === "STAFF";
 }
 
+type StudioAccessIdentity = {
+  emails: string[];
+  roles: string[];
+};
+
+async function resolveStudioAccessIdentity(
+  email: string,
+  prisma: PrismaClient,
+): Promise<StudioAccessIdentity> {
+  const normalizedEmail = normalizeAccessEmail(email);
+  if (!normalizedEmail) return { emails: [], roles: [] };
+
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { primaryEmail: normalizedEmail },
+        { aliases: { some: { email: normalizedEmail } } },
+      ],
+    },
+    select: {
+      primaryEmail: true,
+      aliases: { select: { email: true } },
+      roles: { select: { role: true } },
+    },
+  });
+
+  if (!user) return { emails: [normalizedEmail], roles: [] };
+
+  return {
+    emails: [...new Set(
+      [user.primaryEmail, ...user.aliases.map((alias) => alias.email)]
+        .map(normalizeAccessEmail)
+        .filter(Boolean),
+    )],
+    roles: user.roles.map((entry) => String(entry.role)),
+  };
+}
+
+function strongestAccessGrant<T extends { role: StudioProjectAccessRole | string }>(
+  grants: T[],
+): T | undefined {
+  const rank: Record<string, number> = { VIEWER: 1, EDITOR: 2, OWNER: 3 };
+  return grants.reduce<T | undefined>((strongest, grant) => {
+    if (!strongest) return grant;
+    return (rank[String(grant.role)] || 0) > (rank[String(strongest.role)] || 0)
+      ? grant
+      : strongest;
+  }, undefined);
+}
+
 export async function hasAnyActiveStudioProjectAccessGrantForEmail(
   email?: string | null,
   prisma: PrismaClient = getPrismaClient(),
@@ -60,8 +110,9 @@ export async function hasAnyActiveStudioProjectAccessGrantForEmail(
   const normalizedEmail = normalizeAccessEmail(email);
   if (!normalizedEmail) return false;
 
+  const identity = await resolveStudioAccessIdentity(normalizedEmail, prisma);
   const grant = await prisma.studioProjectAccessGrant.findFirst({
-    where: { email: normalizedEmail, status: "ACTIVE" },
+    where: { email: { in: identity.emails }, status: "ACTIVE" },
     select: { id: true },
   });
 
@@ -82,19 +133,11 @@ export async function findStudioProjectForAccess(projectSlug: string, prisma: Pr
   });
 }
 
-async function findUserRolesForEmail(email: string, prisma: PrismaClient) {
-  const user = await prisma.user.findFirst({
-    where: {
-      OR: [{ primaryEmail: email }, { aliases: { some: { email } } }],
-    },
-    select: { roles: { select: { role: true } } },
-  });
-
-  return user?.roles.map((entry) => String(entry.role)) ?? [];
-}
-
-function workspaceOwnerLabelAllows(project: NonNullable<ProjectWithAccess>, email: string) {
-  return normalizeAccessEmail(project.workspace.ownerLabel) === email;
+function workspaceOwnerLabelAllows(
+  project: NonNullable<ProjectWithAccess>,
+  identityEmails: string[],
+) {
+  return identityEmails.includes(normalizeAccessEmail(project.workspace.ownerLabel));
 }
 
 export async function resolveStudioProjectAccess({
@@ -109,30 +152,76 @@ export async function resolveStudioProjectAccess({
   prisma?: PrismaClient;
 }): Promise<StudioProjectAccessResolution> {
   const normalizedEmail = normalizeAccessEmail(email);
-  const project = await findStudioProjectForAccess(projectSlug, prisma);
+  const [project, identity] = await Promise.all([
+    findStudioProjectForAccess(projectSlug, prisma),
+    resolveStudioAccessIdentity(normalizedEmail, prisma),
+  ]);
 
   if (!project || !normalizedEmail) {
     return { allowed: false, role: null, source: "none", projectId: project?.id ?? null, projectSlug };
   }
 
-  if (workspaceOwnerLabelAllows(project, normalizedEmail)) {
+  if (workspaceOwnerLabelAllows(project, identity.emails)) {
     return { allowed: true, role: "OWNER", source: "workspace-owner-label", projectId: project.id, projectSlug };
   }
 
-  const explicitGrant = project.accessGrants.find(
-    (grant) => normalizeAccessEmail(grant.email) === normalizedEmail && isActive(grant.status),
-  );
+  const explicitGrant = strongestAccessGrant(project.accessGrants.filter(
+    (grant) => identity.emails.includes(normalizeAccessEmail(grant.email)) && isActive(grant.status),
+  ));
 
-  if (explicitGrant && roleAllowsAction(explicitGrant.role, action)) {
-    return { allowed: true, role: explicitGrant.role, source: "grant", projectId: project.id, projectSlug };
+  const permittedGrant = strongestAccessGrant(project.accessGrants.filter(
+    (grant) =>
+      identity.emails.includes(normalizeAccessEmail(grant.email))
+      && isActive(grant.status)
+      && roleAllowsAction(grant.role, action),
+  ));
+
+  if (permittedGrant) {
+    return { allowed: true, role: permittedGrant.role, source: "grant", projectId: project.id, projectSlug };
   }
 
-  const roles = await findUserRolesForEmail(normalizedEmail, prisma);
-  if (roles.some(isStaffRole)) {
+  if (identity.roles.some(isStaffRole)) {
     return { allowed: true, role: "OWNER", source: "staff", projectId: project.id, projectSlug };
   }
 
-  return { allowed: false, role: explicitGrant?.role ?? null, source: explicitGrant ? "grant" : "none", projectId: project.id, projectSlug };
+  return {
+    allowed: false,
+    role: explicitGrant?.role ?? null,
+    source: explicitGrant ? "grant" : "none",
+    projectId: project.id,
+    projectSlug,
+  };
+}
+
+function accessibleProjectSummaryFromGrant(
+  grant: Awaited<ReturnType<PrismaClient["studioProjectAccessGrant"]["findMany"]>>[number] & {
+    project: {
+      id: string;
+      slug: string;
+      name: string;
+      description: string | null;
+      sourceLabel: string | null;
+      isPrivate: boolean;
+      updatedAt: Date;
+      workspace: { name: string; slug: string };
+      accessGrants: { email: string; role: StudioProjectAccessRole }[];
+    };
+  },
+): AccessibleStudioProjectSummary {
+  return {
+    id: grant.project.id,
+    slug: grant.project.slug,
+    name: grant.project.name,
+    description: grant.project.description,
+    sourceLabel: grant.project.sourceLabel,
+    isPrivate: grant.project.isPrivate,
+    workspaceName: grant.project.workspace.name,
+    workspaceSlug: grant.project.workspace.slug,
+    role: grant.role,
+    accessSource: "grant",
+    updatedAt: grant.project.updatedAt,
+    collaborators: grant.project.accessGrants,
+  };
 }
 
 export async function canAccessStudioProjectBySlug({
@@ -214,9 +303,10 @@ export async function listAccessibleStudioProjectSummariesForEmail(
   const normalizedEmail = normalizeAccessEmail(email);
   if (!normalizedEmail) return [];
 
+  const identity = await resolveStudioAccessIdentity(normalizedEmail, prisma);
   const grants = await prisma.studioProjectAccessGrant.findMany({
     where: {
-      email: normalizedEmail,
+      email: { in: identity.emails },
       status: "ACTIVE",
     },
     include: {
@@ -233,20 +323,18 @@ export async function listAccessibleStudioProjectSummariesForEmail(
     orderBy: { updatedAt: "desc" },
   });
 
-  return grants.map((grant) => ({
-    id: grant.project.id,
-    slug: grant.project.slug,
-    name: grant.project.name,
-    description: grant.project.description,
-    sourceLabel: grant.project.sourceLabel,
-    isPrivate: grant.project.isPrivate,
-    workspaceName: grant.project.workspace.name,
-    workspaceSlug: grant.project.workspace.slug,
-    role: grant.role,
-    accessSource: "grant",
-    updatedAt: grant.project.updatedAt,
-    collaborators: grant.project.accessGrants,
-  }));
+  const strongestGrantByProject = new Map<string, (typeof grants)[number]>();
+  for (const grant of grants) {
+    const current = strongestGrantByProject.get(grant.projectId);
+    strongestGrantByProject.set(
+      grant.projectId,
+      strongestAccessGrant(current ? [current, grant] : [grant]) ?? grant,
+    );
+  }
+
+  return [...strongestGrantByProject.values()]
+    .sort((a, b) => b.project.updatedAt.getTime() - a.project.updatedAt.getTime())
+    .map(accessibleProjectSummaryFromGrant);
 }
 
 export async function grantStudioProjectAccessByEmail({

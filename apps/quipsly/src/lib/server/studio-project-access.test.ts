@@ -67,4 +67,73 @@ describe("resolveStudioProjectAccess", () => {
       source: "none",
     }));
   });
+
+  it("honors a Nest grant attached to another verified email for the same person", async () => {
+    const prisma = {
+      studioProject: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "project-1",
+          slug: "private-nest",
+          workspace: { ownerLabel: "someone-else@example.com" },
+          accessGrants: [
+            { email: "personal@example.com", role: "OWNER", status: "ACTIVE" },
+          ],
+        }),
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          primaryEmail: "work@example.com",
+          aliases: [{ email: "personal@example.com" }],
+          roles: [],
+        }),
+      },
+    };
+
+    await expect(resolveStudioProjectAccess({
+      projectSlug: "private-nest",
+      email: "work@example.com",
+      action: "manage",
+      prisma: prisma as never,
+    })).resolves.toEqual({
+      allowed: true,
+      role: "OWNER",
+      source: "grant",
+      projectId: "project-1",
+      projectSlug: "private-nest",
+    });
+  });
+
+  it("uses the strongest active grant across a person's verified emails", async () => {
+    const prisma = {
+      studioProject: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "project-1",
+          slug: "private-nest",
+          workspace: { ownerLabel: "someone-else@example.com" },
+          accessGrants: [
+            { email: "work@example.com", role: "VIEWER", status: "ACTIVE" },
+            { email: "personal@example.com", role: "EDITOR", status: "ACTIVE" },
+          ],
+        }),
+      },
+      user: {
+        findFirst: jest.fn().mockResolvedValue({
+          primaryEmail: "work@example.com",
+          aliases: [{ email: "personal@example.com" }],
+          roles: [],
+        }),
+      },
+    };
+
+    await expect(resolveStudioProjectAccess({
+      projectSlug: "private-nest",
+      email: "personal@example.com",
+      action: "write",
+      prisma: prisma as never,
+    })).resolves.toEqual(expect.objectContaining({
+      allowed: true,
+      role: "EDITOR",
+      source: "grant",
+    }));
+  });
 });
