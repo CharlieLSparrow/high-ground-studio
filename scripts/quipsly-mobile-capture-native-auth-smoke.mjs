@@ -66,13 +66,6 @@ function normalizeBaseUrl(value) {
   return clean(value).replace(/\/+$/, "");
 }
 
-function redact(value) {
-  if (!value) return "";
-  const text = String(value);
-  if (text.length <= 10) return "[redacted]";
-  return `${text.slice(0, 4)}...[redacted]...${text.slice(-4)}`;
-}
-
 function readSecretFile(filePath) {
   const normalized = clean(filePath);
   if (!normalized) return "";
@@ -286,7 +279,7 @@ async function main() {
     ok: failed.length === 0,
     baseUrl,
     email,
-    password: password ? redact(password) : "",
+    passwordConfigured: Boolean(password),
     authenticatedContractReport: contractReport
       ? {
           ok: contractReport.ok === true,
