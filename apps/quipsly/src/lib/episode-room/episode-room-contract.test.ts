@@ -34,9 +34,10 @@ function apply(
   command: EpisodeRoomCommand,
   acceptedAt: string,
   suffix: string,
+  commandActor: EpisodeRoomActor = actor,
 ) {
   return applyEpisodeRoomCommand(state, command, {
-    actor,
+    actor: commandActor,
     acceptedAt,
     receiptId: `receipt-${suffix}`,
     sessionId: `session-${suffix}`,
@@ -159,6 +160,11 @@ describe("Episode Room contract", () => {
   });
 
   test("closes a remote pause from the authoritative clock when the device has no local position", () => {
+    const remoteActor: EpisodeRoomActor = {
+      userId: "user-homer",
+      email: "homer@example.com",
+      label: "Homer",
+    };
     let state = createEmptyEpisodeRoomState("2026-07-26T12:00:00.000Z");
     state = apply(state, {
       type: "ADD_CLIP",
@@ -181,7 +187,7 @@ describe("Episode Room contract", () => {
       type: "PAUSE",
       clientRequestId: "pause-without-device-time",
       expectedRevision: 3,
-    }, "2026-07-26T12:01:07.000Z", "pause-without-device-time");
+    }, "2026-07-26T12:01:07.000Z", "pause-without-device-time", remoteActor);
 
     expect(state.positionSeconds).toBe(6);
     expect(state.segments[0]).toMatchObject({
@@ -189,6 +195,11 @@ describe("Episode Room contract", () => {
       sourceEndSeconds: 6,
       episodeStartSeconds: 5,
       episodeEndSeconds: 7,
+    });
+    expect(state.lastCommand).toMatchObject({
+      command: "PAUSE",
+      actorEmail: "homer@example.com",
+      actorLabel: "Homer",
     });
   });
 

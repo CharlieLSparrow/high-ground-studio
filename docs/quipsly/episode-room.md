@@ -305,6 +305,43 @@ signal, MV7i headphone monitoring or unplug recovery, two-participant
 LiveKit coexistence, cloud proxy processing of a real long take, TestFlight,
 App Store submission, or proof-watch/listen of a published episode.
 
+### 2026-07-29 production TestFlight rehearsal staging
+
+The private `high-ground-odyssey-rehearsal / testflight-rehearsal` Episode
+Room now contains the actual material selected for the first Charlie-and-Homer
+TestFlight rehearsal:
+
+- the generated two-block synthetic checklist was recognized by exact text and
+  order, archived under a narrow replacement transaction, and replaced with
+  the exact 34-block private **The Swear Jar** manuscript;
+- the replacement records the retired block identities, imported stable
+  identities, content SHA-256, actor, and a non-reversible compound operation
+  while retaining the synthetic blocks for forensic recovery;
+- `Ted Lasso Be Curious.mp4`, `I love lucy.mp4`, and
+  `LOTR Ring Back.mp4` were uploaded as private `reference-clip` sources;
+- every authenticated playback response matched the local file byte-for-byte,
+  while each unauthenticated playback attempt returned HTTP 401;
+- the Watch list is exactly Be Curious, Lucy, then Samwise; Be Curious is the
+  selected lead and the room remains paused with zero watched segments and no
+  started Episode Room session;
+- the old synthetic audio proof remains in the episode source/timeline ledger
+  but is no longer attached to Watch;
+- the production Session remains `PLANNED`, both participant consent receipts
+  remain `REQUESTED`, no provider was joined, and no local/provider recording
+  was started.
+
+The redacted apply receipt is
+`/private/tmp/quipsly-capture-rehearsal/hgo-stage-apply-20260729.json`.
+The staging command is idempotent for matching writing and media, refuses
+different existing writing, refuses unexpected Watch clips, and refuses to
+reorder a room that has playback history. It does not store the manuscript or
+media in Git.
+
+The operator path is documented in
+`docs/quipsly/hgo-testflight-rehearsal-runbook.md`. This is production content
+and access proof, not a physical two-person recording, TestFlight install,
+sample-accurate sync, or assembled-media acceptance.
+
 ## Access and collaboration
 
 - Nest `OWNER` and `EDITOR` roles can control playback, attach media, sync the timeline, and post to episode chat.

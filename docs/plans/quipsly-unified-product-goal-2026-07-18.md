@@ -3190,3 +3190,39 @@ This is an active-goal checkpoint, not a completion claim.
   approval, tester delivery, installation, app-owned version readback, and
   physical two-person audio plus local audio/video/camera-switch/segment
   upload/assembled-playback operation before the rehearsal gate can close.
+
+### 2026-07-29 real High Ground Odyssey rehearsal-material checkpoint
+
+- This is private production staging and readback, not Apple beta approval,
+  physical TestFlight operation, participant consent, recording, provider join,
+  sample-accurate alignment, or final editorial acceptance.
+- The canonical private rehearsal project, episode, and LiveKit-configured
+  Session were reused; no parallel room or prototype database was created.
+- The only existing episode writing was the exact generated two-block
+  TestFlight checklist. A narrow serializable transaction retired that
+  byte-matched seed, preserved it as archived forensic state, and imported the
+  attached **The Swear Jar** manuscript as 34 private stable blocks with an
+  attributable document-operation/content-fingerprint ledger.
+- Privately uploaded the three provided reference videos in rehearsal order:
+  Be Curious, Lucy, and Samwise. Authenticated media readback matched every
+  local byte and unauthenticated playback returned HTTP 401 for all three.
+- Episode Room Watch now contains exactly those three sources in that order,
+  with Be Curious selected and paused. It has zero watched segments, no started
+  Episode Room session, and no synthetic proof clip attached.
+- A fresh production rehearsal plan still reports two ready participants,
+  `REQUESTED` consent for both, no recording, no provider join, and no pending
+  provisioning operations. The guest remains intentionally unlinked to
+  Firebase until the real first Google sign-in.
+- Added an idempotent, fail-closed staging command and live Cloud SQL wrapper.
+  It never stores credentials or source material in Git, refuses to overwrite
+  non-seed writing, rejects unexpected collaborator Watch clips, and refuses
+  to reorder a room with playback history.
+- The complete Homer install, Google sign-in, consent, two-iPhone audio,
+  camera-switch, shared-watch, timeline, upload/relaunch, and readback path is
+  in `docs/quipsly/hgo-testflight-rehearsal-runbook.md`.
+- The runbook records an important honest limit: Build 8 supports local audio
+  beside a LiveKit room, video-only Podcast camera beside LiveKit, and
+  camera-plus-microphone Solo video after leaving LiveKit. It does not claim
+  simultaneous same-iPhone local audio plus local video during a live room.
+  Use a separate camera for the first production rehearsal while the
+  coordinated multi-source native slice is designed and qualified.

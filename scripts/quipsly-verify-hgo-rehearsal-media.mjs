@@ -621,8 +621,15 @@ async function main() {
 export {
   authenticatedHeaders,
   contentTypeFor,
+  createPrisma,
+  episodeRoomEndpoint,
+  firebaseIdToken,
+  hostUser,
   matchingFixture,
+  nestSessionCookie,
   parseArguments,
+  readEpisodeDesk,
+  verifyPlayback,
 };
 
 const launchedDirectly =
