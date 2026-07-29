@@ -1251,19 +1251,21 @@ struct MobileEpisodeWatchCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 10) {
-                Label("Watch together", systemImage: "play.rectangle.on.rectangle")
-                    .font(.headline)
-                Spacer()
-                Text(client.statusLabel)
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(
-                        client.isSharedPlaying ? Color.green : Color.secondary
-                    )
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(.secondary.opacity(0.1), in: Capsule())
-                    .accessibilityIdentifier("CaptureEpisodeWatchStatus")
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: 10) {
+                    watchHeading
+                        .fixedSize()
+                    Spacer()
+                    watchStatus
+                        .fixedSize()
+                }
+
+                VStack(alignment: .leading, spacing: 8) {
+                    watchHeading
+                        .fixedSize(horizontal: false, vertical: true)
+                    watchStatus
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
 
             if client.isLoading && client.room == nil {
@@ -1602,6 +1604,23 @@ struct MobileEpisodeWatchCard: View {
         .captureCard()
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("CaptureEpisodeWatchCard")
+    }
+
+    private var watchHeading: some View {
+        Label("Watch together", systemImage: "play.rectangle.on.rectangle")
+            .font(.headline)
+    }
+
+    private var watchStatus: some View {
+        Text(client.statusLabel)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(
+                client.isSharedPlaying ? Color.green : Color.secondary
+            )
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(.secondary.opacity(0.1), in: Capsule())
+            .accessibilityIdentifier("CaptureEpisodeWatchStatus")
     }
 
     private var boundaryMessage: String {

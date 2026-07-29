@@ -266,6 +266,13 @@ check(
     && watch.includes("!client.canEdit"),
 );
 check(
+  "Watch heading stacks instead of clipping at accessibility text sizes",
+  watch.includes("ViewThatFits(in: .horizontal)")
+    && watch.includes("private var watchHeading: some View")
+    && watch.includes("private var watchStatus: some View")
+    && watch.includes(".fixedSize(horizontal: false, vertical: true)"),
+);
+check(
   "an unprepared collaborator can pause everyone without downloading media first",
   watch.includes("CaptureEpisodeWatchUnpreparedPauseButton")
     && watch.includes("does not need the clip downloaded")
