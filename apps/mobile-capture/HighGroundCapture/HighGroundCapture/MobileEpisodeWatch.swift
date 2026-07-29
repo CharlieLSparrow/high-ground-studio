@@ -505,10 +505,6 @@ final class MobileEpisodeWatchClient: ObservableObject {
             errorMessage = "Wait for shared Watch to reconnect before controlling the episode."
             return
         }
-        if !isPrepared {
-            await prepareSelectedClip()
-            if !isPrepared { return }
-        }
         if room?.status == "playing" {
             await sendCommand(
                 type: "PAUSE",
@@ -516,6 +512,10 @@ final class MobileEpisodeWatchClient: ObservableObject {
                 positionSeconds: displayPosition
             )
             return
+        }
+        if !isPrepared {
+            await prepareSelectedClip()
+            if !isPrepared { return }
         }
         guard sharedClockReady(for: session, captureIsActive: captureIsActive) else {
             errorMessage =
@@ -1326,6 +1326,34 @@ struct MobileEpisodeWatchCard: View {
                         )
                     }
                 } else {
+                    if client.isSharedPlaying && client.canEdit {
+                        Button {
+                            Task {
+                                await client.toggleSharedPlayback(
+                                    session: session,
+                                    captureIsActive: captureIsActive
+                                )
+                            }
+                        } label: {
+                            Label(
+                                "Pause everyone",
+                                systemImage: "pause.fill"
+                            )
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(
+                            client.isMutating
+                                || !client.sharedConnectionReady
+                        )
+                        .accessibilityHint(
+                            "Pauses the authoritative shared clock immediately; this iPhone does not need the clip downloaded."
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureEpisodeWatchUnpreparedPauseButton"
+                        )
+                    }
+
                     Button {
                         Task { await client.prepareSelectedClip() }
                     } label: {

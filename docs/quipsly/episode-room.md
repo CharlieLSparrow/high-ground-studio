@@ -108,6 +108,9 @@ The native transport follows these production boundaries:
   embedded user information, and project/episode API paths accept validated
   slug segments rather than permissive URL path characters. Room data cannot
   redirect a Quipsly credential to another origin.
+- Authoritative Pause never depends on local media readiness. An editor who
+  has not downloaded the clip still receives an immediate **Pause everyone**
+  control; only Play requires a validated local source.
 - A prepared clip downloads through the authenticated streaming URLSession
   path to a temporary file. The app validates the response byte count, computes
   SHA-256 in 1 MiB chunks, writes a receipt, applies iOS file protection,

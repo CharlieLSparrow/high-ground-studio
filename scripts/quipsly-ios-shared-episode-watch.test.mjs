@@ -240,6 +240,13 @@ check(
     && watch.includes("!client.canEdit"),
 );
 check(
+  "an unprepared collaborator can pause everyone without downloading media first",
+  watch.includes("CaptureEpisodeWatchUnpreparedPauseButton")
+    && watch.includes("does not need the clip downloaded")
+    && watch.indexOf('if room?.status == "playing"')
+      < watch.indexOf("if !isPrepared"),
+);
+check(
   "prepared Watch media has a reachable local-only removal control",
   watch.includes("CaptureEpisodeWatchRemoveDownloadButton")
     && watch.includes("func removePreparedClip()")
