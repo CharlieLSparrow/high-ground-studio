@@ -130,13 +130,14 @@ export function createScopedToken({ keyId, issuerId, privateKey, scopes, now }) 
     kid: keyId,
     typ: "JWT",
   });
-  const payload = encodeJson({
+  const claims = {
     iss: issuerId,
     iat: issuedAt,
     exp: issuedAt + 300,
     aud: "appstoreconnect-v1",
-    scope: scopes,
-  });
+  };
+  if (Array.isArray(scopes) && scopes.length > 0) claims.scope = scopes;
+  const payload = encodeJson(claims);
   const unsignedToken = `${header}.${payload}`;
   const signature = sign(null, Buffer.from(unsignedToken), {
     key: privateKey,

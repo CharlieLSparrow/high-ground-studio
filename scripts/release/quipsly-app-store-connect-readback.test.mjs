@@ -43,6 +43,23 @@ test("creates a five-minute ES256 token with explicit read scopes", () => {
   assert.equal(Buffer.from(signaturePart, "base64url").length, 64);
 });
 
+test("omits the optional scope claim for an authorized write token", () => {
+  const { privateKey } = generateKeyPairSync("ec", {
+    namedCurve: "P-256",
+  });
+  const token = createScopedToken({
+    keyId: "ABCDE12345",
+    issuerId: "issuer-id",
+    privateKey,
+    now: 1_000,
+  });
+  const [, payloadPart] = token.split(".");
+  const payload = JSON.parse(Buffer.from(payloadPart, "base64url").toString());
+
+  assert.equal(Object.hasOwn(payload, "scope"), false);
+  assert.equal(payload.exp, 1_300);
+});
+
 test("parses an explicit TestFlight acceptance contract", () => {
   const parsed = parseArguments([
     "--api-key-path",
