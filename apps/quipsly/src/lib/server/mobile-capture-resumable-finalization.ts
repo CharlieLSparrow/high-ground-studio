@@ -243,8 +243,18 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
   mediaAsset: any;
   playbackUrl: string;
   captureRecords: any;
+  alignment: ReturnType<typeof buildCaptureSourceAlignmentProposal>;
 }) {
-  const { transaction, manifest, object, source, mediaAsset, playbackUrl, captureRecords } = args;
+  const {
+    transaction,
+    manifest,
+    object,
+    source,
+    mediaAsset,
+    playbackUrl,
+    captureRecords,
+    alignment,
+  } = args;
   if (!manifest.episodeSlug) return;
 
   const productionKey = await transaction.studioEpisodeProduction.findFirst({
@@ -318,23 +328,6 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
   const importRole = isVideo
     ? "participant-camera"
     : "spine-audio-candidate";
-  const startReceipt = manifest.startReceiptId
-    ? await transaction.captureRoomStateReceipt.findUnique({
-        where: { receiptId: manifest.startReceiptId },
-      })
-    : null;
-  const alignment = buildCaptureSourceAlignmentProposal({
-    sourceProfile: manifest.sourceProfileJson
-      ? JSON.parse(manifest.sourceProfileJson)
-      : null,
-    callRoomId: manifest.callRoomId,
-    captureId: manifest.captureId,
-    captureGroupId: manifest.captureGroupId,
-    actorUserId: manifest.actorUserId,
-    startReceiptId: manifest.startReceiptId,
-    recordedStartedAt: manifest.startedAt,
-    startReceipt,
-  });
   const importedAt =
     typeof existingImported.importedAt === "string"
       ? existingImported.importedAt
@@ -613,6 +606,55 @@ async function attachEpisodeMediaWithoutLostUpdate(args: {
   }
 }
 
+async function captureAlignmentForManifest(args: {
+  transaction: any;
+  manifest: MobileCaptureResumableManifest;
+}) {
+  const { transaction, manifest } = args;
+  const startReceipt = manifest.startReceiptId
+    ? await transaction.captureRoomStateReceipt.findUnique({
+        where: { receiptId: manifest.startReceiptId },
+      })
+    : null;
+  return buildCaptureSourceAlignmentProposal({
+    sourceProfile: manifest.sourceProfileJson
+      ? JSON.parse(manifest.sourceProfileJson)
+      : null,
+    callRoomId: manifest.callRoomId,
+    captureId: manifest.captureId,
+    captureGroupId: manifest.captureGroupId,
+    actorUserId: manifest.actorUserId,
+    startReceiptId: manifest.startReceiptId,
+    recordedStartedAt: manifest.startedAt,
+    startReceipt,
+  });
+}
+
+async function preserveRecordingCaptureAlignment(args: {
+  transaction: any;
+  manifest: MobileCaptureResumableManifest;
+  recordingAssetId: string;
+  alignment: ReturnType<typeof buildCaptureSourceAlignmentProposal>;
+}) {
+  const { transaction, manifest, recordingAssetId, alignment } = args;
+  const recordingAsset = await transaction.recordingAsset.findUnique({
+    where: { id: recordingAssetId },
+    select: { localManifestJson: true },
+  });
+  await transaction.recordingAsset.update({
+    where: { id: recordingAssetId },
+    data: {
+      localManifestJson: {
+        ...asObject(recordingAsset?.localManifestJson),
+        captureId: manifest.captureId,
+        captureGroupId: manifest.captureGroupId,
+        startReceiptId: manifest.startReceiptId,
+        alignment,
+      },
+    },
+  });
+}
+
 function captureRecordInput(args: {
   transaction: any;
   manifest: MobileCaptureResumableManifest;
@@ -795,12 +837,23 @@ export async function finalizeMobileCaptureDatabaseEvidence(input: {
       mediaAssetId: studioMedia.mediaAsset.id,
       sourceId: studioMedia.source.id,
     }));
+    const alignment = await captureAlignmentForManifest({
+      transaction,
+      manifest,
+    });
+    await preserveRecordingCaptureAlignment({
+      transaction,
+      manifest,
+      recordingAssetId: captureRecords.recordingAssetId,
+      alignment,
+    });
     await attachEpisodeMediaWithoutLostUpdate({
       transaction,
       manifest,
       object,
       ...studioMedia,
       captureRecords,
+      alignment,
     });
     const evidence = finalizationEvidence({
       captureRecords,

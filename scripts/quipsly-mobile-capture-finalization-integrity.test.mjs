@@ -29,6 +29,17 @@ assert.match(finalization, /studioWorkflowJob\.create/,
 assert.match(finalization, /type: isVideo \? "asset-proxy" : "asset-register"/);
 assert.match(finalization, /proxy-required-before-collaborative-playback/);
 assert.match(finalization, /canonicalField:\s+"StudioEpisodeProduction\.productionJson\.importedMedia"/);
+assert.match(finalization, /addCaptureGroupOffsetsToImportedMedia/,
+  "each arriving source must recompute the canonical episode take proposal");
+assert.match(finalization, /async function preserveRecordingCaptureAlignment/,
+  "released source clock evidence must survive even when no episode is attached yet");
+assert.match(finalization, /captureId: manifest\.captureId[\s\S]*captureGroupId: manifest\.captureGroupId[\s\S]*startReceiptId: manifest\.startReceiptId[\s\S]*alignment,/,
+  "RecordingAsset must preserve the exact source, group, START receipt, and review-only alignment proposal");
+assert.ok(
+  finalization.indexOf("preserveRecordingCaptureAlignment({")
+    < finalization.indexOf("attachEpisodeMediaWithoutLostUpdate({"),
+  "source alignment must be durable before optional episode projection",
+);
 assert.doesNotMatch(
   finalization.slice(
     finalization.indexOf("async function attachEpisodeMediaWithoutLostUpdate"),

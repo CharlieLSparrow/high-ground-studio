@@ -1,6 +1,10 @@
 import "server-only";
 
 import { getPrismaClient } from "@/lib/prisma";
+import {
+  addCaptureGroupOffsetsToImportedMedia,
+  type CaptureSourceAlignmentProposal,
+} from "@/lib/server/capture-source-alignment";
 import { toGcsUri } from "@/lib/server/gcs";
 import { mobileCaptureMediaProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { attachAssetToNest, createWorkflowJob } from "@/lib/server/quipsly-core";
@@ -40,6 +44,89 @@ function publicBigIntNumber(value: unknown) {
 
 function dateIso(value: unknown) {
   return value instanceof Date ? value.toISOString() : undefined;
+}
+
+function captureAlignmentFromRecordingAsset(
+  recordingAsset: any,
+): CaptureSourceAlignmentProposal | null {
+  const manifest = asRecord(recordingAsset?.localManifestJson);
+  const promotion = asRecord(manifest.promotion);
+  const candidates = [
+    asRecord(promotion.alignment),
+    asRecord(manifest.alignment),
+  ];
+  const alignment = candidates.find((candidate) => (
+    candidate.schema === "quipsly-capture-alignment-proposal-v1"
+  ));
+  if (!alignment) return null;
+
+  const reviewGate = asRecord(alignment.reviewGate);
+  if (
+    alignment.sampleAccurateClaimed !== false
+    || alignment.reviewRequired !== true
+    || reviewGate.waveformCorrelationRequired !== true
+    || reviewGate.driftReviewRequired !== true
+    || reviewGate.humanApprovalRequired !== true
+  ) {
+    return null;
+  }
+  return toJsonValue(alignment) as CaptureSourceAlignmentProposal;
+}
+
+/**
+ * Reconstructs the canonical editor handoff from RecordingAsset evidence.
+ * Normalized mobile finalization writes this evidence before generic/manual
+ * promotion can run. Provider and legacy assets simply omit fields they do not
+ * possess; no clock or consent claim is inferred.
+ */
+export function recordingPromotionSyncEvidence(
+  recordingAsset: any,
+  promotedAt: string,
+): Record<string, unknown> {
+  const manifest = asRecord(recordingAsset?.localManifestJson);
+  const promotion = asRecord(manifest.promotion);
+  const alignment = captureAlignmentFromRecordingAsset(recordingAsset);
+  const captureGroupId =
+    text(manifest.captureGroupId)
+    || text(promotion.captureGroupId)
+    || text(alignment?.captureGroupId);
+  const uploadSessionId = text(manifest.sessionId);
+  const capturePurpose = text(manifest.capturePurpose);
+  const expectedSha256 =
+    text(manifest.checksumSha256)
+    || text(recordingAsset?.checksum);
+  const storageGeneration = text(manifest.storageGeneration);
+  const reportedSourceProfile = asRecord(manifest.reportedSourceProfile);
+  const recordingSegments =
+    Array.isArray(recordingAsset?.segmentsJson)
+    || isObject(recordingAsset?.segmentsJson)
+      ? toJsonValue(recordingAsset.segmentsJson)
+      : [];
+
+  return {
+    recordingAssetId: recordingAsset.id,
+    callRoomId: recordingAsset.roomId,
+    participantId: recordingAsset.participantId ?? null,
+    recordingConsentId: text(manifest.recordingConsentId) || null,
+    ...(typeof manifest.recordingConsentGranted === "boolean"
+      ? { recordingConsentGranted: manifest.recordingConsentGranted }
+      : {}),
+    recordedStartAt: dateIso(recordingAsset.recordedStartedAt),
+    recordedEndAt: dateIso(recordingAsset.recordedStoppedAt),
+    durationSeconds: recordingAsset.durationSeconds ?? null,
+    recordingSegments,
+    ...(capturePurpose ? { capturePurpose } : {}),
+    ...(captureGroupId ? { captureGroupId } : {}),
+    ...(uploadSessionId ? { uploadSessionId } : {}),
+    ...(expectedSha256 ? { expectedSha256 } : {}),
+    ...(storageGeneration ? { storageGeneration } : {}),
+    ...(Object.keys(reportedSourceProfile).length > 0
+      ? { reportedSourceProfile }
+      : {}),
+    ...(alignment ? { alignment } : {}),
+    promotedAt,
+    source: "recording-media-promotion",
+  };
 }
 
 type SessionHandoffTag = {
@@ -235,6 +322,10 @@ function promotionAttachmentMetadata(input: {
   mediaKind: string;
   sessionContext: RecordingSessionHandoffContext | null;
 }) {
+  const recordingSync = recordingPromotionSyncEvidence(
+    input.recordingAsset,
+    new Date().toISOString(),
+  );
   return {
     handoffVersion: 1,
     handoffKind: "capture-session-to-studio",
@@ -248,6 +339,8 @@ function promotionAttachmentMetadata(input: {
     episodeSlug: input.episodeSlug,
     mediaKind: input.mediaKind,
     promotedFrom: "RecordingAsset",
+    captureGroupId: text(recordingSync.captureGroupId) || null,
+    alignment: recordingSync.alignment ?? null,
     sessionContext: input.sessionContext,
     boundaries: {
       copiedBlob: false,
@@ -355,16 +448,11 @@ async function attachPromotedRecordingToEpisodeProduction(input: {
   const storageBucket = text(input.recordingAsset.storageBucket);
   const storageObjectPath = text(input.recordingAsset.storageObjectPath);
   const isVideo = input.mediaKind === "video";
-  const recordingSync: Record<string, unknown> = {
-    recordingAssetId: input.recordingAsset.id,
-    callRoomId: input.recordingAsset.roomId,
-    participantId: input.recordingAsset.participantId ?? null,
-    recordedStartAt: dateIso(input.recordingAsset.recordedStartedAt),
-    recordedEndAt: dateIso(input.recordingAsset.recordedStoppedAt),
-    durationSeconds: input.recordingAsset.durationSeconds ?? null,
+  const recordingSync = recordingPromotionSyncEvidence(
+    input.recordingAsset,
     promotedAt,
-    source: "recording-media-promotion",
-  };
+  );
+  const alignment = recordingSync.alignment;
   const importedAsset = {
     id: input.mediaAsset.id,
     sourceId: input.sourceId,
@@ -396,6 +484,7 @@ async function attachPromotedRecordingToEpisodeProduction(input: {
       suggestedRole: input.importRole,
       source: "recording-media-promotion",
       recordingSync,
+      ...(alignment ? { alignment } : {}),
       note: `${readableRoleLabel(input.importRole)} promoted from verified capture evidence. Ready to align in the episode editor.`,
     },
     proxy: {
@@ -415,7 +504,10 @@ async function attachPromotedRecordingToEpisodeProduction(input: {
       text(assetRecordingSync.recordingAssetId) !== input.recordingAsset.id
     );
   });
-  const nextImportedMedia = [importedAsset, ...withoutExisting];
+  const nextImportedMedia = addCaptureGroupOffsetsToImportedMedia([
+    importedAsset,
+    ...withoutExisting,
+  ]);
   const nextProductionJson = {
     ...currentJson,
     episodeProductionPayloadVersion: 1,
