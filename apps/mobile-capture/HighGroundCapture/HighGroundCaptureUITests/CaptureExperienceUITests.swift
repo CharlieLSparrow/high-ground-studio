@@ -92,7 +92,6 @@ final class CaptureExperienceUITests: XCTestCase {
         app.tabBars.buttons["Record"].tap()
 
         let card = app.descendants(matching: .any)["CaptureEpisodeManuscriptCard"]
-        reveal(card)
         XCTAssertTrue(
             card.waitForExistence(timeout: 5),
             "An episode-bound Capture session should expose its canonical manuscript before the shared Watch controls."
@@ -104,7 +103,10 @@ final class CaptureExperienceUITests: XCTestCase {
         )
 
         let open = app.buttons["CaptureEpisodeManuscriptOpenButton"]
-        reveal(open)
+        XCTAssertTrue(
+            open.waitForExistence(timeout: 5),
+            "The visible manuscript card should expose its read-only reader control."
+        )
         XCTAssertTrue(open.isHittable)
         open.tap()
 
