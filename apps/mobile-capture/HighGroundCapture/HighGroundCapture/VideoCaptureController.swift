@@ -99,6 +99,8 @@ final class VideoCaptureController: ObservableObject {
         case accountChanged
         case storagePressure
         case thermalPressure
+        case captureSessionInterrupted
+        case captureSessionRuntimeError
 
         var statusMessage: String? {
             switch self {
@@ -116,6 +118,10 @@ final class VideoCaptureController: ObservableObject {
                 "Quipsly safely closed the source before storage reached the protected reserve."
             case .thermalPressure:
                 "Quipsly safely closed the source because the iPhone reached critical thermal pressure."
+            case .captureSessionInterrupted:
+                "iOS interrupted the camera session. Quipsly closed and preserved every recoverable movie fragment instead of silently continuing with missing video."
+            case .captureSessionRuntimeError:
+                "The camera session reported a runtime error. Quipsly closed and preserved every recoverable movie fragment instead of claiming uninterrupted capture."
             }
         }
     }
@@ -195,6 +201,43 @@ final class VideoCaptureController: ObservableObject {
             ) { [weak self] _ in
                 Task { @MainActor in
                     await self?.handleAccountChange()
+                }
+            }
+        )
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: AVCaptureSession.wasInterruptedNotification,
+                object: service.captureSession,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    await self?.handleCaptureSessionInterruption()
+                }
+            }
+        )
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: AVCaptureSession.runtimeErrorNotification,
+                object: service.captureSession,
+                queue: .main
+            ) { [weak self] notification in
+                let detail = (
+                    notification.userInfo?[AVCaptureSessionErrorKey]
+                        as? NSError
+                )?.localizedDescription
+                Task { @MainActor in
+                    await self?.handleCaptureSessionRuntimeError(detail: detail)
+                }
+            }
+        )
+        observers.append(
+            NotificationCenter.default.addObserver(
+                forName: AVCaptureSession.interruptionEndedNotification,
+                object: service.captureSession,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    await self?.handleCaptureSessionInterruptionEnded()
                 }
             }
         )
@@ -427,6 +470,58 @@ final class VideoCaptureController: ObservableObject {
         await stopIfActive(reason: .user)
     }
 
+    /// Waits for the delegate-confirmed movie start instead of treating the
+    /// synchronous start request as proof that video bytes are flowing.
+    func waitUntilRecording(timeout: TimeInterval = 8) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            switch state {
+            case .recording:
+                return true
+            case .failed, .idle, .saved:
+                return false
+            case .preparing, .ready, .arming, .finalizing, .paused:
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+        lastErrorMessage = "The camera did not confirm source start in time. Quipsly is closing any partial source instead of claiming a coordinated recording."
+        return false
+    }
+
+    /// Waits for AVFoundation's final callback and local validation. A caller
+    /// may still time out with a preserved `.finalizing` source that needs
+    /// Library review; it must not invent a successful group stop.
+    func waitUntilTerminal(timeout: TimeInterval = 20) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            switch state {
+            case .saved, .failed, .idle:
+                return true
+            case .preparing, .ready, .arming, .recording, .finalizing, .paused:
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+        lastErrorMessage = "Quipsly is still waiting for iOS to close and validate the movie. Keep the app open and review this source in Library."
+        return false
+    }
+
+    /// Waits until the current movie boundary is delegate-finalized. Paused is
+    /// a valid group-continuation state only after the file and durable STOP
+    /// boundary both pass validation; saved/failed/idle are terminal instead.
+    func waitUntilPausedOrTerminal(timeout: TimeInterval = 20) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            switch state {
+            case .paused, .saved, .failed, .idle:
+                return true
+            case .preparing, .ready, .arming, .recording, .finalizing:
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+        }
+        lastErrorMessage = "Quipsly is still waiting for iOS to close and validate the paused movie boundary. Keep the app open and review this source in Library."
+        return false
+    }
+
     func pause() async {
         guard let activeCapture else { return }
         pausedCapture = PausedCapture(
@@ -541,12 +636,14 @@ final class VideoCaptureController: ObservableObject {
             )
             lastErrorMessage = error.localizedDescription
         }
+        var roomBoundaryClosed = false
         do {
             try closeRoomBoundary(
                 recordingID: activeCapture.recordingID,
                 context: activeCapture.context,
                 ownerAccountID: activeCapture.ownerSnapshot.ownerAccountID
             )
+            roomBoundaryClosed = true
         } catch {
             lastErrorMessage = [
                 lastErrorMessage,
@@ -590,6 +687,14 @@ final class VideoCaptureController: ObservableObject {
         }
 
         if stopReason == .pause {
+            guard finalized?.status.isPlaybackEligible == true,
+                  roomBoundaryClosed else {
+                pausedCapture = nil
+                activeCaptureGroupID = nil
+                state = .failed
+                safetyMessage = "The movie boundary was preserved, but Quipsly could not validate both the source and its durable STOP evidence. Review it in Library before starting another group."
+                return
+            }
             state = .paused
             safetyMessage = stopReason.statusMessage
             return
@@ -597,6 +702,13 @@ final class VideoCaptureController: ObservableObject {
         if stopReason == .cameraSwitch,
            let nextPosition = pendingSwitchPosition {
             pendingSwitchPosition = nil
+            guard finalized?.status.isPlaybackEligible == true,
+                  roomBoundaryClosed else {
+                activeCaptureGroupID = nil
+                state = .failed
+                safetyMessage = "The first camera source was preserved, but its boundary did not pass every validation. Quipsly did not open the other camera."
+                return
+            }
             // The capture group is still open. Never publish a transient
             // `.saved` state here: downstream UI treats that as authority to
             // unlock session and provider controls, even though the next
@@ -783,6 +895,41 @@ final class VideoCaptureController: ObservableObject {
             await shutdownPreviewAndClearProfile()
             fail(VideoCaptureControllerError.ownerChanged)
         }
+    }
+
+    private func handleCaptureSessionInterruption() async {
+        let detail = "iOS interrupted the camera session."
+        if state == .recording || state == .arming {
+            lastErrorMessage = detail
+            await stopIfActive(reason: .captureSessionInterrupted)
+            return
+        }
+        if state == .ready || state == .preparing {
+            await shutdownPreviewAndClearProfile()
+            safetyMessage = "\(detail) Prepare the camera again after the interruption ends."
+        }
+    }
+
+    private func handleCaptureSessionRuntimeError(detail: String?) async {
+        let explanation = [
+            "The camera session reported a runtime error.",
+            detail,
+        ].compactMap { $0 }.joined(separator: " ")
+        if state == .recording || state == .arming {
+            lastErrorMessage = explanation
+            await stopIfActive(reason: .captureSessionRuntimeError)
+            return
+        }
+        if state == .ready || state == .preparing {
+            await shutdownPreviewAndClearProfile()
+            lastErrorMessage = explanation
+            safetyMessage = "Prepare the camera again. Quipsly did not silently restart or claim source continuity."
+        }
+    }
+
+    private func handleCaptureSessionInterruptionEnded() async {
+        guard state == .idle, resolvedProfile == nil else { return }
+        safetyMessage = "The camera interruption ended. Prepare again to resolve and review a fresh source profile."
     }
 
     private func shutdownPreviewAndClearProfile() async {

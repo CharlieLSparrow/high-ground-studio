@@ -76,6 +76,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
     private struct CaptureIntent {
         let captureID: UUID
+        let captureGroupID: UUID
         let sessionID: String?
         let callRoomID: String?
         let requiresDurableRoomReceipt: Bool
@@ -120,6 +121,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     /// Callers must treat a thrown error as "nothing was recorded."
     func armNextCapture(
         captureID: UUID,
+        captureGroupID: UUID? = nil,
         sessionID: String?,
         callRoomID: String?,
         requiresDurableRoomReceipt: Bool,
@@ -153,6 +155,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
         pendingCaptureIntent = CaptureIntent(
             captureID: captureID,
+            captureGroupID: captureGroupID ?? captureID,
             sessionID: normalizedSessionID,
             callRoomID: normalizedCallRoomID,
             requiresDurableRoomReceipt: requiresDurableRoomReceipt,
@@ -617,8 +620,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
             throw CaptureError.captureOwnerChanged
         }
+        let captureID = UUID()
         pendingCaptureIntent = CaptureIntent(
-            captureID: UUID(),
+            captureID: captureID,
+            captureGroupID: captureID,
             sessionID: nil,
             callRoomID: nil,
             requiresDurableRoomReceipt: false,
@@ -789,7 +794,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
             expectedOwnerAccountID: captureIntent.ownerSnapshot.ownerAccountID,
             displayTitle: activeCallRoomLabel,
             mediaKind: .audio,
-            captureGroupId: captureIntent.captureID,
+            captureGroupId: captureIntent.captureGroupID,
             roomStartReceiptId: captureIntent.startReceiptID,
             sourceProfile: LocalRecordingSourceProfile(
                 container: "m4a",

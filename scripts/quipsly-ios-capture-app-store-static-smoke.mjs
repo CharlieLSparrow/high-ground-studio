@@ -224,6 +224,7 @@ for (const dataType of [
   "NSPrivacyCollectedDataTypeUserID",
   "NSPrivacyCollectedDataTypeDeviceID",
   "NSPrivacyCollectedDataTypeAudioData",
+  "NSPrivacyCollectedDataTypePhotosorVideos",
   "NSPrivacyCollectedDataTypeOtherUserContent",
 ]) {
   assert(collectedTypes.has(dataType), "Privacy manifest is missing an expected collected data type.", { dataType });
@@ -270,6 +271,7 @@ requireIncludes(projectText, "LiveKit in Frameworks", "LiveKit product linked in
 requireIncludes(liveKitProviderRoomValidatorText, "-resolvePackageDependencies", "LiveKit provider-room dependency resolver");
 requireIncludes(liveKitProviderRoomValidatorText, "client-sdk-swift-xcframework.git", "LiveKit provider-room validator checks the binary package path");
 requireIncludes(liveKitProviderRoomValidatorText, "DEVELOPER_DIR_VALUE", "LiveKit provider-room validator uses full Xcode without global xcode-select mutation");
+requireIncludes(liveKitProviderRoomValidatorText, "QUIPSLY_CAPTURE_DERIVED_DATA_PATH", "LiveKit provider-room simulator build uses an explicit disposable DerivedData path");
 requireIncludes(liveKitProviderRoomValidatorText, "run_with_timeout", "LiveKit provider-room validator uses bounded external tool runs");
 requireIncludes(liveKitProviderRoomValidatorText, "--build-simulator", "LiveKit provider-room validator can run the next simulator build proof");
 requireIncludes(liveKitProviderRoomValidatorText, "CODE_SIGNING_ALLOWED=NO", "LiveKit provider-room simulator build avoids signing ceremony");

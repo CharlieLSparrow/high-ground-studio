@@ -837,13 +837,25 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
         XCTAssertTrue(modePicker.waitForExistence(timeout: 5))
-        XCTAssertEqual(modePicker.buttons.count, 3)
+        XCTAssertEqual(modePicker.buttons.count, 4)
 
-        modePicker.buttons["Podcast"].tap()
+        modePicker.buttons["A/V"].tap()
         XCTAssertTrue(app.otherElements["CaptureVideoRecorderHero"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.descendants(matching: .any)["CaptureVideoPreviewPlaceholder"].exists)
         XCTAssertTrue(app.buttons["CaptureVideoPrepareButton"].exists)
         XCTAssertTrue(app.segmentedControls["CaptureVideoCameraPicker"].exists)
+        XCTAssertTrue(
+            app.staticTexts.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Two immutable sources: a separate microphone master")
+            ).firstMatch.exists,
+            "Podcast A/V must explain both immutable local masters and human-reviewed sync before asking for camera permission."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureCoordinatedAudioStatus"].exists,
+            "Podcast A/V must keep the separate microphone route and meter visible beside camera truth."
+        )
+
+        modePicker.buttons["Camera"].tap()
         XCTAssertTrue(
             app.staticTexts.matching(
                 NSPredicate(format: "label BEGINSWITH %@", "Video only: LiveKit carries the audible conversation.")
@@ -902,7 +914,7 @@ final class CaptureExperienceUITests: XCTestCase {
         )
 
         let modePicker = app.segmentedControls["CaptureRecordingModePicker"]
-        modePicker.buttons["Podcast"].tap()
+        modePicker.buttons["Camera"].tap()
         let prepareVideo = app.buttons["CaptureVideoPrepareButton"]
         XCTAssertTrue(prepareVideo.waitForExistence(timeout: 5))
         XCTAssertTrue(

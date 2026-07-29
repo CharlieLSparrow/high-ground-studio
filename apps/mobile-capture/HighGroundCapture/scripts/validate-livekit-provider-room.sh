@@ -7,6 +7,7 @@ PROJECT="$APP_DIR/HighGroundCapture.xcodeproj"
 SCHEME="HighGroundCapture"
 DEVELOPER_DIR_VALUE="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 PACKAGE_CACHE="${QUIPSLY_LIVEKIT_SPM_CACHE:-/tmp/quipsly-livekit-xcframework-spm}"
+DERIVED_DATA_PATH="${QUIPSLY_CAPTURE_DERIVED_DATA_PATH:-/private/tmp/quipsly-capture-derived-data}"
 RESOLVE_TIMEOUT_SECONDS="${RESOLVE_TIMEOUT_SECONDS:-900}"
 BUILD_TIMEOUT_SECONDS="${BUILD_TIMEOUT_SECONDS:-1200}"
 RUN_BUILD=0
@@ -30,6 +31,7 @@ Options:
 Environment:
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
   QUIPSLY_LIVEKIT_SPM_CACHE=/tmp/quipsly-livekit-xcframework-spm
+  QUIPSLY_CAPTURE_DERIVED_DATA_PATH=/private/tmp/quipsly-capture-derived-data
   RESOLVE_TIMEOUT_SECONDS=900
   BUILD_TIMEOUT_SECONDS=1200
   QUIPSLY_CAPTURE_BUILD_DESTINATION='generic/platform=iOS Simulator'
@@ -109,6 +111,7 @@ echo "Validating HighGroundCapture LiveKit provider-room linkage"
 echo "Project: $PROJECT"
 echo "Xcode:   $DEVELOPER_DIR_VALUE"
 echo "Cache:   $PACKAGE_CACHE"
+echo "Derived: $DERIVED_DATA_PATH"
 echo "Resolve timeout: ${RESOLVE_TIMEOUT_SECONDS}s"
 echo "Package: https://github.com/livekit/client-sdk-swift-xcframework.git @ 2.15.1"
 if [[ "$RUN_BUILD" == "1" ]]; then
@@ -134,6 +137,7 @@ if [[ "$RUN_BUILD" == "1" ]]; then
     -scheme "$SCHEME" \
     -destination "$BUILD_DESTINATION" \
     -clonedSourcePackagesDirPath "$PACKAGE_CACHE" \
+    -derivedDataPath "$DERIVED_DATA_PATH" \
     CODE_SIGNING_ALLOWED=NO \
     build
   echo

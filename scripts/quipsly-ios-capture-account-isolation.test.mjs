@@ -218,7 +218,7 @@ test("deterministic owner-change-during-permission contract carries one immutabl
   assert.match(auth, /func matchesStableOwnerSnapshot[\s\S]*?snapshot\.generation == accountIdentityGeneration/);
 
   const start = captureModel.slice(
-    captureModel.indexOf("func startCapture(using audioCapture:"),
+    captureModel.indexOf("func startCapture("),
     captureModel.indexOf("func stopCapture(using audioCapture:"),
   );
   const snapshot = start.indexOf("let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot()");

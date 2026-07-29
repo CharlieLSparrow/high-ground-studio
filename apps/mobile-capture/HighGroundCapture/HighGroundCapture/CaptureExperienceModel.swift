@@ -33,6 +33,7 @@ enum CaptureRootTab: String, CaseIterable, Identifiable {
 
 enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     case audio
+    case podcastAV
     case soloVideo
     case podcastCamera
 
@@ -41,6 +42,7 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .audio: "Audio"
+        case .podcastAV: "Podcast audio + video"
         case .soloVideo: "Solo video"
         case .podcastCamera: "Podcast camera"
         }
@@ -49,26 +51,39 @@ enum CaptureRecordingMode: String, CaseIterable, Identifiable {
     var shortTitle: String {
         switch self {
         case .audio: "Audio"
+        case .podcastAV: "A/V"
         case .soloVideo: "Solo"
-        case .podcastCamera: "Podcast"
+        case .podcastCamera: "Camera"
         }
     }
 
     var systemImage: String {
         switch self {
         case .audio: "waveform"
+        case .podcastAV: "waveform.and.camera"
         case .soloVideo: "person.crop.rectangle"
         case .podcastCamera: "video"
         }
     }
 
     var recordsVideo: Bool { self != .audio }
-    var includesLocalAudio: Bool { self != .podcastCamera }
+    var movieIncludesAudio: Bool { self == .soloVideo }
+    var usesStandaloneAudioRecorder: Bool {
+        self == .audio || self == .podcastAV
+    }
+    var requiresAudioConsent: Bool {
+        self != .podcastCamera
+    }
+    var isCoordinatedPodcastCapture: Bool {
+        self == .podcastAV
+    }
 
     var detail: String {
         switch self {
         case .audio:
             "A high-quality local microphone source. The live room remains a separate call."
+        case .podcastAV:
+            "Two local masters: the selected microphone plus a video-only camera file in one capture group. The live room remains the call."
         case .soloVideo:
             "Camera and microphone in one local movie for a solo episode, short, or YouTube recording."
         case .podcastCamera:
@@ -150,6 +165,8 @@ final class CaptureExperienceModel: ObservableObject {
     @Published private(set) var activeCaptureSession: MobileCaptureSession?
     @Published private(set) var activeVideoCaptureSession: MobileCaptureSession?
     @Published private(set) var activeVideoCaptureMode: CaptureRecordingMode?
+    @Published private(set) var activeCoordinatedCaptureGroupID: UUID?
+    @Published private(set) var isCoordinatingPodcastCapture = false
     @Published private(set) var activeRoomSession: MobileCaptureSession?
     @Published private(set) var captureReceiptNotice: String?
     @Published private(set) var captureSafetyNotice: String?
@@ -182,6 +199,7 @@ final class CaptureExperienceModel: ObservableObject {
     private var receiptFlushTaskID: UUID?
     private var consentMonitorTask: Task<Void, Never>?
     private var videoConsentMonitorTask: Task<Void, Never>?
+    private var isStoppingCoordinatedCapture = false
     private var didReconcileReceiptOutbox = false
     private var observedReceiptOwnerAccountID: String?
     private var cancellables = Set<AnyCancellable>()
@@ -275,6 +293,7 @@ final class CaptureExperienceModel: ObservableObject {
     /// from join, leave, or mute actions while it is recording or being saved.
     var providerControlsLockedForLocalCapture: Bool {
         if isChangingCapture { return true }
+        if activeCoordinatedCaptureGroupID != nil { return true }
         if activeVideoCaptureMode == .soloVideo,
            let state = activeVideoCapture?.state,
            state.isActive || state == .paused {
@@ -290,7 +309,7 @@ final class CaptureExperienceModel: ObservableObject {
     }
 
     var providerControlsLockMessage: String {
-        "Live room controls are locked while a local audio-bearing take is recording, paused, or saving. Stop and save it before changing provider audio. Podcast camera mode remains video-only so it can coexist with the room."
+        "Live room controls are locked while a local audio-bearing take or coordinated podcast group is recording, paused, or saving. Stop and save it before changing provider audio. Podcast camera mode remains video-only so it can coexist with the room."
     }
 
     var isSessionContextLocked: Bool {
@@ -932,7 +951,7 @@ final class CaptureExperienceModel: ObservableObject {
         message = nil
         await videoCapture.prepare(
             position: position,
-            includesAudio: mode.includesLocalAudio
+            includesAudio: mode.movieIncludesAudio
         )
         isChangingCapture = false
         if videoCapture.state == .ready {
@@ -944,7 +963,8 @@ final class CaptureExperienceModel: ObservableObject {
 
     func startVideoCapture(
         using videoCapture: VideoCaptureController,
-        mode: CaptureRecordingMode
+        mode: CaptureRecordingMode,
+        captureGroupID: UUID? = nil
     ) async {
         guard mode.recordsVideo else { return }
         guard var session = selectedSession else {
@@ -1002,12 +1022,14 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = videoCaptureReadinessMessage(for: refreshed)
             return
         }
-        if mode.includesLocalAudio {
+        if mode.requiresAudioConsent {
             guard refreshed.recordingConsentCanRecordAudio == true,
                   refreshed.recordingConsentGranted,
                   refreshed.canRecordAudioNow ?? refreshed.canRecordNow else {
                 isChangingCapture = false
-                errorMessage = "Solo video includes microphone audio. Save current audio and video consent for every required participant before starting."
+                errorMessage = mode == .soloVideo
+                    ? "Solo video includes microphone audio. Save current audio and video consent for every required participant before starting."
+                    : "Podcast audio + video creates a separate microphone master. Save current audio and video consent for every required participant before starting."
                 return
             }
         }
@@ -1038,7 +1060,8 @@ final class CaptureExperienceModel: ObservableObject {
         )
         await videoCapture.start(
             context: context,
-            includesAudio: mode.includesLocalAudio
+            includesAudio: mode.movieIncludesAudio,
+            captureGroupID: captureGroupID
         )
         guard [.arming, .recording, .finalizing].contains(videoCapture.state) else {
             isChangingCapture = false
@@ -1052,11 +1075,207 @@ final class CaptureExperienceModel: ObservableObject {
         activeVideoCaptureMode = mode
         activeVideoCaptureOwnerSnapshot = ownerSnapshot
         isChangingCapture = false
-        message = mode == .podcastCamera
-            ? "Recording a video-only camera master. The live room remains the conversation path; Quipsly will align their clocks after upload."
-            : "Recording camera and microphone locally as one protected movie source."
+        switch mode {
+        case .podcastCamera:
+            message = "Recording a video-only camera master. The live room remains the conversation path; Quipsly will align their clocks after upload."
+        case .podcastAV:
+            message = "Camera master is armed video-only. Quipsly is preparing the separate microphone master in the same capture group."
+        case .soloVideo:
+            message = "Recording camera and microphone locally as one protected movie source."
+        case .audio:
+            message = nil
+        }
         scheduleReceiptFlush()
         startVideoConsentMonitor(videoCapture: videoCapture)
+    }
+
+    /// Starts two independently durable local sources under one capture-group
+    /// identity. The video callback must confirm first; audio then starts with
+    /// its own clock evidence under the same group. Any partial source is
+    /// closed and preserved.
+    func startCoordinatedPodcastCapture(
+        using audioCapture: AudioCaptureController,
+        videoCapture: VideoCaptureController
+    ) async {
+        guard activeCoordinatedCaptureGroupID == nil,
+              activeCaptureSession == nil,
+              activeVideoCaptureSession == nil,
+              !isChangingCapture,
+              !isCoordinatingPodcastCapture else {
+            return
+        }
+        isCoordinatingPodcastCapture = true
+        defer { isCoordinatingPodcastCapture = false }
+        guard videoCapture.state == .ready,
+              videoCapture.resolvedProfile?.includesAudio == false else {
+            errorMessage = "Prepare the video-only camera profile before starting two local podcast masters."
+            return
+        }
+
+        let captureGroupID = UUID()
+        activeCoordinatedCaptureGroupID = captureGroupID
+        await startVideoCapture(
+            using: videoCapture,
+            mode: .podcastAV,
+            captureGroupID: captureGroupID
+        )
+        guard activeVideoCaptureSession != nil,
+              videoCapture.activeCaptureGroupID == captureGroupID else {
+            activeCoordinatedCaptureGroupID = nil
+            return
+        }
+
+        guard await videoCapture.waitUntilRecording() else {
+            let startFailure = videoCapture.lastErrorMessage
+                ?? "The camera did not confirm its source start."
+            await videoCapture.stop()
+            _ = await videoCapture.waitUntilTerminal()
+            reconcileVideoCaptureState(videoCapture.state, using: videoCapture)
+            activeCoordinatedCaptureGroupID = nil
+            errorMessage = "\(startFailure) No two-source recording is being claimed."
+            return
+        }
+
+        await startCapture(
+            using: audioCapture,
+            captureGroupID: captureGroupID,
+            permitActiveCoordinatedVideo: true
+        )
+        guard audioCapture.captureState == .recording,
+              activeCaptureSession != nil,
+              videoCapture.state == .recording,
+              activeVideoCaptureSession != nil,
+              videoCapture.activeCaptureGroupID == captureGroupID else {
+            let startFailure = errorMessage
+                ?? audioCapture.lastErrorMessage
+                ?? videoCapture.lastErrorMessage
+                ?? "Both local sources did not remain active through coordinated startup."
+            if audioCapture.captureState == .recording {
+                await stopCapture(using: audioCapture)
+            }
+            await videoCapture.stop()
+            _ = await videoCapture.waitUntilTerminal()
+            reconcileVideoCaptureState(videoCapture.state, using: videoCapture)
+            activeCoordinatedCaptureGroupID = nil
+            errorMessage = "\(startFailure) Every partial source was closed and preserved."
+            return
+        }
+
+        message = "Recording two local masters: \(audioCapture.inputRouteName) audio plus a video-only \(videoCapture.cameraPosition.rawValue) camera source. Each keeps its own clock evidence under one capture-group identity."
+        errorMessage = nil
+    }
+
+    func stopCoordinatedPodcastCapture(
+        using audioCapture: AudioCaptureController,
+        videoCapture: VideoCaptureController
+    ) async {
+        guard activeCoordinatedCaptureGroupID != nil else { return }
+        guard !isStoppingCoordinatedCapture,
+              !isCoordinatingPodcastCapture else { return }
+        isCoordinatingPodcastCapture = true
+        isStoppingCoordinatedCapture = true
+        defer {
+            isStoppingCoordinatedCapture = false
+            isCoordinatingPodcastCapture = false
+        }
+        var failures: [String] = []
+
+        if activeCaptureSession != nil {
+            await stopCapture(using: audioCapture)
+            if audioCapture.captureState != .saved {
+                failures.append(
+                    audioCapture.lastErrorMessage
+                        ?? "The microphone source still needs Library review."
+                )
+            }
+        }
+        if activeVideoCaptureSession != nil {
+            await stopVideoCapture(using: videoCapture)
+            if !(await videoCapture.waitUntilTerminal()) {
+                failures.append(
+                    videoCapture.lastErrorMessage
+                        ?? "The camera source is still finalizing."
+                )
+            }
+            reconcileVideoCaptureState(videoCapture.state, using: videoCapture)
+            if videoCapture.state != .saved {
+                failures.append(
+                    videoCapture.lastErrorMessage
+                        ?? "The camera source still needs Library review."
+                )
+            }
+        }
+
+        activeCoordinatedCaptureGroupID = nil
+        if failures.isEmpty {
+            errorMessage = nil
+            message = "Both local podcast masters are saved on this iPhone. Their independent uploads can continue without changing either original."
+        } else {
+            message = nil
+            errorMessage = "The coordinated take stopped with preserved source evidence. \(failures.joined(separator: " "))"
+        }
+    }
+
+    func toggleCoordinatedPodcastPause(
+        using audioCapture: AudioCaptureController,
+        videoCapture: VideoCaptureController
+    ) async {
+        guard activeCoordinatedCaptureGroupID != nil,
+              !isCoordinatingPodcastCapture,
+              !isStoppingCoordinatedCapture else { return }
+        isCoordinatingPodcastCapture = true
+        defer { isCoordinatingPodcastCapture = false }
+
+        if audioCapture.captureState == .recording,
+           videoCapture.state == .recording {
+            await togglePause(using: audioCapture)
+            guard audioCapture.captureState == .paused else {
+                errorMessage = audioCapture.lastErrorMessage
+                    ?? "The microphone master did not pause. The camera remains recording."
+                return
+            }
+            await toggleVideoPause(using: videoCapture)
+            _ = await videoCapture.waitUntilPausedOrTerminal()
+            guard audioCapture.captureState == .paused,
+                  videoCapture.state == .paused else {
+                errorMessage = videoCapture.lastErrorMessage
+                    ?? "The movie boundary did not validate as paused. Quipsly will preserve both sources for Library review."
+                return
+            }
+            message = "Both local masters are paused. The microphone file retains its pause gap; the movie was safely closed."
+            return
+        }
+
+        if audioCapture.captureState == .paused,
+           videoCapture.state == .paused {
+            await toggleVideoPause(using: videoCapture)
+            guard await videoCapture.waitUntilRecording() else {
+                errorMessage = videoCapture.lastErrorMessage
+                    ?? "The camera source did not resume. The microphone remains paused."
+                return
+            }
+            await togglePause(using: audioCapture)
+            guard audioCapture.captureState == .recording,
+                  videoCapture.state == .recording else {
+                let resumeFailure = errorMessage
+                    ?? audioCapture.lastErrorMessage
+                    ?? videoCapture.lastErrorMessage
+                    ?? "The microphone master did not resume."
+                if audioCapture.captureState == .recording {
+                    await stopCapture(using: audioCapture)
+                }
+                if videoCapture.state == .recording {
+                    await videoCapture.pause()
+                    _ = await videoCapture.waitUntilPausedOrTerminal()
+                }
+                errorMessage = "\(resumeFailure) Every restarted partial source was closed and preserved."
+                return
+            }
+            message = "Both local masters resumed under the same capture-group identity."
+            return
+        }
+
+        errorMessage = "The two local sources are not in the same pause state. Stop and preserve the group before retrying."
     }
 
     func stopVideoCapture(using videoCapture: VideoCaptureController) async {
@@ -1147,11 +1366,27 @@ final class CaptureExperienceModel: ObservableObject {
         using videoCapture: VideoCaptureController
     ) {
         guard activeVideoCapture === videoCapture || activeVideoCaptureSession != nil else { return }
+        let coordinatedGroupID = activeCoordinatedCaptureGroupID
+        let closeAudioPartner =
+            coordinatedGroupID != nil
+            && !isStoppingCoordinatedCapture
+            && activeCaptureSession != nil
+            && [.saved, .failed, .idle].contains(state)
+        let audioPartner = activeAudioCapture
         switch state {
         case .recording:
-            message = activeVideoCaptureMode == .podcastCamera
-                ? "Video-only camera master is recording locally beside room audio."
-                : "Solo camera and microphone source is recording locally."
+            switch activeVideoCaptureMode {
+            case .podcastAV:
+                message = activeCaptureSession == nil
+                    ? "Video-only camera source confirmed. Preparing the separate microphone master."
+                    : "Two local podcast masters are recording with independent clock evidence under one capture-group identity."
+            case .podcastCamera:
+                message = "Video-only camera master is recording locally beside room audio."
+            case .soloVideo:
+                message = "Solo camera and microphone source is recording locally."
+            case .audio, .none:
+                message = "Camera source is recording locally."
+            }
             startVideoConsentMonitor(videoCapture: videoCapture)
         case .paused:
             videoConsentMonitorTask?.cancel()
@@ -1171,9 +1406,49 @@ final class CaptureExperienceModel: ObservableObject {
         case .preparing, .ready, .arming, .finalizing:
             break
         }
+        if closeAudioPartner, let coordinatedGroupID, let audioPartner {
+            Task { [weak self] in
+                guard let self,
+                      self.activeCoordinatedCaptureGroupID == coordinatedGroupID,
+                      !self.isStoppingCoordinatedCapture else {
+                    return
+                }
+                self.isStoppingCoordinatedCapture = true
+                while self.isChangingCapture {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                }
+                guard self.activeCoordinatedCaptureGroupID == coordinatedGroupID,
+                      self.activeCaptureSession != nil else {
+                    self.isStoppingCoordinatedCapture = false
+                    return
+                }
+                await self.stopCapture(using: audioPartner)
+                self.isStoppingCoordinatedCapture = false
+                self.message = nil
+                if [.saved, .failed, .idle].contains(audioPartner.captureState) {
+                    self.activeCoordinatedCaptureGroupID = nil
+                    self.errorMessage = "The camera source ended before the coordinated take completed. Quipsly closed and preserved the microphone partner; review both sources in Library."
+                } else {
+                    self.errorMessage = "The camera source ended before the coordinated take completed. The microphone partner is still closing; keep Quipsly open until Library shows its final state."
+                }
+            }
+        }
+        if let coordinatedGroupID,
+           !isStoppingCoordinatedCapture,
+           activeCaptureSession == nil,
+           [.saved, .failed, .idle].contains(state),
+           activeCoordinatedCaptureGroupID == coordinatedGroupID {
+            activeCoordinatedCaptureGroupID = nil
+            message = nil
+            errorMessage = "The camera source ended without an active microphone partner. Quipsly preserved the partial group for Library review."
+        }
     }
 
-    func startCapture(using audioCapture: AudioCaptureController) async {
+    func startCapture(
+        using audioCapture: AudioCaptureController,
+        captureGroupID: UUID? = nil,
+        permitActiveCoordinatedVideo: Bool = false
+    ) async {
         guard var session = selectedSession else {
             errorMessage = "Choose or create a session before recording."
             return
@@ -1186,8 +1461,19 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = session.captureReadinessNextAction
             return
         }
+        let coordinatedVideoMayRemainActive =
+            permitActiveCoordinatedVideo
+            && activeVideoCaptureMode == .podcastAV
+            && activeVideoCaptureSession?.id == session.id
+            && activeCoordinatedCaptureGroupID == captureGroupID
+            && activeVideoCapture?.state == .recording
+        if permitActiveCoordinatedVideo,
+           !coordinatedVideoMayRemainActive {
+            errorMessage = "The camera source ended before microphone startup. Quipsly did not open an audio-only remainder."
+            return
+        }
         guard activeCaptureSession == nil,
-              activeVideoCaptureSession == nil,
+              (activeVideoCaptureSession == nil || coordinatedVideoMayRemainActive),
               !isChangingCapture else { return }
         guard !isChangingRoom else {
             errorMessage = "Wait for the live room to finish connecting before starting the local recorder."
@@ -1251,11 +1537,12 @@ final class CaptureExperienceModel: ObservableObject {
 
         let contextSlugs = MobileContextManager.shared.getTargetSlugs()
         let captureID = UUID()
+        let resolvedCaptureGroupID = captureGroupID ?? captureID
         let clockSamples = usesPreviewData
             ? []
             : await CaptureClockClient.shared.measureBurst(
                 callRoomID: session.callRoomId,
-                captureGroupID: captureID,
+                captureGroupID: resolvedCaptureGroupID,
                 expectedOwnerAccountID: ownerSnapshot.ownerAccountID
             )
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
@@ -1266,6 +1553,7 @@ final class CaptureExperienceModel: ObservableObject {
         do {
             try audioCapture.armNextCapture(
                 captureID: captureID,
+                captureGroupID: resolvedCaptureGroupID,
                 sessionID: session.id,
                 callRoomID: session.callRoomId,
                 requiresDurableRoomReceipt: !usesPreviewData,
@@ -1276,6 +1564,18 @@ final class CaptureExperienceModel: ObservableObject {
             isChangingCapture = false
             errorMessage = "Quipsly could not durably journal the recording start. Nothing was recorded: \(error.localizedDescription)"
             return
+        }
+        if permitActiveCoordinatedVideo {
+            guard activeCoordinatedCaptureGroupID == captureGroupID,
+                  activeVideoCaptureMode == .podcastAV,
+                  activeVideoCaptureSession?.id == session.id,
+                  activeVideoCapture?.state == .recording else {
+                audioCapture.abortArmedCaptureBeforeRecording()
+                isChangingCapture = false
+                errorMessage = "The camera source ended while the microphone boundary was being armed. Quipsly closed the durable audio START without opening microphone bytes."
+                if !usesPreviewData { scheduleReceiptFlush() }
+                return
+            }
         }
         guard AuthManager.shared.matchesStableOwnerSnapshot(ownerSnapshot) else {
             audioCapture.abortArmedCaptureBeforeRecording()
@@ -1354,8 +1654,24 @@ final class CaptureExperienceModel: ObservableObject {
     /// Reconciles recorder-driven terminal states such as an audio-services
     /// reset or a delegate finalization that completed after a UI timeout.
     func reconcileCaptureState(_ state: AudioCaptureState) {
-        guard activeCaptureSession != nil, !isChangingCapture else { return }
+        guard activeCaptureSession != nil else { return }
         guard state == .saved || state == .failed || state == .idle else { return }
+        if isChangingCapture {
+            Task { [weak self] in
+                guard let self else { return }
+                while self.isChangingCapture {
+                    try? await Task.sleep(nanoseconds: 50_000_000)
+                }
+                self.reconcileCaptureState(state)
+            }
+            return
+        }
+        let coordinatedGroupID = activeCoordinatedCaptureGroupID
+        let closeVideoPartner =
+            coordinatedGroupID != nil
+            && !isStoppingCoordinatedCapture
+            && activeVideoCaptureSession != nil
+        let videoPartner = activeVideoCapture
         if state == .saved {
             message = activeAudioCapture?.automaticStopReason
                 ?? "Saved on this iPhone. Upload can continue in the background."
@@ -1364,6 +1680,36 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = recorderError
         }
         finishActiveCaptureContext(stoppedAt: Date())
+        if closeVideoPartner, let coordinatedGroupID, let videoPartner {
+            Task { [weak self] in
+                guard let self,
+                      self.activeCoordinatedCaptureGroupID == coordinatedGroupID,
+                      !self.isStoppingCoordinatedCapture else {
+                    return
+                }
+                self.isStoppingCoordinatedCapture = true
+                await videoPartner.stop()
+                _ = await videoPartner.waitUntilTerminal()
+                self.reconcileVideoCaptureState(
+                    videoPartner.state,
+                    using: videoPartner
+                )
+                self.isStoppingCoordinatedCapture = false
+                self.message = nil
+                if [.saved, .failed, .idle].contains(videoPartner.state) {
+                    self.activeCoordinatedCaptureGroupID = nil
+                    self.errorMessage = "The microphone source ended before the coordinated take completed. Quipsly closed and preserved the camera partner; review both sources in Library."
+                } else {
+                    self.errorMessage = "The microphone source ended before the coordinated take completed. The camera partner is still closing; keep Quipsly open until Library shows its final state."
+                }
+            }
+        } else if let coordinatedGroupID,
+                  !isStoppingCoordinatedCapture,
+                  activeCoordinatedCaptureGroupID == coordinatedGroupID {
+            activeCoordinatedCaptureGroupID = nil
+            message = nil
+            errorMessage = "The microphone source ended without an active camera partner. Quipsly preserved the partial group for Library review."
+        }
     }
 
     func togglePause(using audioCapture: AudioCaptureController) async {
@@ -1804,7 +2150,7 @@ final class CaptureExperienceModel: ObservableObject {
                     refreshed.recordingConsentVideoGranted == true
                     && refreshed.canRecordVideoNow == true
                 let audioAllowed =
-                    !mode.includesLocalAudio
+                    !mode.requiresAudioConsent
                     || (
                         refreshed.recordingConsentGranted
                         && (refreshed.canRecordAudioNow ?? refreshed.canRecordNow)
@@ -1876,7 +2222,7 @@ final class CaptureExperienceModel: ObservableObject {
               session.canRecordVideoNow == true else {
             return false
         }
-        guard mode.includesLocalAudio else { return true }
+        guard mode.requiresAudioConsent else { return true }
         return session.recordingConsentCanRecordAudio == true
             && session.recordingConsentGranted
             && (session.canRecordAudioNow ?? session.canRecordNow)

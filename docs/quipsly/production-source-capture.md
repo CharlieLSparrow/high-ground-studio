@@ -208,6 +208,11 @@ acceptance matrix are in
 
 ## Product modes
 
+The coordinated iPhone audio-plus-camera implementation contract is in
+[`ios-coordinated-podcast-capture.md`](./ios-coordinated-podcast-capture.md).
+It extends the source system below without muxing call audio into the camera
+master or changing the immutable-source/editor-review boundary.
+
 ### Podcast room camera
 
 - Join LiveKit with microphone audio only.

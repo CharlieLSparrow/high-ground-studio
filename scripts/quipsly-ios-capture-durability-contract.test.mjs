@@ -67,7 +67,10 @@ check("room capture cannot bypass durable arming", audio.includes("activeCallRoo
 check("local armed row commits before AVAudioRecorder.record", localArm > beginMethod && localArm < avRecord);
 check("local active state follows AVAudioRecorder.record", avRecord < localActive);
 check("pre-record failures close START boundary", audio.includes("closeStartBoundaryAfterFailedArm()"));
-const captureStart = model.slice(model.indexOf("func startCapture(using audioCapture:"), model.indexOf("func stopCapture(using audioCapture:"));
+const captureStart = model.slice(
+  model.indexOf("func startCapture("),
+  model.indexOf("func stopCapture(using audioCapture:"),
+);
 const permissionAwait = captureStart.indexOf("await audioCapture.prepareForRecording()");
 const permissionOwnerRecheck = captureStart.indexOf("matchesStableOwnerSnapshot(ownerSnapshot)", permissionAwait);
 const durableOwnerArm = captureStart.indexOf("expectedOwnerSnapshot: ownerSnapshot", permissionOwnerRecheck);
@@ -214,7 +217,7 @@ check(
   "new sources persist capture-group and resolved profile evidence",
   library.includes("var captureGroupId: UUID? = nil")
     && library.includes("var sourceProfile: LocalRecordingSourceProfile? = nil")
-    && audio.includes("captureGroupId: captureIntent.captureID")
+    && audio.includes("captureGroupId: captureIntent.captureGroupID")
     && audio.includes("monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds"),
 );
 check("source ledger keeps a last-known-good copy", library.includes("recordings-index.last-known-good.json"));

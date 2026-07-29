@@ -43,7 +43,21 @@ struct CapturePhoneShell: View {
         }
         .tint(CapturePalette.accent)
         .safeAreaInset(edge: .top, spacing: 0) {
-            if audioCaptureIsActive {
+            if model.activeCoordinatedCaptureGroupID != nil,
+               audioCaptureIsActive || videoCaptureIsActive {
+                GlobalCaptureBanner(
+                    title: coordinatedCaptureBannerTitle,
+                    duration: max(
+                        audioCapture.currentDuration,
+                        videoCapture.durationSeconds
+                    ),
+                    tint: coordinatedCaptureIsPaused ? .orange : .red,
+                    isPulsing:
+                        audioCapture.captureState == .recording
+                        && videoCapture.state == .recording,
+                    action: { model.selectedTab = .record }
+                )
+            } else if audioCaptureIsActive {
                 GlobalCaptureBanner(
                     title: audioCapture.captureState == .paused
                         ? "Audio paused"
@@ -100,6 +114,27 @@ struct CapturePhoneShell: View {
 
     private var videoCaptureIsActive: Bool {
         videoCapture.state.isActive || videoCapture.state == .paused
+    }
+
+    private var coordinatedCaptureIsPaused: Bool {
+        audioCapture.captureState == .paused
+            || videoCapture.state == .paused
+    }
+
+    private var coordinatedCaptureBannerTitle: String {
+        if audioCapture.captureState == .finalizing
+            || videoCapture.state == .finalizing {
+            return "Saving podcast sources"
+        }
+        if audioCapture.captureState == .paused
+            && videoCapture.state == .paused {
+            return "Podcast sources paused"
+        }
+        if audioCapture.captureState == .recording
+            && videoCapture.state == .recording {
+            return "Recording audio + video"
+        }
+        return "Preparing podcast sources"
     }
 
     private var errorIsPresented: Binding<Bool> {
@@ -2288,8 +2323,14 @@ private struct CaptureRecorderView: View {
                             session: session,
                             mode: recordingMode,
                             controller: videoCapture,
+                            coordinatedAudioState:
+                                recordingMode.isCoordinatedPodcastCapture
+                                    ? audioCapture.captureState
+                                    : nil,
                             cameraPosition: $cameraPosition,
-                            isBusy: model.isChangingCapture,
+                            isBusy:
+                                model.isChangingCapture
+                                || model.isCoordinatingPodcastCapture,
                             onPrepare: {
                                 Task {
                                     await model.prepareVideoCapture(
@@ -2301,24 +2342,45 @@ private struct CaptureRecorderView: View {
                             },
                             onStart: {
                                 Task {
-                                    await model.startVideoCapture(
-                                        using: videoCapture,
-                                        mode: recordingMode
-                                    )
+                                    if recordingMode.isCoordinatedPodcastCapture {
+                                        await model.startCoordinatedPodcastCapture(
+                                            using: audioCapture,
+                                            videoCapture: videoCapture
+                                        )
+                                    } else {
+                                        await model.startVideoCapture(
+                                            using: videoCapture,
+                                            mode: recordingMode
+                                        )
+                                    }
                                 }
                             },
                             onStop: {
                                 Task {
-                                    await model.stopVideoCapture(
-                                        using: videoCapture
-                                    )
+                                    if recordingMode.isCoordinatedPodcastCapture {
+                                        await model.stopCoordinatedPodcastCapture(
+                                            using: audioCapture,
+                                            videoCapture: videoCapture
+                                        )
+                                    } else {
+                                        await model.stopVideoCapture(
+                                            using: videoCapture
+                                        )
+                                    }
                                 }
                             },
                             onPauseResume: {
                                 Task {
-                                    await model.toggleVideoPause(
-                                        using: videoCapture
-                                    )
+                                    if recordingMode.isCoordinatedPodcastCapture {
+                                        await model.toggleCoordinatedPodcastPause(
+                                            using: audioCapture,
+                                            videoCapture: videoCapture
+                                        )
+                                    } else {
+                                        await model.toggleVideoPause(
+                                            using: videoCapture
+                                        )
+                                    }
                                 }
                             },
                             onSwitchCamera: {
@@ -2329,6 +2391,18 @@ private struct CaptureRecorderView: View {
                                 }
                             }
                         )
+
+                        if recordingMode.isCoordinatedPodcastCapture {
+                            CoordinatedPodcastAudioStatus(
+                                captureState: audioCapture.captureState,
+                                duration: audioCapture.currentDuration,
+                                inputLevel: audioCapture.normalizedInputLevel,
+                                inputRoute: audioCapture.inputRouteName,
+                                markCount: audioCapture.userMarkOffsets.count,
+                                canMark: audioCapture.captureState == .recording,
+                                onMark: { model.markMoment(using: audioCapture) }
+                            )
+                        }
                     }
 
                     if audioCapture.captureState == .paused,
@@ -2432,7 +2506,7 @@ private struct CaptureRecorderView: View {
             if newMode == .audio {
                 Task { await videoCapture.shutdownPreview() }
             } else if videoCapture.state == .ready,
-                      videoCapture.resolvedProfile?.includesAudio != newMode.includesLocalAudio {
+                      videoCapture.resolvedProfile?.includesAudio != newMode.movieIncludesAudio {
                 Task {
                     await model.prepareVideoCapture(
                         using: videoCapture,
@@ -4680,6 +4754,7 @@ private struct VideoRecorderHero: View {
     let session: MobileCaptureSession
     let mode: CaptureRecordingMode
     @ObservedObject var controller: VideoCaptureController
+    let coordinatedAudioState: AudioCaptureState?
     @Binding var cameraPosition: VideoCaptureCameraPosition
     let isBusy: Bool
     let onPrepare: () -> Void
@@ -4787,8 +4862,8 @@ private struct VideoRecorderHero: View {
                         .foregroundStyle(.secondary)
                     HStack(spacing: 12) {
                         Label(
-                            mode.includesLocalAudio ? "Local audio on" : "Video only",
-                            systemImage: mode.includesLocalAudio ? "mic.fill" : "mic.slash"
+                            profileAudioLabel,
+                            systemImage: mode.movieIncludesAudio ? "mic.fill" : "mic.slash"
                         )
                         Label(
                             "\(profile.presentationOrientationLabel) \(controller.state == .ready ? "at prepare" : "locked")",
@@ -4850,6 +4925,7 @@ private struct VideoRecorderHero: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.large)
+                    .disabled(isBusy)
                     .accessibilityIdentifier("CaptureVideoPauseResumeButton")
 
                     if controller.state == .recording {
@@ -4859,6 +4935,7 @@ private struct VideoRecorderHero: View {
                         }
                         .buttonStyle(.bordered)
                         .controlSize(.large)
+                        .disabled(isBusy)
                         .accessibilityHint(
                             "Closes and validates this movie, then starts the other camera in the same capture group."
                         )
@@ -4927,7 +5004,7 @@ private struct VideoRecorderHero: View {
         if controller.state == .ready {
             return !videoReady
                 || (
-                    mode.includesLocalAudio
+                    mode.requiresAudioConsent
                     && !(session.canRecordAudioNow ?? session.canRecordNow)
                 )
         }
@@ -4954,7 +5031,9 @@ private struct VideoRecorderHero: View {
 
     private var primaryAccessibilityLabel: String {
         if isCaptureGroupOpen {
-            return "Stop video capture group, \(controller.durationSeconds.captureDurationLabel) elapsed"
+            return mode.isCoordinatedPodcastCapture
+                ? "Stop both local podcast sources, \(controller.durationSeconds.captureDurationLabel) elapsed"
+                : "Stop video capture group, \(controller.durationSeconds.captureDurationLabel) elapsed"
         }
         if controller.state == .ready {
             return videoReady
@@ -4972,7 +5051,15 @@ private struct VideoRecorderHero: View {
             videoReady ? "Camera and consent ready" : "Camera ready · video consent needed"
         case .arming: "Protecting source identity…"
         case .recording:
-            mode == .podcastCamera ? "Podcast camera recording" : "Solo video recording"
+            switch mode {
+            case .podcastAV:
+                coordinatedAudioState == .recording
+                    ? "Recording two local sources"
+                    : "Camera started · preparing microphone"
+            case .podcastCamera: "Podcast camera recording"
+            case .soloVideo: "Solo video recording"
+            case .audio: "Video recording"
+            }
         case .finalizing: "Closing and validating movie…"
         case .paused: "Camera paused safely"
         case .saved: "Video saved on this iPhone"
@@ -4982,12 +5069,27 @@ private struct VideoRecorderHero: View {
 
     private var sourceBoundary: String {
         switch mode {
+        case .podcastAV:
+            "Two immutable sources: a separate microphone master and this video-only movie keep independent clock evidence under one capture-group identity. The live room remains independent, and a human reviews final sync."
         case .podcastCamera:
             "Video only: LiveKit carries the audible conversation. This movie stays an independent immutable source until reviewed clock and waveform alignment."
         case .soloVideo:
             "Camera and microphone share this local movie. Joining a live room is blocked so the call cannot silently reconfigure its audio."
         case .audio:
             ""
+        }
+    }
+
+    private var profileAudioLabel: String {
+        switch mode {
+        case .podcastAV:
+            "Video only · separate mic"
+        case .podcastCamera:
+            "Video only"
+        case .soloVideo:
+            "Mic in movie"
+        case .audio:
+            "No movie"
         }
     }
 
@@ -4998,6 +5100,82 @@ private struct VideoRecorderHero: View {
             onStart()
         } else {
             onPrepare()
+        }
+    }
+}
+
+private struct CoordinatedPodcastAudioStatus: View {
+    let captureState: AudioCaptureState
+    let duration: TimeInterval
+    let inputLevel: Double
+    let inputRoute: String
+    let markCount: Int
+    let canMark: Bool
+    let onMark: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Label("Separate microphone master", systemImage: "waveform")
+                    .font(.headline)
+                Spacer()
+                Text(duration.captureDurationLabel)
+                    .font(.caption.monospacedDigit().weight(.bold))
+            }
+
+            InputLevelMeter(
+                level: inputLevel,
+                isActive: captureState == .recording
+            )
+
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(inputRoute.isEmpty ? "iPhone microphone" : inputRoute)
+                        .font(.subheadline.weight(.semibold))
+                    Text(stateDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button(action: onMark) {
+                    Label(
+                        markCount == 0 ? "Mark" : "Mark \(markCount)",
+                        systemImage: "bookmark.fill"
+                    )
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canMark)
+                .accessibilityHint(
+                    "Adds a source-relative mark to the continuing microphone master without changing either file."
+                )
+                .accessibilityIdentifier("CaptureCoordinatedMarkButton")
+            }
+        }
+        .padding(14)
+        .background(
+            CapturePalette.accent.opacity(0.08),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureCoordinatedAudioStatus")
+    }
+
+    private var stateDetail: String {
+        switch captureState {
+        case .recording:
+            "Audio is recording locally beside the video-only camera source."
+        case .paused:
+            "Audio is paused; the current movie boundary is safely closed."
+        case .preparing:
+            "Preparing and verifying the selected microphone route."
+        case .finalizing:
+            "Closing the microphone file without changing its bytes."
+        case .saved:
+            "Microphone source saved on this iPhone."
+        case .failed:
+            "Microphone source needs Library review."
+        case .idle:
+            "The microphone starts only after the camera confirms its source."
         }
     }
 }
@@ -6217,6 +6395,8 @@ private struct SourceTruthFootnote: View {
         switch mode {
         case .audio:
             "The local file is this iPhone's immutable microphone source. Room audio is coordination; only a verified, released upload becomes editor input."
+        case .podcastAV:
+            "The local microphone and video-only movie are separate immutable masters in one capture group. Room audio stays independent; a human reviews clock and waveform sync."
         case .soloVideo:
             "The local movie is this iPhone's immutable camera-and-microphone source. Only exact-byte verification and reviewed editor placement can promote it."
         case .podcastCamera:

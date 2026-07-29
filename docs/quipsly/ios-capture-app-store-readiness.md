@@ -31,7 +31,7 @@ Automated build, security, accessibility, and contract evidence is recorded sepa
 
 ## Current native readiness artifacts
 
-- `HighGroundCapture/PrivacyInfo.xcprivacy` declares no tracking, app-functionality collection for name/email, user ID, device ID, session/audio/user-content data, and required-reason API entries for app-specific `UserDefaults`, file metadata, and the `E174.1` capture storage-headroom check.
+- `HighGroundCapture/PrivacyInfo.xcprivacy` declares no tracking, app-functionality collection for name/email, user ID, device ID, audio, photos-or-videos, and other session/user-content data, plus required-reason API entries for app-specific `UserDefaults`, file metadata, and the `E174.1` capture storage-headroom check.
 - The project uses an explicit microphone purpose string: Quipsly records coaching calls, podcast sessions, interviews, and field notes after the user explicitly starts recording.
 - Native account entry supports Firebase email/password sign-in, account creation, verification email, and enumeration-safe password recovery through Firebase's public REST API, then verifies Quipsly app access through `/api/mac/session-check` with a Firebase bearer token. Current `accounts:lookup` state must show a verified mailbox before any token or cached offline identity is stored, and refresh rechecks that state. Account creation does not grant Capture beta recording/upload access; Nest remains the access authority. Google-origin accounts are guided toward the same email, recovery, web Google sign-in, or support rather than a duplicate identity. The old browser/native handoff endpoints are not the iOS product path.
 - Recorder UI shows capture readiness, consent state, visible recording state, local fallback, upload/transcript readiness, privacy/deletion routes, and preserved-upload recovery.
@@ -427,9 +427,10 @@ questionnaire.
 ## Review notes draft
 
 Quipsly Capture records only after the signed-in user selects a Quipsly
-session, chooses local audio, solo camera-and-microphone video, or video-only
-podcast camera, confirms that everyone who may be captured was told and
-agreed, and current required participant consent permits the Start boundary.
+session, chooses local audio, coordinated separate audio-plus-video masters,
+solo camera-and-microphone video, or video-only podcast camera, confirms that
+everyone who may be captured was told and agreed, and current required
+participant consent permits the Start boundary.
 Recording state is shown in the app while capture is active. The candidate is
 designed to store recordings locally first and upload them directly to private
 Google Cloud Storage with an authenticated resumable v2 session; production
