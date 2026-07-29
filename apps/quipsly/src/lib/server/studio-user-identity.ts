@@ -10,6 +10,8 @@ const userIdentityInclude = {
   roles: true,
 } satisfies Prisma.UserInclude;
 
+export const QUIPSLY_FIREBASE_IDENTITY_AUTHORITY = "firebase:quipsly-reef";
+
 type StudioUserIdentityRecord = Prisma.UserGetPayload<{
   include: typeof userIdentityInclude;
 }>;
@@ -175,6 +177,7 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
   firebaseUid: string;
   email: string;
   emailVerified?: boolean;
+  provider?: string | null;
   name?: string | null;
   image?: string | null;
 }): Promise<StudioUserIdentity> {
@@ -190,10 +193,28 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
   }
 
   const user = await prisma.$transaction(async (tx) => {
-    const byUid = await tx.user.findUnique({
+    const authIdentity = await tx.userAuthIdentity.findUnique({
+      where: {
+        authority_subject: {
+          authority: QUIPSLY_FIREBASE_IDENTITY_AUTHORITY,
+          subject: input.firebaseUid,
+        },
+      },
+      include: {
+        user: {
+          include: userIdentityInclude,
+        },
+      },
+    });
+
+    // Keep a compatibility read for databases in the short deployment window
+    // between the schema migration and the identity-ledger backfill. New
+    // bindings are always recorded in UserAuthIdentity.
+    const byLegacyUid = await tx.user.findUnique({
       where: { firebaseUid: input.firebaseUid },
       include: userIdentityInclude,
     });
+    const bySubject = authIdentity?.user ?? byLegacyUid;
 
     const byEmail = await tx.user.findFirst({
       where: {
@@ -205,13 +226,23 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
       include: userIdentityInclude,
     });
 
-    if (byUid && byEmail && byUid.id !== byEmail.id) {
+    if (
+      authIdentity &&
+      byLegacyUid &&
+      authIdentity.userId !== byLegacyUid.id
+    ) {
+      throw new Error(
+        "Firebase identity collision: identity ledger and legacy uid resolve to different Quipsly users.",
+      );
+    }
+
+    if (bySubject && byEmail && bySubject.id !== byEmail.id) {
       throw new Error(
         "Firebase identity collision: uid and email resolve to different Quipsly users.",
       );
     }
 
-    const existing = byUid ?? byEmail;
+    const existing = bySubject ?? byEmail;
 
     if (existing) {
       // Firebase credentials must never resurrect an account after deletion or
@@ -255,20 +286,40 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
         });
       }
 
+      if (authIdentity) {
+        await tx.userAuthIdentity.update({
+          where: { id: authIdentity.id },
+          data: {
+            provider: input.provider?.trim() || authIdentity.provider,
+            emailAtLink: normalizedEmail,
+            emailVerifiedAt: new Date(),
+            lastSeenAt: new Date(),
+          },
+        });
+      } else {
+        await tx.userAuthIdentity.create({
+          data: {
+            userId: existing.id,
+            authority: QUIPSLY_FIREBASE_IDENTITY_AUTHORITY,
+            subject: input.firebaseUid,
+            provider: input.provider?.trim() || null,
+            emailAtLink: normalizedEmail,
+            emailVerifiedAt: new Date(),
+            lastSeenAt: new Date(),
+          },
+        });
+      }
+
       return tx.user.update({
         where: { id: existing.id },
         data: {
-          // Firebase UIDs are provider identifiers, not Quipsly's durable
-          // person identifier. Account recovery, an auth-project migration,
-          // or a deliberately recreated Firebase account can issue a new UID
-          // for the same verified mailbox. The collision checks above prove
-          // that both credentials resolve to this one Quipsly user before the
-          // binding is rotated, preserving rooms, grants, goals, and notes.
-          firebaseUid: input.firebaseUid,
+          // firebaseUid remains a compatibility pointer for older tooling.
+          // Once populated, it is deliberately stable; every additional
+          // credential belongs in UserAuthIdentity instead of overwriting it.
+          firebaseUid: existing.firebaseUid ?? input.firebaseUid,
           name: input.name?.trim() || existing.name,
           image: input.image || existing.image,
-          emailVerified:
-            existing.emailVerified || input.emailVerified ? new Date() : null,
+          emailVerified: existing.emailVerified ?? new Date(),
           isActive: true,
         },
         include: userIdentityInclude,
@@ -283,6 +334,16 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
         image: input.image || null,
         emailVerified: input.emailVerified ? new Date() : null,
         isActive: true,
+        authIdentities: {
+          create: {
+            authority: QUIPSLY_FIREBASE_IDENTITY_AUTHORITY,
+            subject: input.firebaseUid,
+            provider: input.provider?.trim() || null,
+            emailAtLink: normalizedEmail,
+            emailVerifiedAt: new Date(),
+            lastSeenAt: new Date(),
+          },
+        },
         roles:
           bootstrapRoles.length > 0
             ? {

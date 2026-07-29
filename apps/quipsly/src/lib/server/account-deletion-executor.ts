@@ -141,6 +141,19 @@ function asProgress(value: Prisma.JsonValue): ExecutionProgress {
   return jsonObject(value) as ExecutionProgress;
 }
 
+function firebaseUidsForInventory(
+  inventory: AccountDeletionInventory,
+): string[] {
+  return [
+    ...new Set(
+      [
+        ...(inventory.subject.firebaseUids ?? []),
+        inventory.subject.firebaseUid,
+      ].filter((value): value is string => Boolean(value)),
+    ),
+  ];
+}
+
 async function markProgress(input: {
   prisma: PrismaClient;
   executionId: string;
@@ -343,7 +356,9 @@ export async function executeAccountDeletion(input: {
 
   try {
     if (!progress.authDisabledAt) {
-      await external.disableFirebaseIdentity(inventory.subject.firebaseUid);
+      for (const firebaseUid of firebaseUidsForInventory(inventory)) {
+        await external.disableFirebaseIdentity(firebaseUid);
+      }
       progress = { ...progress, authDisabledAt: now() };
       await markProgress({ prisma, executionId: execution.id, progress });
     }
@@ -418,7 +433,9 @@ export async function executeAccountDeletion(input: {
     }
 
     if (!progress.firebaseDeletedAt) {
-      await external.deleteFirebaseIdentity(inventory.subject.firebaseUid);
+      for (const firebaseUid of firebaseUidsForInventory(inventory)) {
+        await external.deleteFirebaseIdentity(firebaseUid);
+      }
       progress = { ...progress, firebaseDeletedAt: now() };
       await markProgress({ prisma, executionId: execution.id, progress });
     }

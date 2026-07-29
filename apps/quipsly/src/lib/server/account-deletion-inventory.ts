@@ -36,6 +36,9 @@ export type AccountDeletionInventory = {
     userId: string;
     primaryEmail: string;
     firebaseUid: string | null;
+    // Additive schema-v1 field. Older in-flight receipts contain only
+    // firebaseUid; executors treat that value as the fallback singleton.
+    firebaseUids?: string[];
     isActive: boolean;
     allEmails: string[];
   };
@@ -72,6 +75,10 @@ export async function buildAccountDeletionInventory(input: {
       firebaseUid: true,
       isActive: true,
       aliases: { select: { email: true } },
+      authIdentities: {
+        where: { authority: "firebase:quipsly-reef" },
+        select: { subject: true },
+      },
     },
   });
 
@@ -444,6 +451,12 @@ export async function buildAccountDeletionInventory(input: {
       userId: subject.id,
       primaryEmail: normalizedEmail(subject.primaryEmail),
       firebaseUid: subject.firebaseUid,
+      firebaseUids: unique(
+        [
+          subject.firebaseUid,
+          ...subject.authIdentities.map((identity) => identity.subject),
+        ].filter((value): value is string => Boolean(value)),
+      ),
       isActive: subject.isActive,
       allEmails,
     },

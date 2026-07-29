@@ -451,6 +451,7 @@ model User {
   quipslyNotes QuipslyNote[]
 
   aliases               UserEmail[]
+  authIdentities        UserAuthIdentity[]
   roles                 UserRole[]
   clientProfile         ClientProfile?
   coachProfile          CoachProfile?          @relation("CoachProfileUser")
@@ -624,6 +625,30 @@ model UserEmail {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// Authentication subjects are credentials, not people. One Quipsly person can
+// deliberately prove several Google, Apple, or recovery identities without
+// duplicating their notes, Nests, tasks, or projects. `authority` identifies
+// the issuer boundary and `subject` is the immutable identifier asserted by
+// that authority (for Firebase, the UID).
+model UserAuthIdentity {
+  id              String    @id @default(cuid())
+  userId          String
+  authority       String
+  subject         String
+  provider        String?
+  emailAtLink     String?
+  emailVerifiedAt DateTime?
+  lastSeenAt      DateTime   @default(now())
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([authority, subject])
+  @@index([userId])
+  @@index([emailAtLink])
 }
 
 // Separate role rows mean a user can hold several badges at once without

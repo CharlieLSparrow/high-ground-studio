@@ -31,6 +31,9 @@ type FirebaseIdentityInput = {
   email_verified?: boolean;
   name?: string;
   picture?: string;
+  firebase?: {
+    sign_in_provider?: string;
+  };
 };
 
 async function sessionFromFirebaseIdentity(
@@ -45,6 +48,7 @@ async function sessionFromFirebaseIdentity(
     firebaseUid: decoded.uid,
     email: decoded.email,
     emailVerified: decoded.email_verified,
+    provider: decoded.firebase?.sign_in_provider || null,
     name: decoded.name ?? null,
     image: decoded.picture ?? null,
   });
@@ -81,6 +85,7 @@ export async function getQuipslySession(): Promise<QuipslySession | null> {
       email_verified: decoded.email_verified,
       name: decoded.name,
       picture: decoded.picture,
+      firebase: decoded.firebase,
     });
   } catch (error) {
     console.warn("Quipsly Firebase session cookie was rejected.", {
@@ -110,6 +115,7 @@ export async function getQuipslySessionFromBearer(
       email_verified: decoded.email_verified,
       name: decoded.name,
       picture: decoded.picture,
+      firebase: decoded.firebase,
     });
   } catch (error) {
     console.warn("Quipsly Firebase bearer token was rejected.", {

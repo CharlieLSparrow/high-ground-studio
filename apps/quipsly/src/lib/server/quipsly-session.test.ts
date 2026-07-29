@@ -92,6 +92,7 @@ describe("Quipsly Firebase session boundary", () => {
       firebaseUid: "firebase-user",
       email: "person@example.test",
       emailVerified: true,
+      provider: null,
       name: "Person",
       image: null,
     });

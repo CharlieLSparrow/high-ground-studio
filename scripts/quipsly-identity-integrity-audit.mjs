@@ -87,6 +87,7 @@ function publicUserRef(user) {
     primaryEmail: visibleEmail(user.primaryEmail),
     isActive: user.isActive,
     hasFirebaseUid: Boolean(user.firebaseUid),
+    firebaseIdentityCount: user.authIdentities?.length || 0,
   };
 }
 
@@ -194,6 +195,13 @@ async function main() {
           primaryEmail: true,
           firebaseUid: true,
           isActive: true,
+          authIdentities: {
+            where: { authority: "firebase:quipsly-reef" },
+            select: {
+              authority: true,
+              subject: true,
+            },
+          },
         },
       }),
       prisma.userEmail.findMany({
@@ -293,6 +301,11 @@ async function main() {
       pushMapList(emailsByUserId, user.id, email);
       if (user.firebaseUid) {
         pushMapList(firebaseUidByValue, user.firebaseUid, user);
+      }
+      for (const identity of user.authIdentities) {
+        if (identity.subject !== user.firebaseUid) {
+          pushMapList(firebaseUidByValue, identity.subject, user);
+        }
       }
     }
 
@@ -455,7 +468,11 @@ async function main() {
       }
     }
 
-    const firebaseLinkedActiveUsers = users.filter((user) => user.isActive && user.firebaseUid);
+    const firebaseLinkedActiveUsers = users.filter(
+      (user) =>
+        user.isActive &&
+        (Boolean(user.firebaseUid) || user.authIdentities.length > 0),
+    );
     if (firebaseLinkedActiveUsers.length > 0 && !freePlan) {
       hardIssues.push({
         type: "free-plan-missing",
@@ -543,7 +560,9 @@ async function main() {
         activeFreeMemberships: activeFreeMembershipUserIds.size,
         normalizedPrimaryEmails: primaryByEmail.size,
         normalizedAliasEmails: aliasesByEmail.size,
-        firebaseLinkedUsers: users.filter((user) => Boolean(user.firebaseUid)).length,
+        firebaseLinkedUsers: users.filter(
+          (user) => Boolean(user.firebaseUid) || user.authIdentities.length > 0,
+        ).length,
         firebaseLinkedActiveUsers: firebaseLinkedActiveUsers.length,
       },
       issueCounts: {

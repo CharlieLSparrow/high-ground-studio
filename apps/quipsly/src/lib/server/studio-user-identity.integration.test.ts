@@ -32,7 +32,7 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
     }
   });
 
-  it("rotates a recreated Firebase UID onto the same verified-email user", async () => {
+  it("binds a recreated Firebase UID without overwriting the legacy compatibility UID", async () => {
     const email = `firebase-recovery-${nonce}@example.test`;
     const original = await prisma.user.create({
       data: {
@@ -54,11 +54,90 @@ runLocalDatabaseSmoke("Firebase identity reconciliation local database smoke", (
     await expect(
       prisma.user.findUnique({
         where: { id: original.id },
-        select: { firebaseUid: true, primaryEmail: true },
+        select: {
+          firebaseUid: true,
+          primaryEmail: true,
+          authIdentities: {
+            select: { authority: true, subject: true },
+          },
+        },
       }),
     ).resolves.toEqual({
-      firebaseUid: `firebase-new-${nonce}`,
+      firebaseUid: `firebase-old-${nonce}`,
       primaryEmail: email,
+      authIdentities: [
+        {
+          authority: "firebase:quipsly-reef",
+          subject: `firebase-new-${nonce}`,
+        },
+      ],
+    });
+  });
+
+  it("binds two verified Firebase subjects to one person through primary and alias emails", async () => {
+    const primaryEmail = `firebase-primary-${nonce}@example.test`;
+    const aliasEmail = `firebase-alias-${nonce}@example.test`;
+    const user = await prisma.user.create({
+      data: {
+        primaryEmail,
+        emailVerified: new Date(),
+        aliases: {
+          create: {
+            email: aliasEmail,
+            label: "recovery",
+          },
+        },
+      },
+    });
+    userIds.push(user.id);
+
+    const primaryIdentity = await ensureStudioUserFromFirebaseIdentity({
+      firebaseUid: `firebase-primary-${nonce}`,
+      email: primaryEmail,
+      emailVerified: true,
+      provider: "google.com",
+    });
+    const aliasIdentity = await ensureStudioUserFromFirebaseIdentity({
+      firebaseUid: `firebase-alias-${nonce}`,
+      email: aliasEmail,
+      emailVerified: true,
+      provider: "google.com",
+    });
+
+    expect(primaryIdentity.id).toBe(user.id);
+    expect(aliasIdentity.id).toBe(user.id);
+    await expect(
+      prisma.user.findUnique({
+        where: { id: user.id },
+        select: {
+          firebaseUid: true,
+          authIdentities: {
+            orderBy: { subject: "asc" },
+            select: {
+              authority: true,
+              subject: true,
+              provider: true,
+              emailAtLink: true,
+            },
+          },
+        },
+      }),
+    ).resolves.toEqual({
+      firebaseUid: `firebase-primary-${nonce}`,
+      authIdentities: [
+        {
+          authority: "firebase:quipsly-reef",
+          subject: `firebase-alias-${nonce}`,
+          provider: "google.com",
+          emailAtLink: aliasEmail,
+        },
+        {
+          authority: "firebase:quipsly-reef",
+          subject: `firebase-primary-${nonce}`,
+          provider: "google.com",
+          emailAtLink: primaryEmail,
+        },
+      ],
     });
   });
 

@@ -122,6 +122,7 @@ export async function POST(req: Request) {
       firebaseUid: decodedToken.uid,
       email,
       emailVerified: decodedToken.email_verified,
+      provider: decodedToken.firebase?.sign_in_provider || null,
       name: decodedToken.name || null,
       image: decodedToken.picture || null,
     });

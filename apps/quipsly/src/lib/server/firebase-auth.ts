@@ -18,6 +18,7 @@ export async function verifyBearerToken(req: Request) {
       firebaseUid: decodedToken.uid,
       email: decodedToken.email,
       emailVerified: decodedToken.email_verified,
+      provider: decodedToken.firebase?.sign_in_provider || null,
       name: decodedToken.name || null,
       image: decodedToken.picture || null,
     });
