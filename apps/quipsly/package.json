@@ -78,6 +78,7 @@
     "@types/node": "25.3.3",
     "@types/pg": "^8.20.0",
     "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
     "jest": "^30.4.2",
     "jest-environment-jsdom": "^30.4.1",
     "tailwindcss": "^4.2.2",

@@ -105,8 +105,22 @@ test("Studio deploy helper ignores GitHub auth credential files only", () => {
   assert.match(deployScript, /gha-creds-/);
   assert.match(deployScript, /ALLOW_DIRTY_DEPLOY/);
   assert.match(deployScript, /STUDIO_IMAGE_BUILD_STRATEGY/);
-  assert.match(deployScript, /apps\/studio\/Dockerfile/);
+  assert.match(deployScript, /apps\/quipsly\/Dockerfile/);
   assert.match(dockerfile, /ca-certificates openssl/);
+});
+
+test("Quipsly owns the React DOM declarations required by its dependency-closed image build", () => {
+  const dockerfile = readFileSync("apps/quipsly/Dockerfile", "utf8");
+  const packageJson = JSON.parse(
+    readFileSync("apps/quipsly/package.json", "utf8"),
+  );
+
+  assert.match(
+    dockerfile,
+    /COPY apps\/quipsly\/package\.json \.\/apps\/quipsly\/package\.json/,
+  );
+  assert.equal(packageJson.dependencies?.["react-dom"], "latest");
+  assert.equal(packageJson.devDependencies?.["@types/react-dom"], "19.2.3");
 });
 
 test("Content Studio checkpoints are wired through authenticated API", () => {
@@ -167,24 +181,24 @@ test("Content Studio durable projects are wired through authenticated API", () =
 });
 
 
-test("Prisma db-push job image is available for Cloud SQL schema sync", () => {
-  const dockerfile = readFileSync("ops/prisma-db-push.Dockerfile", "utf8");
-  const cloudbuild = readFileSync("cloudbuild.prisma-db-push.yaml", "utf8");
+test("Quipsly schema job image is available for reviewed Cloud SQL changes", () => {
+  const dockerfile = readFileSync("ops/quipsly-schema.Dockerfile", "utf8");
+  const cloudbuild = readFileSync("cloudbuild.quipsly-schema.yaml", "utf8");
   const gcloudignore = readFileSync(".gcloudignore", "utf8");
 
   assert.match(dockerfile, /pnpm@/);
   assert.match(dockerfile, /prisma\.config\.ts/);
   assert.match(dockerfile, /prisma\/schema\.prisma/);
   assert.match(dockerfile, /ca-certificates openssl/);
-  assert.match(dockerfile, /CMD \["pnpm", "db:push"\]/);
-  assert.match(cloudbuild, /ops\/prisma-db-push\.Dockerfile/);
-  assert.match(cloudbuild, /prisma-db-push/);
+  assert.match(dockerfile, /CMD \["pnpm", "prisma", "migrate", "status"\]/);
+  assert.match(cloudbuild, /ops\/quipsly-schema\.Dockerfile/);
+  assert.match(cloudbuild, /quipsly-schema/);
   assert.match(cloudbuild, /_REGION: us-central1/);
   assert.match(cloudbuild, /\$\{_REGION\}-docker\.pkg\.dev/);
   assert.match(gcloudignore, /^\.env$/m);
   assert.match(gcloudignore, /^\.env\.\*$/m);
-  assert.match(gcloudignore, /^apps\/web\/content\/_inbox$/m);
-  assert.match(gcloudignore, /^apps\/web\/content\/_staging$/m);
+  assert.match(gcloudignore, /^apps\/web\/content\/_inbox\/$/m);
+  assert.match(gcloudignore, /^apps\/web\/content\/_staging\/$/m);
 });
 
 test("preflight script is read-only and completes repository checks", () => {
