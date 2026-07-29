@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
@@ -71,8 +72,10 @@ function requiredEnv(env, name) {
   return value;
 }
 
-function isGeneratedSmokeEmail(email) {
-  return /^codex-(invite|signup|admin|native)-[a-f0-9]{8}@dev\.test$/i.test(String(email || "").trim());
+export function isGeneratedSmokeEmail(email) {
+  return /^codex-(invite|signup|admin|native|mobile-capture)-[a-f0-9]{8}@dev\.test$/i.test(
+    String(email || "").trim(),
+  );
 }
 
 function slugifyEmailForHomeNest(email) {
@@ -85,8 +88,13 @@ function slugifyEmailForHomeNest(email) {
     .slice(0, 72);
 }
 
-function redactEmailList(emails) {
-  return emails.map((email) => email.replace(/^codex-(invite|signup|admin|native)-([a-f0-9]{4})[a-f0-9]{4}/i, "codex-$1-$2****"));
+export function redactEmailList(emails) {
+  return emails.map((email) =>
+    email.replace(
+      /^codex-(invite|signup|admin|native|mobile-capture)-([a-f0-9]{4})[a-f0-9]{4}/i,
+      "codex-$1-$2****",
+    ),
+  );
 }
 
 async function main() {
@@ -119,13 +127,15 @@ async function main() {
           endsWith: "@dev.test",
         },
       },
-      select: { primaryEmail: true },
+      select: { id: true, primaryEmail: true },
     });
 
-    const emails = users
+    const generatedUsers = users
+      .filter((user) => isGeneratedSmokeEmail(user.primaryEmail));
+    const emails = generatedUsers
       .map((user) => user.primaryEmail)
-      .filter(isGeneratedSmokeEmail)
       .sort();
+    const userIds = generatedUsers.map((user) => user.id);
 
     const homeSlugs = emails.map((email) => `home-${slugifyEmailForHomeNest(email)}`);
     const homeProjects = homeSlugs.length
@@ -137,15 +147,52 @@ async function main() {
         select: { id: true, slug: true },
       })
       : [];
+    const createdProjects = emails.length
+      ? await prisma.studioProject.findMany({
+        where: {
+          sourceLabel: { not: "nest-kind:home" },
+          accessGrants: {
+            some: {
+              email: { in: emails },
+              role: "OWNER",
+              status: "ACTIVE",
+            },
+          },
+          documentOperations: {
+            some: {
+              actorEmail: { in: emails },
+              operationType: "create-nest",
+            },
+          },
+        },
+        select: { id: true },
+      })
+      : [];
+    const generatedCallRooms = userIds.length
+      ? await prisma.callRoom.findMany({
+        where: {
+          OR: [
+            { createdByUserId: { in: userIds } },
+            { participants: { some: { userId: { in: userIds } } } },
+          ],
+        },
+        select: { id: true },
+      })
+      : [];
 
     const summary = {
       mode: apply ? "apply" : "dry-run",
       candidateGeneratedSmokeUsers: emails.length,
       candidateGeneratedSmokeHomeProjects: homeProjects.length,
+      candidateGeneratedSmokeCreatedProjects: createdProjects.length,
+      candidateGeneratedSmokeCallRooms: generatedCallRooms.length,
       redactedCandidates: redactEmailList(emails).slice(0, 20),
       deletedInvites: 0,
       deletedGrants: 0,
+      deletedCallRooms: 0,
+      deletedCreatedProjects: 0,
       deletedHomeProjects: 0,
+      deletedMemberships: 0,
       deletedUsers: 0,
       deletedFirebaseUsers: 0,
       firebaseUsersMissing: 0,
@@ -156,14 +203,35 @@ async function main() {
       return;
     }
 
+    for (const room of generatedCallRooms) {
+      await prisma.callRoom.delete({ where: { id: room.id } });
+      summary.deletedCallRooms += 1;
+    }
+
     for (const email of emails) {
       summary.deletedInvites += (await prisma.studioNestInvite.deleteMany({ where: { email } })).count;
-      summary.deletedGrants += (await prisma.studioProjectAccessGrant.deleteMany({ where: { email } })).count;
+    }
+
+    for (const project of createdProjects) {
+      await prisma.studioProject.delete({ where: { id: project.id } });
+      summary.deletedCreatedProjects += 1;
+    }
+
+    for (const email of emails) {
+      summary.deletedGrants += (
+        await prisma.studioProjectAccessGrant.deleteMany({ where: { email } })
+      ).count;
     }
 
     for (const project of homeProjects) {
       await prisma.studioProject.delete({ where: { id: project.id } });
       summary.deletedHomeProjects += 1;
+    }
+
+    if (userIds.length) {
+      summary.deletedMemberships = (
+        await prisma.membership.deleteMany({ where: { userId: { in: userIds } } })
+      ).count;
     }
 
     for (const email of emails) {
@@ -187,7 +255,14 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(`QUIPSLY_GENERATED_SMOKE_CLEANUP_FAIL ${error instanceof Error ? error.message : String(error)}`);
-  process.exit(1);
-});
+if (
+  process.argv[1]
+  && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href
+) {
+  main().catch((error) => {
+    console.error(
+      `QUIPSLY_GENERATED_SMOKE_CLEANUP_FAIL ${error instanceof Error ? error.message : String(error)}`,
+    );
+    process.exit(1);
+  });
+}
