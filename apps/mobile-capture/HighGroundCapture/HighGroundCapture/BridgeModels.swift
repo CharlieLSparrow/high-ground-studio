@@ -1040,6 +1040,14 @@ struct MobileCaptureTodayResponse: Codable, Hashable {
     let boundaries: MobileCaptureTodayBoundaries?
 }
 
+struct MobileCaptureResolvedWorkTag: Codable, Hashable {
+    let id: String
+    let requestedLabel: String
+    let label: String
+    let slug: String
+    let created: Bool
+}
+
 struct MobileCaptureWorkTagMutationResponse: Codable {
     let ok: Bool
     let code: String?
@@ -1048,6 +1056,9 @@ struct MobileCaptureWorkTagMutationResponse: Codable {
     let entityId: String?
     let projectId: String?
     let tagIds: [String]?
+    let requestedTagIds: [String]?
+    let newTagLabels: [String]?
+    let resolvedTags: [MobileCaptureResolvedWorkTag]?
     let updatedAt: String?
     let tagRevision: Int?
     let receiptId: String?
@@ -2765,6 +2776,28 @@ final class CaptureTodayClient: ObservableObject {
         return tagIDs.compactMap { labels[$0] }
     }
 
+    func effectiveTagLabels(
+        kind: PendingWorkTagDecision.EntityKind,
+        entityID: String,
+        projectID: String,
+        canonicalTagIDs: [String],
+        canonicalTagLabels: [String]
+    ) -> [String] {
+        guard let pending = pendingWorkTagDecision(kind: kind, entityID: entityID) else {
+            return canonicalTagLabels
+        }
+        let effectiveIDs = effectiveTagIDs(
+            kind: kind,
+            entityID: entityID,
+            canonicalTagIDs: canonicalTagIDs
+        )
+        var seen = Set<String>()
+        return (tagLabels(projectID: projectID, tagIDs: effectiveIDs) + pending.requestedNewTagLabels)
+            .filter {
+                seen.insert($0.lowercased(with: Locale(identifier: "en_US_POSIX"))).inserted
+            }
+    }
+
     func loadPreview() {
         publishReminderDecisionCounts()
         publishWorkTagDecisionCounts()
@@ -2954,6 +2987,7 @@ final class CaptureTodayClient: ObservableObject {
         entityID: String,
         projectID: String,
         tagIDs: [String],
+        newTagLabels: [String] = [],
         expectedUpdatedAt: String,
         expectedTagRevision: Int? = nil,
         availableTagIDs: Set<String>? = nil
@@ -2962,7 +2996,7 @@ final class CaptureTodayClient: ObservableObject {
             ?? Set(tags(for: projectID).filter(\.isActive).map(\.id))
         let normalized = Array(Set(tagIDs)).sorted()
         guard normalized.count == tagIDs.count,
-              normalized.count <= 24,
+              normalized.count + newTagLabels.count <= 24,
               normalized.allSatisfy(allowedTagIDs.contains) else {
             errorMessage = "Choose up to 24 active tags from this record’s Nest."
             return false
@@ -2973,6 +3007,7 @@ final class CaptureTodayClient: ObservableObject {
                 entityID: entityID,
                 projectID: projectID,
                 tagIDs: normalized,
+                newTagLabels: newTagLabels,
                 expectedUpdatedAt: expectedUpdatedAt,
                 expectedTagRevision: expectedTagRevision
             )
@@ -3239,6 +3274,7 @@ final class CaptureTodayClient: ObservableObject {
                 "entityKind": decision.entityKind.rawValue,
                 "entityId": decision.entityID,
                 "tagIds": decision.tagIDs,
+                "newTagLabels": decision.requestedNewTagLabels,
                 "expectedUpdatedAt": decision.expectedUpdatedAt,
                 "clientRequestId": decision.clientRequestID,
             ]
@@ -3268,10 +3304,20 @@ final class CaptureTodayClient: ObservableObject {
                 return acknowledgedTagRevision == expectedTagRevision
                     || acknowledgedTagRevision == expectedTagRevision + 1
             }()
+            let resolvedTags = payload.resolvedTags ?? []
+            let acknowledgedFinalTagIDs = Set(payload.tagIds ?? [])
+            let expectedFinalTagIDs = Set(decision.tagIDs + resolvedTags.map(\.id))
             guard payload.entityKind == decision.entityKind.rawValue,
                   payload.entityId == decision.entityID,
                   payload.projectId == decision.projectID,
-                  payload.tagIds?.sorted() == decision.tagIDs,
+                  payload.requestedTagIds?.sorted() == decision.tagIDs,
+                  payload.newTagLabels == decision.requestedNewTagLabels,
+                  resolvedTags.count == decision.requestedNewTagLabels.count,
+                  resolvedTags.map(\.requestedLabel) == decision.requestedNewTagLabels,
+                  !resolvedTags.contains(where: {
+                      $0.id.isEmpty || $0.requestedLabel.isEmpty || $0.label.isEmpty || $0.slug.isEmpty
+                  }),
+                  acknowledgedFinalTagIDs == expectedFinalTagIDs,
                   documentRevisionMatches,
                   payload.receiptId == "work-tags-\(decision.clientRequestID)" else {
                 let message = "Nest returned a different tag identity or selection. The protected phone decision is held for review."

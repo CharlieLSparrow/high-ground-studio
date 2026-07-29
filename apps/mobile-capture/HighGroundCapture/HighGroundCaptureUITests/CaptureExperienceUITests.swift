@@ -200,27 +200,39 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(taskTitle)
         XCTAssertTrue(taskTitle.exists)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "CaptureWorkTask_preview-work-task").firstMatch.exists)
-        let taskTagEditor = app.buttons["Edit tags for Proof-listen the episode opening"]
+        let taskTagEditor = app.buttons["Explore tags for Proof-listen the episode opening"]
         reveal(taskTagEditor)
         XCTAssertTrue(taskTagEditor.exists)
-        XCTAssertFalse(taskTagEditor.isEnabled, "Preview Work must expose tag ownership without pretending a canonical mutation is available.")
+        XCTAssertTrue(taskTagEditor.isEnabled, "Preview Work should allow safe inspection of the real tag editor.")
+        taskTagEditor.tap()
+        XCTAssertTrue(app.navigationBars["Edit tags"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkTagEditorPreviewBoundary"].exists)
+        let newTag = app.textFields["CaptureTodayWorkTagNewLabel"]
+        XCTAssertTrue(newTag.waitForExistence(timeout: 5))
+        newTag.tap()
+        newTag.typeText("Recording day")
+        let saveTags = app.buttons["CaptureTodayWorkTagsSave"]
+        XCTAssertTrue(saveTags.exists)
+        XCTAssertFalse(saveTags.isEnabled, "Preview exploration must keep the canonical Save action disabled.")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.navigationBars["Edit tags"].waitForNonExistence(timeout: 5))
         let goalTitle = app.staticTexts["Publish an episode we trust"]
         reveal(goalTitle)
         XCTAssertTrue(goalTitle.exists)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "CaptureWorkGoal_preview-work-goal").firstMatch.exists)
-        let goalTagEditor = app.buttons["Edit tags for Publish an episode we trust"]
+        let goalTagEditor = app.buttons["Explore tags for Publish an episode we trust"]
         reveal(goalTagEditor)
         XCTAssertTrue(goalTagEditor.exists)
-        XCTAssertFalse(goalTagEditor.isEnabled, "Preview Work must never fake a Goal tag mutation.")
+        XCTAssertTrue(goalTagEditor.isEnabled)
 
         let noteTitle = app.staticTexts["Opening idea"]
         reveal(noteTitle)
         XCTAssertTrue(noteTitle.exists)
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "CaptureWorkNote_preview-work-note").firstMatch.exists)
-        let noteTagEditor = app.buttons["Edit tags for Opening idea"]
+        let noteTagEditor = app.buttons["Explore tags for Opening idea"]
         reveal(noteTagEditor)
         XCTAssertTrue(noteTagEditor.exists)
-        XCTAssertFalse(noteTagEditor.isEnabled, "Preview Work must expose canonical document-tag ownership without pretending a mutation is available.")
+        XCTAssertTrue(noteTagEditor.isEnabled)
 
         let quickTask = app.buttons["CaptureWorkQuickEntry_TASK"]
         for _ in 0..<8 where !quickTask.isHittable { app.swipeDown() }

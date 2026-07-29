@@ -28,7 +28,7 @@ describe("authenticated shared work tags route", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
     const prisma = {};
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
-    jest.mocked(replaceWorkEntityTags).mockResolvedValue({ ok: true, entityKind: "session", entityId: "room-1", projectId: "project-1", tagIds: ["tag-1"], updatedAt: new Date("2026-07-19T08:00:00.000Z"), tagRevision: null, receiptId: "receipt-1", idempotentReplay: false });
+    jest.mocked(replaceWorkEntityTags).mockResolvedValue({ ok: true, entityKind: "session", entityId: "room-1", projectId: "project-1", tagIds: ["tag-1"], requestedTagIds: ["tag-1"], newTagLabels: [], resolvedTags: [], updatedAt: new Date("2026-07-19T08:00:00.000Z"), tagRevision: null, receiptId: "receipt-1", idempotentReplay: false });
     const response = await POST(request({ entityKind: "session", entityId: "room-1", tagIds: ["tag-1"], expectedUpdatedAt: "2026-07-19T07:59:00.000Z" }));
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({ ok: true, entityKind: "session", tagIds: ["tag-1"], boundaries: { projectScoped: true, externalSideEffects: false } });
@@ -46,6 +46,9 @@ describe("authenticated shared work tags route", () => {
       entityId: "task-1",
       projectId: "project-1",
       tagIds: ["tag-1"],
+      requestedTagIds: ["tag-1"],
+      newTagLabels: [],
+      resolvedTags: [],
       updatedAt: new Date("2026-07-23T08:00:00.000Z"),
       tagRevision: null,
       receiptId: `work-tags-${clientRequestId}`,
@@ -98,7 +101,7 @@ describe("authenticated shared work tags route", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
     const prisma = {};
     jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
-    jest.mocked(replaceWorkEntityTags).mockResolvedValue({ ok: true, entityKind: "note", entityId: "note-1", projectId: "project-1", tagIds: ["tag-1"], updatedAt: new Date("2026-07-23T08:00:00.000Z"), tagRevision: null, receiptId: "receipt-note", idempotentReplay: false });
+    jest.mocked(replaceWorkEntityTags).mockResolvedValue({ ok: true, entityKind: "note", entityId: "note-1", projectId: "project-1", tagIds: ["tag-1"], requestedTagIds: ["tag-1"], newTagLabels: [], resolvedTags: [], updatedAt: new Date("2026-07-23T08:00:00.000Z"), tagRevision: null, receiptId: "receipt-note", idempotentReplay: false });
     const response = await POST(request({ entityKind: "note", entityId: "note-1", tagIds: ["tag-1"], expectedUpdatedAt: "2026-07-23T07:59:00.000Z" }));
     expect(response.status).toBe(200);
     expect(replaceWorkEntityTags).toHaveBeenCalledWith(expect.objectContaining({ prisma, entityKind: "note", entityId: "note-1", tagIds: ["tag-1"] }));
@@ -115,6 +118,9 @@ describe("authenticated shared work tags route", () => {
       entityId: "document-1",
       projectId: "project-1",
       tagIds: ["tag-1"],
+      requestedTagIds: ["tag-1"],
+      newTagLabels: [],
+      resolvedTags: [],
       updatedAt: new Date("2026-07-28T20:00:00.000Z"),
       tagRevision: 5,
       receiptId: "receipt-document",
@@ -143,5 +149,68 @@ describe("authenticated shared work tags route", () => {
       clientRequestId,
       surface: "ios-capture-today",
     }));
+  });
+
+  it("atomically resolves new iPhone vocabulary inside the complete tag decision", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
+    const prisma = {};
+    const clientRequestId = "6593b18d-93a5-4d25-826e-b971e3864948";
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+    jest.mocked(replaceWorkEntityTags).mockResolvedValue({
+      ok: true,
+      entityKind: "document",
+      entityId: "document-1",
+      projectId: "project-1",
+      tagIds: ["tag-existing", "tag-new"],
+      requestedTagIds: ["tag-existing"],
+      newTagLabels: ["Recording day"],
+      resolvedTags: [{ id: "tag-new", requestedLabel: "Recording day", label: "Recording day", slug: "recording-day", created: true }],
+      updatedAt: new Date("2026-07-29T12:00:00.000Z"),
+      tagRevision: 5,
+      receiptId: `work-tags-${clientRequestId}`,
+      idempotentReplay: false,
+    });
+    const response = await POST(request({
+      entityKind: "document",
+      entityId: "document-1",
+      tagIds: ["tag-existing"],
+      newTagLabels: ["Recording day"],
+      expectedUpdatedAt: "2026-07-29T11:59:00.000Z",
+      expectedTagRevision: 4,
+      clientRequestId,
+    }));
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      tagIds: ["tag-existing", "tag-new"],
+      requestedTagIds: ["tag-existing"],
+      newTagLabels: ["Recording day"],
+      resolvedTags: [{ id: "tag-new", created: true }],
+      receiptId: `work-tags-${clientRequestId}`,
+      boundaries: { projectScoped: true, externalSideEffects: false },
+    });
+    expect(replaceWorkEntityTags).toHaveBeenCalledWith(expect.objectContaining({
+      prisma,
+      entityKind: "document",
+      tagIds: ["tag-existing"],
+      newTagLabels: ["Recording day"],
+      expectedTagRevision: 4,
+      clientRequestId,
+      surface: "ios-capture-today",
+    }));
+  });
+
+  it("rejects an empty new vocabulary entry instead of silently dropping part of the phone decision", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", primaryEmail: "person@example.test" } } as any);
+    const response = await POST(request({
+      entityKind: "task",
+      entityId: "task-1",
+      tagIds: [],
+      newTagLabels: [""],
+      expectedUpdatedAt: "2026-07-29T11:59:00.000Z",
+    }));
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ ok: false, code: "INVALID_INPUT" });
+    expect(replaceWorkEntityTags).not.toHaveBeenCalled();
   });
 });

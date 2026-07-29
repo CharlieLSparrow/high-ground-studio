@@ -58,9 +58,15 @@ export async function POST(request: Request) {
     }
   }
   const tagIds = Array.isArray(body.tagIds) ? body.tagIds.map((value) => text(value)).filter(Boolean) : null;
+  const newTagLabels = Array.isArray(body.newTagLabels)
+    ? body.newTagLabels.map((value) => text(value, 120))
+    : body.newTagLabels === undefined ? [] : null;
   if (!["task", "goal", "session", "note", "document"].includes(entityKind)
       || !entityId
       || !tagIds
+      || !newTagLabels
+      || newTagLabels.some((value) => !value)
+      || tagIds.length + newTagLabels.length > 24
       || !Number.isFinite(expectedUpdatedAt.getTime())
       || (entityKind === "document" && (!Number.isInteger(expectedTagRevision) || expectedTagRevision < 0))
       || (clientRequestId && !UUID_PATTERN.test(clientRequestId))) {
@@ -74,6 +80,7 @@ export async function POST(request: Request) {
       entityKind,
       entityId,
       tagIds,
+      newTagLabels,
       expectedUpdatedAt,
       expectedTagRevision: entityKind === "document" ? expectedTagRevision : undefined,
       clientRequestId: clientRequestId || undefined,

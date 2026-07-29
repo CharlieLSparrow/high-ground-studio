@@ -281,6 +281,75 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     })).resolves.toEqual([{ tagId }]);
   });
 
+  it("creates or reuses vocabulary inside one replay-safe complete iPhone tag decision", async () => {
+    const task = await prisma.actionItem.findUniqueOrThrow({ where: { id: taskId } });
+    const clientRequestId = randomUUID();
+    const first = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "task",
+      entityId: taskId,
+      tagIds: [tagId],
+      newTagLabels: ["Recording day"],
+      expectedUpdatedAt: task.updatedAt,
+      clientRequestId,
+      surface: "ios-capture-today",
+    });
+    expect(first).toMatchObject({
+      ok: true,
+      requestedTagIds: [tagId],
+      newTagLabels: ["Recording day"],
+      resolvedTags: [{ requestedLabel: "Recording day", label: "Recording day", slug: "recording-day", created: true }],
+      idempotentReplay: false,
+    });
+    if (!first.ok) throw new Error("atomic tag setup failed");
+    expect(first.tagIds).toHaveLength(2);
+
+    const replay = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "task",
+      entityId: taskId,
+      tagIds: [tagId],
+      newTagLabels: ["Recording day"],
+      expectedUpdatedAt: task.updatedAt,
+      clientRequestId,
+      surface: "ios-capture-today",
+    });
+    expect(replay).toMatchObject({
+      ok: true,
+      tagIds: first.tagIds,
+      requestedTagIds: [tagId],
+      newTagLabels: ["Recording day"],
+      idempotentReplay: true,
+    });
+
+    const conflictingReuse = await replaceWorkEntityTags({
+      prisma,
+      actorUserId,
+      actorEmail,
+      entityKind: "task",
+      entityId: taskId,
+      tagIds: [tagId],
+      newTagLabels: ["Editing day"],
+      expectedUpdatedAt: task.updatedAt,
+      clientRequestId,
+      surface: "ios-capture-today",
+    });
+    expect(conflictingReuse).toMatchObject({ ok: false, code: "CONFLICT" });
+    await expect(prisma.studioTag.findMany({
+      where: { projectId, slug: "recording-day" },
+      select: { id: true, label: true },
+    })).resolves.toHaveLength(1);
+    await expect(prisma.actionItemTagLink.findMany({
+      where: { actionItemId: taskId },
+      orderBy: { tagId: "asc" },
+      select: { tagId: true },
+    })).resolves.toEqual(first.tagIds.map((resolvedTagId) => ({ tagId: resolvedTagId })));
+  });
+
   it("creates reusable vocabulary from an owned Session note and rejects another actor", async () => {
     const note = await prisma.coachingNote.findUniqueOrThrow({ where: { id: noteId } });
     const created = await createAndAssignWorkEntityTag({

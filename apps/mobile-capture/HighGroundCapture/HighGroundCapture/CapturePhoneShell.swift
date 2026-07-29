@@ -337,7 +337,10 @@ private struct CaptureWorkView: View {
                 canonicalTagIDs: task.tagIds ?? []
             )
             return (showsCompletedTasks || task.status == "OPEN")
-                && matches([task.title, task.detail] + tagLabels(for: effectiveTagIDs), tagIDs: effectiveTagIDs)
+                && matches(
+                    [task.title, task.detail] + effectiveTagLabels(kind: .task, entityID: task.id, tagIDs: effectiveTagIDs),
+                    tagIDs: effectiveTagIDs
+                )
         }
     }
 
@@ -349,7 +352,10 @@ private struct CaptureWorkView: View {
                 canonicalTagIDs: goal.tagIds ?? []
             )
             return goal.status == "ACTIVE"
-                && matches([goal.title, goal.description, goal.progressNote] + tagLabels(for: effectiveTagIDs), tagIDs: effectiveTagIDs)
+                && matches(
+                    [goal.title, goal.description, goal.progressNote] + effectiveTagLabels(kind: .goal, entityID: goal.id, tagIDs: effectiveTagIDs),
+                    tagIDs: effectiveTagIDs
+                )
         }
     }
 
@@ -360,7 +366,10 @@ private struct CaptureWorkView: View {
                 entityID: note.id,
                 canonicalTagIDs: note.tagIds
             )
-            return matches([note.title, note.excerpt] + tagLabels(for: effectiveTagIDs), tagIDs: effectiveTagIDs)
+            return matches(
+                [note.title, note.excerpt] + effectiveTagLabels(kind: .document, entityID: note.id, tagIDs: effectiveTagIDs),
+                tagIDs: effectiveTagIDs
+            )
         }
     }
 
@@ -467,6 +476,7 @@ private struct CaptureWorkView: View {
                     project: project,
                     canonicalTagIDs: task.tagIds ?? [],
                     expectedUpdatedAt: task.updatedAt,
+                    readOnlyPreview: model.usesPreviewData,
                     availableTags: workTagCatalog,
                     onSaved: reloadSelectedWork
                 )
@@ -482,6 +492,7 @@ private struct CaptureWorkView: View {
                     project: project,
                     canonicalTagIDs: goal.tagIds ?? [],
                     expectedUpdatedAt: goal.updatedAt,
+                    readOnlyPreview: model.usesPreviewData,
                     availableTags: workTagCatalog,
                     onSaved: reloadSelectedWork
                 )
@@ -502,6 +513,7 @@ private struct CaptureWorkView: View {
                     canonicalTagIDs: note.tagIds,
                     expectedUpdatedAt: note.updatedAt,
                     expectedTagRevision: note.tagRevision,
+                    readOnlyPreview: model.usesPreviewData,
                     availableTags: workTagCatalog,
                     onSaved: reloadSelectedWork
                 )
@@ -790,19 +802,19 @@ private struct CaptureWorkView: View {
                 if let detail = task.detail, !detail.isEmpty {
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 }
-                workTagLabels(tagLabels(for: visibleTagIDs))
+                workTagLabels(effectiveTagLabels(kind: .task, entityID: task.id, tagIDs: visibleTagIDs))
                 workTagDecisionStatus(kind: .task, entityID: task.id)
                 if task.canEditTags == true {
                     Button {
                         taskTagsToEdit = task
                     } label: {
-                        Label("Edit tags", systemImage: "tag")
+                        Label(model.usesPreviewData ? "Explore tags" : "Edit tags", systemImage: "tag")
                             .frame(minHeight: 44)
                     }
                     .font(.caption.weight(.bold))
                     .buttonStyle(.bordered)
-                    .disabled(model.usesPreviewData || model.todayClient.isMutating || pendingTags != nil)
-                    .accessibilityLabel("Edit tags for \(task.title)")
+                    .disabled(model.todayClient.isMutating || pendingTags != nil)
+                    .accessibilityLabel("\(model.usesPreviewData ? "Explore" : "Edit") tags for \(task.title)")
                     .accessibilityIdentifier("CaptureWorkTaskTagsEdit_\(task.id)")
                     .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
                 }
@@ -852,19 +864,19 @@ private struct CaptureWorkView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
-            workTagLabels(tagLabels(for: visibleTagIDs))
+            workTagLabels(effectiveTagLabels(kind: .goal, entityID: goal.id, tagIDs: visibleTagIDs))
             workTagDecisionStatus(kind: .goal, entityID: goal.id)
             if goal.canEditTags == true {
                 Button {
                     goalTagsToEdit = goal
                 } label: {
-                    Label("Edit tags", systemImage: "tag")
+                    Label(model.usesPreviewData ? "Explore tags" : "Edit tags", systemImage: "tag")
                         .frame(minHeight: 44)
                 }
                 .font(.caption.weight(.bold))
                 .buttonStyle(.bordered)
-                .disabled(model.usesPreviewData || model.todayClient.isMutating || pendingTags != nil)
-                .accessibilityLabel("Edit tags for \(goal.title)")
+                .disabled(model.todayClient.isMutating || pendingTags != nil)
+                .accessibilityLabel("\(model.usesPreviewData ? "Explore" : "Edit") tags for \(goal.title)")
                 .accessibilityIdentifier("CaptureWorkGoalTagsEdit_\(goal.id)")
                 .accessibilityHint("Protects the complete tag selection on this iPhone before reconciling it with the same Nest.")
             }
@@ -887,7 +899,7 @@ private struct CaptureWorkView: View {
             entityID: note.id,
             canonicalTagIDs: note.tagIds
         )
-        let visibleTagLabels = tagLabels(for: visibleTagIDs)
+        let visibleTagLabels = effectiveTagLabels(kind: .document, entityID: note.id, tagIDs: visibleTagIDs)
         VStack(alignment: .leading, spacing: 8) {
             if let url = URL(string: "\(baseURL)\(note.webPath)") {
                 Link(destination: url) {
@@ -904,13 +916,13 @@ private struct CaptureWorkView: View {
                 Button {
                     noteTagsToEdit = note
                 } label: {
-                    Label("Edit tags", systemImage: "tag")
+                    Label(model.usesPreviewData ? "Explore tags" : "Edit tags", systemImage: "tag")
                         .frame(minHeight: 44)
                 }
                 .font(.caption.weight(.bold))
                 .buttonStyle(.bordered)
-                .disabled(model.usesPreviewData || model.todayClient.isMutating || pendingTags != nil)
-                .accessibilityLabel("Edit tags for \(note.title)")
+                .disabled(model.todayClient.isMutating || pendingTags != nil)
+                .accessibilityLabel("\(model.usesPreviewData ? "Explore" : "Edit") tags for \(note.title)")
                 .accessibilityIdentifier("CaptureWorkNoteTagsEdit_\(note.id)")
                 .accessibilityHint("Protects the complete document tag selection on this iPhone before reconciling it with the same Nest.")
             }
@@ -955,6 +967,20 @@ private struct CaptureWorkView: View {
     private func tagLabels(for tagIDs: [String]) -> [String] {
         let labelsByID = Dictionary(uniqueKeysWithValues: (workspace?.tags ?? []).map { ($0.id, $0.label) })
         return tagIDs.compactMap { labelsByID[$0] }
+    }
+
+    private func effectiveTagLabels(
+        kind: PendingWorkTagDecision.EntityKind,
+        entityID: String,
+        tagIDs: [String]
+    ) -> [String] {
+        let pendingLabels = model.todayClient
+            .pendingWorkTagDecision(kind: kind, entityID: entityID)?
+            .requestedNewTagLabels ?? []
+        var seen = Set<String>()
+        return (tagLabels(for: tagIDs) + pendingLabels).filter {
+            seen.insert($0.lowercased(with: Locale(identifier: "en_US_POSIX"))).inserted
+        }
     }
 
     @ViewBuilder
@@ -1100,11 +1126,6 @@ struct TodayFollowThroughCard: View {
                                     .padding(.top, 2)
                                 VStack(alignment: .leading, spacing: 2) {
                                     let pendingTags = client.pendingWorkTagDecision(kind: .task, entityID: task.id)
-                                    let visibleTagIDs = client.effectiveTagIDs(
-                                        kind: .task,
-                                        entityID: task.id,
-                                        canonicalTagIDs: task.tagIds ?? []
-                                    )
                                     Text(task.title)
                                         .font(.subheadline.weight(.semibold))
                                         .accessibilityIdentifier("CaptureTodayTask_\(task.id)")
@@ -1114,9 +1135,13 @@ struct TodayFollowThroughCard: View {
                                     if let project = task.project {
                                         TodayProjectTagLine(
                                             project: project,
-                                            tagLabels: pendingTags == nil
-                                                ? task.tagLabels ?? []
-                                                : client.tagLabels(projectID: project.id, tagIDs: visibleTagIDs),
+                                            tagLabels: client.effectiveTagLabels(
+                                                kind: .task,
+                                                entityID: task.id,
+                                                projectID: project.id,
+                                                canonicalTagIDs: task.tagIds ?? [],
+                                                canonicalTagLabels: task.tagLabels ?? []
+                                            ),
                                             identifier: "CaptureTodayTaskTags_\(task.id)"
                                         )
                                         if let pendingTags {
@@ -1392,11 +1417,6 @@ struct TodayFollowThroughCard: View {
                     ForEach(client.goals.prefix(2)) { goal in
                         VStack(alignment: .leading, spacing: 7) {
                             let pendingTags = client.pendingWorkTagDecision(kind: .goal, entityID: goal.id)
-                            let visibleTagIDs = client.effectiveTagIDs(
-                                kind: .goal,
-                                entityID: goal.id,
-                                canonicalTagIDs: goal.tagIds ?? []
-                            )
                             HStack {
                                 Text(goal.title)
                                     .font(.subheadline.weight(.semibold))
@@ -1420,9 +1440,13 @@ struct TodayFollowThroughCard: View {
                             if let project = goal.project {
                                 TodayProjectTagLine(
                                     project: project,
-                                    tagLabels: pendingTags == nil
-                                        ? goal.tagLabels ?? []
-                                        : client.tagLabels(projectID: project.id, tagIDs: visibleTagIDs),
+                                    tagLabels: client.effectiveTagLabels(
+                                        kind: .goal,
+                                        entityID: goal.id,
+                                        projectID: project.id,
+                                        canonicalTagIDs: goal.tagIds ?? [],
+                                        canonicalTagLabels: goal.tagLabels ?? []
+                                    ),
                                     identifier: "CaptureTodayGoalTags_\(goal.id)"
                                 )
                                 if let pendingTags {
@@ -1806,11 +1830,13 @@ private struct TodayWorkTagSheet: View {
     let canonicalTagIDs: [String]
     let expectedUpdatedAt: String
     let expectedTagRevision: Int?
+    let readOnlyPreview: Bool
     let availableTags: [MobileCaptureTodayTag]?
     let onSaved: (() -> Void)?
 
     @State private var selectedTagIDs: Set<String>
     @State private var searchText = ""
+    @State private var newTagLabel = ""
 
     init(
         client: CaptureTodayClient,
@@ -1821,6 +1847,7 @@ private struct TodayWorkTagSheet: View {
         canonicalTagIDs: [String],
         expectedUpdatedAt: String,
         expectedTagRevision: Int? = nil,
+        readOnlyPreview: Bool = false,
         availableTags: [MobileCaptureTodayTag]? = nil,
         onSaved: (() -> Void)? = nil
     ) {
@@ -1832,6 +1859,7 @@ private struct TodayWorkTagSheet: View {
         self.canonicalTagIDs = canonicalTagIDs
         self.expectedUpdatedAt = expectedUpdatedAt
         self.expectedTagRevision = expectedTagRevision
+        self.readOnlyPreview = readOnlyPreview
         self.availableTags = availableTags
         self.onSaved = onSaved
         _selectedTagIDs = State(initialValue: Set(canonicalTagIDs))
@@ -1864,13 +1892,69 @@ private struct TodayWorkTagSheet: View {
         }
     }
 
+    private var normalizedNewTagLabel: String {
+        let compatible = newTagLabel.precomposedStringWithCompatibilityMapping
+        let withoutControls = String(
+            compatible.unicodeScalars.filter {
+                !CharacterSet.controlCharacters.contains($0)
+            }
+        )
+        let trimmed = withoutControls.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed
+            .drop(while: { $0 == "#" })
+            .drop(while: { $0.isWhitespace })
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    private var newTagRequested: Bool {
+        !newTagLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var newTagError: String? {
+        guard newTagRequested else { return nil }
+        guard !normalizedNewTagLabel.isEmpty else { return "Enter a name after the #." }
+        guard normalizedNewTagLabel.utf16.count <= 80 else { return "Keep reusable tag names to 80 characters." }
+        guard selectedTagIDs.count < 24 else { return "Remove one selected tag before adding another." }
+        return nil
+    }
+
+    private var matchingExistingTag: MobileCaptureTodayTag? {
+        guard !normalizedNewTagLabel.isEmpty else { return nil }
+        return tagCatalog.first {
+            $0.isActive
+                && canonicalNewTagLabel($0.label) == canonicalNewTagLabel(normalizedNewTagLabel)
+        }
+    }
+
+    private func canonicalNewTagLabel(_ label: String) -> String {
+        label
+            .precomposedStringWithCompatibilityMapping
+            .lowercased(with: Locale(identifier: "en_US_POSIX"))
+    }
+
     private var saveDisabled: Bool {
-        !selectionChanged || !archivedSelection.isEmpty || client.isMutating
+        (!selectionChanged && !newTagRequested)
+            || !archivedSelection.isEmpty
+            || newTagError != nil
+            || readOnlyPreview
+            || client.isMutating
     }
 
     var body: some View {
         NavigationStack {
             List {
+                if readOnlyPreview {
+                    Section {
+                        Label(
+                            "Preview data · explore this editor, but Save stays off and no canonical tag can change.",
+                            systemImage: "eye"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("CaptureWorkTagEditorPreviewBoundary")
+                    }
+                }
                 Section {
                     VStack(alignment: .leading, spacing: 5) {
                         Text(entityTitle)
@@ -1888,7 +1972,7 @@ private struct TodayWorkTagSheet: View {
                             searchText.isEmpty ? "No reusable tags yet" : "No matching tags",
                             systemImage: "tag.slash",
                             description: Text(searchText.isEmpty
-                                ? "Create the first reusable label in Nest, then refresh Today."
+                                ? "Create the first reusable label below."
                                 : "Try another search.")
                         )
                     } else {
@@ -1925,6 +2009,31 @@ private struct TodayWorkTagSheet: View {
                     }
                 }
 
+                Section("Create or reuse a tag") {
+                    TextField("e.g. Recording day", text: $newTagLabel)
+                        .textInputAutocapitalization(.sentences)
+                        .accessibilityLabel("New reusable tag")
+                        .accessibilityIdentifier("CaptureTodayWorkTagNewLabel")
+                    if let matchingExistingTag {
+                        Label(
+                            "Existing #\(matchingExistingTag.label) will be reused—no duplicate.",
+                            systemImage: "arrow.triangle.2.circlepath"
+                        )
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.blue)
+                    } else if newTagRequested, newTagError == nil {
+                        Text("#\(normalizedNewTagLabel) will be private to \(project.name) and selected on this record.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if let newTagError {
+                        Label(newTagError, systemImage: "exclamationmark.triangle.fill")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("CaptureTodayWorkTagNewLabelError")
+                    }
+                }
+
                 Section {
                     if !archivedSelection.isEmpty {
                         Label(
@@ -1937,7 +2046,7 @@ private struct TodayWorkTagSheet: View {
                     Text("This saves the complete tag selection in a protected phone outbox first, so it can survive a lost connection or relaunch. It changes only this Quipsly record—never a calendar, provider, message, delivery, or publication.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text("Create, rename, merge, and archive the reusable vocabulary in Nest. This iPhone applies active labels from this exact Nest.")
+                    Text("This iPhone can create or reuse one private label while saving the complete selection atomically. Rename, merge, archive, and restore the shared vocabulary in Nest, where impact and rollback receipts remain visible.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -1948,7 +2057,9 @@ private struct TodayWorkTagSheet: View {
                     saveSelection()
                 } label: {
                     Label(
-                        client.isMutating ? "Saving…" : "Save changes",
+                        client.isMutating
+                            ? "Saving…"
+                            : newTagRequested ? "Save & add tag" : "Save changes",
                         systemImage: "checkmark.circle.fill"
                     )
                     .font(.headline)
@@ -1974,12 +2085,14 @@ private struct TodayWorkTagSheet: View {
 
     private func saveSelection() {
         let selection = selectedTagIDs.sorted()
+        let newTagLabels = newTagRequested ? [normalizedNewTagLabel] : []
         Task {
             let saved = await client.setWorkTags(
                 kind: kind,
                 entityID: entityID,
                 projectID: project.id,
                 tagIDs: selection,
+                newTagLabels: newTagLabels,
                 expectedUpdatedAt: expectedUpdatedAt,
                 expectedTagRevision: expectedTagRevision,
                 availableTagIDs: Set(tagCatalog.filter(\.isActive).map(\.id))

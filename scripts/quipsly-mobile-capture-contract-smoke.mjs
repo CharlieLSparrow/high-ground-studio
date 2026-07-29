@@ -659,6 +659,8 @@ function checkReviewDigestContractSources() {
   const iPhoneText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/IPhoneQuipslySessionView.swift");
   const iPadText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/IPadQuipslyStudioView.swift");
   const capturePhoneShellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
+  const workTagsText = sourceText("apps/quipsly/src/lib/server/work-tags.ts");
+  const workTagsRouteText = sourceText("apps/quipsly/src/app/api/work/tags/route.ts");
 
   expect(
     digestRouteText.includes("quipsly-mobile-capture-review-digest-v1")
@@ -794,13 +796,24 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("expectedTagRevision: note.tagRevision")
       && capturePhoneShellText.includes("kind: .document")
       && capturePhoneShellText.includes("canonicalTagIDs: note.tagIds")
-      && capturePhoneShellText.includes("availableTags: workTagCatalog")
+      && capturePhoneShellText.includes("CaptureTodayWorkTagNewLabel")
+      && capturePhoneShellText.includes("Save & add tag")
+      && capturePhoneShellText.includes("CaptureWorkTagEditorPreviewBoundary")
+      && capturePhoneShellText.includes("readOnlyPreview")
+      && bridgeText.includes('"newTagLabels": decision.requestedNewTagLabels')
+      && bridgeText.includes("payload.requestedTagIds?.sorted() == decision.tagIDs")
+      && bridgeText.includes("resolvedTags.map(\\.requestedLabel) == decision.requestedNewTagLabels")
       && workRouteText.includes("tagRevision: note.tagRevision")
+      && workTagsRouteText.includes("newTagLabels")
+      && workTagsText.includes("resolveReusableProjectTag")
+      && workTagsText.includes("requestedTagIds")
+      && workTagsText.includes("resolvedTags")
+      && capturePhoneShellText.includes("availableTags: workTagCatalog")
       && workRouteText.includes("canEditTags: project.canWrite")
       && workRouteText.includes("const tags = note.tagLinks.map")
       && capturePhoneShellText.includes("workTagDecisionStatus"),
     "nativeCanonicalProjectWorkWorkspace",
-    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, and reconciles Task, Goal, and document-level Note tag sets through the canonical phone outbox.",
+    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, and atomically creates or reuses project vocabulary while reconciling the complete Task, Goal, or document-level Note tag set through one canonical phone outbox decision.",
   );
 }
 

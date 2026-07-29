@@ -78,12 +78,30 @@ private struct WorkTagDecisionOutboxHarness {
             entityID: "document-1",
             projectID: "project-1",
             tagIDs: ["tag-a"],
+            newTagLabels: [" # Recording   day "],
             expectedUpdatedAt: "2027-01-15T00:00:00.000Z",
             expectedTagRevision: 4,
             capturedAt: capturedAt
         )
         require(documentDecision.expectedTagRevision == 4, "Document tag retries must preserve the optimistic tag revision.")
+        require(documentDecision.requestedNewTagLabels == ["Recording day"], "New vocabulary must be normalized before the protected write.")
         relaunched.markAcknowledged(documentDecision.id)
+
+        do {
+            _ = try relaunched.enqueue(
+                entityKind: .document,
+                entityID: "document-duplicate-labels",
+                projectID: "project-1",
+                tagIDs: [],
+                newTagLabels: ["Recording day", "recording DAY"],
+                expectedUpdatedAt: "2027-01-15T00:00:00.000Z",
+                expectedTagRevision: 0,
+                capturedAt: capturedAt
+            )
+            fatalError("One complete decision must reject duplicate new vocabulary.")
+        } catch WorkTagDecisionStoreError.invalidDecision {
+            // Expected.
+        }
 
         relaunched.markHeld(decision.id, code: "CONFLICT", message: "Changed in Nest.", at: capturedAt)
         require(relaunched.pendingCount == 0 && relaunched.heldCount == 1, "A permanent conflict must remain visible and stop automatic retries.")

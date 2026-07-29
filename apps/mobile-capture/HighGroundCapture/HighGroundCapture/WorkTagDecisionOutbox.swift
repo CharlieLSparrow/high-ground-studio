@@ -19,6 +19,7 @@ struct PendingWorkTagDecision: Codable, Equatable, Identifiable {
     let entityID: String
     let projectID: String
     let tagIDs: [String]
+    let newTagLabels: [String]?
     let expectedUpdatedAt: String
     let expectedTagRevision: Int?
     let capturedAt: Date
@@ -29,6 +30,7 @@ struct PendingWorkTagDecision: Codable, Equatable, Identifiable {
     var lastErrorMessage: String?
 
     var clientRequestID: String { id.uuidString.lowercased() }
+    var requestedNewTagLabels: [String] { newTagLabels ?? [] }
 }
 
 enum WorkTagDecisionStoreError: LocalizedError {
@@ -135,6 +137,7 @@ final class WorkTagDecisionOutbox: ObservableObject {
         entityID: String,
         projectID: String,
         tagIDs: [String],
+        newTagLabels: [String] = [],
         expectedUpdatedAt: String,
         expectedTagRevision: Int? = nil,
         capturedAt: Date = Date()
@@ -147,12 +150,19 @@ final class WorkTagDecisionOutbox: ObservableObject {
         let cleanEntityID = Self.cleanID(entityID)
         let cleanProjectID = Self.cleanID(projectID)
         let cleanTagIDs = Array(Set(tagIDs.map(Self.cleanID).filter { !$0.isEmpty })).sorted()
+        let cleanNewTagLabels = newTagLabels.compactMap(Self.normalizedTagLabel)
+        let canonicalNewTagLabels = cleanNewTagLabels.map {
+            $0.lowercased(with: Locale(identifier: "en_US_POSIX"))
+        }
         guard !cleanEntityID.isEmpty,
               !cleanProjectID.isEmpty,
               !expectedUpdatedAt.isEmpty,
               entityKind != .document || expectedTagRevision.map({ $0 >= 0 }) == true,
               cleanTagIDs.count == tagIDs.count,
-              cleanTagIDs.count <= 24 else {
+              cleanNewTagLabels.count == newTagLabels.count,
+              cleanNewTagLabels.count <= 8,
+              Set(canonicalNewTagLabels).count == cleanNewTagLabels.count,
+              cleanTagIDs.count + cleanNewTagLabels.count <= 24 else {
             throw WorkTagDecisionStoreError.invalidDecision
         }
         guard decision(entityKind: entityKind, entityID: cleanEntityID) == nil else {
@@ -166,6 +176,7 @@ final class WorkTagDecisionOutbox: ObservableObject {
             entityID: cleanEntityID,
             projectID: cleanProjectID,
             tagIDs: cleanTagIDs,
+            newTagLabels: cleanNewTagLabels,
             expectedUpdatedAt: expectedUpdatedAt,
             expectedTagRevision: expectedTagRevision,
             capturedAt: capturedAt,
@@ -286,6 +297,23 @@ final class WorkTagDecisionOutbox: ObservableObject {
 
     nonisolated private static func cleanID(_ value: String) -> String {
         String(value.trimmingCharacters(in: .whitespacesAndNewlines).prefix(200))
+    }
+
+    nonisolated private static func normalizedTagLabel(_ value: String) -> String? {
+        let compatible = value.precomposedStringWithCompatibilityMapping
+        let withoutControls = String(
+            compatible.unicodeScalars.filter {
+                !CharacterSet.controlCharacters.contains($0)
+            }
+        )
+        let trimmed = withoutControls.trimmingCharacters(in: .whitespacesAndNewlines)
+        let withoutHash = trimmed.drop(while: { $0 == "#" })
+            .drop(while: { $0.isWhitespace })
+        let normalized = withoutHash
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        guard !normalized.isEmpty, normalized.utf16.count <= 80 else { return nil }
+        return normalized
     }
 
     nonisolated private static func normalizedOwnerID(_ value: String?) -> String? {

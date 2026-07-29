@@ -16,6 +16,9 @@ export type ReplaceWorkTagsResult =
       entityId: string;
       projectId: string;
       tagIds: string[];
+      requestedTagIds: string[];
+      newTagLabels: string[];
+      resolvedTags: Array<{ id: string; requestedLabel: string; label: string; slug: string; created: boolean }>;
       updatedAt: Date;
       tagRevision: number | null;
       receiptId: string;
@@ -67,6 +70,16 @@ function normalizedTagIds(value: unknown) {
   if (!Array.isArray(value) || value.length > 24) return null;
   const ids = [...new Set(value.map(cleanId).filter(Boolean))];
   return ids.length === value.length ? ids : null;
+}
+
+function normalizedNewTagLabels(value: unknown) {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.length > 8) return null;
+  const labels = value.map(normalizeWorkTagLabel);
+  if (labels.some((label) => !label)) return null;
+  const canonical = labels.map(canonicalTagLabel);
+  if (new Set(canonical).size !== labels.length) return null;
+  return labels;
 }
 
 function canonicalTagLabel(label: string) {
@@ -503,6 +516,7 @@ export async function replaceWorkEntityTags(input: {
   entityKind: WorkTagEntityKind;
   entityId: string;
   tagIds: string[];
+  newTagLabels?: string[];
   expectedUpdatedAt: Date;
   expectedTagRevision?: number;
   clientRequestId?: string;
@@ -511,11 +525,14 @@ export async function replaceWorkEntityTags(input: {
   const actorUserId = cleanId(input.actorUserId);
   const actorEmail = typeof input.actorEmail === "string" ? input.actorEmail.trim().toLowerCase() : "";
   const entityId = cleanId(input.entityId);
-  const tagIds = normalizedTagIds(input.tagIds);
+  const requestedTagIds = normalizedTagIds(input.tagIds);
+  const newTagLabels = normalizedNewTagLabels(input.newTagLabels);
   const clientRequestId = cleanId(input.clientRequestId);
   const documentRevisionValid = input.entityKind !== "document"
     || (Number.isInteger(input.expectedTagRevision) && Number(input.expectedTagRevision) >= 0);
-  if (!actorUserId || !actorEmail || !entityId || !tagIds || !Number.isFinite(input.expectedUpdatedAt?.getTime())
+  if (!actorUserId || !actorEmail || !entityId || !requestedTagIds || !newTagLabels
+    || requestedTagIds.length + newTagLabels.length > 24
+    || !Number.isFinite(input.expectedUpdatedAt?.getTime())
     || !documentRevisionValid
     || (clientRequestId && !UUID_PATTERN.test(clientRequestId))) {
     return { ok: false, code: "INVALID_INPUT", error: "The tag decision is incomplete or invalid." };
@@ -542,18 +559,43 @@ export async function replaceWorkEntityTags(input: {
     : safeRecord(safeRecord(entity[entitySourceField(input.entityKind)!]).lastTagReceipt);
   if (priorReceipt.id === receiptId) {
     const priorTagIds = normalizedTagIds(priorReceipt.tagIds);
-    const sameRequest = priorReceipt.entityKind === input.entityKind
+    const priorRequestedTagIds = normalizedTagIds(priorReceipt.requestedTagIds ?? priorReceipt.tagIds);
+    const priorNewTagLabels = normalizedNewTagLabels(priorReceipt.newTagLabels);
+    const priorResolvedTags = Array.isArray(priorReceipt.resolvedTags)
+      ? priorReceipt.resolvedTags
+          .map(safeRecord)
+          .map((tag) => ({
+            id: cleanId(tag.id),
+            requestedLabel: normalizeWorkTagLabel(tag.requestedLabel),
+            label: normalizeWorkTagLabel(tag.label),
+            slug: cleanId(tag.slug),
+            created: tag.created === true,
+          }))
+          .filter((tag) => tag.id && tag.requestedLabel && tag.label && tag.slug)
+      : [];
+    const priorFinalTagIds = priorRequestedTagIds
+      ? [...new Set([...priorRequestedTagIds, ...priorResolvedTags.map((tag) => tag.id)])].sort()
+      : null;
+    const receiptIsComplete = priorTagIds !== null
+      && priorRequestedTagIds !== null
+      && priorNewTagLabels !== null
+      && priorResolvedTags.length === priorNewTagLabels.length
+      && JSON.stringify(priorResolvedTags.map((tag) => tag.requestedLabel)) === JSON.stringify(priorNewTagLabels)
+      && JSON.stringify(priorFinalTagIds) === JSON.stringify(priorTagIds);
+    const sameRequest = receiptIsComplete
+      && priorReceipt.entityKind === input.entityKind
       && priorReceipt.projectId === entity.projectId
       && priorReceipt.changedByUserId === actorUserId
       && priorReceipt.clientRequestId === clientRequestId
-      && JSON.stringify(priorTagIds) === JSON.stringify(tagIds);
+      && JSON.stringify(priorRequestedTagIds) === JSON.stringify(requestedTagIds)
+      && JSON.stringify(priorNewTagLabels) === JSON.stringify(newTagLabels);
     if (!sameRequest) return { ok: false, code: "CONFLICT", error: "That phone request identity is already bound to a different tag decision." };
     const receiptRevision = Number(priorReceipt.tagRevision);
     if (input.entityKind === "document") {
       const currentTagIds = entity.tagLinks.map((link: { tagId: string }) => link.tagId).sort();
       if (!Number.isInteger(receiptRevision)
         || entity.tagRevision !== receiptRevision
-        || JSON.stringify(currentTagIds) !== JSON.stringify(tagIds)) {
+        || JSON.stringify(currentTagIds) !== JSON.stringify(priorTagIds)) {
         return {
           ok: false,
           code: "CONFLICT",
@@ -566,7 +608,10 @@ export async function replaceWorkEntityTags(input: {
       entityKind: input.entityKind,
       entityId,
       projectId: entity.projectId,
-      tagIds,
+      tagIds: priorTagIds,
+      requestedTagIds,
+      newTagLabels,
+      resolvedTags: priorResolvedTags,
       updatedAt: entity.updatedAt,
       tagRevision: input.entityKind === "document" ? receiptRevision : null,
       receiptId,
@@ -581,40 +626,66 @@ export async function replaceWorkEntityTags(input: {
     return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before changing tags." };
   }
 
-  if (tagIds.length) {
+  if (requestedTagIds.length) {
     const validTags = await prisma.studioTag.findMany({
-      where: { id: { in: tagIds }, projectId: entity.projectId, isActive: true },
+      where: { id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true },
       select: { id: true },
     });
-    if (validTags.length !== tagIds.length) {
+    if (validTags.length !== requestedTagIds.length) {
       return { ok: false, code: "FORBIDDEN", error: "Every tag must be active and belong to the record's Nest." };
     }
   }
 
   const now = new Date();
-  const receipt = {
-    id: receiptId,
-    kind: "quipsly-work-tags-v1",
-    entityKind: input.entityKind,
-    projectId: entity.projectId,
-    tagIds,
-    changedAt: now.toISOString(),
-    changedByUserId: actorUserId,
-    clientRequestId: clientRequestId || null,
-    surface: input.surface ?? "nest-work",
-    externalSideEffects: false,
-  };
-
   const saved = await prisma.$transaction(async (tx: any) => {
     const activeGrant = await tx.studioProjectAccessGrant.findFirst({
       where: { projectId: entity.projectId, email: actorEmail, status: "ACTIVE", role: { in: ["OWNER", "EDITOR"] } },
       select: { id: true },
     });
     if (!activeGrant) return { kind: "forbidden" as const };
-    if (tagIds.length) {
-      const validTagCount = await tx.studioTag.count({ where: { id: { in: tagIds }, projectId: entity.projectId, isActive: true } });
-      if (validTagCount !== tagIds.length) return { kind: "forbidden" as const };
+    if (requestedTagIds.length) {
+      const validTagCount = await tx.studioTag.count({ where: { id: { in: requestedTagIds }, projectId: entity.projectId, isActive: true } });
+      if (validTagCount !== requestedTagIds.length) return { kind: "forbidden" as const };
     }
+    const resolvedTags: Array<{ id: string; requestedLabel: string; label: string; slug: string; created: boolean }> = [];
+    for (const label of newTagLabels) {
+      const resolved = await resolveReusableProjectTag({
+        tx: tx as Prisma.TransactionClient,
+        projectId: entity.projectId,
+        label,
+      });
+      if (!resolved.ok) {
+        if (resolved.code === "ARCHIVED") return { kind: "archived" as const };
+        if (resolved.code === "SLUG_CONFLICT") {
+          return { kind: "slug-conflict" as const, label, existingLabel: resolved.existingLabel };
+        }
+        return { kind: "invalid" as const };
+      }
+      resolvedTags.push({
+        id: resolved.tag.id,
+        requestedLabel: label,
+        label: resolved.tag.label,
+        slug: resolved.tag.slug,
+        created: resolved.created,
+      });
+    }
+    const tagIds = [...new Set([...requestedTagIds, ...resolvedTags.map((tag) => tag.id)])].sort();
+    if (tagIds.length > 24) return { kind: "invalid" as const };
+    const receipt = {
+      id: receiptId,
+      kind: "quipsly-work-tags-v1",
+      entityKind: input.entityKind,
+      projectId: entity.projectId,
+      requestedTagIds,
+      newTagLabels,
+      tagIds,
+      resolvedTags,
+      changedAt: now.toISOString(),
+      changedByUserId: actorUserId,
+      clientRequestId: clientRequestId || null,
+      surface: input.surface ?? "nest-work",
+      externalSideEffects: false,
+    };
     if (input.entityKind === "document") {
       const currentDocument = await findOwnedTagEntity(
         tx,
@@ -685,6 +756,8 @@ export async function replaceWorkEntityTags(input: {
           where: { id: entityId },
           select: { updatedAt: true, tagRevision: true },
         }),
+        tagIds,
+        resolvedTags,
       };
     }
     const update = input.entityKind === "task"
@@ -700,34 +773,60 @@ export async function replaceWorkEntityTags(input: {
     if (input.entityKind === "task") {
       await tx.actionItemTagLink.deleteMany({ where: { actionItemId: entityId } });
       if (tagIds.length) await tx.actionItemTagLink.createMany({ data: tagIds.map((tagId) => ({ actionItemId: entityId, tagId, createdByUserId: actorUserId, sourceJson })) });
-      return { kind: "saved" as const, entity: await tx.actionItem.findUnique({ where: { id: entityId }, select: { updatedAt: true } }) };
+      return {
+        kind: "saved" as const,
+        entity: await tx.actionItem.findUnique({ where: { id: entityId }, select: { updatedAt: true } }),
+        tagIds,
+        resolvedTags,
+      };
     }
     if (input.entityKind === "goal") {
       await tx.goalTagLink.deleteMany({ where: { goalId: entityId } });
       if (tagIds.length) await tx.goalTagLink.createMany({ data: tagIds.map((tagId) => ({ goalId: entityId, tagId, createdByUserId: actorUserId, sourceJson })) });
-      return { kind: "saved" as const, entity: await tx.goal.findUnique({ where: { id: entityId }, select: { updatedAt: true } }) };
+      return {
+        kind: "saved" as const,
+        entity: await tx.goal.findUnique({ where: { id: entityId }, select: { updatedAt: true } }),
+        tagIds,
+        resolvedTags,
+      };
     }
     if (input.entityKind === "note") {
       await tx.coachingNoteTagLink.deleteMany({ where: { noteId: entityId } });
       if (tagIds.length) await tx.coachingNoteTagLink.createMany({ data: tagIds.map((tagId) => ({ noteId: entityId, tagId, createdByUserId: actorUserId, sourceJson })) });
-      return { kind: "saved" as const, entity: await tx.coachingNote.findUnique({ where: { id: entityId }, select: { updatedAt: true } }) };
+      return {
+        kind: "saved" as const,
+        entity: await tx.coachingNote.findUnique({ where: { id: entityId }, select: { updatedAt: true } }),
+        tagIds,
+        resolvedTags,
+      };
     }
     await tx.callRoomTagLink.deleteMany({ where: { roomId: entityId } });
     if (tagIds.length) await tx.callRoomTagLink.createMany({ data: tagIds.map((tagId) => ({ roomId: entityId, tagId, createdByUserId: actorUserId, sourceJson })) });
-    return { kind: "saved" as const, entity: await tx.callRoom.findUnique({ where: { id: entityId }, select: { updatedAt: true } }) };
+    return {
+      kind: "saved" as const,
+      entity: await tx.callRoom.findUnique({ where: { id: entityId }, select: { updatedAt: true } }),
+      tagIds,
+      resolvedTags,
+    };
   });
 
   if (saved.kind === "forbidden") return { ok: false, code: "FORBIDDEN", error: "Editor access and active same-Nest tags are required." };
+  if (saved.kind === "archived") return { ok: false, code: "FORBIDDEN", error: "That tag is archived. Restore or rename it in the Nest vocabulary before using it." };
+  if (saved.kind === "slug-conflict") return { ok: false, code: "CONFLICT", error: `“${saved.label}” conflicts with the existing “${saved.existingLabel}” tag. Choose a more distinct name.` };
+  if (saved.kind === "invalid") return { ok: false, code: "INVALID_INPUT", error: "Choose no more than 24 canonical tags and valid new names." };
   if (saved.kind === "conflict" || !saved.entity) return { ok: false, code: "CONFLICT", error: "This record changed elsewhere. Refresh before changing tags." };
   return {
     ok: true,
     entityKind: input.entityKind,
     entityId,
     projectId: entity.projectId,
-      tagIds,
-      updatedAt: saved.entity.updatedAt,
-      tagRevision: input.entityKind === "document" ? saved.entity.tagRevision : null,
-      receiptId,
+    tagIds: saved.tagIds,
+    requestedTagIds,
+    newTagLabels,
+    resolvedTags: saved.resolvedTags,
+    updatedAt: saved.entity.updatedAt,
+    tagRevision: input.entityKind === "document" ? saved.entity.tagRevision : null,
+    receiptId,
     idempotentReplay: false,
   };
 }
