@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 10:47 UTC
+Last verified: 2026-07-29 10:48 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -42,6 +42,12 @@ needs to prove.
   three-clip order above, Be Curious selected and paused, no started Watch
   session, no active or closed segment, and the exact 19,100,059-byte source at
   the SHA-256 above. The verifier issued GET requests only.
+- The 10:48 UTC local source qualification decoded the complete Be Curious
+  file with FFmpeg's fail-on-error path. It is an MP4 with H.264 Main
+  1280×638 video at 24000/1001 fps and AAC-LC 44.1 kHz stereo audio; both
+  streams begin at 0, the container is 254.630 seconds, and full video/audio
+  decode completed with no errors. Its 19,100,059 bytes still hash to the
+  exact protected-cloud SHA-256 above.
 
 ## Next candidate without changing tonight's lane
 

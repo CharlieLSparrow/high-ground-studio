@@ -185,6 +185,12 @@ The redacted, mode-0600 receipt was written outside the repository at
 `/private/tmp/quipsly-watch-preview-96eebffc-receipt.json`. Production remains
 100% on `studio-00425-gij`; the newer preview is also intentionally unpromoted.
 
+The exact local Be Curious source was also fully decoded with FFmpeg's
+fail-on-error path at 10:48 UTC. Its H.264 Main 1280×638 video and AAC-LC
+stereo audio both start at zero, the 254.630-second container produced no
+decode errors, and the file still matches the protected object byte count and
+SHA-256 above.
+
 After that exact server proof, the iPhone candidate was hardened without
 changing the deployed Watch API:
 
