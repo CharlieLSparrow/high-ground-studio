@@ -18,6 +18,7 @@ const [
   phoneShell,
   videoController,
   videoService,
+  providerAudio,
   architecture,
 ] = await Promise.all([
   readFile(path.join(captureRoot, "AudioCaptureController.swift"), "utf8"),
@@ -25,6 +26,7 @@ const [
   readFile(path.join(captureRoot, "CapturePhoneShell.swift"), "utf8"),
   readFile(path.join(captureRoot, "VideoCaptureController.swift"), "utf8"),
   readFile(path.join(captureRoot, "VideoCaptureService.swift"), "utf8"),
+  readFile(path.join(captureRoot, "ProviderAudioMasterRecorder.swift"), "utf8"),
   readFile(
     path.join(
       repositoryRoot,
@@ -52,6 +54,21 @@ check(
     && model.includes("videoCapture.resolvedProfile?.includesAudio == false")
     && videoService.includes("if includesAudio {")
     && videoService.includes("newMicrophoneInput = try AVCaptureDeviceInput"),
+);
+check(
+  "live-room audio observes LiveKit local PCM instead of opening a second microphone",
+  providerAudio.includes("AudioManager.shared.add(localAudioRenderer: self)")
+    && providerAudio.includes("AudioMixRecorder(")
+    && providerAudio.includes("source.render(pcmBuffer: pcmBuffer)")
+    && !providerAudio.includes("AVAudioRecorder(")
+    && audio.includes("providerInputObservationAvailable"),
+);
+check(
+  "live-room start and resume require a real PCM callback",
+  audio.includes("confirmProviderAudioInput(")
+    && audio.includes("providerAudioMaster?.isReceivingPCM == true")
+    && audio.includes("func waitUntilRecordingOrTerminal(")
+    && model.includes("await audioCapture.waitUntilRecordingOrTerminal()"),
 );
 check(
   "audio source identity is separate from capture group identity",
@@ -159,6 +176,13 @@ check(
     && model.includes("while self.isChangingCapture")
     && model.includes("The microphone partner is still closing")
     && model.includes("The camera partner is still closing"),
+);
+check(
+  "unexpected microphone pause closes the current camera boundary",
+  model.includes("state == .paused")
+    && model.includes("await videoPartner.pause()")
+    && model.includes("microphone source paused unexpectedly")
+    && model.includes("safely closed the current movie boundary too"),
 );
 check(
   "provider controls remain locked for the audio-bearing group",

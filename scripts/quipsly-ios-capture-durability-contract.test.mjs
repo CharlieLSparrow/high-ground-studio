@@ -22,6 +22,8 @@ const [
   phoneShell,
   offlineView,
   playback,
+  providerAudio,
+  mobileComponents,
 ] = await Promise.all([
   readFile(path.join(captureRoot, "AudioCaptureController.swift"), "utf8"),
   readFile(path.join(captureRoot, "VideoCaptureController.swift"), "utf8"),
@@ -32,6 +34,8 @@ const [
   readFile(path.join(captureRoot, "CapturePhoneShell.swift"), "utf8"),
   readFile(path.join(captureRoot, "ContentView.swift"), "utf8"),
   readFile(path.join(captureRoot, "LocalRecordingPlaybackController.swift"), "utf8"),
+  readFile(path.join(captureRoot, "ProviderAudioMasterRecorder.swift"), "utf8"),
+  readFile(path.join(captureRoot, "QuipslyMobileComponents.swift"), "utf8"),
 ]);
 
 const checks = [];
@@ -59,13 +63,39 @@ const armMethod = audio.indexOf("func armNextCapture(");
 const durableStart = audio.indexOf("receiptStore.enqueueDurably(", armMethod);
 const beginMethod = audio.indexOf("private func beginActualRecording() throws");
 const localArm = audio.indexOf("localRecordingLibrary.beginRecording(", beginMethod);
-const avRecord = audio.indexOf("guard recorder.record()", beginMethod);
+const avRecord = audio.indexOf("guard directRecorder.record()", beginMethod);
 const localActive = audio.indexOf("localRecordingLibrary.markRecording", avRecord);
+const providerRecord = audio.indexOf("try providerRecorder.start(at: startedAt)", beginMethod);
+const providerPCMConfirmation = audio.indexOf("private func confirmProviderAudioInput(", beginMethod);
 check("recorder exposes a throwing arm API", armMethod >= 0);
 check("arm API durably commits Nest START", durableStart > armMethod && durableStart < beginMethod);
 check("room capture cannot bypass durable arming", audio.includes("activeCallRoomId != nil, pendingCaptureIntent == nil") && audio.includes("armedRoomMismatch"));
 check("local armed row commits before AVAudioRecorder.record", localArm > beginMethod && localArm < avRecord);
 check("local active state follows AVAudioRecorder.record", avRecord < localActive);
+check(
+  "local armed row commits before LiveKit PCM observation",
+  localArm > beginMethod && localArm < providerRecord,
+);
+check(
+  "LiveKit-backed recording waits for a real local PCM callback",
+  providerRecord < providerPCMConfirmation
+    && audio.includes("providerAudioMaster?.isReceivingPCM == true")
+    && audio.includes("waitUntilRecordingOrTerminal"),
+);
+check(
+  "every native session surface waits for confirmed PCM before claiming recording",
+  model.includes("await audioCapture.waitUntilRecordingOrTerminal()")
+    && mobileComponents.includes(
+      "let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()",
+    )
+    && mobileComponents.includes("if !audioStarted"),
+);
+check(
+  "provider start failure takes the terminal media cleanup path",
+  audio.includes("if activeLocalRecordingID != nil {")
+    && audio.includes("finishCaptureFailure(message)")
+    && audio.includes("providerAudioMaster?.stop()"),
+);
 check("pre-record failures close START boundary", audio.includes("closeStartBoundaryAfterFailedArm()"));
 const captureStart = model.slice(
   model.indexOf("func startCapture("),
@@ -87,7 +117,20 @@ check(
 check(
   "recorder rechecks immutable owner immediately before AVAudioRecorder.record",
   audio.indexOf("matchesStableOwnerSnapshot(captureIntent.ownerSnapshot)", localArm)
-    < audio.indexOf("guard recorder.record()", localArm),
+    < audio.indexOf("guard directRecorder.record()", localArm),
+);
+check(
+  "provider-backed master uses LiveKit local PCM instead of a second microphone client",
+  providerAudio.includes("AudioManager.shared.add(localAudioRenderer: self)")
+    && providerAudio.includes("AudioMixRecorder(")
+    && providerAudio.includes("source.render(pcmBuffer: pcmBuffer)")
+    && !providerAudio.includes("AVAudioRecorder("),
+);
+check(
+  "provider PCM starvation pauses fail visibly",
+  audio.includes("receivedPCMAt")
+    && audio.includes("stopped delivering local PCM")
+    && audio.includes("pauseRecording("),
 );
 check("start and resume both check storage", (audio.match(/hasCaptureStorageHeadroom\(\)/g) ?? []).length >= 3 && audio.includes("projectedSafetyFloorDuringCapture()"));
 check("runtime storage probe is periodic", audio.includes("storageCheckInterval") && audio.includes("checkStorageHeadroomDuringCapture()"));
@@ -217,7 +260,11 @@ check(
   "new sources persist capture-group and resolved profile evidence",
   library.includes("var captureGroupId: UUID? = nil")
     && library.includes("var sourceProfile: LocalRecordingSourceProfile? = nil")
+    && library.includes("var audioCapturePipeline: String?")
+    && library.includes("var pauseTimelinePolicy: String?")
     && audio.includes("captureGroupId: captureIntent.captureGroupID")
+    && audio.includes('"livekit-local-input-pcm"')
+    && audio.includes('"silence-preserves-wall-clock"')
     && audio.includes("monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds"),
 );
 check("source ledger keeps a last-known-good copy", library.includes("recordings-index.last-known-good.json"));

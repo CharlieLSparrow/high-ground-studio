@@ -1527,7 +1527,10 @@ struct RecorderControlBoard: View {
             capturePurpose: recordingSession.purpose ?? "coaching-or-podcast"
         )
         audioCapture.handleCommand(cmd)
-        if audioCapture.captureState != .recording || audioCapture.activeLocalRecordingID != captureID {
+        let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()
+        if !audioStarted
+            || audioCapture.captureState != .recording
+            || audioCapture.activeLocalRecordingID != captureID {
             roomJoinMessage = audioCapture.lastErrorMessage ?? "The local recorder did not start. Nothing was recorded."
         }
     }

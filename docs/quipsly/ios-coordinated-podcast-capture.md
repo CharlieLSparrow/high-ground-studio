@@ -27,15 +27,35 @@ authority for final synchronization.
 
 ## Why this topology
 
-`AVAudioSession` is process-wide. Quipsly, CallKit, LiveKit, and the local
-microphone recorder must use one explicit owner for category, mode, route, and
-activation. Apple's `playAndRecord` category is intended for simultaneous
-recording and playback, and `voiceChat` is the appropriate mode for two-way
-VoIP. CallKit reports the point at which its audio session is active.
+`AVAudioSession` is process-wide. Quipsly, CallKit, LiveKit, and local capture
+must use one explicit owner for category, mode, route, and activation. Apple's
+`playAndRecord` category is intended for simultaneous recording and playback,
+and `voiceChat` is the appropriate mode for two-way VoIP. CallKit reports the
+point at which its audio session is active.
 
 - [Apple: playAndRecord](https://developer.apple.com/documentation/avfaudio/avaudiosession/category-swift.struct/playandrecord)
 - [Apple: voiceChat](https://developer.apple.com/documentation/avfaudio/avaudiosession/mode-swift.struct/voicechat)
 - [Apple: CallKit audio activation](https://developer.apple.com/documentation/callkit/cxproviderdelegate/provider%28_%3Adidactivate%3A%29)
+
+Opening `AVAudioRecorder` beside LiveKit would still create two independent
+clients for one hardware microphone. Apple documents both APIs, but does not
+promise that this topology is stable across routes, interruptions, or voice
+processing. The live-room path therefore observes the exact local-input PCM
+already owned by LiveKit through `AudioManager.add(localAudioRenderer:)` and
+feeds LiveKit's `AudioMixRecorder`. Standalone capture keeps
+`AVAudioRecorder`. The provider-backed source remains **preparing** until a
+real PCM callback arrives; callback starvation pauses fail-visibly instead of
+silently writing a successful all-silence take.
+
+This file is the exact local input that feeds the room and may include
+LiveKit/Voice Processing I/O treatment. Quipsly does not mislabel it as an
+independent raw pre-call microphone feed. A later raw-plus-call fork would
+require one explicitly owned custom audio engine/device module, not a second
+hardware recorder layered onto this path.
+
+- [LiveKit: AudioManager](https://docs.livekit.io/reference/client-sdk-swift/documentation/livekit/audiomanager/)
+- [LiveKit: add(localAudioRenderer:)](https://docs.livekit.io/reference/client-sdk-swift/documentation/livekit/audiomanager/add%28localaudiorenderer%3A%29/)
+- [LiveKit: AudioMixRecorder](https://docs.livekit.io/reference/client-sdk-swift/documentation/livekit/audiomixrecorder)
 
 The camera session deliberately has no audio input in this mode. It therefore
 does not compete for the microphone or bake the voice-processed call path into
@@ -92,10 +112,11 @@ YouTube, and single-person recording without a live room.
 4. Quipsly refreshes the Session and owner generation.
 5. Quipsly samples the room clock, starts the video-only source, and waits for
    the `AVCaptureFileOutput` start callback.
-6. Quipsly samples the room clock again, then arms and starts the local
-   microphone source with the same group UUID.
-7. The UI changes to **Recording two local sources** only after both controllers
-   report recording.
+6. Quipsly samples the room clock again, durably arms the local microphone
+   source with the same group UUID, attaches to LiveKit's existing local-input
+   PCM stream, and waits for its first buffer.
+7. The UI changes to **Recording two local sources** only after the camera
+   callback and microphone PCM callback have both confirmed real media.
 
 Starting video first avoids claiming a camera source before AVFoundation
 confirms it. The microphone begins immediately afterward. Both source profiles
@@ -104,8 +125,10 @@ evidence rather than hidden drift.
 
 ## Pause, resume, mark, and Flip
 
-- **Pause** pauses the AAC recorder and closes the current MOV. The honest
-  pause gap remains.
+- **Pause** detaches local PCM from the AAC writer and closes the current MOV.
+  The provider-backed AAC file writes silence across the pause so its elapsed
+  timeline remains aligned; the segment ledger proves which intervals contain
+  captured speech.
 - **Resume** refreshes Session/consent/owner authority, starts a new MOV in the
   same group, then resumes the AAC recorder.
 - **Mark** writes a source-relative mark against the continuing audio master.
@@ -121,8 +144,8 @@ evidence rather than hidden drift.
 The group is fail-visible and source-preserving:
 
 - identity or consent loss pauses/closes both sources;
-- microphone route loss pauses audio and closes video so the group cannot
-  continue with a silently missing master;
+- microphone route loss or provider-PCM starvation pauses audio and closes
+  video so the group cannot continue with a silently missing master;
 - app backgrounding closes video under the existing iPhone camera policy and
   therefore closes the coordinated audio group too;
 - critical thermal or storage pressure closes video and then audio;

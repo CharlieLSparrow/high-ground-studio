@@ -38,6 +38,8 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
     var includesAudio: Bool
     var audioSampleRate: Double?
     var audioChannelCount: Int?
+    var audioCapturePipeline: String?
+    var pauseTimelinePolicy: String?
     var monotonicStartedNanoseconds: UInt64?
     var monotonicStoppedNanoseconds: UInt64?
     var clockSamples: [LocalRecordingClockSample]?
@@ -58,6 +60,8 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         includesAudio: Bool,
         audioSampleRate: Double? = nil,
         audioChannelCount: Int? = nil,
+        audioCapturePipeline: String? = nil,
+        pauseTimelinePolicy: String? = nil,
         monotonicStartedNanoseconds: UInt64? = nil,
         monotonicStoppedNanoseconds: UInt64? = nil,
         clockSamples: [LocalRecordingClockSample]? = nil,
@@ -77,6 +81,8 @@ struct LocalRecordingSourceProfile: Codable, Equatable, Sendable {
         self.includesAudio = includesAudio
         self.audioSampleRate = audioSampleRate
         self.audioChannelCount = audioChannelCount
+        self.audioCapturePipeline = audioCapturePipeline
+        self.pauseTimelinePolicy = pauseTimelinePolicy
         self.monotonicStartedNanoseconds = monotonicStartedNanoseconds
         self.monotonicStoppedNanoseconds = monotonicStoppedNanoseconds
         self.clockSamples = clockSamples

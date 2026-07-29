@@ -2540,6 +2540,7 @@ private struct CaptureRecorderView: View {
                             duration: audioCapture.currentDuration,
                             inputLevel: audioCapture.normalizedInputLevel,
                             inputRoute: audioCapture.inputRouteName,
+                            capturePipeline: audioCapture.capturePipelineLabel,
                             userMarkOffsets: audioCapture.userMarkOffsets,
                             isBusy: model.isChangingCapture,
                             onPrimaryAction: {
@@ -2634,6 +2635,7 @@ private struct CaptureRecorderView: View {
                                 duration: audioCapture.currentDuration,
                                 inputLevel: audioCapture.normalizedInputLevel,
                                 inputRoute: audioCapture.inputRouteName,
+                                capturePipeline: audioCapture.capturePipelineLabel,
                                 markCount: audioCapture.userMarkOffsets.count,
                                 canMark: audioCapture.captureState == .recording,
                                 onMark: { model.markMoment(using: audioCapture) }
@@ -5380,6 +5382,7 @@ private struct CoordinatedPodcastAudioStatus: View {
     let duration: TimeInterval
     let inputLevel: Double
     let inputRoute: String
+    let capturePipeline: String
     let markCount: Int
     let canMark: Bool
     let onMark: () -> Void
@@ -5403,6 +5406,9 @@ private struct CoordinatedPodcastAudioStatus: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(inputRoute.isEmpty ? "iPhone microphone" : inputRoute)
                         .font(.subheadline.weight(.semibold))
+                    Text(capturePipeline)
+                        .font(.caption2.weight(.medium))
+                        .foregroundStyle(.secondary)
                     Text(stateDetail)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -5460,6 +5466,7 @@ private struct RecorderHero: View {
     let duration: TimeInterval
     let inputLevel: Double
     let inputRoute: String
+    let capturePipeline: String
     let userMarkOffsets: [TimeInterval]
     let isBusy: Bool
     let onPrimaryAction: () -> Void
@@ -5537,9 +5544,13 @@ private struct RecorderHero: View {
 
             HStack(spacing: 7) {
                 Image(systemName: "mic.fill")
-                Text(inputRoute.isEmpty ? "iPhone microphone" : inputRoute)
-                    .multilineTextAlignment(.center)
-                    .fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(inputRoute.isEmpty ? "iPhone microphone" : inputRoute)
+                    Text(capturePipeline)
+                        .font(.caption2)
+                }
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
             }
             .font(.caption)
             .foregroundStyle(.secondary)

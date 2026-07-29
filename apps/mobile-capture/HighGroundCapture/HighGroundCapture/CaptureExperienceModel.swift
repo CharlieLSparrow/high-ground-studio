@@ -1483,6 +1483,10 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "Leave the active live room before recording a different session."
             return
         }
+        if providerRoom.isConnected, providerRoom.isMuted {
+            errorMessage = "Unmute the live-room microphone before starting the local master. Quipsly records that same owned input pipeline so the call and file cannot disagree about the active microphone."
+            return
+        }
         guard let ownerSnapshot = AuthManager.shared.stableOwnerSnapshot() else {
             errorMessage = "Verify the current Quipsly account before recording. Nothing was recorded."
             return
@@ -1596,7 +1600,8 @@ final class CaptureExperienceModel: ObservableObject {
         )
         audioCapture.handleCommand(command)
 
-        guard audioCapture.captureState == .recording else {
+        let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()
+        guard audioStarted, audioCapture.captureState == .recording else {
             isChangingCapture = false
             errorMessage = audioCapture.lastErrorMessage ?? "The local recorder did not start. Nothing was recorded."
             if !usesPreviewData {
@@ -1655,6 +1660,29 @@ final class CaptureExperienceModel: ObservableObject {
     /// reset or a delegate finalization that completed after a UI timeout.
     func reconcileCaptureState(_ state: AudioCaptureState) {
         guard activeCaptureSession != nil else { return }
+        if state == .paused,
+           activeCoordinatedCaptureGroupID != nil,
+           !isCoordinatingPodcastCapture,
+           !isStoppingCoordinatedCapture,
+           let videoPartner = activeVideoCapture,
+           videoPartner.state == .recording {
+            isCoordinatingPodcastCapture = true
+            Task { [weak self] in
+                guard let self else { return }
+                await videoPartner.pause()
+                _ = await videoPartner.waitUntilPausedOrTerminal()
+                self.isCoordinatingPodcastCapture = false
+                if videoPartner.state == .paused {
+                    self.message = nil
+                    self.errorMessage = "The microphone source paused unexpectedly, so Quipsly safely closed the current movie boundary too. Verify the route and consent before resuming both sources."
+                } else {
+                    self.message = nil
+                    self.errorMessage = videoPartner.lastErrorMessage
+                        ?? "The microphone paused, but the camera boundary still needs Library review. Stop and preserve the coordinated group."
+                }
+            }
+            return
+        }
         guard state == .saved || state == .failed || state == .idle else { return }
         if isChangingCapture {
             Task { [weak self] in
@@ -1753,7 +1781,8 @@ final class CaptureExperienceModel: ObservableObject {
                 return
             }
             audioCapture.handleCommand(.resume)
-            if audioCapture.captureState == .recording {
+            let resumed = await audioCapture.waitUntilRecordingOrTerminal()
+            if resumed, audioCapture.captureState == .recording {
                 message = "Recording resumed."
             } else {
                 message = nil

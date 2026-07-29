@@ -47,6 +47,19 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
         refreshPrivateListeningRoute()
     }
 
+    /// A connected room already owns the hardware microphone through
+    /// LiveKit. Local master recording must observe that exact PCM stream
+    /// rather than ask AVAudioRecorder to open a competing input client.
+    var providerInputObservationAvailable: Bool {
+        #if canImport(LiveKit)
+        isProviderRoomActive
+            && isCallKitAudioActive
+            && AudioManager.shared.isEngineRunning
+        #else
+        false
+        #endif
+    }
+
     func prepareLocalCaptureRoute() throws {
         try applySharedCategory()
         try audioSession.setPreferredSampleRate(48_000)

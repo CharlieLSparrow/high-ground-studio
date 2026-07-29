@@ -247,7 +247,14 @@ test("deterministic owner-change-during-permission contract carries one immutabl
   assert.match(capture, /ownerAccountID: expectedOwnerSnapshot\.ownerAccountID/);
   assert.match(capture, /guard pendingCaptureOwnerIsCurrent else \{[\s\S]*?abortArmedCaptureBeforeRecording\(\)/);
   assert.match(capture, /expectedOwnerAccountID: captureIntent\.ownerSnapshot\.ownerAccountID/);
-  assert.match(capture, /guard AuthManager\.shared\.matchesStableOwnerSnapshot\(captureIntent\.ownerSnapshot\)[\s\S]*?guard recorder\.record\(\)/);
+  assert.match(
+    capture,
+    /guard AuthManager\.shared\.matchesStableOwnerSnapshot\(captureIntent\.ownerSnapshot\)[\s\S]*?guard directRecorder\.record\(\)/,
+  );
+  assert.match(
+    capture,
+    /guard AuthManager\.shared\.matchesStableOwnerSnapshot\(captureIntent\.ownerSnapshot\)[\s\S]*?try providerRecorder\.start\(at: startedAt\)/,
+  );
   assert.match(library, /expectedOwnerAccountID: String[\s\S]*?ownerAccountID == AuthManager\.currentStoredOwnerID\(\)/);
 });
 

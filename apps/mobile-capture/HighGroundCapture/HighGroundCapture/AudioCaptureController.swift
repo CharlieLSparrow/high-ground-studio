@@ -34,6 +34,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     @Published private(set) var peakInputLevelDB: Float = -160
     @Published private(set) var inputRouteName: String = "No microphone selected"
     @Published private(set) var inputRoutePortType: String?
+    @Published private(set) var capturePipelineLabel: String = "Direct local microphone recorder"
     @Published private(set) var failureMessage: String?
     @Published private(set) var lastErrorMessage: String?
     @Published private(set) var automaticStopReason: String?
@@ -56,8 +57,12 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private let storageProjectionWindowSeconds: Int64 = 180
     private let storageCheckInterval: TimeInterval = 2
     private var audioRecorder: AVAudioRecorder?
+    #if canImport(LiveKit)
+    private var providerAudioMaster: ProviderAudioMasterRecorder?
+    #endif
     private var displayDurationTimer: Timer?
     private var startTask: Task<Void, Never>?
+    private var providerAudioStartWatchdogTask: Task<Void, Never>?
     private var accountObserver: NSObjectProtocol?
 
     private var currentRecordingURL: URL?
@@ -73,6 +78,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var lastStorageCheckAt: Date = .distantPast
     private var storageCapacityProbeFailed = false
     private var pendingFinalizationMessage: String?
+    private var pendingProviderSegmentStart: Date?
 
     private struct CaptureIntent {
         let captureID: UUID
@@ -117,7 +123,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     }
 
     /// Preallocates one immutable source identity and, when this is a Nest-backed
-    /// session, commits its START boundary before AVAudioRecorder may open.
+    /// session, commits its START boundary before any local audio bytes may begin.
     /// Callers must treat a thrown error as "nothing was recorded."
     func armNextCapture(
         captureID: UUID,
@@ -246,7 +252,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
             applySessionContext(from: command)
             startRecording()
         case .stop:
-            if captureState == .preparing {
+            if captureState == .preparing, activeLocalRecordingID != nil {
+                stopRecording()
+            } else if captureState == .preparing {
                 startTask?.cancel()
                 startTask = nil
                 if let receiptFailure = closeStartBoundaryAfterFailedArm() {
@@ -298,6 +306,29 @@ final class AudioCaptureController: NSObject, ObservableObject {
         }
 
         lastErrorMessage = "Quipsly is still waiting for iOS to finish the local audio file. Keep the app open and review the take in Library."
+        return false
+    }
+
+    /// Waits for the real media callback, not merely recorder construction.
+    /// The LiveKit-backed path remains preparing until its first local-input
+    /// PCM buffer arrives.
+    func waitUntilRecordingOrTerminal(timeout: TimeInterval = 4) async -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            switch captureState {
+            case .recording:
+                return true
+            case .failed, .idle, .saved:
+                return false
+            case .preparing, .paused, .finalizing:
+                try? await Task.sleep(nanoseconds: 25_000_000)
+            }
+        }
+        if captureState == .preparing, activeLocalRecordingID != nil {
+            finishCaptureFailure(
+                "The provider microphone pipeline did not deliver local PCM in time. Quipsly closed and preserved the armed source instead of claiming a recording."
+            )
+        }
         return false
     }
 
@@ -597,12 +628,13 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
     private func handleStartFailure(_ error: Error) {
         let message = "Could not start recording: \(error.localizedDescription)"
-        if let activeLocalRecordingID {
-            try? localRecordingLibrary.markCaptureFailed(
-                activeLocalRecordingID,
-                durationSeconds: currentDuration,
-                message: message
-            )
+        if activeLocalRecordingID != nil {
+            // A source ledger exists, so use the terminal media cleanup path.
+            // This is especially important for the provider-backed recorder:
+            // an SDK start failure must never leave its renderer or writer
+            // attached to LiveKit.
+            finishCaptureFailure(message)
+            return
         }
         failCapture(combining(message, with: closeStartBoundaryAfterFailedArm()))
     }
@@ -767,13 +799,41 @@ final class AudioCaptureController: NSObject, ObservableObject {
             AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
         ]
 
+        var directRecorder: AVAudioRecorder?
+        #if canImport(LiveKit)
+        var providerRecorder: ProviderAudioMasterRecorder?
+        if audioSessionCoordinator.isProviderRoomActive {
+            guard audioSessionCoordinator.providerInputObservationAvailable else {
+                throw CaptureError.providerInputUnavailable
+            }
+            providerRecorder = try ProviderAudioMasterRecorder(
+                fileURL: audioFilename,
+                audioSettings: settings
+            )
+        } else {
+            let recorder = try AVAudioRecorder(url: audioFilename, settings: settings)
+            recorder.delegate = self
+            recorder.isMeteringEnabled = true
+            guard recorder.prepareToRecord() else {
+                throw CaptureError.couldNotPrepareRecorder
+            }
+            directRecorder = recorder
+        }
+        #else
         let recorder = try AVAudioRecorder(url: audioFilename, settings: settings)
         recorder.delegate = self
         recorder.isMeteringEnabled = true
         guard recorder.prepareToRecord() else {
             throw CaptureError.couldNotPrepareRecorder
         }
+        directRecorder = recorder
+        #endif
         try localRecordingLibrary.setInProgressFileProtection(at: audioFilename)
+        #if canImport(LiveKit)
+        let usesProviderPCM = providerRecorder != nil
+        #else
+        let usesProviderPCM = false
+        #endif
 
         localFallbackSessionId = "local-recording-\(UUID().uuidString.lowercased())"
         let context = LocalRecordingSessionContext(
@@ -802,6 +862,12 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 includesAudio: true,
                 audioSampleRate: 48_000,
                 audioChannelCount: 1,
+                audioCapturePipeline: usesProviderPCM
+                    ? "livekit-local-input-pcm"
+                    : "av-audio-recorder-direct-input",
+                pauseTimelinePolicy: usesProviderPCM
+                    ? "silence-preserves-wall-clock"
+                    : "recorder-native-pause",
                 monotonicStartedNanoseconds: DispatchTime.now().uptimeNanoseconds,
                 clockSamples: captureIntent.clockSamples.isEmpty
                     ? nil
@@ -826,19 +892,44 @@ final class AudioCaptureController: NSObject, ObservableObject {
         automaticStopReason = nil
         lastStorageCheckAt = .distantPast
         pausedByInterruption = false
+        pendingProviderSegmentStart = nil
 
         guard AuthManager.shared.matchesStableOwnerSnapshot(captureIntent.ownerSnapshot),
               !captureOwnerAuthorityLost else {
             throw CaptureError.captureOwnerChanged
         }
-        guard recorder.record() else {
+
+        #if canImport(LiveKit)
+        if let providerRecorder {
+            capturePipelineLabel = "Live room microphone PCM · one hardware input"
+            providerAudioMaster = providerRecorder
+            pendingProviderSegmentStart = startedAt
+            providerRecorder.onFirstPCMBuffer = { [weak self] in
+                Task { @MainActor [weak self] in
+                    self?.confirmProviderAudioInput(
+                        recordingID: ledgerEntry.id
+                    )
+                }
+            }
+            try providerRecorder.start(at: startedAt)
+            startProviderAudioWatchdog(recordingID: ledgerEntry.id)
+            updateNowPlayingInfo()
+            return
+        }
+        #endif
+
+        guard let directRecorder else {
+            throw CaptureError.couldNotPrepareRecorder
+        }
+        guard directRecorder.record() else {
             throw CaptureError.couldNotBeginRecorder
         }
-        audioRecorder = recorder
+        audioRecorder = directRecorder
+        capturePipelineLabel = "Direct local microphone recorder"
         do {
             try localRecordingLibrary.markRecording(ledgerEntry.id, durationSeconds: 0)
         } catch {
-            recorder.stop()
+            directRecorder.stop()
             audioRecorder = nil
             throw error
         }
@@ -848,8 +939,72 @@ final class AudioCaptureController: NSObject, ObservableObject {
         updateNowPlayingInfo()
     }
 
+    #if canImport(LiveKit)
+    private func confirmProviderAudioInput(recordingID: UUID) {
+        guard activeLocalRecordingID == recordingID,
+              captureState == .preparing,
+              providerAudioMaster?.isReceivingPCM == true,
+              captureOwnerIsCurrent else {
+            return
+        }
+
+        providerAudioStartWatchdogTask?.cancel()
+        providerAudioStartWatchdogTask = nil
+        let segmentStartedAt = pendingProviderSegmentStart ?? Date()
+        pendingProviderSegmentStart = nil
+        startTime = segmentStartedAt
+
+        do {
+            try localRecordingLibrary.markRecording(
+                recordingID,
+                durationSeconds: sourceTimelineDuration()
+            )
+        } catch {
+            finishCaptureFailure(
+                "The live-room microphone reached Quipsly, but its local journal could not enter recording state: \(error.localizedDescription)"
+            )
+            return
+        }
+
+        startNewSegment(at: segmentStartedAt)
+        startDurationAndMeterTimer()
+        transition(to: .recording)
+        updateNowPlayingInfo()
+    }
+
+    private func startProviderAudioWatchdog(recordingID: UUID) {
+        providerAudioStartWatchdogTask?.cancel()
+        providerAudioStartWatchdogTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            guard !Task.isCancelled, let self,
+                  self.activeLocalRecordingID == recordingID,
+                  self.captureState == .preparing else {
+                return
+            }
+            self.finishCaptureFailure(
+                "The live-room microphone pipeline opened but delivered no local PCM. Quipsly closed and preserved the source instead of claiming a recording."
+            )
+        }
+    }
+    #endif
+
     private func stopRecording(finalizationMessage: String? = nil) {
-        guard captureState == .recording || captureState == .paused else { return }
+        guard captureState == .recording
+                || captureState == .paused
+                || (captureState == .preparing && activeLocalRecordingID != nil) else {
+            return
+        }
+
+        #if canImport(LiveKit)
+        if captureState == .preparing,
+           providerAudioMaster?.isReceivingPCM != true,
+           segments.isEmpty {
+            finishCaptureFailure(
+                "The live-room microphone had not delivered a confirmed PCM buffer. Quipsly preserved the armed evidence but will not label silence as a saved recording."
+            )
+            return
+        }
+        #endif
 
         let stoppedAt = Date()
         if captureState == .recording {
@@ -858,11 +1013,14 @@ final class AudioCaptureController: NSObject, ObservableObject {
         }
 
         startTime = nil
-        currentDuration = accumulatedDuration
+        currentDuration = sourceTimelineDuration(at: stoppedAt)
         pendingFinalizationStoppedAt = stoppedAt
-        pendingFinalizationDuration = max(accumulatedDuration, audioRecorder?.currentTime ?? 0)
+        pendingFinalizationDuration = currentDuration
         pendingFinalizationMessage = normalized(finalizationMessage)
         pausedByInterruption = false
+        pendingProviderSegmentStart = nil
+        providerAudioStartWatchdogTask?.cancel()
+        providerAudioStartWatchdogTask = nil
         stopDurationAndMeterTimer()
 
         if let activeLocalRecordingID {
@@ -879,6 +1037,15 @@ final class AudioCaptureController: NSObject, ObservableObject {
         transition(to: .finalizing)
         updateNowPlayingInfo()
 
+        #if canImport(LiveKit)
+        if let providerAudioMaster {
+            providerAudioMaster.stop(at: stoppedAt)
+            self.providerAudioMaster = nil
+            finalizeSuccessfulRecording()
+            return
+        }
+        #endif
+
         guard let audioRecorder else {
             finishCaptureFailure("The recorder became unavailable while Quipsly was finalizing the file.")
             return
@@ -890,13 +1057,34 @@ final class AudioCaptureController: NSObject, ObservableObject {
         guard captureState == .recording else { return }
 
         let pausedAt = Date()
+        #if canImport(LiveKit)
+        if let providerAudioMaster {
+            providerAudioMaster.pause()
+        } else {
+            audioRecorder?.pause()
+        }
+        #else
         audioRecorder?.pause()
+        #endif
         endCurrentSegment(reason: reason, at: pausedAt)
         accumulateActiveDuration(until: pausedAt)
         startTime = nil
-        currentDuration = accumulatedDuration
+        currentDuration = sourceTimelineDuration(at: pausedAt)
         pausedByInterruption = causedByInterruption
+        #if canImport(LiveKit)
+        if providerAudioMaster == nil {
+            stopDurationAndMeterTimer()
+        } else {
+            // The provider-backed master writes silence while detached so its
+            // clock remains aligned with the room and camera. Keep the storage
+            // watchdog active while making the input meter visibly quiet.
+            inputLevelDB = -160
+            peakInputLevelDB = -160
+            normalizedInputLevel = 0
+        }
+        #else
         stopDurationAndMeterTimer()
+        #endif
 
         if let activeLocalRecordingID {
             do {
@@ -915,7 +1103,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     }
 
     private func resumeRecording() {
-        guard captureState == .paused, let audioRecorder else { return }
+        guard captureState == .paused else { return }
 
         guard captureOwnerIsCurrent else {
             captureOwnerAuthorityLost = true
@@ -936,16 +1124,30 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
         do {
             try audioSessionCoordinator.activateLocalCapture()
-            guard audioRecorder.record() else {
-                throw CaptureError.couldNotResumeRecorder
-            }
-
             let resumedAt = Date()
-            startTime = resumedAt
-            startNewSegment(at: resumedAt)
             pausedByInterruption = false
             lastErrorMessage = nil
             refreshInputRoute()
+
+            #if canImport(LiveKit)
+            if let providerAudioMaster {
+                guard let activeLocalRecordingID else {
+                    throw CaptureError.missingLocalRecordingIdentity
+                }
+                pendingProviderSegmentStart = resumedAt
+                providerAudioMaster.resume()
+                transition(to: .preparing)
+                startProviderAudioWatchdog(recordingID: activeLocalRecordingID)
+                updateNowPlayingInfo()
+                return
+            }
+            #endif
+
+            guard let audioRecorder, audioRecorder.record() else {
+                throw CaptureError.couldNotResumeRecorder
+            }
+            startTime = resumedAt
+            startNewSegment(at: resumedAt)
 
             if let activeLocalRecordingID {
                 try localRecordingLibrary.markRecording(
@@ -958,7 +1160,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
             transition(to: .recording)
             updateNowPlayingInfo()
         } catch {
-            audioRecorder.pause()
+            audioRecorder?.pause()
+            #if canImport(LiveKit)
+            providerAudioMaster?.pause()
+            #endif
             pausedByInterruption = false
             lastErrorMessage = "Recording is still paused: \(error.localizedDescription)"
             transition(to: .paused)
@@ -969,7 +1174,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private func markBreak() {
         guard captureState == .recording else { return }
         let breakAt = Date()
-        let offset = max(currentDuration, accumulatedDuration + (startTime.map { breakAt.timeIntervalSince($0) } ?? 0))
+        let offset = sourceTimelineDuration(at: breakAt)
         endCurrentSegment(reason: .userMark, at: breakAt)
         userMarkOffsets.append(max(0, offset))
         startNewSegment(at: breakAt)
@@ -1006,6 +1211,21 @@ final class AudioCaptureController: NSObject, ObservableObject {
         accumulatedDuration += max(0, date.timeIntervalSince(startTime))
     }
 
+    private func sourceTimelineDuration(at date: Date = Date()) -> TimeInterval {
+        #if canImport(LiveKit)
+        if let providerAudioMaster {
+            return providerAudioMaster.currentTime
+        }
+        #endif
+        if let audioRecorder {
+            return max(accumulatedDuration, audioRecorder.currentTime)
+        }
+        if let overallStartTimestamp {
+            return max(accumulatedDuration, date.timeIntervalSince(overallStartTimestamp))
+        }
+        return max(0, accumulatedDuration)
+    }
+
     private func startDurationAndMeterTimer() {
         displayDurationTimer?.invalidate()
         displayDurationTimer = Timer.scheduledTimer(
@@ -1019,10 +1239,16 @@ final class AudioCaptureController: NSObject, ObservableObject {
     }
 
     @objc private func handleDurationAndMeterTimer() {
-        guard captureState == .recording else { return }
-        if let startTime {
-            currentDuration = accumulatedDuration + Date().timeIntervalSince(startTime)
+        #if canImport(LiveKit)
+        if captureState == .paused, providerAudioMaster != nil {
+            currentDuration = sourceTimelineDuration()
+            updateMeters()
+            checkStorageHeadroomDuringCapture()
+            return
         }
+        #endif
+        guard captureState == .recording else { return }
+        currentDuration = sourceTimelineDuration()
         updateMeters()
         checkStorageHeadroomDuringCapture()
     }
@@ -1079,6 +1305,33 @@ final class AudioCaptureController: NSObject, ObservableObject {
     }
 
     private func updateMeters() {
+        #if canImport(LiveKit)
+        if let providerAudioMaster {
+            guard captureState == .recording else {
+                inputLevelDB = -160
+                peakInputLevelDB = -160
+                normalizedInputLevel = 0
+                return
+            }
+            let snapshot = providerAudioMaster.meterSnapshot
+            inputLevelDB = snapshot.averagePowerDB
+            peakInputLevelDB = snapshot.peakPowerDB
+            let floorDB: Float = -60
+            normalizedInputLevel = Double(
+                min(max((snapshot.averagePowerDB - floorDB) / -floorDB, 0), 1)
+            )
+            if let receivedPCMAt = snapshot.receivedPCMAt,
+               Date().timeIntervalSince(receivedPCMAt) > 1.5 {
+                pauseRecording(
+                    reason: .interruption,
+                    causedByInterruption: true
+                )
+                lastErrorMessage = "The live-room microphone stopped delivering local PCM. Recording is paused and its timeline evidence is preserved; reconnect or stop the take."
+                broadcastError(message: lastErrorMessage ?? "Recording remains paused.")
+            }
+            return
+        }
+        #endif
         guard let audioRecorder, audioRecorder.isRecording else {
             inputLevelDB = -160
             peakInputLevelDB = -160
@@ -1153,10 +1406,18 @@ final class AudioCaptureController: NSObject, ObservableObject {
     }
 
     private func broadcastState() {
-        var duration = accumulatedDuration
+        var duration = max(currentDuration, accumulatedDuration)
+        #if canImport(LiveKit)
+        if providerAudioMaster != nil {
+            duration = max(duration, sourceTimelineDuration())
+        } else if captureState == .recording, let startTime {
+            duration = max(duration, accumulatedDuration + Date().timeIntervalSince(startTime))
+        }
+        #else
         if captureState == .recording, let startTime {
             duration += Date().timeIntervalSince(startTime)
         }
+        #endif
 
         let detail = EventDetail(
             state: bridgeState(for: captureState),
@@ -1219,6 +1480,9 @@ final class AudioCaptureController: NSObject, ObservableObject {
             activeLocalRecordingID = nil
             activeCaptureIntent = nil
             localFallbackSessionId = nil
+            providerAudioStartWatchdogTask?.cancel()
+            providerAudioStartWatchdogTask = nil
+            pendingProviderSegmentStart = nil
             pendingFinalizationStoppedAt = nil
             pendingFinalizationDuration = 0
             pendingFinalizationMessage = nil
@@ -1285,9 +1549,19 @@ final class AudioCaptureController: NSObject, ObservableObject {
         _ message: String,
         preserveExistingLibraryStatus: Bool = false
     ) {
-        let duration = max(currentDuration, accumulatedDuration, audioRecorder?.currentTime ?? 0)
+        let duration = max(
+            currentDuration,
+            accumulatedDuration,
+            sourceTimelineDuration()
+        )
+        providerAudioStartWatchdogTask?.cancel()
+        providerAudioStartWatchdogTask = nil
         audioRecorder?.stop()
         audioRecorder = nil
+        #if canImport(LiveKit)
+        providerAudioMaster?.stop()
+        providerAudioMaster = nil
+        #endif
 
         if let fileURL = currentRecordingURL {
             try? localRecordingLibrary.setFinalizedFileProtection(at: fileURL)
@@ -1304,6 +1578,7 @@ final class AudioCaptureController: NSObject, ObservableObject {
         currentDuration = duration
         startTime = nil
         currentSegmentStart = nil
+        pendingProviderSegmentStart = nil
         pausedByInterruption = false
         failureMessage = message
         lastErrorMessage = message
@@ -1438,6 +1713,8 @@ final class AudioCaptureController: NSObject, ObservableObject {
         case startReceiptNotDurable
         case armedRoomMismatch
         case captureOwnerChanged
+        case providerInputUnavailable
+        case missingLocalRecordingIdentity
 
         var errorDescription: String? {
             switch self {
@@ -1459,6 +1736,10 @@ final class AudioCaptureController: NSObject, ObservableObject {
                 return "The armed Nest receipt does not match the selected call room, so recording did not begin."
             case .captureOwnerChanged:
                 return "The Quipsly account changed before recording could safely begin. Nothing was recorded."
+            case .providerInputUnavailable:
+                return "The live room owns the microphone, but its local PCM stream is not active. Reconnect room audio before recording."
+            case .missingLocalRecordingIdentity:
+                return "The protected local recording identity is missing, so capture cannot resume."
             }
         }
     }
