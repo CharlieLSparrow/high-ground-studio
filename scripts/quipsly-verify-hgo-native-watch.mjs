@@ -216,6 +216,17 @@ function watchEndpoint(options) {
   return endpoint;
 }
 
+function manuscriptEndpoint(options, writingVersion = "") {
+  const endpoint = new URL(
+    `/api/nests/${encodeURIComponent(options.projectSlug)}/episode-room`,
+    options.baseUrl,
+  );
+  endpoint.searchParams.set("episode", options.episodeSlug);
+  endpoint.searchParams.set("writing", "1");
+  if (writingVersion) endpoint.searchParams.set("writingVersion", writingVersion);
+  return endpoint;
+}
+
 async function readWatch(options, idToken) {
   const outsiderResponse = await fetch(watchEndpoint(options), {
     headers: { Accept: "application/json" },
@@ -304,6 +315,122 @@ function assertRehearsalState(watch) {
     fail(`The rehearsal Watch state failed its safety contract: ${JSON.stringify(state)}`);
   }
   return { state, selectedClip, clips };
+}
+
+function assertRehearsalManuscript(
+  document,
+  expectedEpisodeSlug = DEFAULTS.episodeSlug,
+) {
+  const writing = document?.writing ?? {};
+  const blocks = Array.isArray(writing.textBlocks) ? writing.textBlocks : [];
+  const stableIds = blocks.map((block) => clean(block?.stableId));
+  const orders = blocks.map((block) => Number(block?.order));
+  const firstBlockFirstLine = clean(blocks[0]?.body)
+    .split("\n", 1)[0]
+    ?.trim() ?? "";
+  const canonicalHeading =
+    clean(blocks[0]?.title) || firstBlockFirstLine;
+  const state = {
+    canEdit: document?.canEdit === true,
+    episodeSlug: clean(document?.episode?.slug),
+    episodeTitle: clean(document?.episode?.title),
+    documentTitle: clean(document?.episode?.documentTitle),
+    version: clean(writing.version),
+    blockCount: Number(writing.blockCount),
+    visibleBlockCount: Number(writing.visibleBlockCount),
+    truncated: writing.truncated === true,
+    deliveredBlockCount: blocks.length,
+    canonicalHeading,
+    stableIdsUnique:
+      stableIds.length === new Set(stableIds).size
+      && stableIds.every(Boolean),
+    ordersAscending: orders.every(
+      (order, index) =>
+        Number.isFinite(order)
+        && (index === 0 || order >= orders[index - 1]),
+    ),
+    allBodiesPresent: blocks.every((block) => Boolean(clean(block?.body))),
+  };
+  const passed =
+    document?.ok === true
+    && state.canEdit
+    && state.episodeSlug === expectedEpisodeSlug
+    && state.episodeTitle === "Testflight Rehearsal"
+    && state.documentTitle === "High Ground Odyssey Rehearsal Production Document"
+    && Boolean(state.version)
+    && state.blockCount === 34
+    && state.visibleBlockCount === 34
+    && !state.truncated
+    && state.deliveredBlockCount === 34
+    && state.canonicalHeading === "**THE SWEAR JAR**"
+    && state.stableIdsUnique
+    && state.ordersAscending
+    && state.allBodiesPresent;
+  if (!passed) {
+    fail(
+      `The rehearsal manuscript failed its native-read contract: ${JSON.stringify(state)}`,
+    );
+  }
+  return state;
+}
+
+async function readManuscript(options, idToken) {
+  const outsiderResponse = await fetch(manuscriptEndpoint(options), {
+    headers: { Accept: "application/json" },
+    redirect: "manual",
+  });
+  await outsiderResponse.arrayBuffer();
+
+  const authenticatedResponse = await fetch(manuscriptEndpoint(options), {
+    headers: {
+      Accept: "application/json",
+      Authorization: `Bearer ${idToken}`,
+    },
+  });
+  const document = await jsonResponse(
+    authenticatedResponse,
+    "Authenticated native manuscript projection",
+  );
+  if (!authenticatedResponse.ok || document?.ok !== true) {
+    fail(
+      `Authenticated native manuscript projection failed with HTTP ${authenticatedResponse.status}: `
+      + `${clean(document?.error) || "unknown error"}`,
+    );
+  }
+  const state = assertRehearsalManuscript(document, options.episodeSlug);
+
+  const unchangedResponse = await fetch(
+    manuscriptEndpoint(options, state.version),
+    {
+      headers: {
+        Accept: "application/json",
+        Authorization: `Bearer ${idToken}`,
+      },
+    },
+  );
+  const unchanged = await jsonResponse(
+    unchangedResponse,
+    "Unchanged native manuscript projection",
+  );
+  const unchangedWriting = unchanged?.writing ?? {};
+  const metadataOnly =
+    unchangedResponse.ok
+    && unchanged?.ok === true
+    && clean(unchangedWriting.version) === state.version
+    && Number(unchangedWriting.blockCount) === 34
+    && !Object.prototype.hasOwnProperty.call(unchangedWriting, "textBlocks");
+  if (!metadataOnly) {
+    fail("An unchanged native manuscript request re-sent or lost canonical writing state.");
+  }
+
+  return {
+    outsiderStatus: outsiderResponse.status,
+    outsiderDenied: [401, 403, 404].includes(outsiderResponse.status),
+    authenticatedStatus: authenticatedResponse.status,
+    state,
+    unchangedStatus: unchangedResponse.status,
+    unchangedMetadataOnly: metadataOnly,
+  };
 }
 
 async function streamSha256(response) {
@@ -427,11 +554,15 @@ async function main() {
   }
   const release = await readRelease(options);
   const idToken = await firebaseIdToken(options);
+  const manuscript = await readManuscript(options, idToken);
+  if (!manuscript.outsiderDenied) {
+    fail("The private rehearsal manuscript did not deny an outsider.");
+  }
   const watch = await readWatch(options, idToken);
   const { state, selectedClip, clips } = assertRehearsalState(watch);
   const media = await verifyProtectedMedia(options, idToken, clips);
   const value = {
-    schema: "quipsly-hgo-native-watch-read-only-proof-v2",
+    schema: "quipsly-hgo-native-rehearsal-read-only-proof-v3",
     auditedAt: new Date().toISOString(),
     mode: "read-only",
     baseUrl: options.baseUrl,
@@ -441,6 +572,14 @@ async function main() {
     projectSlug: options.projectSlug,
     episodeSlug: options.episodeSlug,
     release,
+    manuscript: {
+      outsiderStatus: manuscript.outsiderStatus,
+      outsiderDenied: manuscript.outsiderDenied,
+      authenticatedStatus: manuscript.authenticatedStatus,
+      unchangedStatus: manuscript.unchangedStatus,
+      unchangedMetadataOnly: manuscript.unchangedMetadataOnly,
+      ...manuscript.state,
+    },
     watch: {
       outsiderStatus: watch.outsiderStatus,
       outsiderDenied: watch.outsiderDenied,
@@ -468,9 +607,12 @@ async function main() {
 
 export {
   assertRehearsalState,
+  assertRehearsalManuscript,
   expectedMediaForClip,
+  manuscriptEndpoint,
   parseArguments,
   readRelease,
+  readManuscript,
   readWatch,
   verifyProtectedMedia,
 };

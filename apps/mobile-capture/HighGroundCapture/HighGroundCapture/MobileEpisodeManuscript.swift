@@ -18,6 +18,13 @@ struct MobileEpisodeManuscriptEpisode: Codable, Hashable {
     let updatedAt: String
     let documentId: String
     let documentTitle: String
+
+    var displayTitle: String {
+        let canonicalDocumentTitle = documentTitle.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return canonicalDocumentTitle.isEmpty ? title : canonicalDocumentTitle
+    }
 }
 
 struct MobileEpisodeManuscriptWriting: Codable, Hashable {
@@ -82,6 +89,14 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
     }
 
     var hasReadableCopy: Bool { episode != nil && !blocks.isEmpty }
+    var displayTitle: String {
+        for block in blocks.prefix(3) {
+            if let heading = Self.manuscriptHeading(block) {
+                return heading
+            }
+        }
+        return episode?.displayTitle ?? "Episode script"
+    }
 
     func loadPreview(session: MobileCaptureSession) {
         reset()
@@ -94,34 +109,41 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
             status: "READY_TO_RECORD",
             updatedAt: now,
             documentId: "preview-hgo-document",
-            documentTitle: "High Ground Odyssey · The Swear Jar"
+            documentTitle: "The Swear Jar"
         )
         blocks = [
             MobileEpisodeManuscriptBlock(
                 id: "preview-1",
-                stableId: "preview-opening-homer",
+                stableId: "preview-title",
                 order: 1,
+                title: "**THE SWEAR JAR**",
+                body: "High Ground Odyssey episode rehearsal manuscript."
+            ),
+            MobileEpisodeManuscriptBlock(
+                id: "preview-2",
+                stableId: "preview-opening-homer",
+                order: 2,
                 title: "Homer",
                 body: "Open with the personal story and establish why the idea matters."
             ),
             MobileEpisodeManuscriptBlock(
-                id: "preview-2",
+                id: "preview-3",
                 stableId: "preview-response-charlie",
-                order: 2,
+                order: 3,
                 title: "Charlie",
                 body: "Respond, sharpen the question, and set up the first shared clip."
             ),
             MobileEpisodeManuscriptBlock(
-                id: "preview-3",
+                id: "preview-4",
                 stableId: "preview-clip-be-curious",
-                order: 3,
+                order: 4,
                 title: "Clip · Be Curious",
                 body: "Watch together, then pause before the conversation resumes."
             ),
             MobileEpisodeManuscriptBlock(
-                id: "preview-4",
+                id: "preview-5",
                 stableId: "preview-discussion",
-                order: 4,
+                order: 5,
                 title: "Discussion",
                 body: "Connect the clip to the episode’s central argument and invite disagreement."
             ),
@@ -457,6 +479,45 @@ final class MobileEpisodeManuscriptClient: ObservableObject {
             .joined()
     }
 
+    nonisolated private static func manuscriptHeading(
+        _ block: MobileEpisodeManuscriptBlock
+    ) -> String? {
+        let firstBodyLine = block.body
+            .split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: true)
+            .first
+            .map(String.init)
+        for candidate in [block.title, firstBodyLine] {
+            if let heading = normalizedHeading(candidate) {
+                return heading
+            }
+        }
+        return nil
+    }
+
+    nonisolated private static func normalizedHeading(
+        _ value: String?
+    ) -> String? {
+        guard let raw = value?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !raw.isEmpty else { return nil }
+        let trimSet = CharacterSet.whitespacesAndNewlines.union(
+            CharacterSet(charactersIn: "*#_")
+        )
+        let cleaned = raw.trimmingCharacters(in: trimSet)
+        let words = cleaned.split(whereSeparator: \.isWhitespace)
+        let letters = cleaned.filter(\.isLetter)
+        let looksLikeHeading =
+            words.count >= 2
+            && (
+                raw.contains("**")
+                || (!letters.isEmpty && cleaned == cleaned.uppercased())
+            )
+        guard looksLikeHeading else { return nil }
+        return cleaned == cleaned.uppercased()
+            ? cleaned.localizedCapitalized
+            : cleaned
+    }
+
     nonisolated private static func isSameOrigin(
         _ candidate: URL?,
         _ expected: URL
@@ -489,8 +550,8 @@ struct MobileEpisodeManuscriptCard: View {
                 }
             }
 
-            if let episode = client.episode {
-                Text(episode.title)
+            if client.episode != nil {
+                Text(client.displayTitle)
                     .font(.title3.weight(.bold))
                     .accessibilityIdentifier("CaptureEpisodeManuscriptTitle")
                 Text(summary)
@@ -603,7 +664,7 @@ private struct MobileEpisodeManuscriptReader: View {
                 }
                 .padding()
             }
-            .navigationTitle(client.episode?.title ?? "Episode script")
+            .navigationTitle(client.displayTitle)
             .navigationBarTitleDisplayMode(.inline)
             .searchable(
                 text: $searchText,

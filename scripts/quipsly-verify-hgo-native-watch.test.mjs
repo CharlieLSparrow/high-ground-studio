@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertRehearsalManuscript,
   assertRehearsalState,
   expectedMediaForClip,
   parseArguments,
@@ -70,6 +71,109 @@ test("accepts the exact paused, session-free rehearsal Watch state", () => {
   assert.equal(result.state.watchedSegmentCount, 0);
   assert.equal(result.selectedClip.assetId, "be-curious");
   assert.equal(result.clips.length, 3);
+});
+
+test("accepts the exact canonical 34-block rehearsal manuscript", () => {
+  const document = {
+    ok: true,
+    canEdit: true,
+    episode: {
+      slug: "testflight-rehearsal",
+      title: "Testflight Rehearsal",
+      documentTitle: "High Ground Odyssey Rehearsal Production Document",
+    },
+    writing: {
+      version: "writing-v34",
+      blockCount: 34,
+      visibleBlockCount: 34,
+      truncated: false,
+      textBlocks: Array.from({ length: 34 }, (_, index) => ({
+        id: `block-${index + 1}`,
+        stableId: `swear-jar-${index + 1}`,
+        order: index + 1,
+        title: index % 2 === 0 ? null : "Homer",
+        body:
+          index === 0
+            ? "**THE SWEAR JAR**\nHigh Ground Odyssey rehearsal."
+            : `Rehearsal block ${index + 1}`,
+      })),
+    },
+  };
+
+  const state = assertRehearsalManuscript(document);
+  assert.equal(state.episodeTitle, "Testflight Rehearsal");
+  assert.equal(
+    state.documentTitle,
+    "High Ground Odyssey Rehearsal Production Document",
+  );
+  assert.equal(state.blockCount, 34);
+  assert.equal(state.deliveredBlockCount, 34);
+  assert.equal(state.canonicalHeading, "**THE SWEAR JAR**");
+  assert.equal(state.stableIdsUnique, true);
+  assert.equal(state.allBodiesPresent, true);
+});
+
+test("rejects manuscript drift, duplicate identity, or missing text", () => {
+  const blocks = Array.from({ length: 34 }, (_, index) => ({
+    id: `block-${index + 1}`,
+    stableId: `swear-jar-${index + 1}`,
+    order: index + 1,
+    title: null,
+    body:
+      index === 0
+        ? "**THE SWEAR JAR**\nHigh Ground Odyssey rehearsal."
+        : `Rehearsal block ${index + 1}`,
+  }));
+  const safe = {
+    ok: true,
+    canEdit: true,
+    episode: {
+      slug: "testflight-rehearsal",
+      title: "Testflight Rehearsal",
+      documentTitle: "High Ground Odyssey Rehearsal Production Document",
+    },
+    writing: {
+      version: "writing-v34",
+      blockCount: 34,
+      visibleBlockCount: 34,
+      truncated: false,
+      textBlocks: blocks,
+    },
+  };
+
+  assert.throws(
+    () => assertRehearsalManuscript({
+      ...safe,
+      writing: { ...safe.writing, blockCount: 35 },
+    }),
+    /failed its native-read contract/,
+  );
+  assert.throws(
+    () => assertRehearsalManuscript({
+      ...safe,
+      writing: {
+        ...safe.writing,
+        textBlocks: [
+          ...blocks.slice(0, 33),
+          { ...blocks[33], stableId: blocks[0].stableId },
+        ],
+      },
+    }),
+    /failed its native-read contract/,
+  );
+  assert.throws(
+    () => assertRehearsalManuscript({
+      ...safe,
+      writing: {
+        ...safe.writing,
+        textBlocks: [
+          { ...blocks[0], body: "" },
+          ...blocks.slice(1),
+        ],
+      },
+    }),
+    /failed its native-read contract/,
+  );
 });
 
 test("pins every staged clip to its immutable local media identity", () => {
