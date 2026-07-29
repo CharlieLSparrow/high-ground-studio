@@ -53,6 +53,17 @@ function friendlyFirebaseAuthError(error: any) {
     return "Google sign-in was closed before it finished. No account changes were made.";
   }
 
+  if (
+    code === "auth/account-exists-with-different-credential"
+    || code === "auth/credential-already-in-use"
+  ) {
+    return "That email already has another Firebase sign-in method. Sign in with that method, then use Account switch → Connect Google so Quipsly preserves one person and one Nest.";
+  }
+
+  if (code === "auth/operation-not-allowed") {
+    return "Google sign-in is not enabled for this Quipsly Firebase project yet. Email/password remains available.";
+  }
+
   return message || "Firebase could not finish that auth step.";
 }
 
@@ -260,7 +271,14 @@ export function LoginClient({
           <h2 className="mt-3 font-serif text-3xl font-black">
             {passwordMode === "create" ? "Create a free Quipsly account." : "Use email/password."}
           </h2>
-          <p className="mt-3 rounded-2xl border border-[#ead7b7] bg-white/70 px-4 py-3 text-sm leading-6 text-[#715840]">{message}</p>
+          <p
+            role="status"
+            aria-live="polite"
+            data-testid="quipsly-login-status"
+            className="mt-3 rounded-2xl border border-[#ead7b7] bg-white/70 px-4 py-3 text-sm leading-6 text-[#715840]"
+          >
+            {message}
+          </p>
           <div className="mt-5 grid grid-cols-2 gap-2 rounded-full border border-[#ead7b7] bg-[#f4ead8] p-1 text-xs font-black uppercase tracking-[0.14em]">
             <button
               type="button"

@@ -1,11 +1,17 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { signInWithEmailAndPassword } from "firebase/auth";
+import {
+  GoogleAuthProvider,
+  signInWithEmailAndPassword,
+  signInWithPopup,
+} from "firebase/auth";
 
 import { LoginClient } from "./LoginClient";
 
 jest.mock("firebase/auth", () => ({
   createUserWithEmailAndPassword: jest.fn(),
-  GoogleAuthProvider: jest.fn(),
+  GoogleAuthProvider: jest.fn().mockImplementation(() => ({
+    setCustomParameters: jest.fn(),
+  })),
   getRedirectResult: jest.fn().mockResolvedValue(null),
   sendEmailVerification: jest.fn(),
   sendPasswordResetEmail: jest.fn(),
@@ -46,5 +52,25 @@ describe("Quipsly direct login", () => {
         "LocalOnly-Quipsly-2026!",
       );
     });
+  });
+
+  it("explains how an existing password user can safely connect Google", async () => {
+    (signInWithPopup as jest.Mock).mockRejectedValue({
+      code: "auth/account-exists-with-different-credential",
+    });
+
+    render(<LoginClient callbackUrl="/projects" />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Sign in with Google" }),
+    );
+
+    expect(GoogleAuthProvider).toHaveBeenCalled();
+    expect(
+      await screen.findByText(/Account switch → Connect Google/),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("quipsly-login-status")).toHaveAttribute(
+      "aria-live",
+      "polite",
+    );
   });
 });

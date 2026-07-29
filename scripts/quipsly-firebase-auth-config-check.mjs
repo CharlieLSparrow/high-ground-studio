@@ -4,7 +4,10 @@ import { execFileSync } from "node:child_process";
 const firebaseProject = process.env.FIREBASE_PROJECT_ID || "quipsly-reef";
 const quotaProject = process.env.GOOGLE_CLOUD_QUOTA_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || "high-ground-odyssey";
 const googleAuthPlatformProject =
-  process.env.QUIPSLY_GOOGLE_AUTH_PLATFORM_PROJECT || quotaProject;
+  process.env.QUIPSLY_GOOGLE_AUTH_PLATFORM_PROJECT || firebaseProject;
+const requiredIosBundleId =
+  process.env.QUIPSLY_FIREBASE_IOS_BUNDLE_ID
+  || "com.highgroundodyssey.HighGroundCapture";
 const requiredAuthorizedDomains = (process.env.QUIPSLY_FIREBASE_REQUIRED_DOMAINS || "nest.quipsly.com")
   .split(",")
   .map((domain) => domain.trim())
@@ -35,8 +38,49 @@ async function identityToolkitGet(path, token) {
   return { response, body };
 }
 
+async function firebaseManagementGet(path, token) {
+  const response = await fetch(`https://firebase.googleapis.com/v1beta1/${path}`, {
+    headers: {
+      authorization: `Bearer ${token}`,
+      "x-goog-user-project": quotaProject,
+    },
+  });
+  const body = await response.json();
+  return { response, body };
+}
+
+function gcloudProjectDetails(projectId) {
+  return JSON.parse(execFileSync(
+    "gcloud",
+    [
+      "projects",
+      "describe",
+      projectId,
+      "--format=json(projectId,projectNumber)",
+    ],
+    {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  ));
+}
+
+function oauthClientProjectNumber(clientId) {
+  const match = String(clientId || "").match(/^([0-9]+)-/);
+  return match?.[1] || null;
+}
+
+function plistString(xml, key) {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = String(xml || "").match(
+    new RegExp(`<key>\\s*${escapedKey}\\s*</key>\\s*<string>([^<]+)</string>`),
+  );
+  return match?.[1]?.trim() || null;
+}
+
 try {
   const token = accessToken();
+  const firebaseProjectDetails = gcloudProjectDetails(firebaseProject);
   const projectConfig = await identityToolkitGet(`projects/${firebaseProject}/config`, token);
   if (!projectConfig.response.ok) {
     printJson({
@@ -65,6 +109,37 @@ try {
   const googleProviderEnabled = googleProviderExists && googleProvider.body.enabled === true;
   const googleProviderClientIdSet = googleProviderExists && Boolean(googleProvider.body.clientId);
   const googleProviderClientSecretSet = googleProviderExists && Boolean(googleProvider.body.clientSecret);
+  const providerClientProjectNumber = googleProviderExists
+    ? oauthClientProjectNumber(googleProvider.body.clientId)
+    : null;
+  const providerClientOwnedByFirebaseProject =
+    providerClientProjectNumber === String(firebaseProjectDetails.projectNumber);
+
+  const iosApps = await firebaseManagementGet(
+    `projects/${firebaseProject}/iosApps`,
+    token,
+  );
+  const matchingIosApps = iosApps.response.ok && Array.isArray(iosApps.body.apps)
+    ? iosApps.body.apps.filter((app) => app.bundleId === requiredIosBundleId)
+    : [];
+  const iosApp = matchingIosApps.length === 1 ? matchingIosApps[0] : null;
+  const iosConfig = iosApp
+    ? await firebaseManagementGet(`${iosApp.name}/config`, token)
+    : null;
+  const iosPlist = iosConfig?.response.ok && iosConfig.body.configFileContents
+    ? Buffer.from(iosConfig.body.configFileContents, "base64").toString("utf8")
+    : "";
+  const iosClientId = plistString(iosPlist, "CLIENT_ID");
+  const reversedIosClientId = plistString(iosPlist, "REVERSED_CLIENT_ID");
+  const iosClientProjectNumber = oauthClientProjectNumber(iosClientId);
+  const iosClientOwnedByFirebaseProject =
+    iosClientProjectNumber === String(firebaseProjectDetails.projectNumber);
+  const iosOAuthReady =
+    Boolean(iosApp)
+    && Boolean(iosConfig?.response.ok)
+    && Boolean(iosClientId)
+    && Boolean(reversedIosClientId)
+    && iosClientOwnedByFirebaseProject;
 
   printJson({
     ok:
@@ -72,8 +147,11 @@ try {
       && googleProviderExists
       && googleProviderEnabled
       && googleProviderClientIdSet
-      && googleProviderClientSecretSet,
+      && googleProviderClientSecretSet
+      && providerClientOwnedByFirebaseProject
+      && iosOAuthReady,
     firebaseProject,
+    firebaseProjectNumber: String(firebaseProjectDetails.projectNumber),
     quotaProject,
     authorizedDomains: {
       required: requiredAuthorizedDomains,
@@ -85,14 +163,39 @@ try {
       enabled: googleProviderEnabled,
       clientIdSet: googleProviderClientIdSet,
       clientSecretSet: googleProviderClientSecretSet,
+      clientProjectNumber: providerClientProjectNumber,
+      clientOwnedByFirebaseProject: providerClientOwnedByFirebaseProject,
       status: googleProvider.response.status,
       error: googleProviderExists ? undefined : googleProvider.body?.error?.message || "unknown",
+    },
+    iosApp: {
+      bundleId: requiredIosBundleId,
+      registrationCount: matchingIosApps.length,
+      active: iosApp?.state === "ACTIVE",
+      configReadable: Boolean(iosConfig?.response.ok),
+      clientIdSet: Boolean(iosClientId),
+      reversedClientIdSet: Boolean(reversedIosClientId),
+      clientProjectNumber: iosClientProjectNumber,
+      clientOwnedByFirebaseProject: iosClientOwnedByFirebaseProject,
+      ready: iosOAuthReady,
+      error:
+        !iosApps.response.ok
+          ? iosApps.body?.error?.message || "unknown"
+          : iosConfig && !iosConfig.response.ok
+            ? iosConfig.body?.error?.message || "unknown"
+            : undefined,
     },
     googleOAuthClient: {
       requiredRedirectUri: requiredGoogleRedirectUri,
       consoleUrl: `https://console.cloud.google.com/auth/clients?project=${encodeURIComponent(googleAuthPlatformProject)}`,
       manualRedirectListCheckRequired: true,
-      note: "This script cannot read classic Google OAuth client redirect URI lists. If browser Google sign-in still reports redirect_uri_mismatch, edit the web OAuth client behind studio-google-client-id and add requiredRedirectUri.",
+      action:
+        !providerClientOwnedByFirebaseProject
+          ? `Replace the Firebase Google provider client with a web OAuth client owned by ${firebaseProject}.`
+          : !iosOAuthReady
+            ? `Create or repair the iOS OAuth client for ${requiredIosBundleId} in ${firebaseProject}, then download a fresh Apple configuration.`
+            : "Manually confirm that the project-owned web client contains requiredRedirectUri.",
+      note: "This script intentionally emits ownership and presence checks only. It does not print OAuth client secrets, Firebase API keys, or the iOS client identifiers.",
     },
   });
 } catch (error) {

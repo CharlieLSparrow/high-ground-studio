@@ -64,8 +64,8 @@ test("native auth proves a verified mailbox before Nest or Keychain and keeps re
     "QuipslyCaptureCreateAccountModeButton",
     "QuipslyCapturePasswordConfirmationField",
     "QuipslyCapturePasswordResetButton",
-    "QuipslyCaptureGoogleAccountGuidance",
-    "QuipslyCaptureGoogleWebSignInLink",
+    "QuipslyCaptureGoogleSignInButton",
+    "QuipslyCaptureGoogleIdentityContinuityHint",
     "QuipslyCaptureAccountSupportLink",
   ]) {
     assert.ok(captureShell.includes(identifier) || read("LoginView.swift").includes(identifier));

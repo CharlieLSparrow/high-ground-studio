@@ -1,11 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase/firebase";
-import { signOut as firebaseSignOut } from "firebase/auth";
-import { CheckCircle2, FlaskConical, KeyRound, LogOut, RefreshCcw, ShieldCheck, UserCheck } from "lucide-react";
+import {
+  GoogleAuthProvider,
+  linkWithPopup,
+  onAuthStateChanged,
+  signOut as firebaseSignOut,
+  unlink,
+  type User,
+} from "firebase/auth";
+import {
+  CheckCircle2,
+  FlaskConical,
+  KeyRound,
+  Link2,
+  LogOut,
+  RefreshCcw,
+  ShieldCheck,
+  UserCheck,
+} from "lucide-react";
 
 type AccountSwitchClientProps = {
   callbackUrl: string;
@@ -21,7 +37,12 @@ export function AccountSwitchClient({
   callbackUrl,
   currentUser,
 }: AccountSwitchClientProps) {
-  const [status, setStatus] = useState<"idle" | "switching" | "signing-out">("idle");
+  const [status, setStatus] = useState<
+    "idle" | "switching" | "signing-out" | "linking-google"
+  >("idle");
+  const [firebaseUser, setFirebaseUser] = useState<User | null>(auth.currentUser);
+  const [firebaseStateReady, setFirebaseStateReady] = useState(false);
+  const [identityMessage, setIdentityMessage] = useState("");
   const router = useRouter();
   const safeLanes = [
     {
@@ -40,6 +61,93 @@ export function AccountSwitchClient({
       tone: "border-emerald-200 bg-emerald-50 text-emerald-950",
     },
   ];
+
+  useEffect(() => onAuthStateChanged(auth, (user) => {
+    setFirebaseUser(user);
+    setFirebaseStateReady(true);
+  }), []);
+
+  const firebaseProviderIds = new Set(
+    firebaseUser?.providerData.map((provider) => provider.providerId) ?? [],
+  );
+  const googleConnected = firebaseProviderIds.has("google.com");
+  const passwordConnected = firebaseProviderIds.has("password");
+
+  async function connectGoogleAccount() {
+    const user = auth.currentUser;
+    const email = user?.email?.trim().toLowerCase();
+    if (!user || !email) {
+      setIdentityMessage(
+        "Reauthenticate in this browser first. Quipsly will not attach a provider to a cookie-only or ambiguous session.",
+      );
+      return;
+    }
+
+    setStatus("linking-google");
+    setIdentityMessage(`Opening Google for ${email}...`);
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({
+      prompt: "select_account",
+      login_hint: email,
+    });
+
+    try {
+      const result = await linkWithPopup(user, provider);
+      const googleProfile = result.user.providerData.find(
+        (entry) => entry.providerId === "google.com",
+      );
+      const linkedEmail = googleProfile?.email?.trim().toLowerCase();
+
+      if (linkedEmail !== email) {
+        await unlink(result.user, "google.com");
+        setFirebaseUser(auth.currentUser);
+        setIdentityMessage(
+          `Google returned ${linkedEmail || "a different email"}. Quipsly removed that link; choose ${email} so one person's credentials stay together.`,
+        );
+        return;
+      }
+
+      const idToken = await result.user.getIdToken(true);
+      const response = await fetch("/api/auth/session", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => ({}));
+        throw new Error(
+          String(payload.error || "Quipsly could not refresh the identity ledger."),
+        );
+      }
+
+      setFirebaseUser(result.user);
+      setIdentityMessage(
+        `Google is connected to ${email}. Password and Google now open the same Quipsly person and Nest.`,
+      );
+      router.refresh();
+    } catch (error: any) {
+      const code = String(error?.code || "");
+      if (code === "auth/popup-closed-by-user") {
+        setIdentityMessage("Google linking was closed. No account change was made.");
+      } else if (
+        code === "auth/credential-already-in-use"
+        || code === "auth/account-exists-with-different-credential"
+      ) {
+        setIdentityMessage(
+          "That Google credential already belongs to another Firebase login. Quipsly left both credentials unchanged for an explicit identity review.",
+        );
+      } else if (code === "auth/provider-already-linked") {
+        setFirebaseUser(auth.currentUser);
+        setIdentityMessage("Google is already connected to this Firebase login.");
+      } else {
+        setIdentityMessage(
+          `Google could not be connected: ${String(error?.message || "unknown provider error")}`,
+        );
+      }
+    } finally {
+      setStatus("idle");
+    }
+  }
 
   async function switchGoogleAccount() {
     setStatus("switching");
@@ -110,6 +218,62 @@ export function AccountSwitchClient({
             </div>
           </div>
         </div>
+
+        <section
+          aria-labelledby="sign-in-methods-heading"
+          className="mt-4 rounded-3xl border border-cyan-200 bg-cyan-50 p-5 text-cyan-950"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="max-w-2xl">
+              <div className="flex items-center gap-2">
+                <Link2 className="h-4 w-4" />
+                <h2
+                  id="sign-in-methods-heading"
+                  className="text-xs font-black uppercase tracking-[0.16em]"
+                >
+                  Sign-in methods
+                </h2>
+              </div>
+              {!firebaseStateReady ? (
+                <p className="mt-2 text-sm leading-6">
+                  Reading this browser&apos;s Firebase credential...
+                </p>
+              ) : googleConnected ? (
+                <p className="mt-2 text-sm leading-6">
+                  Google is connected{passwordConnected ? " alongside password sign-in" : ""}.
+                  Both methods keep the same Firebase UID and Quipsly identity ledger.
+                </p>
+              ) : firebaseUser ? (
+                <p className="mt-2 text-sm leading-6">
+                  This browser is using {passwordConnected ? "a password credential" : "a non-Google credential"}.
+                  Connect the same email to Google without creating another Quipsly person.
+                </p>
+              ) : (
+                <p className="mt-2 text-sm leading-6">
+                  The server session is open, but this browser has no current Firebase credential.
+                  Reauthenticate before connecting another provider.
+                </p>
+              )}
+              {identityMessage ? (
+                <p role="status" aria-live="polite" className="mt-3 rounded-2xl border border-cyan-300 bg-white/70 px-4 py-3 text-sm leading-6">
+                  {identityMessage}
+                </p>
+              ) : null}
+            </div>
+
+            {firebaseStateReady && firebaseUser && !googleConnected ? (
+              <button
+                type="button"
+                onClick={connectGoogleAccount}
+                disabled={status !== "idle"}
+                className="inline-flex items-center justify-center gap-2 rounded-full bg-cyan-950 px-4 py-2.5 text-xs font-black uppercase tracking-[0.14em] text-white transition hover:bg-cyan-900 disabled:cursor-wait disabled:opacity-60"
+              >
+                <Link2 className="h-4 w-4" />
+                {status === "linking-google" ? "Connecting Google..." : "Connect Google"}
+              </button>
+            ) : null}
+          </div>
+        </section>
 
         <div className="mt-7 grid gap-3 lg:grid-cols-3">
           {safeLanes.map((lane) => (

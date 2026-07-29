@@ -11,6 +11,8 @@ scope and required proof levels; this index explains how to obtain the proofs.
 ## Nest
 
 - Local operation: [Quipsly Nest local](quipsly-nest-local.md)
+- Identity repair:
+  [Quipsly identity reconciliation](quipsly-identity-reconciliation.md)
 - Release boundary:
   [Repository and release boundaries](../architecture/repository-and-release-boundaries-2026-07-23.md)
 - Pipeline recovery:
