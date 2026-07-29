@@ -8,6 +8,9 @@ Date: 2026-07-29
 - Feature commit: `5920e525`
 - Commit subject:
   `feat(capture): coordinate local podcast audio and video`
+- Editor-handoff commit: `d1dc98aa`
+- Commit subject:
+  `feat(capture): preserve grouped editor alignment`
 - App Store version/build in source: `1.0 (8)`
 - Release decision: do not upload or assign this feature as Build 9 until its
   physical-iPhone gate is complete. Build 8 remains the honest external
@@ -43,6 +46,34 @@ partial startup or unexpected source ending closes and preserves its partner.
 Provider join, leave, mute, and route controls remain locked while the
 audio-bearing group is active.
 
+## Upload and editor handoff
+
+Released mobile finalization now preserves the exact source UUID,
+capture-group UUID, durable START receipt, and review-only clock proposal on
+the canonical `RecordingAsset` before any optional Episode Production
+projection. A recording can therefore be attached to an episode later without
+losing the provenance required to place it.
+
+Every arriving source recomputes grouped proposals across canonical
+`StudioEpisodeProduction.productionJson.importedMedia`. The audio and video
+rows retain independent immutable identities and begin times while exposing
+one baseline recording, one estimated group offset per source, and the current
+proposal source count. The same proposal is present in both metadata and sync
+packets so Episode Room and the deep editor read one contract.
+
+The generic/manual recording-promotion path now preserves the same take,
+source-profile, segment, checksum, storage-generation, and alignment evidence.
+It accepts only the explicit review-safe proposal contract:
+
+- no sample-accurate claim;
+- waveform correlation required;
+- drift review required; and
+- human approval required.
+
+Malformed alignment metadata is omitted rather than promoted into the editor.
+No source bytes are mutated and no proposal is automatically locked to the
+timeline.
+
 ## Privacy and pipeline corrections
 
 - The bundled privacy manifest now declares Apple's specific
@@ -66,11 +97,19 @@ audio-bearing group is active.
 - Deterministic UI test:
   `CaptureExperienceUITests.testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission`:
   passed on the booted iPhone 16e simulator.
+- Grouped upload/editor handoff: **43/43** focused server/editor tests passed.
+- Capture finalization integrity: passed with durable alignment-before-episode
+  ordering.
 
 The UI test proves that the four-mode picker is reachable and that Podcast A/V
 shows the separate microphone status and two-source truth before asking for a
 camera permission. A simulator cannot prove real simultaneous camera,
 microphone, route, LiveKit, thermal, or storage behavior.
+
+The local Docker engine was non-responsive during the follow-up database-smoke
+attempt. The bounded Quipsly launch jobs were stopped cleanly; no production
+service or data was changed. The database-backed replay remains a physical
+rehearsal/supporting pipeline check, not a substitute for the iPhone gate.
 
 ## Physical-iPhone gate
 
