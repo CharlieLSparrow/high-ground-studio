@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 11:50 UTC
+Last verified: 2026-07-29 12:18 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -89,7 +89,7 @@ needs to prove.
 
 ## Next candidate without changing tonight's lane
 
-Current iPhone candidate checkpoint `613b2243` combines the
+Current iPhone candidate checkpoint `9ca9999a` combines the
 production-architected
 **Podcast audio + video** mode from `5920e525` with native shared Episode Watch:
 separate local AAC microphone and video-only MOV masters under one
@@ -117,14 +117,24 @@ heading in the block body rather than its optional title field. The reader
 does not join Watch's one-second polling path; unchanged requests return
 metadata only.
 
+The Record surface now keeps a compact **Before you record** summary directly
+above the recorder. Expanding it reconciles the verified account, exact
+Session/episode, mode-specific participant consent, real microphone route and
+storage, selected camera profile, canonical manuscript, selected protected
+Watch clip, private headphone route, and live-room connection. **Check this
+iPhone** prepares those local/content dependencies but cannot grant consent,
+join the room, or start recording. Once the live room is connected, it refuses
+to reconfigure live audio and limits itself to refreshing the script and clip.
+
 The current Watch contract is 38/38, the manuscript contract is 10/10, and the
-read-only rehearsal verifier is 7/7. The targeted Record accessibility,
-episode-script reader, and shared-Watch UI journeys plus the static, simulator,
-privacy, server-preview, native-bearer, and protected-media gates are green,
-but the candidate has not been assigned a new build number or uploaded to
-TestFlight. The exact server projection is deployed separately from
-`8fa86d46` on zero-traffic preview `studio-00429-niv`; Build 8 remains the
-rehearsal instruction set below until
+read-only rehearsal verifier is 7/7. The rehearsal-readiness contract is
+12/12 and its collapsed-to-expanded iPhone 17 Pro simulator journey passes.
+The targeted Record accessibility, episode-script reader, and shared-Watch UI
+journeys plus the static, simulator, privacy, server-preview, native-bearer,
+and protected-media gates are green, but the candidate has not been assigned
+a new build number or uploaded to TestFlight. The exact server projection is
+deployed separately from `8fa86d46` on zero-traffic preview
+`studio-00429-niv`; Build 8 remains the rehearsal instruction set below until
 physical-iPhone capture, route, playback, upload, relaunch, and editor-sync
 proof qualify the candidate.
 
@@ -136,7 +146,7 @@ before Homer receives the usable invitation. Apple documents that external
 testing can begin only after TestFlight App Review approves the build. With
 automatic notification enabled, the tester notification follows approval:
 
-The 09:28 UTC API readback still reports
+The 11:58 UTC API readback still reports
 `WAITING_FOR_BETA_REVIEW` / `WAITING_FOR_REVIEW`; the intended tester and
 Build 8 remain assigned to the rehearsal group, automatic notification remains
 enabled, and Apple reports no missing review phone or reviewer password.

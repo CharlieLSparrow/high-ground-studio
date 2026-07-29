@@ -5,7 +5,7 @@ Date: 2026-07-29
 ## Exact source
 
 - Branch: `codex/quipsly-product-20260724`
-- Current iPhone candidate checkpoint: `613b2243`
+- Current iPhone candidate checkpoint: `9ca9999a`
 - Feature commit: `5920e525`
 - Commit subject:
   `feat(capture): coordinate local podcast audio and video`
@@ -30,6 +30,7 @@ Date: 2026-07-29
 - Final-response origin confinement commit: `3c1e6055`
 - Canonical episode-manuscript commit: `8fa86d46`
 - Canonical-heading readback commit: `613b2243`
+- Consolidated rehearsal-readiness commit: `9ca9999a`
 - App Store version/build in source: `1.0 (8)`
 - Release decision: do not upload or assign this feature as Build 9 until its
   physical-iPhone gate is complete. Build 8 remains the honest external
@@ -128,6 +129,11 @@ timeline.
 - Episode-manuscript UI test:
   `CaptureExperienceUITests.testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy`:
   passed on the iPhone 17 Pro simulator.
+- Consolidated rehearsal-readiness contract: **12/12**.
+- Rehearsal-readiness UI test:
+  `CaptureExperienceUITests.testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord`:
+  passed on the iPhone 17 Pro simulator, including the compact collapsed
+  summary and explicit expanded evidence.
 
 The UI test proves that the four-mode picker is reachable and that Podcast A/V
 shows the separate microphone status and two-source truth before asking for a
@@ -280,13 +286,20 @@ The full mobile preflight, strict TypeScript, privacy/App Store static gates,
 and LiveKit-linked universal iOS simulator build passed at `8fa86d46`. The
 follow-up heading change at `613b2243` then passed a clean simulator build,
 the 10/10 manuscript contract, the 7/7 rehearsal verifier contract, and the
-targeted episode-manuscript UI journey. These checks harden the candidate but
+targeted episode-manuscript UI journey. Candidate `9ca9999a` adds one
+mode-aware **Before you record** surface over the existing authorities:
+verified account, exact Session/episode, participant consent, microphone and
+storage, camera profile, manuscript, selected Watch source, headphones, and
+live room. Its explicit preflight prepares dependencies but never grants
+consent, joins the room, or starts capture; once the room is connected it does
+not reconfigure live audio. The 12/12 static contract and targeted
+collapsed-to-expanded UI journey pass. These checks harden the candidate but
 do not replace the physical-iPhone gate.
 
 ## Current external TestFlight readback
 
 Read-only App Store Connect API evidence at
-`2026-07-29T08:44:24.880Z` confirms:
+`2026-07-29T11:58:46.849Z` confirms:
 
 - version/build `1.0 (8)` is still assigned to
   `Quipsly Capture Rehearsal`;

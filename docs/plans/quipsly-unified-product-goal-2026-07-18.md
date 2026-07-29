@@ -3266,3 +3266,37 @@ This is an active-goal checkpoint, not a completion claim.
   `testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy`
   UI journey pass. The mode-0600 receipt remains outside Git at
   `/private/tmp/quipsly-native-rehearsal-preview-8fa86d46-receipt.json`.
+
+### 2026-07-29 consolidated iPhone rehearsal-readiness checkpoint
+
+- This is an iPhone-candidate and simulator checkpoint, not physical-device
+  rehearsal proof, participant consent, TestFlight delivery, Build 9 upload,
+  production promotion, or completion of the unified-product goal.
+- Exact candidate `9ca9999a` adds a compact **Before you record** summary
+  directly above the recorder. It stays collapsed so the primary Record
+  control remains reachable, then expands into one mode-aware reconciliation
+  of verified account, exact Session/episode, required participant consent,
+  real microphone route and storage, selected camera profile, canonical
+  manuscript, selected protected Watch clip, private listening route, and live
+  room.
+- **Check this iPhone** invokes only existing prepare/read authorities:
+  microphone/storage preflight, camera-profile preparation when the chosen
+  source mode records video, a forced canonical-manuscript refresh, the
+  lightweight Watch projection, and protected preparation of the selected
+  clip. It does not grant consent, join a provider, start capture, create a
+  watched span, or mutate the room.
+- Once a provider room is connected, the action does not reconfigure live
+  audio or camera state; it becomes a script/clip refresh. Both the visible
+  control and the underlying action require current online owner authority.
+  Preview mode shows the checklist shape but cannot claim physical route,
+  storage, camera, protected-download, or room proof.
+- Private listening-route availability is now observable from the single
+  process-wide audio-session coordinator, so checklist status and shared-Watch
+  enforcement read the same route truth.
+- Verification passed: 12/12 readiness contract, 20/20 coordinated podcast
+  capture contract, 10/10 manuscript contract, 38/38 shared-Watch contract,
+  clean iOS simulator compilation, and targeted
+  `testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord` on
+  iPhone 17 Pro simulator. The first collapsed-disclosure test exposed a
+  SwiftUI accessibility reachability issue; replacing it with an explicit
+  full-width button produced the passing user path.
