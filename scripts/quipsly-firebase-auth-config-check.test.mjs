@@ -35,8 +35,24 @@ assert.match(
 );
 assert.match(
   source,
+  /localIosClientId === iosClientId/,
+  "the readiness gate must match the local iOS client to the Firebase Apple config",
+);
+assert.match(
+  source,
+  /localServerClientId === googleProvider\.body\?\.clientId/,
+  "the readiness gate must match the local server audience to the Firebase provider",
+);
+assert(
+  source.includes(
+    "localIosInfoPlist.includes(`<string>${reversedIosClientId}</string>`)",
+  ),
+  "the readiness gate must match the local callback scheme to Firebase",
+);
+assert.match(
+  source,
   /providerClientOwnedByFirebaseProject\s*&& iosOAuthReady/,
-  "overall readiness must require both project-owned web and iOS clients",
+  "overall readiness must require both project-owned web and fully wired local iOS clients",
 );
 assert.doesNotMatch(
   source,

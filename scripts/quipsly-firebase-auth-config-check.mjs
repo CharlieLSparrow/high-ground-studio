@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 const firebaseProject = process.env.FIREBASE_PROJECT_ID || "quipsly-reef";
 const quotaProject = process.env.GOOGLE_CLOUD_QUOTA_PROJECT || process.env.GOOGLE_CLOUD_PROJECT || "high-ground-odyssey";
@@ -15,6 +17,10 @@ const requiredAuthorizedDomains = (process.env.QUIPSLY_FIREBASE_REQUIRED_DOMAINS
 const requiredGoogleRedirectUri =
   process.env.QUIPSLY_FIREBASE_GOOGLE_REDIRECT_URI
   || `https://${firebaseProject}.firebaseapp.com/__/auth/handler`;
+const localIosInfoPlistPath = path.resolve(
+  process.env.QUIPSLY_CAPTURE_INFO_PLIST
+  || "apps/mobile-capture/HighGroundCapture/HighGroundCapture/Info.plist",
+);
 
 function printJson(payload) {
   process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
@@ -134,12 +140,36 @@ try {
   const iosClientProjectNumber = oauthClientProjectNumber(iosClientId);
   const iosClientOwnedByFirebaseProject =
     iosClientProjectNumber === String(firebaseProjectDetails.projectNumber);
+  let localIosInfoPlist = "";
+  let localIosInfoPlistReadable = false;
+  try {
+    localIosInfoPlist = readFileSync(localIosInfoPlistPath, "utf8");
+    localIosInfoPlistReadable = true;
+  } catch {
+    localIosInfoPlist = "";
+  }
+  const localIosClientId = plistString(localIosInfoPlist, "GIDClientID");
+  const localServerClientId = plistString(localIosInfoPlist, "GIDServerClientID");
+  const localIosClientMatchesFirebase =
+    Boolean(localIosClientId) && localIosClientId === iosClientId;
+  const localServerClientMatchesProvider =
+    Boolean(localServerClientId)
+    && localServerClientId === googleProvider.body?.clientId;
+  const localCallbackSchemeMatchesFirebase =
+    Boolean(reversedIosClientId)
+    && localIosInfoPlist.includes(`<string>${reversedIosClientId}</string>`);
+  const localIosOAuthReady =
+    localIosInfoPlistReadable
+    && localIosClientMatchesFirebase
+    && localServerClientMatchesProvider
+    && localCallbackSchemeMatchesFirebase;
   const iosOAuthReady =
     Boolean(iosApp)
     && Boolean(iosConfig?.response.ok)
     && Boolean(iosClientId)
     && Boolean(reversedIosClientId)
-    && iosClientOwnedByFirebaseProject;
+    && iosClientOwnedByFirebaseProject
+    && localIosOAuthReady;
 
   printJson({
     ok:
@@ -177,6 +207,10 @@ try {
       reversedClientIdSet: Boolean(reversedIosClientId),
       clientProjectNumber: iosClientProjectNumber,
       clientOwnedByFirebaseProject: iosClientOwnedByFirebaseProject,
+      localInfoPlistReadable: localIosInfoPlistReadable,
+      localClientMatchesFirebase: localIosClientMatchesFirebase,
+      localServerClientMatchesProvider,
+      localCallbackSchemeMatchesFirebase,
       ready: iosOAuthReady,
       error:
         !iosApps.response.ok

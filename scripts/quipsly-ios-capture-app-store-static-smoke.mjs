@@ -380,6 +380,26 @@ requireIncludes(
   'object(forInfoDictionaryKey: "GIDServerClientID")',
   "Google sign-in requests a server-audience ID token for Firebase exchange",
 );
+requireIncludes(
+  appInfoText,
+  "<key>GIDClientID</key>",
+  "Capture ships its iOS Google client identifier",
+);
+requireIncludes(
+  appInfoText,
+  "<key>GIDServerClientID</key>",
+  "Capture ships its Firebase web audience identifier",
+);
+requireRegex(
+  appInfoText,
+  /<string>249115653261-[a-z0-9]+\.apps\.googleusercontent\.com<\/string>/,
+  "Capture Google clients belong to the quipsly-reef project",
+);
+requireRegex(
+  appInfoText,
+  /<string>com\.googleusercontent\.apps\.249115653261-[a-z0-9]+<\/string>/,
+  "Capture registers the quipsly-reef Google callback scheme",
+);
 
 const nativeSignIn = authText.slice(
   authText.indexOf("func signIn(email rawEmail:"),
