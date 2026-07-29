@@ -3,9 +3,11 @@
 import { chmod, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
+
 const DEFAULTS = Object.freeze({
-  appName: "Quipsly Capture",
-  publicLink: "https://testflight.apple.com/join/XwRRcYUm",
+  appName: QUIPSLY_CAPTURE_RELEASE_TARGET.appName,
+  publicLink: QUIPSLY_CAPTURE_RELEASE_TARGET.publicLink,
 });
 
 function fail(message) {

@@ -20,6 +20,15 @@ const openHtml = `
   </html>
 `;
 
+test("defaults to the canonical current public release handoff", () => {
+  assert.deepEqual(parsePublicLinkArguments([]), {
+    appName: "Quipsly Capture",
+    publicLink: "https://testflight.apple.com/join/XwRRcYUm",
+    outputPath: "",
+    help: false,
+  });
+});
+
 test("accepts only a canonical credential-free Apple public link", () => {
   assert.deepEqual(
     normalizeTestFlightPublicLink(

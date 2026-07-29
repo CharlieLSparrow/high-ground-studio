@@ -7,14 +7,15 @@ import { promisify } from "node:util";
 import { pathToFileURL } from "node:url";
 
 import { createScopedToken } from "./quipsly-app-store-connect-readback.mjs";
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const execFileAsync = promisify(execFile);
 const API_ORIGIN = "https://api.appstoreconnect.apple.com";
 const DEFAULTS = Object.freeze({
-  appId: "6780995957",
-  marketingVersion: "1.0",
-  buildNumber: "7",
-  groupName: "Quipsly Capture Rehearsal",
+  appId: QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
+  marketingVersion: QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
+  buildNumber: QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
+  groupName: QUIPSLY_CAPTURE_RELEASE_TARGET.externalGroupName,
   locale: "en-US",
   testerFirstName: "Homer",
   reviewerPasswordKeychainService: "quipsly-capture-reviewer",

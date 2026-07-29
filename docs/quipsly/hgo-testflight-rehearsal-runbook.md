@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 20:20 UTC
+Last verified: 2026-07-29 23:35 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,7 +8,11 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (8)**
+- App: **Quipsly Capture 1.0 (12)**
+- Exact native source:
+  `dc4c3110753661c24590465406004da404df8677`
+- Qualified IPA: 20,171,040 bytes, SHA-256
+  `2cff224ec0b1d60cb14536f89251f7a9fbc07e14cc22b80cff2c040304133a7e`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -17,8 +21,8 @@ needs to prove.
   `https://testflight.apple.com/join/XwRRcYUm`
 - Public-link capacity: limited to 100 testers
 - Automatic tester notification: enabled
-- Named external tester: the intended `shomers@icloud.com` TestFlight identity
-  is assigned to the rehearsal group and Apple reports `INVITED`
+- Installation mode: public-link-only; neither a named-tester email nor a
+  redemption code is required
 - Private Nest:
   `https://nest.quipsly.com/nests/high-ground-odyssey-rehearsal/episodes/testflight-rehearsal`
 - Session: **High Ground Odyssey TestFlight Rehearsal**
@@ -107,104 +111,68 @@ needs to prove.
   Lucy and Samwise also probe cleanly, and no `.crdownload`, `.download`, or
   `.part` file remains.
 
-## Qualified Build 9 candidate without changing the current TestFlight lane
+## Approved Build 12 rehearsal lane
 
-Exact committed Build 9 source
-`b44e2a90968a7cccc6a3bae137fc97039050cc4b` combines the
-production-architected
-**Podcast audio + video** mode from `5920e525` with native shared Episode Watch:
-separate local AAC microphone and video-only MOV masters under one
-capture-group identity while LiveKit remains the call, plus protected
-preparation and revision-safe Play/Pause/Seek from the iPhone Record surface.
-It also holds shared playback for everyone on private-route loss, manages
-derived downloads visibly, sends paused receipt-backed spans to the
-non-destructive editor lane, and opens the exact assembled episode in Nest.
-While paused, either editor can choose the next staged clip directly in
-Capture; Be Curious remains first and selected. Download completion is no
-longer treated as playback readiness: iOS must confirm the protected file is
-decodable, and a fatal decoder failure pauses shared Watch when authorized,
-removes the unusable copy, and exposes a retry. The deterministic preview
-mirrors the exact three-clip lineup, and the Watch header reflows instead of
-clipping at accessibility text sizes. The authenticated media response must
-also finish on the configured Nest origin, so an HTTP redirect cannot
-substitute external bytes.
+Build 12 carries the complete coordinated-podcast and source-evidence lineage
+first qualified in Build 9, plus exact local-to-Nest evidence comparison and
+canonical project creation from iPhone Work. It is no longer an unuploaded
+candidate:
 
-The candidate also places the canonical episode manuscript beside the Record
-surface as a searchable, read-only reader. Its owner/project/episode-partitioned
-offline copy uses complete file protection, is excluded from backup, is purged
-on sign-out, and never turns the iPhone into an editable fork. The title is
-derived from the real first canonical heading even when the import stores that
-heading in the block body rather than its optional title field. The reader
-does not join Watch's one-second polling path; unchanged requests return
-metadata only.
+- the detached exact-source release qualified and uploaded `1.0 (12)`;
+- App Store Connect identifies Build
+  `9decfe91-1048-4e26-995f-7536c6a085b6` as `VALID`;
+- the external `Quipsly Capture Rehearsal` group contains Build 12;
+- the 23:35 UTC read-only API plan reports `IN_BETA_TESTING` / `APPROVED`,
+  complete beta metadata, automatic notification enabled, and zero pending
+  provider mutations;
+- the public link is enabled and accepting testers.
 
-The Record surface now keeps a compact **Before you record** summary directly
-above the recorder. Expanding it reconciles the verified account, exact
-Session/episode, mode-specific participant consent, real microphone route and
-storage, selected camera profile, canonical manuscript, selected protected
-Watch clip, private headphone route, and live-room connection. **Check this
-iPhone** prepares those local/content dependencies but cannot grant consent,
-join the room, or start recording. Once the live room is connected, it refuses
-to reconfigure live audio and limits itself to refreshing the script and clip.
+Build 12's **Podcast audio + video** mode creates two immutable local masters
+under one capture-group identity: a microphone AAC source and a video-only MOV
+source. During a LiveKit call, LiveKit stays the single microphone hardware
+owner and Quipsly records its already-owned local-input PCM instead of opening
+a competing microphone client. The app waits for real PCM before claiming the
+audio source started. Pause/Resume acts on both sources; Flip safely closes and
+validates the current movie, starts the other camera in the same group, and
+keeps the microphone source continuous.
 
-The candidate now also removes the unsafe dual-microphone-client topology:
-LiveKit remains the single hardware owner during a room, while Quipsly records
-the already-owned local-input PCM and waits for its first real callback before
-claiming capture. Standalone audio still uses `AVAudioRecorder`; callback
-starvation pauses visibly and closes the coordinated camera boundary.
+The same build exposes the canonical **The Swear Jar** manuscript beside
+Record, stages protected Episode Watch clips with revision-safe shared
+Play/Pause/Seek, sends receipt-backed watched spans to the non-destructive
+editor lane, and opens the assembled episode in Nest. **Before you record**
+reconciles account, exact Session, consent, route, storage, camera profile,
+manuscript, protected clip, headphones, and live-room readiness without
+granting consent, joining, or starting capture.
 
-The candidate now preserves rehearsal proof on the source itself instead of
-leaving it in transient upload or in-process notification state. Capture-time
-app/build, iPhone/OS, microphone route, room STOP receipt, canonical IDs, and
-verified cloud SHA-256/size/generation/time survive relaunch in the protected
-owner-partitioned source ledger. Library exposes **Review source evidence** and
-can prepare a redacted, versioned JSON receipt only after streaming every
-local byte through SHA-256 and proving that the file stayed unchanged. Verified
-cloud proof commits to that permanent source row before the resumable job is
-retired; failed job-ledger cleanup rolls back for safe replay.
+Every completed source retains its app/build, iPhone/OS, route, capture-group,
+room receipt, local hash, and verified cloud identity in an
+owner-partitioned protected ledger. Library can prepare a redacted portable
+receipt and **Compare with Nest** before the local upload job is retired.
+Neither action deletes or overwrites the phone original.
 
-The current Watch contract is 38/38, the manuscript contract is 10/10, and the
-read-only rehearsal verifier is 7/7. Capture durability is 79/79,
-coordinated-capture is 23/23, account isolation is 15/15, and the complete
-mobile preflight plus LiveKit-linked arm64/x86_64 simulator build pass. The
-rehearsal-readiness contract is 12/12 and its collapsed-to-expanded iPhone 17
-Pro simulator journey passes.
-The source-evidence contract is 23/23 and its no-false-receipt iPhone 17 Pro
-simulator journey passes.
-The targeted Record accessibility, episode-script reader, shared-Watch, and
-source-evidence UI journeys plus the static, simulator, privacy,
-server-preview, native-bearer, and protected-media gates are green. A detached
-exact-commit release run qualified signed `1.0 (9)` with 36/36 deterministic
-native UI scenarios and a 20,023,041-byte IPA at SHA-256
-`365fd2e8d90d3b1558fbfd7212d8d9459d2ddeeac7557407a56e898254ff972c`.
-The receipt truth remains `uploadAttempted: false`,
-`testerAssignmentPerformed: false`, and
-`physicalTestFlightInstallReadbackPerformed: false`. The exact server
-projection is deployed separately from `1ac5bd3d` on zero-traffic preview
-`studio-00430-fop`; Build 8 remains the externally submitted rehearsal
-instruction set below until Build 9 upload, processing, assignment, and
-physical-iPhone proof occur.
+The signed release receipt still says
+`physicalTestFlightInstallReadbackPerformed: false`; Scott's installation and
+the real two-account rehearsal below are the gates that can change that truth.
+Historical design and qualification evidence remains in:
 
-See
-[`../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md`](../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md)
-and the exact
-[`Build 9 qualification record`](../coordination/2026-07-29-capture-build-9-qualified-candidate.md).
+- [`Coordinated podcast A/V candidate`](../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md)
+- [`Build 9 qualification record`](../coordination/2026-07-29-capture-build-9-qualified-candidate.md)
+- [`Build 11 qualification record`](../coordination/2026-07-29-capture-build-11-qualified-candidate.md)
 
-Apple approved Build 8 for external TestFlight testing. The 18:34 UTC API
-readback reports `IN_BETA_TESTING` / `APPROVED`; Build 8 remains assigned to
-the external `Quipsly Capture Rehearsal` group and the group is ready for
-testing. Email delivery and the internal-tester invitation state are no longer
-rehearsal blockers. The enabled public external-testing link is the canonical
-installation path:
+Email delivery and App Store Connect team membership are not installation
+gates. The enabled public external-testing link is the canonical path:
 
 `https://testflight.apple.com/join/XwRRcYUm`
 
-At 20:20 UTC the external group contains the intended named tester with
-`inviteType: EMAIL` and `state: INVITED`. That named TestFlight assignment is
-separate from Scott's accepted App Store Connect team membership.
+As a redundant internal path, Build 12 is also assigned to **Quipsly Capture
+Internal**. Apple's 23:44 UTC relationship readback resolves
+`shomers@icloud.com` in that group as `INVITED` and confirms the build is
+`IN_BETA_TESTING`. This can make the app appear directly in TestFlight, but the
+public link remains the recovery path when Apple's invitation email or library
+refresh lags.
 
 The public page briefly returned **This beta isn't accepting any new testers
-right now** even though Build 8 was approved, unexpired, and assigned, the
+right now** even though an approved build was assigned, the
 group was enabled, and Apple's public-link metrics reported zero accepted
 testers. The existing 10-person cap was raised to 100 and the link activation
 was cycled off and back on without changing its ID. Fresh uncached iPhone and
@@ -306,39 +274,49 @@ record controls unlock.
 
 ## Recommended first rehearsal
 
-The present Build 8 architecture deliberately separates provider audio and
-local source capture:
+Build 12 exposes four deliberate source modes:
 
-- **Audio** records the selected microphone locally and can coexist with the
-  already-connected LiveKit room.
-- **Podcast camera** records a video-only local master so LiveKit can keep the
-  microphone.
-- **Solo video** records camera plus local microphone, but intentionally
-  refuses to coexist with a live room.
-- Provider audio is not the same as a verified provider-egress recording.
+- **Audio** creates a local microphone source. In a joined LiveKit room it
+  records the room-owned local-input PCM instead of opening a second
+  microphone client.
+- **A/V** creates separate microphone and video-only masters in one capture
+  group while LiveKit remains the call.
+- **Solo** creates one camera-and-microphone movie and therefore refuses to
+  coexist with a live room.
+- **Camera** creates a video-only master beside the LiveKit conversation.
+
+Provider audio still is not the same as a verified provider-egress recording.
+The local source receipts and the LiveKit room remain separate truth.
 
 For the most useful low-risk first proof:
 
-1. Both people join the LiveKit room from **Record → Live room → Join room**.
+1. Charlie opens the signed Quipsly Studio app. Complete the Google account
+   handoff if Account still says **Not connected yet**, then open **Episode
+   Capture Setup** with `Command-Shift-R`.
+2. Charlie selects the exact rehearsal room, `Shure MV7i` for microphone and
+   headphones, and `EOS Webcam Utility` for the Canon reference feed. Confirm
+   a fresh live image. Keep Canon on-card recording as the independent 4K
+   production master if desired.
+3. Homer opens the same Session in Build 12. Both people join the LiveKit room.
    Joining must not start recording.
-2. Both people choose **Audio** and start a local audio take on their own
-   iPhone. Speak for 20–30 seconds, pause, resume, add a Mark, then stop.
-3. Confirm each take appears in **Library**, plays locally, and moves through
-   queued/uploading/verified state without deleting the phone original.
-4. Record the Canon R8 or another independent camera throughout if a
-   simultaneous video master is required.
-5. As a separate camera-boundary proof, leave the live room on one iPhone,
-   choose **Solo video**, prepare the front camera, record 10–15 seconds, tap
-   **Flip**, record another 10–15 seconds, and stop. The Flip action should
-   close and verify one immutable movie, then start the other camera in the
-   same capture group; it is not an invisible in-file lens swap.
-6. Play both resulting local video pieces in Library.
-
-Do not describe this as a simultaneous same-iPhone audio-plus-video podcast
-master. Build 8 intentionally allows LiveKit plus a video-only podcast camera,
-or a solo camera-plus-microphone recording without LiveKit. A separate camera
-is the mature production lane for the first episode rehearsal while a later
-Capture slice adds one coordinated local audio-and-video group.
+4. Homer selects **A/V**, prepares the front camera, expands **Before you
+   record**, and runs **Check this iPhone**. Do not start until the exact
+   Session, both consents, microphone route, camera profile, storage,
+   manuscript, Be Curious, headphones, and room are all truthful.
+5. Charlie starts the app-owned MV7i WAV and Canon reference source. Homer
+   starts **Podcast audio + video**. Speak for 20–30 seconds and verify the app
+   claims two local sources only after both have actually started.
+6. Homer taps **Pause**, waits for both sources to show paused, then
+   **Resume**. Tap **Flip** once while recording. Flip must validate the
+   current movie and start the other camera in the same capture group while
+   keeping the microphone source continuous.
+7. Stop Homer's coordinated take, then stop Charlie's sources. Confirm every
+   source appears locally and plays before relying on upload or timeline
+   assembly.
+8. If the Mac account or hardware lane cannot be made truthful, do not fake
+   it: Charlie uses a second signed-in Capture device for the call/audio
+   boundary and records the R8 independently. Record the Mac limitation as
+   open evidence.
 
 ## Shared clip proof
 
@@ -357,8 +335,8 @@ With the Episode Room open in both collaborators' authenticated Nest sessions:
    reference clip during local or provider recording.
 7. Seek to a useful moment, resume, and pause again.
 8. Repeat with Lucy or Samwise only if the Be Curious pass is clean.
-9. While paused, choose **Send watched spans to editor** on the iPhone
-   candidate, or **Sync watched spans** in Nest on Build 8.
+9. While paused, choose **Send watched spans to editor** in Capture, or
+   **Sync watched spans** in Nest.
 10. Open **Edit** and confirm the watched source ranges appear in the dedicated
    Shared Watch derivative lane without changing the original clips.
 
@@ -394,15 +372,16 @@ clock.
 
 The rehearsal passes only when:
 
-- Homer installed Build 8 through TestFlight and used Google sign-in;
+- Homer installed Build 12 through TestFlight and used Google sign-in;
 - the pre-provisioned Quipsly identity linked without a duplicate account or
   email-verification loop;
 - both people independently granted the intended consent choices;
 - both joined and left the exact Session;
-- each local audio take has START and STOP evidence, local playback, upload
-  verification, a portable source-evidence receipt, and post-relaunch readback;
-- the video test preserves front/back sources in one capture group and both
-  pieces play;
+- Homer's coordinated take has START and STOP evidence for both local masters,
+  local playback, upload verification, a portable source-evidence receipt for
+  each source, and post-relaunch readback;
+- the video test preserves front/back movies plus the continuous microphone
+  source in one capture group and every piece plays;
 - Charlie can play the reference clip and Homer can pause it;
 - Be Curious produces a receipt-backed watched span and an explicit timeline
   derivative;
@@ -415,9 +394,11 @@ The rehearsal passes only when:
 - Homer's first Google sign-in is the only remaining live identity-link step.
 - A physical two-account rehearsal is still required; simulator and server
   tests do not substitute for it.
-- The current Mac browser call prototype is retired. Canon R8 + MV7i as a
-  first-class Quipsly Mac call/capture lane remains a separate production
-  feature.
-- Same-iPhone concurrent local audio plus local video while LiveKit is active
-  is not claimed by Build 8. Use two local sources or a separate camera for the
-  first rehearsal.
+- Charlie's signed Quipsly Studio app still needs its native Google handoff,
+  app-owned live MV7i/EOS confirmation, physical short take, room join, upload,
+  and cross-device readback. Hardware enumeration and focused contracts do not
+  substitute for those operations.
+- Build 12 implements same-iPhone coordinated local audio plus video beside
+  LiveKit, but the exact real-device microphone ownership, first PCM,
+  Pause/Resume/Flip, upload, and assembled sync path remains unproven until
+  this rehearsal.

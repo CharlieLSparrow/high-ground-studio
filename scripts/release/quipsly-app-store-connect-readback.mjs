@@ -4,11 +4,13 @@ import { createHash, sign } from "node:crypto";
 import { chmod, readFile, stat, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
+
 const API_ORIGIN = "https://api.appstoreconnect.apple.com";
 const DEFAULTS = Object.freeze({
-  appId: "6780995957",
-  appName: "Quipsly Capture",
-  bundleId: "com.highgroundodyssey.HighGroundCapture",
+  appId: QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
+  appName: QUIPSLY_CAPTURE_RELEASE_TARGET.appName,
+  bundleId: QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
   marketingVersion: "1.0",
   buildNumber: "6",
   groupName: "Quipsly Capture Internal",

@@ -68,6 +68,14 @@ test("requires apply before a beta-review submission", () => {
   );
 });
 
+test("defaults read-only planning to the canonical current external release", () => {
+  const parsed = parseExternalBetaArguments(["--public-link-only"]);
+  assert.equal(parsed.appId, "6780995957");
+  assert.equal(parsed.marketingVersion, "1.0");
+  assert.equal(parsed.buildNumber, "12");
+  assert.equal(parsed.groupName, "Quipsly Capture Rehearsal");
+});
+
 test("makes public-link-only distribution explicit and mutually exclusive with tester email", () => {
   assert.equal(
     parseExternalBetaArguments(["--public-link-only"]).publicLinkOnly,

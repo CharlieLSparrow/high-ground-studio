@@ -7,6 +7,7 @@ import {
   readAppStoreMetadata,
   validateAppStoreMetadata,
 } from "./release/quipsly-capture-app-store-metadata.mjs";
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./release/quipsly-capture-release-target.mjs";
 
 const root = process.cwd();
 const iosRoot = path.join(root, "apps/mobile-capture/HighGroundCapture");
@@ -75,6 +76,7 @@ const files = {
   readinessDoc: path.join(root, "docs/quipsly/ios-capture-app-store-readiness.md"),
   listingDoc: path.join(root, "docs/quipsly/ios-capture-app-store-listing.md"),
   reviewerChecklist: path.join(root, "docs/quipsly/ios-capture-reviewer-smoke-checklist.md"),
+  rehearsalRunbook: path.join(root, "docs/quipsly/hgo-testflight-rehearsal-runbook.md"),
   envExample: path.join(root, ".env.example"),
 };
 
@@ -196,6 +198,7 @@ const meetingSpineContractText = read(files.meetingSpineContract);
 const readinessDocText = read(files.readinessDoc);
 const listingDocText = read(files.listingDoc);
 const reviewerChecklistText = read(files.reviewerChecklist);
+const rehearsalRunbookText = read(files.rehearsalRunbook);
 const envExampleText = read(files.envExample);
 const mobileSwiftSourceTreeText = readSwiftSourceTree(sourceRoot);
 
@@ -265,6 +268,31 @@ requireRegex(projectText, /SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";/, "
 requireRegex(projectText, /TARGETED_DEVICE_FAMILY = 1;/, "iPhone-only target family");
 requireRegex(projectText, /SUPPORTS_MACCATALYST = NO;/, "Mac Catalyst is not accidentally advertised");
 requireIncludes(appInfoText, "<string>Quipsly Capture</string>", "customer-facing app name");
+requireIncludes(
+  rehearsalRunbookText,
+  `App: **${QUIPSLY_CAPTURE_RELEASE_TARGET.appName} ${QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion} (${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber})**`,
+  "operator runbook identifies the canonical current external build",
+);
+requireIncludes(
+  rehearsalRunbookText,
+  QUIPSLY_CAPTURE_RELEASE_TARGET.sourceRevision,
+  "operator runbook identifies the exact current external source",
+);
+requireIncludes(
+  rehearsalRunbookText,
+  QUIPSLY_CAPTURE_RELEASE_TARGET.buildId,
+  "operator runbook identifies the exact App Store Connect build",
+);
+requireIncludes(
+  rehearsalRunbookText,
+  QUIPSLY_CAPTURE_RELEASE_TARGET.publicLink,
+  "operator runbook uses the canonical public TestFlight handoff",
+);
+requireIncludes(
+  rehearsalRunbookText,
+  `Installation mode: ${QUIPSLY_CAPTURE_RELEASE_TARGET.distributionMode}`,
+  "operator runbook states the canonical TestFlight distribution mode",
+);
 requireIncludes(projectText, "https://github.com/livekit/client-sdk-swift-xcframework.git", "LiveKit Swift xcframework package reference");
 requireIncludes(projectText, "kind = exactVersion;", "LiveKit Swift package is pinned exactly");
 requireIncludes(projectText, "version = 2.15.1;", "LiveKit Swift package is pinned to the verified release");
