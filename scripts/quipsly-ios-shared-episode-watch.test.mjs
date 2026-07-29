@@ -333,7 +333,9 @@ check(
   "deterministic preview mode never calls the live Episode Room",
   shell.includes("if model.usesPreviewData")
     && shell.includes("episodeWatch.loadPreview(session: session)")
-    && watch.includes("func loadPreview(session: MobileCaptureSession)"),
+    && watch.includes("func loadPreview(session: MobileCaptureSession)")
+    && watch.includes("preview-i-love-lucy")
+    && watch.includes("preview-lotr-ring-back"),
 );
 check(
   "Watch cannot silently start consent or recording on the participant's behalf",

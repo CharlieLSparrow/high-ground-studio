@@ -61,6 +61,15 @@ final class CaptureExperienceUITests: XCTestCase {
             app.staticTexts["CaptureEpisodeWatchStatus"].label,
             "Paused together"
         )
+        let clipMenu = app.buttons["CaptureEpisodeWatchClipMenu"]
+        XCTAssertTrue(
+            clipMenu.exists,
+            "Preview must render the same three-clip selection affordance as the rehearsal room."
+        )
+        XCTAssertFalse(
+            clipMenu.isEnabled,
+            "Deterministic preview must expose the clip menu without pretending to mutate shared state."
+        )
 
         let prepare = app.buttons["CaptureEpisodeWatchPrepareButton"]
         XCTAssertTrue(prepare.exists)

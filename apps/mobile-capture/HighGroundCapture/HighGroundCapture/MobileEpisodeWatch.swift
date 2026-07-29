@@ -222,6 +222,22 @@ final class MobileEpisodeWatchClient: ObservableObject {
                     kind: "video",
                     playbackUrl: "/preview/be-curious.mp4",
                     durationSeconds: 254.63
+                ),
+                MobileEpisodeWatchClip(
+                    assetId: "preview-i-love-lucy",
+                    sourceId: "preview-source-i-love-lucy",
+                    title: "I Love Lucy",
+                    kind: "video",
+                    playbackUrl: "/preview/i-love-lucy.mp4",
+                    durationSeconds: 135.35
+                ),
+                MobileEpisodeWatchClip(
+                    assetId: "preview-lotr-ring-back",
+                    sourceId: "preview-source-lotr-ring-back",
+                    title: "LOTR · Ring Back",
+                    kind: "video",
+                    playbackUrl: "/preview/lotr-ring-back.mp4",
+                    durationSeconds: 240.91
                 )
             ],
             segments: [],
