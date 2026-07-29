@@ -3091,3 +3091,35 @@ This is an active-goal checkpoint, not a completion claim.
   because its Firebase password field is empty. iPhone Mirroring repeatedly
   reaches the phone but times out while the phone is used or its microphone is
   held; CoreDevice still does not enumerate it.
+
+### 2026-07-28 uniform-IAM production repair and App Store API checkpoint
+
+- This is a production-boundary and provider-automation checkpoint, not
+  physical TestFlight installation or App Store submission proof.
+- Real native capture isolated two independent GCS defects: the Nest Cloud Run
+  service account initially lacked object-create authority, then the resumable
+  upload requested a legacy private object ACL that uniform bucket-level access
+  rejects. Replaced bucket ambiguity with managed-folder IAM and removed the
+  legacy ACL request. Nest can create/read immutable recordings and mutate only
+  its resumable and verification control folders; it has no object-admin role.
+- Committed and pushed source
+  `f15fe8f40395cfafdbe3650c4e9608ebbea30ee8`. Cloud Build
+  `989ceb8a-4483-4490-b951-621ac7f6f482` succeeded from the exact bounded
+  release context. No-traffic revision `studio-00416-moz` passed the
+  authenticated reviewer journey, database-backed workspace proof, uniform-IAM
+  preflight, configured-host checks, and 104/104 mobile contract checks.
+  Immutable-revision promotion and post-promotion readback then proved it at
+  100% traffic.
+- App Store Connect API access is approved. The single Team Admin private key
+  and Fastlane credential live outside Git with owner-only permissions. A live
+  HTTP-200 identity request and the new scoped readback command proved
+  `Quipsly Capture`, Build `1.0 (6)`, provider build
+  `47e5e730-e5bd-4cfb-afae-baef86d3923c`, `VALID`,
+  `IN_BETA_TESTING`, the exact internal group/build relationship, and one
+  assigned tester. The tester was still `INVITED` at the recorded readback.
+- Reinviting delivered a new Apple email. Opening its invitation link on the
+  mirrored physical iPhone displayed the correct Build 6 card and `Install`
+  action. The continuity surface exposes no tappable accessibility element to
+  automation, so the independent physical tap, install, `ACCEPTED` API
+  readback, app launch, production sign-in, and full capture/crash/offline/
+  reconnect/Studio rehearsal remain mandatory.
