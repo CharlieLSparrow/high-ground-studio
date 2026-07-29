@@ -111,6 +111,51 @@ attempt. The bounded Quipsly launch jobs were stopped cleanly; no production
 service or data was changed. The database-backed replay remains a physical
 rehearsal/supporting pipeline check, not a substitute for the iPhone gate.
 
+## Isolated cloud preview
+
+The exact checkpoint commit `cd9c3a9091fd31db8e5d599b7090703ded1ce4b3`
+materialized a bounded 110.5 MiB release context and built immutable image
+`preview-20260729-024522` in Cloud Build
+`09e84ffb-9ec9-413d-800b-b1953dac4afc`. Required route bundles were verified
+inside the image. Cloud Run revision `studio-00427-meb` is ready behind the
+`quipsly-preview` tag and receives **0%** of production traffic.
+
+The first preview smoke failed closed because production Cloud SQL was missing
+the committed additive migration
+`20260728223500_add_document_tags`. A SHA-pinned, status-only schema job proved
+that this was the only pending migration. `prisma migrate deploy` then applied
+that exact migration through execution `quipsly-schema-migrate-j88bp`; a fresh
+status job completed successfully. The legacy
+`prisma db push --accept-data-loss` bridge was not used.
+
+After schema repair, the preview passed:
+
+- the full signed release smoke across public, signed-out, and signed-in
+  routes;
+- Firebase login and native session verification;
+- Nest, writing, editor, recorder, research, and publishing journeys;
+- production database-backed Session and episode reads;
+- both configured public-host health checks;
+- the authenticated mobile Capture contract at **144/144**; and
+- the Capture reviewer Session/consent/provider/readiness lifecycle.
+
+Production remains healthy and pinned 100% to `studio-00425-gij`. Promotion of
+`studio-00427-meb` is deliberately separate from this preview proof.
+
+## Current external TestFlight readback
+
+Read-only App Store Connect API evidence at
+`2026-07-29T08:44:24.880Z` confirms:
+
+- version/build `1.0 (8)` is still assigned to
+  `Quipsly Capture Rehearsal`;
+- the intended external tester is still assigned;
+- email auto-notify and beta localizations are ready;
+- external build state is `WAITING_FOR_BETA_REVIEW`; and
+- beta review state is `WAITING_FOR_REVIEW`.
+
+No App Store Connect mutation was needed or made.
+
 ## Physical-iPhone gate
 
 Do not call this production-qualified until one real iPhone proves:
