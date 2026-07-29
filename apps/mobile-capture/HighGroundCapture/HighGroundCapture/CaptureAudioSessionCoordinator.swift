@@ -21,6 +21,7 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     @Published private(set) var isLocalPlaybackActive = false
     @Published private(set) var isSharedWatchPlaybackActive = false
     @Published private(set) var sharedWatchRouteFailureMessage: String?
+    @Published private(set) var privateListeningRouteAvailable = false
 
     private let audioSession = AVAudioSession.sharedInstance()
     private var routeChangeObserver: NSObjectProtocol?
@@ -39,9 +40,11 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
             queue: .main
         ) { _ in
             Task { @MainActor [weak self] in
+                self?.refreshPrivateListeningRoute()
                 self?.holdSharedWatchForUnsafeRoute()
             }
         }
+        refreshPrivateListeningRoute()
     }
 
     func prepareLocalCaptureRoute() throws {
@@ -210,7 +213,11 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     }
 
     private var hasPrivateListeningRoute: Bool {
-        audioSession.currentRoute.outputs.contains { output in
+        privateListeningRouteAvailable
+    }
+
+    private func refreshPrivateListeningRoute() {
+        privateListeningRouteAvailable = audioSession.currentRoute.outputs.contains { output in
             switch output.portType {
             case .headphones,
                  .bluetoothA2DP,

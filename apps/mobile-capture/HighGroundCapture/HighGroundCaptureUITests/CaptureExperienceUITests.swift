@@ -126,6 +126,63 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord() {
+        app.tabBars.buttons["Record"].tap()
+
+        let card = app.descendants(matching: .any)[
+            "CaptureRehearsalReadinessCard"
+        ]
+        reveal(card)
+        XCTAssertTrue(
+            card.waitForExistence(timeout: 5),
+            "The selected Session should expose one consolidated pre-record checklist."
+        )
+        XCTAssertTrue(app.staticTexts["Physical proof needed"].exists)
+        let disclosure = app.descendants(matching: .any)[
+            "CaptureRehearsalReadinessDisclosure"
+        ]
+        XCTAssertTrue(disclosure.isHittable)
+        disclosure.tap()
+
+        let session = app.descendants(matching: .any)[
+            "CaptureRehearsalCheck_session"
+        ]
+        XCTAssertTrue(session.exists)
+        XCTAssertTrue(session.label.contains("High Ground Odyssey"))
+        XCTAssertTrue(
+            session.label.contains("session-capture"),
+            "Preview must show its own selected episode identity instead of borrowing the protected production rehearsal slug."
+        )
+
+        let manuscript = app.descendants(matching: .any)[
+            "CaptureRehearsalCheck_manuscript"
+        ]
+        XCTAssertTrue(manuscript.exists)
+        XCTAssertTrue(manuscript.label.contains("The Swear Jar"))
+        XCTAssertTrue(manuscript.label.contains("34 protected blocks"))
+
+        let watch = app.descendants(matching: .any)[
+            "CaptureRehearsalCheck_watch"
+        ]
+        XCTAssertTrue(watch.exists)
+        XCTAssertTrue(watch.label.contains("Ted Lasso · Be Curious"))
+        XCTAssertTrue(
+            watch.label.contains("does not fake a protected download")
+        )
+
+        let runCheck = app.buttons["CaptureRehearsalRunCheck"]
+        XCTAssertTrue(runCheck.exists)
+        XCTAssertFalse(
+            runCheck.isEnabled,
+            "Deterministic preview must not invent device, route, storage, or protected-download proof."
+        )
+        let boundary = app.descendants(matching: .any)[
+            "CaptureRehearsalReadinessBoundary"
+        ]
+        XCTAssertTrue(boundary.exists)
+        XCTAssertTrue(boundary.label.contains("never claims physical-device"))
+    }
+
     func testWorkKeepsProjectsTasksGoalsNotesAndTagsTogether() {
         app.tabBars.buttons["Work"].tap()
         let workScroll = app.scrollViews["CaptureWorkView"]

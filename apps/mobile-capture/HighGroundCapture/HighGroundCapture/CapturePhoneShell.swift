@@ -2242,6 +2242,7 @@ private struct CaptureRecorderView: View {
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var recordingMode: CaptureRecordingMode = .audio
     @State private var cameraPosition: VideoCaptureCameraPosition = .front
+    @State private var isRunningRehearsalCheck = false
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
 
@@ -2335,6 +2336,24 @@ private struct CaptureRecorderView: View {
                     CaptureRecordingModePicker(
                         selection: $recordingMode,
                         isLocked: captureIsActive || model.isChangingCapture
+                    )
+
+                    CaptureRehearsalReadinessCard(
+                        audioCapture: audioCapture,
+                        videoCapture: videoCapture,
+                        manuscript: episodeManuscript,
+                        watch: episodeWatch,
+                        session: session,
+                        mode: recordingMode,
+                        providerConnected: model.providerRoom.isConnected,
+                        previewOnly: model.usesPreviewData,
+                        isRunningCheck: isRunningRehearsalCheck,
+                        isCaptureActive: captureIsActive,
+                        onRunCheck: {
+                            Task {
+                                await runRehearsalCheck(for: session)
+                            }
+                        }
                     )
 
                     if recordingMode == .audio {
@@ -2593,6 +2612,41 @@ private struct CaptureRecorderView: View {
 
     private var videoCaptureIsActive: Bool {
         videoCapture.state.isActive || videoCapture.state == .paused
+    }
+
+    private func runRehearsalCheck(
+        for session: MobileCaptureSession
+    ) async {
+        guard !model.usesPreviewData,
+              !captureIsActive,
+              !isRunningRehearsalCheck,
+              AuthManager.shared.networkActionsAllowed else { return }
+        isRunningRehearsalCheck = true
+        defer { isRunningRehearsalCheck = false }
+
+        if !model.providerRoom.isConnected {
+            _ = await audioCapture.prepareForRecording()
+            if recordingMode.recordsVideo {
+                await model.prepareVideoCapture(
+                    using: videoCapture,
+                    mode: recordingMode,
+                    position: cameraPosition
+                )
+            }
+        }
+
+        if session.projectSlug?.nonempty != nil,
+           session.episodeSlug?.nonempty != nil {
+            await episodeManuscript.load(
+                session: session,
+                forceRefresh: true
+            )
+            await episodeWatch.load(session: session)
+            if episodeWatch.selectedClip != nil,
+               !episodeWatch.isPrepared {
+                await episodeWatch.prepareSelectedClip()
+            }
+        }
     }
 }
 
