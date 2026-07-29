@@ -90,6 +90,14 @@ and considers creation complete only when that canonical project is selected.
 If the response or readback is interrupted, the sheet remains open and Retry
 reuses the same UUID, so a completed project cannot be duplicated.
 
+Nest's `/projects` creation form uses this same kernel instead of maintaining a
+second ownership rule. Its UUID is generated on the server, retained while the
+form reports a retryable error, and passed into the same actor-bound receipt.
+The submit control becomes an explicit `Creating private Nest…` state, prevents
+repeat clicks, and states the private/no-external-side-effects boundary before
+the write. A successful create redirects only after the canonical transaction
+returns its exact slug.
+
 ## Capture and mutation contract
 
 The Work surface does not create a second mobile record model.
@@ -162,6 +170,9 @@ The 2026-07-29 project-creation checkpoint additionally proved:
 - production iOS target simulator build with LiveKit linked;
 - the deterministic Work UI journey passing on iPhone 16e, including a
   reachable New Project control that cannot pretend to write in preview mode.
+- Nest form parity for exact actor, project purpose, shared template title, and
+  retry UUID, with visible pending/error behavior and no divergent creation
+  kernel.
 
 Production deployment and a signed physical-iPhone creation/readback remain
 release gates; this checkpoint does not claim them.

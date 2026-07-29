@@ -157,10 +157,19 @@ describe("Nest registry degraded-state UX", () => {
   });
 
   it("keeps the real empty state and creation controls when all access reads succeed", async () => {
-    render(await ProjectsHub({ searchParams: Promise.resolve({}) }));
+    const { container } = render(await ProjectsHub({ searchParams: Promise.resolve({}) }));
 
     expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Create a Nest" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "What belongs here?" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create and open Nest" })).toBeEnabled();
+    expect(screen.getByText(/Private by default\. You become the owner/i)).toBeInTheDocument();
+    expect(
+      container.querySelector('input[name="clientRequestId"]'),
+    ).toHaveAttribute(
+      "value",
+      expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f-]{27}$/),
+    );
     expect(screen.getByText(/You have not created any Nests yet/i)).toBeInTheDocument();
     expect(screen.getByText(/No shared Nests yet/i)).toBeInTheDocument();
   });

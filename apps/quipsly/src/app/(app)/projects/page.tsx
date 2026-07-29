@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import Link from "next/link";
@@ -29,12 +31,10 @@ import {
 } from "@/lib/fiction/private-fiction-access";
 import { getPrismaClient } from "@/lib/prisma";
 import { ensureHomeNestForEmail, listProjectsVisibleToEmail } from "@/lib/server/home-nest";
-import { createNestWithOwner, ensureBetaStarterNestForEmail } from "@/lib/server/quipsly-core";
+import { ensureBetaStarterNestForEmail } from "@/lib/server/quipsly-core";
 import {
   listAccessibleStudioProjectSummariesForEmail,
-  normalizeAccessEmail,
 } from "@/lib/server/studio-project-access";
-import { hasQuipslyBetaAccess } from "@/lib/server/patreon-authz";
 import { isUserManagementAdminEmail, requireQuipslyAdminActor } from "@/lib/server/user-management";
 import { ensureLiveWorkNests } from "@/lib/studio/live-work-nests";
 import {
@@ -50,64 +50,10 @@ import {
   type QuipslyWorkflowSystem,
 } from "@/lib/studio/project-registry";
 import { NestRegistryUnavailableState } from "./NestRegistryUnavailableState";
+import { CreateNestForm } from "./CreateNestForm";
+import { nestCreationTemplates } from "./nest-creation-templates";
 
 export const dynamic = "force-dynamic";
-
-const nestTemplates: Array<{
-  value: StudioNestKind;
-  label: string;
-  description: string;
-  starterTitle: string;
-}> = [
-  {
-    value: "writing",
-    label: "Original content document",
-    description: "Books, articles, talks, scripts, and episode manuscripts you are actively authoring.",
-    starterTitle: "Welcome to your Writing Nest",
-  },
-  {
-    value: "study",
-    label: "Study document",
-    description: "Imported books, course pages, research sources, highlights, notes, and analysis layered over source text.",
-    starterTitle: "Study Document: Source Notes and Questions",
-  },
-  {
-    value: "production",
-    label: "Media production",
-    description: "Audio, video, clips, transcripts, publish packets, and episode production rooms.",
-    starterTitle: "Production Nest: Episode Control Room",
-  },
-  {
-    value: "research",
-    label: "Research library",
-    description: "A source-first Nest for Quipslys to organize references, examples, quotes, and packets.",
-    starterTitle: "Research Library: Examples, Sources, and Receipts",
-  },
-  {
-    value: "fiction",
-    label: "Fiction world",
-    description: "Characters, places, scenes, story maps, romance chaos, and continuity notes.",
-    starterTitle: "Story Bible: World, Characters, and Scenes",
-  },
-  {
-    value: "course",
-    label: "Course / lesson package",
-    description: "SCORM-ready lessons, quizzes, flashcards, and mobile-friendly learning flows.",
-    starterTitle: "Course Source: Lessons, Checks, and Learner Flow",
-  },
-  {
-    value: "gallery",
-    label: "Photo client gallery",
-    description: "Photo groups, comments, selects, client review, and publishable galleries.",
-    starterTitle: "Gallery Review: Client Selection Notes",
-  },
-  {
-    value: "mixed",
-    label: "Mixed media lab",
-    description: "A flexible sandbox when you are not ready to choose one shape yet.",
-    starterTitle: "Quipsly Mixed Nest: Start Anywhere",
-  },
-];
 
 const WORKFLOW_SYSTEM_ORDER: QuipslyWorkflowSystem[] = [
   "data-ingestion",
@@ -237,40 +183,6 @@ function colorForNestKind(kind: StudioNestKind) {
 function canManageRole(role: string | undefined) {
   const normalized = String(role || "").toUpperCase();
   return normalized.includes("ADMIN") || normalized.includes("OWNER");
-}
-
-async function createNest(formData: FormData) {
-  "use server";
-
-  const name = String(formData.get("name") || "").trim();
-  const template = String(formData.get("template") || "writing");
-  const documentTitle = String(formData.get("documentTitle") || "").trim();
-  if (!name) return;
-
-  const prisma = getPrismaClient();
-  const session = await auth();
-  const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
-  if (!actorEmail) {
-    redirect("/login?callbackUrl=/projects");
-  }
-
-  const hasBetaAccess = await hasQuipslyBetaAccess(actorEmail);
-  if (!hasBetaAccess) {
-    redirect("/projects?betaAccessDenied=1");
-  }
-
-  const nestKind = normalizeNestKind(template);
-  const selectedTemplate = nestTemplates.find((item) => item.value === nestKind);
-  const { nest } = await createNestWithOwner({
-    prisma,
-    name,
-    nestKind,
-    documentTitle: documentTitle || selectedTemplate?.starterTitle || undefined,
-    ownerEmail: actorEmail,
-  });
-
-  revalidatePath("/projects");
-  redirect(`/nests/${encodeURIComponent(nest.slug)}`);
 }
 
 async function bootstrapLiveWorkNests() {
@@ -598,7 +510,7 @@ export default async function ProjectsHub({
               Start with the closest shape. You can still use the same tagging, lenses, media, and publishing tools.
             </p>
 
-            <form action={createNest} className="mt-5 space-y-4">
+            <CreateNestForm clientRequestId={randomUUID()}>
               <div>
                 <label htmlFor="name" className="block text-xs font-black uppercase tracking-[0.16em] text-[#8a7659]">
                   Nest name
@@ -608,8 +520,24 @@ export default async function ProjectsHub({
                   id="name"
                   name="name"
                   required
+                  maxLength={120}
+                  autoComplete="off"
                   placeholder="High Ground Odyssey Book, Udacity Study, Melissa Fiction Lab..."
                   className="mt-2 w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf9] px-4 py-3 text-sm outline-none transition focus:border-[#a36f2e] focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+
+              <div>
+                <label htmlFor="description" className="block text-xs font-black uppercase tracking-[0.16em] text-[#8a7659]">
+                  What belongs here?
+                </label>
+                <textarea
+                  id="description"
+                  name="description"
+                  maxLength={2000}
+                  rows={3}
+                  placeholder="A short purpose helps collaborators understand this Nest."
+                  className="mt-2 w-full resize-y rounded-xl border border-[#d9c7a5] bg-[#fffdf9] px-4 py-3 text-sm leading-6 outline-none transition focus:border-[#a36f2e] focus:ring-2 focus:ring-amber-500/20"
                 />
               </div>
 
@@ -621,6 +549,7 @@ export default async function ProjectsHub({
                   type="text"
                   id="documentTitle"
                   name="documentTitle"
+                  maxLength={240}
                   placeholder="Optional. Quipsly will make a sensible one."
                   className="mt-2 w-full rounded-xl border border-[#d9c7a5] bg-[#fffdf9] px-4 py-3 text-sm outline-none transition focus:border-[#a36f2e] focus:ring-2 focus:ring-amber-500/20"
                 />
@@ -631,7 +560,7 @@ export default async function ProjectsHub({
                   Starting shape
                 </legend>
                 <div className="mt-2 grid gap-2">
-                  {nestTemplates.map((template) => {
+                  {nestCreationTemplates.map((template) => {
                     const Icon = iconForNestKind(template.value);
                     return (
                       <label
@@ -668,14 +597,7 @@ export default async function ProjectsHub({
                 </p>
               </div>
 
-              <button
-                type="submit"
-                className="flex w-full items-center justify-center gap-2 rounded-full bg-[#3d3122] px-4 py-3 text-xs font-black uppercase tracking-[0.14em] text-white shadow-sm transition hover:bg-[#59442d]"
-              >
-                <Plus size={16} />
-                Create and open Nest
-              </button>
-            </form>
+            </CreateNestForm>
           </aside>
           </div>
         )}
