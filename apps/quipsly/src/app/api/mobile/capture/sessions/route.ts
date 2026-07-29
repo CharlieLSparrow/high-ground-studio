@@ -9,6 +9,13 @@ import {
 import { getPrismaClient } from "@/lib/prisma";
 import { reconcileCaptureProxyResults } from "@/lib/server/capture-proxy-reconciliation";
 import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
+import {
+  MobileSessionScheduleError,
+  appendMobileSessionScheduleEvent,
+  matchingMobileSessionScheduleReplay,
+  mobileSessionScheduledTimezone,
+  parseMobileSessionScheduleInput,
+} from "@/lib/server/mobile-capture-session-schedule";
 import { mapMobileCaptureSessionsForUser } from "@/lib/server/mobile-capture-sessions";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
@@ -495,4 +502,191 @@ export async function POST(request: Request) {
     },
     { status: 201 },
   );
+}
+
+export async function PATCH(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+
+  if (!session?.user) {
+    return NextResponse.json(
+      { ok: false, error: "Sign in before scheduling a Quipsly Session." },
+      { status: 401 },
+    );
+  }
+
+  try {
+    const input = parseMobileSessionScheduleInput(await readJson(request));
+    const prisma = getPrismaClient() as any;
+    const result = await prisma.$transaction(async (tx: any) => {
+      const room = await tx.callRoom.findUnique({
+        where: { id: input.roomId },
+        select: {
+          id: true,
+          bookingId: true,
+          createdByUserId: true,
+          projectId: true,
+          project: { select: { id: true, slug: true } },
+          status: true,
+          scheduledStart: true,
+          scheduledEnd: true,
+          updatedAt: true,
+          metadataJson: true,
+        },
+      });
+      if (!room) {
+        throw new MobileSessionScheduleError(
+          "That Session was not found.",
+          404,
+          "QUIPSLY_SESSION_NOT_FOUND",
+        );
+      }
+      if (room.bookingId) {
+        throw new MobileSessionScheduleError(
+          "This Session belongs to a coaching booking. Reschedule the booking so its appointment and receipt trail stay together.",
+          409,
+          "QUIPSLY_SESSION_BOOKING_SCHEDULE_REQUIRED",
+        );
+      }
+      if (room.status !== "PLANNED") {
+        throw new MobileSessionScheduleError(
+          "Only a planned Session can be scheduled. Preserve active or completed capture history and create a new Session when needed.",
+          409,
+          "QUIPSLY_SESSION_SCHEDULE_STATUS_LOCKED",
+        );
+      }
+
+      const projectAccess = room.project?.slug
+        ? await resolveStudioProjectAccess({
+            projectSlug: room.project.slug,
+            email: session.user.primaryEmail,
+            action: "write",
+            prisma: tx,
+          })
+        : null;
+      const canSchedule =
+        session.user.isStaff === true
+        || room.createdByUserId === session.user.id
+        || (
+          projectAccess?.allowed === true
+          && projectAccess.projectId === room.projectId
+        );
+      if (!canSchedule) {
+        throw new MobileSessionScheduleError(
+          "Only the Session creator or a Nest owner/editor can change this Session time.",
+          403,
+          "QUIPSLY_SESSION_SCHEDULE_FORBIDDEN",
+        );
+      }
+
+      const replay = matchingMobileSessionScheduleReplay({
+        metadataJson: room.metadataJson,
+        input,
+      });
+      if (replay) {
+        return {
+          replayed: true,
+          roomId: room.id,
+          scheduledStart: replay.scheduledStart,
+          scheduledEnd: replay.scheduledEnd,
+          timezone: replay.timezone,
+          updatedAt: room.updatedAt.toISOString(),
+        };
+      }
+
+      const scheduleEvent = {
+        schema: "quipsly-session-schedule-event-v1" as const,
+        clientRequestId: input.clientRequestId,
+        actorUserId: session.user.id,
+        surface: "quipsly-nest-session-list" as const,
+        reason: input.reason,
+        previousScheduledStart: room.scheduledStart?.toISOString?.() ?? null,
+        previousScheduledEnd: room.scheduledEnd?.toISOString?.() ?? null,
+        scheduledStart: input.scheduledStart.toISOString(),
+        scheduledEnd: input.scheduledEnd.toISOString(),
+        timezone: input.timezone,
+        externalCalendarMutated: false as const,
+        invitationSent: false as const,
+        recordingStarted: false as const,
+        createdAt: new Date().toISOString(),
+      };
+      const updated = await tx.callRoom.updateMany({
+        where: {
+          id: room.id,
+          status: "PLANNED",
+          updatedAt: input.expectedUpdatedAt,
+        },
+        data: {
+          scheduledStart: input.scheduledStart,
+          scheduledEnd: input.scheduledEnd,
+          metadataJson: appendMobileSessionScheduleEvent({
+            metadataJson: room.metadataJson,
+            event: scheduleEvent,
+          }),
+        },
+      });
+      if (updated.count !== 1) {
+        const current = await tx.callRoom.findUnique({
+          where: { id: room.id },
+          select: {
+            scheduledStart: true,
+            scheduledEnd: true,
+            updatedAt: true,
+            metadataJson: true,
+          },
+        });
+        throw new MobileSessionScheduleError(
+          `This Session changed in another client. Current revision: ${
+            current?.updatedAt?.toISOString?.() || "unavailable"
+          }. Refresh before replacing its time.`,
+          409,
+          "QUIPSLY_SESSION_SCHEDULE_REVISION_CONFLICT",
+        );
+      }
+      const persisted = await tx.callRoom.findUnique({
+        where: { id: room.id },
+        select: {
+          scheduledStart: true,
+          scheduledEnd: true,
+          updatedAt: true,
+          metadataJson: true,
+        },
+      });
+      return {
+        replayed: false,
+        roomId: room.id,
+        scheduledStart: persisted?.scheduledStart?.toISOString?.() ?? null,
+        scheduledEnd: persisted?.scheduledEnd?.toISOString?.() ?? null,
+        timezone: mobileSessionScheduledTimezone(persisted?.metadataJson),
+        updatedAt: persisted?.updatedAt?.toISOString?.() ?? null,
+      };
+    }, { isolationLevel: "Serializable" });
+
+    return NextResponse.json({
+      ok: true,
+      session: result,
+      boundaries: {
+        quipslyScheduleUpdated: true,
+        externalCalendarMutated: false,
+        externalInviteSent: false,
+        recordingStarted: false,
+        nextAction: "The Quipsly Session time is saved. Consent, recording, invitations, and external calendars remain separate.",
+      },
+    });
+  } catch (error) {
+    if (error instanceof MobileSessionScheduleError) {
+      return NextResponse.json(
+        { ok: false, error: error.message, code: error.code },
+        { status: error.status },
+      );
+    }
+    console.error("[mobile-capture-sessions] failed to schedule Session", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Quipsly could not safely schedule that Session.",
+        code: "QUIPSLY_SESSION_SCHEDULE_UNAVAILABLE",
+      },
+      { status: 503 },
+    );
+  }
 }

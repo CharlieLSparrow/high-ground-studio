@@ -19,7 +19,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { ensureStudioWorkspace } from "@/lib/studio/project-registry";
 
-import { GET } from "./route";
+import { GET, PATCH } from "./route";
 
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
@@ -192,6 +192,37 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
     };
   }
 
+  async function scheduleSession({
+    actorId,
+    actorEmail,
+    clientRequestId,
+    expectedUpdatedAt,
+    scheduledStart,
+    scheduledEnd,
+  }: {
+    actorId: string;
+    actorEmail: string;
+    clientRequestId: string;
+    expectedUpdatedAt: string;
+    scheduledStart: string;
+    scheduledEnd: string;
+  }) {
+    signedInAs(actorId, actorEmail);
+    return PATCH(new Request("http://localhost/api/mobile/capture/sessions", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        callRoomId: roomId,
+        scheduledStart,
+        scheduledEnd,
+        timezone: "America/Denver",
+        expectedUpdatedAt,
+        clientRequestId,
+        reason: "Local physical-rehearsal persistence proof.",
+      }),
+    }));
+  }
+
   it("never projects another participant's private note or production-team work to a viewer", async () => {
     signedInAs(viewerUserId, viewerEmail);
     const { session, ids } = await projectedNoteIds();
@@ -243,5 +274,128 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
       noteIds.viewerPrivate,
     ]));
     expect(session.canUseProjectTeamNotes).toBe(true);
+  });
+
+  it("persists one authorized, idempotent, revision-safe Quipsly-only Session schedule receipt", async () => {
+    const before = await prisma.callRoom.findUniqueOrThrow({
+      where: { id: roomId },
+      select: { updatedAt: true },
+    });
+    const expectedUpdatedAt = before.updatedAt.toISOString();
+    const scheduledStart = new Date(Date.now() + 60 * 60_000);
+    scheduledStart.setSeconds(0, 0);
+    const scheduledEnd = new Date(scheduledStart.getTime() + 50 * 60_000);
+    const clientRequestId = randomUUID();
+
+    const firstResponse = await scheduleSession({
+      actorId: ownerUserId,
+      actorEmail: ownerEmail,
+      clientRequestId,
+      expectedUpdatedAt,
+      scheduledStart: scheduledStart.toISOString(),
+      scheduledEnd: scheduledEnd.toISOString(),
+    });
+    expect(firstResponse.status).toBe(200);
+    const firstPayload = await firstResponse.json();
+    expect(firstPayload).toMatchObject({
+      ok: true,
+      session: {
+        roomId,
+        scheduledStart: scheduledStart.toISOString(),
+        scheduledEnd: scheduledEnd.toISOString(),
+        timezone: "America/Denver",
+        replayed: false,
+      },
+      boundaries: {
+        quipslyScheduleUpdated: true,
+        externalCalendarMutated: false,
+        externalInviteSent: false,
+        recordingStarted: false,
+      },
+    });
+
+    const persisted = await prisma.callRoom.findUniqueOrThrow({
+      where: { id: roomId },
+      select: {
+        scheduledStart: true,
+        scheduledEnd: true,
+        updatedAt: true,
+        metadataJson: true,
+      },
+    });
+    expect(persisted.scheduledStart?.toISOString()).toBe(scheduledStart.toISOString());
+    expect(persisted.scheduledEnd?.toISOString()).toBe(scheduledEnd.toISOString());
+    expect(persisted.metadataJson).toMatchObject({
+      scheduledTimezone: "America/Denver",
+      scheduleEvents: [{
+        schema: "quipsly-session-schedule-event-v1",
+        clientRequestId,
+        actorUserId: ownerUserId,
+        externalCalendarMutated: false,
+        invitationSent: false,
+        recordingStarted: false,
+      }],
+    });
+
+    const replayResponse = await scheduleSession({
+      actorId: ownerUserId,
+      actorEmail: ownerEmail,
+      clientRequestId,
+      expectedUpdatedAt,
+      scheduledStart: scheduledStart.toISOString(),
+      scheduledEnd: scheduledEnd.toISOString(),
+    });
+    expect(replayResponse.status).toBe(200);
+    expect(await replayResponse.json()).toMatchObject({
+      ok: true,
+      session: { replayed: true },
+    });
+    const afterReplay = await prisma.callRoom.findUniqueOrThrow({
+      where: { id: roomId },
+      select: { metadataJson: true },
+    });
+    expect((afterReplay.metadataJson as { scheduleEvents?: unknown[] }).scheduleEvents).toHaveLength(1);
+
+    const changedIdentityResponse = await scheduleSession({
+      actorId: ownerUserId,
+      actorEmail: ownerEmail,
+      clientRequestId,
+      expectedUpdatedAt,
+      scheduledStart: scheduledStart.toISOString(),
+      scheduledEnd: new Date(scheduledEnd.getTime() + 10 * 60_000).toISOString(),
+    });
+    expect(changedIdentityResponse.status).toBe(409);
+    expect(await changedIdentityResponse.json()).toMatchObject({
+      ok: false,
+      code: "QUIPSLY_SESSION_SCHEDULE_IDENTITY_CONFLICT",
+    });
+
+    const staleResponse = await scheduleSession({
+      actorId: ownerUserId,
+      actorEmail: ownerEmail,
+      clientRequestId: randomUUID(),
+      expectedUpdatedAt,
+      scheduledStart: scheduledStart.toISOString(),
+      scheduledEnd: scheduledEnd.toISOString(),
+    });
+    expect(staleResponse.status).toBe(409);
+    expect(await staleResponse.json()).toMatchObject({
+      ok: false,
+      code: "QUIPSLY_SESSION_SCHEDULE_REVISION_CONFLICT",
+    });
+
+    const forbiddenResponse = await scheduleSession({
+      actorId: viewerUserId,
+      actorEmail: viewerEmail,
+      clientRequestId: randomUUID(),
+      expectedUpdatedAt: persisted.updatedAt.toISOString(),
+      scheduledStart: scheduledStart.toISOString(),
+      scheduledEnd: scheduledEnd.toISOString(),
+    });
+    expect(forbiddenResponse.status).toBe(403);
+    expect(await forbiddenResponse.json()).toMatchObject({
+      ok: false,
+      code: "QUIPSLY_SESSION_SCHEDULE_FORBIDDEN",
+    });
   });
 });

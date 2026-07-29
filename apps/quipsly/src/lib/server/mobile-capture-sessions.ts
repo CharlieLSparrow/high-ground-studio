@@ -15,6 +15,7 @@ import {
   addCaptureGroupAlignmentOffsets,
   buildCaptureSourceAlignmentProposal,
 } from "./capture-source-alignment";
+import { mobileSessionScheduledTimezone } from "./mobile-capture-session-schedule";
 
 const MOBILE_CAPTURE_ACTION_PACKET_KIND = "quipsly-capture-action-packet-v1";
 const DELIBERATE_SESSION_NOTE_KINDS = new Set([
@@ -954,6 +955,21 @@ export function mapMobileCaptureSessionsForUser(input: {
       episodeSlug: canonicalMobileSessionEpisodeSlug(room),
       scheduledStart: room.scheduledStart?.toISOString?.() ?? null,
       scheduledEnd: room.scheduledEnd?.toISOString?.() ?? null,
+      scheduledTimezone: mobileSessionScheduledTimezone(
+        room.metadataJson,
+        booking?.timezone,
+      ),
+      canSchedule:
+        room.status === "PLANNED"
+        && !room.bookingId
+        && (
+          input.isStaff === true
+          || room.createdByUserId === input.userId
+          || (
+            sessionProject.projectId != null
+            && productionNoteProjectIds.has(sessionProject.projectId)
+          )
+        ),
       participantId: participant?.id ?? null,
       recordingConsentId: consent?.id ?? null,
       recordingConsentStatus: consent?.status ?? "not-created",

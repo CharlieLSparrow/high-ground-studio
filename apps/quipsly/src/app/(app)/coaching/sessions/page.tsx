@@ -35,12 +35,15 @@ type ConsentGrantChoices = {
 type MobileCaptureSession = {
   id: string;
   callRoomId: string;
+  updatedAt?: string | null;
   participantId?: string | null;
   title: string;
   purpose?: string | null;
   status?: string | null;
   scheduledStart?: string | null;
   scheduledEnd?: string | null;
+  scheduledTimezone?: string | null;
+  canSchedule?: boolean;
   clientLabel?: string | null;
   coachLabel?: string | null;
   bookingStatus?: string | null;
@@ -133,6 +136,26 @@ type SessionCreateResponse = {
   };
 };
 
+type SessionScheduleResponse = {
+  ok: boolean;
+  error?: string;
+  session?: {
+    roomId?: string;
+    scheduledStart?: string | null;
+    scheduledEnd?: string | null;
+    timezone?: string | null;
+    updatedAt?: string | null;
+    replayed?: boolean;
+  };
+  boundaries?: {
+    quipslyScheduleUpdated?: boolean;
+    externalCalendarMutated?: boolean;
+    externalInviteSent?: boolean;
+    recordingStarted?: boolean;
+    nextAction?: string;
+  };
+};
+
 type ConsentResponse = {
   ok: boolean;
   error?: string;
@@ -181,6 +204,36 @@ function optionalIsoDate(value: string) {
   if (!value) return undefined;
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString();
+}
+
+function localDateTimeValue(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function nextDefaultSessionWindow() {
+  const start = new Date();
+  start.setSeconds(0, 0);
+  start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15);
+  const end = new Date(start.getTime() + 50 * 60_000);
+  return {
+    scheduledStart: localDateTimeValue(start.toISOString()),
+    scheduledEnd: localDateTimeValue(end.toISOString()),
+  };
+}
+
+function newScheduleRequestId() {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return globalThis.crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (part) => {
+    const random = Math.floor(Math.random() * 16);
+    const value = part === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
 }
 
 function paymentRequiredFor(session: MobileCaptureSession) {
@@ -399,16 +452,184 @@ function PaymentActionPanel({ session }: { session: MobileCaptureSession }) {
   );
 }
 
+function SessionSchedulePanel({
+  session,
+  onScheduleSaved,
+}: {
+  session: MobileCaptureSession;
+  onScheduleSaved: () => Promise<void>;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [clientRequestId, setClientRequestId] = useState<string | null>(null);
+  const [draft, setDraft] = useState({
+    scheduledStart: localDateTimeValue(session.scheduledStart),
+    scheduledEnd: localDateTimeValue(session.scheduledEnd),
+  });
+  const timezone = useMemo(
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
+    [],
+  );
+
+  useEffect(() => {
+    setDraft({
+      scheduledStart: localDateTimeValue(session.scheduledStart),
+      scheduledEnd: localDateTimeValue(session.scheduledEnd),
+    });
+    setClientRequestId(null);
+  }, [session.scheduledStart, session.scheduledEnd, session.updatedAt]);
+
+  if (!session.canSchedule) return null;
+
+  function openEditor() {
+    if (!session.scheduledStart || !session.scheduledEnd) {
+      setDraft(nextDefaultSessionWindow());
+    }
+    setMessage(null);
+    setError(null);
+    setIsOpen(true);
+  }
+
+  function changeDraft(field: "scheduledStart" | "scheduledEnd", value: string) {
+    setDraft((current) => ({ ...current, [field]: value }));
+    setClientRequestId(null);
+    setMessage(null);
+    setError(null);
+  }
+
+  async function saveSchedule(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const scheduledStart = optionalIsoDate(draft.scheduledStart);
+    const scheduledEnd = optionalIsoDate(draft.scheduledEnd);
+    if (!scheduledStart || !scheduledEnd) {
+      setError("Choose both a start and end time.");
+      return;
+    }
+    if (!session.updatedAt) {
+      setError("Refresh this Session before changing its time.");
+      return;
+    }
+
+    const requestId = clientRequestId || newScheduleRequestId();
+    setClientRequestId(requestId);
+    setIsSaving(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/mobile/capture/sessions", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          callRoomId: session.callRoomId,
+          scheduledStart,
+          scheduledEnd,
+          timezone,
+          expectedUpdatedAt: session.updatedAt,
+          clientRequestId: requestId,
+          reason: "Scheduled from the Quipsly Session workspace.",
+        }),
+      });
+      const body = (await response.json()) as SessionScheduleResponse;
+      if (!response.ok || !body.ok) {
+        throw new Error(body.error || `Scheduling returned HTTP ${response.status}.`);
+      }
+      setMessage(
+        body.boundaries?.nextAction
+        || "The Quipsly Session time is saved. Invitations, consent, recording, and external calendars remain separate.",
+      );
+      await onScheduleSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "The Session time could not be saved.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/65 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="text-[11px] font-black uppercase tracking-wide text-sky-800">Quipsly schedule</p>
+          <p className="mt-1 text-sm font-bold leading-relaxed text-[#425466]">
+            {session.scheduledStart && session.scheduledEnd
+              ? `${formatDateTime(session.scheduledStart)} to ${formatDateTime(session.scheduledEnd)} · ${session.scheduledTimezone || timezone}`
+              : "Choose when this existing Session should appear in Quipsly."}
+          </p>
+          <p className="mt-1 text-xs font-bold text-sky-900">
+            This does not send an invitation, update an external calendar, grant consent, or start recording.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={openEditor}
+          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 shadow-sm hover:bg-sky-100"
+        >
+          {session.scheduledStart ? "Change Quipsly time" : "Set Quipsly time"}
+        </button>
+      </div>
+
+      {isOpen ? (
+        <form onSubmit={saveSchedule} className="mt-4 grid gap-4 border-t border-sky-200 pt-4 md:grid-cols-2">
+          <label className="text-sm font-black text-[#3d3122]">
+            Session starts
+            <input
+              type="datetime-local"
+              required
+              value={draft.scheduledStart}
+              onChange={(event) => changeDraft("scheduledStart", event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500"
+            />
+          </label>
+          <label className="text-sm font-black text-[#3d3122]">
+            Session ends
+            <input
+              type="datetime-local"
+              required
+              value={draft.scheduledEnd}
+              onChange={(event) => changeDraft("scheduledEnd", event.target.value)}
+              className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-sky-500"
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-3 md:col-span-2">
+            <button
+              type="submit"
+              disabled={isSaving || !session.updatedAt}
+              className="inline-flex min-h-11 items-center justify-center rounded-full bg-sky-800 px-5 py-3 text-sm font-black uppercase tracking-wide text-white hover:bg-sky-900 disabled:cursor-wait disabled:opacity-60"
+            >
+              {isSaving ? "Saving Quipsly time…" : "Save Quipsly time"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsOpen(false)}
+              disabled={isSaving}
+              className="inline-flex min-h-11 items-center justify-center rounded-full border border-sky-300 bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-sky-900 hover:bg-sky-100 disabled:opacity-60"
+            >
+              Cancel
+            </button>
+            <p className="text-xs font-bold text-sky-900">Shown in {timezone} on this device.</p>
+            {message ? <p role="status" className="w-full text-sm font-bold text-emerald-800">{message}</p> : null}
+            {error ? <p role="alert" className="w-full text-sm font-bold text-rose-800">{error}</p> : null}
+          </div>
+        </form>
+      ) : null}
+    </div>
+  );
+}
+
 function SessionCard({
   session,
   consentBusy,
   consentMessage,
   onConsentAction,
+  onScheduleSaved,
 }: {
   session: MobileCaptureSession;
   consentBusy: boolean;
   consentMessage?: string;
   onConsentAction: (session: MobileCaptureSession, action: ConsentAction, choices?: ConsentGrantChoices) => void;
+  onScheduleSaved: () => Promise<void>;
 }) {
   const blockers = [
     ...(session.captureReadiness?.blockers ?? []),
@@ -455,6 +676,8 @@ function SessionCard({
       </div>
 
       <PaymentActionPanel session={session} />
+
+      <SessionSchedulePanel session={session} onScheduleSaved={onScheduleSaved} />
 
       <ConsentChoicePanel
         session={session}
@@ -629,7 +852,16 @@ export default function CoachingSessionsPage() {
               </p>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <Pill label={payload?.user?.isStaff ? "staff preview" : "client view"} tone="blue" />
+              <Pill
+                label={
+                  payload?.user?.isStaff
+                    ? "staff tools"
+                    : payload?.user?.canCreateCaptureSessions
+                      ? "creator tools"
+                      : "participant view"
+                }
+                tone="blue"
+              />
               <Pill label={status} tone={error ? "bad" : "good"} />
               <button
                 type="button"
@@ -734,6 +966,7 @@ export default function CoachingSessionsPage() {
               consentBusy={Boolean(consentBusyByRoom[session.callRoomId])}
               consentMessage={consentMessageByRoom[session.callRoomId]}
               onConsentAction={(target, action, choices) => void submitConsent(target, action, choices)}
+              onScheduleSaved={loadSessions}
             />
           ))
         )}
