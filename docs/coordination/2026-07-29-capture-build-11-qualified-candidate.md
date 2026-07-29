@@ -56,6 +56,14 @@ Independent readback proves:
   iPhone 17 Pro Simulator 26.3.1;
 - the receipt hash matches a fresh `shasum -a 256` of the IPA.
 
+The complete isolated Capture preflight was also recreated from the same
+committed SHA with the locked pnpm graph. It passed TypeScript compilation,
+mobile/Nest static and ingestion contracts, App Store static checks, durability,
+account isolation, coordinated podcast capture, manuscript, rehearsal, Watch,
+provider-room, and LiveKit-linked simulator build gates. Evidence log:
+
+`/var/folders/n8/75lt2yw16752qxw_l6j0khl00000gn/T/quipsly-build11-preflight-20260729T134700.log`
+
 The receipt deliberately records:
 
 - `uploadAttempted: false`;
@@ -113,7 +121,7 @@ reauthentication flow. After authentication:
 
 1. set the ADC quota project to `quipsly-reef`;
 2. pass the scoped Google Cloud/Firebase authorization check;
-3. rerun the exact committed production preflight at `563a8550`;
+3. run the deploy-specific committed production preflight at `563a8550`;
 4. deploy a zero-traffic Cloud Run preview;
 5. prove authenticated canonical project creation, idempotent retry, owner-only
    access, and browser-to-native readback;
