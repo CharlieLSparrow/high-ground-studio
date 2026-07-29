@@ -3369,3 +3369,43 @@ This is an active-goal checkpoint, not a completion claim.
   `acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`.
   Rehearsal Watch remains paused at zero with Be Curious first and no session,
   span, consent, or recording mutation.
+
+### 2026-07-29 atomic-tag zero-traffic preview checkpoint
+
+- This is a signed reviewer-account and real Cloud SQL preview proof, not
+  production promotion, a new TestFlight build, physical-iPhone operation, or
+  proof that the new-vocabulary creation branch has run against production
+  data.
+- The bounded Nest release manifest materialized 1,134 files / 111.1 MiB from
+  exact committed source
+  `1ac5bd3d441a07938239f2073add2f6e2ed0a0eb`. The beta scan, strict local
+  production build, TypeScript, all 150 static pages, release-script checks,
+  media IAM, Firebase runtime administration, production recovery gate, and
+  all 104 existing production Capture checks passed before Cloud Build.
+- Cloud Build `807a8aa9-1dd1-4958-957d-c26b8a37e403` produced immutable image
+  tag `preview-1ac5bd3d-20260729`. Artifact Registry readback reports manifest
+  list digest
+  `sha256:e983a1a22cb1e6caf864e43bdbe741231fdc3453eb70f60d21d0115a2280e908`;
+  Cloud Run resolved the linux/amd64 image manifest
+  `sha256:cb0b796a3a71ac4ff24b05c52876c20d8707ec2ca73a3e241353d39cf7a05005`.
+  The image-owned route verifier passed all six required bundles.
+- Ready revision `studio-00430-fop` serves the tagged preview at 0% traffic.
+  `/api/healthz`, revision environment, Artifact Registry, and Cloud Run
+  independently agree on revision, image tag, preview channel, and exact
+  source SHA. Production remains 100% on `studio-00425-gij`.
+- Full preview smoke passed public health/readiness, signed-out boundaries,
+  Firebase login, native bearer auth, session cookie, Home Nest, writing,
+  editor, recorder, research, publishing, logout/cookie clearing, both
+  configured public hosts, and the short-lived revision-bound readiness
+  receipt.
+- A signed `codex@dev.test` Work journey reused existing
+  `#Product readiness` on reviewer-owned task
+  `mobile-task-6cde0843-4e48-4428-93f1-55462d7195cb`. Receipt
+  `work-tags-d2d268bf-9a82-4b57-b62d-537c7d792d2c` proved first application,
+  exact replay, selected-ID echo, requested-label echo,
+  requested-to-resolved canonical identity, `created=false`, final-ID union,
+  unchanged final database tag set, and no external side effects.
+- This closes the real database reuse/replay boundary without taxonomy
+  clutter. A disposable PostgreSQL run of the committed integration case must
+  still prove `created=true` and rollback locally after Docker recovers.
+  Production promotion and a matching Build 9 remain separate explicit gates.
