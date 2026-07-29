@@ -11,15 +11,15 @@ import {
   signInWithEmailAndPassword,
   signInWithPopup,
   signInWithRedirect,
-  type User,
 } from "firebase/auth";
 
 import { auth } from "@/lib/firebase/firebase";
-
-function cleanCallbackUrl(value: string) {
-  if (!value.startsWith("/") || value.startsWith("//")) return "/projects";
-  return value;
-}
+import {
+  cleanQuipslyCallbackUrl,
+  cleanQuipslyInviteToken,
+  finishQuipslyFirebaseSignIn,
+  quipslyEmailActionSettings,
+} from "@/lib/firebase/quipsly-session";
 
 function friendlyFirebaseAuthError(error: any) {
   const code = String(error?.code || "");
@@ -70,55 +70,67 @@ function friendlyFirebaseAuthError(error: any) {
 export function LoginClient({
   callbackUrl,
   inviteToken,
+  initialError,
 }: {
   callbackUrl: string;
   inviteToken?: string;
+  initialError?: string;
 }) {
-  const safeCallbackUrl = cleanCallbackUrl(callbackUrl);
-  const safeInviteToken = inviteToken?.startsWith("qinv_") ? inviteToken : "";
+  const safeCallbackUrl = cleanQuipslyCallbackUrl(callbackUrl);
+  const safeInviteToken = cleanQuipslyInviteToken(inviteToken);
   const inviteMessage = safeInviteToken
-    ? "You are opening a Quipsly invite. Sign in with the invited email; Quipsly will connect the invite after Firebase proves who you are."
-    : "Sign in with Google, sign in with email/password, or create a free Quipsly account. Firebase proves identity; Quipsly creates your Home Nest after sign-in.";
+    ? "Sign in with the invited email. Quipsly connects the invite only after Firebase proves the address."
+    : "Continue with Google, or use your Quipsly email and password.";
+  const initialMessage =
+    initialError === "google-link-required"
+      ? "That Google address already has a different Firebase sign-in method. Sign in with that method first, then connect Google from Account switch so your existing Nest stays intact."
+      : initialError === "google-one-tap-failed"
+        ? "Google could not finish the quick sign-in. Use the Google button below to choose an account explicitly, or continue with email."
+        : initialError === "email-verified"
+          ? "Your email is verified. Sign in once to open your Quipsly Home Nest."
+          : initialError === "password-reset"
+            ? "Your password is updated. Sign in with the new password."
+        : inviteMessage;
   const emailInputRef = useRef<HTMLInputElement>(null);
   const [passwordMode, setPasswordMode] = useState<"signin" | "create">("signin");
-  const [message, setMessage] = useState(inviteMessage);
+  const [message, setMessage] = useState(initialMessage);
   const [isPasswordSigningIn, setIsPasswordSigningIn] = useState(false);
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
+  const [officialGoogleButtonReady, setOfficialGoogleButtonReady] = useState(false);
 
-  async function finishFirebaseSignIn(user: User) {
-    await user.reload();
-    if (!user.emailVerified) {
-      await sendEmailVerification(user).catch(() => undefined);
-      await signOut(auth);
-      throw new Error("Check your inbox and verify this email before Quipsly creates a session. We sent a fresh verification link when Firebase allowed it.");
+  useEffect(() => {
+    const markReady = () => setOfficialGoogleButtonReady(true);
+    window.addEventListener("quipsly:google-button-rendered", markReady);
+    if (
+      document
+        .getElementById("quipsly-google-signin-button")
+        ?.childElementCount
+    ) {
+      markReady();
     }
-    const idToken = await user.getIdToken(true);
-    const response = await fetch("/api/auth/session", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        idToken,
-        inviteToken: safeInviteToken || undefined,
-      }),
-    });
-
-    if (!response.ok) {
-      const payload = await response.json().catch(() => ({}));
-      throw new Error(String(payload.error || "Quipsly could not create a server session."));
-    }
-
-    window.location.assign(safeCallbackUrl);
-  }
+    return () => {
+      window.removeEventListener("quipsly:google-button-rendered", markReady);
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
 
     getRedirectResult(auth)
       .then((result) => {
-        if (!result?.user || cancelled) return;
-        setMessage("Google verified you. Opening your Nest...");
-        return finishFirebaseSignIn(result.user);
+        const user = result?.user ?? auth.currentUser;
+        if (!user || cancelled) return;
+        setMessage(
+          result?.user
+            ? "Google verified you. Opening your Nest..."
+            : "Restoring your secure Quipsly session...",
+        );
+        return finishQuipslyFirebaseSignIn({
+          user,
+          callbackUrl: safeCallbackUrl,
+          inviteToken: safeInviteToken,
+        });
       })
       .catch((error) => {
         if (!cancelled) {
@@ -133,20 +145,21 @@ export function LoginClient({
 
   async function signInWithGoogle() {
     setIsGoogleSigningIn(true);
-    setMessage("Opening Google through Firebase...");
+    setMessage("Opening Google...");
+    window.dispatchEvent(new Event("quipsly:google-auth-start"));
 
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
 
     try {
       const result = await signInWithPopup(auth, provider);
-      await finishFirebaseSignIn(result.user);
+      await finishQuipslyFirebaseSignIn({
+        user: result.user,
+        callbackUrl: safeCallbackUrl,
+        inviteToken: safeInviteToken,
+      });
     } catch (error: any) {
-      if (
-        error?.code === "auth/popup-blocked" ||
-        error?.code === "auth/popup-closed-by-user" ||
-        error?.code === "auth/cancelled-popup-request"
-      ) {
+      if (error?.code === "auth/popup-blocked") {
         await signInWithRedirect(auth, provider);
         return;
       }
@@ -184,7 +197,15 @@ export function LoginClient({
         ? await createUserWithEmailAndPassword(auth, trimmedEmail, submittedPassword)
         : await signInWithEmailAndPassword(auth, trimmedEmail, submittedPassword);
       if (passwordMode === "create") {
-        const verificationSent = await sendEmailVerification(result.user)
+        const verificationSent = await sendEmailVerification(
+          result.user,
+          quipslyEmailActionSettings({
+            origin: window.location.origin,
+            callbackUrl: safeCallbackUrl,
+            inviteToken: safeInviteToken,
+            action: "verify",
+          }),
+        )
           .then(() => true)
           .catch(() => false);
         await signOut(auth);
@@ -195,7 +216,11 @@ export function LoginClient({
         setIsPasswordSigningIn(false);
         return;
       }
-      await finishFirebaseSignIn(result.user);
+      await finishQuipslyFirebaseSignIn({
+        user: result.user,
+        callbackUrl: safeCallbackUrl,
+        inviteToken: safeInviteToken,
+      });
     } catch (error: any) {
       setMessage(
         `${passwordMode === "create" ? "Account creation" : "Email/password sign-in"} failed: ${friendlyFirebaseAuthError(error)}`,
@@ -216,7 +241,16 @@ export function LoginClient({
     setMessage("Asking Firebase to send a password reset email...");
 
     try {
-      await sendPasswordResetEmail(auth, trimmedEmail);
+      await sendPasswordResetEmail(
+        auth,
+        trimmedEmail,
+        quipslyEmailActionSettings({
+          origin: window.location.origin,
+          callbackUrl: safeCallbackUrl,
+          inviteToken: safeInviteToken,
+          action: "reset",
+        }),
+      );
       setMessage("If that email has a Firebase login, a reset email is on the way. Quipsly does not reveal whether an account exists.");
     } catch (error: any) {
       setMessage(`Password recovery could not start: ${friendlyFirebaseAuthError(error)}`);
@@ -228,130 +262,151 @@ export function LoginClient({
   const busy = isGoogleSigningIn || isPasswordSigningIn || isRecoveringPassword;
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#092a25] px-5 py-10 text-[#fff8ec]">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(246,199,116,0.24),transparent_30%),radial-gradient(circle_at_82%_12%,rgba(115,202,172,0.2),transparent_28%),linear-gradient(135deg,#092a25,#1d3427_48%,#4a2e1f)]" />
-      <section className="relative mx-auto grid min-h-[82vh] max-w-6xl items-center gap-8 lg:grid-cols-[1fr_0.9fr]">
-        <div className="rounded-[36px] border border-white/12 bg-black/20 p-7 shadow-2xl shadow-black/30 backdrop-blur md:p-10">
-          <p className="text-xs font-black uppercase tracking-[0.32em] text-[#ffd37a]">Quipsly Nest sign-in</p>
-          <h1 className="mt-5 font-serif text-5xl font-black leading-[0.95] tracking-tight md:text-7xl">
-            Come in through the front door. No trapdoors today.
-          </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-[#e9dcc8]">
-            Quipsly owns access by email. Google can prove who you are, Patreon can support beta access, and email/password keeps new writers, trusted collaborators, and operator testing from getting stuck when provider login gets dramatic.
-          </p>
-          {safeInviteToken ? (
-            <div className="mt-6 rounded-3xl border border-[#8bd8b8]/40 bg-[#0f3b32]/75 px-5 py-4 text-sm leading-6 text-[#dff8ee] shadow-lg shadow-black/10">
-              <div className="font-black uppercase tracking-[0.18em] text-[#9ef0c4]">Invite mode</div>
-              <p className="mt-2">
-                This link does not grant access by itself. It only helps Quipsly finish the invite after Firebase confirms
-                the same email address that was invited.
-              </p>
-            </div>
-          ) : null}
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={signInWithGoogle}
-              disabled={busy}
-              className="rounded-full bg-[#fff8ec] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-[#2f2118] shadow-lg shadow-black/20 transition hover:bg-white"
-            >
-              {isGoogleSigningIn ? "Opening Google..." : "Sign in with Google"}
-            </button>
-            <a
-              href="https://quipsly.com/support"
-              className="rounded-full border border-[#ffcfda]/60 bg-[#4a1722]/50 px-5 py-3 text-center text-sm font-black uppercase tracking-[0.16em] text-[#ffd7de] transition hover:bg-[#5c1d2a]"
-            >
-              Support beta access
-            </a>
+    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[#092a25] px-4 py-10 text-[#38291f]">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_12%,rgba(246,199,116,0.2),transparent_32%),radial-gradient(circle_at_82%_16%,rgba(115,202,172,0.18),transparent_30%),linear-gradient(135deg,#092a25,#1d3427_52%,#4a2e1f)]" />
+      <section className="relative w-full max-w-md rounded-[32px] border border-white/20 bg-[#fffaf1]/98 p-6 shadow-2xl shadow-black/30 backdrop-blur md:p-8">
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 text-sm font-black text-[#315d4e]"
+        >
+          <span aria-hidden="true" className="grid h-9 w-9 place-items-center rounded-xl bg-[#315d4e] text-lg text-white">
+            Q
+          </span>
+          Quipsly
+        </a>
+
+        <h1 className="mt-7 font-serif text-4xl font-black tracking-tight">
+          {passwordMode === "create" ? "Create your account" : "Welcome back"}
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-[#715840]">
+          One account opens your Quipsly Home Nest, projects, notes, and Capture sessions.
+        </p>
+
+        {safeInviteToken ? (
+          <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950">
+            Sign in with the email that received this invite. The link grants nothing until Firebase verifies that address.
           </div>
+        ) : null}
+
+        <div
+          id="quipsly-google-signin-button"
+          className="mt-6 flex min-h-11 w-full items-center justify-center overflow-hidden rounded"
+        />
+        {!officialGoogleButtonReady ? (
+          <button
+            type="button"
+            onClick={signInWithGoogle}
+            disabled={busy}
+            className="mt-2 flex w-full items-center justify-center rounded-xl border border-[#747775] bg-white px-5 py-3 text-sm font-black text-[#1f1f1f] shadow-sm transition hover:bg-[#f8f9fa] disabled:cursor-wait disabled:opacity-60"
+          >
+            {isGoogleSigningIn ? "Opening Google..." : "Continue with Google"}
+          </button>
+        ) : null}
+
+        <div className="my-5 flex items-center gap-3 text-xs font-bold uppercase tracking-[0.16em] text-[#967f65]">
+          <span className="h-px flex-1 bg-[#dfcfb6]" />
+          or continue with email
+          <span className="h-px flex-1 bg-[#dfcfb6]" />
         </div>
 
-        <div className="rounded-[32px] border border-[#ead7b7]/50 bg-[#fffaf1]/95 p-6 text-[#38291f] shadow-2xl shadow-black/25 md:p-8">
-          <p className="text-xs font-black uppercase tracking-[0.24em] text-[#95662f]">Direct Quipsly login</p>
-          <h2 className="mt-3 font-serif text-3xl font-black">
-            {passwordMode === "create" ? "Create a free Quipsly account." : "Use email/password."}
-          </h2>
-          <p
-            role="status"
-            aria-live="polite"
-            data-testid="quipsly-login-status"
-            className="mt-3 rounded-2xl border border-[#ead7b7] bg-white/70 px-4 py-3 text-sm leading-6 text-[#715840]"
+        <div className="grid grid-cols-2 gap-1 rounded-xl border border-[#dfcfb6] bg-[#f4ead8] p-1 text-sm font-bold">
+          <button
+            type="button"
+            onClick={() => {
+              setPasswordMode("signin");
+              setMessage(safeInviteToken
+                ? "Sign in with the invited email. Quipsly attaches the invite only after Firebase proves the account."
+                : "Continue with Google, or use your Quipsly email and password.");
+            }}
+            className={`rounded-lg px-3 py-2.5 transition ${passwordMode === "signin" ? "bg-white text-[#315d4e] shadow-sm" : "text-[#72563d] hover:bg-white/60"}`}
           >
-            {message}
-          </p>
-          <div className="mt-5 grid grid-cols-2 gap-2 rounded-full border border-[#ead7b7] bg-[#f4ead8] p-1 text-xs font-black uppercase tracking-[0.14em]">
-            <button
-              type="button"
-              onClick={() => {
-                setPasswordMode("signin");
-                setMessage(safeInviteToken
-                  ? "Sign in with the invited email. Quipsly will attach the invite after Firebase proves the account."
-                  : "Sign in with an existing Google-created, admin-created, or email/password Quipsly account.");
-              }}
-              className={`rounded-full px-3 py-2 transition ${passwordMode === "signin" ? "bg-[#315d4e] text-white shadow" : "text-[#72563d] hover:bg-white/70"}`}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setPasswordMode("create");
-                setMessage(safeInviteToken
-                  ? "Create a Firebase login with the invited email. Quipsly will connect the invite and open your assigned Nest."
-                  : "Create a free account. Quipsly will add your Home Nest automatically after Firebase verifies the new login.");
-              }}
-              className={`rounded-full px-3 py-2 transition ${passwordMode === "create" ? "bg-[#315d4e] text-white shadow" : "text-[#72563d] hover:bg-white/70"}`}
-            >
-              Create account
-            </button>
-          </div>
-          <form method="post" onSubmit={handlePasswordAuth} className="mt-6 grid gap-3">
-            <label className="grid gap-2 text-sm font-black uppercase tracking-[0.14em] text-[#72563d]">
-              Email
-              <input
-                ref={emailInputRef}
-                name="email"
-                type="email"
-                required
-                autoComplete="email"
-                placeholder="charlie@example.com"
-                className="rounded-2xl border border-[#d9c39d] bg-white px-4 py-3 text-base font-bold normal-case tracking-normal text-[#2f2118] outline-none transition focus:border-[#3b7d67]"
-              />
-            </label>
-            <label className="grid gap-2 text-sm font-black uppercase tracking-[0.14em] text-[#72563d]">
-              Password
-              <input
-                name="password"
-                type="password"
-                required
-                autoComplete={passwordMode === "create" ? "new-password" : "current-password"}
-                placeholder="Your Quipsly password"
-                className="rounded-2xl border border-[#d9c39d] bg-white px-4 py-3 text-base font-bold normal-case tracking-normal text-[#2f2118] outline-none transition focus:border-[#3b7d67]"
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={busy}
-              className="rounded-full bg-[#315d4e] px-5 py-3 text-sm font-black uppercase tracking-[0.16em] text-white transition hover:bg-[#214236] disabled:cursor-wait disabled:opacity-60"
-            >
-              {isPasswordSigningIn
-                ? passwordMode === "create" ? "Creating account..." : "Signing in..."
-                : passwordMode === "create" ? "Create free account" : "Sign in with email/password"}
-            </button>
-          </form>
+            Sign in
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setPasswordMode("create");
+              setMessage(
+                "Create an email/password account. You will verify this new mailbox once before Quipsly opens its Home Nest.",
+              );
+            }}
+            className={`rounded-lg px-3 py-2.5 transition ${passwordMode === "create" ? "bg-white text-[#315d4e] shadow-sm" : "text-[#72563d] hover:bg-white/60"}`}
+          >
+            Create account
+          </button>
+        </div>
+
+        <form method="post" onSubmit={handlePasswordAuth} className="mt-5 grid gap-4">
+          <label className="grid gap-2 text-sm font-bold text-[#5b4530]">
+            Email
+            <input
+              ref={emailInputRef}
+              name="email"
+              type="email"
+              required
+              autoComplete="email"
+              inputMode="email"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="you@example.com"
+              className="rounded-xl border border-[#d9c39d] bg-white px-4 py-3 text-base font-medium text-[#2f2118] outline-none transition focus:border-[#3b7d67] focus:ring-2 focus:ring-[#3b7d67]/20"
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold text-[#5b4530]">
+            Password
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={passwordMode === "create" ? 8 : undefined}
+              autoComplete={passwordMode === "create" ? "new-password" : "current-password"}
+              placeholder={passwordMode === "create" ? "At least 8 characters" : "Your password"}
+              className="rounded-xl border border-[#d9c39d] bg-white px-4 py-3 text-base font-medium text-[#2f2118] outline-none transition focus:border-[#3b7d67] focus:ring-2 focus:ring-[#3b7d67]/20"
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-xl bg-[#315d4e] px-5 py-3.5 text-sm font-black text-white transition hover:bg-[#214236] disabled:cursor-wait disabled:opacity-60"
+          >
+            {isPasswordSigningIn
+              ? passwordMode === "create" ? "Creating account..." : "Signing in..."
+              : passwordMode === "create" ? "Create account" : "Sign in with email"}
+          </button>
+        </form>
+
+        {passwordMode === "signin" ? (
           <button
             type="button"
             disabled={busy}
             onClick={recoverPassword}
-            className="mt-3 w-full rounded-full border border-[#d9c39d] bg-white/70 px-5 py-3 text-sm font-black uppercase tracking-[0.14em] text-[#5b4530] transition hover:bg-white disabled:cursor-wait disabled:opacity-60"
+            className="mt-3 w-full px-4 py-2 text-sm font-bold text-[#315d4e] transition hover:text-[#214236] disabled:cursor-wait disabled:opacity-60"
           >
-            {isRecoveringPassword ? "Sending recovery..." : "Send password reset"}
+            {isRecoveringPassword ? "Sending reset email..." : "Forgot password?"}
           </button>
-
-          <p className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-950">
-            New Google and email/password users get a free Quipsly account and private Home Nest automatically. Admin-created and invited accounts use the same Firebase-first path.
+        ) : (
+          <p className="mt-3 text-center text-xs leading-5 text-[#806b54]">
+            Google accounts are ready immediately. New email/password accounts require one mailbox verification.
           </p>
-        </div>
+        )}
+
+        <p
+          role="status"
+          aria-live="polite"
+          data-testid="quipsly-login-status"
+          className="mt-4 rounded-xl border border-[#ead7b7] bg-white/70 px-4 py-3 text-sm leading-6 text-[#715840]"
+        >
+          {message}
+        </p>
+
+        <p className="mt-5 text-center text-xs leading-5 text-[#806b54]">
+          By continuing, you agree to Quipsly&apos;s{" "}
+          <a className="font-bold underline underline-offset-2" href="/terms">Terms</a>
+          {" "}and{" "}
+          <a className="font-bold underline underline-offset-2" href="/privacy">Privacy Policy</a>.
+          {" "}Need help?{" "}
+          <a className="font-bold underline underline-offset-2" href="/support">Contact support</a>.
+        </p>
       </section>
     </main>
   );

@@ -3,7 +3,11 @@ import "server-only";
 import type { PrismaClient } from "@prisma/client";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { ensureHomeNestForEmail } from "@/lib/server/home-nest";
+import {
+  ensureHomeNestForEmail,
+  ensureHomeNestForEmailInTransaction,
+} from "@/lib/server/home-nest";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 export const QUIPSLY_FREE_PLAN_SLUG = "quipsly-free";
 
@@ -21,52 +25,64 @@ export async function ensureQuipslyStarterStateForUser(input: {
 }): Promise<QuipslyStarterStateReceipt> {
   const prisma = input.prisma ?? getPrismaClient();
 
-  const freePlan = await prisma.membershipPlan.upsert({
-    where: { slug: QUIPSLY_FREE_PLAN_SLUG },
-    create: {
-      slug: QUIPSLY_FREE_PLAN_SLUG,
-      name: "Quipsly Free",
-      description: "Free starter access for writing, notes, Home Nest intake, and beta exploration.",
-      priceCents: 0,
-      billingIntervalMonths: null,
-      isActive: true,
-    },
-    update: {
-      name: "Quipsly Free",
-      description: "Free starter access for writing, notes, Home Nest intake, and beta exploration.",
-      priceCents: 0,
-      isActive: true,
-    },
-    select: { id: true },
-  });
+  return prisma.$transaction(async (transaction) => {
+    // Make initial provisioning exactly-once for this Quipsly person even when
+    // multiple browser tabs or native clients complete sign-in together.
+    await acquirePrismaAdvisoryTransactionLock(
+      transaction,
+      `quipsly:starter:${input.userId}`,
+    );
 
-  const activeMembership = await prisma.membership.findFirst({
-    where: {
-      userId: input.userId,
-      planId: freePlan.id,
-      status: "ACTIVE",
-      OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
-    },
-    select: { id: true },
-  });
+    const freePlan = await transaction.membershipPlan.upsert({
+      where: { slug: QUIPSLY_FREE_PLAN_SLUG },
+      create: {
+        slug: QUIPSLY_FREE_PLAN_SLUG,
+        name: "Quipsly Free",
+        description: "Free starter access for writing, notes, Home Nest intake, and beta exploration.",
+        priceCents: 0,
+        billingIntervalMonths: null,
+        isActive: true,
+      },
+      update: {
+        name: "Quipsly Free",
+        description: "Free starter access for writing, notes, Home Nest intake, and beta exploration.",
+        priceCents: 0,
+        isActive: true,
+      },
+      select: { id: true },
+    });
 
-  if (!activeMembership) {
-    await prisma.membership.create({
-      data: {
+    const activeMembership = await transaction.membership.findFirst({
+      where: {
         userId: input.userId,
         planId: freePlan.id,
         status: "ACTIVE",
-        notes: "Automatically granted by Quipsly starter onboarding.",
+        OR: [{ endsAt: null }, { endsAt: { gt: new Date() } }],
       },
+      select: { id: true },
     });
-  }
 
-  const homeNest = await ensureHomeNestForEmail(input.email, prisma);
+    if (!activeMembership) {
+      await transaction.membership.create({
+        data: {
+          userId: input.userId,
+          planId: freePlan.id,
+          status: "ACTIVE",
+          notes: "Automatically granted by Quipsly starter onboarding.",
+        },
+      });
+    }
 
-  return {
-    homeNest,
-    freePlanSlug: QUIPSLY_FREE_PLAN_SLUG,
-    freeMembershipStatus: "ACTIVE",
-    freeMembershipCreated: !activeMembership,
-  };
+    const homeNest = await ensureHomeNestForEmailInTransaction(
+      input.email,
+      transaction,
+    );
+
+    return {
+      homeNest,
+      freePlanSlug: QUIPSLY_FREE_PLAN_SLUG,
+      freeMembershipStatus: "ACTIVE",
+      freeMembershipCreated: !activeMembership,
+    };
+  });
 }

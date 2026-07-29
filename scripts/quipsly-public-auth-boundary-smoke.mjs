@@ -95,7 +95,7 @@ try {
     status: login.status,
   });
   assert(
-    /Quipsly Nest sign-in|Direct Quipsly login|Sign in with Google/i.test(login.text),
+    /Welcome back|One account opens your Quipsly Home Nest|Continue with Google/i.test(login.text),
     "/login rendered but did not look like the Firebase-first login page",
   );
   assert(
@@ -103,7 +103,7 @@ try {
     "/login rendered but did not expose the email/password free-account doorway",
   );
   assert(
-    /Send password reset/i.test(login.text),
+    /Forgot password/i.test(login.text),
     "/login rendered but did not expose password recovery",
   );
   assert(

@@ -36,7 +36,7 @@ describe("Quipsly direct login", () => {
 
     const email = screen.getByLabelText("Email") as HTMLInputElement;
     const password = screen.getByLabelText("Password") as HTMLInputElement;
-    const submit = screen.getByRole("button", { name: "Sign in with email/password" });
+    const submit = screen.getByRole("button", { name: "Sign in with email" });
 
     email.value = "  QUIPSLY.QA@LOCAL.TEST ";
     password.value = "LocalOnly-Quipsly-2026!";
@@ -61,7 +61,7 @@ describe("Quipsly direct login", () => {
 
     render(<LoginClient callbackUrl="/projects" />);
     fireEvent.click(
-      screen.getByRole("button", { name: "Sign in with Google" }),
+      screen.getByRole("button", { name: "Continue with Google" }),
     );
 
     expect(GoogleAuthProvider).toHaveBeenCalled();
@@ -72,5 +72,35 @@ describe("Quipsly direct login", () => {
       "aria-live",
       "polite",
     );
+  });
+
+  it("makes Google the primary path while clearly limiting verification to new email accounts", () => {
+    render(<LoginClient callbackUrl="/projects" />);
+
+    expect(
+      screen.getByRole("button", { name: "Continue with Google" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Create account" }));
+
+    expect(
+      screen.getByText(/New email\/password accounts require one mailbox verification/),
+    ).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Create account" })).toHaveLength(2);
+  });
+
+  it("turns a failed One Tap handoff into a recoverable standard login", () => {
+    render(
+      <LoginClient
+        callbackUrl="/work"
+        initialError="google-one-tap-failed"
+      />,
+    );
+
+    expect(screen.getByTestId("quipsly-login-status")).toHaveTextContent(
+      /Use the Google button below to choose an account explicitly/,
+    );
+    expect(
+      screen.getByRole("button", { name: "Continue with Google" }),
+    ).toBeInTheDocument();
   });
 });

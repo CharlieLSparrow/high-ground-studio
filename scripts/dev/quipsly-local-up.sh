@@ -61,6 +61,7 @@ nest_url="${TARGET_URL:-http://127.0.0.1:3012}"
 firebase_url="${QUIPSLY_LOCAL_FIREBASE_AUTH_URL:-http://127.0.0.1:9099}"
 database_container="${QUIPSLY_LOCAL_DATABASE_CONTAINER:-high-ground-db}"
 compose_project="${QUIPSLY_LOCAL_COMPOSE_PROJECT:-high-ground-studio}"
+local_database_url="${QUIPSLY_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
 firebase_label="com.quipsly.local.firebase"
 nest_label="com.quipsly.local.nest"
 umask 077
@@ -214,6 +215,10 @@ if ! docker exec "${database_container}" pg_isready -U postgres -d high_ground_s
   exit 1
 fi
 printf "PASS  %-24s container %s\n" "PostgreSQL" "${database_container}"
+
+echo "Applying committed local database migrations..."
+DATABASE_URL="${local_database_url}" pnpm exec prisma migrate deploy
+printf "PASS  %-24s committed schema current\n" "PostgreSQL migrations"
 
 firebase_status="$(http_status "${firebase_url%/}/emulator/v1/projects/quipsly-reef/config")"
 if [[ "${firebase_status}" == "200" ]]; then

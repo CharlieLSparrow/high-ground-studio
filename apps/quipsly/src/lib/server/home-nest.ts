@@ -1,6 +1,10 @@
 import "server-only";
 
-import type { PrismaClient, StudioProjectAccessRole } from "@prisma/client";
+import type {
+  Prisma,
+  PrismaClient,
+  StudioProjectAccessRole,
+} from "@prisma/client";
 
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
@@ -14,6 +18,7 @@ import {
   ensureStudioWorkspace,
   sourceLabelForNestKind,
 } from "@/lib/studio/project-registry";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 
 export const HOME_NEST_BIN_NAME = "Inbox";
 export const HOME_NEST_DESCRIPTION = "Your private landing place for uploads before they are attached to a working Nest.";
@@ -24,6 +29,8 @@ type HomeNestProject = {
   name: string;
   sourceLabel: string | null;
 };
+
+type HomeNestPrisma = PrismaClient | Prisma.TransactionClient;
 
 export async function getCurrentHomeNestActorEmail() {
   const session = await auth();
@@ -53,7 +60,7 @@ function displayNameForEmail(email: string) {
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-async function ensureUserForEmail(prisma: PrismaClient, email: string) {
+async function ensureUserForEmail(prisma: HomeNestPrisma, email: string) {
   const normalizedEmail = normalizeAccessEmail(email);
   const existing = await prisma.user.findFirst({
     where: {
@@ -76,14 +83,22 @@ async function ensureUserForEmail(prisma: PrismaClient, email: string) {
   });
 }
 
-export async function ensureHomeNestForEmail(
+export async function ensureHomeNestForEmailInTransaction(
   email: string,
-  prisma: PrismaClient = getPrismaClient(),
+  prisma: Prisma.TransactionClient,
 ): Promise<HomeNestProject> {
   const normalizedEmail = normalizeAccessEmail(email);
   if (!normalizedEmail) {
     throw new Error("Cannot create a Home Nest without an email address.");
   }
+
+  // First-session requests can arrive together from redirect recovery, another
+  // tab, and a native client. Keep all Home Nest creation for one identity in
+  // the same transaction instead of relying on find-then-create timing.
+  await acquirePrismaAdvisoryTransactionLock(
+    prisma,
+    `quipsly:home-nest:${normalizedEmail}`,
+  );
 
   const user = await ensureUserForEmail(prisma, normalizedEmail);
   const workspace = await ensureStudioWorkspace(prisma as any);
@@ -127,7 +142,7 @@ export async function ensureHomeNestForEmail(
     projectId: project.id,
     ownerEmail: normalizedEmail,
     createdByEmail: normalizedEmail,
-    prisma,
+    prisma: prisma as unknown as PrismaClient,
   });
 
   const existingInbox = await prisma.mediaBin.findFirst({
@@ -146,6 +161,15 @@ export async function ensureHomeNestForEmail(
   }
 
   return project;
+}
+
+export async function ensureHomeNestForEmail(
+  email: string,
+  prisma: PrismaClient = getPrismaClient(),
+): Promise<HomeNestProject> {
+  return prisma.$transaction((transaction) =>
+    ensureHomeNestForEmailInTransaction(email, transaction),
+  );
 }
 
 export async function ensureCurrentActorHomeNest(prisma: PrismaClient = getPrismaClient()) {

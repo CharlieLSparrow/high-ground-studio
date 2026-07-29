@@ -187,16 +187,34 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
         "Firebase verified sign-in",
       );
 
-      const sessionStart = await fetch(`${nestOrigin}/api/auth/session`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ idToken: firebaseIdToken }),
-      });
+      const sessionStarts = await Promise.all(
+        Array.from({ length: 4 }, () =>
+          fetch(`${nestOrigin}/api/auth/session`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ idToken: firebaseIdToken }),
+          }),
+        ),
+      );
+      const [sessionStart, ...concurrentSessionStarts] = sessionStarts;
+      if (!sessionStart) {
+        throw new Error("Quipsly did not return a primary session response.");
+      }
       const sessionBody = await readJson(
         sessionStart.clone(),
         "Quipsly session creation",
       );
       sessionCookie = parseSessionCookie(sessionStart);
+      for (const [index, concurrentSessionStart] of
+        concurrentSessionStarts.entries()) {
+        const concurrentSessionBody = await readJson(
+          concurrentSessionStart,
+          `Concurrent Quipsly session creation ${index + 1}`,
+        );
+        expect((concurrentSessionBody.homeNest as JsonRecord)?.slug).toBe(
+          expectedHomeSlug,
+        );
+      }
 
       expect((sessionBody.user as JsonRecord)?.email).toBe(email);
       expect((sessionBody.onboarding as JsonRecord)?.freePlanSlug).toBe(
@@ -222,6 +240,38 @@ runLocalAuthSmoke("local verified-auth onboarding", () => {
           select: { id: true },
         }),
       ]);
+      const [activeStarterMemberships, homeProjects, inboxes] =
+        await Promise.all([
+          prisma.membership.count({
+            where: {
+              userId: actor.id,
+              status: "ACTIVE",
+              plan: { slug: "quipsly-free" },
+            },
+          }),
+          prisma.studioProject.count({
+            where: {
+              slug: expectedHomeSlug,
+              sourceLabel: "nest-kind:home",
+            },
+          }),
+          prisma.mediaBin.count({
+            where: {
+              projectId: homeProject.id,
+              name: "Inbox",
+            },
+          }),
+        ]);
+      expect({
+        activeStarterMemberships,
+        homeProjects,
+        inboxes,
+      }).toEqual({
+        activeStarterMemberships: 1,
+        homeProjects: 1,
+        inboxes: 1,
+      });
+
       const room = await prisma.callRoom.create({
         data: {
           createdByUserId: actor.id,

@@ -160,12 +160,12 @@ check_redirect_location() {
   fi
 }
 
-check_contains "/login?callbackUrl=%2Fprojects" "Sign in with Google"
+check_contains "/login?callbackUrl=%2Fprojects" "Continue with Google"
 check_contains "/login?callbackUrl=%2Fprojects" "Create account"
-check_contains "/login?callbackUrl=%2Fprojects" "Send password reset"
-check_contains "/login?callbackUrl=%2Fprojects&inviteToken=qinv_testtoken" "Direct Quipsly login"
-check_contains "/login?callbackUrl=%2Fprojects&inviteToken=qinv_testtoken" "Invite mode"
-check_contains "/login?callbackUrl=%2Fprojects&inviteToken=qinv_testtoken" "This link does not grant access by itself"
+check_contains "/login?callbackUrl=%2Fprojects" "Forgot password?"
+check_contains "/login?callbackUrl=%2Fprojects&inviteToken=qinv_testtoken" "Sign in with the email that received this invite"
+check_contains "/login?callbackUrl=%2Fprojects&inviteToken=qinv_testtoken" "The link grants nothing until Firebase verifies that address"
+check_contains "/login?callbackUrl=%2Fprojects&inviteToken=qinv_testtoken" "Sign in with the invited email"
 check_contains "/projects" "Nests hold the work. Documents hold the text."
 check_contains "/projects" "Create a Nest"
 check_contains_any "/coaching" "Book, bill, record, transcribe, and follow up" "Quipsly Nest" "Sign in to Nest" "Your private creative workspace lives here"

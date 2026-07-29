@@ -10,7 +10,10 @@ const googleAuthPlatformProject =
 const requiredIosBundleId =
   process.env.QUIPSLY_FIREBASE_IOS_BUNDLE_ID
   || "com.highgroundodyssey.HighGroundCapture";
-const requiredAuthorizedDomains = (process.env.QUIPSLY_FIREBASE_REQUIRED_DOMAINS || "nest.quipsly.com")
+const requiredAuthorizedDomains = (
+  process.env.QUIPSLY_FIREBASE_REQUIRED_DOMAINS
+  || "nest.quipsly.com,quipsly.com,www.quipsly.com"
+)
   .split(",")
   .map((domain) => domain.trim())
   .filter(Boolean);
@@ -20,6 +23,10 @@ const requiredGoogleRedirectUri =
 const localIosInfoPlistPath = path.resolve(
   process.env.QUIPSLY_CAPTURE_INFO_PLIST
   || "apps/mobile-capture/HighGroundCapture/HighGroundCapture/Info.plist",
+);
+const localGoogleOneTapPath = path.resolve(
+  process.env.QUIPSLY_GOOGLE_ONE_TAP_SOURCE
+  || "apps/quipsly/src/app/(marketing)/components/GoogleOneTap.tsx",
 );
 
 function printJson(payload) {
@@ -106,6 +113,24 @@ try {
   const missingAuthorizedDomains = requiredAuthorizedDomains.filter(
     (domain) => !authorizedDomains.includes(domain),
   );
+  const emailPasswordEnabled =
+    projectConfig.body.signIn?.email?.enabled === true
+    && projectConfig.body.signIn?.email?.passwordRequired === true;
+  const duplicateEmailsPrevented =
+    projectConfig.body.signIn?.allowDuplicateEmails !== true;
+  const emailEnumerationProtectionEnabled =
+    projectConfig.body.emailPrivacyConfig?.enableImprovedEmailPrivacy === true;
+  const passwordPolicy = projectConfig.body.passwordPolicyConfig;
+  const activePasswordPolicyVersion =
+    Array.isArray(passwordPolicy?.passwordPolicyVersions)
+      ? passwordPolicy.passwordPolicyVersions[0]
+      : null;
+  const minimumPasswordLength =
+    Number(activePasswordPolicyVersion?.customStrengthOptions?.minPasswordLength || 0);
+  const passwordPolicyReady =
+    passwordPolicy?.passwordPolicyEnforcementState === "ENFORCE"
+    && passwordPolicy?.forceUpgradeOnSignin !== true
+    && minimumPasswordLength >= 8;
 
   const googleProvider = await identityToolkitGet(
     `projects/${firebaseProject}/defaultSupportedIdpConfigs/google.com`,
@@ -150,11 +175,26 @@ try {
   }
   const localIosClientId = plistString(localIosInfoPlist, "GIDClientID");
   const localServerClientId = plistString(localIosInfoPlist, "GIDServerClientID");
+  let localGoogleOneTapSource = "";
+  let localGoogleOneTapSourceReadable = false;
+  try {
+    localGoogleOneTapSource = readFileSync(localGoogleOneTapPath, "utf8");
+    localGoogleOneTapSourceReadable = true;
+  } catch {
+    localGoogleOneTapSource = "";
+  }
+  const localGoogleOneTapClientId =
+    localGoogleOneTapSource.match(
+      /DEFAULT_GOOGLE_WEB_CLIENT_ID\s*=\s*["']([^"']+)["']/,
+    )?.[1] || null;
   const localIosClientMatchesFirebase =
     Boolean(localIosClientId) && localIosClientId === iosClientId;
   const localServerClientMatchesProvider =
     Boolean(localServerClientId)
     && localServerClientId === googleProvider.body?.clientId;
+  const localGoogleOneTapClientMatchesProvider =
+    Boolean(localGoogleOneTapClientId)
+    && localGoogleOneTapClientId === googleProvider.body?.clientId;
   const localCallbackSchemeMatchesFirebase =
     Boolean(reversedIosClientId)
     && localIosInfoPlist.includes(`<string>${reversedIosClientId}</string>`);
@@ -162,6 +202,8 @@ try {
     localIosInfoPlistReadable
     && localIosClientMatchesFirebase
     && localServerClientMatchesProvider
+    && localGoogleOneTapSourceReadable
+    && localGoogleOneTapClientMatchesProvider
     && localCallbackSchemeMatchesFirebase;
   const iosOAuthReady =
     Boolean(iosApp)
@@ -174,6 +216,10 @@ try {
   printJson({
     ok:
       missingAuthorizedDomains.length === 0
+      && emailPasswordEnabled
+      && duplicateEmailsPrevented
+      && emailEnumerationProtectionEnabled
+      && passwordPolicyReady
       && googleProviderExists
       && googleProviderEnabled
       && googleProviderClientIdSet
@@ -187,6 +233,16 @@ try {
       required: requiredAuthorizedDomains,
       count: authorizedDomains.length,
       missing: missingAuthorizedDomains,
+    },
+    accountSecurity: {
+      emailPasswordEnabled,
+      duplicateEmailsPrevented,
+      emailEnumerationProtectionEnabled,
+      passwordPolicyEnforced:
+        passwordPolicy?.passwordPolicyEnforcementState === "ENFORCE",
+      existingPasswordUpgradeForced: passwordPolicy?.forceUpgradeOnSignin === true,
+      minimumPasswordLength,
+      passwordPolicyReady,
     },
     googleProvider: {
       exists: googleProviderExists,
@@ -210,6 +266,8 @@ try {
       localInfoPlistReadable: localIosInfoPlistReadable,
       localClientMatchesFirebase: localIosClientMatchesFirebase,
       localServerClientMatchesProvider,
+      localGoogleOneTapSourceReadable,
+      localGoogleOneTapClientMatchesProvider,
       localCallbackSchemeMatchesFirebase,
       ready: iosOAuthReady,
       error:

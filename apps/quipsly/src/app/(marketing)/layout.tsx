@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Merriweather } from "next/font/google";
+import { Suspense } from "react";
+import { GoogleOneTap } from "./components/GoogleOneTap";
 import "../globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -31,6 +33,9 @@ export default function MarketingLayout({
   return (
     <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
       <body className="font-sans bg-[#032321] text-studio-ink antialiased">
+        <Suspense fallback={null}>
+          <GoogleOneTap />
+        </Suspense>
         {children}
       </body>
     </html>

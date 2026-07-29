@@ -3,6 +3,7 @@ import "server-only";
 import type { AppRole, Prisma, PrismaClient } from "@prisma/client";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { acquirePrismaAdvisoryTransactionLock } from "@/lib/server/prisma-advisory-lock";
 import { canAccessStudio } from "@/lib/studio-authz";
 
 const userIdentityInclude = {
@@ -193,6 +194,14 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
   }
 
   const user = await prisma.$transaction(async (tx) => {
+    const identityLockKeys = [
+      `quipsly:identity:email:${normalizedEmail}`,
+      `quipsly:identity:firebase-subject:${input.firebaseUid}`,
+    ].sort();
+    for (const key of identityLockKeys) {
+      await acquirePrismaAdvisoryTransactionLock(tx, key);
+    }
+
     const authIdentity = await tx.userAuthIdentity.findUnique({
       where: {
         authority_subject: {
@@ -368,6 +377,11 @@ export async function ensureStudioUserFromAuthIdentity(input: {
   const bootstrapRoles = getBootstrapRolesForEmail(normalizedEmail);
 
   const user = await prisma.$transaction(async (tx) => {
+    await acquirePrismaAdvisoryTransactionLock(
+      tx,
+      `quipsly:identity:email:${normalizedEmail}`,
+    );
+
     const existing = await tx.user.findFirst({
       where: {
         OR: [

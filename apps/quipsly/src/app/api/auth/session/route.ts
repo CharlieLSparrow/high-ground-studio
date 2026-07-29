@@ -5,6 +5,7 @@ import { consumeInviteLoginTokenForEmail } from '@/lib/server/invite-login-token
 import { ensureQuipslyStarterStateForUser } from '@/lib/server/quipsly-onboarding';
 import { ensureStudioUserFromFirebaseIdentity } from '@/lib/server/studio-user-identity';
 import { getQuipslySession, QUIPSLY_SESSION_COOKIE_NAME } from '@/lib/server/quipsly-session';
+import { quipslySessionCookieOptions } from '@/lib/server/quipsly-session-cookie';
 
 const LEGACY_AUTH_COOKIE_NAMES = [
   "authjs.session-token",
@@ -43,6 +44,10 @@ function errorHasCode(error: unknown, code: string): boolean {
 
 function isDatabaseUnavailable(error: unknown) {
   return errorHasCode(error, "ECONNREFUSED") || errorHasCode(error, "ETIMEDOUT");
+}
+
+function isDatabaseSchemaUnavailable(error: unknown) {
+  return errorHasCode(error, "P2021") || errorHasCode(error, "P2022");
 }
 
 function isFirebaseAdminCredentialUnavailable(error: unknown): boolean {
@@ -143,14 +148,16 @@ export async function POST(req: Request) {
     const sessionCookie = await adminAuth.createSessionCookie(idToken, { expiresIn });
 
     const cookieStore = await cookies();
+    // Remove a pre-migration host-only cookie before writing the intentional
+    // first-party Quipsly domain cookie. This prevents two same-name cookies
+    // from making session selection browser-order dependent.
+    cookieStore.delete(QUIPSLY_SESSION_COOKIE_NAME);
     clearLegacyAuthCookies(cookieStore);
-    cookieStore.set(QUIPSLY_SESSION_COOKIE_NAME, sessionCookie, {
-      maxAge: expiresIn / 1000,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      path: '/',
-      sameSite: 'lax',
-    });
+    cookieStore.set(
+      QUIPSLY_SESSION_COOKIE_NAME,
+      sessionCookie,
+      quipslySessionCookieOptions(req, expiresIn / 1000),
+    );
 
     return NextResponse.json({
       success: true,
@@ -179,6 +186,9 @@ export async function POST(req: Request) {
     if (isDatabaseUnavailable(error)) {
       return NextResponse.json({ error: 'Quipsly database unavailable' }, { status: 503 });
     }
+    if (isDatabaseSchemaUnavailable(error)) {
+      return NextResponse.json({ error: 'Quipsly database schema unavailable' }, { status: 503 });
+    }
     if (isFirebaseAdminCredentialUnavailable(error)) {
       return NextResponse.json({ error: 'Firebase Admin credential unavailable' }, { status: 503 });
     }
@@ -186,20 +196,18 @@ export async function POST(req: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
   const cookieStore = await cookies();
-  try {
-    const sessionCookie = cookieStore.get(QUIPSLY_SESSION_COOKIE_NAME)?.value;
-
-    if (sessionCookie) {
-      const decodedClaims = await adminAuth.verifySessionCookie(sessionCookie);
-      await adminAuth.revokeRefreshTokens(decodedClaims.sub);
-    }
-  } catch (error) {
-    console.warn("Session token revocation failed; clearing local cookies anyway", error);
-  }
-
+  // Normal sign-out is device-local. Revoking Firebase refresh tokens here
+  // would unexpectedly sign the same person out of Capture and every other
+  // browser. Security-wide revocation belongs in an explicit "sign out all
+  // devices" or account-safety operation.
   cookieStore.delete(QUIPSLY_SESSION_COOKIE_NAME);
+  cookieStore.set(
+    QUIPSLY_SESSION_COOKIE_NAME,
+    "",
+    quipslySessionCookieOptions(req, 0),
+  );
   clearLegacyAuthCookies(cookieStore);
 
   return NextResponse.json({ success: true });

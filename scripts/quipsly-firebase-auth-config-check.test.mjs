@@ -43,6 +43,26 @@ assert.match(
   /localServerClientId === googleProvider\.body\?\.clientId/,
   "the readiness gate must match the local server audience to the Firebase provider",
 );
+assert.match(
+  source,
+  /localGoogleOneTapClientId === googleProvider\.body\?\.clientId/,
+  "the readiness gate must match the local Google One Tap audience to the Firebase provider",
+);
+assert.match(
+  source,
+  /emailPrivacyConfig\?\.enableImprovedEmailPrivacy === true/,
+  "the readiness gate must require email enumeration protection",
+);
+assert.match(
+  source,
+  /customStrengthOptions\?\.minPasswordLength \|\| 0/,
+  "the readiness gate must require Firebase to enforce the same minimum password length as the clients",
+);
+assert.match(
+  source,
+  /passwordPolicy\?\.forceUpgradeOnSignin !== true/,
+  "the readiness gate must preserve existing accounts instead of unexpectedly forcing upgrades",
+);
 assert(
   source.includes(
     "localIosInfoPlist.includes(`<string>${reversedIosClientId}</string>`)",
@@ -51,8 +71,8 @@ assert(
 );
 assert.match(
   source,
-  /providerClientOwnedByFirebaseProject\s*&& iosOAuthReady/,
-  "overall readiness must require both project-owned web and fully wired local iOS clients",
+  /emailEnumerationProtectionEnabled[\s\S]*passwordPolicyReady[\s\S]*providerClientOwnedByFirebaseProject[\s\S]*iosOAuthReady/,
+  "overall readiness must require hardened account creation, project-owned web, and fully wired local iOS clients",
 );
 assert.doesNotMatch(
   source,

@@ -48,6 +48,7 @@ echo "Building the exact Nest production bundle with strict type checking."
   NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET="${NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET:-quipsly-reef.firebasestorage.app}" \
   NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID="${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-249115653261}" \
   NEXT_PUBLIC_FIREBASE_APP_ID="${NEXT_PUBLIC_FIREBASE_APP_ID:-1:249115653261:web:d49c566ebe99148cbddec4}" \
+  NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID="${NEXT_PUBLIC_GOOGLE_WEB_CLIENT_ID:-249115653261-g6lvadv4e1a64eu50u0glkepamtq709b.apps.googleusercontent.com}" \
     corepack pnpm --filter quipsly exec next build --webpack
 )
 
