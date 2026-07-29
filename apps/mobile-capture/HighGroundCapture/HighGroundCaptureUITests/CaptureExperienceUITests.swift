@@ -1156,18 +1156,15 @@ final class CaptureLoginExperienceUITests: XCTestCase {
         )
     }
 
-    func testLoginOffersRecoveryAndSameEmailGooglePathAtAccessibilityTextSize() {
+    func testLoginLeadsWithNativeGoogleContinuityAndKeepsPasswordRecoveryReachableAtAccessibilityTextSize() {
+        XCTAssertTrue(app.buttons["QuipslyCaptureGoogleSignInButton"].exists)
+        XCTAssertTrue(app.descendants(matching: .any)["QuipslyCaptureGoogleIdentityContinuityHint"].exists)
         XCTAssertTrue(app.textFields["QuipslyCaptureEmailField"].exists)
         XCTAssertTrue(app.secureTextFields["QuipslyCapturePasswordField"].exists)
         XCTAssertTrue(app.buttons["QuipslyCaptureSignInButton"].exists)
 
         reveal(app.buttons["QuipslyCapturePasswordResetButton"])
         XCTAssertTrue(app.buttons["QuipslyCapturePasswordResetButton"].exists)
-
-        reveal(app.descendants(matching: .any)["QuipslyCaptureGoogleAccountGuidance"])
-        XCTAssertTrue(app.descendants(matching: .any)["QuipslyCaptureGoogleAccountGuidance"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["QuipslyCaptureGoogleWebSignInLink"].exists)
-        XCTAssertTrue(app.descendants(matching: .any)["QuipslyCaptureAccountSupportLink"].exists)
     }
 
     func testCreateAccountRequiresMatchingEightCharacterPassword() {

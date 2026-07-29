@@ -1,8 +1,10 @@
 import Foundation
 import SwiftUI
+import GoogleSignInSwift
 
 struct LoginView: View {
     @StateObject private var authManager = AuthManager.shared
+    @Environment(\.colorScheme) private var colorScheme
     @State private var email = ""
     @State private var password = ""
     @State private var passwordConfirmation = ""
@@ -49,7 +51,7 @@ struct LoginView: View {
                         Text("Quipsly Capture")
                             .font(.largeTitle.weight(.bold))
 
-                        Text("Record this iPhone's microphone. Keep the source safe. Let Quipsly handle the rest.")
+                        Text("Use the same Quipsly account as Nest. Your recordings and work stay attached to one trusted identity.")
                             .font(.body)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
@@ -58,6 +60,20 @@ struct LoginView: View {
                 }
 
                 VStack(spacing: 14) {
+                    googleSignInSection
+
+                    authFeedback
+
+                    HStack(spacing: 12) {
+                        Divider()
+                        Text("or use email")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                        Divider()
+                    }
+                    .accessibilityElement(children: .combine)
+
                     passwordModeSelector
 
                     Text(passwordModeDescription)
@@ -125,22 +141,6 @@ struct LoginView: View {
                         }
                     }
 
-                    if let status = authManager.statusMessage {
-                        Label(status, systemImage: "checkmark.circle.fill")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.green)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityIdentifier("QuipslyCaptureLoginStatus")
-                    }
-
-                    if let error = authManager.errorMessage {
-                        Label(error, systemImage: "exclamationmark.triangle.fill")
-                            .font(.footnote.weight(.semibold))
-                            .foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .accessibilityIdentifier("QuipslyCaptureLoginError")
-                    }
-
                     Button(action: submitPasswordAuthIfReady) {
                         HStack(spacing: 10) {
                             if authManager.isAuthenticating {
@@ -175,8 +175,6 @@ struct LoginView: View {
                         .disabled(authManager.isAuthenticating)
                         .accessibilityIdentifier("QuipslyCapturePasswordResetButton")
                     }
-
-                    googleAccountGuidance
 
                     Label(
                         "Recordings stay on this iPhone after upload; Quipsly never silently deletes a source.",
@@ -227,6 +225,53 @@ struct LoginView: View {
         .accessibilityIdentifier("QuipslyCaptureLoginView")
     }
 
+    private var googleSignInSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            GoogleSignInButton(
+                scheme: colorScheme == .dark ? .dark : .light,
+                style: .wide,
+                state: authManager.isAuthenticating || !authManager.googleSignInAvailable
+                    ? .disabled
+                    : .normal
+            ) {
+                focusedField = nil
+                authManager.signInWithGoogle()
+            }
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .accessibilityIdentifier("QuipslyCaptureGoogleSignInButton")
+
+            Text(
+                authManager.googleSignInAvailable
+                    ? "Google verifies the email you already use and opens that same Nest. Quipsly will not silently create a second workspace."
+                    : "Google sign-in is being configured for the next TestFlight build. Verified password accounts remain available below."
+            )
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityIdentifier("QuipslyCaptureGoogleIdentityContinuityHint")
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var authFeedback: some View {
+        if let status = authManager.statusMessage {
+            Label(status, systemImage: "checkmark.circle.fill")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.green)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("QuipslyCaptureLoginStatus")
+        }
+
+        if let error = authManager.errorMessage {
+            Label(error, systemImage: "exclamationmark.triangle.fill")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.red)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("QuipslyCaptureLoginError")
+        }
+    }
+
     private var passwordModeSelector: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) {
@@ -270,44 +315,10 @@ struct LoginView: View {
         .accessibilityAddTraits(passwordMode == mode ? .isSelected : [])
     }
 
-    private var googleAccountGuidance: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            Label("Already use Google for Quipsly?", systemImage: "person.crop.circle.badge.checkmark")
-                .font(.subheadline.weight(.semibold))
-
-            Text("Use the same email here. If that Google-created account has no password, try a password reset. If password access is still unavailable, use Google sign-in on the web or contact support—do not create a second account.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 16) { googleHelpLinks }
-                VStack(alignment: .leading, spacing: 10) { googleHelpLinks }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(.blue.opacity(0.07), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("QuipslyCaptureGoogleAccountGuidance")
-    }
-
-    @ViewBuilder
-    private var googleHelpLinks: some View {
-        Link(destination: URL(string: "https://quipsly.com/login")!) {
-            Label("Google web sign-in", systemImage: "safari")
-                .font(.footnote.weight(.semibold))
-        }
-        .accessibilityIdentifier("QuipslyCaptureGoogleWebSignInLink")
-
-        Link(destination: URL(string: "https://quipsly.com/support")!) {
-            Label("Account support", systemImage: "questionmark.circle")
-                .font(.footnote.weight(.semibold))
-        }
-        .accessibilityIdentifier("QuipslyCaptureAccountSupportLink")
-    }
-
     @ViewBuilder
     private var legalLinks: some View {
+        Link("Help", destination: URL(string: "https://www.quipsly.com/support")!)
+            .accessibilityIdentifier("QuipslyCaptureAccountSupportLink")
         Link("Privacy", destination: URL(string: "https://www.quipsly.com/privacy")!)
         Link("Terms", destination: URL(string: "https://www.quipsly.com/terms")!)
     }
@@ -315,7 +326,7 @@ struct LoginView: View {
     private var passwordModeDescription: String {
         switch passwordMode {
         case .signIn:
-            return "Use a verified Firebase email/password account. Capture checks Nest before opening protected sessions."
+            return "Use this only for a Quipsly account created with a password. Google accounts should use Continue with Google above."
         case .createAccount:
             return "Create and verify a free Quipsly identity. This does not grant Capture beta recording or upload access; Nest will show the account's access status after sign-in."
         }

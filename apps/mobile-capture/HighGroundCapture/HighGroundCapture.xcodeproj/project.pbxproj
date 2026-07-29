@@ -12,6 +12,8 @@
 		410EAF99D90BE24CEEBA55E0 /* ShareCaptureExtension.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = 9529DF5B3D756E62EADF1E5A /* ShareCaptureExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		A11CE0010000000000000002 /* CaptureExperienceUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11CE0010000000000000001 /* CaptureExperienceUITests.swift */; };
 		4F4C4956454B495450524F44 /* LiveKit in Frameworks */ = {isa = PBXBuildFile; productRef = 4F4C4956454B495450524F45 /* LiveKit */; };
+		A0C0A0010000000000000001 /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = A0C0A0010000000000000003 /* GoogleSignIn */; };
+		A0C0A0010000000000000002 /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = A0C0A0010000000000000004 /* GoogleSignInSwift */; };
 		98D4B80614D75FC909B1B779 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 02257ED28F7155C09E2C04AD /* Foundation.framework */; };
 		A777E4031DBBE0CABAC76B11 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 02257ED28F7155C09E2C04AD /* Foundation.framework */; };
 		B6C4A3D2F00D7A0000000002 /* CaptureRoomRuntimeSmokeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B6C4A3D1F00D7A0000000001 /* CaptureRoomRuntimeSmokeTests.swift */; };
@@ -100,6 +102,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				4F4C4956454B495450524F44 /* LiveKit in Frameworks */,
+				A0C0A0010000000000000001 /* GoogleSignIn in Frameworks */,
+				A0C0A0010000000000000002 /* GoogleSignInSwift in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -199,6 +203,8 @@
 			name = HighGroundCapture;
 			packageProductDependencies = (
 				4F4C4956454B495450524F45 /* LiveKit */,
+				A0C0A0010000000000000003 /* GoogleSignIn */,
+				A0C0A0010000000000000004 /* GoogleSignInSwift */,
 			);
 			productName = HighGroundCapture;
 			productReference = 4667D2BA2FCA1B770008D8F0 /* HighGroundCapture.app */;
@@ -268,6 +274,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				4F4C4956454B495450524F46 /* XCRemoteSwiftPackageReference "client-sdk-swift" */,
+				A0C0A0010000000000000005 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 4667D2BB2FCA1B770008D8F0 /* Products */;
@@ -687,6 +694,14 @@
 				version = 2.15.1;
 			};
 		};
+		A0C0A0010000000000000005 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";
+			requirement = {
+				kind = exactVersion;
+				version = 9.1.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -694,6 +709,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 4F4C4956454B495450524F46 /* XCRemoteSwiftPackageReference "client-sdk-swift-xcframework" */;
 			productName = LiveKit;
+		};
+		A0C0A0010000000000000003 /* GoogleSignIn */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0C0A0010000000000000005 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignIn;
+		};
+		A0C0A0010000000000000004 /* GoogleSignInSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A0C0A0010000000000000005 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */;
+			productName = GoogleSignInSwift;
 		};
 /* End XCSwiftPackageProductDependency section */
 

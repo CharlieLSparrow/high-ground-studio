@@ -1,4 +1,5 @@
 import UIKit
+import GoogleSignIn
 
 final class AppDelegate: NSObject, UIApplicationDelegate {
 
@@ -16,6 +17,21 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             UploadManager.shared.prepareForBackgroundEvents()
         }
         return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        open url: URL,
+        options: [UIApplication.OpenURLOptionsKey: Any] = [:]
+    ) -> Bool {
+        if GIDSignIn.sharedInstance.handle(url) {
+            return true
+        }
+
+        // Keep Quipsly's own deep-link surface independent from Google OAuth.
+        // Returning false lets SwiftUI continue routing any URL that Google did
+        // not claim.
+        return false
     }
 
     func application(

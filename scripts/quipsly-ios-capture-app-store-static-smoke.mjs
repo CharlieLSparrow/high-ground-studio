@@ -25,8 +25,13 @@ const files = {
   appStoreCommittedDraftRunner: path.join(root, "scripts/release/quipsly-capture-screenshots-from-commit.sh"),
   mobileCapturePreflight: path.join(root, "scripts/quipsly-mobile-capture-preflight.sh"),
   generatedMobileCaptureAuthSmoke: path.join(root, "scripts/quipsly-mobile-capture-generated-auth-smoke.mjs"),
+  appDelegate: path.join(sourceRoot, "AppDelegate.swift"),
   authManager: path.join(sourceRoot, "AuthManager.swift"),
   loginView: path.join(sourceRoot, "LoginView.swift"),
+  swiftPackageResolution: path.join(
+    iosRoot,
+    "HighGroundCapture.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved",
+  ),
   audioCapture: path.join(sourceRoot, "AudioCaptureController.swift"),
   videoCaptureController: path.join(sourceRoot, "VideoCaptureController.swift"),
   videoCaptureService: path.join(sourceRoot, "VideoCaptureService.swift"),
@@ -143,8 +148,10 @@ const appStoreDraftMaterializerText = read(files.appStoreDraftMaterializer);
 const appStoreCommittedDraftRunnerText = read(files.appStoreCommittedDraftRunner);
 const mobileCapturePreflightText = read(files.mobileCapturePreflight);
 const generatedMobileCaptureAuthSmokeText = read(files.generatedMobileCaptureAuthSmoke);
+const appDelegateText = read(files.appDelegate);
 const authText = read(files.authManager);
 const loginText = read(files.loginView);
+const swiftPackageResolutionText = read(files.swiftPackageResolution);
 const audioText = read(files.audioCapture);
 const videoCaptureControllerText = read(files.videoCaptureController);
 const videoCaptureServiceText = read(files.videoCaptureService);
@@ -309,6 +316,8 @@ requireIncludes(authText, "guard updateStatus == errSecItemNotFound else { retur
 requireIncludes(authText, "This iPhone could not protect the refreshed Quipsly session in Keychain", "native sign-in exposes a truthful storage failure instead of opening an unrecoverable session");
 for (const needle of [
   "accounts:signInWithPassword",
+  "accounts:signInWithIdp",
+  'URLQueryItem(name: "providerId", value: "google.com")',
   "accounts:signUp",
   "accounts:lookup",
   "accounts:sendOobCode",
@@ -329,13 +338,48 @@ for (const needle of [
   "QuipslyCapturePasswordConfirmationField",
   "QuipslyCaptureCreateAccountButton",
   "QuipslyCapturePasswordResetButton",
-  "QuipslyCaptureGoogleAccountGuidance",
-  "QuipslyCaptureGoogleWebSignInLink",
+  "QuipslyCaptureGoogleSignInButton",
+  "QuipslyCaptureGoogleIdentityContinuityHint",
   "QuipslyCaptureAccountSupportLink",
   "Recordings stay on this iPhone after upload; Quipsly never silently deletes a source.",
 ]) {
   requireIncludes(authCombined, needle, "native reviewer auth");
 }
+requireIncludes(
+  projectText,
+  'repositoryURL = "https://github.com/google/GoogleSignIn-iOS.git";',
+  "Capture pins the official GoogleSignIn iOS package",
+);
+requireIncludes(
+  projectText,
+  "kind = exactVersion;",
+  "Capture uses an exact Swift package requirement",
+);
+requireIncludes(
+  projectText,
+  "version = 9.1.0;",
+  "Capture requires the reviewed GoogleSignIn 9.1.0 API",
+);
+requireIncludes(
+  swiftPackageResolutionText,
+  '"version" : "9.1.0"',
+  "Swift package resolution locks GoogleSignIn 9.1.0",
+);
+requireIncludes(
+  appDelegateText,
+  "GIDSignIn.sharedInstance.handle(url)",
+  "AppDelegate returns the Google OAuth redirect to the official SDK",
+);
+requireIncludes(
+  authText,
+  'object(forInfoDictionaryKey: "GIDClientID")',
+  "Google sign-in fails closed until its iOS client identifier is configured",
+);
+requireIncludes(
+  authText,
+  'object(forInfoDictionaryKey: "GIDServerClientID")',
+  "Google sign-in requests a server-audience ID token for Firebase exchange",
+);
 
 const nativeSignIn = authText.slice(
   authText.indexOf("func signIn(email rawEmail:"),
@@ -368,8 +412,8 @@ assert(
   "Unverified account creation must never cache Firebase credentials.",
   { label: "unverified account creation leaves Firebase tokens memory-only" },
 );
-requireIncludes(loginText, "try a password reset", "Google-only guidance avoids provider-link guarantees");
-requireIncludes(loginText, "use Google sign-in on the web or contact support", "Google-only guidance provides safe fallback");
+requireIncludes(loginText, "Continue with Google", "Google identities are directed to the canonical native provider");
+requireIncludes(loginText, "will not silently create a second workspace", "Google identity continuity copy rejects duplicate Nest creation");
 requireIncludes(loginText, "does not grant Capture beta recording or upload access", "account creation copy preserves beta access boundary");
 for (const forbidden of [
   "/api/mac/session-handoff",

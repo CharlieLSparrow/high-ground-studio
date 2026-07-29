@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 import Security
+import UIKit
+import GoogleSignIn
 
 extension Notification.Name {
     static let quipslyCaptureAccountIdentityDidChange = Notification.Name("QuipslyCaptureAccountIdentityDidChange")
@@ -60,6 +62,11 @@ final class AuthManager: ObservableObject {
         let refreshToken: String
         let ownerAccountID: String?
         let generation: UInt64
+    }
+
+    private struct GoogleClientConfiguration {
+        let iosClientID: String
+        let serverClientID: String
     }
 
     /// An immutable account-generation token for multi-await product intents
@@ -144,6 +151,19 @@ final class AuthManager: ObservableObject {
         let error: FirebaseRestErrorEnvelope?
     }
 
+    private struct FirebaseFederatedSignInResponse: Decodable {
+        let idToken: String?
+        let email: String?
+        let emailVerified: Bool?
+        let refreshToken: String?
+        let expiresIn: String?
+        let localId: String?
+        let displayName: String?
+        let needConfirmation: Bool?
+        let pendingToken: String?
+        let error: FirebaseRestErrorEnvelope?
+    }
+
     private struct FirebaseAccountLookupResponse: Decodable {
         let users: [FirebaseAccountInfo]?
         let error: FirebaseRestErrorEnvelope?
@@ -201,16 +221,28 @@ final class AuthManager: ObservableObject {
     private enum NativeAuthFlowError: LocalizedError {
         case emailVerificationRequired(freshLinkSent: Bool)
         case accountCreatedButVerificationSendFailed
+        case googleConfigurationUnavailable
+        case googleCredentialUnavailable
+        case googleEmailNotVerified
+        case googleAccountNeedsLinking
 
         var errorDescription: String? {
             switch self {
             case .emailVerificationRequired(let freshLinkSent):
                 if freshLinkSent {
-                    return "Check your inbox and verify this email before Capture can open. We sent a fresh verification link. Then return and sign in again."
+                    return "This password account is not verified. We sent a fresh link for password sign-in. If you already use Quipsly with Google, choose Continue with Google instead—no verification email is needed."
                 }
-                return "Verify this email before Capture can open. Firebase could not send a fresh link just now; return to quipsly.com/login to request one, then sign in here again."
+                return "This password account is not verified, and Firebase could not send a fresh link. If you already use Quipsly with Google, choose Continue with Google instead."
             case .accountCreatedButVerificationSendFailed:
                 return "Your Firebase account was created, but the verification email could not be sent. Switch to Sign in and try this account once; Capture will request a fresh verification link."
+            case .googleConfigurationUnavailable:
+                return "Google sign-in is not configured in this Capture build yet. Use a verified email/password account for now or install the next TestFlight build after Quipsly finishes Google setup."
+            case .googleCredentialUnavailable:
+                return "Google completed sign-in without returning the secure identity token Quipsly needs. Try Continue with Google again."
+            case .googleEmailNotVerified:
+                return "Google did not return a verified email for this account, so Quipsly did not create or open a workspace."
+            case .googleAccountNeedsLinking:
+                return "That Google email already belongs to a different Firebase sign-in method. Quipsly did not create a duplicate. Use the account's existing sign-in once, then link Google from account settings or contact support."
             }
         }
     }
@@ -272,6 +304,85 @@ final class AuthManager: ObservableObject {
             Task { await refreshAccessTokenIfNeeded(force: false, allowOfflineRecovery: true) }
         } else {
             setSignedOutState()
+        }
+    }
+
+    var googleSignInAvailable: Bool {
+        Self.googleClientConfiguration != nil
+    }
+
+    func signInWithGoogle() {
+        guard let googleConfiguration = Self.googleClientConfiguration else {
+            errorMessage = NativeAuthFlowError.googleConfigurationUnavailable.localizedDescription
+            return
+        }
+        guard let presentingViewController = Self.activePresentationViewController() else {
+            errorMessage = "Quipsly could not open Google's secure sign-in sheet. Return to Capture and try again."
+            return
+        }
+        guard let attemptID = beginInteractiveAuthAttempt() else { return }
+
+        Task {
+            do {
+                let firebaseConfig = try await fetchFirebaseConfig()
+                guard interactiveAuthAttemptIsCurrent(attemptID) else { return }
+
+                GIDSignIn.sharedInstance.configuration = GIDConfiguration(
+                    clientID: googleConfiguration.iosClientID,
+                    serverClientID: googleConfiguration.serverClientID
+                )
+                let result = try await GIDSignIn.sharedInstance.signIn(
+                    withPresenting: presentingViewController
+                )
+                guard interactiveAuthAttemptIsCurrent(attemptID) else { return }
+                guard let googleIDToken = result.user.idToken?.tokenString,
+                      !googleIDToken.isEmpty else {
+                    throw NativeAuthFlowError.googleCredentialUnavailable
+                }
+
+                let signIn = try await signInWithFirebaseGoogle(
+                    googleIDToken: googleIDToken,
+                    config: firebaseConfig
+                )
+                guard interactiveAuthAttemptIsCurrent(attemptID) else { return }
+                guard signIn.needConfirmation != true,
+                      signIn.pendingToken?.isEmpty != false else {
+                    throw NativeAuthFlowError.googleAccountNeedsLinking
+                }
+                guard signIn.emailVerified == true else {
+                    throw NativeAuthFlowError.googleEmailNotVerified
+                }
+                guard let idToken = signIn.idToken,
+                      let refreshToken = signIn.refreshToken else {
+                    throw NativeAuthFlowError.googleCredentialUnavailable
+                }
+
+                let verifiedSession = try await verifyQuipslyNativeSession(accessToken: idToken)
+                guard interactiveAuthAttemptIsCurrent(attemptID) else { return }
+                let expiresInSeconds = Int64(signIn.expiresIn ?? "3600") ?? 3600
+                guard saveVerifiedNativeSession(
+                    accessToken: idToken,
+                    refreshToken: refreshToken,
+                    expiresInSeconds: expiresInSeconds,
+                    email: verifiedSession.email ?? signIn.email,
+                    displayName: verifiedSession.name ?? signIn.displayName,
+                    ownerAccountID: verifiedSession.ownerAccountID
+                ), markIdentityVerified() else {
+                    let storageMessage = credentialStorageError().localizedDescription
+                    signOut()
+                    errorMessage = storageMessage
+                    return
+                }
+
+                setOnlineState()
+                finishInteractiveAuthAttempt(attemptID)
+            } catch {
+                if Self.isGoogleSignInCancellation(error) {
+                    finishInteractiveAuthAttempt(attemptID)
+                } else {
+                    failInteractiveAuthAttempt(attemptID, error: error)
+                }
+            }
         }
     }
 
@@ -395,7 +506,7 @@ final class AuthManager: ObservableObject {
                     guard firebaseErrorCode(error) == "EMAIL_NOT_FOUND" else { throw error }
                 }
                 guard interactiveAuthAttemptIsCurrent(attemptID) else { return }
-                statusMessage = "If that email has a Firebase login, a reset email may be on the way. If the account began with Google, keep this same email; try the reset, then use Google sign-in at quipsly.com/login or support if password access is still unavailable."
+                statusMessage = "If that email has a password login, a reset email may be on the way. If the account began with Google, use Continue with Google instead—Google accounts do not need a Quipsly password."
                 finishInteractiveAuthAttempt(attemptID)
             } catch {
                 failInteractiveAuthAttempt(attemptID, error: error)
@@ -409,9 +520,9 @@ final class AuthManager: ObservableObject {
         statusMessage = nil
     }
 
-    /// Legacy button compatibility. The product path is Firebase email/password native sign-in.
+    /// Legacy button compatibility for older call sites.
     func signIn() {
-        errorMessage = "Use the email and password fields. Native capture now signs in through Firebase directly."
+        errorMessage = "Choose Continue with Google, or use the email/password fields for an account that was created with a password."
     }
 
     private func beginInteractiveAuthAttempt() -> UUID? {
@@ -785,6 +896,7 @@ final class AuthManager: ObservableObject {
     func signOut() {
         interactiveAuthAttemptID = nil
         isAuthenticating = false
+        GIDSignIn.sharedInstance.signOut()
         refreshTask?.cancel()
         refreshTask = nil
         refreshTaskID = nil
@@ -867,6 +979,55 @@ final class AuthManager: ObservableObject {
                 statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
                 firebaseCode: payload.error?.message,
                 fallback: "Firebase sign-in failed."
+            )
+        }
+        return payload
+    }
+
+    private func signInWithFirebaseGoogle(
+        googleIDToken: String,
+        config: FirebaseClientConfig
+    ) async throws -> FirebaseFederatedSignInResponse {
+        guard let url = URL(
+            string: "\(config.identityToolkitBaseURL)/v1/accounts:signInWithIdp?key=\(config.apiKey)"
+        ) else {
+            throw URLError(.badURL)
+        }
+
+        var formComponents = URLComponents()
+        formComponents.queryItems = [
+            URLQueryItem(name: "id_token", value: googleIDToken),
+            URLQueryItem(name: "providerId", value: "google.com"),
+        ]
+        guard let postBody = formComponents.percentEncodedQuery else {
+            throw NativeAuthFlowError.googleCredentialUnavailable
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try JSONSerialization.data(withJSONObject: [
+            "postBody": postBody,
+            "requestUri": "http://localhost",
+            "returnIdpCredential": true,
+            "returnSecureToken": true,
+        ])
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let payload = try JSONDecoder().decode(FirebaseFederatedSignInResponse.self, from: data)
+        guard let http = response as? HTTPURLResponse, http.statusCode < 400 else {
+            let code = normalizedFirebaseErrorCode(payload.error?.message)
+            if let code, [
+                "ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL",
+                "EMAIL_EXISTS",
+                "FEDERATED_USER_ID_ALREADY_LINKED",
+            ].contains(code) {
+                throw NativeAuthFlowError.googleAccountNeedsLinking
+            }
+            throw firebaseRequestError(
+                statusCode: (response as? HTTPURLResponse)?.statusCode ?? 400,
+                firebaseCode: payload.error?.message,
+                fallback: "Firebase could not finish Google sign-in."
             )
         }
         return payload
@@ -1269,15 +1430,15 @@ final class AuthManager: ObservableObject {
         let normalizedCode = normalizedFirebaseErrorCode(code)
         switch normalizedCode {
         case "INVALID_PASSWORD", "EMAIL_NOT_FOUND", "INVALID_LOGIN_CREDENTIALS":
-            return "That email/password did not open Quipsly. If this account began with Google, keep this same email; try Send password reset, then use Google sign-in at quipsly.com/login or support if needed. Do not create a duplicate identity."
+            return "That email/password did not open Quipsly. If this account began with Google, use Continue with Google above—do not create a duplicate account."
         case "EMAIL_EXISTS":
-            return "That email already has a Firebase login. Switch to Sign in. If it began with Google, keep this same email; try Send password reset, then use Google sign-in at quipsly.com/login or support if needed."
+            return "That email already has a Firebase login. Use Continue with Google if it is a Google account, or switch to password Sign in."
         case "WEAK_PASSWORD":
             return "Firebase rejected that password as too weak. Use at least 8 characters; a short phrase is better than a tiny secret."
         case "INVALID_EMAIL", "MISSING_EMAIL":
             return "That email address does not look valid yet."
         case "OPERATION_NOT_ALLOWED":
-            return "Email/password sign-in is not available for this Quipsly Firebase project right now. Use Google sign-in at quipsly.com/login or contact support."
+            return "Email/password sign-in is not available for this Quipsly Firebase project right now. Use Continue with Google or contact support."
         case "USER_DISABLED":
             return "This Firebase account is disabled."
         case "TOO_MANY_ATTEMPTS_TRY_LATER":
@@ -1318,6 +1479,67 @@ final class AuthManager: ObservableObject {
             .map(String.init)?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return code?.isEmpty == false ? code : nil
+    }
+
+    private static var googleClientConfiguration: GoogleClientConfiguration? {
+        guard
+            let iosClientID = normalizedGoogleClientID(
+                Bundle.main.object(forInfoDictionaryKey: "GIDClientID") as? String
+            ),
+            let serverClientID = normalizedGoogleClientID(
+                Bundle.main.object(forInfoDictionaryKey: "GIDServerClientID") as? String
+            )
+        else {
+            return nil
+        }
+        return GoogleClientConfiguration(
+            iosClientID: iosClientID,
+            serverClientID: serverClientID
+        )
+    }
+
+    private static func normalizedGoogleClientID(_ rawValue: String?) -> String? {
+        guard let value = rawValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              value.hasSuffix(".apps.googleusercontent.com"),
+              value.count <= 256 else {
+            return nil
+        }
+        return value
+    }
+
+    private static func activePresentationViewController() -> UIViewController? {
+        let foregroundScenes = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .filter { $0.activationState == .foregroundActive }
+        let window = foregroundScenes
+            .flatMap(\.windows)
+            .first(where: \.isKeyWindow)
+            ?? foregroundScenes.flatMap(\.windows).first
+        guard let root = window?.rootViewController else { return nil }
+        return topPresentationViewController(from: root)
+    }
+
+    private static func topPresentationViewController(
+        from viewController: UIViewController
+    ) -> UIViewController {
+        if let presented = viewController.presentedViewController {
+            return topPresentationViewController(from: presented)
+        }
+        if let navigation = viewController as? UINavigationController,
+           let visible = navigation.visibleViewController {
+            return topPresentationViewController(from: visible)
+        }
+        if let tabs = viewController as? UITabBarController,
+           let selected = tabs.selectedViewController {
+            return topPresentationViewController(from: selected)
+        }
+        return viewController
+    }
+
+    private static func isGoogleSignInCancellation(_ error: Error) -> Bool {
+        let nsError = error as NSError
+        return nsError.domain == kGIDSignInErrorDomain
+            && nsError.code == GIDSignInError.canceled.rawValue
     }
 
     // MARK: - Keychain Helpers
