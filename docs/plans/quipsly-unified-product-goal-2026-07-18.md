@@ -3155,10 +3155,38 @@ This is an active-goal checkpoint, not a completion claim.
   conflict while retaining its unsaved choice, and produced no browser
   warnings or errors. Database readback retained exactly three document tags,
   four reversible tag operations, and zero passage spans.
-- Antigravity remains isolated on `backup/pre-quarantine-2026-07-28`, but its
-  dev server and the product dev server still point at the same local
-  `high_ground_studio` database. Its proposed Notion-style implementation
-  currently fails TypeScript and adds Prisma models without a migration.
-  Before any Antigravity schema or data command, give that lane a separate
-  database; treat its continuous-canvas, slash-command, property-popover, and
-  saved-view ideas as design input rather than mergeable product source.
+- The prior Antigravity experiment remains quarantined on
+  `backup/pre-quarantine-2026-07-28`. A fresh lane now exists at
+  `/Users/wall-e/Dev/high-ground-studio-antigravity-writing` on
+  `antigravity/writing-desk-20260729`, with dedicated database
+  `quipsly_antigravity_writing_20260729` and port 3013. All 27 migrations
+  applied from zero and the clean baseline typecheck passed.
+- Antigravity discarded the generic database rewrite and now proposes
+  projection UX over canonical Quipsly models. Its first dirty UI pass has no
+  Prisma or migration drift and still typechecks, but it is not mergeable:
+  episode-status mutation skips authorization/concurrency/audit, board display
+  columns leak into canonical status values, the gutter handle has no action,
+  canonical tags are compared to display words, an existing editorial control
+  was removed, and `git diff --check` fails. The lane remains non-production
+  until those defects and real-use tests are closed.
+
+### 2026-07-29 Build 8 external TestFlight review checkpoint
+
+- This is external-beta submission proof, not Apple approval, physical-device
+  proof, App Store submission, or public release.
+- Exact source `3d414de4e22d4f6e3f659a5a6e47015dd51fbc0c` produced
+  Quipsly Capture `1.0 (8)`. The 19,313,476-byte signed IPA has SHA-256
+  `8e637fa67c5def105e5292a4aa7c37c827c226344663164c08e3576b92617056`,
+  passes strict package/signing/privacy/entitlement inspection, and its
+  detached-source result contains 32/32 passing native UI scenarios.
+- The private `Quipsly Capture Rehearsal` external group contains Build 8 and
+  the intended tester. Beta localization, automatic notification, synthetic
+  reviewer credentials/session, review notes, and a real reachable reviewer
+  contact are configured.
+- The App Store Connect API updated the review detail and submitted the build.
+  Provider readback reports `WAITING_FOR_BETA_REVIEW` and
+  `WAITING_FOR_REVIEW`, with no missing contact phone or reviewer password.
+- Production Nest is compatible and healthy, but Build 8 still needs Apple
+  approval, tester delivery, installation, app-owned version readback, and
+  physical two-person audio plus local audio/video/camera-switch/segment
+  upload/assembled-playback operation before the rehearsal gate can close.

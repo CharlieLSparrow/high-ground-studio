@@ -84,9 +84,9 @@
     "readiness": "blocked",
     "blockers": [
       "Confirm the legal copyright owner, categories, age rating, content rights, DSA trader status, and territory availability in App Store Connect.",
-      "Create the reviewer account and visible synthetic session; store credentials only in App Store Connect.",
+      "Wait for Apple to approve Build 8 external TestFlight review, then read back tester delivery before treating the beta as installable.",
       "Capture and approve all five 6.9-inch screenshots from the exact physical-device or TestFlight candidate without private data.",
-      "Install the assigned Build 6 from TestFlight on the unlocked trusted physical iPhone, then prove interruption, offline, recovery, upload, and cross-device readback.",
+      "Install the assigned Build 8 from TestFlight on the unlocked trusted physical iPhone, then prove audio/video capture, camera switching, interruption, offline recovery, upload, assembled playback, and cross-device readback.",
       "Publish accurate App Privacy answers and prove the account-deletion workflow against a disposable production account."
     ]
   }

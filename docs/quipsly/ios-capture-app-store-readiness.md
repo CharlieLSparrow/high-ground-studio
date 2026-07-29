@@ -407,6 +407,8 @@ Before TestFlight or App Store submission, generate Xcode's privacy report from 
 - Contact info: name and email, linked to user, app functionality.
 - Identifiers: app-owned user ID, device ID, and session IDs, linked to user, app functionality.
 - Audio data: recordings, linked to user, app functionality.
+- Photos or videos: local camera sources and immutable camera-switch segments,
+  linked to user, app functionality.
 - User content: transcripts, notes, packets, and action items, linked to user, app functionality.
 - Diagnostics: only if crash/log tooling is added; do not claim it until a real SDK exists.
 - Tracking: no.
@@ -424,7 +426,24 @@ questionnaire.
 
 ## Review notes draft
 
-Quipsly Capture records only after the signed-in user selects a Quipsly session, opts into audio recording, confirms that everyone else who may be heard was told and agreed, and current required participant consent permits the Start boundary. Recording state is shown in the app while capture is active. The candidate is designed to store recordings locally first and upload them directly to private Google Cloud Storage with an authenticated resumable v2 session; production upload claims remain conditional on the live schema, CORS, reviewer, and physical-device gates below. Quipsly labels a copy verified only after checking its object generation, exact size, type, CRC32C, and SHA-256. The app never prunes local sources automatically. The signed-in owner may separately delete one local original after an explicit irreversible-deletion confirmation; this preserves a protected audit tombstone and does not delete cloud or account evidence. Users can initiate account deletion in the app and follow its 30-day-target status. Eligible private accounts can be completed by the controlled inventory/executor/Firebase/GCS/email workflow with durable recovery and completion receipts; shared or retention-ambiguous accounts fail closed for reviewed handling. Production execution proof remains required.
+Quipsly Capture records only after the signed-in user selects a Quipsly
+session, chooses local audio, solo camera-and-microphone video, or video-only
+podcast camera, confirms that everyone who may be captured was told and
+agreed, and current required participant consent permits the Start boundary.
+Recording state is shown in the app while capture is active. The candidate is
+designed to store recordings locally first and upload them directly to private
+Google Cloud Storage with an authenticated resumable v2 session; production
+upload claims remain conditional on the live schema, CORS, reviewer, and
+physical-device gates below. Quipsly labels a copy verified only after checking
+its object generation, exact size, type, CRC32C, SHA-256, and ownership. The
+app never prunes local sources automatically. The signed-in owner may
+separately delete one local original after an explicit irreversible-deletion
+confirmation; this preserves a protected audit tombstone and does not delete
+cloud or account evidence. Users can initiate account deletion in the app and
+follow its 30-day-target status. Eligible private accounts can be completed by
+the controlled inventory/executor/Firebase/GCS/email workflow with durable
+recovery and completion receipts; shared or retention-ambiguous accounts fail
+closed for reviewed handling. Production execution proof remains required.
 
 The canonical English (U.S.) listing, screenshot plan, field limits, review
 journey, and fail-closed blocker ledger now live in
@@ -493,12 +512,15 @@ remain red until approved screenshots and every delivery-layer proof exist.
 - Apply or re-read the reviewed media-vault CORS policy and verify live bucket
   readback includes `x-goog-if-generation-match`. Google authorization now
   passes; source policy alone is still not deployment proof.
-- Add a real reviewer test account with at least one visible session, then smoke native email/password auth and the reviewer checklist against deployed `nest.quipsly.com`.
-- Install the assigned Build 6 from TestFlight and validate microphone
+- Operate the configured synthetic reviewer account and visible session through
+  Build 8 against deployed `nest.quipsly.com`; server-side sign-in and session
+  visibility are proved, but native Build 8 use is not.
+- Install the assigned Build 8 from TestFlight and validate microphone
   permission/fidelity, built-in/Bluetooth/USB routes, lock/background behavior,
   interruptions, route loss, force-quit recovery, failed-upload recovery,
-  direct-GCS background transfer, and transcript packet creation on the
-  physical iPhone.
+  direct-GCS background transfer, audio/video capture, front/back camera
+  switching, segment recovery, assembled playback, and transcript packet
+  creation on the physical iPhone.
 - Join a real Nest-issued LiveKit room and prove LiveKit transport, CallKit activation/presentation, and local recording remain visibly separate through connect, timeout/failure, interruption, reconnect, and reset. Provider-egress START becomes a submission blocker only if provider recording enters release scope; otherwise prove it stays interlocked and absent from end-user Capture controls.
 - Operate the retention-aware deletion system in production with a disposable
   eligible account, read back its completion receipt/confirmation, and obtain
@@ -523,3 +545,36 @@ remain red until approved screenshots and every delivery-layer proof exist.
   for current-worktree composition checks.
   The stricter submission gate remains red until signed-candidate assets exist,
   are human-approved, and all delivery blockers are resolved.
+
+## 2026-07-29 Quipsly Capture Build 8 external-beta checkpoint
+
+- This is an Apple beta-review submission checkpoint, not external approval,
+  TestFlight installation, physical-device operation, App Store submission, or
+  public release proof.
+- Exact committed source
+  `3d414de4e22d4f6e3f659a5a6e47015dd51fbc0c` produced signed
+  `Quipsly Capture 1.0 (8)`. Its 19,313,476-byte IPA has SHA-256
+  `8e637fa67c5def105e5292a4aa7c37c827c226344663164c08e3576b92617056`
+  and independently passes strict nested signing, App Store provisioning,
+  TestFlight entitlements, app/extension version parity, privacy-manifest,
+  camera/microphone purpose-string, background-mode, and export-compliance
+  inspection. The exact detached-source release result passed all 32 native UI
+  scenarios.
+- Production `nest.quipsly.com` revision `studio-00425-gij` is healthy at 100%
+  traffic and passes 104/104 public mobile contracts. Its source
+  `9a12b33d1f60374bfaa8dd89372c71db4becddff` has the same Nest, Prisma,
+  and shared-domain source as Build 8; intervening changes affect only the
+  native Capture target and release/rehearsal tooling.
+- The private external group `Quipsly Capture Rehearsal` contains Build 8 and
+  the intended tester. Automatic notification, beta app/build localization,
+  a synthetic reviewer account with visible consent-gated sessions, current
+  review notes, and a real reachable review contact are configured.
+- The App Store Connect API applied the review-detail update and submitted
+  Build 8. Provider readback reports external state
+  `WAITING_FOR_BETA_REVIEW`, review state `WAITING_FOR_REVIEW`, and no missing
+  review phone or password. The redacted mode-0600 receipt is
+  `/private/tmp/quipsly-capture-app-store-connect/build-8-external-submitted.json`.
+- Build 6 has provider-side installed evidence on a trusted iPhone. Build 8
+  does not yet have external approval, tester notification, installation,
+  app-owned version readback, or physical audio/video/camera-switch/upload/
+  assembled-playback proof. Those statements remain intentionally open.

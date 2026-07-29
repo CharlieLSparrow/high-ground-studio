@@ -147,3 +147,26 @@ capability and frequency answers remain account-holder declarations.
 - [Manage App Privacy](https://developer.apple.com/help/app-store-connect/manage-app-information/manage-app-privacy/)
 - [Screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications/)
 - [EU Digital Services Act trader requirements](https://developer.apple.com/help/app-store-connect/manage-compliance-information/manage-european-union-digital-services-act-trader-requirements/)
+
+## 2026-07-29 Build 8 external-beta addendum
+
+This section supersedes the TestFlight-specific Build 6 snapshot above; it does
+not replace the historical App Store listing/privacy audit.
+
+- Exact Build 8 provider ID:
+  `32fdd892-e38a-41bb-992d-ef2c049bc43a`.
+- The private `Quipsly Capture Rehearsal` external group contains Build 8 and
+  the intended tester, with automatic notification enabled and current beta
+  app/build localization.
+- The synthetic reviewer account and visible consent-gated production
+  Sessions are proved. Credentials remain outside Git. A real reachable review
+  contact and current recording/recovery notes are stored in App Store Connect.
+- The scoped API applied `update-beta-app-review-detail` and
+  `submit-build-for-beta-review`. Readback at
+  `2026-07-29T06:57:53.070Z` reports
+  `externalBuildState: WAITING_FOR_BETA_REVIEW` and
+  `betaReviewState: WAITING_FOR_REVIEW`.
+- Apple approval, tester notification, Build 8 installation, app-owned version
+  readback, and physical workflow proof remain open. App Store listing,
+  screenshots, privacy publication, legal questionnaires, availability, and
+  the disposable production deletion proof also remain open.
