@@ -249,6 +249,15 @@ check(
     && watch.includes("The unusable downloaded copy was removed."),
 );
 check(
+  "fatal playback errors pause the shared clock and leave a visible retry",
+  watch.includes(".AVPlayerItemFailedToPlayToEndTime")
+    && watch.includes("func handlePlaybackFailed(")
+    && watch.includes("shouldPauseShared")
+    && watch.includes('type: "PAUSE"')
+    && watch.includes("Shared Watch paused for everyone.")
+    && watch.includes("tap Prepare to retry."),
+);
+check(
   "both editors get reachable shared Play Pause and seek controls",
   watch.includes("CaptureEpisodeWatchPlayPauseButton")
     && watch.includes("Pause everyone")

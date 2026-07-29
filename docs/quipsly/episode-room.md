@@ -121,6 +121,10 @@ The native transport follows these production boundaries:
   then waits for `AVPlayerItem` to report `readyToPlay` before exposing playback.
   A file that is byte-valid but cannot be decoded is removed with a visible
   retry path instead of being represented as ready.
+- If iOS reports a fatal playback failure after starting, Capture releases the
+  Watch audio route, removes the unusable local copy, and—when that collaborator
+  is an editor—pauses the revisioned shared clock for everyone before exposing
+  the retry path.
   excludes the cache from backup, and partitions it by a one-way digest of the
   stable Quipsly owner identity.
 - A visible **Remove downloaded copy** action removes only the selected

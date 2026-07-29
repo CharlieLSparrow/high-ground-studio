@@ -130,6 +130,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
     private var preparedClipIdentity: MobileEpisodeWatchClip?
     private var timeObserver: Any?
     private var completionObserver: NSObjectProtocol?
+    private var playbackFailureObserver: NSObjectProtocol?
     private var itemStatusCancellable: AnyCancellable?
     private var accountCancellable: AnyCancellable?
     private var routeCancellable: AnyCancellable?
@@ -167,6 +168,9 @@ final class MobileEpisodeWatchClient: ObservableObject {
     deinit {
         if let completionObserver {
             NotificationCenter.default.removeObserver(completionObserver)
+        }
+        if let playbackFailureObserver {
+            NotificationCenter.default.removeObserver(playbackFailureObserver)
         }
     }
 
@@ -740,6 +744,18 @@ final class MobileEpisodeWatchClient: ObservableObject {
                 await self?.handlePlaybackEnded()
             }
         }
+        playbackFailureObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] notification in
+            let error = notification.userInfo?[
+                AVPlayerItemFailedToPlayToEndTimeErrorKey
+            ] as? Error
+            Task { @MainActor in
+                await self?.handlePlaybackFailed(error)
+            }
+        }
         player = nextPlayer
         preparedAssetID = clip.assetId
         preparedClipIdentity = clip
@@ -758,16 +774,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
                         self.errorMessage = nil
                         self.synchronizePlayerToRoom()
                     case .failed:
-                        let detail = item.error?.localizedDescription
-                            ?? "The downloaded media format could not be decoded."
-                        if let owner = AuthManager.shared.stableOwnerSnapshot() {
-                            self.removeCachedClip(clip: clip, owner: owner)
-                        }
-                        self.stopPlayer()
-                        self.statusMessage =
-                            "The unusable downloaded copy was removed. Tap Prepare to try again."
-                        self.errorMessage =
-                            "\(clip.title) could not be prepared for playback. \(detail)"
+                        await self.handlePlaybackFailed(item.error)
                     case .unknown:
                         break
                     @unknown default:
@@ -806,6 +813,51 @@ final class MobileEpisodeWatchClient: ObservableObject {
             session: currentSession,
             positionSeconds: selectedClip?.durationSeconds ?? displayPosition
         )
+    }
+
+    private func handlePlaybackFailed(_ error: Error?) async {
+        let failedClip = preparedClipIdentity ?? selectedClip
+        let failedDuringPrivatePreview = localPreviewActive
+        let shouldPauseShared =
+            !failedDuringPrivatePreview
+                && room?.status == "playing"
+                && canEdit
+        let session = currentSession
+        let heldPosition = displayPosition
+
+        player?.pause()
+        endSharedAudioLease()
+        localPreviewActive = false
+        if let failedClip,
+           let owner = AuthManager.shared.stableOwnerSnapshot() {
+            removeCachedClip(clip: failedClip, owner: owner)
+        }
+        stopPlayer()
+
+        var pausedForEveryone = false
+        if shouldPauseShared, let session {
+            pausedForEveryone = await sendCommand(
+                type: "PAUSE",
+                session: session,
+                positionSeconds: heldPosition
+            )
+        }
+
+        let title = failedClip?.title ?? "The selected clip"
+        let detail = error?.localizedDescription
+            ?? "The downloaded media format could not be decoded."
+        errorMessage = "\(title) stopped because iOS could not play it. \(detail)"
+        if failedDuringPrivatePreview {
+            statusMessage =
+                "Private preview stopped. The unusable downloaded copy was removed; shared Watch did not change."
+        } else if shouldPauseShared {
+            statusMessage = pausedForEveryone
+                ? "Shared Watch paused for everyone. The unusable copy was removed; tap Prepare to retry."
+                : "Playback stopped on this iPhone. Ask the other editor to pause, then tap Prepare to retry."
+        } else {
+            statusMessage =
+                "The unusable downloaded copy was removed. Tap Prepare to try again."
+        }
     }
 
     private func beginSharedAudioLease() throws {
@@ -863,6 +915,10 @@ final class MobileEpisodeWatchClient: ObservableObject {
         if let completionObserver {
             NotificationCenter.default.removeObserver(completionObserver)
             self.completionObserver = nil
+        }
+        if let playbackFailureObserver {
+            NotificationCenter.default.removeObserver(playbackFailureObserver)
+            self.playbackFailureObserver = nil
         }
         preparedAssetID = nil
         preparedClipIdentity = nil
