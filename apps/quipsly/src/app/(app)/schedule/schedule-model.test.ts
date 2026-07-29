@@ -1,5 +1,6 @@
 import {
   collapseTaskRecurrenceForCalendar,
+  formatScheduleDateTime,
   groupPlanBlocksByLocalDay,
   formatScheduleMediaTime,
   humanizeScheduleValue,
@@ -11,6 +12,21 @@ import {
 describe("schedule runway model", () => {
   it("turns stored enum-like values into readable labels", () => {
     expect(humanizeScheduleValue("READY_FOR_HUMAN_REVIEW")).toBe("Ready For Human Review");
+  });
+
+  it("renders a canonical Session instant in its stored timezone instead of the server timezone", () => {
+    expect(formatScheduleDateTime(
+      "2026-07-29T23:00:00.000Z",
+      "America/Denver",
+    )).toBe("Wed, Jul 29, 5:00 PM MDT");
+    expect(formatScheduleDateTime(
+      "2026-07-29T23:00:00.000Z",
+      "UTC",
+    )).toBe("Wed, Jul 29, 11:00 PM UTC");
+    expect(formatScheduleDateTime(
+      "2026-07-29T23:00:00.000Z",
+      "Not/AZone",
+    )).toBe("Wed, Jul 29, 11:00 PM UTC");
   });
 
   it("keeps only the next ordered open occurrence from each repeating series", () => {

@@ -8,7 +8,7 @@ describe("Nest Today model", () => {
       now,
       sessions: [
         { id: "later", title: "Later", purpose: "COACHING", scheduledStart: "2026-07-20T18:00:00.000Z" },
-        { id: "next", title: "Episode 5", purpose: "PODCAST", scheduledStart: "2026-07-19T16:00:00.000Z" },
+        { id: "next", title: "Episode 5", purpose: "PODCAST", scheduledStart: "2026-07-19T16:00:00.000Z", scheduledTimezone: "America/Denver" },
       ],
       planBlocks: [{ id: "block", startsAt: "2026-07-19T16:00:00.000Z", endsAt: "2026-07-19T16:30:00.000Z", timezone: "UTC", status: "PLANNED", actionItem: { id: "planned", title: "Proof listen", status: "OPEN" } }],
       tasks: [
@@ -21,6 +21,7 @@ describe("Nest Today model", () => {
     });
 
     expect(result.nextSession?.id).toBe("next");
+    expect(result.nextSession?.scheduledTimezone).toBe("America/Denver");
     expect(result.planBlocks.map((block) => block.targetId)).toEqual(["planned"]);
     expect(result.tasks.map((task) => task.id)).toEqual(["due"]);
     expect(result.tasks[0]?.reason).toBe("Due within 24 hours");

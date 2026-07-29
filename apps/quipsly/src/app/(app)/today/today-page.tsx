@@ -4,8 +4,10 @@ import { CalendarClock, CheckCircle2, CircleAlert, Inbox, ListChecks, Radio, Tar
 import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { mobileSessionScheduledTimezone } from "@/lib/server/mobile-capture-session-schedule";
 
 import { StudioAccessShell } from "../studio-access-shell";
+import { formatScheduleDateTime } from "../schedule/schedule-model";
 import { buildTodayView, type TodayTag } from "./today-model";
 
 // Kept outside page.tsx so integration tests can import the actor-scoped loader.
@@ -74,6 +76,8 @@ export async function loadToday(userId: string, actorEmail: string) {
         purpose: true,
         scheduledStart: true,
         scheduledEnd: true,
+        metadataJson: true,
+        booking: { select: { timezone: true } },
         project: { select: { id: true, name: true, slug: true } },
       },
     }),
@@ -165,6 +169,10 @@ export async function loadToday(userId: string, actorEmail: string) {
     now,
     sessions: sessions.map((item: any) => ({
       ...item,
+      scheduledTimezone: mobileSessionScheduledTimezone(
+        item.metadataJson,
+        item.booking?.timezone,
+      ),
       project: item.project && visibleProjectIds.has(item.project.id) ? item.project : null,
     })),
     tasks: tasks.map((item: any) => ({
@@ -238,7 +246,7 @@ export default async function TodayPage() {
 
         <section aria-labelledby="today-session" className="rounded-3xl border border-sky-200 bg-sky-50/55 p-5 shadow-sm md:p-6">
           <div className="flex items-start gap-3"><Radio className="mt-1 text-sky-700" aria-hidden="true" /><div className="min-w-0"><p className="text-xs font-black uppercase tracking-[0.18em] text-sky-800">Up next</p><h2 id="today-session" className="mt-1 font-serif text-3xl font-black">Session</h2></div></div>
-          {today.nextSession ? <article className="mt-4 rounded-2xl border border-sky-200 bg-white p-5"><h3 className="text-xl font-black">{today.nextSession.title}</h3><p className="mt-2 text-sm font-bold text-[#765f40]">{formatDateTime(today.nextSession.scheduledStart)}</p>{today.nextSession.project && <p className="mt-1 text-xs font-bold text-sky-800">Nest: {today.nextSession.project.name}</p>}<Link href={`/sessions/${encodeURIComponent(today.nextSession.id)}`} className="mt-4 inline-flex rounded-full bg-sky-800 px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white">Open Session</Link></article> : <Empty>No accessible upcoming Session is scheduled. Quipsly has not invented one to fill the card.</Empty>}
+          {today.nextSession ? <article className="mt-4 rounded-2xl border border-sky-200 bg-white p-5"><h3 className="text-xl font-black">{today.nextSession.title}</h3><p className="mt-2 text-sm font-bold text-[#765f40]">{formatScheduleDateTime(today.nextSession.scheduledStart, today.nextSession.scheduledTimezone)}</p>{today.nextSession.project && <p className="mt-1 text-xs font-bold text-sky-800">Nest: {today.nextSession.project.name}</p>}<Link href={`/sessions/${encodeURIComponent(today.nextSession.id)}`} className="mt-4 inline-flex rounded-full bg-sky-800 px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white">Open Session</Link></article> : <Empty>No accessible upcoming Session is scheduled. Quipsly has not invented one to fill the card.</Empty>}
         </section>
 
         <div className="grid gap-7 xl:grid-cols-2">

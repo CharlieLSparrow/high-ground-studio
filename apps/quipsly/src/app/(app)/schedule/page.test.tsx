@@ -6,6 +6,7 @@ import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
 import SchedulePage from "./page";
+import { formatScheduleDateTime } from "./schedule-model";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
@@ -37,6 +38,42 @@ describe("Schedule page truth states", () => {
     expect(screen.getByText(/Auth state: signed in/)).toBeInTheDocument();
     expect(screen.queryByText("Personal planning surface")).not.toBeInTheDocument();
     expect(screen.queryByText(/local preview access/i)).not.toBeInTheDocument();
+  });
+
+  it("renders a Quipsly-only Session in its persisted scheduling timezone", async () => {
+    const scheduledStart = new Date(Date.now() + 60 * 60_000);
+    scheduledStart.setSeconds(0, 0);
+    jest.mocked(getQuipslySession).mockResolvedValue({
+      user: { id: "user-1", email: "person@example.com" },
+    } as any);
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([] as any);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      callRoom: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "room-1",
+          title: "High Ground Odyssey rehearsal",
+          purpose: "PODCAST",
+          status: "PLANNED",
+          scheduledStart,
+          scheduledEnd: new Date(scheduledStart.getTime() + 50 * 60_000),
+          metadataJson: { scheduledTimezone: "America/Denver" },
+          booking: null,
+          calendarLinks: [],
+          tagLinks: [],
+        }]),
+      },
+      actionItem: { findMany: jest.fn().mockResolvedValue([]) },
+      goal: { findMany: jest.fn().mockResolvedValue([]) },
+      workPlanBlock: { findMany: jest.fn().mockResolvedValue([]) },
+    } as any);
+
+    render(await SchedulePage());
+
+    expect(screen.getByRole("heading", { name: "High Ground Odyssey rehearsal" })).toBeInTheDocument();
+    expect(screen.getByText(
+      formatScheduleDateTime(scheduledStart, "America/Denver"),
+    )).toBeInTheDocument();
+    expect(screen.getByText("Quipsly schedule only")).toBeInTheDocument();
   });
 
   it("returns an accepted transcript-derived task to its exact reviewed segment", async () => {

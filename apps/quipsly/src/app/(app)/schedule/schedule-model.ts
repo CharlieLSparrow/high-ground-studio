@@ -15,6 +15,7 @@ export type ScheduleSession = {
   status: string;
   scheduledStart: string;
   scheduledEnd: string | null;
+  scheduledTimezone?: string | null;
   calendarStatus: string;
   calendarLinked: boolean;
   participantLabel: string | null;
@@ -97,6 +98,32 @@ export function formatScheduleMediaTime(value: number) {
   return hours > 0
     ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
     : `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
+
+export function formatScheduleDateTime(
+  value: Date | string | null | undefined,
+  timezone?: string | null,
+) {
+  if (!value) return "No date";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "Date needs review";
+  const options: Intl.DateTimeFormatOptions = {
+    timeZone: timezone || "UTC",
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZoneName: "short",
+  };
+  try {
+    return new Intl.DateTimeFormat("en-US", options).format(date);
+  } catch {
+    return new Intl.DateTimeFormat("en-US", {
+      ...options,
+      timeZone: "UTC",
+    }).format(date);
+  }
 }
 
 export function planBlockDurationMinutes(block: Pick<SchedulePlanBlock, "startsAt" | "endsAt">) {

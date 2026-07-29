@@ -6,6 +6,7 @@ export type TodaySession = {
   purpose: string;
   scheduledStart: Date | string;
   scheduledEnd?: Date | string | null;
+  scheduledTimezone?: string | null;
   project?: { name: string; slug: string } | null;
 };
 

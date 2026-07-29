@@ -14,11 +14,13 @@ import { TagSearchChips } from "@/components/tag-search-chips";
 import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets";
+import { mobileSessionScheduledTimezone } from "@/lib/server/mobile-capture-session-schedule";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { normalizeAccessEmail } from "@/lib/server/studio-project-access";
 
 import {
   collapseTaskRecurrenceForCalendar,
+  formatScheduleDateTime,
   formatScheduleMediaTime,
   humanizeScheduleValue,
   type SchedulePlanBlock,
@@ -109,8 +111,10 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
               status: true,
               scheduledStart: true,
               scheduledEnd: true,
+              metadataJson: true,
               booking: {
                 select: {
+                  timezone: true,
                   clientUser: { select: { name: true, primaryEmail: true } },
                   coachUser: { select: { name: true, primaryEmail: true } },
                 },
@@ -189,6 +193,10 @@ async function loadSchedule(): Promise<ScheduleSnapshot> {
           status: room.status,
           scheduledStart: room.scheduledStart!.toISOString(),
           scheduledEnd: room.scheduledEnd?.toISOString() ?? null,
+          scheduledTimezone: mobileSessionScheduledTimezone(
+            room.metadataJson,
+            room.booking?.timezone,
+          ),
           calendarStatus: calendar
             ? `${humanizeScheduleValue(calendar.provider)} · ${humanizeScheduleValue(calendar.status)}`
             : "Quipsly schedule only",
@@ -414,7 +422,7 @@ export default async function SchedulePage() {
                       </div>
                       <span className="rounded-full bg-[#f6efdf] px-2.5 py-1 text-[10px] font-black uppercase text-[#725938]">{humanizeScheduleValue(session.status)}</span>
                     </div>
-                    <p className="mt-4 flex items-center gap-2 text-sm font-bold text-[#5f4b32]"><Clock3 size={16} aria-hidden="true" />{formatDateTime(session.scheduledStart)}</p>
+                    <p className="mt-4 flex items-center gap-2 text-sm font-bold text-[#5f4b32]"><Clock3 size={16} aria-hidden="true" />{formatScheduleDateTime(session.scheduledStart, session.scheduledTimezone)}</p>
                     {session.participantLabel && <p className="mt-2 text-sm font-semibold text-[#80694a]">With {session.participantLabel}</p>}
                     <CalendarTags tags={session.tags} />
                     <p className={`mt-3 text-xs font-black ${session.calendarLinked ? "text-emerald-700" : "text-[#8a7354]"}`}>{session.calendarStatus}{session.calendarLinked ? " · receipt linked" : ""}</p>
