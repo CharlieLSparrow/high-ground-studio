@@ -109,6 +109,10 @@ The native transport follows these production boundaries:
   SHA-256 in 1 MiB chunks, writes a receipt, applies iOS file protection,
   excludes the cache from backup, and partitions it by a one-way digest of the
   stable Quipsly owner identity.
+- A visible **Remove downloaded copy** action removes only the selected
+  iPhone cache while Watch is paused. Signing out purges the entire derived
+  Watch cache before publishing the account-identity change. Neither action
+  deletes or mutates the canonical Nest source.
 - Changing accounts immediately hides and stops the prior owner's source. A
   cached source is reused only when owner, asset, source, playback URL, byte
   count, and SHA-256 all match.

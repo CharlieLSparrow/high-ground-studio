@@ -192,6 +192,11 @@ final class MobileEpisodeWatchClient: ObservableObject {
         stopPlayer()
     }
 
+    static func clearProtectedCache() {
+        guard let cacheRoot = sharedWatchCacheRoot() else { return }
+        try? FileManager.default.removeItem(at: cacheRoot)
+    }
+
     func sharedClockReady(
         for session: MobileCaptureSession,
         captureIsActive: Bool
@@ -409,6 +414,28 @@ final class MobileEpisodeWatchClient: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    func removePreparedClip() {
+        guard let clip = selectedClip,
+              let owner = AuthManager.shared.stableOwnerSnapshot() else {
+            errorMessage = "Sign in again before managing this protected Watch download."
+            return
+        }
+        guard isPrepared else {
+            statusMessage = "This Watch clip is not downloaded on this iPhone."
+            errorMessage = nil
+            return
+        }
+        guard !isSharedPlaying, !localPreviewActive, !isMutating else {
+            errorMessage = "Pause Watch before removing its downloaded copy."
+            return
+        }
+        stopPlayer()
+        removeCachedClip(clip: clip, owner: owner)
+        statusMessage =
+            "Downloaded copy removed from this iPhone. The protected Nest source is unchanged."
+        errorMessage = nil
     }
 
     func toggleSharedPlayback(
@@ -913,13 +940,8 @@ final class MobileEpisodeWatchClient: ObservableObject {
             of: #"^[A-Za-z0-9_-]{1,160}$"#,
             options: .regularExpression
         ) != nil,
-        let applicationSupport = FileManager.default.urls(
-            for: .applicationSupportDirectory,
-            in: .userDomainMask
-        ).first else { return nil }
-        let directory = applicationSupport
-            .appendingPathComponent("QuipslyCapture", isDirectory: true)
-            .appendingPathComponent("SharedWatchCache", isDirectory: true)
+        let cacheRoot = Self.sharedWatchCacheRoot() else { return nil }
+        let directory = cacheRoot
             .appendingPathComponent(
                 Self.digest(owner.ownerAccountID),
                 isDirectory: true
@@ -943,6 +965,15 @@ final class MobileEpisodeWatchClient: ObservableObject {
                 isDirectory: false
             )
         )
+    }
+
+    private static func sharedWatchCacheRoot() -> URL? {
+        FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first?
+            .appendingPathComponent("QuipslyCapture", isDirectory: true)
+            .appendingPathComponent("SharedWatchCache", isDirectory: true)
     }
 
     private static func digest(_ value: String) -> String {
@@ -1126,6 +1157,27 @@ struct MobileEpisodeWatchCard: View {
                         )
                     }
                     .labelStyle(.iconOnly)
+
+                    Button(role: .destructive) {
+                        client.removePreparedClip()
+                    } label: {
+                        Label(
+                            "Remove downloaded copy",
+                            systemImage: "trash"
+                        )
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(
+                        client.isSharedPlaying
+                            || client.localPreviewActive
+                            || client.isMutating
+                    )
+                    .accessibilityHint(
+                        "Removes only this iPhone's protected cache. The Nest source remains unchanged."
+                    )
+                    .accessibilityIdentifier(
+                        "CaptureEpisodeWatchRemoveDownloadButton"
+                    )
 
                     if !client.sharedClockReady(
                         for: session,

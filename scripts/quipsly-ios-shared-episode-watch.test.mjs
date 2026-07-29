@@ -111,6 +111,12 @@ check(
     && watch.includes("receipt.ownerDigest =="),
 );
 check(
+  "signed-out users cannot leave invisible protected Watch downloads behind",
+  auth.includes("MobileEpisodeWatchClient.clearProtectedCache()")
+    && watch.includes("static func clearProtectedCache()")
+    && watch.includes("removeItem(at: cacheRoot)"),
+);
+check(
   "Watch cache is excluded from backup and protected at rest",
   watch.match(/isExcludedFromBackup = true/g)?.length >= 3
     && watch.includes(".completeFileProtectionUntilFirstUserAuthentication")
@@ -186,6 +192,13 @@ check(
     && watch.includes("CaptureEpisodeWatchBackButton")
     && watch.includes("CaptureEpisodeWatchForwardButton")
     && watch.includes("!client.canEdit"),
+);
+check(
+  "prepared Watch media has a reachable local-only removal control",
+  watch.includes("CaptureEpisodeWatchRemoveDownloadButton")
+    && watch.includes("func removePreparedClip()")
+    && watch.includes("The protected Nest source is unchanged.")
+    && watch.includes("Pause Watch before removing its downloaded copy."),
 );
 check(
   "three missed polls fail visibly closed and a successful poll resynchronizes",
