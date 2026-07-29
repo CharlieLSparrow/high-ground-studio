@@ -5,7 +5,7 @@ Date: 2026-07-29
 ## Exact source
 
 - Branch: `codex/quipsly-product-20260724`
-- Current iPhone candidate checkpoint: `9ca9999a`
+- Current iPhone candidate checkpoint: `29c68a86`
 - Feature commit: `5920e525`
 - Commit subject:
   `feat(capture): coordinate local podcast audio and video`
@@ -31,6 +31,9 @@ Date: 2026-07-29
 - Canonical episode-manuscript commit: `8fa86d46`
 - Canonical-heading readback commit: `613b2243`
 - Consolidated rehearsal-readiness commit: `9ca9999a`
+- Single microphone-owner correction: `29c68a86`
+- Commit subject:
+  `fix(capture): unify live-room microphone ownership`
 - App Store version/build in source: `1.0 (8)`
 - Release decision: do not upload or assign this feature as Build 9 until its
   physical-iPhone gate is complete. Build 8 remains the honest external
@@ -65,6 +68,34 @@ recoverable fragments, and never silently restarts or claims continuity. A
 partial startup or unexpected source ending closes and preserves its partner.
 Provider join, leave, mute, and route controls remain locked while the
 audio-bearing group is active.
+
+## Single microphone-owner correction
+
+The original coordinated candidate opened an `AVAudioRecorder` for the local
+AAC source while LiveKit already owned the same process-wide microphone for
+the room. Apple does not promise that two independent input clients will
+remain stable across voice processing, route changes, interruptions, or
+CallKit activation. Checkpoint `29c68a86` removes that conflict:
+
+- a connected live room keeps LiveKit as the sole microphone hardware owner;
+- Quipsly observes LiveKit 2.15.1's local-input PCM renderer and feeds its
+  `AudioMixRecorder` without opening another input client;
+- standalone Audio still uses `AVAudioRecorder`;
+- every native session surface remains **preparing** until the first real PCM
+  callback, rather than treating writer construction as media proof;
+- a three-second start watchdog fails closed before an all-silence take can be
+  called recorded;
+- callback starvation pauses audio, closes the coordinated camera boundary,
+  and preserves the partial group for Library review;
+- provider-backed Pause writes silence across the AAC timeline while the
+  segment ledger identifies the intervals that contain captured speech; and
+- each source profile records the exact pipeline and pause-timeline policy.
+
+This provider source is the local input delivered by LiveKit and may include
+Voice Processing I/O treatment. It is deliberately not described as an
+independent raw pre-call microphone master. A future raw-plus-call path needs
+one custom audio device/engine module with explicit ownership, not another
+recorder layered beside LiveKit.
 
 ## Upload and editor handoff
 
@@ -109,14 +140,15 @@ timeline.
 - Quipsly TypeScript: passed.
 - Privacy manifest lint: passed.
 - App Store static gate: **721/721**.
-- Coordinated podcast capture contract: **20/20**.
-- Capture durability contract: **73/73**.
+- Coordinated podcast capture contract: **23/23**.
+- Capture durability contract: **79/79**.
 - Account isolation contract: **15/15**.
 - Universal iOS simulator build with LiveKit and Google dependencies: passed
   for the canonical simulator architectures.
 - Deterministic UI test:
   `CaptureExperienceUITests.testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission`:
-  passed on the booted iPhone 16e simulator.
+  passed again on the iPhone 17 Pro simulator after the microphone-owner
+  correction.
 - Grouped upload/editor handoff: **43/43** focused server/editor tests passed.
 - Capture finalization integrity: passed with durable alignment-before-episode
   ordering.

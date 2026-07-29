@@ -3409,3 +3409,29 @@ This is an active-goal checkpoint, not a completion claim.
   clutter. A disposable PostgreSQL run of the committed integration case must
   still prove `created=true` and rollback locally after Docker recovers.
   Production promotion and a matching Build 9 remain separate explicit gates.
+
+### 2026-07-29 single microphone-owner Capture checkpoint
+
+- Exact candidate `29c68a86` corrects the live-room audio topology before a
+  physical rehearsal: LiveKit remains the only microphone hardware client,
+  and Quipsly records its existing local-input PCM through LiveKit 2.15.1's
+  renderer and `AudioMixRecorder`. Standalone recording continues to use
+  `AVAudioRecorder`.
+- Both native Session entry points wait for the first real PCM callback before
+  claiming recording. Start timeout, PCM starvation, provider-start failure,
+  or unexpected audio pause fail visibly, detach the local observer, preserve
+  receipts and source evidence, and close the coordinated camera boundary.
+- The provider-backed AAC timeline writes silence during explicit Pause to
+  remain wall-clock aligned with the room and camera; the segment ledger
+  identifies captured-speech intervals. The source profile records both the
+  actual capture pipeline and pause policy. The app does not mislabel this
+  Voice Processing I/O path as an independent raw microphone master.
+- Verification passed on the exact source: full mobile preflight, 79/79
+  durability checks, 23/23 coordinated-capture checks, 15/15 account-isolation
+  checks, the operated Podcast A/V mode journey on iPhone 17 Pro simulator,
+  and an arm64/x86_64 simulator build with LiveKit linked.
+- This remains a Build 9 candidate, not a TestFlight upload or
+  production-qualified take. A physical iPhone must still prove the real
+  headphone/microphone route, connected conversation, first PCM, simultaneous
+  local AAC plus video-only MOV, Pause/Resume/Flip, playback, receipts,
+  recovery, upload verification, and assembled editor sync.
