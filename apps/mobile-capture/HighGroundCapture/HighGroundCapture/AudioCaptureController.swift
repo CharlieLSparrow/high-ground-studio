@@ -34,7 +34,6 @@ final class AudioCaptureController: NSObject, ObservableObject {
     @Published private(set) var peakInputLevelDB: Float = -160
     @Published private(set) var inputRouteName: String = "No microphone selected"
     @Published private(set) var inputRoutePortType: String?
-    @Published private(set) var capturePipelineLabel: String = "Direct local microphone recorder"
     @Published private(set) var failureMessage: String?
     @Published private(set) var lastErrorMessage: String?
     @Published private(set) var automaticStopReason: String?
@@ -79,6 +78,18 @@ final class AudioCaptureController: NSObject, ObservableObject {
     private var storageCapacityProbeFailed = false
     private var pendingFinalizationMessage: String?
     private var pendingProviderSegmentStart: Date?
+
+    var capturePipelineLabel: String {
+        #if canImport(LiveKit)
+        if providerAudioMaster != nil {
+            return "Same microphone as the live room"
+        }
+        if audioSessionCoordinator.isProviderRoomActive {
+            return "Will use the live-room microphone"
+        }
+        #endif
+        return "Recorded directly on this iPhone"
+    }
 
     private struct CaptureIntent {
         let captureID: UUID
@@ -901,7 +912,6 @@ final class AudioCaptureController: NSObject, ObservableObject {
 
         #if canImport(LiveKit)
         if let providerRecorder {
-            capturePipelineLabel = "Live room microphone PCM · one hardware input"
             providerAudioMaster = providerRecorder
             pendingProviderSegmentStart = startedAt
             providerRecorder.onFirstPCMBuffer = { [weak self] in
@@ -925,7 +935,6 @@ final class AudioCaptureController: NSObject, ObservableObject {
             throw CaptureError.couldNotBeginRecorder
         }
         audioRecorder = directRecorder
-        capturePipelineLabel = "Direct local microphone recorder"
         do {
             try localRecordingLibrary.markRecording(ledgerEntry.id, durationSeconds: 0)
         } catch {

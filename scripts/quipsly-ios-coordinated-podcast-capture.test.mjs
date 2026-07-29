@@ -194,7 +194,11 @@ check(
   phoneShell.includes("CoordinatedPodcastAudioStatus(")
     && phoneShell.includes('"Separate microphone master"')
     && phoneShell.includes("CaptureCoordinatedAudioStatus")
-    && phoneShell.includes("inputRoute: audioCapture.inputRouteName"),
+    && phoneShell.includes("inputRoute: audioCapture.inputRouteName")
+    && phoneShell.includes("capturePipeline: audioCapture.capturePipelineLabel")
+    && audio.includes('"Same microphone as the live room"')
+    && audio.includes('"Will use the live-room microphone"')
+    && audio.includes('"Recorded directly on this iPhone"'),
 );
 check(
   "the global banner does not claim two-source recording during startup",

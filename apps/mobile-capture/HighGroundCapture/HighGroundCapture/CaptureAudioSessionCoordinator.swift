@@ -7,8 +7,8 @@ import Combine
 
 /// Owns the process-wide AVAudioSession policy for Capture.
 ///
-/// AVAudioRecorder, CallKit, and the provider SDK all share one system audio
-/// session. Keeping their leases here prevents a local-recorder stop from
+/// Local recording, CallKit, and the provider SDK all share one system audio
+/// session. Keeping their leases here prevents a local-capture stop from
 /// deactivating a connected room and makes the recorded scope explicit: the
 /// local file contains this iPhone's selected microphone, not provider egress.
 @MainActor
