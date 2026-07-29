@@ -73,6 +73,9 @@ verify_capture_app() {
   /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$info_plist" 2>/dev/null | grep -q "audio" ||
     fail "Packaged app does not declare audio background mode"
   pass "Packaged app declares audio background mode"
+  /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$info_plist" 2>/dev/null | grep -q "voip" ||
+    fail "Packaged app cannot issue CallKit transactions without voip background mode"
+  pass "Packaged app declares CallKit provider-room background mode"
 }
 
 verify_distribution_bundle() {

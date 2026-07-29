@@ -506,6 +506,61 @@ function summarizeConsentUpdate(payload) {
   };
 }
 
+async function discoverCurrentConsentPresentation(
+  idToken,
+  callRoomId,
+  participantId,
+) {
+  const result = await requestJson(`${baseUrl}/api/mobile/capture/consent`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({
+      callRoomId,
+      ...(participantId ? { participantId } : {}),
+      consentAction: "GRANT",
+    }),
+  });
+  const policy = isObject(result.json?.currentPolicy)
+    ? result.json.currentPolicy
+    : {};
+  const valid =
+    result.status === 409
+    && result.json?.errorCode === "CURRENT_CONSENT_PRESENTATION_REQUIRED"
+    && clean(policy.version)
+    && clean(policy.text)
+    && /^[a-f0-9]{64}$/i.test(clean(policy.sha256))
+    && clean(policy.surface) === "quipsly-capture-consent-v2"
+    && policy.presentationVersion === 1;
+
+  expect(
+    valid,
+    "reviewerConsentCurrentPolicyDiscovered",
+    "Reviewer proof reads the current server consent policy before presenting explicit recording and transcription choices.",
+    {
+      status: result.status,
+      errorCode: result.json?.errorCode || null,
+      policyVersion: clean(policy.version) || null,
+      policyTextHashPresent: /^[a-f0-9]{64}$/i.test(clean(policy.sha256)),
+      surface: clean(policy.surface) || null,
+      presentationVersion: policy.presentationVersion ?? null,
+    },
+  );
+
+  if (!valid) {
+    throw new Error(
+      `Current consent presentation could not be discovered for call room ${callRoomId}.`,
+    );
+  }
+
+  return {
+    version: clean(policy.version),
+    text: clean(policy.text),
+    sha256: clean(policy.sha256).toLowerCase(),
+    surface: clean(policy.surface),
+    presentationVersion: policy.presentationVersion,
+  };
+}
+
 function summarizeJoinDiagnostic(payload) {
   const effects = isObject(payload?.effects) ? payload.effects : {};
   const recordingBoundary = isObject(payload?.recordingBoundary) ? payload.recordingBoundary : {};
@@ -560,6 +615,11 @@ function summarizeJoinResponse(payload) {
 async function grantReviewerRecordingConsent(idToken, session) {
   const callRoomId = roomIdForSession(session);
   const participantId = clean(session?.participantId);
+  const policy = await discoverCurrentConsentPresentation(
+    idToken,
+    callRoomId,
+    participantId,
+  );
 
   const result = await requestJson(`${baseUrl}/api/mobile/capture/consent`, {
     method: "POST",
@@ -568,6 +628,21 @@ async function grantReviewerRecordingConsent(idToken, session) {
       callRoomId,
       ...(participantId ? { participantId } : {}),
       consentAction: "GRANT",
+      canRecordAudio: true,
+      canRecordVideo: true,
+      canTranscribe: false,
+      allAudibleParticipantsNotifiedAndAgreed: true,
+      consentPolicyVersion: policy.version,
+      consentText: policy.text,
+      consentTextHash: policy.sha256,
+      presentationEvidence: {
+        version: policy.presentationVersion,
+        surface: policy.surface,
+        presentedAt: new Date().toISOString(),
+        recordingChoicePresented: true,
+        transcriptionChoicePresented: true,
+        audibleParticipantAttestationPresented: true,
+      },
     }),
   });
   const summary = summarizeConsentUpdate(result.json);

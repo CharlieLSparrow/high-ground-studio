@@ -76,13 +76,16 @@ require_text "$app_info_plist" "only after you explicitly choose video" "Camera 
 require_text "$app_info_plist" "Audio recording does not use the camera" "Camera purpose string preserves the audio boundary"
 require_text "$app_info_plist" "NSMicrophoneUsageDescription" "Microphone purpose key is configured"
 require_text "$app_info_plist" "after you explicitly start recording" "Microphone purpose string requires explicit capture"
-require_text "$app_info_plist" "UIBackgroundModes" "Audio background mode key is configured"
+require_text "$app_info_plist" "UIBackgroundModes" "Call and audio background mode key is configured"
 [[ "$(/usr/libexec/PlistBuddy -c "Print :ITSAppUsesNonExemptEncryption" "$app_info_plist")" == "false" ]] ||
   fail "Export compliance metadata must declare no non-exempt encryption"
 pass "Export compliance metadata declares no non-exempt encryption"
 /usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$app_info_plist" | grep -q "audio" ||
   fail "Audio background mode does not contain audio"
 pass "Audio background mode contains audio"
+/usr/libexec/PlistBuddy -c "Print :UIBackgroundModes" "$app_info_plist" | grep -q "voip" ||
+  fail "CallKit provider-room support requires the voip background mode"
+pass "CallKit provider-room background mode contains voip"
 require_text "$project_file" "PRODUCT_BUNDLE_IDENTIFIER = com.highgroundodyssey.HighGroundCapture;" "Production app bundle identifier is configured"
 require_text "$project_file" "PRODUCT_BUNDLE_IDENTIFIER = com.highgroundodyssey.HighGroundCapture.ShareCapture;" "Production extension bundle identifier is configured"
 require_text "$provider_room" "configuration.supportsVideo = false" "The current audio-first CallKit surface keeps video disabled"

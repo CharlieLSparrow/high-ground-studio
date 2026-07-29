@@ -1426,6 +1426,95 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists, "A recording-in-progress banner must not appear before a take starts.")
     }
 
+    func testConsentedProviderRoomJoinsAndLeavesWithoutStartingRecording() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard credentials.sessionID?.isEmpty == false,
+              credentials.sessionTitle?.isEmpty == false else {
+            throw XCTSkip("The provider-room journey requires an exact consented Session ID and title.")
+        }
+
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: app)
+        selectRequestedSession(in: app, credentials: credentials)
+
+        let liveRoom = app.descendants(matching: .any)["CaptureLiveRoomDisclosure"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(liveRoom, in: app, timeout: 18, swipeAttempts: 8),
+            "The selected production Session should expose its separate provider-room controls."
+        )
+        liveRoom.tap()
+
+        let join = app.buttons["ProviderJoinRoomButton"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(join, in: app, timeout: 12, swipeAttempts: 4),
+            "A consented LiveKit-ready Session should expose an explicit Join room action."
+        )
+        XCTAssertTrue(join.isEnabled)
+
+        let microphoneAlertHandler = addUIInterruptionMonitor(withDescription: "Provider microphone permission") { alert in
+            for label in ["Allow", "OK"] where alert.buttons[label].exists {
+                alert.buttons[label].tap()
+                return true
+            }
+            return false
+        }
+        defer { removeUIInterruptionMonitor(microphoneAlertHandler) }
+
+        join.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        if springboard.alerts.firstMatch.waitForExistence(timeout: 5) {
+            let allow = springboard.alerts.firstMatch.buttons["Allow"]
+            XCTAssertTrue(allow.exists, "The first provider join should expose an explicit microphone Allow choice.")
+            allow.tap()
+            app.activate()
+        }
+
+        #if targetEnvironment(simulator)
+        let simulatorActivationFailure = app.staticTexts[
+            "CallKit did not activate room audio, so Quipsly did not join a silent provider room. Try again or keep the local source only."
+        ].firstMatch
+        if simulatorActivationFailure.waitForExistence(timeout: 12) {
+            XCTAssertTrue(
+                app.buttons["ProviderJoinRoomButton"].firstMatch.exists,
+                "A simulator-only CallKit audio failure must return to an explicit retry state."
+            )
+            XCTAssertFalse(
+                app.otherElements["GlobalCaptureBanner"].exists,
+                "A failed simulator CallKit activation must not imply that recording started."
+            )
+            XCTAssertFalse(
+                app.buttons["CaptureStopButton"].exists,
+                "A failed simulator CallKit activation must not create recorder state."
+            )
+            throw XCTSkip(
+                "This Simulator runtime cannot activate CallKit's provider audio session. "
+                    + "The fail-closed boundary passed; real LiveKit media join/leave still requires a physical iPhone."
+            )
+        }
+        #endif
+
+        let leave = app.buttons["ProviderLeaveRoomButton"].firstMatch
+        XCTAssertTrue(
+            leave.waitForExistence(timeout: 30),
+            "The native app should establish the LiveKit room before reporting a Leave action."
+        )
+        XCTAssertFalse(
+            app.otherElements["GlobalCaptureBanner"].exists,
+            "Joining provider audio must not start or imply a Quipsly recording."
+        )
+        XCTAssertFalse(
+            app.buttons["CaptureStopButton"].exists,
+            "Provider-room audio must remain separate from the local source recorder."
+        )
+
+        leave.tap()
+        XCTAssertTrue(
+            app.buttons["ProviderJoinRoomButton"].firstMatch.waitForExistence(timeout: 15),
+            "Leaving the provider room should return to an explicit rejoin state."
+        )
+        XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].exists)
+    }
+
     func testConsentedCapturePlaybackAndCrashRecovery() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID,

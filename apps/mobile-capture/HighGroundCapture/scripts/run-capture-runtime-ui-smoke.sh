@@ -32,6 +32,13 @@ case "$TEST_MODE" in
   surface)
     TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"
     ;;
+  room-join)
+    TEST_CASE="testConsentedProviderRoomJoinsAndLeavesWithoutStartingRecording"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" ]]; then
+      echo "Room-join mode requires an exact consented Session ID and title." >&2
+      exit 2
+    fi
+    ;;
   capture-recovery)
     TEST_CASE="testConsentedCapturePlaybackAndCrashRecovery"
     ;;
@@ -113,7 +120,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, room-join, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
     exit 2
     ;;
 esac
