@@ -6,23 +6,30 @@ import Combine
 public final class PlaybackEngine: ObservableObject {
     @Published public var playhead: Double = 0
     @Published public var isPlaying: Bool = false
+    @Published public private(set) var isBuffering: Bool = false
     @Published public private(set) var isAuditioning: Bool = false
     @Published public var playbackMode: PlaybackMode = .playEdit
     @Published public var playbackFormat: ExportFormat = .horizontal16x9
 
-    public var player: AVPlayer? {
+    @Published public var player: AVPlayer? {
         willSet {
             if let token = timeObserverToken {
                 player?.removeTimeObserver(token)
                 timeObserverToken = nil
             }
+            timeControlStatusObserver?.invalidate()
+            timeControlStatusObserver = nil
         }
         didSet {
+            player?.automaticallyWaitsToMinimizeStalling = false
             setupTimeObserver()
+            setupTimeControlStatusObserver()
         }
     }
 
     private var timeObserverToken: Any?
+    private var timeControlStatusObserver: NSKeyValueObservation?
+    private var playbackRequested = false
     private var auditionPlayer: AVPlayer?
     private var auditionTimeObserverToken: Any?
     private var auditionStopAtSeconds: Double?
@@ -71,6 +78,8 @@ public final class PlaybackEngine: ObservableObject {
                     }
                     let p = AVPlayer(url: playbackURL)
                     p.isMuted = true // Only program audio
+                    p.automaticallyWaitsToMinimizeStalling = false
+                    p.actionAtItemEnd = .pause
                     newPlayers[lane.id] = p
                     newOffsets[lane.id] = sv.offset
                     newDurations[lane.id] = sv.duration
@@ -123,7 +132,27 @@ public final class PlaybackEngine: ObservableObject {
     }
 
     public nonisolated static func computeValidRanges(for sequence: MediaSequence) -> [ClosedRange<Double>] {
+        let branchKeepRanges = (sequence.branchMetadata.programKeepRanges ?? []).compactMap { range -> ClosedRange<Double>? in
+            let start = max(0, range.startTime)
+            let end = min(sequence.duration, range.endTime)
+            guard start < end else { return nil }
+            return start...end
+        }
+        let mergedBranchRanges = mergeRanges(branchKeepRanges)
+
+        if !sequence.programDecisions.isEmpty {
+            let playableProgramRanges = mergeRanges(sequence.programPlayableRanges())
+            return mergedBranchRanges.isEmpty
+                ? playableProgramRanges
+                : intersect(playableProgramRanges, mergedBranchRanges)
+        }
+
         let decisionLanes = primaryEditDecisionLanes(in: sequence)
+        if !branchKeepRanges.isEmpty {
+            let mergedGlobalSkipRanges = mergeRanges(globalSkipRanges(in: decisionLanes, sequenceDuration: sequence.duration))
+            guard !mergedGlobalSkipRanges.isEmpty else { return mergedBranchRanges }
+            return subtract(mergedGlobalSkipRanges, from: mergedBranchRanges)
+        }
         let primaryActiveRanges = collectRanges(type: .active, lanes: decisionLanes, sequenceDuration: sequence.duration)
         let fallbackActiveRanges = collectRanges(type: .active, lanes: sequence.lanes, sequenceDuration: sequence.duration)
         let activeRanges = primaryActiveRanges.isEmpty ? fallbackActiveRanges : primaryActiveRanges
@@ -132,6 +161,19 @@ public final class PlaybackEngine: ObservableObject {
         let mergedGlobalSkipRanges = mergeRanges(globalSkipRanges(in: decisionLanes, sequenceDuration: sequence.duration))
         guard !mergedGlobalSkipRanges.isEmpty else { return mergedActiveRanges }
         return subtract(mergedGlobalSkipRanges, from: mergedActiveRanges)
+    }
+
+    /// The exact collapsed Play Edit duration after branch keep ranges and
+    /// explicit Program SKIP decisions have both been applied.
+    ///
+    /// Keep-range duration alone is not output duration: a branch may retain a
+    /// complete editorial scene while still skipping source intervals inside
+    /// that scene. Export, UI, agent state, and receipts should all use this
+    /// value when they describe the duration of the finished program.
+    public nonisolated static func computeProgramDuration(for sequence: MediaSequence) -> Double {
+        computeValidRanges(for: sequence).reduce(0) { total, range in
+            total + max(0, range.upperBound - range.lowerBound)
+        }
     }
 
     private nonisolated static func mergeRanges(_ ranges: [ClosedRange<Double>]) -> [ClosedRange<Double>] {
@@ -281,9 +323,13 @@ public final class PlaybackEngine: ObservableObject {
         if validRanges.isEmpty { return 0 }
 
         var remainingPTime = programTime
-        for range in validRanges {
+        for (index, range) in validRanges.enumerated() {
             let duration = range.upperBound - range.lowerBound
-            if remainingPTime <= duration {
+            let isLastRange = index == validRanges.index(before: validRanges.endIndex)
+            // A collapsed-program boundary is the first frame of the next kept
+            // range, not the final frame before a skip. Choosing the next range
+            // prevents Play Edit from sticking on the wrong side of a cut.
+            if remainingPTime < duration || (isLastRange && remainingPTime <= duration) {
                 return range.lowerBound + remainingPTime
             }
             remainingPTime -= duration
@@ -320,6 +366,20 @@ public final class PlaybackEngine: ObservableObject {
         }
     }
 
+    private func updateSourcePlaybackState(at sequenceTime: Double, shouldPlay: Bool) {
+        let safeTime = boundedSequenceTime(sequenceTime)
+        for (id, sourcePlayer) in sourcePlayers {
+            let offset = sourceOffsets[id] ?? 0
+            let duration = sourceDurations[id] ?? 0
+            let isPresent = safeTime >= offset && safeTime < offset + duration
+            if shouldPlay && isPresent {
+                sourcePlayer.playImmediately(atRate: 1)
+            } else {
+                sourcePlayer.pause()
+            }
+        }
+    }
+
     public func sourcePlayerTime(laneId: UUID) -> Double? {
         guard let seconds = sourcePlayers[laneId]?.currentTime().seconds,
               seconds.isFinite else {
@@ -341,16 +401,70 @@ public final class PlaybackEngine: ObservableObject {
         }
         guard let player = player else { return }
         let safePlayhead = boundedSequenceTime(playhead)
-        if safePlayhead != playhead {
-            playhead = safePlayhead
+
+        let playbackStart: Double
+        if playbackMode == .playEdit {
+            guard let nextPlayableTime = nextPlayableSequenceTime(atOrAfter: safePlayhead) else {
+                pause()
+                return
+            }
+            playbackStart = nextPlayableTime
+        } else {
+            playbackStart = safePlayhead
         }
-        syncSourcePlayers(to: safePlayhead)
-        player.play()
-        sourcePlayers.values.forEach { $0.play() }
-        isPlaying = true
+
+        playbackRequested = true
+        isPlaying = false
+        isBuffering = true
+        playhead = playbackStart
+        syncSourcePlayers(to: playbackStart, tolerance: .zero, cancelPending: true)
+
+        let targetSeconds = programTime(from: playbackStart)
+        let currentSeconds = player.currentTime().seconds
+        let shouldSeek = !currentSeconds.isFinite || abs(currentSeconds - targetSeconds) > 0.08
+        let beginPlayback = { [weak self, weak player] in
+            Task { @MainActor in
+                guard let self,
+                      let player,
+                      self.player === player,
+                      self.playbackRequested else { return }
+                player.playImmediately(atRate: 1)
+            }
+        }
+
+        if shouldSeek {
+            player.currentItem?.cancelPendingSeeks()
+            player.seek(
+                to: CMTime(seconds: targetSeconds, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            ) { finished in
+                guard finished else { return }
+                _ = beginPlayback()
+            }
+        } else {
+            _ = beginPlayback()
+        }
+    }
+
+    private func nextPlayableSequenceTime(atOrAfter sequenceTime: Double) -> Double? {
+        for range in validRanges {
+            // Edit ranges are time intervals: lower bound inclusive, upper bound
+            // exclusive. An exact upper-bound play request belongs to the next
+            // interval (or the end of the edit), never the removed gap.
+            if sequenceTime >= range.lowerBound && sequenceTime < range.upperBound {
+                return sequenceTime
+            }
+            if sequenceTime < range.lowerBound {
+                return range.lowerBound
+            }
+        }
+        return nil
     }
 
     public func pause() {
+        playbackRequested = false
+        isBuffering = false
         if isAuditioning {
             if let currentTime = auditionClockTime() {
                 playhead = currentTime
@@ -431,7 +545,7 @@ public final class PlaybackEngine: ObservableObject {
             }
             return
         }
-        if isPlaying {
+        if isPlaying || playbackRequested {
             pause()
         } else {
             play()
@@ -555,11 +669,44 @@ public final class PlaybackEngine: ObservableObject {
         timeObserverToken = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
             Task { @MainActor in
                 guard let self = self else { return }
-                if self.isPlaying && !self.isAuditioning {
+                if self.playbackRequested && !self.isAuditioning {
                     let pTime = time.seconds
                     let sTime = self.sequenceTime(from: pTime)
                     self.playhead = sTime
                     self.syncSourcePlayers(to: sTime)
+                    self.updateSourcePlaybackState(at: sTime, shouldPlay: self.isPlaying)
+                }
+            }
+        }
+    }
+
+    private func setupTimeControlStatusObserver() {
+        guard let player else { return }
+        timeControlStatusObserver = player.observe(
+            \.timeControlStatus,
+            options: [.initial, .new]
+        ) { [weak self] observedPlayer, _ in
+            let status = observedPlayer.timeControlStatus
+            Task { @MainActor in
+                guard let self, self.player === observedPlayer else { return }
+                switch status {
+                case .playing:
+                    self.isPlaying = self.playbackRequested
+                    self.isBuffering = false
+                    self.updateSourcePlaybackState(at: self.playhead, shouldPlay: self.playbackRequested)
+                case .waitingToPlayAtSpecifiedRate:
+                    self.isPlaying = false
+                    self.isBuffering = self.playbackRequested
+                    self.updateSourcePlaybackState(at: self.playhead, shouldPlay: false)
+                case .paused:
+                    self.isPlaying = false
+                    if !self.playbackRequested {
+                        self.isBuffering = false
+                    }
+                    self.updateSourcePlaybackState(at: self.playhead, shouldPlay: false)
+                @unknown default:
+                    self.isPlaying = false
+                    self.isBuffering = self.playbackRequested
                 }
             }
         }

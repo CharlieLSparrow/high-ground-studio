@@ -26,6 +26,10 @@ targets:
         MACOSX_DEPLOYMENT_TARGET: "26.0"
         SWIFT_VERSION: "5.9"
         PRODUCT_BUNDLE_IDENTIFIER: com.highground.QuipslyMac
+        CODE_SIGN_STYLE: Manual
+        DEVELOPMENT_TEAM: 585GUXMY5M
+        CODE_SIGN_IDENTITY: "Apple Development: Charles Sparrow (H43845JC67)"
+        PROVISIONING_PROFILE_SPECIFIER: ""
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_NSPrincipalClass: NSApplication
 

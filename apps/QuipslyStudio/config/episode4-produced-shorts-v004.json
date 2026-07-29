@@ -1,0 +1,92 @@
+{
+  "package": "episode-4-produced-shorts-v004",
+  "renderVersion": "v004",
+  "brand": "High Ground Odyssey",
+  "sourceMaster": "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Full_Sync_Edits/20260715-episode4-main-reviewed-picture-v003/main-45-60/episode-4-main-45-60-16x9-v001.mp4",
+  "outputRoot": "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Upload_Candidates/20260715-episode4-produced-shorts-v004",
+  "shorts": [
+    {
+      "slug": "01-reliability-beats-raw-talent",
+      "title": "Reliability Beats Raw Talent",
+      "hook": "Reliability beats raw talent",
+      "description": "Homer explains why meaningful effort and being dependable can matter more than being the smartest person in the room.",
+      "socialCaption": "You do not have to be the smartest person in the room to be the person everyone can count on.",
+      "tags": ["#Leadership", "#Reliability", "#HighGroundOdyssey"],
+      "segments": [{"start": 233.82, "end": 267.14}],
+      "transcript": "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Upload_Candidates/20260715-episode4-produced-shorts-source-v001/transcript-handles/01-source-220.5.json",
+      "transcriptSourceStart": 220.5,
+      "captionReplacements": [
+        {"from": ["at", "kerr", "preschool"], "to": ["at", "Kerr", "Preschool"]}
+      ]
+    },
+    {
+      "slug": "02-work-needs-humanity",
+      "title": "Work Needs Humanity",
+      "hook": "Work should not feel inhuman",
+      "description": "A humane workplace does not require gimmicks. It requires work that people do not fantasize about crashing their car to avoid.",
+      "socialCaption": "The point is not mandatory fun. The point is recognizing the humanity of the people doing the work.",
+      "tags": ["#WorkCulture", "#Leadership", "#HighGroundOdyssey"],
+      "segments": [{"start": 278.62, "end": 319.62}],
+      "transcript": "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Upload_Candidates/20260715-episode4-produced-shorts-source-v001/transcript-handles/02-source-252.4.json",
+      "transcriptSourceStart": 252.4,
+      "captionReplacements": [
+        {"from": ["does", "mean", "that", "work", "the", "work", "environment"], "to": ["does", "mean", "the", "work", "environment"]},
+        {"from": ["it", "does", "doesn't", "require"], "to": ["it", "doesn't", "require"]}
+      ]
+    },
+    {
+      "slug": "03-communication-is-not-always-a-meeting",
+      "title": "Communication Is Not Always a Meeting",
+      "hook": "The best communication is not always a meeting",
+      "description": "Charlie connects military communications, technical support, and call-center leadership through the value of asynchronous visibility.",
+      "socialCaption": "Sometimes the big picture appears when people can read the right conversation at the right time.",
+      "tags": ["#Communication", "#TechSupport", "#Leadership"],
+      "segments": [{"start": 377.9, "end": 416.68}],
+      "transcript": "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Upload_Candidates/20260715-episode4-produced-shorts-source-v001/transcript-handles/03-source-361.5.json",
+      "transcriptSourceStart": 361.5
+    },
+    {
+      "slug": "04-leadership-is-environment-design",
+      "title": "Leadership Is Environment Design",
+      "hook": "Behavior follows incentives, not speeches",
+      "description": "Leadership changes behavior by designing the environment around people, not merely by issuing more commands.",
+      "socialCaption": "If you want behavior to change, inspect what the system rewards before writing another speech.",
+      "tags": ["#LeadershipDesign", "#BehaviorChange", "#HighGroundOdyssey"],
+      "segments": [{"start": 1976.04, "end": 2008.08}],
+      "transcript": "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Upload_Candidates/20260715-episode4-produced-shorts-source-v001/transcript-handles/04-source-1960.5.json",
+      "transcriptSourceStart": 1960.5,
+      "captionReplacements": [
+        {"from": ["freakonomics"], "to": ["Freakonomics"]},
+        {"from": ["incentivized"], "to": ["incentivizing"]}
+      ]
+    },
+    {
+      "slug": "05-simple-solutions-still-count",
+      "title": "Simple Solutions Still Count",
+      "hook": "The answer may be obvious to someone else",
+      "description": "Simple answers often come from unexpected people. Good leaders make it safe for everyone to suggest them.",
+      "socialCaption": "Listen broadly. The simplest useful answer may come from the person nobody thought to ask.",
+      "tags": ["#ProblemSolving", "#Leadership", "#ListenBetter"],
+      "segments": [{"start": 3386.96, "end": 3404.46}],
+      "transcript": "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Upload_Candidates/20260715-episode4-produced-shorts-source-v001/transcript-handles/05-source-3380.1.json",
+      "transcriptSourceStart": 3380.1
+    },
+    {
+      "slug": "06-the-costa-rica-buffet-test",
+      "title": "The Costa Rica Buffet Test",
+      "hook": "He gamed the buffet without leaving his chair",
+      "description": "Charlie tells the family story that revealed Homer's instinct to watch the whole system before acting.",
+      "socialCaption": "Everyone else saw dinner. Homer saw the whole system and quietly found the easiest path through it.",
+      "tags": ["#FamilyStory", "#SystemsThinking", "#HighGroundOdyssey"],
+      "segments": [
+        {"start": 3460.52, "end": 3469.72},
+        {"start": 3472.38, "end": 3532.7}
+      ],
+      "transcript": "/Volumes/My Passport/Episode_and_Shorts_Test/Episode_4_Upload_Candidates/20260715-episode4-produced-shorts-source-v001/transcript-handles/06-source-3456-extended.json",
+      "transcriptSourceStart": 3456.0,
+      "captionReplacements": [
+        {"from": ["give", "us", "your", "food"], "to": ["give", "you", "our", "food"]}
+      ]
+    }
+  ]
+}

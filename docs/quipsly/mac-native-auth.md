@@ -1,40 +1,91 @@
-# Quipsly Mac native auth
+# Quipsly native auth direction
 
-Quipsly Mac uses a native-device session flow. Do not replace it with copied browser cookies or durable bearer tokens.
+Status: active direction, replacing manual browser-token handoff as the product path.
 
-## Intended flow
+Last updated: 2026-07-05
 
-1. The Mac app opens the normal Nest browser sign-in flow.
-2. Nest authenticates the user with the web app session.
-3. `/api/mac/session-handoff` creates a short-lived one-time code and serves an "Open Quipsly Mac" handoff page that attempts `quipslymac://auth/session#code=...&state=...`.
-4. The Mac app verifies the callback `state` and posts the one-time code to `/api/mac/session-exchange`.
-5. Nest consumes the code, creates a `StudioNativeDeviceSession`, and returns:
-   - short-lived access token
-   - refresh token
-   - device session id
-   - user/profile metadata
-6. The Mac app stores refresh tokens per profile in the local profile vault and stores only the current short-lived access token for API calls.
-7. The Mac app refreshes through `/api/mac/session-refresh`; refresh tokens rotate on use.
+## Decision
 
-## Durable records
+Quipsly native apps should authenticate through the same Firebase-first identity system as the web app.
 
-- `StudioNativeAuthCode`: one-time code ledger. Codes expire quickly and can be consumed once.
-- `StudioNativeDeviceSession`: revocable native device session. This is the server-side truth for Mac profile access.
+Firebase proves identity. Quipsly Postgres owns access.
 
-## Product rules
+## Preferred native flow
 
-- Browser identity, native device session, and API access token are separate concepts.
-- A profile switch should select a saved device session, not copy web cookies.
-- Native API access should use short-lived access tokens.
-- Refresh credentials live in the profile vault, not as loose browser cookies or copied durable bearer tokens.
-- Manual recovery may paste a one-time code, never a durable bearer token.
+1. The Mac/iOS app signs in through Firebase-supported native auth:
+   - Google now.
+   - Email/password for admin-created/test/operator accounts.
+   - Apple later.
+2. The native app obtains a Firebase ID token.
+3. Native API calls send `Authorization: Bearer <Firebase ID token>`.
+4. Quipsly server verifies the bearer token with Firebase Admin.
+5. Server links/resolves the canonical Quipsly `User`.
+6. Server authorizes Nests, assets, documents, and publishing actions through app-owned records.
 
-## Development storage note
+This path is already aligned with `verifyBearerToken` and the Firebase-backed Quipsly session boundary.
 
-Local unsigned development builds currently use `~/Library/Application Support/QuipslyMac/nest-session-vault.json` with user-only permissions. This avoids macOS Keychain prompts caused by changing ad-hoc signing identities during rapid local development.
+## Current iOS capture implementation
 
-Non-debug builds keep the same profile-vault API but use macOS Keychain as the storage backend once the bundle identifier, signing identity, and access group are stable.
+`apps/mobile-capture/HighGroundCapture` now follows the Firebase-first path without depending on the retired native handoff endpoints.
 
-## Current compatibility
+- `LoginView.swift` exposes an email/password reviewer/operator login surface.
+- `AuthManager.swift` fetches public Firebase client configuration from `/api/mac/firebase-client-config`.
+- It signs in through Firebase Identity Toolkit `accounts:signInWithPassword`.
+- It stores the Firebase ID token, refresh token, expiry, email, and display name in Keychain.
+- It refreshes expired ID tokens through `securetoken.googleapis.com/v1/token`.
+- It verifies the Quipsly app session through `/api/mac/session-check` using `Authorization: Bearer <Firebase ID token>`.
+- Native capture APIs continue sending Firebase bearer tokens, so the server remains the source of truth for Quipsly user, Home Nest, access, sessions, recordings, transcripts, and packets.
 
-Legacy v1 Mac bearer tokens are still accepted temporarily by `resolveMacSessionActor` so existing in-flight local sessions do not break during rollout. New sessions should use the v2 device-session flow.
+Guardrail:
+
+```bash
+node scripts/quipsly-ios-native-auth-static-smoke.mjs
+```
+
+This smoke is part of `scripts/quipsly-mobile-capture-preflight.sh`. It fails if the iOS capture login path reintroduces `/api/mac/session-handoff`, `/api/mac/session-exchange`, or `ASWebAuthenticationSession` as the product login path.
+
+## Optional device-session layer
+
+A Quipsly native device session may still be useful later for:
+
+- profile vaults,
+- revocable long-lived native sessions,
+- offline-friendly refresh behavior,
+- per-device audit/revocation,
+- app-store/native UX polish.
+
+If built, it must be Firebase-backed:
+
+1. Native app proves identity with Firebase.
+2. Quipsly exchanges that proof for a revocable `StudioNativeDeviceSession`.
+3. Device sessions map back to a canonical Quipsly `User`.
+
+Do not build device sessions as a second identity system.
+
+## What is retired
+
+The old browser-copy/manual handoff approach is not the primary product path.
+
+Retired as primary:
+
+- copying durable browser tokens,
+- depending on Google inside `WKWebView`,
+- using manual handoff as the normal Mac sign-in flow,
+- accepting stale Auth.js sessions as native truth.
+
+Allowed only as recovery/development fallback:
+
+- one-time short-lived handoff codes,
+- local debugging helpers,
+- explicit operator-only diagnostics.
+
+## Product rule
+
+Native sign-in must feel boring:
+
+- sign in,
+- choose account/profile,
+- see assigned Nests,
+- sync/edit/upload with the same access rules as web.
+
+If the native app needs special auth behavior, it should extend the Firebase-first boundary, not bypass it.

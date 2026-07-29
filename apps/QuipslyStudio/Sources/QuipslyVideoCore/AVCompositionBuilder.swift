@@ -9,6 +9,12 @@ public enum AVCompositionError: Error {
 }
 
 public actor AVCompositionBuilder {
+    private struct VideoSegment {
+        var sourceRange: CMTimeRange
+        var destination: CMTime
+        var heldOutputDuration: CMTime?
+    }
+
     public init() {}
 
     public func buildPlayerItem(
@@ -17,11 +23,13 @@ public actor AVCompositionBuilder {
         format: ExportFormat = .horizontal16x9,
         allowExternalOriginalMedia: Bool = false,
         allowedOriginalMediaRootPath: String? = nil,
+        allowedProxyMediaRootPath: String? = nil,
         sequenceRangeOverride: [ClosedRange<Double>]? = nil
     ) async throws -> AVPlayerItem {
         let composition = AVMutableComposition()
 
         var layerInstructions: [AVMutableVideoCompositionLayerInstruction] = []
+        var layerInstructionsByLaneID: [UUID: AVMutableVideoCompositionLayerInstruction] = [:]
         var compositionVideoTracks: [AVMutableCompositionTrack] = []
 
         let targetRenderSize: CGSize
@@ -38,9 +46,11 @@ public actor AVCompositionBuilder {
         // The first instruction in the array is the TOP-MOST layer.
         // So we want V2's instruction first, then V1's instruction.
 
+        let sequenceHasProgramTrack = !sequence.programDecisions.isEmpty
         let sequenceHasActiveTags = sequence.lanes.contains { lane in
             lane.metadata?.ignoreForProduction != true && lane.tags.contains { $0.type == .active }
         }
+        let sequenceHasProgramTruth = sequenceHasProgramTrack || sequenceHasActiveTags
 
         var validRanges: [ClosedRange<Double>] = []
         let minimumRenderableSegmentDuration = 1.0 / 30.0
@@ -71,7 +81,7 @@ public actor AVCompositionBuilder {
                 let isAudioOnly = Self.isAudioOnlyLane(lane, sourceVideo: sourceVideo)
                 if let proxyURL = sourceVideo.proxyURL {
                     if Self.isProtectedOriginalPath(proxyURL.path)
-                        && !Self.isOriginalPathAllowed(proxyURL.path, allowedRootPath: allowedOriginalMediaRootPath) {
+                        && !Self.isOriginalPathAllowed(proxyURL.path, allowedRootPath: allowedProxyMediaRootPath) {
                         continue
                     }
                     guard FileManager.default.fileExists(atPath: proxyURL.path) else {
@@ -103,26 +113,29 @@ public actor AVCompositionBuilder {
                     let totalDuration = sourceVideo.duration
 
                     var segmentSequenceRanges = validRanges
-                    if sequenceHasActiveTags && !isAudioOnly {
-                        segmentSequenceRanges = lane.tags
-                            .filter { $0.type == .active }
-                            .flatMap { tag -> [ClosedRange<Double>] in
-                                let tagSeqStart = tag.startTime + sourceVideo.offset
-                                let tagSeqEnd = tagSeqStart + max(0, tag.duration)
-                                guard tagSeqStart < tagSeqEnd else { return [] }
-                                return validRanges.compactMap { validRange in
-                                    let start = max(tagSeqStart, validRange.lowerBound)
-                                    let end = min(tagSeqEnd, validRange.upperBound)
-                                    return start < end ? start...end : nil
+                    if mode == .playEdit && sequenceHasProgramTruth && !isAudioOnly {
+                        let visibleRanges = sequenceHasProgramTrack
+                            ? sequence.programVisibleRanges(for: lane.id)
+                            : lane.tags
+                                .filter { $0.type == .active }
+                                .map { tag in
+                                    let start = tag.startTime + sourceVideo.offset
+                                    return start...(start + max(0, tag.duration))
                                 }
+                        segmentSequenceRanges = visibleRanges.flatMap { visibleRange in
+                            validRanges.compactMap { validRange in
+                                let start = max(visibleRange.lowerBound, validRange.lowerBound)
+                                let end = min(visibleRange.upperBound, validRange.upperBound)
+                                return start < end ? start...end : nil
                             }
+                        }
                     }
                     segmentSequenceRanges = Self.normalizedRenderableRanges(
                         segmentSequenceRanges,
                         minimumDuration: minimumRenderableSegmentDuration
                     )
 
-                    var segments: [(CMTimeRange, CMTime)] = []
+                    var segments: [VideoSegment] = []
 
                     for sequenceRange in segmentSequenceRanges {
                         let mediaStart = max(0, sequenceRange.lowerBound - sourceVideo.offset)
@@ -130,26 +143,114 @@ public actor AVCompositionBuilder {
 
                         if mediaEnd - mediaStart >= minimumRenderableSegmentDuration {
                             let duration = mediaEnd - mediaStart
-                            let mediaTimeRange = CMTimeRange(
-                                start: CMTime(seconds: mediaStart, preferredTimescale: 600),
-                                duration: CMTime(seconds: duration, preferredTimescale: 600)
-                            )
-
                             let sequenceStart = mediaStart + sourceVideo.offset
                             let programStart = Self.programTime(for: sequenceStart, in: validRanges)
+                            let event = sequence.programDecision(at: sequenceStart + duration / 2)
+                            let holdsThisClip = mode == .playEdit
+                                && event?.resolvedClipMotion == .holdFrame
+                                && event?.clipLaneID == lane.id
 
-                            segments.append((mediaTimeRange, CMTime(seconds: programStart, preferredTimescale: 600)))
+                            if holdsThisClip {
+                                let frameDuration = min(minimumRenderableSegmentDuration, sourceVideo.duration)
+                                let requestedFrame = event?.clipHoldSourceTime ?? mediaStart
+                                let heldSourceTime = min(
+                                    max(0, requestedFrame),
+                                    max(0, sourceVideo.duration - frameDuration)
+                                )
+                                segments.append(VideoSegment(
+                                    sourceRange: CMTimeRange(
+                                        start: CMTime(seconds: heldSourceTime, preferredTimescale: 600),
+                                        duration: CMTime(seconds: frameDuration, preferredTimescale: 600)
+                                    ),
+                                    destination: CMTime(seconds: programStart, preferredTimescale: 600),
+                                    heldOutputDuration: CMTime(seconds: duration, preferredTimescale: 600)
+                                ))
+                            } else {
+                                segments.append(VideoSegment(
+                                    sourceRange: CMTimeRange(
+                                        start: CMTime(seconds: mediaStart, preferredTimescale: 600),
+                                        duration: CMTime(seconds: duration, preferredTimescale: 600)
+                                    ),
+                                    destination: CMTime(seconds: programStart, preferredTimescale: 600),
+                                    heldOutputDuration: nil
+                                ))
+                            }
                         }
                     }
 
-                    if segments.isEmpty {
+                    var audioSequenceRanges: [ClosedRange<Double>]
+                    if mode == .playThrough {
+                        audioSequenceRanges = isAudioOnly ? validRanges : []
+                    } else if sequenceHasProgramTrack {
+                        audioSequenceRanges = sequence.programAudioRanges(
+                            for: lane.id,
+                            isHostMixLane: isAudioOnly
+                        ).flatMap { audibleRange in
+                            validRanges.compactMap { validRange in
+                                let start = max(audibleRange.lowerBound, validRange.lowerBound)
+                                let end = min(audibleRange.upperBound, validRange.upperBound)
+                                return start < end ? start...end : nil
+                            }
+                        }
+                    } else {
+                        audioSequenceRanges = isAudioOnly ? validRanges : []
+                    }
+
+                    if !isAudioOnly {
+                        audioSequenceRanges = Self.subtractRanges(
+                            audioSequenceRanges,
+                            removing: sequence.resolvedProgramDecisionSpans().compactMap { span in
+                                guard span.event.resolvedClipMotion == .holdFrame,
+                                      span.event.clipLaneID == lane.id else { return nil }
+                                return span.startTime...span.endTime
+                            }
+                        )
+                    }
+
+                    let normalizedAudioRanges = Self.normalizedRenderableRanges(
+                        audioSequenceRanges,
+                        minimumDuration: minimumRenderableSegmentDuration
+                    )
+                    var audioSegments: [(CMTimeRange, CMTime)] = []
+                    for sequenceRange in normalizedAudioRanges {
+                        let mediaStart = max(0, sequenceRange.lowerBound - sourceVideo.offset)
+                        let mediaEnd = min(sourceVideo.duration, sequenceRange.upperBound - sourceVideo.offset)
+                        guard mediaEnd - mediaStart >= minimumRenderableSegmentDuration else { continue }
+
+                        let duration = mediaEnd - mediaStart
+                        let mediaTimeRange = CMTimeRange(
+                            start: CMTime(seconds: mediaStart, preferredTimescale: 600),
+                            duration: CMTime(seconds: duration, preferredTimescale: 600)
+                        )
+                        let sequenceStart = mediaStart + sourceVideo.offset
+                        let programStart = Self.programTime(for: sequenceStart, in: validRanges)
+                        audioSegments.append((
+                            mediaTimeRange,
+                            CMTime(seconds: programStart, preferredTimescale: 600)
+                        ))
+                    }
+
+                    if segments.isEmpty && audioSegments.isEmpty {
                         continue
                     }
 
-                    if let svTrack = sourceVideoTracks.first {
+                    if !segments.isEmpty, let svTrack = sourceVideoTracks.first {
                         if let compVideoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
                             for segment in segments {
-                                try compVideoTrack.insertTimeRange(segment.0, of: svTrack, at: segment.1)
+                                try compVideoTrack.insertTimeRange(
+                                    segment.sourceRange,
+                                    of: svTrack,
+                                    at: segment.destination
+                                )
+                                if let heldOutputDuration = segment.heldOutputDuration {
+                                    compVideoTrack.scaleTimeRange(
+                                        CMTimeRange(
+                                            start: segment.destination,
+                                            duration: segment.sourceRange.duration
+                                        ),
+                                        toDuration: heldOutputDuration
+                                    )
+                                }
                             }
                             compositionVideoTracks.append(compVideoTrack)
 
@@ -163,21 +264,37 @@ public actor AVCompositionBuilder {
                             )
                             layerInstruction.setTransform(renderTransform, at: .zero)
 
-                            if sequenceHasActiveTags {
+                            if mode == .playEdit && sequenceHasProgramTruth {
                                 layerInstruction.setOpacity(0.0, at: .zero)
-                                let activeTags = lane.tags.filter { $0.type == .active }
-                                for tag in activeTags {
-                                    let tagSeqStart = tag.startTime + sourceVideo.offset
-                                    let tagSeqEnd = tagSeqStart + tag.duration
+                                let activeRanges = Self.resolvedActiveSequenceRanges(
+                                    for: lane,
+                                    sourceVideo: sourceVideo,
+                                    in: sequence
+                                )
+                                for activeRange in activeRanges {
+                                    let tagSeqStart = activeRange.lowerBound
+                                    let tagSeqEnd = activeRange.upperBound
                                     let activeVisualLaneIds = Self.activeVisualLaneIDs(
                                         at: (tagSeqStart + tagSeqEnd) / 2,
-                                        in: sequence
+                                        in: sequence,
+                                        allowedProxyMediaRootPath: allowedProxyMediaRootPath
                                     )
                                     let slotFrame = Self.programSlotFrame(
-                                        for: lane.id,
+                                        for: lane,
                                         activeLaneIds: activeVisualLaneIds,
+                                        in: sequence,
                                         format: format,
                                         renderSize: targetRenderSize
+                                    )
+                                    let preservesWholeFrame = Self.isClipFocusLane(lane)
+                                        && activeVisualLaneIds.count > 1
+                                        && Self.clipFocusLayout(for: format, in: sequence).clipContentMode == .fit
+                                    let activeClipFocusLayout = Self.isClipFocusLane(lane)
+                                        ? Self.clipFocusLayout(for: format, in: sequence)
+                                        : nil
+                                    let tagCropAdjustment = Self.applyingClipFocus(
+                                        activeClipFocusLayout,
+                                        to: Self.programCropAdjustment(for: lane, format: format, at: tagSeqStart)
                                     )
                                     let pStart = Self.programTime(for: tagSeqStart, in: validRanges)
                                     let pEnd = Self.programTime(for: tagSeqEnd, in: validRanges)
@@ -186,12 +303,28 @@ public actor AVCompositionBuilder {
                                         let start = CMTime(seconds: pStart, preferredTimescale: 600)
                                         let end = CMTime(seconds: pEnd, preferredTimescale: 600)
 
-                                        let tagTransform = Self.aspectFillTransform(
-                                            naturalSize: naturalSize,
-                                            preferredTransform: preferredTransform,
-                                            renderFrame: slotFrame,
-                                            cropAdjustment: Self.programCropAdjustment(for: lane, format: format, at: tagSeqStart)
-                                        )
+                                        let tagTransform = preservesWholeFrame
+                                            ? Self.aspectFitTransform(
+                                                naturalSize: naturalSize,
+                                                preferredTransform: preferredTransform,
+                                                renderFrame: slotFrame,
+                                                cropAdjustment: tagCropAdjustment
+                                            )
+                                            : Self.aspectFillTransform(
+                                                naturalSize: naturalSize,
+                                                preferredTransform: preferredTransform,
+                                                renderFrame: slotFrame,
+                                                cropAdjustment: tagCropAdjustment
+                                            )
+                                        let sourceCropRectangle = preservesWholeFrame
+                                            ? CGRect(origin: .zero, size: naturalSize)
+                                            : Self.sourceCropRectangleForAspectFill(
+                                                naturalSize: naturalSize,
+                                                preferredTransform: preferredTransform,
+                                                renderFrame: slotFrame,
+                                                cropAdjustment: tagCropAdjustment
+                                            )
+                                        layerInstruction.setCropRectangle(sourceCropRectangle, at: start)
                                         layerInstruction.setTransform(tagTransform, at: start)
                                         Self.applyProgramCropKeyframes(
                                             to: layerInstruction,
@@ -202,7 +335,9 @@ public actor AVCompositionBuilder {
                                             renderFrame: slotFrame,
                                             sequenceStart: tagSeqStart,
                                             sequenceEnd: tagSeqEnd,
-                                            validRanges: validRanges
+                                            validRanges: validRanges,
+                                            preservesWholeFrame: preservesWholeFrame,
+                                            clipFocusLayout: activeClipFocusLayout
                                         )
                                         layerInstruction.setOpacity(1.0, at: start)
                                         layerInstruction.setOpacity(0.0, at: end)
@@ -211,12 +346,13 @@ public actor AVCompositionBuilder {
                             }
 
                             layerInstructions.append(layerInstruction)
+                            layerInstructionsByLaneID[lane.id] = layerInstruction
                         }
                     }
 
-                    if isAudioOnly, let saTrack = sourceAudioTracks.first {
+                    if !audioSegments.isEmpty, let saTrack = sourceAudioTracks.first {
                         if let compAudioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
-                            for segment in segments {
+                            for segment in audioSegments {
                                 try compAudioTrack.insertTimeRange(segment.0, of: saTrack, at: segment.1)
                             }
                         }
@@ -235,7 +371,7 @@ public actor AVCompositionBuilder {
             videoComposition.renderSize = targetRenderSize
             videoComposition.frameDuration = CMTime(value: 1, timescale: 30) // 30 FPS
 
-            let instruction: AVVideoCompositionInstructionProtocol
+            let instructions: [AVVideoCompositionInstructionProtocol]
 
             let activeTrack = format == .vertical9x16 ? sequence.verticalOrientationTrack : sequence.orientationTrack
 
@@ -254,19 +390,121 @@ public actor AVCompositionBuilder {
                     keyframes: activeTrack.keyframes,
                     is360: true
                 )
-                instruction = reframingInstruction
+                instructions = [reframingInstruction]
+            } else if mode == .playEdit && sequenceHasProgramTruth {
+                let compiledInstructions = Self.compactProgramInstructions(
+                    for: sequence,
+                    validRanges: validRanges,
+                    layerInstructionsByLaneID: layerInstructionsByLaneID,
+                    allowedProxyMediaRootPath: allowedProxyMediaRootPath
+                )
+                if compiledInstructions.isEmpty {
+                    let fallbackInstruction = AVMutableVideoCompositionInstruction()
+                    fallbackInstruction.timeRange = CMTimeRange(
+                        start: .zero,
+                        duration: CMTime(seconds: compositionDuration, preferredTimescale: 600)
+                    )
+                    fallbackInstruction.layerInstructions = layerInstructions
+                    instructions = [fallbackInstruction]
+                } else {
+                    instructions = compiledInstructions
+                }
             } else {
                 let standardInstruction = AVMutableVideoCompositionInstruction()
                 standardInstruction.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: compositionDuration, preferredTimescale: 600))
                 standardInstruction.layerInstructions = layerInstructions
-                instruction = standardInstruction
+                instructions = [standardInstruction]
             }
 
-            videoComposition.instructions = [instruction]
+            videoComposition.instructions = instructions
             playerItem.videoComposition = videoComposition
         }
 
         return playerItem
+    }
+
+    /// Compiles sparse editorial intent into small AVFoundation render spans.
+    ///
+    /// The sequence model intentionally keeps every whole source lane. Program
+    /// playback should not make AVFoundation preroll every one of those lanes at
+    /// once, however. Each instruction below names only the one to three visual
+    /// sources required for that part of the edit. Adjacent spans with identical
+    /// source ownership are merged so the playback graph stays compact.
+    private static func compactProgramInstructions(
+        for sequence: MediaSequence,
+        validRanges: [ClosedRange<Double>],
+        layerInstructionsByLaneID: [UUID: AVMutableVideoCompositionLayerInstruction],
+        allowedProxyMediaRootPath: String?
+    ) -> [AVVideoCompositionInstructionProtocol] {
+        guard !validRanges.isEmpty, !layerInstructionsByLaneID.isEmpty else { return [] }
+
+        var boundaries = validRanges.flatMap { [$0.lowerBound, $0.upperBound] }
+        boundaries.append(contentsOf: sequence.sortedProgramDecisions.map(\.startTime))
+
+        for lane in sequence.lanes {
+            guard lane.metadata?.ignoreForProduction != true,
+                  let sourceVideo = lane.sourceVideo,
+                  !isAudioOnlyLane(lane, sourceVideo: sourceVideo) else { continue }
+            boundaries.append(sourceVideo.offset)
+            boundaries.append(sourceVideo.offset + sourceVideo.duration)
+
+            if sequence.programDecisions.isEmpty {
+                for tag in lane.tags where tag.duration > 0 {
+                    boundaries.append(sourceVideo.offset + tag.startTime)
+                    boundaries.append(sourceVideo.offset + tag.startTime + tag.duration)
+                }
+            }
+        }
+
+        let finiteBoundaries = Array(Set(boundaries.filter(\.isFinite))).sorted()
+        var compiled: [AVMutableVideoCompositionInstruction] = []
+        var previousLaneIDs: [UUID]?
+
+        for validRange in validRanges {
+            let localBoundaries = Array(Set(
+                [validRange.lowerBound, validRange.upperBound]
+                + finiteBoundaries.filter { $0 > validRange.lowerBound && $0 < validRange.upperBound }
+            )).sorted()
+
+            guard localBoundaries.count > 1 else { continue }
+            for index in 0..<(localBoundaries.count - 1) {
+                let sequenceStart = localBoundaries[index]
+                let sequenceEnd = localBoundaries[index + 1]
+                guard sequenceEnd - sequenceStart >= 1.0 / 600.0 else { continue }
+
+                let midpoint = sequenceStart + ((sequenceEnd - sequenceStart) / 2)
+                let activeLaneIDs = activeVisualLaneIDs(
+                    at: midpoint,
+                    in: sequence,
+                    allowedProxyMediaRootPath: allowedProxyMediaRootPath
+                ).filter { layerInstructionsByLaneID[$0] != nil }
+
+                let programStart = programTime(for: sequenceStart, in: validRanges)
+                let programEnd = programTime(for: sequenceEnd, in: validRanges)
+                guard programEnd - programStart >= 1.0 / 600.0 else { continue }
+
+                if let previous = compiled.last,
+                   previousLaneIDs == activeLaneIDs,
+                   abs(previous.timeRange.end.seconds - programStart) <= 1.0 / 600.0 {
+                    previous.timeRange = CMTimeRange(
+                        start: previous.timeRange.start,
+                        end: CMTime(seconds: programEnd, preferredTimescale: 600)
+                    )
+                    continue
+                }
+
+                let instruction = AVMutableVideoCompositionInstruction()
+                instruction.timeRange = CMTimeRange(
+                    start: CMTime(seconds: programStart, preferredTimescale: 600),
+                    end: CMTime(seconds: programEnd, preferredTimescale: 600)
+                )
+                instruction.layerInstructions = activeLaneIDs.compactMap { layerInstructionsByLaneID[$0] }
+                compiled.append(instruction)
+                previousLaneIDs = activeLaneIDs
+            }
+        }
+
+        return compiled
     }
 
     public func buildAudioMasterComposition(
@@ -287,10 +525,9 @@ public actor AVCompositionBuilder {
             throw AVCompositionError.noAudioSegments
         }
 
+        let sequenceHasProgramTrack = !sequence.programDecisions.isEmpty
         let audioLanes = sequence.lanes.filter { lane in
-            guard lane.metadata?.ignoreForProduction != true else { return false }
-            guard let sourceVideo = lane.sourceVideo else { return false }
-            return Self.isAudioOnlyLane(lane, sourceVideo: sourceVideo)
+            lane.metadata?.ignoreForProduction != true && lane.sourceVideo != nil
         }
         guard !audioLanes.isEmpty else {
             throw AVCompositionError.noAudioLanes
@@ -325,14 +562,50 @@ public actor AVCompositionBuilder {
             let asset = AVURLAsset(url: urlToUse)
             let sourceAudioTracks = try await asset.loadTracks(withMediaType: .audio)
             guard let sourceAudioTrack = sourceAudioTracks.first else { continue }
+            let isHostMixLane = Self.isAudioOnlyLane(lane, sourceVideo: sourceVideo)
+
+            var audioSequenceRanges: [ClosedRange<Double>]
+            if mode == .playThrough {
+                audioSequenceRanges = isHostMixLane ? validRanges : []
+            } else if sequenceHasProgramTrack {
+                audioSequenceRanges = sequence.programAudioRanges(
+                    for: lane.id,
+                    isHostMixLane: isHostMixLane
+                ).flatMap { audibleRange in
+                    validRanges.compactMap { validRange in
+                        let start = max(audibleRange.lowerBound, validRange.lowerBound)
+                        let end = min(audibleRange.upperBound, validRange.upperBound)
+                        return start < end ? start...end : nil
+                    }
+                }
+            } else {
+                audioSequenceRanges = isHostMixLane ? validRanges : []
+            }
+
+            if !isHostMixLane {
+                audioSequenceRanges = Self.subtractRanges(
+                    audioSequenceRanges,
+                    removing: sequence.resolvedProgramDecisionSpans().compactMap { span in
+                        guard span.event.resolvedClipMotion == .holdFrame,
+                              span.event.clipLaneID == lane.id else { return nil }
+                        return span.startTime...span.endTime
+                    }
+                )
+            }
+
+            let normalizedAudioRanges = Self.normalizedRenderableRanges(
+                audioSequenceRanges,
+                minimumDuration: 1.0 / 30.0
+            )
+            guard !normalizedAudioRanges.isEmpty else { continue }
             guard let compAudioTrack = composition.addMutableTrack(
                 withMediaType: .audio,
                 preferredTrackID: kCMPersistentTrackID_Invalid
             ) else { continue }
 
-            for validRange in validRanges {
-                let mediaStart = max(0, validRange.lowerBound - sourceVideo.offset)
-                let mediaEnd = min(sourceVideo.duration, validRange.upperBound - sourceVideo.offset)
+            for audibleRange in normalizedAudioRanges {
+                let mediaStart = max(0, audibleRange.lowerBound - sourceVideo.offset)
+                let mediaEnd = min(sourceVideo.duration, audibleRange.upperBound - sourceVideo.offset)
                 guard mediaStart < mediaEnd else { continue }
 
                 let duration = mediaEnd - mediaStart
@@ -366,6 +639,35 @@ public actor AVCompositionBuilder {
         }
         let ext = sourceVideo.mediaURL.pathExtension.lowercased()
         return ["wav", "aif", "aiff", "mp3", "m4a", "aac", "flac"].contains(ext)
+    }
+
+    private static func subtractRanges(
+        _ ranges: [ClosedRange<Double>],
+        removing cuts: [ClosedRange<Double>]
+    ) -> [ClosedRange<Double>] {
+        guard !ranges.isEmpty, !cuts.isEmpty else { return ranges }
+        let sortedCuts = cuts.sorted { $0.lowerBound < $1.lowerBound }
+
+        return ranges.flatMap { range -> [ClosedRange<Double>] in
+            var remaining = [range]
+            for cut in sortedCuts {
+                remaining = remaining.flatMap { candidate -> [ClosedRange<Double>] in
+                    let overlapStart = max(candidate.lowerBound, cut.lowerBound)
+                    let overlapEnd = min(candidate.upperBound, cut.upperBound)
+                    guard overlapStart < overlapEnd else { return [candidate] }
+
+                    var pieces: [ClosedRange<Double>] = []
+                    if candidate.lowerBound < overlapStart {
+                        pieces.append(candidate.lowerBound...overlapStart)
+                    }
+                    if overlapEnd < candidate.upperBound {
+                        pieces.append(overlapEnd...candidate.upperBound)
+                    }
+                    return pieces
+                }
+            }
+            return remaining
+        }
     }
 
     private static func isProtectedOriginalPath(_ path: String) -> Bool {
@@ -434,18 +736,41 @@ public actor AVCompositionBuilder {
         return merged
     }
 
-    private static func activeVisualLaneIDs(at sequenceTime: Double, in sequence: MediaSequence) -> [UUID] {
-        sequence.lanes
+    private static func activeVisualLaneIDs(
+        at sequenceTime: Double,
+        in sequence: MediaSequence,
+        allowedProxyMediaRootPath: String?
+    ) -> [UUID] {
+        if let event = sequence.programDecision(at: sequenceTime) {
+            let selectedIDs = Set(event.sourceLaneIDs)
+            return sequence.lanes
+                .filter { lane in
+                    guard selectedIDs.contains(lane.id),
+                          lane.metadata?.ignoreForProduction != true,
+                          let sourceVideo = lane.sourceVideo else { return false }
+                    guard sequenceTime >= sourceVideo.offset,
+                          sequenceTime < sourceVideo.offset + sourceVideo.duration else { return false }
+                    return isPlayableVisualLane(
+                        lane,
+                        sourceVideo: sourceVideo,
+                        allowedProxyMediaRootPath: allowedProxyMediaRootPath
+                    )
+                }
+                .sorted { programLaneSortKey($0) < programLaneSortKey($1) }
+                .map(\.id)
+        }
+
+        return sequence.lanes
             .filter { lane in
                 guard lane.metadata?.ignoreForProduction != true else { return false }
                 guard let sourceVideo = lane.sourceVideo else { return false }
-                guard isPlayableVisualLane(lane, sourceVideo: sourceVideo) else { return false }
+                guard isPlayableVisualLane(
+                    lane,
+                    sourceVideo: sourceVideo,
+                    allowedProxyMediaRootPath: allowedProxyMediaRootPath
+                ) else { return false }
                 let localTime = sequenceTime - sourceVideo.offset
-                return lane.tags.contains { tag in
-                    tag.type == .active &&
-                    localTime >= tag.startTime &&
-                    localTime < tag.startTime + max(0, tag.duration)
-                }
+                return effectiveDecision(in: lane, at: localTime)?.type == .active
             }
             .sorted { lhs, rhs in
                 programLaneSortKey(lhs) < programLaneSortKey(rhs)
@@ -453,7 +778,68 @@ public actor AVCompositionBuilder {
             .map(\.id)
     }
 
-    private static func isPlayableVisualLane(_ lane: VideoLane, sourceVideo: SourceVideo) -> Bool {
+    private static func effectiveDecision(in lane: VideoLane, at localTime: Double) -> VideoTag? {
+        lane.tags.last { tag in
+            localTime >= tag.startTime &&
+            localTime < tag.startTime + max(0, tag.duration)
+        }
+    }
+
+    private static func resolvedActiveSequenceRanges(
+        for lane: VideoLane,
+        sourceVideo: SourceVideo,
+        in sequence: MediaSequence
+    ) -> [ClosedRange<Double>] {
+        if !sequence.programDecisions.isEmpty {
+            let sourceStart = sourceVideo.offset
+            let sourceEnd = sourceVideo.offset + sourceVideo.duration
+            return sequence.programVisibleRanges(for: lane.id).compactMap { range in
+                let start = max(sourceStart, range.lowerBound)
+                let end = min(sourceEnd, range.upperBound)
+                return start < end ? start...end : nil
+            }
+        }
+
+        let sourceStart = sourceVideo.offset
+        let sourceEnd = sourceVideo.offset + sourceVideo.duration
+        var boundaries = [sourceStart, sourceEnd]
+
+        for tag in lane.tags where tag.duration > 0 {
+            let start = min(max(sourceStart + tag.startTime, sourceStart), sourceEnd)
+            let end = min(max(start + tag.duration, sourceStart), sourceEnd)
+            boundaries.append(start)
+            boundaries.append(end)
+        }
+
+        let sorted = Array(Set(boundaries)).sorted()
+        guard sorted.count > 1 else { return [] }
+
+        var activeRanges: [ClosedRange<Double>] = []
+        for index in 0..<(sorted.count - 1) {
+            let start = sorted[index]
+            let end = sorted[index + 1]
+            guard end > start else { continue }
+            let midpoint = ((start + end) / 2) - sourceStart
+            guard effectiveDecision(in: lane, at: midpoint)?.type == .active else { continue }
+            activeRanges.append(start...end)
+        }
+
+        var merged: [ClosedRange<Double>] = []
+        for range in activeRanges {
+            if let last = merged.last, last.upperBound >= range.lowerBound {
+                merged[merged.count - 1] = last.lowerBound...max(last.upperBound, range.upperBound)
+            } else {
+                merged.append(range)
+            }
+        }
+        return merged
+    }
+
+    private static func isPlayableVisualLane(
+        _ lane: VideoLane,
+        sourceVideo: SourceVideo,
+        allowedProxyMediaRootPath: String?
+    ) -> Bool {
         guard lane.metadata?.ignoreForProduction != true else { return false }
         guard !isAudioOnlyLane(lane, sourceVideo: sourceVideo) else { return false }
         let rawPath = sourceVideo.mediaURL.path
@@ -463,7 +849,8 @@ public actor AVCompositionBuilder {
         guard let proxyURL = sourceVideo.proxyURL else {
             return false
         }
-        if isProtectedOriginalPath(proxyURL.path) {
+        if isProtectedOriginalPath(proxyURL.path)
+            && !isOriginalPathAllowed(proxyURL.path, allowedRootPath: allowedProxyMediaRootPath) {
             return false
         }
         return FileManager.default.fileExists(atPath: proxyURL.path)
@@ -485,14 +872,131 @@ public actor AVCompositionBuilder {
     }
 
     private static func programSlotFrame(
-        for laneId: UUID,
+        for lane: VideoLane,
         activeLaneIds: [UUID],
+        in sequence: MediaSequence,
         format: ExportFormat,
         renderSize: CGSize
     ) -> CGRect {
         guard activeLaneIds.count > 1,
-              let index = activeLaneIds.firstIndex(of: laneId) else {
+              let index = activeLaneIds.firstIndex(of: lane.id) else {
             return CGRect(origin: .zero, size: renderSize)
+        }
+
+        let activeLanes = activeLaneIds.compactMap { id in
+            sequence.lanes.first(where: { $0.id == id })
+        }
+        let clipLanes = activeLanes.filter(isClipFocusLane)
+        let hostLanes = activeLanes.filter { !isClipFocusLane($0) }
+
+        if !clipLanes.isEmpty, !hostLanes.isEmpty {
+            let gap = max(8, min(renderSize.width, renderSize.height) * 0.012)
+            let isClip = isClipFocusLane(lane)
+            let layout = clipFocusLayout(for: format, in: sequence)
+            let reactionFraction = CGFloat(layout.reactionSize)
+
+            if layout.placement == .cornerSquares {
+                if isClip {
+                    return CGRect(origin: .zero, size: renderSize)
+                }
+                guard let hostIndex = hostLanes.firstIndex(where: { $0.id == lane.id }) else { return .zero }
+                let inset = max(12, min(renderSize.width, renderSize.height) * 0.025)
+                let squareSide = max(1, min(renderSize.width, renderSize.height) * reactionFraction)
+                let x = hostIndex.isMultiple(of: 2)
+                    ? inset
+                    : max(inset, renderSize.width - squareSide - inset)
+                return CGRect(
+                    x: x,
+                    y: max(inset, renderSize.height - squareSide - inset),
+                    width: squareSide,
+                    height: squareSide
+                )
+            }
+
+            if layout.placement == .hostWings {
+                switch format {
+                case .horizontal16x9:
+                    let hostWidth = max(1, renderSize.width * reactionFraction)
+                    let clipWidth = max(1, renderSize.width - (hostWidth * 2) - (gap * 2))
+                    if isClip {
+                        let clipHeight = max(1, renderSize.height * 0.64)
+                        return CGRect(
+                            x: hostWidth + gap,
+                            y: (renderSize.height - clipHeight) / 2,
+                            width: clipWidth,
+                            height: clipHeight
+                        )
+                    }
+                    guard let hostIndex = hostLanes.firstIndex(where: { $0.id == lane.id }) else { return .zero }
+                    let x = hostIndex.isMultiple(of: 2)
+                        ? 0
+                        : max(0, renderSize.width - hostWidth)
+                    return CGRect(x: x, y: 0, width: hostWidth, height: renderSize.height)
+
+                case .vertical9x16:
+                    let reactionHeight = max(1, renderSize.height * reactionFraction)
+                    let clipHeight = max(1, renderSize.height - reactionHeight - gap)
+                    if isClip {
+                        return CGRect(x: 0, y: reactionHeight + gap, width: renderSize.width, height: clipHeight)
+                    }
+                    guard let hostIndex = hostLanes.firstIndex(where: { $0.id == lane.id }) else { return .zero }
+                    let hostWidth = max(1, (renderSize.width - (gap * CGFloat(max(0, hostLanes.count - 1)))) / CGFloat(hostLanes.count))
+                    return CGRect(
+                        x: CGFloat(hostIndex) * (hostWidth + gap),
+                        y: 0,
+                        width: hostWidth,
+                        height: reactionHeight
+                    )
+                }
+            }
+
+            if layout.placement == .clipAbove {
+                let reactionHeight = max(1, renderSize.height * reactionFraction)
+                let clipHeight = max(1, renderSize.height - reactionHeight - gap)
+                if isClip {
+                    return CGRect(x: 0, y: 0, width: renderSize.width, height: clipHeight)
+                }
+                guard let hostIndex = hostLanes.firstIndex(where: { $0.id == lane.id }) else { return .zero }
+                let hostWidth = max(1, (renderSize.width - (gap * CGFloat(max(0, hostLanes.count - 1)))) / CGFloat(hostLanes.count))
+                return CGRect(
+                    x: CGFloat(hostIndex) * (hostWidth + gap),
+                    y: clipHeight + gap,
+                    width: hostWidth,
+                    height: reactionHeight
+                )
+            }
+
+            switch format {
+            case .horizontal16x9:
+                let reactionWidth = renderSize.width * reactionFraction
+                if isClip {
+                    return CGRect(
+                        x: reactionWidth + gap,
+                        y: 0,
+                        width: max(1, renderSize.width - reactionWidth - gap),
+                        height: renderSize.height
+                    )
+                }
+                guard let hostIndex = hostLanes.firstIndex(where: { $0.id == lane.id }) else { return .zero }
+                let hostHeight = max(1, (renderSize.height - (gap * CGFloat(max(0, hostLanes.count - 1)))) / CGFloat(hostLanes.count))
+                let y = renderSize.height - (CGFloat(hostIndex + 1) * hostHeight) - (CGFloat(hostIndex) * gap)
+                return CGRect(x: 0, y: max(0, y), width: reactionWidth, height: hostHeight)
+
+            case .vertical9x16:
+                let reactionWidth = renderSize.width * reactionFraction
+                if isClip {
+                    return CGRect(
+                        x: reactionWidth + gap,
+                        y: 0,
+                        width: max(1, renderSize.width - reactionWidth - gap),
+                        height: renderSize.height
+                    )
+                }
+                guard let hostIndex = hostLanes.firstIndex(where: { $0.id == lane.id }) else { return .zero }
+                let hostHeight = max(1, (renderSize.height - (gap * CGFloat(max(0, hostLanes.count - 1)))) / CGFloat(hostLanes.count))
+                let y = renderSize.height - (CGFloat(hostIndex + 1) * hostHeight) - (CGFloat(hostIndex) * gap)
+                return CGRect(x: 0, y: max(0, y), width: reactionWidth, height: hostHeight)
+            }
         }
 
         let count = max(1, activeLaneIds.count)
@@ -516,6 +1020,22 @@ public actor AVCompositionBuilder {
         }
     }
 
+    private static func isClipFocusLane(_ lane: VideoLane) -> Bool {
+        let role = (lane.metadata?.role ?? "").lowercased()
+        let kind = (lane.metadata?.mediaKind ?? "").lowercased()
+        let name = lane.name.lowercased()
+        return role.contains("clip") || role.contains("reference") || kind.contains("clip") || name.contains("clip") || name.contains("reference")
+    }
+
+    private static func clipFocusLayout(for format: ExportFormat, in sequence: MediaSequence) -> ClipFocusLayoutSettings {
+        switch format {
+        case .horizontal16x9:
+            return sequence.clipFocusLayout16x9.normalized()
+        case .vertical9x16:
+            return sequence.clipFocusLayout9x16.normalized()
+        }
+    }
+
     private static func programCropAdjustment(for lane: VideoLane, format: ExportFormat, at sequenceTime: Double? = nil) -> ProgramCropAdjustment {
         let baseline: ProgramCropAdjustment
         let keyframes: [ProgramCropKeyframe]
@@ -531,6 +1051,19 @@ public actor AVCompositionBuilder {
         return interpolatedProgramCrop(baseline: baseline, keyframes: keyframes, at: sequenceTime)
     }
 
+    private static func applyingClipFocus(
+        _ layout: ClipFocusLayoutSettings?,
+        to cropAdjustment: ProgramCropAdjustment
+    ) -> ProgramCropAdjustment {
+        guard let layout else { return cropAdjustment }
+        var focused = cropAdjustment
+        // A focal point describes the source area to retain, while pan describes
+        // image motion. Moving focus right therefore translates the image left.
+        focused.panX = min(1, max(-1, focused.panX - layout.focusX))
+        focused.panY = min(1, max(-1, focused.panY - layout.focusY))
+        return focused
+    }
+
     private static func applyProgramCropKeyframes(
         to layerInstruction: AVMutableVideoCompositionLayerInstruction,
         lane: VideoLane,
@@ -540,7 +1073,9 @@ public actor AVCompositionBuilder {
         renderFrame: CGRect,
         sequenceStart: Double,
         sequenceEnd: Double,
-        validRanges: [ClosedRange<Double>]
+        validRanges: [ClosedRange<Double>],
+        preservesWholeFrame: Bool = false,
+        clipFocusLayout: ClipFocusLayoutSettings? = nil
     ) {
         let keyframes: [ProgramCropKeyframe]
         switch format {
@@ -563,18 +1098,20 @@ public actor AVCompositionBuilder {
             let endProgramTime = Self.programTime(for: endSequenceTime, in: validRanges)
             guard startProgramTime < endProgramTime else { continue }
 
-            let startTransform = Self.aspectFillTransform(
-                naturalSize: naturalSize,
-                preferredTransform: preferredTransform,
-                renderFrame: renderFrame,
-                cropAdjustment: Self.programCropAdjustment(for: lane, format: format, at: startSequenceTime)
+            let startCrop = Self.applyingClipFocus(
+                clipFocusLayout,
+                to: Self.programCropAdjustment(for: lane, format: format, at: startSequenceTime)
             )
-            let endTransform = Self.aspectFillTransform(
-                naturalSize: naturalSize,
-                preferredTransform: preferredTransform,
-                renderFrame: renderFrame,
-                cropAdjustment: Self.programCropAdjustment(for: lane, format: format, at: endSequenceTime)
+            let endCrop = Self.applyingClipFocus(
+                clipFocusLayout,
+                to: Self.programCropAdjustment(for: lane, format: format, at: endSequenceTime)
             )
+            let startTransform = preservesWholeFrame
+                ? Self.aspectFitTransform(naturalSize: naturalSize, preferredTransform: preferredTransform, renderFrame: renderFrame, cropAdjustment: startCrop)
+                : Self.aspectFillTransform(naturalSize: naturalSize, preferredTransform: preferredTransform, renderFrame: renderFrame, cropAdjustment: startCrop)
+            let endTransform = preservesWholeFrame
+                ? Self.aspectFitTransform(naturalSize: naturalSize, preferredTransform: preferredTransform, renderFrame: renderFrame, cropAdjustment: endCrop)
+                : Self.aspectFillTransform(naturalSize: naturalSize, preferredTransform: preferredTransform, renderFrame: renderFrame, cropAdjustment: endCrop)
             layerInstruction.setTransformRamp(
                 fromStart: startTransform,
                 toEnd: endTransform,
@@ -637,5 +1174,93 @@ public actor AVCompositionBuilder {
             .concatenating(normalize)
             .concatenating(CGAffineTransform(scaleX: scale, y: scale))
             .concatenating(center)
+    }
+
+    private static func aspectFitTransform(
+        naturalSize: CGSize,
+        preferredTransform: CGAffineTransform,
+        renderFrame: CGRect,
+        cropAdjustment: ProgramCropAdjustment = ProgramCropAdjustment()
+    ) -> CGAffineTransform {
+        let naturalRect = CGRect(origin: .zero, size: naturalSize)
+        let transformedRect = naturalRect.applying(preferredTransform)
+        let displaySize = CGSize(width: abs(transformedRect.width), height: abs(transformedRect.height))
+        guard displaySize.width > 0, displaySize.height > 0 else { return .identity }
+
+        let normalize = CGAffineTransform(translationX: -transformedRect.minX, y: -transformedRect.minY)
+        let fitScale = min(renderFrame.width / displaySize.width, renderFrame.height / displaySize.height)
+        let scale = fitScale * CGFloat(max(0.1, cropAdjustment.zoom))
+        let scaledSize = CGSize(width: displaySize.width * scale, height: displaySize.height * scale)
+        let overflowX = max(0, scaledSize.width - renderFrame.width) / 2
+        let overflowY = max(0, scaledSize.height - renderFrame.height) / 2
+        let center = CGAffineTransform(
+            translationX: renderFrame.minX + ((renderFrame.width - scaledSize.width) / 2) + (CGFloat(cropAdjustment.panX) * overflowX),
+            y: renderFrame.minY + ((renderFrame.height - scaledSize.height) / 2) + (CGFloat(cropAdjustment.panY) * overflowY)
+        )
+
+        return preferredTransform
+            .concatenating(normalize)
+            .concatenating(CGAffineTransform(scaleX: scale, y: scale))
+            .concatenating(center)
+    }
+
+    private static func sourceCropRectangleForAspectFill(
+        naturalSize: CGSize,
+        preferredTransform: CGAffineTransform,
+        renderFrame: CGRect,
+        cropAdjustment: ProgramCropAdjustment = ProgramCropAdjustment()
+    ) -> CGRect {
+        let naturalRect = CGRect(origin: .zero, size: naturalSize)
+        guard naturalSize.width > 0,
+              naturalSize.height > 0,
+              renderFrame.width > 0,
+              renderFrame.height > 0 else {
+            return naturalRect
+        }
+
+        let transformedRect = naturalRect.applying(preferredTransform)
+        let displaySize = CGSize(width: abs(transformedRect.width), height: abs(transformedRect.height))
+        guard displaySize.width > 0, displaySize.height > 0 else { return naturalRect }
+
+        let normalizedDisplayTransform = preferredTransform.concatenating(
+            CGAffineTransform(translationX: -transformedRect.minX, y: -transformedRect.minY)
+        )
+        let determinant = (normalizedDisplayTransform.a * normalizedDisplayTransform.d)
+            - (normalizedDisplayTransform.b * normalizedDisplayTransform.c)
+        guard abs(determinant) > .ulpOfOne else { return naturalRect }
+
+        let targetAspect = renderFrame.width / renderFrame.height
+        let displayAspect = displaySize.width / displaySize.height
+        let zoom = CGFloat(max(0.1, cropAdjustment.zoom))
+        let cropSize: CGSize
+        if displayAspect > targetAspect {
+            cropSize = CGSize(
+                width: min(displaySize.width, (displaySize.height * targetAspect) / zoom),
+                height: min(displaySize.height, displaySize.height / zoom)
+            )
+        } else {
+            cropSize = CGSize(
+                width: min(displaySize.width, displaySize.width / zoom),
+                height: min(displaySize.height, (displaySize.width / targetAspect) / zoom)
+            )
+        }
+
+        let travelX = max(0, displaySize.width - cropSize.width) / 2
+        let travelY = max(0, displaySize.height - cropSize.height) / 2
+        let displayCrop = CGRect(
+            x: ((displaySize.width - cropSize.width) / 2) - (CGFloat(cropAdjustment.panX) * travelX),
+            y: ((displaySize.height - cropSize.height) / 2) - (CGFloat(cropAdjustment.panY) * travelY),
+            width: cropSize.width,
+            height: cropSize.height
+        )
+
+        let sourceCrop = displayCrop
+            .applying(normalizedDisplayTransform.inverted())
+            .standardized
+            .intersection(naturalRect)
+        guard !sourceCrop.isNull, sourceCrop.width > 0, sourceCrop.height > 0 else {
+            return naturalRect
+        }
+        return sourceCrop.integral
     }
 }

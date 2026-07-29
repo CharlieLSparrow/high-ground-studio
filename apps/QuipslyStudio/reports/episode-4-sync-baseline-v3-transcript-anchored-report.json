@@ -1,0 +1,239 @@
+{
+  "ok": true,
+  "model": "episode-4-sync-baseline-v3-transcript-anchored",
+  "createdAt": "2026-07-09T00:37:53Z",
+  "inputSession": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/sessions/episode-4-sync-baseline-v2.quipsly-session.json",
+  "outputSession": "/Users/wall-e/Library/Application Support/Quipsly/MediaVault/sessions/episode-4-sync-baseline-v3-transcript-anchored.quipsly-session.json",
+  "searchPath": "/Volumes/My Passport/Episode_and_Shorts_Test/review-board/episode4-charlie-mov-transcript-sanity/20260709-002430/episode4-charlie-mov-offset-search.json",
+  "offsetsApplied": {
+    "IMG_3749.MOV": -7.545,
+    "IMG_3751.MOV": 5871.469
+  },
+  "laneReport": [
+    {
+      "sourceName": "Charlie Ep4.wav",
+      "lane": "Charlie Audio Spine - Charlie Ep4.wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 0.0,
+      "afterOffsetSeconds": 0.0,
+      "durationSeconds": 6792.533,
+      "ignoreForProduction": false,
+      "syncV3": null
+    },
+    {
+      "sourceName": "TX00_MIC005_20260226_070456_orig.wav",
+      "lane": "Homer/TX Audio Take 1 - TX00_MIC005_20260226_070456_orig.wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 69.663,
+      "afterOffsetSeconds": 69.663,
+      "durationSeconds": 1800.15,
+      "ignoreForProduction": false,
+      "syncV3": null
+    },
+    {
+      "sourceName": "TX00_MIC006_20260226_073457_orig.wav",
+      "lane": "Homer/TX Audio Take 2 - TX00_MIC006_20260226_073457_orig.wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 1870.663,
+      "afterOffsetSeconds": 1870.663,
+      "durationSeconds": 1800.15,
+      "ignoreForProduction": false,
+      "syncV3": null
+    },
+    {
+      "sourceName": "TX00_MIC007_20260226_080457_orig.wav",
+      "lane": "Homer/TX Audio Take 3 - TX00_MIC007_20260226_080457_orig.wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 3670.663,
+      "afterOffsetSeconds": 3670.663,
+      "durationSeconds": 1800.15,
+      "ignoreForProduction": false,
+      "syncV3": null
+    },
+    {
+      "sourceName": "TX00_MIC008_20260226_083457_orig.wav",
+      "lane": "Homer/TX Audio Take 4 - TX00_MIC008_20260226_083457_orig.wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 5470.663,
+      "afterOffsetSeconds": 5470.663,
+      "durationSeconds": 1321.87,
+      "ignoreForProduction": false,
+      "syncV3": null
+    },
+    {
+      "sourceName": "TX00_MIC001_20260226_070412_orig.wav",
+      "lane": "HELD audio review - TX00_MIC001_20260226_070412_orig.wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 0.0,
+      "afterOffsetSeconds": 0.0,
+      "durationSeconds": 4.29,
+      "ignoreForProduction": true,
+      "syncV3": null
+    },
+    {
+      "sourceName": "TX00_MIC002_20260226_070427_orig.wav",
+      "lane": "HELD audio review - TX00_MIC002_20260226_070427_orig.wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 0.0,
+      "afterOffsetSeconds": 0.0,
+      "durationSeconds": 2.86,
+      "ignoreForProduction": true,
+      "syncV3": null
+    },
+    {
+      "sourceName": "TX00_MIC003_20260226_070436_orig.wav",
+      "lane": "HELD audio review - TX00_MIC003_20260226_070436_orig.wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 0.0,
+      "afterOffsetSeconds": 0.0,
+      "durationSeconds": 2.09,
+      "ignoreForProduction": true,
+      "syncV3": null
+    },
+    {
+      "sourceName": "TX00_MIC004_20260226_070441_orig.wav",
+      "lane": "HELD audio review - TX00_MIC004_20260226_070441_orig.wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 0.0,
+      "afterOffsetSeconds": 0.0,
+      "durationSeconds": 2.75,
+      "ignoreForProduction": true,
+      "syncV3": null
+    },
+    {
+      "sourceName": "TX00_MIC006_20260226_073457_orig (1).wav",
+      "lane": "HELD audio review - TX00_MIC006_20260226_073457_orig (1).wav",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 0.0,
+      "afterOffsetSeconds": 0.0,
+      "durationSeconds": 1800.15,
+      "ignoreForProduction": true,
+      "syncV3": null
+    },
+    {
+      "sourceName": "IMG_3746.MOV",
+      "lane": "Charlie Phone Camera 1 - IMG_3746.MOV",
+      "action": "held-for-review",
+      "beforeOffsetSeconds": 5443.9,
+      "afterOffsetSeconds": 5443.9,
+      "durationSeconds": 272.05,
+      "ignoreForProduction": true,
+      "syncV3": {
+        "previousOffsetSeconds": 5443.9,
+        "syncSource": "transcript-anchor-search-against-charlie-spine",
+        "confidence": "held-no-reliable-transcript-anchor",
+        "searchPath": "/Volumes/My Passport/Episode_and_Shorts_Test/review-board/episode4-charlie-mov-transcript-sanity/20260709-002430/episode4-charlie-mov-offset-search.json",
+        "policy": "Do not use for program edit until a reliable anchor is found. The sampled audio looked like setup chatter absent from the current spine transcript."
+      }
+    },
+    {
+      "sourceName": "IMG_3749.MOV",
+      "lane": "Charlie Phone Camera 2 - IMG_3749.MOV",
+      "action": "offset-repaired",
+      "beforeOffsetSeconds": 3210.8,
+      "afterOffsetSeconds": -7.545,
+      "durationSeconds": 1220.077,
+      "ignoreForProduction": false,
+      "syncV3": {
+        "offsetSeconds": -7.545,
+        "previousOffsetSeconds": 3210.8,
+        "deltaSeconds": -3218.345,
+        "syncSource": "transcript-anchor-search-against-charlie-spine",
+        "confidence": "transcript-anchored-reviewable",
+        "searchPath": "/Volumes/My Passport/Episode_and_Shorts_Test/review-board/episode4-charlie-mov-transcript-sanity/20260709-002430/episode4-charlie-mov-offset-search.json",
+        "policy": "Whole source remains intact. Offset is repaired from transcript evidence and still needs visual/aural review before final edit decisions."
+      }
+    },
+    {
+      "sourceName": "IMG_3751.MOV",
+      "lane": "Charlie Phone Camera 3 - IMG_3751.MOV",
+      "action": "offset-repaired",
+      "beforeOffsetSeconds": 3418.6,
+      "afterOffsetSeconds": 5871.469,
+      "durationSeconds": 1064.71,
+      "ignoreForProduction": false,
+      "syncV3": {
+        "offsetSeconds": 5871.469,
+        "previousOffsetSeconds": 3418.6,
+        "deltaSeconds": 2452.869,
+        "syncSource": "transcript-anchor-search-against-charlie-spine",
+        "confidence": "transcript-anchored-reviewable",
+        "searchPath": "/Volumes/My Passport/Episode_and_Shorts_Test/review-board/episode4-charlie-mov-transcript-sanity/20260709-002430/episode4-charlie-mov-offset-search.json",
+        "policy": "Whole source remains intact. Offset is repaired from transcript evidence and still needs visual/aural review before final edit decisions."
+      }
+    },
+    {
+      "sourceName": "IMG_3746 2.MOV",
+      "lane": "HELD phone review - IMG_3746 2.MOV",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 0.0,
+      "afterOffsetSeconds": 0.0,
+      "durationSeconds": 272.05,
+      "ignoreForProduction": true,
+      "syncV3": null
+    },
+    {
+      "sourceName": "IMG_3747.MOV",
+      "lane": "HELD phone review - IMG_3747.MOV",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 0.0,
+      "afterOffsetSeconds": 0.0,
+      "durationSeconds": 1.583,
+      "ignoreForProduction": true,
+      "syncV3": null
+    },
+    {
+      "sourceName": "IMG_3748.MOV",
+      "lane": "HELD phone review - IMG_3748.MOV",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 0.0,
+      "afterOffsetSeconds": 0.0,
+      "durationSeconds": 2.333,
+      "ignoreForProduction": true,
+      "syncV3": null
+    },
+    {
+      "sourceName": "VID_20260225_163604_00_005.insv",
+      "lane": "Homer Insta360 Camera 1 - VID_20260225_163604_00_005.insv",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 69.663,
+      "afterOffsetSeconds": 69.663,
+      "durationSeconds": 1798.0,
+      "ignoreForProduction": false,
+      "syncV3": null
+    },
+    {
+      "sourceName": "VID_20260225_163604_00_006.insv",
+      "lane": "Homer Insta360 Camera 2 - VID_20260225_163604_00_006.insv",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 1867.663,
+      "afterOffsetSeconds": 1867.663,
+      "durationSeconds": 1798.016,
+      "ignoreForProduction": false,
+      "syncV3": null
+    },
+    {
+      "sourceName": "VID_20260225_163604_00_007.insv",
+      "lane": "Homer Insta360 Camera 3 - VID_20260225_163604_00_007.insv",
+      "action": "unchanged",
+      "beforeOffsetSeconds": 3665.679,
+      "afterOffsetSeconds": 3665.679,
+      "durationSeconds": 1172.76,
+      "ignoreForProduction": false,
+      "syncV3": null
+    }
+  ],
+  "truth": {
+    "sourceFilesMutated": false,
+    "previousVersionsOverwritten": false,
+    "finalSyncClaim": false,
+    "timelineDecisionClaim": false,
+    "wholeSourcesPreserved": true
+  },
+  "nextActions": [
+    "Load episode-4-sync-baseline-v3-transcript-anchored in Quipsly Studio.",
+    "Scrub around 00:03:00, 01:40:30, and 01:46:40 to visually/aurally review IMG_3749 and IMG_3751 against the Program spine.",
+    "Find a better anchor or ignore IMG_3746 unless a human confirms it belongs in the final edit.",
+    "Do not promote source SHOW decisions until the source monitors prove sync in the app."
+  ]
+}

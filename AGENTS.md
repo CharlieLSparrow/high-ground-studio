@@ -10,6 +10,7 @@ Read these files first:
 - `docs/project-context/current-state.md`
 - `docs/architecture/system-overview.md`
 - `docs/architecture/domain-model.md`
+- `docs/architecture/platform-and-local-compute-policy.md`
 - `docs/runbooks/local-dev.md`
 - `docs/agents/codex-handoff.md`
 
@@ -57,11 +58,18 @@ Recent stabilization history lives in:
 
 ## Important Constraints
 
+- Product usefulness outranks approval machinery. Build professional features,
+  strong UX, source-aware editing, capture, writing, publishing prep, and
+  real creative output before adding more approval/process layers. Approval,
+  receipt, and gate systems are guardrails for irreversible or externally
+  visible actions; they are not the product. If a guardrail starts consuming
+  more attention than the user-facing workflow it protects, simplify it.
 - Do not assume Stripe checkout is active. It was intentionally rolled back to a clean non-broken state.
 - Do not remove the episodes loader guard casually. It exists because the Fumadocs collection import was implicated in earlier build instability.
 - Treat the build-success state as current truth, and the earlier Turbopack/session instability as historical context documented under `docs/sessions/`.
 - Treat `apps/web/src/app/schedule/page.backup.tsx`, `pnpm-workspace.yaml.save`, `prisma.config.ts.bak`, and scattered `.DS_Store` files as signs of a repo that needs careful reading before cleanup.
 - The top-level docs under `docs/` are now the durable memory layer. Promote important chat/session conclusions into docs when they become stable.
+- Follow `docs/architecture/platform-and-local-compute-policy.md` for TypeScript, Apple deployment targets, and local AI/model workloads. Do not silently reintroduce legacy compiler or OS support.
 
 ## Standard Commands
 

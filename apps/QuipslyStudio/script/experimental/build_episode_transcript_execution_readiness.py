@@ -10,6 +10,7 @@ from __future__ import annotations
 import html
 import json
 import shlex
+import argparse
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -18,7 +19,7 @@ RELEASE_ROOT = Path("/Volumes/My Passport/Episode_and_Shorts_Test")
 SOURCE_POINTER = RELEASE_ROOT / "review-board/transcript-source-workorders/latest-transcript-source-workorders.json"
 OUT_ROOT = RELEASE_ROOT / "review-board/transcript-execution-readiness"
 LATEST_POINTER = OUT_ROOT / "latest-transcript-execution-readiness.json"
-PROVIDER = Path(__file__).resolve().parent / "local_transcript_provider.py"
+PROVIDER = Path(__file__).resolve().parent.parent / "local_transcript_provider.py"
 SCHEMA = "quipsly.episode-transcript-execution-readiness.v1"
 
 
@@ -67,8 +68,9 @@ def provider_doctor_command() -> str:
 
 
 def selected_sources_for_episode(sources: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    def priority(row: dict[str, Any]) -> tuple[int, int, float, str]:
+    def priority(row: dict[str, Any]) -> tuple[int, int, int, float, str]:
         kind = str(row.get("sourceKind") or "")
+        path_text = str(row.get("path") or "").lower()
         source_rank = {
             "external-high-quality-audio": 0,
             "call-recording": 1,
@@ -77,10 +79,31 @@ def selected_sources_for_episode(sources: list[dict[str, Any]]) -> list[dict[str
             "source-video-scratch-audio": 4,
             "exported-video-audio": 5,
         }.get(kind, 8)
+        location_rank = 0
+        if "/episode " in path_text:
+            location_rank = 0
+        elif "/podcast_episodes/" in path_text:
+            location_rank = 1
+        elif "/desktop media/" in path_text:
+            location_rank = 2
+        else:
+            location_rank = 3
         duration = float(row.get("durationSeconds") or 0)
-        return (int(row.get("transcriptionPriority") or 9), source_rank, -duration, str(row.get("path") or ""))
+        return (int(row.get("transcriptionPriority") or 9), source_rank, location_rank, -duration, str(row.get("path") or ""))
 
-    ordered = sorted(sources, key=priority)
+    ordered_raw = sorted(sources, key=priority)
+    ordered: list[dict[str, Any]] = []
+    seen_equivalent_sources: set[tuple[str, str, int]] = set()
+    for row in ordered_raw:
+        key = (
+            str(row.get("sourceKind") or ""),
+            str(row.get("fileName") or "").strip().lower(),
+            int(round(float(row.get("durationSeconds") or 0))),
+        )
+        if key in seen_equivalent_sources:
+            continue
+        seen_equivalent_sources.add(key)
+        ordered.append(row)
     selected: list[dict[str, Any]] = []
     seen_kinds: set[str] = set()
     for row in ordered:
@@ -148,8 +171,25 @@ def build_execution_item(source: dict[str, Any], episode: int | None, sequence: 
     }
 
 
-def build() -> dict[str, Any]:
-    source_packet = load_pointer(SOURCE_POINTER)
+def source_pointer_for_episode(episode_filter: int | None, explicit_path: str | None = None) -> Path:
+    if explicit_path:
+        return Path(explicit_path).expanduser()
+    if episode_filter:
+        focused = RELEASE_ROOT / "review-board/transcript-source-workorders" / f"latest-transcript-source-workorders-episode-{episode_filter:02d}.json"
+        if focused.exists():
+            return focused
+    return SOURCE_POINTER
+
+
+def latest_pointer_for_episode(episode_filter: int | None) -> Path:
+    if episode_filter:
+        return OUT_ROOT / f"latest-transcript-execution-readiness-episode-{episode_filter:02d}.json"
+    return LATEST_POINTER
+
+
+def build(episode_filter: int | None = None, source_workorders: str | None = None) -> dict[str, Any]:
+    source_pointer = source_pointer_for_episode(episode_filter, source_workorders)
+    source_packet = load_pointer(source_pointer)
     episodes = source_packet.get("episodes") if isinstance(source_packet.get("episodes"), list) else []
     execution_episodes: list[dict[str, Any]] = []
     selected_total = 0
@@ -157,6 +197,8 @@ def build() -> dict[str, Any]:
         if not isinstance(ep, dict):
             continue
         episode = ep.get("episode") if isinstance(ep.get("episode"), int) else None
+        if episode_filter and episode != episode_filter:
+            continue
         sources = ep.get("sources") if isinstance(ep.get("sources"), list) else []
         selected = selected_sources_for_episode([row for row in sources if isinstance(row, dict)])
         items = [build_execution_item(source, episode, index) for index, source in enumerate(selected, start=1)]
@@ -183,7 +225,8 @@ def build() -> dict[str, Any]:
         "generatedAt": iso_now(),
         "status": "transcript-execution-readiness-ready" if execution_episodes else "transcript-execution-readiness-empty",
         "releaseRoot": str(RELEASE_ROOT),
-        "sourceWorkordersPointer": str(SOURCE_POINTER),
+        "episodeFilter": episode_filter,
+        "sourceWorkordersPointer": str(source_pointer),
         "sourceWorkordersHtml": source_packet.get("htmlPath") or "",
         "sourceWorkordersJson": source_packet.get("jsonPath") or "",
         "providerDoctor": provider,
@@ -201,7 +244,9 @@ def build() -> dict[str, Any]:
             "reconciledTranscriptSpinesWritten": 0,
         },
         "nextSafestAction": (
-            "Provider appears available. Run one Episode 1 or Episode 6 high-priority ASR command into the planned raw sidecar, then normalize and review before importing."
+            f"Provider appears available. Run one Episode {episode_filter} high-priority ASR command into the planned raw sidecar, then normalize and review before importing."
+            if provider_available and episode_filter else
+            "Provider appears available. Run one high-priority ASR command into the planned raw sidecar, then normalize and review before importing."
             if provider_available else
             "Install or configure a local ASR provider, then run the provider doctor before executing one high-priority ASR command."
         ),
@@ -330,7 +375,12 @@ pre {{ white-space:pre-wrap; color:var(--leaf); }}
 
 
 def main() -> int:
-    payload = build()
+    parser = argparse.ArgumentParser(description="Build transcript execution readiness from transcript source workorders.")
+    parser.add_argument("--episode", type=int, choices=range(1, 99), help="Focus on one episode. Uses the focused source-workorder pointer when present.")
+    parser.add_argument("--source-workorders", help="Explicit transcript source workorder pointer or packet JSON.")
+    args = parser.parse_args()
+
+    payload = build(args.episode, args.source_workorders)
     session_dir = OUT_ROOT / stamp()
     html_path = session_dir / "index.html"
     json_path = session_dir / "transcript-execution-readiness.json"
@@ -350,7 +400,7 @@ def main() -> int:
     write_json(json_path, payload)
     write_markdown(markdown_path, payload)
     write_html(html_path, payload)
-    write_json(LATEST_POINTER, payload)
+    write_json(latest_pointer_for_episode(args.episode), payload)
     print(json.dumps({
         "status": payload.get("status"),
         "htmlPath": str(html_path),

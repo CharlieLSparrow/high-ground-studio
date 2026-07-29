@@ -280,7 +280,10 @@ AUDIO_SOURCES: list[AudioSource] = [
         label="Homer DJI mic take 4",
         role="homer_audio_take",
         path=EXTERNAL_EPISODE_DIR / "TX00_MIC008_20260226_083457_orig.wav",
-        sequence_start=5478.073,
+        # Camera-scratch correlation proves MIC008 begins 3.47s later than the
+        # legacy placement. Keep this source-clock correction at ingestion so
+        # every downstream treatment and edit branch inherits the same truth.
+        sequence_start=5481.543,
         volume=1.35,
     ),
     AudioSource(

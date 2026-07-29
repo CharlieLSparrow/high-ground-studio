@@ -20,6 +20,7 @@ from typing import Any
 
 DEFAULT_RELEASE_ROOT = Path("/Volumes/My Passport/Episode_and_Shorts_Test")
 LATEST_BATCH_POINTER = "review-board/shorts-review-batches/latest-shorts-review-batch.json"
+SHORTS_COMMAND_ROOM_JSON = "shorts-command-room/quipsly-studio-shorts-command-room.json"
 LEDGER_DIR_NAME = "studio-short-review-decision-ledger"
 LATEST_LEDGER_POINTER = "review-board/latest-studio-short-review-decision-ledger.json"
 SCHEMA = "quipsly.studio.short-review-decision-ledger.v1"
@@ -64,6 +65,92 @@ def load_pointer_target(path: Path) -> dict[str, Any]:
     return {**pointer, **target} if target else pointer
 
 
+def rows_from_command_room(root: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Return native current-version shorts from the active command room.
+
+    Carry-forward candidates are intentionally excluded here because Episode 1
+    has its own carry-forward ledger. This ledger is for native current-version
+    short review intent across proof lanes.
+    """
+    path = root / SHORTS_COMMAND_ROOM_JSON
+    room = load_json(path)
+    rows: list[dict[str, Any]] = []
+    for episode in room.get("episodes", []):
+        if not isinstance(episode, dict):
+            continue
+        episode_number = episode.get("episode")
+        version = episode.get("currentVersion") or episode.get("current_version") or ""
+        for short in episode.get("nativeShorts", []):
+            if not isinstance(short, dict):
+                continue
+            try:
+                short_index = int(short.get("index") or len(rows) + 1)
+            except (TypeError, ValueError):
+                short_index = len(rows) + 1
+            source_path = Path(str(short.get("path") or ""))
+            short_id = f"episode-{episode_number}-short-{short_index:02d}"
+            facts = short.get("mediaFacts", {}) if isinstance(short.get("mediaFacts"), dict) else {}
+            exists = bool(facts.get("exists", source_path.exists()))
+            bytes_value = int(facts.get("bytes") or facts.get("size") or file_size_for_path(source_path) if exists else 0)
+            rows.append(
+                {
+                    "id": short_id,
+                    "episode": episode_number,
+                    "version": version,
+                    "shortIndex": short_index,
+                    "humanTitle": short.get("title") or short_id,
+                    "title": short.get("title") or short_id,
+                    "path": str(source_path),
+                    "fileUri": short.get("uri") or file_uri_for_path(source_path),
+                    "exists": exists,
+                    "bytes": bytes_value,
+                    "hasAudio": bool(facts.get("hasAudio", False)),
+                    "hasVideo": bool(facts.get("hasVideo", False)),
+                    "durationLabel": str(facts.get("durationLabel") or "unknown; watch/listen review required"),
+                    "durationSeconds": facts.get("durationSeconds") or 0,
+                    "reviewRisk": "probe-warning-needs-check" if facts.get("status") != "ok" else "normal-watch-listen-review",
+                    "episodeWarning": bool(facts.get("status") != "ok"),
+                    "aspect": str(facts.get("aspect") or "unknown"),
+                    "width": facts.get("width") or 0,
+                    "height": facts.get("height") or 0,
+                    "probeStatus": str(facts.get("status") or "unknown"),
+                    "probeWarning": str(facts.get("warning") or ""),
+                    "durationBucket": str(short.get("durationBucket") or ""),
+                    "platformFit": short.get("platformFit") if isinstance(short.get("platformFit"), list) else [],
+                    "reviewPriority": short.get("reviewPriority") or 9999,
+                    "reviewPriorityReason": str(short.get("reviewPriorityReason") or ""),
+                    "reviewPrompt": "Would you post this native current-version short as-is, refine it, hold it, or reject it?",
+                    "nextSafestAction": "Watch/listen locally, then record local review intent only.",
+                    "openCommand": f"open {shell_quote(str(source_path))}",
+                    "revealCommand": f"open -R {shell_quote(str(source_path))}",
+                }
+            )
+    source = {
+        "kind": "shorts-command-room",
+        "path": str(path),
+        "exists": path.exists(),
+        "htmlPath": str(path.with_suffix(".html")),
+        "jsonPath": str(path),
+    }
+    return rows, source
+
+
+def file_uri_for_path(path: Path) -> str:
+    try:
+        return path.expanduser().resolve().as_uri()
+    except ValueError:
+        return ""
+
+
+def file_size_for_path(path: Path) -> int:
+    try:
+        if path.exists():
+            return int(path.stat().st_size)
+    except OSError:
+        return 0
+    return 0
+
+
 def ledger_dir(root: Path) -> Path:
     return root / "review-board" / LEDGER_DIR_NAME
 
@@ -104,7 +191,11 @@ def safe_commands(short_id: str) -> list[dict[str, str]]:
         {"label": "Dry-run refine", "command": f"{dry} {shell_quote(short_id)} refine '<reviewer>' '<crop/pacing/caption/audio issue>'", "safety": "Dry-run only. No ledger mutation."},
         {"label": "Dry-run hold", "command": f"{dry} {shell_quote(short_id)} hold '<reviewer>' '<what must be checked before deciding>'", "safety": "Dry-run only. No ledger mutation."},
         {"label": "Dry-run reject", "command": f"{dry} {shell_quote(short_id)} reject '<reviewer>' '<why this should not move forward>'", "safety": "Dry-run only. No ledger mutation."},
-        {"label": "Record local short intent", "command": f"{live} {shell_quote(short_id)} keep|refine|hold|reject|needs-more-evidence '<reviewer>' '<notes>'", "safety": "Writes only the local shorts review ledger. No publication approval, upload, schedule, account mutation, media mutation, overwrite, delete, or receipt truth."},
+        {"label": "Record keep", "command": f"{live} {shell_quote(short_id)} keep '<reviewer>' '<why this short is locally promising>'", "safety": "Writes only the local shorts review ledger. No publication approval, upload, schedule, account mutation, media mutation, overwrite, delete, or receipt truth."},
+        {"label": "Record refine", "command": f"{live} {shell_quote(short_id)} refine '<reviewer>' '<crop/pacing/caption/audio issue>'", "safety": "Writes only the local shorts review ledger. No publication approval, upload, schedule, account mutation, media mutation, overwrite, delete, or receipt truth."},
+        {"label": "Record hold", "command": f"{live} {shell_quote(short_id)} hold '<reviewer>' '<what must be checked before deciding>'", "safety": "Writes only the local shorts review ledger. No publication approval, upload, schedule, account mutation, media mutation, overwrite, delete, or receipt truth."},
+        {"label": "Record reject", "command": f"{live} {shell_quote(short_id)} reject '<reviewer>' '<why this should not move forward>'", "safety": "Writes only the local shorts review ledger. No publication approval, upload, schedule, account mutation, media mutation, overwrite, delete, or receipt truth."},
+        {"label": "Record needs more evidence", "command": f"{live} {shell_quote(short_id)} needs-more-evidence '<reviewer>' '<what evidence is missing>'", "safety": "Writes only the local shorts review ledger. No publication approval, upload, schedule, account mutation, media mutation, overwrite, delete, or receipt truth."},
     ]
 
 
@@ -116,11 +207,48 @@ def existing_by_id(ledger: dict[str, Any]) -> dict[str, dict[str, Any]]:
     }
 
 
+def media_shape_from_row(row: dict[str, Any]) -> tuple[str, int, int]:
+    aspect = str(row.get("aspect") or "unknown")
+    try:
+        width = int(row.get("width") or 0)
+    except (TypeError, ValueError):
+        width = 0
+    try:
+        height = int(row.get("height") or 0)
+    except (TypeError, ValueError):
+        height = 0
+    if width and height and aspect == "unknown":
+        aspect = "9:16" if height > width else "16:9" if width > height else "1:1"
+    if width and height:
+        return aspect, width, height
+
+    for entry in row.get("codecSummary", []):
+        text = str(entry)
+        if "video:" not in text or "x" not in text:
+            continue
+        for token in text.split(":"):
+            if "x" not in token:
+                continue
+            left, right = token.split("x", 1)
+            if left.isdigit() and right.isdigit():
+                width = int(left)
+                height = int(right)
+                aspect = "9:16" if height > width else "16:9" if width > height else "1:1"
+                return aspect, width, height
+    return aspect, width, height
+
+
 def item_from_row(row: dict[str, Any], prior: dict[str, Any]) -> dict[str, Any]:
     short_id = str(row.get("id") or f"episode-{row.get('episode')}-short-{row.get('shortIndex')}")
     decision = str(prior.get("decision") or "pending")
     if decision not in DECISIONS:
         decision = "pending"
+    aspect, width, height = media_shape_from_row(row)
+    media_path = Path(str(row.get("path") or ""))
+    try:
+        bytes_value = int(row.get("bytes") or row.get("size") or file_size_for_path(media_path))
+    except (TypeError, ValueError):
+        bytes_value = file_size_for_path(media_path)
     return {
         "shortId": short_id,
         "episode": row.get("episode"),
@@ -130,12 +258,23 @@ def item_from_row(row: dict[str, Any], prior: dict[str, Any]) -> dict[str, Any]:
         "path": str(row.get("path") or ""),
         "fileUri": str(row.get("fileUri") or ""),
         "exists": bool(row.get("exists")),
+        "bytes": bytes_value,
         "hasAudio": bool(row.get("hasAudio")),
         "hasVideo": bool(row.get("hasVideo")),
         "durationLabel": str(row.get("durationLabel") or "unknown"),
         "durationSeconds": row.get("durationSeconds") or 0,
+        "aspect": aspect,
+        "width": width,
+        "height": height,
+        "probeStatus": str(row.get("probeStatus") or "unknown"),
+        "probeWarning": str(row.get("probeWarning") or ""),
+        "durationBucket": str(row.get("durationBucket") or ""),
+        "platformFit": row.get("platformFit") if isinstance(row.get("platformFit"), list) else [],
+        "reviewPriority": row.get("reviewPriority") or 9999,
+        "reviewPriorityReason": str(row.get("reviewPriorityReason") or ""),
         "reviewRisk": str(row.get("reviewRisk") or "normal-watch-listen-review"),
         "episodeWarning": bool(row.get("episodeWarning")),
+        "reviewSource": str(row.get("_reviewSource") or row.get("reviewSource") or ""),
         "decision": decision,
         "status": prior.get("status") or ("pending-local-review" if decision == "pending" else "local-review-recorded"),
         "reviewer": str(prior.get("reviewer") or ""),
@@ -224,7 +363,7 @@ def render_markdown(ledger: dict[str, Any]) -> str:
 
 
 def write_csv(ledger: dict[str, Any], path: Path) -> None:
-    fieldnames = ["shortId", "episode", "version", "shortIndex", "title", "decision", "status", "reviewer", "reviewedAt", "notes", "durationLabel", "reviewRisk", "path"]
+    fieldnames = ["shortId", "episode", "version", "shortIndex", "title", "decision", "status", "reviewer", "reviewedAt", "notes", "durationLabel", "durationBucket", "aspect", "hasAudio", "hasVideo", "probeStatus", "reviewPriority", "reviewRisk", "path"]
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.DictWriter(handle, fieldnames=fieldnames)
@@ -250,12 +389,12 @@ def write_html(ledger: dict[str, Any], path: Path) -> None:
         commands = "".join(f"<li><code>{esc(command.get('command'))}</code><small>{esc(command.get('safety'))}</small></li>" for command in item.get("safeCommands", []))
         cards.append(f"""
 <article class='card {esc(item.get('decision'))}'>
-  <div class='top'><span>Episode {esc(item.get('episode'))}</span><span>{esc(item.get('durationLabel'))}</span><span>{esc(item.get('reviewRisk'))}</span></div>
+  <div class='top'><span>Episode {esc(item.get('episode'))}</span><span>{esc(item.get('durationLabel'))}</span><span>{esc(item.get('aspect'))}</span><span>audio {esc(item.get('hasAudio'))}</span><span>{esc(item.get('probeStatus'))}</span><span>{esc(item.get('reviewRisk'))}</span></div>
   <h2>{esc(item.get('title'))}</h2>
   {media}
   <div class='decision'>{esc(item.get('decision'))}</div>
   <p>{esc(item.get('reviewPrompt'))}</p>
-  <dl><dt>Reviewer</dt><dd>{esc(item.get('reviewer') or 'not recorded')}</dd><dt>Notes</dt><dd>{esc(item.get('notes') or 'none yet')}</dd><dt>File</dt><dd><code>{esc(item.get('path'))}</code></dd></dl>
+  <dl><dt>Reviewer</dt><dd>{esc(item.get('reviewer') or 'not recorded')}</dd><dt>Notes</dt><dd>{esc(item.get('notes') or 'none yet')}</dd><dt>Media</dt><dd>{esc(item.get('durationLabel'))} · {esc(item.get('durationBucket'))} · {esc(item.get('aspect'))} · {esc(item.get('width'))}x{esc(item.get('height'))} · audio {esc(item.get('hasAudio'))}</dd><dt>Priority</dt><dd>{esc(item.get('reviewPriority'))}: {esc(item.get('reviewPriorityReason'))}</dd><dt>Platform fit</dt><dd>{esc(', '.join(item.get('platformFit') or []))}</dd><dt>Probe</dt><dd>{esc(item.get('probeStatus'))} {esc(item.get('probeWarning'))}</dd><dt>File</dt><dd><code>{esc(item.get('path'))}</code></dd></dl>
   <details><summary>Safe local commands</summary><ul>{commands}</ul></details>
 </article>
 """)
@@ -294,10 +433,35 @@ def pointer_payload(ledger: dict[str, Any]) -> dict[str, Any]:
 
 
 def build_ledger(root: Path, *, persist: bool = True) -> dict[str, Any]:
+    command_room_rows, command_room_source = rows_from_command_room(root)
     batch = load_pointer_target(root / LATEST_BATCH_POINTER)
     existing = load_json(ledger_path(root))
     prior = existing_by_id(existing)
-    rows = batch.get("rows") if isinstance(batch.get("rows"), list) else []
+    batch_rows = batch.get("rows") if isinstance(batch.get("rows"), list) else []
+    rows: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for source_kind_name, source_rows in (
+        ("shorts-command-room", command_room_rows),
+        ("shorts-review-batch", batch_rows),
+    ):
+        for row in source_rows:
+            if not isinstance(row, dict):
+                continue
+            short_id = str(row.get("id") or "")
+            if not short_id or short_id in seen:
+                continue
+            merged = dict(row)
+            merged["_reviewSource"] = source_kind_name
+            rows.append(merged)
+            seen.add(short_id)
+    if command_room_rows and batch_rows:
+        source_kind = "shorts-command-room-plus-review-batch"
+    elif command_room_rows:
+        source_kind = "shorts-command-room"
+    else:
+        source_kind = "legacy-shorts-review-batch"
+    source_html = command_room_source.get("htmlPath") or str(batch.get("htmlPath") or "")
+    source_json = command_room_source.get("jsonPath") or str(batch.get("jsonPath") or "")
     items = [item_from_row(row, prior.get(str(row.get("id") or ""), {})) for row in rows if isinstance(row, dict)]
     counts = recompute_counts(items)
     now = iso_now()
@@ -316,8 +480,11 @@ def build_ledger(root: Path, *, persist: bool = True) -> dict[str, Any]:
         "updatedAt": now,
         "status": "short-review-decisions-pending" if counts["pending"] else "short-review-decisions-recorded",
         "releaseRoot": str(root),
-        "sourceBatchHtml": str(batch.get("htmlPath") or ""),
-        "sourceBatchJson": str(batch.get("jsonPath") or ""),
+        "sourceKind": source_kind,
+        "sourceBatchHtml": source_html,
+        "sourceBatchJson": source_json,
+        "legacySourceBatchHtml": str(batch.get("htmlPath") or ""),
+        "legacySourceBatchJson": str(batch.get("jsonPath") or ""),
         "htmlPath": str(html_path),
         "jsonPath": str(json_path),
         "markdownPath": str(markdown_path),

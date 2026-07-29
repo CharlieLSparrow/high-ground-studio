@@ -61,6 +61,12 @@ If a task does not help this loop, it may still be valuable, but it should not d
 - Do not call agent-created material "placeholder" unless it is intentionally disposable test material.
 - Do not let the product stall because a human has not supplied enough content. Codex and other Quipslys may create the first-pass content needed to prove the workflow.
 - The safety line is not "AI must not write." The safety line is visible authorship, provenance, review state, reversibility, canon boundaries, and publication receipts.
+- Approval and receipt systems are guardrails, not the product. Do not spend
+  most of a sprint building approval ceremonies while the editor, writing
+  surface, capture flow, audio tools, photo tools, or publishing UX still feel
+  unfinished. Use the lightest visible safety layer that protects irreversible
+  work, external publication, account mutation, or source-truth loss, then get
+  back to making the tool excellent.
 
 ## Creative partner operating rule
 

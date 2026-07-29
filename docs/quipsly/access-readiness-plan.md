@@ -8,7 +8,7 @@ Purpose: make Quipsly safe enough for other real people to use without turning t
 
 Quipsly already has useful pieces:
 
-- Google sign-in via NextAuth in `apps/quipsly/src/auth.ts`.
+- Firebase-first sign-in in `apps/quipsly/src/auth.ts`, backed by app-owned Quipsly users and access rows.
 - Canonical `User`, `UserEmail`, and `UserRole` models in Prisma.
 - `Organization` and `OrganizationMember` models already exist.
 - Studio access roles exist through `OWNER`, `TEAM_SCHEDULER`, and `COACH`.
@@ -28,12 +28,12 @@ The risky gaps:
 
 ## Product posture for first outside users
 
-Do not open this as a self-serve SaaS yet.
+Do not open this as a fully self-serve SaaS yet.
 
 The first public-ish version should be a private alpha:
 
-- Google login only.
-- Invite/allowlist only.
+- Firebase Google login plus admin-created email/password users.
+- Invite/allowlist access for beta Nests.
 - One organization per invited creator/team.
 - Projects belong to an organization.
 - Users access projects through organization membership.

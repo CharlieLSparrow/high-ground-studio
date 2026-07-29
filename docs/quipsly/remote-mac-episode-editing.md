@@ -93,6 +93,6 @@ The `Remote episode editor handoff` card is the preferred flow for Mako-style ed
 3. Confirm the episode slug, for example `episode-4`.
 4. Use role `Editor` when the collaborator should save timeline changes.
 5. Submit the invite.
-6. Copy the returned sign-in link; it uses `/api/auth/signin?callbackUrl=/editor?...` so the collaborator lands directly in the episode editor after login.
+6. Copy the returned sign-in link; it uses `/login?callbackUrl=/editor?...` so the collaborator lands directly in the episode editor after login.
 
 The server action creates or updates the app-owned user record, upserts the Nest access grant, and derives the editor callback from the submitted project and episode. This keeps invite-first collaboration email-owned instead of requiring the account to exist first.

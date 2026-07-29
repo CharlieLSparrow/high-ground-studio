@@ -1,0 +1,117 @@
+{
+  "durationSeconds": {
+    "Charlie Ep4.wav": 6792.533,
+    "IMG_3746.MOV": 272.05,
+    "IMG_3749.MOV": 1220.077,
+    "IMG_3751.MOV": 1064.71,
+    "TX00_MIC005_20260226_070456_orig.wav": 1800.15,
+    "TX00_MIC006_20260226_073457_orig.wav": 1800.15,
+    "TX00_MIC007_20260226_080457_orig.wav": 1800.15,
+    "TX00_MIC008_20260226_083457_orig.wav": 1321.87,
+    "VID_20260225_163604_00_005.insv": 1798.0,
+    "VID_20260225_163604_00_006.insv": 1798.016,
+    "VID_20260225_163604_00_007.insv": 1172.76
+  },
+  "model": "episode-4-audio-sync-analysis-v2",
+  "results": {
+    "Charlie Ep4.wav": {
+      "offsetSeconds": 0.0,
+      "score": 1.0,
+      "status": "spine"
+    },
+    "IMG_3746.MOV": {
+      "coarseOffsetSeconds": 5444.0,
+      "coarseScore": 0.4277,
+      "durationSeconds": 272.05,
+      "expectedSeconds": null,
+      "offsetSeconds": 5443.9,
+      "score": 0.2901,
+      "status": "matched"
+    },
+    "IMG_3749.MOV": {
+      "coarseOffsetSeconds": 3211.0,
+      "coarseScore": 0.19076,
+      "durationSeconds": 1220.077,
+      "expectedSeconds": null,
+      "offsetSeconds": 3210.8,
+      "score": 0.10912,
+      "status": "matched"
+    },
+    "IMG_3751.MOV": {
+      "coarseOffsetSeconds": 3418.5,
+      "coarseScore": 0.17881,
+      "durationSeconds": 1064.71,
+      "expectedSeconds": null,
+      "offsetSeconds": 3418.6,
+      "score": 0.11482,
+      "status": "matched"
+    },
+    "TX00_MIC005_20260226_070456_orig.wav": {
+      "coarseOffsetSeconds": 174.5,
+      "coarseScore": 0.03779,
+      "durationSeconds": 1800.15,
+      "expectedSeconds": 69.213,
+      "offsetSeconds": 174.6,
+      "score": 0.03088,
+      "status": "matched"
+    },
+    "TX00_MIC006_20260226_073457_orig.wav": {
+      "coarseOffsetSeconds": 1690.0,
+      "coarseScore": 0.20562,
+      "durationSeconds": 1800.15,
+      "expectedSeconds": 1870.213,
+      "offsetSeconds": 1685.8,
+      "score": 0.15848,
+      "status": "matched"
+    },
+    "TX00_MIC007_20260226_080457_orig.wav": {
+      "coarseOffsetSeconds": 3518.0,
+      "coarseScore": 0.11423,
+      "durationSeconds": 1800.15,
+      "expectedSeconds": 3670.213,
+      "offsetSeconds": 3517.9,
+      "score": 0.06455,
+      "status": "matched"
+    },
+    "TX00_MIC008_20260226_083457_orig.wav": {
+      "coarseOffsetSeconds": 5441.0,
+      "coarseScore": -0.02374,
+      "durationSeconds": 1321.87,
+      "expectedSeconds": 5470.213,
+      "offsetSeconds": 5440.0,
+      "score": 0.00348,
+      "status": "matched"
+    },
+    "VID_20260225_163604_00_005.insv": {
+      "coarseOffsetSeconds": 27.5,
+      "coarseScore": 0.02587,
+      "durationSeconds": 1798.0,
+      "expectedSeconds": 69.213,
+      "offsetSeconds": 27.0,
+      "score": 0.0195,
+      "status": "matched"
+    },
+    "VID_20260225_163604_00_006.insv": {
+      "coarseOffsetSeconds": 1706.0,
+      "coarseScore": 0.13817,
+      "durationSeconds": 1798.016,
+      "expectedSeconds": 1868.213,
+      "offsetSeconds": 1705.6,
+      "score": 0.08642,
+      "status": "matched"
+    },
+    "VID_20260225_163604_00_007.insv": {
+      "coarseOffsetSeconds": 3688.5,
+      "coarseScore": 0.16383,
+      "durationSeconds": 1172.76,
+      "expectedSeconds": 3667.213,
+      "offsetSeconds": 3688.4,
+      "score": 0.09703,
+      "status": "matched"
+    }
+  },
+  "sourceRoot": "/Volumes/My Passport/Episode 4",
+  "spine": "Charlie Ep4.wav",
+  "truth": "Audio-envelope correlation evidence only. It does not mutate sessions or source media.",
+  "tx1ExpectedFromDurationTailMatchSeconds": 69.213
+}

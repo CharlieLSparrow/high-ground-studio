@@ -59,9 +59,25 @@ Premiere rescue and local sync work use a two-monitor mental model:
 
 This is intentionally different from destructive cut-only workflows. Deactivated does not mean forgotten. It means "known, preserved, and currently skipped."
 
-### Mac session handoff owns native API authentication
+### Firebase bearer tokens own native API authentication
 
-The Mac app has one primary Nest sign-in path:
+Current Firebase-first direction:
+
+- Native apps sign in with Firebase Auth directly.
+- Native apps send the Firebase ID token to Nest as `Authorization: Bearer <token>`.
+- Nest verifies identity, links/upserts the Quipsly user by email/firebaseUid, ensures free onboarding and Home Nest, then returns app-owned context.
+
+Current check endpoint:
+
+```text
+/api/mac/session-check
+```
+
+The response is the native app's account truth: authenticated user, Home Nest, and visible projects. Firebase proves identity; Quipsly owns roles, Nests, invites, memberships, settings, publishing receipts, and creative work.
+
+### Legacy Mac session handoff is historical/recovery context
+
+The older `apps/quipsly-mac` shell used this path:
 
 - Normal browser authentication through Nest.
 - One-time native handoff through `quipslymac://auth/session`.
@@ -86,7 +102,7 @@ The exchange returns short-lived access credentials and refresh credentials for 
 Authorization: Bearer <token>
 ```
 
-Current check endpoint:
+Legacy check endpoint:
 
 ```text
 /api/mac/session-check
@@ -100,7 +116,7 @@ Current embedded-editor bridge:
 
 The Mac app posts its access token to `/api/mac/web-session`, receives a one-use web login URL, loads that URL in WKWebView, and Nest sets an HTTP-only `quipsly_mac_web_session` cookie before redirecting to the editor route.
 
-The token is an access bridge, not a new account system. Nest still owns users, roles, invites, and project access.
+The token was an access bridge, not a new account system. Nest still owns users, roles, invites, and project access.
 
 Development storage note:
 
@@ -108,7 +124,7 @@ Development storage note:
 - This avoids macOS Keychain prompts caused by changing ad-hoc code-sign identities during rapid local development.
 - Non-debug builds use the same profile-vault API backed by macOS Keychain, assuming the bundle identifier, signing identity, and access group are stable.
 
-The old paste-a-code field remains only as an advanced recovery path. It is not considered signed in until `/api/mac/session-exchange` creates a device session and `/api/mac/session-check` accepts the resulting access token.
+The old paste-a-code field remains only as advanced recovery context for the old shell. New native work should not be built around manual copy/paste or hidden browser handoffs unless Firebase native sign-in is unavailable for that surface.
 
 ### Local engine owns media processing
 
@@ -149,7 +165,7 @@ GCS owns raw/proxy/thumb storage. The current intended object path policy is:
 ```text
 media-vault/raw/<projectSlug>/<episodeSlug>/<assetId>/<filename>
 media-vault/proxy/<projectSlug>/<episodeSlug>/<assetId>/<filename>
-media-vault/thumbnail/<projectSlug>/<episodeSlug>/<assetId>/<filename>
+media-vault/thumb/<projectSlug>/<episodeSlug>/<assetId>/<filename>
 ```
 
 Bucket selection should come from configuration/env. Current local-engine precedence is intended to be:
@@ -158,7 +174,7 @@ Bucket selection should come from configuration/env. Current local-engine preced
 QUIPSLY_MEDIA_BUCKET
 GCS_BUCKET_NAME
 NEXT_PUBLIC_GCS_BUCKET
-high-ground-raw-footage
+high-ground-odyssey-media
 ```
 
 ## Current local commands

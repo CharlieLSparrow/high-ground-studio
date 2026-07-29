@@ -86,7 +86,9 @@ struct InspectorSidebarView: View {
     let programCrop: ProgramCropAdjustment
     let programCropAtPlayhead: ProgramCropAdjustment
     let programCropKeyframeCount: Int
+    let clipFocusLayout: ClipFocusLayoutSettings
     let updateKeyframe: () -> Void
+    let updateClipFocusLayout: (ClipFocusLayoutSettings) -> Void
     let updateProgramCrop: (ProgramCropAdjustment) -> Void
     let updateProgramCropKeyframe: (ProgramCropAdjustment) -> Void
     let addProgramCropKeyframe: () -> Void
@@ -100,6 +102,7 @@ struct InspectorSidebarView: View {
             VStack(alignment: .leading, spacing: 14) {
                 inspectorHeader
                 formatCard
+                clipFocusLayoutCard
                 framingCard
                 programCropCard
                 doctrineFooter
@@ -107,6 +110,187 @@ struct InspectorSidebarView: View {
             .padding(16)
         }
         .background(QuipslyStudioTheme.sidePanelGradient)
+    }
+
+    private var clipFocusLayoutCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Label("Clip + reactions", systemImage: "rectangle.inset.filled.and.person.filled")
+                    .font(.caption)
+                    .fontWeight(.bold)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text(playbackEngine.playbackFormat.rawValue)
+                    .font(.caption2.monospacedDigit())
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.honey)
+            }
+
+            Picker("Layout", selection: Binding(
+                get: { clipFocusLayout.placement },
+                set: { placement in
+                    var next = clipFocusLayout
+                    next.placement = placement
+                    updateClipFocusLayout(next.normalized())
+                }
+            )) {
+                ForEach(ClipFocusPlacement.allCases) { placement in
+                    Text(placement.title).tag(placement)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .help("Corners overlays reactions on the full clip. Host Wings keeps both hosts large at the outside edges with a smaller whole clip between them. Clip Above reserves a strip. Side Rail keeps reactions beside it.")
+
+            Picker("Clip framing", selection: Binding(
+                get: { clipFocusLayout.clipContentMode },
+                set: { contentMode in
+                    var next = clipFocusLayout
+                    next.clipContentMode = contentMode
+                    updateClipFocusLayout(next.normalized())
+                }
+            )) {
+                ForEach(ClipFocusContentMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .help("Whole Clip preserves every edge. Crop to Fill intentionally trades edges for a larger image.")
+
+            HStack(spacing: 8) {
+                Text("Reaction strip")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(.secondary)
+                Slider(
+                    value: Binding(
+                        get: { clipFocusLayout.reactionSize },
+                        set: { value in
+                            var next = clipFocusLayout
+                            next.reactionSize = value
+                            updateClipFocusLayout(next.normalized())
+                        }
+                    ),
+                    in: 0.10...0.40
+                )
+                Text("\(Int((clipFocusLayout.reactionSize * 100).rounded()))%")
+                    .font(.caption2.monospacedDigit())
+                    .fontWeight(.black)
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+                    .frame(width: 34, alignment: .trailing)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Clip focus point", systemImage: "scope")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button("Recenter") {
+                        var next = clipFocusLayout
+                        next.focusX = 0
+                        next.focusY = 0
+                        updateClipFocusLayout(next.normalized())
+                    }
+                    .buttonStyle(.borderless)
+                    .controlSize(.small)
+                    .help("Return the clip focal point to the center without changing zoom.")
+                }
+
+                HStack(spacing: 8) {
+                    Text("Left")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: Binding(
+                            get: { clipFocusLayout.focusX },
+                            set: { value in
+                                var next = clipFocusLayout
+                                next.focusX = value
+                                updateClipFocusLayout(next.normalized())
+                            }
+                        ),
+                        in: -1...1
+                    )
+                    .accessibilityLabel("Horizontal clip focus")
+                    Text("Right")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    Text("Top")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Slider(
+                        value: Binding(
+                            get: { clipFocusLayout.focusY },
+                            set: { value in
+                                var next = clipFocusLayout
+                                next.focusY = value
+                                updateClipFocusLayout(next.normalized())
+                            }
+                        ),
+                        in: -1...1
+                    )
+                    .accessibilityLabel("Vertical clip focus")
+                    Text("Bottom")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
+                Text("X \(Int((clipFocusLayout.focusX * 100).rounded()))%  ·  Y \(Int((clipFocusLayout.focusY * 100).rounded()))%")
+                    .font(.caption2.monospacedDigit())
+                    .fontWeight(.bold)
+                    .foregroundStyle(QuipslyStudioTheme.creek)
+            }
+            .padding(10)
+            .background(QuipslyStudioTheme.panelLift.opacity(0.34))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .help("Choose which part of the watched clip stays centered when zoom or Crop to Fill trims an edge. This never changes the source file.")
+
+            HStack(spacing: 6) {
+                Button("Corners") {
+                    updateClipFocusLayout(ClipFocusLayoutSettings(
+                        placement: .cornerSquares,
+                        reactionSize: playbackEngine.playbackFormat == .horizontal16x9 ? 0.28 : 0.20,
+                        clipContentMode: .fit,
+                        focusX: clipFocusLayout.focusX,
+                        focusY: clipFocusLayout.focusY
+                    ))
+                }
+                Button("Side sliver") {
+                    updateClipFocusLayout(ClipFocusLayoutSettings(
+                        placement: .sideRail,
+                        reactionSize: 0.14,
+                        clipContentMode: .fit,
+                        focusX: clipFocusLayout.focusX,
+                        focusY: clipFocusLayout.focusY
+                    ))
+                }
+                Button("Fill frame") {
+                    var next = clipFocusLayout
+                    next.clipContentMode = .fill
+                    updateClipFocusLayout(next.normalized())
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+
+            Text("These are edit defaults for the current sequence and output shape. They never crop or rewrite source media.")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(12)
+        .background(QuipslyStudioTheme.livingPanelGradient)
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(QuipslyStudioTheme.quietStroke, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 14))
     }
 
     private var inspectorHeader: some View {

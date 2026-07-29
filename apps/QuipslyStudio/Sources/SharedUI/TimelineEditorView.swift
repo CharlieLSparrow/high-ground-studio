@@ -77,6 +77,7 @@ struct TimelineEditorView: View {
                 .frame(minHeight: timelineViewportHeight)
             selectedShortRecipeSummaryStrip
             selectedDecisionSummaryStrip
+            selectedDecisionIntentStrip
             selectedDecisionPrecisionStrip
         }
         .padding(12)
@@ -165,6 +166,230 @@ struct TimelineEditorView: View {
             .accessibilityIdentifier("quipsly.timeline.selectedDecisionSummary")
             .accessibilityLabel(isShow ? "Selected visible decision summary" : "Selected quiet decision summary")
             .accessibilityValue("\(context.lane.name), starts \(formatPreciseTime(sequenceStart)), duration \(String(format: "%.2f seconds", context.tag.duration)). Metadata only; source media remains untouched.")
+        }
+    }
+
+    @ViewBuilder
+    private var selectedDecisionIntentStrip: some View {
+        if let context = selectedDecisionContext {
+            let color = decisionColor(for: context.tag.type)
+            let isShow = context.tag.type == .active
+            let intent = context.tag.editIntent
+            let confidence = max(0, min(1, intent?.confidence ?? 0))
+            let status = intent?.status.trimmingCharacters(in: .whitespacesAndNewlines)
+            let risk = intent?.risk.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cutStyle = intent?.cutStyle.trimmingCharacters(in: .whitespacesAndNewlines)
+            let why = intent?.whyThisCutExists.trimmingCharacters(in: .whitespacesAndNewlines)
+            let tradeoff = intent?.tradeoffExplanation.trimmingCharacters(in: .whitespacesAndNewlines)
+            let rhythm = intent?.humanRhythmNote.trimmingCharacters(in: .whitespacesAndNewlines)
+            let nextAction = intent?.nextReviewAction.trimmingCharacters(in: .whitespacesAndNewlines)
+            let evidence = Array(intent?.reviewEvidence.prefix(3) ?? [])
+            let recentHumanNotes = intent.map { Array($0.humanAgentNotes.suffix(2)) } ?? []
+            let recentRevisionTrail = intent.map { Array($0.revisionHistory.suffix(2)) } ?? []
+            let structuredRevisionCount = intent?.revisionLedger.count ?? 0
+            let reviewTrailCount = structuredRevisionCount + (intent?.revisionHistory.count ?? 0) + (intent?.humanAgentNotes.count ?? 0)
+            let flowChecks = selectedDecisionFlowChecks(intent: intent, isShow: isShow, duration: context.tag.duration)
+            let flowReadyCount = flowChecks.filter { $0.ready }.count
+            let flowColor = flowReadyCount == flowChecks.count
+                ? QuipslyStudioTheme.moss
+                : (flowChecks.contains { !$0.ready && $0.id == "jump" } ? QuipslyStudioTheme.clay : QuipslyStudioTheme.honey)
+            let flowSafeAction = selectedDecisionFlowSafeAction(checks: flowChecks, intent: intent)
+            let humanCutGuidance = selectedDecisionHumanCutGuidance(intent: intent, isShow: isShow)
+
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: intent == nil ? "lightbulb.max" : "brain.head.profile")
+                        .font(.title3)
+                        .foregroundStyle(intent == nil ? QuipslyStudioTheme.honey : QuipslyStudioTheme.creek)
+                        .frame(width: 34, height: 34)
+                        .background((intent == nil ? QuipslyStudioTheme.honey : QuipslyStudioTheme.creek).opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(intent == nil ? "Cut Intelligence: explain this decision" : "Cut Intelligence: why this decision exists")
+                            .font(.subheadline)
+                            .fontWeight(.black)
+                            .foregroundStyle(intent == nil ? QuipslyStudioTheme.honey : QuipslyStudioTheme.creek)
+
+                        Text(intent == nil
+                             ? "This \(isShow ? "SHOW" : "SKIP") span is editable metadata, but it has no saved intent yet. Before this becomes reusable training evidence, add the why, the tradeoff, and what a human should hear."
+                             : (why?.isEmpty == false ? why! : "Intent metadata exists, but it still needs a plain-English reason. A good edit should be explainable without NLE tribal knowledge."))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        if let tradeoff, !tradeoff.isEmpty {
+                            Label(tradeoff, systemImage: "arrow.triangle.branch")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(QuipslyStudioTheme.sage)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        if let rhythm, !rhythm.isEmpty {
+                            Label(rhythm, systemImage: "waveform")
+                                .font(.caption2)
+                                .fontWeight(.semibold)
+                                .foregroundStyle(QuipslyStudioTheme.honey)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        if let nextAction, !nextAction.isEmpty {
+                            Label(nextAction, systemImage: "ear")
+                                .font(.caption2)
+                                .fontWeight(.bold)
+                                .foregroundStyle(QuipslyStudioTheme.creek)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+
+                    Spacer(minLength: 8)
+
+                    VStack(alignment: .trailing, spacing: 5) {
+                        intentMetric("status", status?.isEmpty == false ? status! : "needs intent", intent == nil ? QuipslyStudioTheme.honey : QuipslyStudioTheme.moss)
+                        intentMetric("style", cutStyle?.isEmpty == false ? cutStyle! : (isShow ? "visible span" : "quiet gap"), color)
+                        intentMetric("risk", risk?.isEmpty == false ? risk! : "unknown", risk == "high" ? QuipslyStudioTheme.clay : QuipslyStudioTheme.sage)
+                        intentMetric("confidence", intent == nil ? "none" : "\(Int(confidence * 100))%", confidence >= 0.75 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(spacing: 8) {
+                        Label("Edit-flow contract", systemImage: "ear.and.waveform")
+                            .font(.caption2)
+                            .fontWeight(.black)
+                            .tracking(0.5)
+                            .foregroundStyle(flowColor)
+                        Spacer()
+                        Text("\(flowReadyCount)/\(flowChecks.count)")
+                            .font(.caption2.monospacedDigit())
+                            .fontWeight(.black)
+                            .foregroundStyle(flowColor)
+                    }
+
+                    Text(flowSafeAction)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 6) {
+                            ForEach(Array(flowChecks.enumerated()), id: \.offset) { _, check in
+                                decisionFlowCheckPill(check)
+                            }
+                        }
+                    }
+                }
+                .padding(8)
+                .background(flowColor.opacity(0.09))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .stroke(flowColor.opacity(0.20), lineWidth: 1)
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+
+                selectedDecisionHumanCutGuidanceCard(humanCutGuidance)
+
+                if !evidence.isEmpty {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Review evidence")
+                            .font(.caption2)
+                            .fontWeight(.black)
+                            .tracking(0.5)
+                            .foregroundStyle(QuipslyStudioTheme.sage)
+                        ForEach(Array(evidence.enumerated()), id: \.offset) { index, item in
+                            HStack(alignment: .top, spacing: 6) {
+                                Text("\(index + 1)")
+                                    .font(.caption2.monospacedDigit())
+                                    .fontWeight(.black)
+                                    .foregroundStyle(QuipslyStudioTheme.night)
+                                    .frame(width: 17, height: 17)
+                                    .background(QuipslyStudioTheme.sage)
+                                    .clipShape(Circle())
+                                Text(item)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                    }
+                    .padding(8)
+                    .background(QuipslyStudioTheme.night.opacity(0.24))
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+
+                if intent != nil && reviewTrailCount > 0 {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Label("Review trail", systemImage: "point.3.connected.trianglepath.dotted")
+                                .font(.caption2)
+                                .fontWeight(.black)
+                                .tracking(0.5)
+                                .foregroundStyle(QuipslyStudioTheme.creek)
+                            Spacer()
+                            Text("\(structuredRevisionCount) structured")
+                                .font(.caption2.monospacedDigit())
+                                .fontWeight(.bold)
+                                .foregroundStyle(QuipslyStudioTheme.sage)
+                        }
+
+                        if recentHumanNotes.isEmpty && recentRevisionTrail.isEmpty {
+                            Text("Structured review ledger exists. Open the decision workbench for the machine-readable audit trail.")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        ForEach(Array(recentHumanNotes.enumerated()), id: \.offset) { _, item in
+                            Label(item, systemImage: "person.text.rectangle")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+
+                        ForEach(Array(recentRevisionTrail.enumerated()), id: \.offset) { _, item in
+                            Label(item, systemImage: "clock.arrow.circlepath")
+                                .font(.caption2)
+                                .foregroundStyle(QuipslyStudioTheme.sage)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .padding(8)
+                    .background(QuipslyStudioTheme.creek.opacity(0.10))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 11, style: .continuous)
+                            .stroke(QuipslyStudioTheme.creek.opacity(0.16), lineWidth: 1)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+                }
+
+                Text("Agent/human contract: listen before approval, explain every meaningful cut, preserve whole sources, and change metadata only.")
+                    .font(.caption2)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(QuipslyStudioTheme.sage)
+            }
+            .padding(12)
+            .background(
+                LinearGradient(
+                    colors: [
+                        (intent == nil ? QuipslyStudioTheme.honey : QuipslyStudioTheme.creek).opacity(0.12),
+                        QuipslyStudioTheme.panelLift.opacity(0.62),
+                        QuipslyStudioTheme.panelWarm.opacity(0.44)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke((intent == nil ? QuipslyStudioTheme.honey : QuipslyStudioTheme.creek).opacity(0.24), lineWidth: 1)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal)
+            .accessibilityIdentifier("quipsly.timeline.selectedDecisionIntent")
+            .accessibilityLabel("Cut Intelligence selected decision intent")
+            .accessibilityValue(intent == nil ? "No saved intent yet. Add a reason and review note before using this decision as training evidence." : "Intent saved. Review why, tradeoff, rhythm note, edit-flow contract, evidence, and next action.")
         }
     }
 
@@ -741,7 +966,7 @@ struct TimelineEditorView: View {
     }
 
     private func visualReviewBoundaryRail(timelineScale: Double) -> some View {
-        ZStack(alignment: .topLeading) {
+        return ZStack(alignment: .topLeading) {
             Rectangle()
                 .fill(QuipslyStudioTheme.creek.opacity(0.07))
                 .frame(height: 18)
@@ -1154,6 +1379,450 @@ struct TimelineEditorView: View {
                 .stroke(QuipslyStudioTheme.warmGlassStroke.opacity(0.82), lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 7))
+    }
+
+    private func intentMetric(_ label: String, _ value: String, _ color: Color) -> some View {
+        VStack(alignment: .trailing, spacing: 1) {
+            Text(value.isEmpty ? "none" : value)
+                .font(.caption2)
+                .fontWeight(.black)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+                .foregroundStyle(color)
+            Text(label.uppercased())
+                .font(.caption2)
+                .fontWeight(.bold)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: 124, alignment: .trailing)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(color.opacity(0.10))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(color.opacity(0.18), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+    }
+
+    private func selectedDecisionFlowChecks(
+        intent: EditDecisionIntent?,
+        isShow: Bool,
+        duration: Double
+    ) -> [(id: String, title: String, ready: Bool, detail: String, color: Color, icon: String)] {
+        let cutStyle = intent?.cutStyle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let coverStrategy = intent?.coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let cadenceMode = intent?.cadenceMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let rhythm = intent?.humanRhythmNote.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let why = intent?.whyThisCutExists.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let tradeoff = intent?.tradeoffExplanation.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let nextAction = intent?.nextReviewAction.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let risk = intent?.risk.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "unknown"
+        let hasIntent = !why.isEmpty || !tradeoff.isEmpty
+        let hasCadence = !rhythm.isEmpty
+            || nextAction.contains("listen")
+            || nextAction.contains("breath")
+            || nextAction.contains("cadence")
+            || nextAction.contains("pause")
+            || cadenceMode.contains("warm")
+            || cadenceMode.contains("thoughtful")
+        let hasSplitTiming = abs(intent?.audioLeadSeconds ?? 0) > 0.03 || abs(intent?.audioTailSeconds ?? 0) > 0.03
+        let splitConsidered = hasSplitTiming
+            || cutStyle.contains("j-cut")
+            || cutStyle.contains("l-cut")
+            || cutStyle.contains("split")
+            || nextAction.contains("lead")
+            || nextAction.contains("tail")
+            || nextAction.contains("split")
+        let jumpRisk = risk.contains("high")
+            || cutStyle.contains("jump")
+            || nextAction.contains("jump")
+            || nextAction.contains("harsh")
+            || nextAction.contains("abrupt")
+        let hasCover = coverStrategy != "none" && !coverStrategy.isEmpty
+        let jumpHandled = !jumpRisk
+            || hasCover
+            || nextAction.contains("cover")
+            || nextAction.contains("reaction")
+            || nextAction.contains("b-roll")
+            || nextAction.contains("refine")
+            || nextAction.contains("hold")
+            || nextAction.contains("listen")
+        let needsReactionOrCover = jumpRisk || coverStrategy.contains("reaction") || coverStrategy.contains("b-roll")
+        let reactionConsidered = !needsReactionOrCover
+            || hasCover
+            || nextAction.contains("reaction")
+            || nextAction.contains("cover")
+            || nextAction.contains("b-roll")
+            || nextAction.contains("listen")
+        let hasReviewPath = !(intent?.nextReviewAction.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            || !(intent?.humanAgentNotes.isEmpty ?? true)
+            || !(intent?.revisionLedger.isEmpty ?? true)
+            || !(intent?.revisionHistory.isEmpty ?? true)
+
+        return [
+            (
+                id: "boundary",
+                title: "Boundary",
+                ready: duration > 0.05,
+                detail: duration > 0.05 ? "Known span: \(String(format: "%.2fs", duration))." : "Select or repair a decision with a real duration.",
+                color: duration > 0.05 ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay,
+                icon: "timeline.selection"
+            ),
+            (
+                id: "intent",
+                title: "Why",
+                ready: hasIntent,
+                detail: hasIntent ? "Plain-English reason or tradeoff exists." : "Add why this \(isShow ? "SHOW" : "SKIP") decision exists.",
+                color: hasIntent ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey,
+                icon: "text.bubble"
+            ),
+            (
+                id: "cadence",
+                title: "Cadence",
+                ready: hasCadence,
+                detail: hasCadence ? "Cadence or listening guidance is present." : "Listen for breath, laugh, pause, and emotional reset before tightening.",
+                color: hasCadence ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey,
+                icon: "waveform"
+            ),
+            (
+                id: "split",
+                title: "J/L",
+                ready: splitConsidered,
+                detail: splitConsidered ? "Split-edit timing has been considered." : "Consider whether audio should lead or trail the visual cut.",
+                color: splitConsidered ? QuipslyStudioTheme.moss : QuipslyStudioTheme.creek,
+                icon: "arrow.left.and.right"
+            ),
+            (
+                id: "jump",
+                title: "Jump",
+                ready: jumpHandled,
+                detail: jumpHandled ? "Jump risk is covered, absent, or routed to review." : "High/abrupt jump risk needs cover, hold, refine, or a human ear pass.",
+                color: jumpHandled ? QuipslyStudioTheme.moss : QuipslyStudioTheme.clay,
+                icon: "bolt.horizontal"
+            ),
+            (
+                id: "cover",
+                title: "Cover",
+                ready: reactionConsidered,
+                detail: reactionConsidered ? "Reaction/B-roll cover is considered when needed." : "Consider reaction, B-roll, or source cover if the cut is visually harsh.",
+                color: reactionConsidered ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey,
+                icon: "rectangle.on.rectangle"
+            ),
+            (
+                id: "review",
+                title: "Review",
+                ready: hasReviewPath,
+                detail: hasReviewPath ? "Next action or review trail exists." : "Record Keep, Refine, Hold, or needs-listen after review.",
+                color: hasReviewPath ? QuipslyStudioTheme.moss : QuipslyStudioTheme.honey,
+                icon: "checklist"
+            )
+        ]
+    }
+
+    private func selectedDecisionFlowSafeAction(
+        checks: [(id: String, title: String, ready: Bool, detail: String, color: Color, icon: String)],
+        intent: EditDecisionIntent?
+    ) -> String {
+        if let firstMissing = checks.first(where: { !$0.ready }) {
+            return firstMissing.detail
+        }
+        let nextAction = intent?.nextReviewAction.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !nextAction.isEmpty {
+            return nextAction
+        }
+        return "Cue the boundary at normal speed, compare Play Edit and Play Through, then record Keep/Refine/Hold with a note."
+    }
+
+    private func selectedDecisionHumanCutGuidance(
+        intent: EditDecisionIntent?,
+        isShow: Bool
+    ) -> (
+        editRead: String,
+        primaryQuestion: String,
+        proofInstruction: String,
+        shouldNotCutIf: [String],
+        shouldTightenIf: [String],
+        agentRule: String,
+        color: Color,
+        icon: String
+    ) {
+        let cutStyle = intent?.cutStyle.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let coverStrategy = intent?.coverStrategy.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let cadenceMode = intent?.cadenceMode.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let risk = intent?.risk.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        let confidence = intent?.confidence ?? 0
+        let lead = abs(intent?.audioLeadSeconds ?? 0)
+        let tail = abs(intent?.audioTailSeconds ?? 0)
+        let evidenceText = [
+            intent?.cutStyle,
+            intent?.coverStrategy,
+            intent?.cadenceMode,
+            intent?.humanRhythmNote,
+            intent?.whyThisCutExists,
+            intent?.tradeoffExplanation,
+            intent?.reviewEvidence.joined(separator: " ")
+        ]
+        .compactMap { $0?.lowercased() }
+        .joined(separator: " ")
+        let preserveAir = [
+            "breath", "laugh", "hesitat", "thinking", "thought", "comic", "joke",
+            "warm", "emotional", "reaction", "pause", "awkward", "beat", "reset",
+            "cadence", "too clean", "robotic", "over-tightened", "silence means"
+        ]
+        .contains { evidenceText.contains($0) }
+        let splitEdit = lead > 0.03
+            || tail > 0.03
+            || cutStyle.contains("j-cut")
+            || cutStyle.contains("l-cut")
+            || cutStyle.contains("split")
+            || evidenceText.contains("j-cut")
+            || evidenceText.contains("l-cut")
+        let reactionCover = (!coverStrategy.isEmpty && coverStrategy != "none")
+            || evidenceText.contains("reaction")
+            || evidenceText.contains("cover")
+            || evidenceText.contains("b-roll")
+        let jumpCut = cutStyle.contains("jump")
+            || evidenceText.contains("jump cut")
+            || evidenceText.contains("jump-cut")
+        let lowConfidence = confidence > 0 && confidence < 0.5
+        let highRisk = risk.contains("high")
+
+        let shouldNotCutIf = [
+            "The pause lets a thought land.",
+            "A laugh, breath, hesitation, or awkward warmth makes the moment more human.",
+            "The reaction shot explains the emotional meaning better than cleaner pacing would.",
+            "Removing the gap makes the speaker sound rushed, robotic, or falsely certain.",
+            "The cut hides useful context the listener needs for the next sentence."
+        ]
+        let shouldTightenIf = [
+            "The span is pure reset noise, repeated setup, or dead air.",
+            "The listener would understand the same thought faster without losing warmth.",
+            "The visual cover or reaction makes the seam feel intentional.",
+            "The next sentence starts stronger when the boundary moves earlier or later."
+        ]
+        let proofInstruction = "Scrub for timing, then play at normal speed to prove humanity. Tight is not always better."
+        let agentRule = "Optimize for listener trust, clarity, energy, and human cadence, not maximum tightness."
+
+        if !isShow && preserveAir {
+            return (
+                "dangerous skip",
+                "Does this removed span contain a breath, laugh, reaction, or thinking beat that makes the conversation feel human?",
+                proofInstruction,
+                shouldNotCutIf,
+                shouldTightenIf,
+                agentRule,
+                QuipslyStudioTheme.clay,
+                "hand.raised.fill"
+            )
+        }
+        if !isShow {
+            return (
+                "candidate skip",
+                "Is this genuinely dead air or repeated setup, or are we making the conversation too clean?",
+                proofInstruction,
+                shouldNotCutIf,
+                shouldTightenIf,
+                agentRule,
+                QuipslyStudioTheme.honey,
+                "forward.end.fill"
+            )
+        }
+        if splitEdit {
+            return (
+                "split edit flow",
+                "Does the audio lead or tail make the thought feel natural, or does it make speakers step on each other?",
+                proofInstruction,
+                shouldNotCutIf,
+                shouldTightenIf,
+                agentRule,
+                QuipslyStudioTheme.creek,
+                "arrow.left.and.right"
+            )
+        }
+        if reactionCover {
+            return (
+                "reaction or cover",
+                "Does the cover improve attention, reaction, or context, or is it only hiding an awkward cut?",
+                proofInstruction,
+                shouldNotCutIf,
+                shouldTightenIf,
+                agentRule,
+                QuipslyStudioTheme.moss,
+                "rectangle.on.rectangle"
+            )
+        }
+        if jumpCut || lowConfidence || highRisk {
+            return (
+                jumpCut ? "jump cut" : "high-care cut",
+                "Does the cut preserve meaning and energy without making the speaker feel chopped up?",
+                proofInstruction,
+                shouldNotCutIf,
+                shouldTightenIf,
+                agentRule,
+                QuipslyStudioTheme.clay,
+                "bolt.horizontal.fill"
+            )
+        }
+        if preserveAir || cadenceMode.contains("warm") || cadenceMode.contains("thoughtful") {
+            return (
+                "cadence-sensitive show",
+                "Is this pause or reaction doing useful emotional work?",
+                proofInstruction,
+                shouldNotCutIf,
+                shouldTightenIf,
+                agentRule,
+                QuipslyStudioTheme.honey,
+                "waveform"
+            )
+        }
+        if intent == nil {
+            return (
+                "unexplained decision",
+                "What is this decision trying to improve for the listener?",
+                "Add why, tradeoff, and a normal-speed proof note before using this as reusable edit evidence.",
+                shouldNotCutIf,
+                shouldTightenIf,
+                "Explain the edit before trusting it.",
+                QuipslyStudioTheme.honey,
+                "questionmark.bubble"
+            )
+        }
+        return (
+            "normal human proof",
+            "Does the boundary feel like a person edited it after listening at normal speed?",
+            proofInstruction,
+            shouldNotCutIf,
+            shouldTightenIf,
+            agentRule,
+            QuipslyStudioTheme.sage,
+            "ear"
+        )
+    }
+
+    private func selectedDecisionHumanCutGuidanceCard(
+        _ guidance: (
+            editRead: String,
+            primaryQuestion: String,
+            proofInstruction: String,
+            shouldNotCutIf: [String],
+            shouldTightenIf: [String],
+            agentRule: String,
+            color: Color,
+            icon: String
+        )
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: guidance.icon)
+                    .foregroundStyle(guidance.color)
+                    .frame(width: 24, height: 24)
+                    .background(guidance.color.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Human cut guidance")
+                        .font(.caption2)
+                        .fontWeight(.black)
+                        .tracking(0.5)
+                        .foregroundStyle(guidance.color)
+
+                    Text(guidance.primaryQuestion)
+                        .font(.caption)
+                        .fontWeight(.bold)
+                        .foregroundStyle(.primary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text(guidance.proofInstruction)
+                        .font(.caption2)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Spacer(minLength: 8)
+
+                Text(guidance.editRead.uppercased())
+                    .font(.caption2)
+                    .fontWeight(.black)
+                    .foregroundStyle(guidance.color)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(guidance.color.opacity(0.12))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+
+            HStack(alignment: .top, spacing: 8) {
+                guidanceMiniList(
+                    title: "Do not cut if",
+                    color: QuipslyStudioTheme.clay,
+                    items: Array(guidance.shouldNotCutIf.prefix(2))
+                )
+                guidanceMiniList(
+                    title: "Tighten if",
+                    color: QuipslyStudioTheme.moss,
+                    items: Array(guidance.shouldTightenIf.prefix(2))
+                )
+            }
+
+            Text(guidance.agentRule)
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(QuipslyStudioTheme.sage)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(8)
+        .background(guidance.color.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .stroke(guidance.color.opacity(0.20), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
+        .accessibilityIdentifier("quipsly.timeline.selectedDecisionHumanCutGuidance")
+        .accessibilityLabel("Human cut guidance")
+        .accessibilityValue("\(guidance.editRead). \(guidance.primaryQuestion)")
+    }
+
+    private func guidanceMiniList(title: String, color: Color, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title.uppercased())
+                .font(.caption2)
+                .fontWeight(.black)
+                .foregroundStyle(color)
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                Text("• \(item)")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(7)
+        .background(color.opacity(0.07))
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+    }
+
+    private func decisionFlowCheckPill(
+        _ check: (id: String, title: String, ready: Bool, detail: String, color: Color, icon: String)
+    ) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: check.ready ? "checkmark.circle.fill" : check.icon)
+                .font(.caption2)
+            Text(check.title.uppercased())
+                .font(.caption2)
+                .fontWeight(.black)
+        }
+        .foregroundStyle(check.ready ? check.color : check.color.opacity(0.94))
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(check.color.opacity(check.ready ? 0.14 : 0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .stroke(check.color.opacity(check.ready ? 0.24 : 0.16), lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .help(check.detail)
+        .accessibilityLabel("\(check.title): \(check.ready ? "ready" : "needs work"). \(check.detail)")
     }
 
     private func precisionActionButton(_ label: String, _ help: String, action: @escaping () -> Void) -> some View {
@@ -1972,6 +2641,7 @@ struct TimelineLaneView: View {
         let effectiveDuration = max(0.1, tag.duration + (isResizing ? (resizeEdge == .left ? -resizeDelta : resizeDelta) : 0))
         let decisionWidth = CGFloat(effectiveDuration * pixelsPerSecond)
         let handleHitWidth = max(38, min(74, max(decisionWidth * 0.45, pixelsPerSecond * 0.18)))
+        let decisionTitle = label == "SKIP" ? "Quiet gap" : "Visible span"
 
         return ZStack(alignment: .leading) {
             Button {
@@ -1996,11 +2666,11 @@ struct TimelineLaneView: View {
                 Button(role: .destructive) {
                     onRemoveTag?(lane.id, tag.id)
                 } label: {
-                    Label("Delete Show Decision", systemImage: "trash")
+                    Label("Delete \(decisionTitle) Decision", systemImage: "trash")
                 }
             }
             #if os(macOS)
-            .accessibilityLabel("Select \(label.lowercased()) decision")
+            .accessibilityLabel("Select \(decisionTitle.lowercased())")
             #endif
             .zIndex(20)
 
@@ -2084,9 +2754,16 @@ struct TimelineLaneView: View {
     }
 
     private func tagOverlay(label: String, color: Color, width: CGFloat, isSelected: Bool, startTime: Double? = nil, duration: Double? = nil) -> some View {
-        ZStack(alignment: .topLeading) {
+        let isSkip = label == "SKIP"
+        let decisionTitle = isSkip ? "Quiet gap" : "Visible span"
+        let badgeTitle = isSkip ? "Gap" : "Visible"
+        let shouldShowCompactBadge = isSelected || width > 260
+        let shouldShowWordLabel = width > 150 && (isSelected || width > 360)
+        let shouldShowTiming = isSelected && width > 240
+
+        return ZStack(alignment: .topLeading) {
             Rectangle()
-                .fill(color.opacity(label == "SKIP" ? (isSelected ? 0.22 : 0.080) : (isSelected ? 0.21 : 0.082)))
+                .fill(color.opacity(isSkip ? (isSelected ? 0.24 : 0.070) : (isSelected ? 0.22 : 0.076)))
             decisionTextureOverlay(label: label, color: color, isSelected: isSelected)
                 .allowsHitTesting(false)
             if isSelected {
@@ -2095,27 +2772,34 @@ struct TimelineLaneView: View {
                     .padding(3)
                     .allowsHitTesting(false)
             }
-            if width > 44 {
-                HStack(spacing: 0) {
-                    Image(systemName: label == "SKIP" ? "forward.end.fill" : "eye.fill")
+            if shouldShowCompactBadge {
+                HStack(spacing: 5) {
+                    Image(systemName: isSkip ? "forward.end.fill" : "eye.fill")
                         .font(.caption2)
+                    if shouldShowWordLabel {
+                        Text(badgeTitle)
+                            .font(.caption2)
+                            .fontWeight(.black)
+                            .lineLimit(1)
+                    }
                 }
-                .foregroundStyle(label == "SKIP" ? Color.white.opacity(0.94) : QuipslyStudioTheme.night.opacity(0.88))
-                .frame(width: isSelected ? 24 : 19, height: isSelected ? 22 : 18)
-                .background(label == "SKIP" ? QuipslyStudioTheme.clay.opacity(0.72) : QuipslyStudioTheme.honey.opacity(0.78))
+                .foregroundStyle(isSkip ? Color.white.opacity(0.94) : QuipslyStudioTheme.night.opacity(0.88))
+                .frame(minWidth: shouldShowWordLabel ? 0 : (isSelected ? 25 : 18), minHeight: isSelected ? 22 : 18)
+                .padding(.horizontal, shouldShowWordLabel ? 7 : 0)
+                .background(isSkip ? QuipslyStudioTheme.clay.opacity(isSelected ? 0.78 : 0.48) : QuipslyStudioTheme.honey.opacity(isSelected ? 0.82 : 0.50))
                 .clipShape(Capsule())
                 .padding(6)
             }
-            if isSelected, width > 104, let startTime, let duration {
+            if shouldShowTiming, let startTime, let duration {
                 VStack {
                     Spacer()
                     Text(String(format: "%.2fs → %.2fs  ·  %.2fs", startTime, startTime + duration, duration))
                         .font(.caption2)
                         .fontWeight(.semibold)
-                        .foregroundStyle(label == "SKIP" ? Color.white.opacity(0.92) : QuipslyStudioTheme.night.opacity(0.82))
+                        .foregroundStyle(isSkip ? Color.white.opacity(0.92) : QuipslyStudioTheme.night.opacity(0.82))
                         .padding(.horizontal, 6)
                         .padding(.vertical, 3)
-                        .background(.black.opacity(label == "SKIP" ? 0.35 : 0.10))
+                        .background(.black.opacity(isSkip ? 0.35 : 0.10))
                         .clipShape(Capsule())
                         .padding(6)
                 }
@@ -2123,14 +2807,13 @@ struct TimelineLaneView: View {
             if isSelected {
                 HStack {
                     Spacer()
-                    Label("selected", systemImage: "slider.horizontal.3")
+                    Image(systemName: "scope")
                         .font(.caption2)
                         .fontWeight(.black)
-                        .foregroundStyle(label == "SKIP" ? Color.white : QuipslyStudioTheme.night.opacity(0.82))
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
-                        .background(Color.white.opacity(label == "SKIP" ? 0.18 : 0.68))
-                        .clipShape(Capsule())
+                        .foregroundStyle(isSkip ? Color.white : QuipslyStudioTheme.night.opacity(0.82))
+                        .frame(width: 20, height: 20)
+                        .background(Color.white.opacity(isSkip ? 0.18 : 0.68))
+                        .clipShape(Circle())
                         .padding(6)
                 }
             }
@@ -2145,21 +2828,38 @@ struct TimelineLaneView: View {
                     .stroke(color.opacity(isSelected ? 0.64 : 0.08), lineWidth: isSelected ? 2 : 1)
         )
         .shadow(color: isSelected ? color.opacity(0.42) : Color.clear, radius: 10)
-        .accessibilityLabel("\(label) decision\(isSelected ? ", selected" : ""). \(startTime.map { String(format: "%.2fs", $0) } ?? "no start")")
+        .help(decisionHelpText(title: decisionTitle, startTime: startTime, duration: duration, isSelected: isSelected))
+        .accessibilityLabel("\(decisionTitle) decision\(isSelected ? ", selected" : ""). \(startTime.map { String(format: "%.2fs", $0) } ?? "no start")")
+    }
+
+    private func decisionHelpText(title: String, startTime: Double?, duration: Double?, isSelected: Bool) -> String {
+        guard let startTime, let duration else {
+            return "\(title) decision. Click to inspect; drag edges to refine."
+        }
+
+        let status = isSelected ? "Selected" : "Click to inspect"
+        return String(
+            format: "%@ %@ decision: %.2fs to %.2fs, %.2fs long. Drag the edge handles to refine without touching source media.",
+            status,
+            title.lowercased(),
+            startTime,
+            startTime + duration,
+            duration
+        )
     }
 
     @ViewBuilder
     private func decisionTextureOverlay(label: String, color: Color, isSelected: Bool) -> some View {
         if label == "SKIP" {
             Canvas { context, size in
-                let spacing: CGFloat = 14
+                let spacing: CGFloat = isSelected ? 14 : 19
                 let lineWidth: CGFloat = isSelected ? 2.2 : 1.4
                 var x = -size.height
                 while x < size.width + size.height {
                     var path = Path()
                     path.move(to: CGPoint(x: x, y: size.height))
                     path.addLine(to: CGPoint(x: x + size.height, y: 0))
-                    context.stroke(path, with: .color(Color.white.opacity(isSelected ? 0.22 : 0.13)), lineWidth: lineWidth)
+                    context.stroke(path, with: .color(Color.white.opacity(isSelected ? 0.22 : 0.09)), lineWidth: lineWidth)
                     x += spacing
                 }
             }
@@ -2167,7 +2867,7 @@ struct TimelineLaneView: View {
             VStack(spacing: 0) {
                 Spacer()
                 Rectangle()
-                    .fill(color.opacity(isSelected ? 0.55 : 0.34))
+                    .fill(color.opacity(isSelected ? 0.55 : 0.26))
                     .frame(height: isSelected ? 4 : 3)
                 Spacer()
             }

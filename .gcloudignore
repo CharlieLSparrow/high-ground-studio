@@ -72,6 +72,7 @@ dev.db
 /Downloads/
 /HighGroundMedia/
 apps/quipsly-mac/
+content/quipsly/premiere-imports/
 
 # Quipsly app source uses route-local `assets/` component folders. Keep those
 # while still excluding heavy top-level imported media/assets.
@@ -81,6 +82,8 @@ apps/quipsly-mac/
 # Non-deploy app workspaces. Do not add apps/quipsly, apps/web,
 # apps/motion-lab, or apps/studio-collab here without checking Dockerfiles.
 apps/engine/
+apps/QuipslyStudio/
+apps/mac/
 apps/quiplore/
 apps/quipsly-api/
 apps/desktop-companion/
