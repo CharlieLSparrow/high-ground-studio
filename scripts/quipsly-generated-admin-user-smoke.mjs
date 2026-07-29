@@ -129,6 +129,33 @@ function runAuthSmoke(env) {
   }
 }
 
+function runPreviewPromotion(env) {
+  const result = spawnSync("bash", ["scripts/release/quipsly-promote-preview.sh"], {
+    cwd: repoRoot,
+    env: {
+      ...env,
+      QUIPSLY_RELEASE_SMOKE_EXPECT_ADMIN: "1",
+    },
+    stdio: "inherit",
+  });
+
+  if (result.error) {
+    throw result.error;
+  }
+  if (result.status !== 0) {
+    throw new Error(`preview promotion failed with exit ${result.status}`);
+  }
+}
+
+function parseMode(argv) {
+  const args = argv.slice(2);
+  if (args.length === 0) return "auth-smoke";
+  if (args.length === 1 && args[0] === "--promote-preview") return "promote-preview";
+  throw new Error(
+    "Usage: node scripts/quipsly-generated-admin-user-smoke.mjs [--promote-preview]",
+  );
+}
+
 async function cleanupGeneratedAdminArtifacts(env, email) {
   if (env.QUIPSLY_ADMIN_SMOKE_KEEP_ARTIFACTS === "1") {
     return { skipped: "QUIPSLY_ADMIN_SMOKE_KEEP_ARTIFACTS=1" };
@@ -237,6 +264,7 @@ async function createGeneratedAdminUser(env, email, password) {
 async function main() {
   const env = mergedEnv();
   assertConfigured(env);
+  const mode = parseMode(process.argv);
 
   const suffix = crypto.randomBytes(4).toString("hex");
   const email = `codex-admin-${suffix}@dev.test`;
@@ -245,13 +273,19 @@ async function main() {
   let smokeSucceeded = false;
   try {
     await createGeneratedAdminUser(env, email, password);
-    runAuthSmoke({
+    const generatedAdminEnv = {
       ...env,
       QUIPSLY_AUTH_SMOKE_EMAIL: email,
       QUIPSLY_AUTH_SMOKE_PASSWORD: password,
       QUIPSLY_AUTH_SMOKE_EXPECT_ADMIN: "1",
       QUIPSLY_AUTH_SMOKE_BASE_URL: env.QUIPSLY_ADMIN_SMOKE_BASE_URL || env.QUIPSLY_AUTH_SMOKE_BASE_URL || "http://127.0.0.1:3025",
-    });
+    };
+
+    if (mode === "promote-preview") {
+      runPreviewPromotion(generatedAdminEnv);
+    } else {
+      runAuthSmoke(generatedAdminEnv);
+    }
     smokeSucceeded = true;
   } finally {
     const cleanup = await cleanupGeneratedAdminArtifacts(env, email).catch((error) => ({
@@ -259,11 +293,12 @@ async function main() {
     }));
     console.log(JSON.stringify({
       ok: smokeSucceeded,
+      mode,
       cleanup: {
         generatedAdminSmokeArtifacts: cleanup,
         afterSuccessfulSmoke: smokeSucceeded,
       },
-      note: "Generated password, Firebase token, session cookie, and database URL were not printed.",
+      note: "Generated password, Firebase token, session cookie, release receipt, and database URL were not printed or persisted.",
     }, null, 2));
   }
 }
