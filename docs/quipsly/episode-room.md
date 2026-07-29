@@ -1,7 +1,7 @@
 # Quipsly Episode Room
 
-Status: production deployed; physical capture and media qualification remain open
-Last updated: 2026-07-27
+Status: web production deployed; native Watch candidate proven in zero-traffic preview; physical capture remains open
+Last updated: 2026-07-29
 
 ## Product promise
 
@@ -222,6 +222,30 @@ outside the protected source baseline is visibly held; it cannot expand or
 rewrite that baseline.
 
 Physical-device validation is still required before claiming sample-accurate alignment between the server episode clock and an iPhone recording clock. The current receipt model preserves enough evidence to measure and correct that offset rather than pretending it is zero.
+
+### Native preview release evidence
+
+On 2026-07-29 exact source
+`96eebffc27bc1bae2b1789b0f0adb27d70bd3987` was deployed as Cloud Run revision
+`studio-00428-cef` behind the zero-traffic `quipsly-preview` tag. The full
+signed preview smoke passed. A separate read-only verifier then exercised the
+real High Ground Odyssey rehearsal using the same Firebase bearer form used
+by Quipsly Capture:
+
+- the Watch projection denied an outsider with HTTP 401 and returned the exact
+  paused revision to the authenticated editor;
+- the Watch list was exactly Be Curious, Lucy, then Samwise, with Be Curious
+  selected;
+- there was no room session, active segment, or watched segment;
+- protected Be Curious playback denied an outsider with HTTP 401;
+- authenticated streaming returned exactly 19,100,059 bytes at SHA-256
+  `acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`;
+- the verifier used GET only and did not access the database directly, grant
+  consent, start recording, join a provider, or mutate the Episode Room.
+
+Production traffic remained 100% on `studio-00425-gij`. This proves the
+deployed mobile/server authentication and protected-source seam, not
+physical-iPhone playback, routing, clock alignment, or recording.
 
 ## Current dogfood evidence
 

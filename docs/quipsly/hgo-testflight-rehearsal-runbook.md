@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 09:28 UTC
+Last verified: 2026-07-29 10:19 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -34,16 +34,27 @@ needs to prove.
   bytes at SHA-256
   `acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`;
   the exact 34-block manuscript and all three Watch sources passed again.
+- The 10:19 UTC **native bearer-only** proof passed against zero-traffic Cloud
+  Run preview `studio-00428-cef`, exact source
+  `96eebffc27bc1bae2b1789b0f0adb27d70bd3987`. The Watch projection and Be
+  Curious media both returned HTTP 401 without credentials and HTTP 200 with
+  the short-lived Firebase bearer. The preview returned revision 5, the exact
+  three-clip order above, Be Curious selected and paused, no started Watch
+  session, no active or closed segment, and the exact 19,100,059-byte source at
+  the SHA-256 above. The verifier issued GET requests only.
 
 ## Next candidate without changing tonight's lane
 
-Source commit `5920e525` adds a production-architected **Podcast audio + video**
-mode: separate local AAC microphone and video-only MOV masters under one
-capture-group identity while LiveKit remains the call. Its full static,
-simulator, privacy, and UI gates are green, but it has not been assigned a new
-build number or uploaded to TestFlight. Build 8 remains the rehearsal
-instruction set below until physical-iPhone capture, route, playback, upload,
-relaunch, and editor-sync proof qualify the new mode.
+Candidate checkpoint `96eebffc` combines the production-architected
+**Podcast audio + video** mode from `5920e525` with native shared Episode Watch:
+separate local AAC microphone and video-only MOV masters under one
+capture-group identity while LiveKit remains the call, plus protected
+preparation and revision-safe Play/Pause/Seek from the iPhone Record surface.
+Its full static, simulator, privacy, UI, server preview, native-bearer, and
+protected-media gates are green, but it has not been assigned a new build
+number or uploaded to TestFlight. Build 8 remains the rehearsal instruction
+set below until physical-iPhone capture, route, playback, upload, relaunch, and
+editor-sync proof qualify the candidate.
 
 See
 [`../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md`](../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md).

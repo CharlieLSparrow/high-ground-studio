@@ -5,12 +5,16 @@ Date: 2026-07-29
 ## Exact source
 
 - Branch: `codex/quipsly-product-20260724`
+- Current candidate checkpoint: `96eebffc`
 - Feature commit: `5920e525`
 - Commit subject:
   `feat(capture): coordinate local podcast audio and video`
 - Editor-handoff commit: `d1dc98aa`
 - Commit subject:
   `feat(capture): preserve grouped editor alignment`
+- Native Episode Watch commit: `96eebffc`
+- Commit subject:
+  `feat(capture): add shared episode watch`
 - App Store version/build in source: `1.0 (8)`
 - Release decision: do not upload or assign this feature as Build 9 until its
   physical-iPhone gate is complete. Build 8 remains the honest external
@@ -100,6 +104,10 @@ timeline.
 - Grouped upload/editor handoff: **43/43** focused server/editor tests passed.
 - Capture finalization integrity: passed with durable alignment-before-episode
   ordering.
+- Native shared Watch static contract: **23/23**.
+- Native Watch UI test:
+  `CaptureExperienceUITests.testEpisodeWatchStagesLeadClipWithoutInventingRecordingOrSharedMutation`:
+  passed on the iPhone 16e simulator.
 
 The UI test proves that the four-mode picker is reachable and that Podcast A/V
 shows the separate microphone status and two-source truth before asking for a
@@ -141,6 +149,31 @@ After schema repair, the preview passed:
 
 Production remains healthy and pinned 100% to `studio-00425-gij`. Promotion of
 `studio-00427-meb` is deliberately separate from this preview proof.
+
+The later native-Watch checkpoint
+`96eebffc27bc1bae2b1789b0f0adb27d70bd3987` built successfully in Cloud Build
+`2165f581-a1f3-4ecc-97f3-9c94494fd3ad` as tag
+`preview-96eebffc-20260729`. Cloud Run revision `studio-00428-cef` is ready
+behind `quipsly-preview` at **0%** production traffic. Its full signed preview
+smoke passed, including Firebase login, the native session check, authenticated
+Nest/Capture/database journeys, logout, and configured public-host health.
+
+The read-only native-Watch release proof then used only Firebase bearer GETs
+against the real rehearsal:
+
+- unauthenticated Watch and protected Be Curious media: HTTP 401;
+- authenticated Watch and media: HTTP 200;
+- exact clip order: Be Curious, Lucy, then Samwise;
+- Be Curious selected and paused at revision 5;
+- no Watch session, active segment, or watched segment;
+- exact protected source: 19,100,059 bytes, SHA-256
+  `acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`;
+- no direct database access, room mutation, consent, recording start, or
+  provider join.
+
+The redacted, mode-0600 receipt was written outside the repository at
+`/private/tmp/quipsly-watch-preview-96eebffc-receipt.json`. Production remains
+100% on `studio-00425-gij`; the newer preview is also intentionally unpromoted.
 
 ## Current external TestFlight readback
 
