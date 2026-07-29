@@ -265,6 +265,8 @@ if PROJECT_ID="${PROJECT_ID}" \
   APPLY=0 \
   bash "${release_source_root}/scripts/release/quipsly-nest-media-access.sh"; then
   pass "Nest can create immutable captures and update only its managed control folders."
+elif [[ "${QUIPSLY_PREFLIGHT_PURPOSE}" == "preview" ]]; then
+  warn "Could not prove the media-vault IAM contract with the preview deployer's read-only authority. The revision may remain at zero traffic, but it is ineligible for promotion until the audit preflight proves this boundary."
 else
   fail "Nest mobile-capture media IAM is incomplete. Run quipsly-nest-media-access.sh with APPLY=1 before release."
 fi

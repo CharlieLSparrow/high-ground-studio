@@ -48,6 +48,14 @@ test("preflight compiles the exact committed production bundle before Cloud Buil
 test("preflight proves scoped Nest access to the uniform-IAM media vault", () => {
   assert.match(preflight, /quipsly-nest-media-access\.sh/);
   assert.match(preflight, /Mobile capture media access/);
+  assert.match(
+    preflight,
+    /preview deployer's read-only authority.*ineligible for promotion until the audit preflight proves this boundary/s,
+  );
+  assert.match(
+    preflight,
+    /else\s+fail "Nest mobile-capture media IAM is incomplete/s,
+  );
   assert.match(nestMediaAccess, /iamConfiguration\.uniformBucketLevelAccess\.enabled/);
   assert.match(nestMediaAccess, /media-vault\/recordings\//);
   assert.match(nestMediaAccess, /roles\/storage\.objectCreator/);
