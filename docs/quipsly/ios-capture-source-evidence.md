@@ -110,21 +110,34 @@ deletes or overwrites an older one.
 
 ## User experience
 
-Every real Library source exposes one reachable evidence screen with four
+Every real Library source exposes one reachable evidence screen with five
 plain-language sections:
 
 - Source identity
 - Captured with
 - Room boundary
 - Cloud copy
+- Independent Nest comparison
 
 The screen distinguishes “not verified” from “verified” and “not required”
 from “missing.” Exact identifiers remain selectable for support, but long
 hashes are shortened in the visual summary. The share action is absent until
 the full local hash succeeds.
 
+For a room-bound source, **Compare with Nest** streams every local byte through
+SHA-256 again, then makes an authenticated, owner-bound, no-cache request for
+Nest's independent receipt. It joins the two authorities by the durable local
+capture UUID and canonical RecordingAsset ID, then compares SHA-256, exact byte
+count, capture group, START/STOP receipts, cloud generation, and canonical
+object path. `Exact match`, `processing held`, `drift`, and `incomplete` remain
+separate outcomes. The local file size and modification time must also remain
+stable through the network read; account/source changes cancel the result.
+Leaving the screen cancels hashing and the request. The action writes nothing
+locally or remotely and never imports the phone receipt into Nest authority.
+
 Preview mode is intentionally non-operational. It demonstrates the layout,
-labels itself synthetic, and exposes neither prepare nor share controls.
+labels itself synthetic, and exposes neither prepare, share, nor Nest-compare
+controls.
 
 Nest exposes the other side of the comparison in the authenticated Session
 **Recordings** workspace:
@@ -168,17 +181,25 @@ Evidence preparation fails closed when:
 - a cloud copy claims verified but its hash, size, generation, or timestamp
   does not match the local source.
 
+The live Nest comparison additionally fails closed when the room path is not a
+safe canonical ID, the authenticated response leaves the configured Nest
+origin, the response is not JSON, the schema/version/authority/room is wrong,
+the receipt is oversized, counts disagree with rows, identities are ambiguous,
+or any hash, byte count, boundary, timestamp, status, or bounded text field is
+malformed. Cancellation is checked between every 1 MiB local read.
+
 An incomplete room boundary or mismatched cloud proof remains visible in the
 review screen and receipt checks. It is never silently upgraded into success.
 
 ## Verification
 
 - Source evidence contract: 23/23.
+- iPhone-to-Nest comparison contract: 10/10.
 - Capture durability contract: 79/79.
 - Universal arm64/x86_64 iOS simulator build: passed.
 - Operated iPhone 17 Pro simulator journey:
   `testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt`:
-  passed.
+  passed with the accessibility audit and no-network preview boundary.
 - Nest source-evidence model, Session Recordings UI, and authenticated receipt
   route: 30/30 focused tests pass alongside the existing Session review suite.
 - Strict Quipsly TypeScript check: passed.
@@ -189,6 +210,7 @@ review screen and receipt checks. It is never silently upgraded into success.
 
 The remaining acceptance boundary is physical iPhone work: create real
 standalone and room-bound sources, prepare and share their receipts, relaunch,
-upload, and compare the local and cloud proof readback. Simulator and static
+upload, tap **Compare with Nest**, and inspect the local/cloud proof readback.
+Simulator and static
 contracts do not substitute for camera, microphone, route, background upload,
 thermal, or physical storage behavior.

@@ -888,7 +888,7 @@ final class CaptureExperienceUITests: XCTestCase {
         ])
     }
 
-    func testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt() {
+    func testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))
 
@@ -901,8 +901,17 @@ final class CaptureExperienceUITests: XCTestCase {
         let previewBoundary = app.descendants(matching: .any)["CaptureSourceEvidencePreviewBoundary"]
         XCTAssertTrue(previewBoundary.exists)
         XCTAssertTrue(previewBoundary.label.contains("no evidence file created"))
+        let nestPreviewBoundary = app.descendants(matching: .any)["CaptureNestEvidencePreviewBoundary"]
+        XCTAssertTrue(nestPreviewBoundary.exists)
+        XCTAssertTrue(nestPreviewBoundary.label.contains("no network request"))
         XCTAssertFalse(app.buttons["CaptureSourceEvidencePrepare"].exists)
         XCTAssertFalse(app.buttons["CaptureSourceEvidenceShare"].exists)
+        XCTAssertFalse(app.buttons["CaptureNestEvidenceCompare"].exists)
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
     }
 
     func testTodayKeepsTranscriptDerivedGoalLinkedToExactSource() {

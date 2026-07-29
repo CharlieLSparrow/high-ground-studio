@@ -18,6 +18,7 @@ fastlane_runner="$capture_root/scripts/run-fastlane.sh"
 testflight_runner="$capture_root/../../../scripts/deploy-testflight.sh"
 isolated_release_runner="$capture_root/../../../scripts/release/quipsly-capture-release-from-commit.sh"
 isolated_preflight_runner="$capture_root/../../../scripts/release/quipsly-capture-preflight-from-commit.sh"
+nest_evidence_contract_test="$capture_root/scripts/test-nest-source-evidence-contract.sh"
 developer_dir="${DEVELOPER_DIR:-/Applications/Xcode.app/Contents/Developer}"
 
 fail() {
@@ -125,6 +126,9 @@ require_text "$isolated_preflight_runner" 'export QUIPSLY_CAPTURE_PREFLIGHT_ISOL
 require_text "$isolated_preflight_runner" '"$preflight"' "Full Capture preflight invokes the committed contract runner"
 require_text "$testflight_runner" 'exec "${release_runner}" beta "$@"' "TestFlight entry point uses committed-source isolation"
 require_absent_text "$testflight_runner" "gem install bundler" "TestFlight entry point never mutates Apple system Ruby"
+
+"$nest_evidence_contract_test"
+pass "Nest source-evidence comparison contract passes"
 
 app_settings="$(
   xcodebuild \

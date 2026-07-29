@@ -358,6 +358,10 @@ clock.
    share the JSON receipt, then confirm its local SHA-256/byte count, START and
    STOP IDs, capture group, app/device/route snapshot, and verified cloud proof
    match the Session and editor readback.
+10. Tap **Compare with Nest**. Treat `Exact local and Nest source match` as the
+    cryptographic pass, `Exact bytes preserved · processing held` as a policy
+    hold, `Incomplete` as a retry/readiness state, and `Drift` as a stop-work
+    integrity failure. Capture the exact issue list before retrying anything.
 
 ## Pass criteria
 

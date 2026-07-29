@@ -7,6 +7,10 @@ struct CaptureSourceEvidenceView: View {
     @State private var evidenceFileURL: URL?
     @State private var isPreparing = false
     @State private var errorMessage: String?
+    @State private var comparison: CaptureNestEvidenceComparison?
+    @State private var isComparing = false
+    @State private var comparisonError: String?
+    @State private var comparisonTask: Task<Void, Never>?
 
     var body: some View {
         ScrollView {
@@ -17,6 +21,7 @@ struct CaptureSourceEvidenceView: View {
                     captureCard(recording)
                     roomCard(recording)
                     cloudCard(recording)
+                    nestComparisonCard(recording)
                     evidenceAction(recording)
                 } else {
                     ContentUnavailableView(
@@ -32,6 +37,10 @@ struct CaptureSourceEvidenceView: View {
         .navigationTitle("Source evidence")
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("CaptureSourceEvidenceView")
+        .onDisappear {
+            comparisonTask?.cancel()
+            comparisonTask = nil
+        }
     }
 
     private var explanation: some View {
@@ -175,6 +184,182 @@ struct CaptureSourceEvidenceView: View {
             }
         }
         .evidenceSurface()
+    }
+
+    private func nestComparisonCard(_ recording: LocalRecording) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Independent Nest comparison", systemImage: comparisonIcon)
+                .font(.headline)
+            Text("Quipsly re-hashes every local source byte, then privately reads Nest’s independent Session receipt. The check never uploads, edits, releases, transcribes, or deletes anything.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let comparison {
+                Label(comparisonStatusLabel(comparison.status), systemImage: comparisonIcon)
+                    .font(.subheadline.weight(.bold))
+                    .foregroundStyle(comparisonColor(comparison.status))
+                    .accessibilityIdentifier("CaptureNestEvidenceStatus")
+                EvidenceRow(
+                    label: "Local SHA-256",
+                    value: shortenedDigest(comparison.localSHA256)
+                )
+                EvidenceRow(
+                    label: "Nest SHA-256",
+                    value: shortenedDigest(comparison.nestSHA256)
+                )
+                EvidenceRow(
+                    label: "Exact bytes",
+                    value: "\(comparison.localByteCount)"
+                )
+                EvidenceRow(
+                    label: "RecordingAsset",
+                    value: comparison.recordingAssetID ?? "Not assigned"
+                )
+                EvidenceRow(
+                    label: "Cloud generation",
+                    value: comparison.nestGeneration ?? "Not verified"
+                )
+                EvidenceRow(
+                    label: "Nest receipt",
+                    value: comparison.nestGeneratedAt.formatted(
+                        date: .abbreviated,
+                        time: .standard
+                    )
+                )
+                if let disposition = nonempty(comparison.processingDisposition) {
+                    EvidenceRow(label: "Processing", value: disposition)
+                }
+                if let disposition = nonempty(comparison.transcriptDisposition) {
+                    EvidenceRow(label: "Transcript", value: disposition)
+                }
+                if !comparison.issues.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Needs attention")
+                            .font(.caption.weight(.semibold))
+                        ForEach(
+                            Array(comparison.issues.enumerated()),
+                            id: \.offset
+                        ) { _, issue in
+                            Label(issue, systemImage: "exclamationmark.triangle")
+                                .font(.caption)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    .foregroundStyle(comparisonColor(comparison.status))
+                    .accessibilityIdentifier("CaptureNestEvidenceIssues")
+                }
+            }
+
+            if let comparisonError {
+                Label(comparisonError, systemImage: "wifi.exclamationmark")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("CaptureNestEvidenceError")
+            }
+
+            Button {
+                compareWithNest()
+            } label: {
+                HStack {
+                    if isComparing {
+                        ProgressView()
+                    }
+                    Label(
+                        isComparing
+                            ? "Hashing and checking…"
+                            : comparison == nil
+                                ? "Compare with Nest"
+                                : "Check again",
+                        systemImage: isComparing
+                            ? "hourglass"
+                            : "arrow.triangle.2.circlepath"
+                    )
+                }
+                .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .disabled(
+                isComparing
+                    || nonempty(recording.callRoomId) == nil
+                    || !recording.status.isPlaybackEligible
+            )
+            .accessibilityIdentifier("CaptureNestEvidenceCompare")
+
+            if nonempty(recording.callRoomId) == nil {
+                Text("Standalone sources have no Nest Session receipt.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .evidenceSurface()
+    }
+
+    private var comparisonIcon: String {
+        guard let status = comparison?.status else {
+            return "arrow.triangle.2.circlepath.icloud"
+        }
+        switch status {
+        case .verifiedMatch:
+            return "checkmark.seal.fill"
+        case .held:
+            return "pause.circle.fill"
+        case .drift:
+            return "exclamationmark.octagon.fill"
+        case .incomplete:
+            return "clock.badge.exclamationmark"
+        }
+    }
+
+    private func comparisonStatusLabel(
+        _ status: CaptureNestEvidenceStatus
+    ) -> String {
+        switch status {
+        case .verifiedMatch:
+            return "Exact local and Nest source match"
+        case .held:
+            return "Exact bytes preserved · processing held"
+        case .drift:
+            return "Source evidence drift detected"
+        case .incomplete:
+            return "Nest evidence is not complete yet"
+        }
+    }
+
+    private func comparisonColor(
+        _ status: CaptureNestEvidenceStatus
+    ) -> Color {
+        switch status {
+        case .verifiedMatch:
+            return .green
+        case .held, .incomplete:
+            return .orange
+        case .drift:
+            return .red
+        }
+    }
+
+    private func compareWithNest() {
+        comparisonTask?.cancel()
+        comparison = nil
+        comparisonError = nil
+        isComparing = true
+        comparisonTask = Task {
+            do {
+                let result = try await CaptureNestSourceEvidenceClient.compare(
+                    recordingID: recordingID,
+                    library: library
+                )
+                try Task.checkCancellation()
+                comparison = result
+            } catch is CancellationError {
+                return
+            } catch {
+                comparisonError = error.localizedDescription
+            }
+            isComparing = false
+            comparisonTask = nil
+        }
     }
 
     private func prepareEvidence() {
@@ -331,6 +516,21 @@ struct CaptureSourceEvidencePreviewView: View {
                     Text("A real receipt becomes shareable only after Quipsly hashes an actual finalized local source.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                previewCard(
+                    title: "Independent Nest comparison",
+                    systemImage: "arrow.triangle.2.circlepath.icloud"
+                ) {
+                    Text("A real comparison re-hashes an actual local source and privately reads its Nest Session receipt. Preview performs neither action.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Label(
+                        "Preview only · no network request",
+                        systemImage: "eye"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .accessibilityIdentifier("CaptureNestEvidencePreviewBoundary")
                 }
 
                 Label(

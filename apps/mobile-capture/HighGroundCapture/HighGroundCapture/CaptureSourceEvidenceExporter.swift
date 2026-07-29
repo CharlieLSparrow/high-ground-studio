@@ -87,6 +87,20 @@ enum CaptureSourceEvidenceExporter {
         recordingID: UUID,
         library: LocalRecordingLibrary
     ) async throws -> URL {
+        let receipt = try await evaluate(
+            recordingID: recordingID,
+            library: library
+        )
+        return try write(
+            receipt,
+            ownerFingerprint: receipt.ownerFingerprintSHA256
+        )
+    }
+
+    static func evaluate(
+        recordingID: UUID,
+        library: LocalRecordingLibrary
+    ) async throws -> CaptureSourceEvidenceReceipt {
         guard let recording = library.recording(id: recordingID) else {
             throw EvidenceError.recordingUnavailable
         }
@@ -108,9 +122,14 @@ enum CaptureSourceEvidenceExporter {
             throw EvidenceError.localSourceUnavailable
         }
 
-        let hashedFile = try await Task.detached(priority: .utility) {
+        let hashTask = Task.detached(priority: .utility) {
             try hashFile(at: sourceURL)
-        }.value
+        }
+        let hashedFile = try await withTaskCancellationHandler {
+            try await hashTask.value
+        } onCancel: {
+            hashTask.cancel()
+        }
 
         guard let activeOwnerAfterHash = normalizedOwner(AuthManager.currentStoredOwnerID()),
               activeOwnerAfterHash == activeOwner,
@@ -224,7 +243,7 @@ enum CaptureSourceEvidenceExporter {
                 sourceTruthChecksPass: sourceTruthChecksPass
             )
         )
-        return try write(receipt, ownerFingerprint: sha256(activeOwner))
+        return receipt
     }
 
     private nonisolated static func hashFile(at sourceURL: URL) throws -> HashedFile {
@@ -237,6 +256,7 @@ enum CaptureSourceEvidenceExporter {
         var hasher = SHA256()
         var byteCount: Int64 = 0
         while true {
+            try Task.checkCancellation()
             let data = try handle.read(upToCount: 1_048_576) ?? Data()
             guard !data.isEmpty else { break }
             hasher.update(data: data)
