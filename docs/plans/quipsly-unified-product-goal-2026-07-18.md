@@ -3123,3 +3123,42 @@ This is an active-goal checkpoint, not a completion claim.
   automation, so the independent physical tap, install, `ACCEPTED` API
   readback, app launch, production sign-in, and full capture/crash/offline/
   reconnect/Studio rehearsal remain mandatory.
+
+### 2026-07-29 canonical document-tagging vertical-slice checkpoint
+
+- This is a shared document-kernel and real local Nest checkpoint, not a
+  production deployment, physical-iPhone, or full unified-product completion
+  claim.
+- Committed source `35b925df` adds first-class whole-document classification
+  through `StudioDocumentTagLink` and a document-owned `tagRevision`. It keeps
+  document classification separate from exact-passage `StudioTaggedSpan`
+  annotation, so a tag on a note or page no longer fabricates a full-body text
+  range.
+- The same canonical tags now flow through the writing desk, quick-note
+  capture, work API, Nest actions, Library, global Find, workspace search,
+  portable Nest export/restore, production-readiness audit, and reversible
+  merge/rollback operations.
+- Document-tag writes use tag-specific optimistic concurrency rather than the
+  document's general `updatedAt`. Unrelated writing changes do not create false
+  conflicts; stale tag revisions cannot overwrite a newer selection; current
+  idempotent retries succeed; superseded retries conflict; merge and rollback
+  each advance every affected document revision.
+- Verification passed: Quipsly typecheck; all 161 enabled Jest suites with
+  769 passing tests and no failures; 12/12 database integration cases; all 27
+  migrations applied from zero on a disposable PostgreSQL database followed
+  by the same 12/12 integration cases; and the complete production build with
+  150/150 static pages.
+- Real signed-in local use created `#Concurrency proven`, navigated between
+  documents without leaking editor state, found the page through both Library
+  and global Find, then used two competing browser tabs. Revision 5 preserved
+  the winner's `#Cross-tab winner`, rejected the stale tab with a visible
+  conflict while retaining its unsaved choice, and produced no browser
+  warnings or errors. Database readback retained exactly three document tags,
+  four reversible tag operations, and zero passage spans.
+- Antigravity remains isolated on `backup/pre-quarantine-2026-07-28`, but its
+  dev server and the product dev server still point at the same local
+  `high_ground_studio` database. Its proposed Notion-style implementation
+  currently fails TypeScript and adds Prisma models without a migration.
+  Before any Antigravity schema or data command, give that lane a separate
+  database; treat its continuous-canvas, slash-command, property-popover, and
+  saved-view ideas as design input rather than mergeable product source.
