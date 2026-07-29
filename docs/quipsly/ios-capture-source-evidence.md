@@ -146,6 +146,15 @@ migration, copied evidence store, or phone-controlled authority. The phone
 receipt is useful for side-by-side rehearsal review, but Nest recomputes its
 own result instead of importing that receipt as truth.
 
+An authorized Session collaborator can download the same projection from
+`GET /api/sessions/[roomId]/source-evidence`. The response uses the versioned
+`quipsly-nest-source-evidence` schema, is an attachment with
+`private, no-store` caching, and explicitly records
+`phoneReceiptImportedAsAuthority: false`. Inaccessible Session IDs return the
+same generic not-found boundary, and database errors return a credential-free
+failure body. The endpoint reads only; it creates no receipt row, transcript,
+task, cloud object, or provider action.
+
 ## Security and failure policy
 
 Evidence preparation fails closed when:
@@ -170,8 +179,8 @@ review screen and receipt checks. It is never silently upgraded into success.
 - Operated iPhone 17 Pro simulator journey:
   `testSourceEvidencePreviewShowsTruthBoundariesWithoutCreatingAReceipt`:
   passed.
-- Nest source-evidence model and Session Recordings UI: 25/25 focused tests
-  pass alongside the existing Session review suite.
+- Nest source-evidence model, Session Recordings UI, and authenticated receipt
+  route: 30/30 focused tests pass alongside the existing Session review suite.
 - Strict Quipsly TypeScript check: passed.
 - Quipsly production build with the release build-time database boundary:
   passed, including all 150 App Router pages.

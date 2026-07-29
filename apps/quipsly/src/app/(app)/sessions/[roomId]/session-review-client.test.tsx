@@ -584,6 +584,10 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText("Shure MV7i · USBAudio")).toBeInTheDocument();
     expect(screen.getByText("4,096 bytes · generation 1742")).toBeInTheDocument();
     expect(screen.getByText(/does not trust or import a phone-exported receipt as authority/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Download Nest receipt" })).toHaveAttribute(
+      "href",
+      "/api/sessions/room-1/source-evidence",
+    );
     expect(screen.queryByText(/actor-private/i)).not.toBeInTheDocument();
   });
 

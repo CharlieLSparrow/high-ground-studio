@@ -81,6 +81,16 @@ export type SessionSourceEvidence = {
   counts: Record<SessionSourceEvidenceStatus, number>;
 };
 
+export type SessionSourceEvidenceReceipt = {
+  schema: "quipsly-nest-source-evidence";
+  version: 1;
+  generatedAt: string;
+  authority: "nest-independent-projection";
+  roomId: string;
+  phoneReceiptImportedAsAuthority: false;
+  evidence: SessionSourceEvidence;
+};
+
 function object(value: unknown): UnknownRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as UnknownRecord
@@ -295,4 +305,22 @@ export function buildSessionSourceEvidence(input: {
   };
   for (const source of sources) counts[source.status] += 1;
   return { sources, counts };
+}
+
+export function buildSessionSourceEvidenceReceipt(input: {
+  roomId: string;
+  generatedAt: Date | string;
+  evidence: SessionSourceEvidence;
+}): SessionSourceEvidenceReceipt {
+  const generatedAt = iso(input.generatedAt);
+  if (!generatedAt) throw new Error("A valid receipt generation time is required.");
+  return {
+    schema: "quipsly-nest-source-evidence",
+    version: 1,
+    generatedAt,
+    authority: "nest-independent-projection",
+    roomId: input.roomId,
+    phoneReceiptImportedAsAuthority: false,
+    evidence: input.evidence,
+  };
 }

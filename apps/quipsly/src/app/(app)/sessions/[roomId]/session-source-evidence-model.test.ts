@@ -1,4 +1,7 @@
-import { buildSessionSourceEvidence } from "./session-source-evidence-model";
+import {
+  buildSessionSourceEvidence,
+  buildSessionSourceEvidenceReceipt,
+} from "./session-source-evidence-model";
 
 const roomId = "room-1";
 const captureId = "11111111-1111-4111-8111-111111111111";
@@ -167,5 +170,24 @@ describe("Session source evidence", () => {
       localManifestJson: { source: "provider-recording-receipt-slot" },
     });
     expect(buildSessionSourceEvidence(input).sources).toHaveLength(1);
+  });
+
+  it("creates a versioned Nest receipt without upgrading the phone export to authority", () => {
+    const evidence = buildSessionSourceEvidence(fixture());
+    const receipt = buildSessionSourceEvidenceReceipt({
+      roomId,
+      generatedAt: new Date("2026-07-29T15:10:00Z"),
+      evidence,
+    });
+    expect(receipt).toMatchObject({
+      schema: "quipsly-nest-source-evidence",
+      version: 1,
+      generatedAt: "2026-07-29T15:10:00.000Z",
+      authority: "nest-independent-projection",
+      roomId,
+      phoneReceiptImportedAsAuthority: false,
+    });
+    expect(JSON.stringify(receipt)).not.toContain("actor-private-1");
+    expect(JSON.stringify(receipt)).not.toContain("cameraDeviceUniqueID");
   });
 });

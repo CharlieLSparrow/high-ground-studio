@@ -71,7 +71,7 @@
     "quipsly:release:local:json": "node scripts/hgo-quipsly-release-readiness.mjs --local-only --json",
     "quipsly:release:readiness": "node scripts/hgo-quipsly-release-readiness.mjs",
     "quipsly:release:readiness:json": "node scripts/hgo-quipsly-release-readiness.mjs --json",
-    "quipsly:session-evidence:test": "pnpm --filter quipsly exec jest --runInBand --runTestsByPath 'src/app/(app)/sessions/[roomId]/session-source-evidence-model.test.ts' 'src/app/(app)/sessions/[roomId]/session-review-client.test.tsx'",
+    "quipsly:session-evidence:test": "pnpm --filter quipsly exec jest --runInBand --runTestsByPath 'src/app/(app)/sessions/[roomId]/session-source-evidence-model.test.ts' 'src/app/(app)/sessions/[roomId]/session-review-client.test.tsx' 'src/app/api/sessions/[roomId]/source-evidence/route.test.ts'",
     "quipsly:contracts:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/public-route-failure-classification.test.mjs scripts/quipsly-*.test.mjs",
     "quipsly:media-verifier:build": "pnpm --filter quipsly-media-verifier build",
     "quipsly:media-verifier:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/quipsly-long-source-verification-worker.test.mjs",
