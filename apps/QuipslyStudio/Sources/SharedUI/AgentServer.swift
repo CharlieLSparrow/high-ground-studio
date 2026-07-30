@@ -58,6 +58,8 @@ public class AgentServer: ObservableObject {
     public let port: UInt16 = 8080
     private nonisolated static let cachedStatusLock = NSLock()
     private nonisolated(unsafe) static var cachedStatusData: Data?
+    private nonisolated static let cachedCaptureStatusLock = NSLock()
+    private nonisolated(unsafe) static var cachedCaptureStatusData: Data?
     private nonisolated static let projectedShortSelectionLock = NSLock()
     private nonisolated(unsafe) static var projectedShortSelectionValues: [String: String] = [:]
     private nonisolated static let httpCommandQueueLock = NSLock()
@@ -149,6 +151,16 @@ public class AgentServer: ObservableObject {
                 }
             case "/editor_loop_proof":
                 self?.sendJSON(connection, object: Self.cachedEditorLoopProofPayload())
+            case "/capture_status":
+                if let cachedStatus = Self.cachedCaptureStatusResponseData() {
+                    self?.sendJSONData(connection, bodyData: cachedStatus)
+                } else {
+                    self?.sendJSON(connection, object: [
+                        "status": "no_capture_state_yet",
+                        "hint": "Open Episode Capture Setup, then read /capture_status again.",
+                        "truth": "The editor /state and capture /capture_status projections are intentionally independent so one window cannot overwrite the other.",
+                    ])
+                }
             case "/capture_open_setup":
                 Task { @MainActor in
                     NotificationCenter.default.post(
@@ -2853,6 +2865,12 @@ public class AgentServer: ObservableObject {
         return cachedStatusData
     }
 
+    private nonisolated static func cachedCaptureStatusResponseData() -> Data? {
+        cachedCaptureStatusLock.lock()
+        defer { cachedCaptureStatusLock.unlock() }
+        return cachedCaptureStatusData
+    }
+
     private nonisolated static func enqueueHTTPCommand(_ request: AgentCommandRequest) -> Int {
         httpCommandQueueLock.lock()
         httpCommandQueue.append(request)
@@ -3778,6 +3796,22 @@ public class AgentServer: ObservableObject {
         cachedStatusLock.unlock()
     }
 
+    private nonisolated static func updateCachedCaptureStatusResponse(
+        _ status: [String: Any]
+    ) {
+        let safeStatus = jsonSafeDictionary(status)
+        guard JSONSerialization.isValidJSONObject(safeStatus),
+              let data = try? JSONSerialization.data(
+                withJSONObject: safeStatus,
+                options: [.prettyPrinted, .sortedKeys]
+              ) else {
+            return
+        }
+        cachedCaptureStatusLock.lock()
+        cachedCaptureStatusData = data
+        cachedCaptureStatusLock.unlock()
+    }
+
     private nonisolated static func jsonSafeDictionary(_ dictionary: [String: Any]) -> [String: Any] {
         jsonSafeValue(dictionary) as? [String: Any] ?? [
             "serializationWarning": "Agent state could not be converted into a JSON object.",
@@ -3992,6 +4026,7 @@ public class AgentServer: ObservableObject {
                 "GET /agent_capabilities",
                 "GET /codex_editor_handoff",
                 "GET /editor_loop_proof",
+                "GET /capture_status",
                 "GET /capture_open_setup",
                 "GET /capture_refresh_hardware",
                 "GET /capture_prepare_local?episode_space_id=<id>&participant_id=<id>&input_device_id=<exact-id>&output_device_id=<exact-id>&video_device_id=<exact-id>&include_camera=true|false&camera_signal_verified=true|false",
@@ -4195,6 +4230,7 @@ public class AgentServer: ObservableObject {
                 "GET /edit?lane_id=<uuid-or-name>&action=clear_tags",
                 "GET /sync_audio",
                 "GET /state",
+                "GET /capture_status",
                 "GET /editor_snapshot",
                 "GET /control_plane",
                 "GET /delivery_readiness",
@@ -4528,6 +4564,28 @@ public class AgentServer: ObservableObject {
         let safeStatus = Self.jsonSafeDictionary(enriched)
         self.lastStatus = safeStatus
         Self.updateCachedStatusResponse(safeStatus)
+    }
+
+    public func writeCaptureStatus(_ status: [String: Any]) {
+        var enriched = status
+        enriched["agentServer"] = "running"
+        enriched["agentPort"] = port
+        enriched["agentPendingCommandCount"] =
+            pendingCommandRequests.count + Self.httpCommandCount()
+        enriched["agentCommandExecutorRegistered"] =
+            commandExecutor != nil
+        enriched["agentLastCommandReceipt"] = lastCommandReceipt
+        enriched["agentActiveCommandConsumerId"] =
+            activeCommandConsumerId?.uuidString ?? ""
+        enriched["captureStatusUrl"] =
+            "http://127.0.0.1:\(port)/capture_status"
+        enriched["commandsUrl"] =
+            "http://127.0.0.1:\(port)/commands"
+        enriched["projectionOwnership"] =
+            "episode-capture-setup"
+        enriched["projectionIsolationTruth"] =
+            "The capture projection remains readable even while the main editor continues publishing /state."
+        Self.updateCachedCaptureStatusResponse(enriched)
     }
 
     private func refreshCachedStatusCommandMetadata() {

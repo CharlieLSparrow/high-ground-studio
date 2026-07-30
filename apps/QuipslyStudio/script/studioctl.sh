@@ -20,6 +20,7 @@ Usage:
   script/studioctl.sh warn-duplicates
   script/studioctl.sh verify-app
   script/studioctl.sh launch [--no-build]
+  script/studioctl.sh launch-capture-acceptance [--no-build]
   script/studioctl.sh load-episode1
   script/studioctl.sh state-summary
   script/studioctl.sh prove-editor-control
@@ -314,6 +315,54 @@ launch_app() {
     "$ROOT_DIR/script/build_and_run.sh" --verify
   fi
   warn_duplicates
+}
+
+launch_capture_acceptance() {
+  local mode="${1:-}"
+  local running_noncanonical
+
+  if [[ "$mode" != "--no-build" ]]; then
+    "$ROOT_DIR/script/build_and_run.sh" --verify
+  else
+    verify_app >/dev/null
+  fi
+
+  running_noncanonical="$(noncanonical_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  if [[ -n "$running_noncanonical" ]]; then
+    echo "error=noncanonical_quipsly_running pids=$running_noncanonical" >&2
+    echo "hint=Close those app copies before capture qualification so every receipt belongs to the canonical binary." >&2
+    return 1
+  fi
+
+  local running_canonical
+  running_canonical="$(canonical_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  if [[ -n "$running_canonical" ]]; then
+    kill $running_canonical
+    for _ in {1..40}; do
+      if [[ -z "$(canonical_pids)" ]]; then
+        break
+      fi
+      sleep 0.1
+    done
+  fi
+
+  /usr/bin/open -n "$APP_BUNDLE" --args --episode-capture-setup-only
+  for _ in {1..120}; do
+    local status
+    status="$("$ROOT_DIR/script/agentctl.sh" capture-status 2>/dev/null || true)"
+    if [[ "$status" == *'"projectTitle" : "Episode Capture Setup"'* ]] \
+      || [[ "$status" == *'"projectTitle":"Episode Capture Setup"'* ]]; then
+      warn_duplicates
+      printf '%s\n' "$status"
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  echo "error=capture_acceptance_state_unavailable" >&2
+  echo "hint=The canonical app launched but /capture_status never published Episode Capture Setup." >&2
+  warn_duplicates >&2
+  return 1
 }
 
 load_episode1() {
@@ -667,6 +716,9 @@ case "$command" in
     ;;
   launch)
     launch_app "${2:-}"
+    ;;
+  launch-capture-acceptance)
+    launch_capture_acceptance "${2:-}"
     ;;
   load-episode1)
     load_episode1

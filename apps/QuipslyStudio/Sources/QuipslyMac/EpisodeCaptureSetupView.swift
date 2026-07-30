@@ -424,6 +424,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 "run deterministic byte and media acceptance",
             ],
             "agentCurrentSafeActions": [
+                "GET /capture_status",
                 "GET /capture_refresh_hardware",
                 "GET /capture_prepare_local",
                 "GET /capture_start_local",
@@ -433,7 +434,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             "captureAgentBoundary":
                 "This launch-only acceptance surface can write local media. It cannot request privacy permission, join a provider room, create a Nest START, upload, deliver, or publish.",
         ]
-        AgentServer.shared.writeStatus(status)
+        AgentServer.shared.writeCaptureStatus(status)
     }
 
     func handleAgentAcceptanceCommand(_ request: AgentCommandRequest) {

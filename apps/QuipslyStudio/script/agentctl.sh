@@ -407,6 +407,12 @@ Usage:
   script/agentctl.sh left-workbench os|nest|shorts|transcript|publish|inspector|agent|closed
   script/agentctl.sh native-account status|google|check-saved
   script/agentctl.sh capture-open-setup
+  script/agentctl.sh capture-status
+  script/agentctl.sh capture-refresh-hardware
+  script/agentctl.sh capture-prepare-local EPISODE PARTICIPANT INPUT_UID OUTPUT_UID [VIDEO_UID] [include-camera] [camera-signal-verified]
+  script/agentctl.sh capture-start-local INPUT_UID [VIDEO_UID]
+  script/agentctl.sh capture-stop-local
+  script/agentctl.sh capture-audit-local
   script/agentctl.sh nest-seed-context
   script/agentctl.sh nest-ensure-writing-document
   script/agentctl.sh nest-writing-queue
@@ -12938,6 +12944,33 @@ else:
     ;;
   capture-open-setup)
     get "/capture_open_setup"
+    ;;
+  capture-status)
+    get "/capture_status"
+    ;;
+  capture-refresh-hardware)
+    get "/capture_refresh_hardware"
+    ;;
+  capture-prepare-local)
+    episode_space_id="${2:-}"
+    participant_id="${3:-}"
+    input_device_id="${4:-}"
+    output_device_id="${5:-}"
+    video_device_id="${6:-}"
+    include_camera="${7:-false}"
+    camera_signal_verified="${8:-false}"
+    get "/capture_prepare_local?episode_space_id=$(urlencode "$episode_space_id")&participant_id=$(urlencode "$participant_id")&input_device_id=$(urlencode "$input_device_id")&output_device_id=$(urlencode "$output_device_id")&video_device_id=$(urlencode "$video_device_id")&include_camera=$(urlencode "$include_camera")&camera_signal_verified=$(urlencode "$camera_signal_verified")"
+    ;;
+  capture-start-local)
+    input_device_id="${2:-}"
+    video_device_id="${3:-}"
+    get "/capture_start_local?input_device_id=$(urlencode "$input_device_id")&video_device_id=$(urlencode "$video_device_id")"
+    ;;
+  capture-stop-local)
+    get "/capture_stop_local"
+    ;;
+  capture-audit-local)
+    get "/capture_audit_local"
     ;;
   quipsly-os-operator-board|production-os-operator-board|operator-board|runway-operator-board)
     python3 "$ROOT_DIR/script/build_quipsly_os_operator_board.py"

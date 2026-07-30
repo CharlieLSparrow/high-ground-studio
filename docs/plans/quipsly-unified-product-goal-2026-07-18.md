@@ -4213,3 +4213,37 @@ This is an active-goal checkpoint, not a completion claim.
   `textClipped` audit. Result:
   `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_07-45-10--0600.xcresult`.
   Build 14 remains unchanged and does not contain this post-rehearsal UX fix.
+
+### 2026-07-30 durable Mac capture readback and direct-MV7i checkpoint
+
+- Real operation exposed a projection-ownership race rather than a recorder
+  failure: Episode Capture Setup and the main editor both wrote the single
+  AgentServer `/state` cache, so frequent editor updates could erase exact
+  capture routes and take state before an operator re-observed a command.
+- Capture now owns independent loopback-only `GET /capture_status` truth. Main
+  editor updates cannot overwrite it. The projection includes exact route IDs,
+  authorization, negotiated preview versus explicit live-signal verification,
+  local-only authority, active/finalized receipts, and take-audit disposition.
+  It adds no external authority; local media commands remain available only in
+  bounded `--episode-capture-setup-only` mode.
+- Added canonical `studioctl.sh launch-capture-acceptance` and complete
+  `agentctl.sh` capture status, refresh, prepare, start, stop, and audit
+  commands. The launcher refuses duplicate/noncanonical Quipsly binaries.
+  The strengthened launcher smoke reads editor state between capture reads and
+  proves the capture group projection remains stable; it passes 7/7.
+- Current-source signed Mac operation read camera and microphone permission as
+  authorized, selected the direct Shure MV7i UID for both 48 kHz input and
+  output, and saw EOS Webcam Utility plus the MacBook Pro camera. EOS negotiated
+  1920x1080 up to 30 fps, but remained explicitly signal-unverified because no
+  visual moving-image proof was performed.
+- A bounded local-only direct-MV7i take finalized a 19.7-second two-channel 48 kHz,
+  24-bit PCM WAV with 5,677,696 bytes and SHA-256
+  `ec169ed9601a5cc78d755d60d015ec84570293e1871f8cd8f2c277aea9580ca6`.
+  Exact route continuity stayed locked. The app-owned audit passed eleven
+  checks, held none, and warned on a real but quiet signal (peak -49.8 dBFS,
+  RMS -68.6 dBFS), correctly returning
+  `machine-pass-human-review-required`.
+- No room join, Nest START, upload, delivery, or publication occurred. Spoken
+  gain, start-to-stop headphone listening, live Canon image/camera recording,
+  deliberate MV7i route-loss recovery, Episode Room authority, participant
+  sync/drift, and human accept/hold/replace remain open.

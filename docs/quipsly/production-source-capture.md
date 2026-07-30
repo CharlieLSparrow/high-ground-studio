@@ -1161,3 +1161,63 @@ or proof-listen. Listening start-to-stop through headphones connected to the
 MV7i, confirming intelligible speech and usable gain, deliberate physical
 unplug/recovery, a real Episode Room, participant comparison/drift, Canon R8
 live image, and final human accept/hold/replace remain mandatory.
+
+## Implementation checkpoint — July 30, 2026 (durable Mac capture projection)
+
+Operating the current-source Mac app exposed an ownership race in its local
+agent read model. Episode Capture Setup published exact route and take state
+through the shared `/state` cache, while the main editor independently
+published its own projection every few hundred milliseconds. The editor could
+therefore overwrite capture truth before a caller observed the acknowledgement
+from `capture_refresh_hardware`, even though the capture window had handled the
+command correctly.
+
+Capture now owns an independent, loopback-only `GET /capture_status`
+projection. It contains the exact available and selected input, output, and
+video device IDs; authorization; preview negotiation versus explicit
+live-signal verification; local-only authority; active/finalized receipt
+summaries; and take-audit disposition. Main editor updates cannot overwrite it.
+The endpoint does not add capture authority: start, stop, and audit commands
+remain registered only in the explicit `--episode-capture-setup-only`
+acceptance launch mode, which cannot answer privacy prompts, join a room,
+create Nest boundaries, upload, deliver, or publish.
+
+The canonical operator entrypoint is:
+
+```bash
+apps/QuipslyStudio/script/studioctl.sh launch-capture-acceptance --no-build
+apps/QuipslyStudio/script/agentctl.sh capture-status
+apps/QuipslyStudio/script/agentctl.sh capture-refresh-hardware
+```
+
+The strengthened launcher smoke reads normal editor state between two capture
+reads and requires the capture projection and capture-group identity to remain
+stable. The launcher also refuses to qualify while any noncanonical Quipsly
+binary is running, so a receipt cannot be attributed to an installed archive
+or older worktree build.
+
+The signed current-source app then operated the directly connected Shure MV7i
+as both exact input and output. Capture group
+`109299d3-3511-4e36-bb2d-1f14a71c3ae5` produced:
+
+- a 19.7-second two-channel 48 kHz, 24-bit PCM WAV;
+- 5,677,696 bytes;
+- SHA-256
+  `ec169ed9601a5cc78d755d60d015ec84570293e1871f8cd8f2c277aea9580ca6`;
+- exact selected-route continuity through final stop;
+- eleven audit passes, one quiet-signal warning, and zero holds.
+
+Fresh analysis measured a real but quiet signal at peak -49.8 dBFS and RMS
+-68.6 dBFS. The disposition is therefore correctly
+`machine-pass-human-review-required`, not production approval. EOS Webcam
+Utility separately negotiated 1920x1080 at up to 30 fps, but Quipsly retained
+`cameraSignalVerified=false`: format negotiation is not evidence that the R8
+is awake or producing a moving live image.
+
+Independent `ffprobe`, `stat`, and `shasum` readback confirmed PCM S24LE,
+48 kHz, two channels, 19.700 seconds, 5,677,696 bytes, and the same SHA-256.
+
+This closes durable route/take readback and another real direct-MV7i local
+operation. Spoken gain, complete headphone proof-listen, live Canon image,
+camera recording, deliberate route-loss recovery, Episode Room authority,
+cross-participant sync/drift, and final human acceptance remain open.

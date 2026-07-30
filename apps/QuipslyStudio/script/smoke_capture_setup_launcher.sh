@@ -13,6 +13,10 @@ trap cleanup EXIT
 "$ROOT_DIR/script/agentctl.sh" health >"$WORK_DIR/health.json"
 "$ROOT_DIR/script/agentctl.sh" commands >"$WORK_DIR/commands.json"
 "$ROOT_DIR/script/agentctl.sh" capture-open-setup >"$WORK_DIR/open.json"
+"$ROOT_DIR/script/agentctl.sh" capture-status >"$WORK_DIR/status.json"
+"$ROOT_DIR/script/agentctl.sh" state >"$WORK_DIR/editor-state.json"
+sleep 0.6
+"$ROOT_DIR/script/agentctl.sh" capture-status >"$WORK_DIR/status-after-editor-read.json"
 "$ROOT_DIR/script/studioctl.sh" warn-duplicates >"$WORK_DIR/duplicates.txt"
 
 python3 - \
@@ -20,12 +24,14 @@ python3 - \
   "$WORK_DIR/health.json" \
   "$WORK_DIR/commands.json" \
   "$WORK_DIR/open.json" \
+  "$WORK_DIR/status.json" \
+  "$WORK_DIR/status-after-editor-read.json" \
   "$WORK_DIR/duplicates.txt" <<'PY'
 import json
 import pathlib
 import sys
 
-app_path, health_path, commands_path, open_path, duplicates_path = sys.argv[1:]
+app_path, health_path, commands_path, open_path, status_path, status_after_path, duplicates_path = sys.argv[1:]
 
 
 def read_json(path: str):
@@ -37,6 +43,8 @@ app_text = pathlib.Path(app_path).read_text(encoding="utf-8")
 health = read_json(health_path)
 commands = read_json(commands_path)
 opened = read_json(open_path)
+status = read_json(status_path)
+status_after = read_json(status_after_path)
 duplicates_text = pathlib.Path(duplicates_path).read_text(encoding="utf-8")
 
 checks = {
@@ -45,7 +53,10 @@ checks = {
         and "canonicalPids=" in app_text
     ),
     "agentHealthy": health.get("status") == "ok",
-    "routeAdvertised": "GET /capture_open_setup" in commands.get("commands", []),
+    "routesAdvertised": (
+        "GET /capture_open_setup" in commands.get("commands", [])
+        and "GET /capture_status" in commands.get("commands", [])
+    ),
     "windowOpened": (
         opened.get("status") == "capture_setup_opened"
         and opened.get("windowCount") == 1
@@ -56,6 +67,21 @@ checks = {
         and "start recording" in opened.get("truth", "")
         and "upload" in opened.get("truth", "")
         and "publish" in opened.get("truth", "")
+    ),
+    "captureProjectionIsDurable": (
+        status.get("projectTitle") == "Episode Capture Setup"
+        and status_after.get("projectTitle") == "Episode Capture Setup"
+        and status.get("projectionOwnership") == "episode-capture-setup"
+        and status_after.get("projectionOwnership") == "episode-capture-setup"
+        and status.get("captureStatusUrl")
+            == "http://127.0.0.1:8080/capture_status"
+        and status_after.get("captureStatusUrl")
+            == "http://127.0.0.1:8080/capture_status"
+        and status.get("capture", {}).get("availableInputs") is not None
+        and status_after.get("capture", {}).get("captureGroupID")
+            == status.get("capture", {}).get("captureGroupID")
+        and status.get("capture", {}).get("availableOutputs") is not None
+        and status.get("capture", {}).get("availableVideoDevices") is not None
     ),
     "noDuplicateBundleRunning": (
         "warning=" not in duplicates_text
