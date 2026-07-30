@@ -25,6 +25,7 @@ Usage:
   scripts/dev/quipsly-generated-mobile-dogfood.sh task-edit
   scripts/dev/quipsly-generated-mobile-dogfood.sh goal-edit
   scripts/dev/quipsly-generated-mobile-dogfood.sh note-edit
+  scripts/dev/quipsly-generated-mobile-dogfood.sh annotation-review
 
 Runs the current local Nest source with a disposable real Firebase identity and
 loopback PostgreSQL records, then drives the compiled iPhone app in Simulator.
@@ -91,7 +92,7 @@ if [[ "${mode}" == "--help" || "${mode}" == "-h" ]]; then
   usage
   exit 0
 fi
-if [[ "${mode}" != "task-edit" && "${mode}" != "goal-edit" && "${mode}" != "note-edit" ]]; then
+if [[ "${mode}" != "task-edit" && "${mode}" != "goal-edit" && "${mode}" != "note-edit" && "${mode}" != "annotation-review" ]]; then
   usage >&2
   fail "Unsupported generated mobile dogfood mode: ${mode}"
 fi

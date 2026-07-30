@@ -302,6 +302,8 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
     deletedInvites: 0,
     deletedGrants: 0,
     deletedCallRooms: 0,
+    deletedSourceAnnotationUses: 0,
+    deletedSourceAnnotations: 0,
     deletedCreatedProjects: 0,
     deletedHomeProjects: 0,
     deletedMemberships: 0,
@@ -371,6 +373,16 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
       select: { id: true },
     });
     for (const project of createdProjects) {
+      cleanup.deletedSourceAnnotationUses += (
+        await prisma.studioSourceAnnotationUse.deleteMany({
+          where: { projectId: project.id },
+        })
+      ).count;
+      cleanup.deletedSourceAnnotations += (
+        await prisma.studioSourceAnnotation.deleteMany({
+          where: { projectId: project.id },
+        })
+      ).count;
       await prisma.studioProject.delete({ where: { id: project.id } });
       deletedProjectIds.push(project.id);
       cleanup.deletedCreatedProjects += 1;
@@ -387,6 +399,16 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
     });
 
     for (const project of homeProjects) {
+      cleanup.deletedSourceAnnotationUses += (
+        await prisma.studioSourceAnnotationUse.deleteMany({
+          where: { projectId: project.id },
+        })
+      ).count;
+      cleanup.deletedSourceAnnotations += (
+        await prisma.studioSourceAnnotation.deleteMany({
+          where: { projectId: project.id },
+        })
+      ).count;
       await prisma.studioProject.delete({ where: { id: project.id } });
       deletedProjectIds.push(project.id);
       cleanup.deletedHomeProjects += 1;
@@ -850,6 +872,8 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
     noteBodyBlockStableId: workNote.blocks[0].stableId,
     noteInitialContentRevision: workNote.contentRevision,
     noteTagIds: workNote.tagIds,
+    episodeTagId: episodeTag.id,
+    episodeTagLabel: episodeTag.label,
     projectId,
     projectName: name,
     projectIdPresent: true,
@@ -864,6 +888,117 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
     tagUsageCountsProven: true,
     externalSideEffects: false,
   };
+}
+
+async function createGeneratedSourceAnnotation(env, email, projectWorkProof) {
+  const prisma = createPrisma(env);
+  const immutableText = [
+    "Quipsly preserves the source while people make review decisions around it.",
+    "The same evidence should remain reachable after a decision changes.",
+  ].join(" ");
+  const exactText = "people make review decisions around it";
+  const startOffset = immutableText.indexOf(exactText);
+  const endOffset = startOffset + exactText.length;
+  const sourceFingerprint = crypto
+    .createHash("sha256")
+    .update(immutableText, "utf8")
+    .digest("hex");
+  const body = "Revisit this evidence after the rehearsal and keep the original source intact.";
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { primaryEmail: email },
+          { aliases: { some: { email } } },
+        ],
+      },
+      select: { id: true },
+    });
+    assert(user?.id, "Generated annotation seeding could not resolve the canonical actor.");
+
+    const source = await prisma.studioSourceUnit.create({
+      data: {
+        projectId: projectWorkProof.projectId,
+        slug: `generated-mobile-annotation-${crypto.randomBytes(5).toString("hex")}`,
+        kind: "note",
+        title: "Generated immutable rehearsal source",
+        immutableText,
+        createdByEmail: email,
+        metadataJson: {
+          source: "quipsly-mobile-capture-generated-auth-smoke",
+          disposable: true,
+          immutable: true,
+        },
+      },
+      select: { id: true },
+    });
+    const annotation = await prisma.studioSourceAnnotation.create({
+      data: {
+        projectId: projectWorkProof.projectId,
+        sourceUnitId: source.id,
+        createdByUserId: user.id,
+        createdByEmailSnapshot: email,
+        kind: "question",
+        status: "active",
+        visibility: "private",
+        body,
+        selectorKind: "text-quote",
+        startOffset,
+        endOffset,
+        exactText,
+        prefixText: immutableText.slice(Math.max(0, startOffset - 64), startOffset),
+        suffixText: immutableText.slice(endOffset, Math.min(immutableText.length, endOffset + 64)),
+        sourceFingerprint,
+        clientRequestId: `generated-mobile-annotation-${crypto.randomUUID()}`,
+        provenanceJson: {
+          kind: "quipsly-source-annotation-v1",
+          surface: "generated-mobile-dogfood",
+          humanAuthored: true,
+          sourceMutated: false,
+        },
+        tags: {
+          create: [{ tagId: projectWorkProof.episodeTagId }],
+        },
+        revisions: {
+          create: {
+            revision: 1,
+            operation: "created",
+            actorUserId: user.id,
+            snapshotJson: {
+              kind: "question",
+              status: "active",
+              visibility: "private",
+              body,
+              selectorKind: "text-quote",
+              startOffset,
+              endOffset,
+              exactText,
+              prefixText: immutableText.slice(Math.max(0, startOffset - 64), startOffset),
+              suffixText: immutableText.slice(endOffset, Math.min(immutableText.length, endOffset + 64)),
+              sourceFingerprint,
+              tagIds: [projectWorkProof.episodeTagId],
+            },
+          },
+        },
+      },
+      select: { id: true, updatedAt: true },
+    });
+
+    return {
+      annotationId: annotation.id,
+      body,
+      sourceId: source.id,
+      sourceFingerprint,
+      immutableText,
+      exactText,
+      tagId: projectWorkProof.episodeTagId,
+      tagLabel: projectWorkProof.episodeTagLabel,
+      initialUpdatedAt: annotation.updatedAt.toISOString(),
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
 async function assertGeneratedRoomJoin(baseUrl, idToken, room) {
@@ -1162,6 +1297,113 @@ async function assertGeneratedDocumentNoteRestored(
   }
 }
 
+async function assertGeneratedSourceAnnotationRestored(
+  env,
+  baseUrl,
+  idToken,
+  annotationProof,
+) {
+  const authorization = `Bearer ${idToken}`;
+  const today = await requestJson(`${baseUrl}/api/mobile/capture/today`, {
+    headers: { authorization },
+  });
+  const projected = Array.isArray(today.body?.sourceAnnotations)
+    ? today.body.sourceAnnotations.find((entry) => entry.id === annotationProof.annotationId)
+    : null;
+  assert(
+    today.response.status === 200
+      && today.body?.ok === true
+      && today.body?.boundaries?.annotationResolveReopenAvailable === true
+      && today.body?.boundaries?.annotationReviewMutatesSource === false
+      && projected?.status === "active"
+      && projected?.body === annotationProof.body
+      && projected?.exactText === annotationProof.exactText
+      && projected?.createdByMe === true
+      && projected?.canChangeStatus === true
+      && projected?.tagLabels?.includes(annotationProof.tagLabel),
+    "The operated iPhone annotation-review journey did not restore the same active source annotation through Today.",
+    {
+      status: today.response.status,
+      projected: projected
+        ? {
+          id: projected.id,
+          status: projected.status,
+          createdByMe: projected.createdByMe,
+          tagLabels: projected.tagLabels,
+        }
+        : null,
+    },
+  );
+
+  const prisma = createPrisma(env);
+  try {
+    const saved = await prisma.studioSourceAnnotation.findUnique({
+      where: { id: annotationProof.annotationId },
+      select: {
+        id: true,
+        status: true,
+        body: true,
+        exactText: true,
+        sourceFingerprint: true,
+        archivedAt: true,
+        sourceUnit: {
+          select: { id: true, immutableText: true },
+        },
+        tags: {
+          select: { tagId: true },
+        },
+        revisions: {
+          orderBy: { revision: "asc" },
+          select: {
+            revision: true,
+            operation: true,
+            snapshotJson: true,
+          },
+        },
+      },
+    });
+    const currentFingerprint = crypto
+      .createHash("sha256")
+      .update(saved?.sourceUnit?.immutableText || "", "utf8")
+      .digest("hex");
+    assert(
+      saved?.id === annotationProof.annotationId
+        && saved.status === "active"
+        && saved.body === annotationProof.body
+        && saved.exactText === annotationProof.exactText
+        && saved.archivedAt === null
+        && saved.sourceUnit?.id === annotationProof.sourceId
+        && saved.sourceUnit?.immutableText === annotationProof.immutableText
+        && saved.sourceFingerprint === annotationProof.sourceFingerprint
+        && currentFingerprint === annotationProof.sourceFingerprint
+        && saved.tags.length === 1
+        && saved.tags[0]?.tagId === annotationProof.tagId
+        && saved.revisions.length === 3
+        && JSON.stringify(saved.revisions.map((revision) => revision.revision)) === JSON.stringify([1, 2, 3])
+        && JSON.stringify(saved.revisions.map((revision) => revision.operation)) === JSON.stringify(["created", "resolved", "reopened"])
+        && saved.revisions.every((revision) =>
+          revision.snapshotJson?.sourceFingerprint === annotationProof.sourceFingerprint),
+      "The canonical database did not retain the exact source, tag, and append-only resolve/reopen history for the same annotation ID.",
+      {
+        id: saved?.id,
+        status: saved?.status,
+        revisionCount: saved?.revisions?.length || 0,
+        operations: saved?.revisions?.map((revision) => revision.operation) || [],
+      },
+    );
+    return {
+      sameAnnotationIdRestored: true,
+      activeStatusRestored: true,
+      immutableSourceHashPreserved: true,
+      canonicalTagPreserved: true,
+      revisionOperations: saved.revisions.map((revision) => revision.operation),
+      sourceMutated: false,
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 function runCaptureRuntimeUISmoke(
   env,
   baseUrl,
@@ -1182,6 +1424,8 @@ function runCaptureRuntimeUISmoke(
     noteEditSourceBody = "",
     noteEditUpdatedBody = "",
     projectName = "",
+    annotationId = "",
+    annotationBody = "",
   } = {},
 ) {
   const scriptPath = path.join(
@@ -1213,6 +1457,8 @@ function runCaptureRuntimeUISmoke(
       QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_SOURCE_BODY: noteEditSourceBody,
       QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_BODY: noteEditUpdatedBody,
       QUIPSLY_CAPTURE_UI_TEST_PROJECT_NAME: projectName,
+      QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_ID: annotationId,
+      QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_BODY: annotationBody,
     },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -1252,7 +1498,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_RUNTIME_UI_MODE
       || "surface",
   ).trim();
-  if (!["surface", "task-edit", "goal-edit", "note-edit"].includes(runtimeUISmokeMode)) {
+  if (!["surface", "task-edit", "goal-edit", "note-edit", "annotation-review"].includes(runtimeUISmokeMode)) {
     throw new Error(
       `Generated mobile Capture runtime UI mode is not supported: ${runtimeUISmokeMode}`,
     );
@@ -1262,7 +1508,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_WORKFLOW
       || "full",
   ).trim();
-  if (!["full", "task-edit", "goal-edit", "note-edit"].includes(workflow)) {
+  if (!["full", "task-edit", "goal-edit", "note-edit", "annotation-review"].includes(workflow)) {
     throw new Error(`Generated mobile Capture workflow is not supported: ${workflow}`);
   }
   if (workflow !== "full" && runtimeUISmokeMode !== workflow) {
@@ -1282,6 +1528,8 @@ async function main() {
   let sessionContextProof = null;
   let runtimeUISmoke = { requested: shouldRunRuntimeUISmoke, passed: false };
   let noteEditRestoration = null;
+  let annotationProof = null;
+  let annotationReviewRestoration = null;
 
   try {
     await assertServerFirebaseAdminPreflight(baseUrl);
@@ -1324,6 +1572,13 @@ async function main() {
       suffix,
       { seedGoalTarget: workflow === "goal-edit" },
     );
+    if (workflow === "annotation-review") {
+      annotationProof = await createGeneratedSourceAnnotation(
+        env,
+        email,
+        projectWorkProof,
+      );
+    }
     if (workflow === "full") {
       const generatedRoom = await createGeneratedCaptureSession(env, email, sessionBody);
       roomJoinProof = await assertGeneratedRoomJoin(baseUrl, firebaseBody.idToken, generatedRoom);
@@ -1351,6 +1606,8 @@ async function main() {
           noteEditSourceBody: projectWorkProof.noteBody,
           noteEditUpdatedBody: `${projectWorkProof.noteBody} Temporary operated iPhone edit.`,
           projectName: projectWorkProof.projectName,
+          annotationId: annotationProof?.annotationId || "",
+          annotationBody: annotationProof?.body || "",
         },
       );
       if (workflow === "note-edit") {
@@ -1359,6 +1616,14 @@ async function main() {
           baseUrl,
           firebaseBody.idToken,
           projectWorkProof,
+        );
+      }
+      if (workflow === "annotation-review") {
+        annotationReviewRestoration = await assertGeneratedSourceAnnotationRestored(
+          env,
+          baseUrl,
+          firebaseBody.idToken,
+          annotationProof,
         );
       }
     }
@@ -1390,6 +1655,15 @@ async function main() {
       sessionContext: sessionContextProof,
       runtimeUISmoke,
       noteEditRestoration,
+      annotationReview: annotationProof
+        ? {
+          annotationIdPresent: Boolean(annotationProof.annotationId),
+          sourceIdPresent: Boolean(annotationProof.sourceId),
+          tagIdPresent: Boolean(annotationProof.tagId),
+          sourceFingerprintPresent: /^[0-9a-f]{64}$/.test(annotationProof.sourceFingerprint),
+        }
+        : null,
+      annotationReviewRestoration,
       mobileCaptureContract: contractReport
         ? {
           authenticated: contractReport.authenticated === true,

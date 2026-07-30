@@ -1260,6 +1260,16 @@ struct TodayFollowThroughCard: View {
         showsAllCommittedTasks || client.tasks.count <= 3 ? client.tasks : Array(client.tasks.prefix(3))
     }
 
+    private var activeSourceAnnotations: [MobileCaptureTodaySourceAnnotation] {
+        client.sourceAnnotations.filter { $0.status.lowercased() == "active" }
+    }
+
+    private var recentlyResolvedSourceAnnotations: [MobileCaptureTodaySourceAnnotation] {
+        client.sourceAnnotations.filter {
+            $0.status.lowercased() == "resolved" && $0.createdByMe
+        }
+    }
+
     private var recurrenceManagerTaskIDs: Set<String> {
         var series = Set<String>()
         var tasks = Set<String>()
@@ -1752,48 +1762,37 @@ struct TodayFollowThroughCard: View {
                 }
             }
 
-            if !client.sourceAnnotations.isEmpty {
+            if !activeSourceAnnotations.isEmpty || !recentlyResolvedSourceAnnotations.isEmpty {
                 VStack(alignment: .leading, spacing: 9) {
                     Label("Research cues", systemImage: "text.quote")
                         .font(.caption.weight(.bold))
                         .foregroundStyle(.indigo)
-                    Text("Source-linked notes from the same Nests as web")
+                    Text("The same source-linked evidence and review state as Nest")
                         .font(.caption2)
                         .foregroundStyle(.secondary)
-                    ForEach(client.sourceAnnotations.prefix(2)) { annotation in
-                        VStack(alignment: .leading, spacing: 5) {
-                            Text(annotation.sourceTitle)
-                                .font(.subheadline.weight(.semibold))
-                            if let quote = annotation.exactText, !quote.isEmpty {
-                                Text("“\(quote)”")
-                                    .font(.caption)
-                                    .italic()
-                                    .lineLimit(3)
-                                    .foregroundStyle(.secondary)
-                            }
-                            if !annotation.body.isEmpty {
-                                Text(annotation.body)
-                                    .font(.subheadline)
-                                    .lineLimit(3)
-                            }
-                            HStack {
-                                Text(annotation.visibility == "private" ? "Only me" : annotation.projectName)
-                                    .font(.caption2.weight(.semibold))
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                if annotation.createdByMe {
-                                    Button("Resolved") {
-                                        Task { _ = await client.setSourceAnnotationStatus(annotation, status: "resolved") }
-                                    }
-                                    .font(.caption.weight(.bold))
-                                    .buttonStyle(.bordered)
-                                    .disabled(decisionsDisabled)
-                                    .accessibilityHint("Resolves only this source-linked annotation. The preserved source is not changed.")
-                                }
-                            }
+
+                    ForEach(activeSourceAnnotations.prefix(4)) { annotation in
+                        researchAnnotationCard(annotation)
+                    }
+
+                    if !recentlyResolvedSourceAnnotations.isEmpty {
+                        Label("Recently resolved", systemImage: "checkmark.circle")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 2)
+                        ForEach(recentlyResolvedSourceAnnotations.prefix(2)) { annotation in
+                            researchAnnotationCard(annotation)
                         }
-                        .padding(10)
-                        .background(Color.indigo.opacity(0.07), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+
+                    if let url = researchURL(),
+                       activeSourceAnnotations.count > 4 || recentlyResolvedSourceAnnotations.count > 2 {
+                        Link(destination: url) {
+                            Label("See all research in Nest", systemImage: "arrow.up.right.square")
+                                .font(.caption.weight(.bold))
+                                .frame(minHeight: 44)
+                        }
+                        .accessibilityHint("Opens the complete permission-filtered Research library in Nest.")
                     }
                 }
                 .accessibilityElement(children: .contain)
@@ -1943,6 +1942,96 @@ struct TodayFollowThroughCard: View {
                 )
             }
         }
+    }
+
+    @ViewBuilder
+    private func researchAnnotationCard(_ annotation: MobileCaptureTodaySourceAnnotation) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(annotation.sourceTitle)
+                    .font(.subheadline.weight(.semibold))
+                Spacer(minLength: 8)
+                Text(annotation.kind.capitalized)
+                    .font(.caption2.weight(.bold))
+                    .foregroundStyle(.indigo)
+            }
+            if let quote = annotation.exactText, !quote.isEmpty {
+                Text("“\(quote)”")
+                    .font(.caption)
+                    .italic()
+                    .lineLimit(4)
+                    .foregroundStyle(.secondary)
+            }
+            if !annotation.body.isEmpty {
+                Text(annotation.body)
+                    .font(.subheadline)
+                    .lineLimit(4)
+            }
+            if !annotation.tagLabels.isEmpty {
+                TodayProjectTagLine(
+                    project: nil,
+                    tagLabels: annotation.tagLabels,
+                    identifier: "CaptureTodayAnnotationTags_\(annotation.id)"
+                )
+            }
+            HStack(alignment: .center, spacing: 8) {
+                Text(annotation.visibility == "private" ? "Only me" : annotation.projectName)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                if let url = researchURL(for: annotation), !previewOnly {
+                    Link(destination: url) {
+                        Label("Source", systemImage: "doc.text.magnifyingglass")
+                            .font(.caption.weight(.bold))
+                            .frame(minHeight: 44)
+                    }
+                    .accessibilityIdentifier("CaptureTodayAnnotationSource_\(annotation.id)")
+                    .accessibilityHint("Opens this exact annotation against its immutable source in Nest.")
+                }
+                if annotation.canChangeStatus == true {
+                    let isResolved = annotation.status.lowercased() == "resolved"
+                    Button(isResolved ? "Reopen" : "Resolve") {
+                        Task {
+                            _ = await client.setSourceAnnotationStatus(
+                                annotation,
+                                status: isResolved ? "active" : "resolved"
+                            )
+                        }
+                    }
+                    .font(.caption.weight(.bold))
+                    .buttonStyle(.bordered)
+                    .disabled(decisionsDisabled)
+                    .accessibilityIdentifier("CaptureTodayAnnotationDecision_\(annotation.id)")
+                    .accessibilityHint(
+                        isResolved
+                            ? "Reopens this same source-linked annotation without changing its preserved source."
+                            : "Resolves only this source-linked annotation. Its preserved source is not changed."
+                    )
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            annotation.status.lowercased() == "resolved"
+                ? Color.secondary.opacity(0.07)
+                : Color.indigo.opacity(0.07),
+            in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTodayAnnotation_\(annotation.id)")
+    }
+
+    private func researchURL(for annotation: MobileCaptureTodaySourceAnnotation? = nil) -> URL? {
+        let baseURL = normalizedNestBaseURL(
+            Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+                ?? "https://nest.quipsly.com"
+        )
+        guard var components = URLComponents(string: baseURL) else { return nil }
+        components.path = "/research"
+        components.queryItems = annotation.map {
+            [URLQueryItem(name: "annotation", value: $0.id)]
+        }
+        return components.url
     }
 
     private func recurrenceSummary(_ recurrence: MobileCaptureTodayRecurrence) -> String {

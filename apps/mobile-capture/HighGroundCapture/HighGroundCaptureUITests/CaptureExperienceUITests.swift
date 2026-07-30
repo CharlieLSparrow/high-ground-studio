@@ -794,6 +794,19 @@ final class CaptureExperienceUITests: XCTestCase {
         let researchCues = app.staticTexts["Research cues"]
         reveal(researchCues)
         XCTAssertTrue(researchCues.exists)
+        let annotationTags = app.descendants(matching: .any)["CaptureTodayAnnotationTags_preview-annotation"]
+        reveal(annotationTags)
+        XCTAssertTrue(annotationTags.exists)
+        XCTAssertTrue(annotationTags.label.contains("Episode seed"))
+        let resolveAnnotation = app.buttons["CaptureTodayAnnotationDecision_preview-annotation"]
+        XCTAssertTrue(resolveAnnotation.exists)
+        XCTAssertEqual(resolveAnnotation.label, "Resolve")
+        XCTAssertFalse(resolveAnnotation.isEnabled, "Preview annotations must never mutate canonical research.")
+        let reopenAnnotation = app.buttons["CaptureTodayAnnotationDecision_preview-resolved-annotation"]
+        reveal(reopenAnnotation)
+        XCTAssertTrue(reopenAnnotation.exists)
+        XCTAssertEqual(reopenAnnotation.label, "Reopen")
+        XCTAssertFalse(reopenAnnotation.isEnabled, "Preview resolved annotations must remain read-only.")
 
         let boundary = app.staticTexts.matching(
             NSPredicate(format: "label CONTAINS %@", "Focus completion never completes its task or goal.")

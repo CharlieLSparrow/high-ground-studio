@@ -969,6 +969,7 @@ struct MobileCaptureTodaySourceAnnotation: Codable, Identifiable, Hashable {
     let status: String
     let visibility: String
     let createdByMe: Bool
+    let canChangeStatus: Bool?
     let sourceTitle: String
     let projectName: String
     let projectSlug: String
@@ -1014,6 +1015,8 @@ struct MobileCaptureTodayBoundaries: Codable, Hashable {
     let reminderDeliveryClaimed: Bool?
     let canonicalProjectTags: Bool?
     let tagMutationExternalSideEffects: Bool?
+    let annotationResolveReopenAvailable: Bool?
+    let annotationReviewMutatesSource: Bool?
 }
 
 struct MobileCaptureTodayTag: Codable, Identifiable, Hashable {
@@ -2946,7 +2949,10 @@ final class CaptureTodayClient: ObservableObject {
             goals: [MobileCaptureTodayGoal(id: "preview-goal", title: "Leave the client with one clear next move", description: nil, status: "ACTIVE", targetAt: nil, progressPercent: 50, progressNote: "Session notes are captured.", updatedAt: ISO8601DateFormatter().string(from: now), roomId: "room-preview-coaching-ready", sessionTitle: "Demo coaching session", project: MobileCaptureTodayProject(id: "preview-high-ground", name: "High Ground Odyssey", slug: "preview-high-ground"), canEditTags: false, tagIds: ["preview-coaching", "preview-follow-through"], tagLabels: ["Coaching", "Follow-through"], sourceAnchor: MobileCaptureTodayTranscriptSourceAnchor(schema: "quipsly-transcript-derived-goal-v1", roomId: "room-preview-coaching-ready", transcriptJobId: "preview-job", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerTextSha256: String(repeating: "a", count: 64), providerSpeakerLabel: "Speaker", effectiveTextSnapshot: "Leave the client with one clear next move.", effectiveSpeakerLabelSnapshot: "Guest", acceptedCorrectionId: nil, recordingAssetId: "preview-recording-asset", playbackSourceId: "preview-playback-source"))],
             focusBlocks: [MobileCaptureTodayFocusBlock(id: "preview-block", targetType: "task", targetId: "preview-task", title: "Proof-listen the coaching recap", targetStatus: "OPEN", startsAt: start, endsAt: end, timezone: TimeZone.current.identifier, status: "PLANNED", completedAt: nil, updatedAt: ISO8601DateFormatter().string(from: now))],
             transcriptReviews: [MobileCaptureTodayTranscriptReview(id: "preview-transcript-proposal", roomId: "room-preview-coaching-ready", sessionTitle: "Demo coaching session", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerText: "Welcome, everybody.", providerSpeakerLabel: "Speaker", proposedText: nil, proposedSpeakerLabel: "Host", reason: "The isolated host track suggests this speaker label.", recordingAssetId: "preview-recording-asset", playbackAvailable: true, updatedAt: ISO8601DateFormatter().string(from: now))],
-            sourceAnnotations: [MobileCaptureTodaySourceAnnotation(id: "preview-annotation", kind: "question", body: "Does this distinction give us the episode's opening tension?", exactText: "Keep the source intact and let decisions live around it.", status: "active", visibility: "private", createdByMe: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", tagLabels: ["Episode seed"], updatedAt: ISO8601DateFormatter().string(from: now))],
+            sourceAnnotations: [
+                MobileCaptureTodaySourceAnnotation(id: "preview-annotation", kind: "question", body: "Does this distinction give us the episode's opening tension?", exactText: "Keep the source intact and let decisions live around it.", status: "active", visibility: "private", createdByMe: true, canChangeStatus: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", tagLabels: ["Episode seed"], updatedAt: ISO8601DateFormatter().string(from: now)),
+                MobileCaptureTodaySourceAnnotation(id: "preview-resolved-annotation", kind: "note", body: "The production boundary is settled, but the same annotation remains reopenable.", exactText: "let decisions live around it", status: "resolved", visibility: "project", createdByMe: true, canChangeStatus: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", tagLabels: ["Decision"], updatedAt: ISO8601DateFormatter().string(from: now.addingTimeInterval(-3_600))),
+            ],
             weeklyPlan: MobileCaptureTodayWeeklyPlan(id: "preview-week", weekStartsAt: ISO8601DateFormatter().string(from: now), commitments: ["Proof-listen one real session", "Send one source-linked follow-up"], supportNeeded: "A second listener for the final recap", progressNotes: nil, clientReviewedAt: nil, updatedAt: ISO8601DateFormatter().string(from: now)),
             taskReminderIntents: [],
             tagCatalog: [
@@ -2955,7 +2961,7 @@ final class CaptureTodayClient: ObservableObject {
                 MobileCaptureTodayTag(id: "preview-coaching", projectId: "preview-high-ground", slug: "coaching", label: "Coaching", isActive: true),
                 MobileCaptureTodayTag(id: "preview-follow-through", projectId: "preview-high-ground", slug: "follow-through", label: "Follow-through", isActive: true),
             ],
-            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false)
+            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false)
         )
         isUsingProtectedCache = false
         errorMessage = nil

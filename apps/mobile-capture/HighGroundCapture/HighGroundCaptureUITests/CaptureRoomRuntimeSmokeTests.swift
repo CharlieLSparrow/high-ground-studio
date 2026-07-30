@@ -82,6 +82,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let noteEditUpdatedTitle: String?
         let noteEditSourceBody: String?
         let noteEditUpdatedBody: String?
+        let annotationID: String?
+        let annotationBody: String?
         let recurrenceSeriesID: String?
         let recurrenceScheduledLocalDate: String?
         let recurrenceAuthoringTitle: String?
@@ -121,6 +123,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 noteEditUpdatedTitle: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_TITLE"],
                 noteEditSourceBody: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_SOURCE_BODY"],
                 noteEditUpdatedBody: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_BODY"],
+                annotationID: environment["QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_ID"],
+                annotationBody: environment["QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_BODY"],
                 recurrenceSeriesID: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_SERIES_ID"],
                 recurrenceScheduledLocalDate: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_LOCAL_DATE"],
                 recurrenceAuthoringTitle: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_AUTHORING_TITLE"],
@@ -173,6 +177,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             noteEditUpdatedTitle: payload["noteEditUpdatedTitle"] as? String,
             noteEditSourceBody: payload["noteEditSourceBody"] as? String,
             noteEditUpdatedBody: payload["noteEditUpdatedBody"] as? String,
+            annotationID: payload["annotationID"] as? String,
+            annotationBody: payload["annotationBody"] as? String,
             recurrenceSeriesID: payload["recurrenceSeriesID"] as? String,
             recurrenceScheduledLocalDate: payload["recurrenceScheduledLocalDate"] as? String,
             recurrenceAuthoringTitle: payload["recurrenceAuthoringTitle"] as? String,
@@ -265,6 +271,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         return element.exists
+    }
+
+    private func waitForRuntimeLabel(_ expectedLabel: String, element: XCUIElement, timeout: TimeInterval = 20) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.label == expectedLabel { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.4))
+        }
+        return element.exists && element.label == expectedLabel
     }
 
     private func tapRootTab(_ title: String, in app: XCUIApplication) {
@@ -1212,6 +1227,61 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The operated smoke must restore the original canonical goal title before finishing."
         )
         XCTAssertFalse(app.staticTexts[updatedTitle].firstMatch.exists)
+    }
+
+    func testCanonicalSourceAnnotationResolveAndReopenRoundTripsThroughNest() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let annotationID = credentials.annotationID, !annotationID.isEmpty,
+              let annotationBody = credentials.annotationBody, !annotationBody.isEmpty else {
+            throw XCTSkip("The annotation-review journey requires one exact author-owned annotation ID and body.")
+        }
+
+        let app = try launchSignedInCaptureApp()
+        let card = app.descendants(matching: .any)["CaptureTodayAnnotation_\(annotationID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(card, in: app, timeout: 30, swipeAttempts: 16),
+            "Today should render the exact canonical active annotation before review."
+        )
+        XCTAssertTrue(app.staticTexts[annotationBody].exists)
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTodayAnnotationTags_\(annotationID)"].exists,
+            "The canonical annotation should retain its reusable Nest tags on iPhone."
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTodayAnnotationSource_\(annotationID)"].exists,
+            "The iPhone should retain a deliberate return to this exact annotation in Nest Research."
+        )
+
+        let resolve = app.buttons["CaptureTodayAnnotationDecision_\(annotationID)"].firstMatch
+        XCTAssertTrue(resolve.exists)
+        XCTAssertEqual(resolve.label, "Resolve")
+        XCTAssertTrue(resolve.isEnabled)
+        resolve.tap()
+
+        let reopenedCard = app.descendants(matching: .any)["CaptureTodayAnnotation_\(annotationID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(reopenedCard, in: app, timeout: 30, swipeAttempts: 16),
+            "The same annotation ID should remain visible in Recently resolved after the server acknowledges review."
+        )
+        let reopen = app.buttons["CaptureTodayAnnotationDecision_\(annotationID)"].firstMatch
+        XCTAssertTrue(reopen.waitForExistence(timeout: 10))
+        XCTAssertTrue(
+            waitForRuntimeLabel("Reopen", element: reopen),
+            "The same annotation control should acknowledge its resolved state before reopening."
+        )
+        XCTAssertTrue(reopen.isEnabled)
+        reopen.tap()
+
+        let restored = app.buttons["CaptureTodayAnnotationDecision_\(annotationID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(restored, in: app, timeout: 30, swipeAttempts: 16),
+            "The same annotation ID should return to active Research cues after reopening."
+        )
+        XCTAssertTrue(
+            waitForRuntimeLabel("Resolve", element: restored),
+            "The same annotation control should acknowledge its active state after reopening."
+        )
+        XCTAssertTrue(app.staticTexts[annotationBody].exists)
     }
 
     func testCanonicalDocumentNoteEditRoundTripsAndRestoresThroughNest() throws {

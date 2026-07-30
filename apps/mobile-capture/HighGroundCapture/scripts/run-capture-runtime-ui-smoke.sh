@@ -24,6 +24,8 @@ TEST_NOTE_EDIT_SOURCE_TITLE="${QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_SOURCE_TITLE:-}
 TEST_NOTE_EDIT_UPDATED_TITLE="${QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_TITLE:-}"
 TEST_NOTE_EDIT_SOURCE_BODY="${QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_SOURCE_BODY:-}"
 TEST_NOTE_EDIT_UPDATED_BODY="${QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_BODY:-}"
+TEST_ANNOTATION_ID="${QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_ID:-}"
+TEST_ANNOTATION_BODY="${QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_BODY:-}"
 TEST_RECURRENCE_SERIES_ID="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_SERIES_ID:-}"
 TEST_RECURRENCE_LOCAL_DATE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_LOCAL_DATE:-}"
 TEST_RECURRENCE_AUTHORING_TITLE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_AUTHORING_TITLE:-}"
@@ -100,6 +102,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  annotation-review)
+    TEST_CASE="testCanonicalSourceAnnotationResolveAndReopenRoundTripsThroughNest"
+    if [[ -z "$TEST_ANNOTATION_ID" || -z "$TEST_ANNOTATION_BODY" ]]; then
+      echo "Annotation-review mode requires one exact author-owned annotation ID and body." >&2
+      exit 2
+    fi
+    ;;
   recurrence-authoring)
     TEST_CASE="testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence"
     if [[ -z "$TEST_RECURRENCE_AUTHORING_TITLE" ]]; then
@@ -164,7 +173,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
     exit 2
     ;;
 esac
@@ -238,11 +247,11 @@ if [[ "$REQUIRES_PASSWORD_CREDENTIALS" == true ]]; then
     exit 3
   fi
   umask 077
-  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_TASK_EDIT_SOURCE_TITLE" "$TEST_TASK_EDIT_UPDATED_TITLE" "$TEST_GOAL_ID" "$TEST_GOAL_EDIT_SOURCE_TITLE" "$TEST_GOAL_EDIT_UPDATED_TITLE" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" "$TEST_NOTE_ID" "$TEST_NOTE_BODY_BLOCK_ID" "$TEST_NOTE_EDIT_SOURCE_TITLE" "$TEST_NOTE_EDIT_UPDATED_TITLE" "$TEST_NOTE_EDIT_SOURCE_BODY" "$TEST_NOTE_EDIT_UPDATED_BODY" <<'PY'
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_TASK_EDIT_SOURCE_TITLE" "$TEST_TASK_EDIT_UPDATED_TITLE" "$TEST_GOAL_ID" "$TEST_GOAL_EDIT_SOURCE_TITLE" "$TEST_GOAL_EDIT_UPDATED_TITLE" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" "$TEST_NOTE_ID" "$TEST_NOTE_BODY_BLOCK_ID" "$TEST_NOTE_EDIT_SOURCE_TITLE" "$TEST_NOTE_EDIT_UPDATED_TITLE" "$TEST_NOTE_EDIT_SOURCE_BODY" "$TEST_NOTE_EDIT_UPDATED_BODY" "$TEST_ANNOTATION_ID" "$TEST_ANNOTATION_BODY" <<'PY'
 import json
 import sys
 
-path, base_url, email, password, session_id, session_title, task_id, task_edit_source_title, task_edit_updated_title, goal_id, goal_edit_source_title, goal_edit_updated_title, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label, note_id, note_body_block_id, note_edit_source_title, note_edit_updated_title, note_edit_source_body, note_edit_updated_body = sys.argv[1:31]
+path, base_url, email, password, session_id, session_title, task_id, task_edit_source_title, task_edit_updated_title, goal_id, goal_edit_source_title, goal_edit_updated_title, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label, note_id, note_body_block_id, note_edit_source_title, note_edit_updated_title, note_edit_source_body, note_edit_updated_body, annotation_id, annotation_body = sys.argv[1:33]
 with open(path, "w", encoding="utf-8") as handle:
     json.dump(
         {
@@ -275,6 +284,8 @@ with open(path, "w", encoding="utf-8") as handle:
             "noteEditUpdatedTitle": note_edit_updated_title or None,
             "noteEditSourceBody": note_edit_source_body or None,
             "noteEditUpdatedBody": note_edit_updated_body or None,
+            "annotationID": annotation_id or None,
+            "annotationBody": annotation_body or None,
         },
         handle,
     )

@@ -101,6 +101,8 @@ function responseBoundaries(taskReminderIntentProjectionComplete = false) {
     goalCheckInMutatesStatus: false,
     canonicalProjectTags: true,
     tagMutationExternalSideEffects: false,
+    annotationResolveReopenAvailable: true,
+    annotationReviewMutatesSource: false,
   };
 }
 
@@ -156,7 +158,7 @@ export async function GET(request: Request) {
         select: { id: true, weekStartsAt: true, commitmentOne: true, commitmentTwo: true, commitmentThree: true, supportNeeded: true, progressNotes: true, clientReviewedAt: true, updatedAt: true },
       }),
       visibleProjectIds.length > 0 ? prisma.$queryRaw(Prisma.sql`
-        SELECT annotation."id", annotation."kind", annotation."body", annotation."exactText",
+        SELECT annotation."id", annotation."projectId", annotation."kind", annotation."body", annotation."exactText",
                annotation."status", annotation."visibility", annotation."createdByUserId", annotation."updatedAt",
                source."title" AS "sourceTitle", project."name" AS "projectName", project."slug" AS "projectSlug",
                COALESCE(array_agg(tag."label" ORDER BY tag."label") FILTER (WHERE tag."id" IS NOT NULL), ARRAY[]::text[]) AS "tagLabels"
@@ -166,11 +168,19 @@ export async function GET(request: Request) {
         LEFT JOIN "StudioSourceAnnotationTag" annotation_tag ON annotation_tag."annotationId" = annotation."id"
         LEFT JOIN "StudioTag" tag ON tag."id" = annotation_tag."tagId"
         WHERE annotation."projectId" IN (${Prisma.join(visibleProjectIds)})
-          AND annotation."status" = 'active'
+          AND (
+            annotation."status" = 'active'
+            OR (
+              annotation."status" = 'resolved'
+              AND annotation."createdByUserId" = ${userId}
+            )
+          )
           AND (annotation."visibility" = 'project' OR annotation."createdByUserId" = ${userId})
         GROUP BY annotation."id", source."title", project."name", project."slug"
-        ORDER BY annotation."updatedAt" DESC
-        LIMIT 8
+        ORDER BY
+          CASE WHEN annotation."status" = 'active' THEN 0 ELSE 1 END,
+          annotation."updatedAt" DESC
+        LIMIT 12
       `) : Promise.resolve([]),
       prisma.callRoom.findMany({
         where: {
@@ -321,6 +331,9 @@ export async function GET(request: Request) {
       })));
     }).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)).slice(0, 8);
     const tagCatalogById = new Map<string, any>();
+    const projectRoleById = new Map(
+      visibleProjects.map((project: any) => [project.id, project.role]),
+    );
     for (const tag of tagRows) tagCatalogById.set(tag.id, tag);
     for (const entity of [...taskRows, ...goalRows]) {
       if (!entity.project || !visibleProjectIds.includes(entity.project.id)) continue;
@@ -342,6 +355,9 @@ export async function GET(request: Request) {
         status: annotation.status,
         visibility: annotation.visibility,
         createdByMe: annotation.createdByUserId === userId,
+        canChangeStatus:
+          annotation.createdByUserId === userId
+          && ["OWNER", "EDITOR"].includes(projectRoleById.get(annotation.projectId)),
         sourceTitle: annotation.sourceTitle,
         projectName: annotation.projectName,
         projectSlug: annotation.projectSlug,
@@ -902,10 +918,12 @@ export async function POST(request: Request) {
       if (!["active", "resolved", "archived"].includes(nextStatus)) return NextResponse.json({ ok: false, error: "Choose a valid annotation status." }, { status: 400 });
       const actorEmail = text(session.user.primaryEmail || session.user.email, 320).toLowerCase();
       const visibleProjects = actorEmail ? await listProjectsVisibleToEmail(actorEmail, prisma) : [];
-      const projectIds = visibleProjects.map((project: any) => project.id);
-      const available = projectIds.length > 0 ? await prisma.$queryRaw(Prisma.sql`
+      const writableProjectIds = visibleProjects
+        .filter((project: any) => ["OWNER", "EDITOR"].includes(project.role))
+        .map((project: any) => project.id);
+      const available = writableProjectIds.length > 0 ? await prisma.$queryRaw(Prisma.sql`
         SELECT "id" FROM "StudioSourceAnnotation"
-        WHERE "id" = ${id} AND "createdByUserId" = ${userId} AND "projectId" IN (${Prisma.join(projectIds)})
+        WHERE "id" = ${id} AND "createdByUserId" = ${userId} AND "projectId" IN (${Prisma.join(writableProjectIds)})
         LIMIT 1
       `) : [];
       if (!Array.isArray(available) || available.length === 0) return NextResponse.json({ ok: false, error: "Only the annotation author can change an accessible source note." }, { status: 404 });

@@ -2,6 +2,7 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { setSourceAnnotationStatus } from "@/lib/server/source-annotations";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 
@@ -56,7 +57,10 @@ describe("mobile Capture Today contract", () => {
 
   it("returns canonical actor work while quarantining transcript candidates", async () => {
     signedIn();
-    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([{ id: "project-1", slug: "high-ground", name: "High Ground", role: "EDITOR" }] as any);
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([
+      { id: "project-1", slug: "high-ground", name: "High Ground", role: "EDITOR" },
+      { id: "project-viewer", slug: "read-only", name: "Read-only Nest", role: "VIEWER" },
+    ] as any);
     jest.mocked(getPrismaClient).mockReturnValue({
       actionItem: { findMany: jest.fn().mockResolvedValue([
         { id: "candidate", title: "Maybe follow up", detail: null, status: "OPEN", dueAt: null, updatedAt: expected, sourceJson: { source: "transcript-packet-builder", candidate: true }, room: null },
@@ -83,20 +87,53 @@ describe("mobile Capture Today contract", () => {
         { id: "tag-2", projectId: "project-1", slug: "episode", label: "Episode", isActive: true },
         { id: "tag-1", projectId: "project-1", slug: "proof-listen", label: "Proof listen", isActive: true },
       ]) },
-      $queryRaw: jest.fn().mockResolvedValue([{
-        id: "annotation-1",
-        kind: "question",
-        body: "Is this the opening tension?",
-        exactText: "Keep the source intact.",
-        status: "active",
-        visibility: "private",
-        createdByUserId: "user-1",
-        updatedAt: expected,
-        sourceTitle: "Production philosophy",
-        projectName: "High Ground",
-        projectSlug: "high-ground",
-        tagLabels: ["Episode seed"],
-      }]),
+      $queryRaw: jest.fn().mockResolvedValue([
+        {
+          id: "annotation-1",
+          projectId: "project-1",
+          kind: "question",
+          body: "Is this the opening tension?",
+          exactText: "Keep the source intact.",
+          status: "active",
+          visibility: "private",
+          createdByUserId: "user-1",
+          updatedAt: expected,
+          sourceTitle: "Production philosophy",
+          projectName: "High Ground",
+          projectSlug: "high-ground",
+          tagLabels: ["Episode seed"],
+        },
+        {
+          id: "annotation-resolved",
+          projectId: "project-1",
+          kind: "note",
+          body: "This decision can be revisited.",
+          exactText: "The source remains immutable.",
+          status: "resolved",
+          visibility: "project",
+          createdByUserId: "user-1",
+          updatedAt: persisted,
+          sourceTitle: "Production philosophy",
+          projectName: "High Ground",
+          projectSlug: "high-ground",
+          tagLabels: ["Decision"],
+        },
+        {
+          id: "annotation-viewer-owned",
+          projectId: "project-viewer",
+          kind: "note",
+          body: "Readable evidence must not become writable after access changes.",
+          exactText: "Preserve the permission boundary.",
+          status: "active",
+          visibility: "private",
+          createdByUserId: "user-1",
+          updatedAt: expected,
+          sourceTitle: "Access boundary",
+          projectName: "Read-only Nest",
+          projectSlug: "read-only",
+          tagLabels: [],
+        },
+      ]),
     } as any);
     const response = await GET(new Request("http://localhost/api/mobile/capture/today"));
     const payload = await response.json();
@@ -109,7 +146,82 @@ describe("mobile Capture Today contract", () => {
     expect(payload.focusBlocks).toEqual(expect.arrayContaining([expect.objectContaining({ id: "block-1", targetId: "task-1" })]));
     expect(payload.goals[0]).toMatchObject({ id: "goal-1", roomId: "room-1", sessionTitle: "Episode review", canEditTags: true, tagIds: ["tag-2"], tagLabels: ["Episode"], sourceAnchor: { schema: "quipsly-transcript-derived-goal-v1", segmentId: "segment-1", startSeconds: 3.66, recordingAssetId: "asset-1" } });
     expect(payload.goals[1]).toMatchObject({ id: "goal-mismatch", roomId: "room-1", sourceAnchor: null });
-    expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", sourceTitle: "Production philosophy", createdByMe: true, tagLabels: ["Episode seed"] }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], tagCatalog: [{ id: "tag-2", projectId: "project-1", label: "Episode", isActive: true }, { id: "tag-archived", projectId: "project-1", label: "Legacy review", isActive: false }, { id: "tag-1", projectId: "project-1", label: "Proof listen", isActive: true }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false } });
+    expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", status: "active", sourceTitle: "Production philosophy", createdByMe: true, canChangeStatus: true, tagLabels: ["Episode seed"] }, { id: "annotation-resolved", status: "resolved", createdByMe: true, canChangeStatus: true, tagLabels: ["Decision"] }, { id: "annotation-viewer-owned", createdByMe: true, canChangeStatus: false }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], tagCatalog: [{ id: "tag-2", projectId: "project-1", label: "Episode", isActive: true }, { id: "tag-archived", projectId: "project-1", label: "Legacy review", isActive: false }, { id: "tag-1", projectId: "project-1", label: "Proof listen", isActive: true }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false } });
+  });
+
+  it("reopens the same accessible author-owned source annotation without mutating its source", async () => {
+    signedIn();
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([
+      { id: "project-1", slug: "high-ground", name: "High Ground", role: "EDITOR" },
+    ] as any);
+    jest.mocked(setSourceAnnotationStatus).mockResolvedValue({
+      ok: true,
+      id: "annotation-1",
+      updatedAt: persisted.toISOString(),
+      reused: false,
+    });
+    const queryRaw = jest.fn().mockResolvedValue([{ id: "annotation-1" }]);
+    jest.mocked(getPrismaClient).mockReturnValue({ $queryRaw: queryRaw } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "source-annotation-status",
+        id: "annotation-1",
+        nextStatus: "active",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      action: "source-annotation-status",
+      id: "annotation-1",
+      status: "active",
+      updatedAt: persisted.toISOString(),
+      boundaries: {
+        sourceMutated: false,
+        immutableSourceAnchors: true,
+        annotationResolveReopenAvailable: true,
+        annotationReviewMutatesSource: false,
+      },
+    });
+    expect(setSourceAnnotationStatus).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        annotationId: "annotation-1",
+        actorUserId: "user-1",
+        expectedUpdatedAt: expected,
+        nextStatus: "active",
+      },
+    );
+  });
+
+  it("does not reveal or mutate a source annotation outside the actor's accessible Nests", async () => {
+    signedIn();
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([
+      { id: "project-1", slug: "high-ground", name: "High Ground", role: "VIEWER" },
+    ] as any);
+    const queryRaw = jest.fn();
+    jest.mocked(getPrismaClient).mockReturnValue({ $queryRaw: queryRaw } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "source-annotation-status",
+        id: "annotation-private-to-someone-else",
+        nextStatus: "active",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+
+    expect(response.status).toBe(404);
+    expect(queryRaw).not.toHaveBeenCalled();
+    expect(setSourceAnnotationStatus).not.toHaveBeenCalled();
   });
 
   it("edits an owner-scoped one-time task from the iPhone with a DST-safe receipt and no external effects", async () => {

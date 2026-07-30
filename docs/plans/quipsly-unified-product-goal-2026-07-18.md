@@ -3857,3 +3857,94 @@ This is an active-goal checkpoint, not a completion claim.
   application revision depends on them. A new TestFlight build, Charlie and
   Scott physical operation, interruption/offline recovery, same-ID production
   Nest readback, and the broader real episode/coaching workflows remain open.
+
+### 2026-07-30 Build 14 production and TestFlight checkpoint
+
+- Quipsly Capture **1.0 (14)** is now the canonical distributed beta. App Store
+  Connect build `b1da4da1-5c77-4ee1-b4bc-ce6213a7df97` is `VALID`, with both
+  `internalBuildState` and `externalBuildState` equal to
+  `IN_BETA_TESTING`. Its exact source is
+  `a2d8835353c372e2cb528b661c28752b61cc492c`; the sealed IPA SHA-256 is
+  `9fa8716e351b1fddd28e9cb303434c4c1833d737f9dc084701767e58ac262972`.
+  The release receipt remains explicit that physical TestFlight installation
+  readback has not occurred.
+- Build 14 carries the canonical one-time task editor, shared goal editor,
+  canonical document-note editor, reusable-tag contract alignment, and the
+  additive schema repairs required by the document-note path. It supersedes
+  the Build 13 statements in the preceding implementation checkpoints without
+  retroactively converting their simulator evidence into physical-device
+  proof.
+- The approved public beta handoff
+  `https://testflight.apple.com/join/XwRRcYUm` is open, names Quipsly Capture,
+  and exposes Apple's exact `itms-beta` handoff. It is the canonical
+  **public-link-only** installation route and requires neither an invitation
+  email nor a redemption code.
+- A fresh App Store Connect readback on July 30 found three assigned testers
+  across `INSTALLED` and `INVITED` states. Scott's exact tester relationship
+  remains `INVITED` even though it belongs to both assigned groups. Apple
+  accepted another explicit invitation resend with HTTP 201 and returned a
+  provider receipt; that proves provider acceptance, not email delivery,
+  enrollment, installation, or operation.
+- Production Nest is 100% on ready Cloud Run revision `studio-00445-rij`.
+  Revision-owned environment readback reports
+  `QUIPSLY_SOURCE_SHA=a2d8835353c372e2cb528b661c28752b61cc492c`,
+  release channel `preview`, and the exact immutable image digest
+  `sha256:43aa92ba344ffe60e9f9265410e8b545574b5468bc638d0424d5b67a0aed3443`.
+  This aligns the distributed iPhone source with the live canonical service.
+- Build 14 and production Nest are distributable infrastructure, not the
+  rehearsal itself. The next human gate remains opening the public link on
+  Scott's physical iPhone, accepting and installing Build 14, reading the
+  version/build back from TestFlight and the app, attaching
+  `shomers@gmail.com` as the Quipsly identity, collecting explicit consent,
+  and operating the real call, local audio/video capture, camera change,
+  Shared Watch, upload, timeline, and proof-listen/watch paths.
+
+### 2026-07-30 canonical iPhone annotation-review checkpoint
+
+- Capture Today now projects the same permission-filtered
+  `StudioSourceAnnotation` records used by Nest Research. Active evidence is
+  ordered ahead of the signed-in author's recently resolved evidence; the
+  iPhone shows exact source text, annotation body, kind, visibility, canonical
+  reusable tag labels, and a deliberate link back to
+  `/research?annotation=<stable-id>`.
+- Resolve and Reopen are one reversible review loop over the same annotation
+  ID. Nest retains the immutable source unit, stable source fingerprint,
+  exact quote selector, tags, and append-only
+  `created` / `resolved` / `reopened` revision receipts. The mutation contract
+  explicitly reports that source material is not changed.
+- The permission contract matches Nest rather than merely trusting
+  authorship. A permitted reader can see project-visible evidence, but only the
+  author with current `OWNER` or `EDITOR` access receives
+  `canChangeStatus: true`. A former editor who now has `VIEWER` access sees no
+  actionable Resolve/Reopen control, and the mobile mutation endpoint denies
+  the write before querying or revealing the target annotation.
+- The native schema treats the new capability field as optional so a newer
+  binary can still read an older server response during a coordinated rollout.
+  Preview/demo annotations expose both active and resolved states but keep
+  every decision control disabled; the exact-source link is withheld in
+  preview.
+- The operated dogfood lane ran current local Nest source with a disposable
+  real Firebase identity, loopback PostgreSQL, and the compiled iPhone app. It
+  created a canonical project, task, note, goal, reusable tag, immutable source
+  unit, and author-owned annotation. The app resolved the annotation, retained
+  the same ID in **Recently resolved**, reopened it, and restored it to active.
+- Independent post-operation readback proved the same annotation ID and body,
+  active status, exact quote, source-unit identity, SHA-256 source fingerprint,
+  canonical tag, and exactly three ordered revisions:
+  `created`, `resolved`, `reopened`. The source hash was unchanged and
+  `sourceMutated` remained false.
+- Cleanup deleted the annotation, generated project, Home Nest, grant,
+  membership, database user, and Firebase user. Independent reads reported
+  `databaseArtifactsAbsentAfterCleanup: true` and
+  `firebaseUserAbsentAfterCleanup: true`; the owned Nest process, database,
+  credentials packet, and simulator bridge were also removed.
+- Current-source verification passes 19 focused Today route tests, Quipsly
+  TypeScript, 10 Nest source-evidence contract tests, 802 App Store static
+  checks, the real generated annotation-review journey, and the focused
+  preview UI test
+  `testTodayUsesCanonicalFollowThroughWithoutImplyingExternalActions` on an
+  iPhone 17 Pro Simulator. This annotation slice is newer than Build 14 and
+  production `studio-00445-rij`; it must be committed, deployed as a
+  zero-traffic Nest preview, qualified from exact committed source, released
+  in a later TestFlight build, and operated on a physical iPhone before it is
+  described as distributed or physically proven.
