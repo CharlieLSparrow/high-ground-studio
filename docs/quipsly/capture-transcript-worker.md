@@ -1,7 +1,7 @@
 # Quipsly canonical transcript pipeline
 
-Status: implemented locally; cloud fixture and production promotion remain
-operator-gated.
+Status: implemented locally; the credentialed cloud fixture is implemented,
+while provider activation and production promotion remain operator-gated.
 
 ## Product contract
 
@@ -150,6 +150,28 @@ APPLY=1 \
 bash scripts/release/quipsly-transcript-worker-access.sh
 ```
 
+Run the provider-backed acceptance with a short, authorized, non-sensitive
+speech sample. The fixture removes source metadata, converts the sample to a
+bounded mono 48 kHz PCM source, uploads it create-once, and never prints
+transcript text or the provider request ID. It proves exact source binding,
+raw provider receipt durability, normalized timing anchors, committed
+build/image identity, queue retirement, and a completed-job replay that does
+not replace the source, manifest, provider receipt, or result.
+
+```bash
+PROJECT_ID=high-ground-odyssey \
+QUIPSLY_MEDIA_BUCKET=high-ground-odyssey-media \
+EXPECTED_BUILD_ID=COMMITTED_SHA \
+FIXTURE_AUDIO_PATH=/absolute/path/to/authorized-short-speech.wav \
+FIXTURE_CONSENT_ACKNOWLEDGED=1 \
+pnpm quipsly:transcript-worker:cloud-fixture
+```
+
+The evidence is preserved by default. Add `CLEANUP=1` only for a disposable
+run; cleanup resolves each exact object generation and deletes only that
+generation. The operator must never use confidential production audio as a
+fixture.
+
 Nest must be deployed with:
 
 - `QUIPSLY_TRANSCRIPT_WORKER_ENABLED=1`
@@ -157,6 +179,6 @@ Nest must be deployed with:
 - `QUIPSLY_TRANSCRIPT_WORKER_REGION=us-central1`
 - `QUIPSLY_TRANSCRIPT_WORKER_JOB=quipsly-transcript-worker`
 
-Promotion still requires an isolated GCS fixture, database migration, consent
-revocation proof, exact image/job/IAM readback, and one real authorized
-recording-to-Studio workflow.
+Promotion still requires executing this isolated GCS fixture, database
+migration, consent-revocation proof, exact image/job/IAM readback, and one real
+authorized recording-to-Studio workflow.

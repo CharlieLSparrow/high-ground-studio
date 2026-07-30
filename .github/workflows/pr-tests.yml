@@ -134,6 +134,7 @@ jobs:
           bash -n scripts/release/quipsly-transcript-worker-access.sh
           bash -n scripts/release/quipsly-transcript-worker-context.test.sh
           bash -n scripts/release/quipsly-transcript-worker-deploy.sh
+          node --check scripts/release/quipsly-transcript-worker-cloud-fixture.mjs
           bash -n scripts/release/quipsly-release-preflight.sh
           bash -n scripts/release/quipsly-smoke-preview.sh
           bash -n scripts/release/quipsly-production-status.sh

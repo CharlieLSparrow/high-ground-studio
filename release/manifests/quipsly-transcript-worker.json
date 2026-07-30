@@ -56,7 +56,8 @@
       "Run the provider fault, crash recovery, immutable source drift, and stable word-anchor contract tests."
     ],
     "credentialedRuntime": [
-      "Run one isolated GCS fixture through the exact deployed job and reconcile its immutable provider receipt into an isolated database.",
+      "Run scripts/release/quipsly-transcript-worker-cloud-fixture.mjs with an explicitly authorized speech fixture through the exact deployed job and prove immutable provider/result receipts plus a create-once completed-job replay.",
+      "Reconcile the fixture's immutable provider receipt into an isolated database.",
       "Revoke transcription consent after provider completion and prove that no text rows are projected.",
       "Apply and read back managed-folder IAM, Secret Manager access, and no-override Cloud Run Jobs execution authority."
     ],

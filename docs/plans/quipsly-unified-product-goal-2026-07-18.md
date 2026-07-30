@@ -4564,3 +4564,33 @@ This is an active-goal checkpoint, not a completion claim.
   removed; `/System/Volumes/Data` now has about 51 GiB free.
 - Build 14, production Nest, App Store assignments, rehearsal consent, media,
   and room/provider state were not mutated by this slice.
+
+### 2026-07-30 transcript cloud-acceptance checkpoint
+
+- Closed the missing credentialed acceptance boundary around the canonical
+  transcript worker. The repository now owns an operator-grade GCS fixture
+  that accepts only an explicitly authorized, non-sensitive speech sample,
+  strips its metadata, normalizes it to bounded mono 48 kHz PCM, and uploads
+  the exact bytes with create-only generation and SHA-256/size evidence.
+- The fixture validates the deployed Cloud Run Job's immutable image digest,
+  committed build ID, media bucket, and Secret Manager reference before
+  provider work. It then proves exact source binding, create-once raw provider
+  receipt, normalized stable word/segment timing, queue retirement, and a
+  deliberately re-enqueued completed-job replay that cannot replace the
+  source, manifest, provider receipt, or normalized result.
+- Evidence output discloses hashes, timings, channel/speaker/segment/word
+  counts, and execution identities only. It never prints transcript text, the
+  provider request ID, signed URLs, credentials, or the operator's source
+  path. Evidence is preserved by default; optional cleanup resolves and
+  deletes each exact fixture generation only.
+- Local proof passes the expanded eight-test worker/fixture suite, both
+  transcript TypeScript builds, syntax checks, and repository diff hygiene.
+  Live credentialed execution remains correctly unavailable: the
+  `quipsly-deepgram-api-key` secret exists but has no enabled version, and no
+  transcript Cloud Run Job has been deployed. No provider call, recording
+  upload, production database projection, consent mutation, or Nest
+  configuration change occurred.
+- The exact loop-back is to add one enabled Deepgram secret version without
+  exposing it in shell history, deploy the committed worker, read back
+  least-privilege IAM, execute this fixture, then prove consent revocation
+  blocks database text projection before activating the Nest worker path.
