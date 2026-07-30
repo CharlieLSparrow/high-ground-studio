@@ -4530,3 +4530,37 @@ This is an active-goal checkpoint, not a completion claim.
   account selection, consent, two-person audio/video capture, Shared Watch,
   upload, timeline materialization, and proof-listen/watch remain human-present
   gates.
+
+### 2026-07-30 independent Mac Account and Capture preflight checkpoint
+
+- Direct current-app operation verified Charlie's existing device-bound
+  Google/Firebase refresh session against production Nest without asking for a
+  password or new account selection. The exact identity is
+  `charlie@highgroundodyssey.com`, its Home Nest is
+  `home-charlie-at-highgroundodyssey-com`, and the rehearsal project is among
+  nine authorized projects.
+- The same signed canonical bundle then entered local-only Capture Setup and
+  read microphone/camera authorization as granted, Shure MV7i as the exact
+  two-channel 48 kHz input and output, and EOS Webcam Utility as the selected
+  video device with preview negotiation. Live camera signal remains explicitly
+  unverified, the camera reference remains disabled, and recording cannot
+  start until a human confirms a moving image.
+- The first consolidated run exposed two evidence-orchestration defects rather
+  than hardware failures. Opening Capture from the normal runtime cannot
+  publish the acceptance-only projection, and the saved-session command is
+  asynchronous. The launcher smoke now enters the bounded acceptance runtime
+  itself, while the preflight waits for the saved-session completion marker
+  and stores normal `/state` before opening Capture and reading independent
+  `/capture_status`.
+- Focused shell/Node coverage passes 9/9, the strengthened launcher smoke
+  passes 8/8, and the live production preflight at
+  `2026-07-30T18:16:31Z` passes all eleven infrastructure checks. It correctly
+  reports Charlie's Mac session verified and removes that stale next action
+  while retaining physical install, consent, seen/heard route, disposable
+  take, two-person operation, upload, timeline, and proof-review gates.
+- A low-disk failure during real app operation was resolved by deleting only
+  seven inactive, regenerable `/private/tmp` build/package/cache directories.
+  No source, repository, release receipt, recording, or source media was
+  removed; `/System/Volumes/Data` now has about 51 GiB free.
+- Build 14, production Nest, App Store assignments, rehearsal consent, media,
+  and room/provider state were not mutated by this slice.

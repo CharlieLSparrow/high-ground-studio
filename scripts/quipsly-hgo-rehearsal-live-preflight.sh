@@ -3,6 +3,8 @@ set -euo pipefail
 umask 077
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+STUDIOCTL="$ROOT_DIR/apps/QuipslyStudio/script/studioctl.sh"
+AGENTCTL="$ROOT_DIR/apps/QuipslyStudio/script/agentctl.sh"
 ASC_KEY_PATH="${APP_STORE_CONNECT_API_KEY_PATH:-${XDG_CONFIG_HOME:-${HOME}/.config}/quipsly/credentials/app-store-connect/quipsly-release-automation.json}"
 TESTER_EMAIL="${QUIPSLY_CAPTURE_TESTER_EMAIL:-shomers@icloud.com}"
 BASE_URL="${QUIPSLY_REHEARSAL_BASE_URL:-https://nest.quipsly.com}"
@@ -84,6 +86,39 @@ run_logged() {
   return 1
 }
 
+wait_for_main_account_projection() {
+  local state_json=""
+  for attempt_no in {1..80}; do
+    state_json="$("$AGENTCTL" state 2>/dev/null || true)"
+    if printf '%s' "$state_json" \
+      | jq -e '.nativeAccount != null' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  printf '%s\n' "$state_json" >&2
+  echo "Canonical Mac app did not publish its native-account projection." >&2
+  return 1
+}
+
+wait_for_native_account_check_completion() {
+  local state_json=""
+  for attempt_no in {1..120}; do
+    state_json="$("$AGENTCTL" state 2>/dev/null || true)"
+    if printf '%s' "$state_json" | jq -e '
+      .lastMediaAction
+        == "Native account saved-session check completed. Re-read nativeAccount for redacted proof."
+      and .nativeAccount.isBusy == false
+    ' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.25
+  done
+  printf '%s\n' "$state_json" >&2
+  echo "Canonical Mac app did not finish the saved-session check." >&2
+  return 1
+}
+
 run_logged testflight-public \
   node "$ROOT_DIR/scripts/release/quipsly-testflight-public-link-readback.mjs" \
   --output "$WORK_DIR/testflight-public.json"
@@ -108,21 +143,37 @@ run_logged native-watch \
   --base-url "$BASE_URL" \
   --output "$WORK_DIR/watch.json"
 
+run_logged mac-main-launch \
+  "$STUDIOCTL" launch --no-build
+
+run_logged mac-main-ready \
+  wait_for_main_account_projection
+
 run_logged mac-app \
-  "$ROOT_DIR/apps/QuipslyStudio/script/studioctl.sh" verify-app
+  "$STUDIOCTL" verify-app
 cp "$WORK_DIR/mac-app.log" "$WORK_DIR/mac-app.txt"
 
 run_logged native-account-smoke \
   "$ROOT_DIR/apps/QuipslyStudio/script/smoke_native_account_control.sh"
 cp "$WORK_DIR/native-account-smoke.log" "$WORK_DIR/native-account-smoke.json"
 
+run_logged mac-account-check \
+  "$AGENTCTL" native-account check-saved
+
+run_logged mac-account-check-ready \
+  wait_for_native_account_check_completion
+
+run_logged mac-state \
+  "$AGENTCTL" state
+cp "$WORK_DIR/mac-state.log" "$WORK_DIR/mac-state.json"
+
 run_logged capture-launcher-smoke \
   "$ROOT_DIR/apps/QuipslyStudio/script/smoke_capture_setup_launcher.sh"
 cp "$WORK_DIR/capture-launcher-smoke.log" "$WORK_DIR/capture-launcher-smoke.json"
 
-run_logged mac-state \
-  "$ROOT_DIR/apps/QuipslyStudio/script/agentctl.sh" state
-cp "$WORK_DIR/mac-state.log" "$WORK_DIR/mac-state.json"
+run_logged mac-capture \
+  "$AGENTCTL" capture-status
+cp "$WORK_DIR/mac-capture.log" "$WORK_DIR/mac-capture.json"
 
 node "$ROOT_DIR/scripts/quipsly-hgo-rehearsal-preflight.mjs" \
   --app-store "$WORK_DIR/app-store.json" \
@@ -131,6 +182,7 @@ node "$ROOT_DIR/scripts/quipsly-hgo-rehearsal-preflight.mjs" \
   --watch "$WORK_DIR/watch.json" \
   --mac-app "$WORK_DIR/mac-app.txt" \
   --mac-account "$WORK_DIR/mac-state.json" \
+  --mac-capture "$WORK_DIR/mac-capture.json" \
   --native-account-smoke "$WORK_DIR/native-account-smoke.json" \
   --capture-launcher-smoke "$WORK_DIR/capture-launcher-smoke.json" \
   --output "$OUTPUT_PATH"

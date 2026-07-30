@@ -112,3 +112,23 @@ Operational proof:
 6. Disconnect and prove the saved session is gone.
 7. Sign in as a separate account and prove private projects do not cross the
    identity boundary.
+
+## July 30 operational readback
+
+The exact current-source bundle at
+`apps/QuipslyStudio/DerivedData/Build/Products/Debug/QuipslyMac.app` verified
+the device-bound saved session for `charlie@highgroundodyssey.com` without a
+password or new browser handoff. Nest returned the expected Home Nest and nine
+authorized projects, including `high-ground-odyssey-rehearsal`.
+
+Use the exact bundle path or `script/studioctl.sh`; macOS LaunchServices still
+knows about an older `/Users/wall-e/Applications/Quipsly Studio.app`, and
+launching only by display name can select that stale copy. A preflight is
+invalid if `studioctl.sh verify-app` reports a noncanonical PID or duplicate
+warning.
+
+The rehearsal preflight now waits for the asynchronous saved-session check to
+finish before reading `/state`. It then captures that Account evidence before
+restarting the app into the separately bounded Capture Setup runtime. A queued
+command receipt or the initial “saved token found” message is not accepted as
+proof that Nest verified the session.

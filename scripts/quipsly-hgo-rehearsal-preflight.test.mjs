@@ -14,6 +14,13 @@ const livePreflightShell = await readFile(
   new URL("./quipsly-hgo-rehearsal-live-preflight.sh", import.meta.url),
   "utf8",
 );
+const captureLauncherSmokeShell = await readFile(
+  new URL(
+    "../apps/QuipslyStudio/script/smoke_capture_setup_launcher.sh",
+    import.meta.url,
+  ),
+  "utf8",
+);
 
 function fixture(overrides = {}) {
   const base = {
@@ -96,6 +103,39 @@ function fixture(overrides = {}) {
         statusMessage: "Not connected yet.",
       },
     },
+    macCapture: {
+      launchStage: "capture_setup_ready",
+      projectionOwnership: "episode-capture-setup",
+      capture: {
+        episodeSpaceID: "testflight-rehearsal",
+        microphoneAuthorization: "authorized",
+        cameraAuthorization: "authorized",
+        cameraPreviewReady: true,
+        cameraSignalVerified: false,
+        includeCameraReference: false,
+        canStartRecording: false,
+        selectedInput: {
+          id: "mv7i",
+          name: "Shure MV7i",
+          manufacturer: "Shure Inc",
+          inputChannels: 2,
+          outputChannels: 2,
+          sampleRate: 48_000,
+        },
+        selectedOutput: {
+          id: "mv7i",
+          name: "Shure MV7i",
+          manufacturer: "Shure Inc",
+          inputChannels: 2,
+          outputChannels: 2,
+          sampleRate: 48_000,
+        },
+        selectedVideo: {
+          id: "eos",
+          name: "EOS Webcam Utility",
+        },
+      },
+    },
     nativeAccountSmoke: { passed: true },
     captureLauncherSmoke: { passed: true },
     auditedAt: "2026-07-30T00:00:00.000Z",
@@ -111,11 +151,13 @@ test("argument parser requires every redacted evidence input", () => {
     "--watch", "watch.json",
     "--mac-app", "mac.txt",
     "--mac-account", "mac-state.json",
+    "--mac-capture", "capture.json",
     "--native-account-smoke", "account-smoke.json",
     "--capture-launcher-smoke", "capture-smoke.json",
     "--output", "receipt.json",
   ]);
   assert.equal(parsed.outputPath, "receipt.json");
+  assert.equal(parsed.macCapturePath, "capture.json");
   assert.equal(parsed.captureLauncherSmokePath, "capture-smoke.json");
 });
 
@@ -185,4 +227,70 @@ test("duplicate Mac bundle fails infrastructure readiness", () => {
   assert.ok(
     receipt.blockers.includes("infrastructure:canonicalMacAppReady"),
   );
+});
+
+test("verified Mac session and exact hardware remain separate from physical proof", () => {
+  const input = fixture();
+  input.macState.nativeAccount = {
+    hasSavedSession: true,
+    isVerified: true,
+    statusMessage: "Connected to Quipsly.",
+  };
+
+  const receipt = composeRehearsalPreflight(input);
+
+  assert.equal(receipt.infrastructureChecks.macHardwareInventoryReady, true);
+  assert.equal(receipt.humanGates.charlieMacSessionVerified, true);
+  assert.equal(receipt.mac.capture.selectedInputName, "Shure MV7i");
+  assert.equal(receipt.mac.capture.selectedOutputName, "Shure MV7i");
+  assert.equal(receipt.mac.capture.selectedVideoName, "EOS Webcam Utility");
+  assert.equal(receipt.mac.capture.selectedSampleRate, 48_000);
+  assert.equal(receipt.mac.capture.cameraPreviewReady, true);
+  assert.equal(receipt.mac.capture.cameraSignalVerified, false);
+  assert.equal(receipt.mac.capture.canStartRecording, false);
+  assert.equal(receipt.humanGates.physicalRoutesAndPermissionsProven, false);
+  assert.equal(receipt.readyToRecordNow, false);
+  assert.ok(
+    !receipt.blockers.includes(
+      "human:complete-charlie-mac-google-handoff",
+    ),
+  );
+  assert.ok(
+    !receipt.nextActions.some((action) =>
+      action.includes("Mac Google handoff")),
+  );
+});
+
+test("live preflight preserves account proof before opening capture setup", () => {
+  const accountCheckIndex = livePreflightShell.indexOf(
+    "run_logged mac-account-check",
+  );
+  const accountCheckReadyIndex = livePreflightShell.indexOf(
+    "run_logged mac-account-check-ready",
+  );
+  const macStateIndex = livePreflightShell.indexOf("run_logged mac-state");
+  const captureLauncherIndex = livePreflightShell.indexOf(
+    "run_logged capture-launcher-smoke",
+  );
+  const macCaptureIndex = livePreflightShell.indexOf(
+    "run_logged mac-capture",
+  );
+
+  assert.ok(accountCheckIndex > 0);
+  assert.ok(accountCheckReadyIndex > accountCheckIndex);
+  assert.ok(macStateIndex > accountCheckReadyIndex);
+  assert.ok(captureLauncherIndex > macStateIndex);
+  assert.ok(macCaptureIndex > captureLauncherIndex);
+});
+
+test("capture launcher smoke enters the bounded acceptance runtime itself", () => {
+  const acceptanceLaunchIndex = captureLauncherSmokeShell.indexOf(
+    "launch-capture-acceptance --no-build",
+  );
+  const openSetupIndex = captureLauncherSmokeShell.indexOf(
+    "capture-open-setup",
+  );
+
+  assert.ok(acceptanceLaunchIndex > 0);
+  assert.ok(openSetupIndex > acceptanceLaunchIndex);
 });

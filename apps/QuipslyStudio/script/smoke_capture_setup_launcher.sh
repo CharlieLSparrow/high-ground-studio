@@ -9,6 +9,9 @@ cleanup() {
 }
 trap cleanup EXIT
 
+"$ROOT_DIR/script/studioctl.sh" \
+  launch-capture-acceptance --no-build \
+  >"$WORK_DIR/acceptance-launch.json"
 "$ROOT_DIR/script/studioctl.sh" verify-app >"$WORK_DIR/app.txt"
 "$ROOT_DIR/script/agentctl.sh" health >"$WORK_DIR/health.json"
 "$ROOT_DIR/script/agentctl.sh" commands >"$WORK_DIR/commands.json"

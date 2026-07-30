@@ -367,10 +367,12 @@ pnpm quipsly:capture:rehearsal-preflight \
 the exact private production Room, two participant records, just-in-time
 Scott Google linking, the 34-block manuscript, all three protected Watch
 objects, and the signed canonical Mac launcher. It intentionally leaves
-`readyToRecordNow: false` until physical installation, Charlie's Mac handoff,
-both human consent decisions, device routes, a listened/watched disposable
+`readyToRecordNow: false` until physical installation, both human consent
+decisions, physically heard/seen device routes, a listened/watched disposable
 take, the two-person room, and same-ID upload/timeline readback are separately
-proved. Never edit that receipt to make a human or physical gate green.
+proved. The preflight verifies Charlie's saved device-bound Mac session before
+it restarts the canonical app into bounded Capture Setup. Never edit that
+receipt to make a human or physical gate green.
 
 Both people:
 
@@ -552,12 +554,43 @@ The rehearsal passes only when:
 - Homer's first Google sign-in is the only remaining live identity-link step.
 - A physical two-account rehearsal is still required; simulator and server
   tests do not substitute for it.
-- Charlie's signed Quipsly Studio app still needs its native Google handoff,
-  app-owned Episode Room MV7i/Canon coexistence, spoken-gain headphone
-  proof-listen, room join, upload, and cross-device readback. A local-only
-  MV7i plus built-in-camera take now has durable Studio and relaunch proof, but
-  it does not substitute for those operations.
+- Charlie's saved device-bound Google/Firebase session is verified for
+  `charlie@highgroundodyssey.com`, and current Capture Setup selects the Shure
+  MV7i for both 48 kHz input/output plus EOS Webcam Utility for video. The
+  Canon feed still requires a visibly moving image, and the MV7i still requires
+  a spoken-gain headphone proof-listen, room join, upload, and cross-device
+  readback. A local-only MV7i plus built-in-camera take now has durable Studio
+  and relaunch proof, but it does not substitute for those operations.
 - Build 14 implements same-iPhone coordinated local audio plus video beside
   LiveKit, but the exact real-device microphone ownership, first PCM,
   Pause/Resume/Flip, upload, and assembled sync path remains unproven until
   this rehearsal.
+
+## July 30 live Mac preflight checkpoint
+
+The consolidated preflight now treats the normal Account projection and the
+bounded Capture projection as independent evidence. It launches the canonical
+app normally, completes and waits for the saved-session verification, stores
+that readback, then restarts into `--episode-capture-setup-only` and stores the
+separate `/capture_status` readback. This prevents Capture Setup from erasing
+account evidence or normal editor state from being mistaken for absent capture
+hardware.
+
+Live production readback at `2026-07-30T18:16:31Z` passed all eleven
+infrastructure checks:
+
+- Build 14 remains valid and in beta through the open public link;
+- the exact production rehearsal Room, manuscript, Watch state, and protected
+  media are intact;
+- Charlie's saved Mac session is valid for the expected Home Nest and exposes
+  the rehearsal project;
+- the signed canonical bundle is the only Quipsly Mac binary running;
+- microphone and camera authorization are granted;
+- Shure MV7i is the exact two-channel 48 kHz input and output;
+- EOS Webcam Utility is selected and has a negotiated preview; and
+- no recording, provider join, consent mutation, upload, or publication
+  occurred.
+
+The EOS live-image flag remains false, camera recording remains unarmed, and
+physical listening/seeing remains a human gate. The receipt is
+`/private/tmp/quipsly-hgo-rehearsal-preflight-20260730T181611Z.json`.

@@ -29,6 +29,7 @@ export function parseArguments(argv) {
     watchPath: "",
     macAppPath: "",
     macAccountPath: "",
+    macCapturePath: "",
     nativeAccountSmokePath: "",
     captureLauncherSmokePath: "",
     outputPath: "",
@@ -48,6 +49,7 @@ export function parseArguments(argv) {
     else if (flag === "--watch") options.watchPath = value;
     else if (flag === "--mac-app") options.macAppPath = value;
     else if (flag === "--mac-account") options.macAccountPath = value;
+    else if (flag === "--mac-capture") options.macCapturePath = value;
     else if (flag === "--native-account-smoke") {
       options.nativeAccountSmokePath = value;
     } else if (flag === "--capture-launcher-smoke") {
@@ -74,6 +76,7 @@ function usage() {
     --watch <native-watch.json> \\
     --mac-app <studioctl.txt> \\
     --mac-account <agent-state.json> \\
+    --mac-capture <capture-status.json> \\
     --native-account-smoke <smoke.json> \\
     --capture-launcher-smoke <smoke.json> \\
     --output <receipt.json>
@@ -104,11 +107,32 @@ export function composeRehearsalPreflight({
   watch,
   macAppText,
   macState,
+  macCapture,
   nativeAccountSmoke,
   captureLauncherSmoke,
   auditedAt = new Date().toISOString(),
 }) {
   const nativeAccount = macState?.nativeAccount ?? {};
+  const capture = macCapture?.capture ?? {};
+  const selectedInput = capture?.selectedInput ?? {};
+  const selectedOutput = capture?.selectedOutput ?? {};
+  const selectedVideo = capture?.selectedVideo ?? {};
+  const mv7iSelectedForInputAndOutput = Boolean(
+    selectedInput?.name === "Shure MV7i"
+    && selectedOutput?.name === "Shure MV7i"
+    && selectedInput?.id
+    && selectedInput.id === selectedOutput?.id
+    && selectedInput?.manufacturer === "Shure Inc"
+    && selectedOutput?.manufacturer === "Shure Inc"
+    && selectedInput?.inputChannels >= 1
+    && selectedOutput?.outputChannels >= 1
+    && selectedInput?.sampleRate === 48_000
+    && selectedOutput?.sampleRate === 48_000,
+  );
+  const eosReferenceSelected = Boolean(
+    selectedVideo?.id
+    && selectedVideo?.name === "EOS Webcam Utility",
+  );
   const expectedTesterState = clean(
     appStore?.testers?.expectedTester?.state,
   ).toUpperCase();
@@ -183,6 +207,16 @@ export function composeRehearsalPreflight({
     ),
     nativeAccountBoundaryReady: nativeAccountSmoke?.passed === true,
     captureLauncherReady: captureLauncherSmoke?.passed === true,
+    macHardwareInventoryReady: Boolean(
+      macCapture?.launchStage === "capture_setup_ready"
+      && macCapture?.projectionOwnership === "episode-capture-setup"
+      && capture?.episodeSpaceID === "testflight-rehearsal"
+      && capture?.microphoneAuthorization === "authorized"
+      && capture?.cameraAuthorization === "authorized"
+      && capture?.cameraPreviewReady === true
+      && mv7iSelectedForInputAndOutput
+      && eosReferenceSelected,
+    ),
   };
 
   const humanGates = {
@@ -271,16 +305,44 @@ export function composeRehearsalPreflight({
       accountStatus: nativeAccount?.statusMessage ?? "",
       captureLauncherPassed: captureLauncherSmoke?.passed === true,
       nativeAccountBoundaryPassed: nativeAccountSmoke?.passed === true,
+      capture: {
+        episodeSpaceID: capture?.episodeSpaceID ?? "",
+        selectedInputName: selectedInput?.name ?? "",
+        selectedInputChannels: selectedInput?.inputChannels ?? 0,
+        selectedOutputName: selectedOutput?.name ?? "",
+        selectedOutputChannels: selectedOutput?.outputChannels ?? 0,
+        selectedSampleRate: selectedInput?.sampleRate ?? 0,
+        selectedVideoName: selectedVideo?.name ?? "",
+        microphoneAuthorization: capture?.microphoneAuthorization ?? "",
+        cameraAuthorization: capture?.cameraAuthorization ?? "",
+        cameraPreviewReady: capture?.cameraPreviewReady === true,
+        cameraSignalVerified: capture?.cameraSignalVerified === true,
+        includeCameraReference: capture?.includeCameraReference === true,
+        canStartRecording: capture?.canStartRecording === true,
+        mv7iSelectedForInputAndOutput,
+        eosReferenceSelected,
+      },
     },
     infrastructureChecks,
     humanGates,
     blockers,
     nextActions: [
-      `On Scott's iPhone, open the public TestFlight link in Safari, accept, install Build ${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}, and record that physical readback.`,
-      "Complete Charlie's state-bound Mac Google handoff; then re-run this preflight.",
-      "In the exact rehearsal Session, have Charlie and Scott independently grant recording consent.",
-      "Prove iPhone camera/mic and Mac MV7i/EOS routes with one disposable take before the two-person take.",
-      "Listen/watch, upload, and compare the same capture/source IDs in Nest and Studio.",
+      ...(!humanGates.scottPhysicalInstallProven
+        ? [`On Scott's iPhone, open the public TestFlight link in Safari, accept, install Build ${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}, and record that physical readback.`]
+        : []),
+      ...(!humanGates.charlieMacSessionVerified
+        ? ["Complete Charlie's state-bound Mac Google handoff; then re-run this preflight."]
+        : []),
+      ...(!humanGates.bothParticipantsGrantedRecordingConsent
+        ? ["In the exact rehearsal Session, have Charlie and Scott independently grant recording consent."]
+        : []),
+      ...(!humanGates.physicalRoutesAndPermissionsProven
+        ? ["Inspect a moving EOS image and hear the MV7i headphone route during one disposable take before the two-person take."]
+        : []),
+      ...(!humanGates.disposableTakeListenedAndWatched
+        || !humanGates.uploadAndSameIdTimelineReadbackProven
+        ? ["Listen/watch, upload, and compare the same capture/source IDs in Nest and Studio."]
+        : []),
     ],
     safety: {
       providerSecretsExposed: false,
@@ -314,6 +376,7 @@ async function main() {
     watch,
     macAppText,
     macState,
+    macCapture,
     nativeAccountSmoke,
     captureLauncherSmoke,
   ] = await Promise.all([
@@ -323,6 +386,7 @@ async function main() {
     readJson(options.watchPath),
     readFile(options.macAppPath, "utf8"),
     readJson(options.macAccountPath),
+    readJson(options.macCapturePath),
     readJson(options.nativeAccountSmokePath),
     readJson(options.captureLauncherSmokePath),
   ]);
@@ -334,6 +398,7 @@ async function main() {
     watch,
     macAppText,
     macState,
+    macCapture,
     nativeAccountSmoke,
     captureLauncherSmoke,
   });
