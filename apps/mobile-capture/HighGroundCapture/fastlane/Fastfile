@@ -1,6 +1,7 @@
 require "fileutils"
 require "digest"
 require "json"
+require "tmpdir"
 require "time"
 
 default_platform(:ios)
@@ -242,16 +243,30 @@ platform :ios do
       receipt["uploadAttemptedAt"] = Time.now.utc.iso8601
       receipt["uploadOutcome"] = "unknown-until-app-store-connect-readback"
     end
-    upload_to_testflight(
-      api_key_path: File.expand_path(api_key_path),
-      ipa: paths[:ipa_path],
-      apple_id: APPLE_APP_ID,
-      app_identifier: APP_IDENTIFIER,
-      changelog: options[:changelog] || ENV["QUIPSLY_CAPTURE_WHAT_TO_TEST"],
-      skip_waiting_for_build_processing: false,
-      distribute_external: false,
-      notify_external_testers: false,
-    )
+    # Fastlane 2.236.1's altool adapter interpolates the IPA path into a shell
+    # command without preserving spaces. Keep the canonical verified artifact
+    # and receipt on the release volume, but upload a byte-identical staging
+    # copy from an explicitly space-free system path.
+    upload_staging_root = Dir.mktmpdir("quipsly-capture-upload-", "/private/tmp")
+    upload_ipa_path = File.join(upload_staging_root, File.basename(paths[:ipa_path]))
+    FileUtils.cp(paths[:ipa_path], upload_ipa_path)
+    UI.user_error!("TestFlight staging changed the verified IPA bytes.") unless
+      Digest::SHA256.file(upload_ipa_path).hexdigest == Digest::SHA256.file(paths[:ipa_path]).hexdigest
+
+    begin
+      upload_to_testflight(
+        api_key_path: File.expand_path(api_key_path),
+        ipa: upload_ipa_path,
+        apple_id: APPLE_APP_ID,
+        app_identifier: APP_IDENTIFIER,
+        changelog: options[:changelog] || ENV["QUIPSLY_CAPTURE_WHAT_TO_TEST"],
+        skip_waiting_for_build_processing: false,
+        distribute_external: false,
+        notify_external_testers: false,
+      )
+    ensure
+      FileUtils.rm_rf(upload_staging_root)
+    end
     receipt_path = update_release_receipt(paths) do |receipt|
       receipt["uploadAttempted"] = true
       receipt["uploadPerformed"] = true

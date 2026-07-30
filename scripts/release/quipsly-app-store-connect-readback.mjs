@@ -11,8 +11,8 @@ const DEFAULTS = Object.freeze({
   appId: QUIPSLY_CAPTURE_RELEASE_TARGET.appId,
   appName: QUIPSLY_CAPTURE_RELEASE_TARGET.appName,
   bundleId: QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
-  marketingVersion: "1.0",
-  buildNumber: "6",
+  marketingVersion: QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
+  buildNumber: QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
   groupName: "Quipsly Capture Internal",
 });
 

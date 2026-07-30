@@ -7,6 +7,7 @@ import {
   parseArguments,
   summarizeReadback,
 } from "./quipsly-app-store-connect-readback.mjs";
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const options = {
   appId: "6780995957",
@@ -79,6 +80,19 @@ test("parses an explicit TestFlight acceptance contract", () => {
   assert.equal(parsed.buildNumber, "6");
   assert.equal(parsed.testerEmail, "tester@example.com");
   assert.deepEqual(parsed.expectedTesterStates, ["ACCEPTED", "INSTALLED"]);
+});
+
+test("defaults to the canonical current TestFlight release", () => {
+  const parsed = parseArguments([]);
+
+  assert.equal(parsed.appId, QUIPSLY_CAPTURE_RELEASE_TARGET.appId);
+  assert.equal(parsed.appName, QUIPSLY_CAPTURE_RELEASE_TARGET.appName);
+  assert.equal(parsed.bundleId, QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId);
+  assert.equal(
+    parsed.marketingVersion,
+    QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
+  );
+  assert.equal(parsed.buildNumber, QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber);
 });
 
 test("redacts the tester email and proves the exact internal build contract", () => {

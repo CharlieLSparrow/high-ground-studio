@@ -90,7 +90,6 @@ run_logged app-store \
   APP_STORE_CONNECT_API_KEY_PATH="$ASC_KEY_PATH" \
   QUIPSLY_CAPTURE_TESTER_EMAIL="$TESTER_EMAIL" \
   node "$ROOT_DIR/scripts/release/quipsly-app-store-connect-readback.mjs" \
-  --build 12 \
   --expect-tester-state INVITED,ACCEPTED,INSTALLED \
   --output "$WORK_DIR/app-store.json"
 

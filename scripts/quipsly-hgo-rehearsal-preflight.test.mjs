@@ -7,6 +7,7 @@ import {
   composeRehearsalPreflight,
   parseArguments,
 } from "./quipsly-hgo-rehearsal-preflight.mjs";
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./release/quipsly-capture-release-target.mjs";
 
 function fixture(overrides = {}) {
   const base = {
@@ -14,7 +15,7 @@ function fixture(overrides = {}) {
       passed: true,
       app: { name: "Quipsly Capture" },
       build: {
-        buildNumber: "12",
+        buildNumber: QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
         processingState: "VALID",
         externalBuildState: "IN_BETA_TESTING",
       },

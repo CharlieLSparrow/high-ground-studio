@@ -3,6 +3,10 @@
 import { chmod, readFile, writeFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
+import {
+  QUIPSLY_CAPTURE_RELEASE_TARGET,
+} from "./release/quipsly-capture-release-target.mjs";
+
 function clean(value) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -122,7 +126,8 @@ export function composeRehearsalPreflight({
   const infrastructureChecks = {
     appStoreBuildReady: Boolean(
       appStore?.passed
-      && appStore?.build?.buildNumber === "12"
+      && appStore?.build?.buildNumber
+        === QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber
       && appStore?.build?.processingState === "VALID"
       && appStore?.build?.externalBuildState === "IN_BETA_TESTING",
     ),
@@ -271,7 +276,7 @@ export function composeRehearsalPreflight({
     humanGates,
     blockers,
     nextActions: [
-      "On Scott's iPhone, open the public TestFlight link in Safari, accept, install Build 12, and record that physical readback.",
+      `On Scott's iPhone, open the public TestFlight link in Safari, accept, install Build ${QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber}, and record that physical readback.`,
       "Complete Charlie's state-bound Mac Google handoff; then re-run this preflight.",
       "In the exact rehearsal Session, have Charlie and Scott independently grant recording consent.",
       "Prove iPhone camera/mic and Mac MV7i/EOS routes with one disposable take before the two-person take.",

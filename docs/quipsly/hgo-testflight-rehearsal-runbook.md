@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-30 00:58 UTC
+Last verified: 2026-07-30 02:44 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,11 +8,11 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (12)**
+- App: **Quipsly Capture 1.0 (13)**
 - Exact native source:
-  `dc4c3110753661c24590465406004da404df8677`
-- Qualified IPA: 20,171,040 bytes, SHA-256
-  `2cff224ec0b1d60cb14536f89251f7a9fbc07e14cc22b80cff2c040304133a7e`
+  `a554b8cbcc768b012fbfe5440eb83090ba178a61`
+- Qualified IPA: 20,173,922 bytes, SHA-256
+  `9e19b99518362649a479d1feea188c7c7eaf556223e7b746fbce68dc1cb1bea3`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -82,7 +82,7 @@ needs to prove.
   email. The redacted receipt is
   `/private/tmp/quipsly-capture-rehearsal/homer-identity-readback.json`, mode
   0600.
-- Build 12's exact source contains the native **Continue with Google** surface,
+- Build 13's exact source contains the native **Continue with Google** surface,
   the Quipsly iOS OAuth client ID, and its registered callback scheme. On
   2026-07-30, an operated current-source simulator journey tapped that real
   button, confirmed Apple's protected prompt identified `google.com`, selected
@@ -121,23 +121,36 @@ needs to prove.
   Lucy and Samwise also probe cleanly, and no `.crdownload`, `.download`, or
   `.part` file remains.
 
-## Approved Build 12 rehearsal lane
+## Approved Build 13 rehearsal lane
 
-Build 12 carries the complete coordinated-podcast and source-evidence lineage
+Build 13 carries the complete coordinated-podcast and source-evidence lineage
 first qualified in Build 9, plus exact local-to-Nest evidence comparison and
-canonical project creation from iPhone Work. It is no longer an unuploaded
-candidate:
+canonical project creation from iPhone Work. It also keeps standalone audio
+and video capture independent from Shared Watch's headphone requirement and
+makes recurring-task authoring use a deterministic Settings-style picker. It
+is no longer an unuploaded candidate:
 
-- the detached exact-source release qualified and uploaded `1.0 (12)`;
+- the detached exact-source release passed 36/36 deterministic UI journeys,
+  produced a signed archive, and verified the exported `1.0 (13)` IPA;
 - App Store Connect identifies Build
-  `9decfe91-1048-4e26-995f-7536c6a085b6` as `VALID`;
-- the external `Quipsly Capture Rehearsal` group contains Build 12;
-- the 23:35 UTC read-only API plan reports `IN_BETA_TESTING` / `APPROVED`,
+  `37410843-bb8c-4785-8127-137e25d29fb8` as `VALID`;
+- the external `Quipsly Capture Rehearsal` group contains Build 13;
+- the 02:43 UTC read-only API plan reports `IN_BETA_TESTING` / `APPROVED`,
   complete beta metadata, automatic notification enabled, and zero pending
   provider mutations;
-- the public link is enabled and accepting testers.
+- the exact public page is open and exposes the Quipsly title, beta heading,
+  and `itms-beta` TestFlight handoff.
 
-Build 12's **Podcast audio + video** mode creates two immutable local masters
+Fastlane's first upload handoff split the external-volume path at
+`My Passport` and exited before transferring any bytes. App Store Connect
+readback confirmed Build 13 was absent. The qualified IPA was then copied to a
+space-free `/private/tmp` path, its SHA-256 was checked against both the
+canonical artifact and receipt, and that byte-identical copy uploaded and
+processed successfully. The pipeline now performs this verified temporary
+staging automatically while preserving the canonical artifact on the release
+volume.
+
+Build 13's **Podcast audio + video** mode creates two immutable local masters
 under one capture-group identity: a microphone AAC source and a video-only MOV
 source. During a LiveKit call, LiveKit stays the single microphone hardware
 owner and Quipsly records its already-owned local-input PCM instead of opening
@@ -160,9 +173,12 @@ owner-partitioned protected ledger. Library can prepare a redacted portable
 receipt and **Compare with Nest** before the local upload job is retired.
 Neither action deletes or overwrites the phone original.
 
-The signed release receipt still says
+The signed candidate receipt still says
 `physicalTestFlightInstallReadbackPerformed: false`; Scott's installation and
 the real two-account rehearsal below are the gates that can change that truth.
+Provider readback receipts beside the artifact independently prove upload,
+processing, internal assignment, external assignment, approval, and the open
+public handoff.
 Historical design and qualification evidence remains in:
 
 - [`Coordinated podcast A/V candidate`](../coordination/2026-07-29-capture-coordinated-podcast-av-candidate.md)
@@ -174,8 +190,8 @@ gates. The enabled public external-testing link is the canonical path:
 
 `https://testflight.apple.com/join/XwRRcYUm`
 
-As a redundant internal path, Build 12 is also assigned to **Quipsly Capture
-Internal**. Apple's 23:44 UTC relationship readback resolves
+As a redundant internal path, Build 13 is also assigned to **Quipsly Capture
+Internal**. Apple's 02:43 UTC relationship readback resolves
 `shomers@icloud.com` in that group as `INVITED` and confirms the build is
 `IN_BETA_TESTING`. This can make the app appear directly in TestFlight, but the
 public link remains the recovery path when Apple's invitation email or library
@@ -259,7 +275,7 @@ pnpm quipsly:capture:rehearsal-preflight \
   --output /private/tmp/quipsly-hgo-rehearsal-preflight-current.json
 ```
 
-`infrastructureReady: true` proves the current Build 12/public-link boundary,
+`infrastructureReady: true` proves the current Build 13/public-link boundary,
 the exact private production Room, two participant records, just-in-time
 Scott Google linking, the 34-block manuscript, all three protected Watch
 objects, and the signed canonical Mac launcher. It intentionally leaves
@@ -312,7 +328,7 @@ record controls unlock.
 
 ## Recommended first rehearsal
 
-Build 12 exposes four deliberate source modes:
+Build 13 exposes four deliberate source modes:
 
 - **Audio** creates a local microphone source. In a joined LiveKit room it
   records the room-owned local-input PCM instead of opening a second
@@ -335,7 +351,7 @@ For the most useful low-risk first proof:
    headphones, and `EOS Webcam Utility` for the Canon reference feed. Confirm
    a fresh live image. Keep Canon on-card recording as the independent 4K
    production master if desired.
-3. Homer opens the same Session in Build 12. Both people join the LiveKit room.
+3. Homer opens the same Session in Build 13. Both people join the LiveKit room.
    Joining must not start recording.
 4. Homer selects **A/V**, prepares the front camera, expands **Before you
    record**, and runs **Check this iPhone**. Do not start until the exact
@@ -410,7 +426,7 @@ clock.
 
 The rehearsal passes only when:
 
-- Homer installed Build 12 through TestFlight and used Google sign-in;
+- Homer installed Build 13 through TestFlight and used Google sign-in;
 - the pre-provisioned Quipsly identity linked without a duplicate account or
   email-verification loop;
 - both people independently granted the intended consent choices;
@@ -436,7 +452,7 @@ The rehearsal passes only when:
   app-owned live MV7i/EOS confirmation, physical short take, room join, upload,
   and cross-device readback. Hardware enumeration and focused contracts do not
   substitute for those operations.
-- Build 12 implements same-iPhone coordinated local audio plus video beside
+- Build 13 implements same-iPhone coordinated local audio plus video beside
   LiveKit, but the exact real-device microphone ownership, first PCM,
   Pause/Resume/Flip, upload, and assembled sync path remains unproven until
   this rehearsal.
