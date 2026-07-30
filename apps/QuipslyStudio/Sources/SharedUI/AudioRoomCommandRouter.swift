@@ -23,6 +23,9 @@ enum AudioRoomCommand: String, CaseIterable {
 
 extension Notification.Name {
     static let quipslyAudioRoomCommand = Notification.Name("quipsly.audio-room.command")
+    static let quipslyOpenEpisodeCaptureSetup = Notification.Name(
+        "quipsly.capture.open-episode-setup"
+    )
 }
 
 @MainActor

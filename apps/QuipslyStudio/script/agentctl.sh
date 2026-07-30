@@ -406,6 +406,7 @@ Usage:
   script/agentctl.sh focus-timeline
   script/agentctl.sh left-workbench os|nest|shorts|transcript|publish|inspector|agent|closed
   script/agentctl.sh native-account status|google|check-saved
+  script/agentctl.sh capture-open-setup
   script/agentctl.sh nest-seed-context
   script/agentctl.sh nest-ensure-writing-document
   script/agentctl.sh nest-writing-queue
@@ -12934,6 +12935,9 @@ else:
         ;;
     esac
     get "/native_account?action=$(urlencode "$action")"
+    ;;
+  capture-open-setup)
+    get "/capture_open_setup"
     ;;
   quipsly-os-operator-board|production-os-operator-board|operator-board|runway-operator-board)
     python3 "$ROOT_DIR/script/build_quipsly_os_operator_board.py"

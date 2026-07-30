@@ -34,6 +34,12 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
         installAudioRoomKeyboardBridge()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showEpisodeCaptureSetup(_:)),
+            name: .quipslyOpenEpisodeCaptureSetup,
+            object: nil
+        )
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         let arguments = ProcessInfo.processInfo.arguments

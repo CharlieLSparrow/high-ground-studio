@@ -1593,21 +1593,54 @@ struct WorkspaceView: View {
 
             Spacer(minLength: 8)
 
-            Button {
-                withAnimation(.easeInOut(duration: 0.16)) {
-                    isInspectorVisible = false
-                }
-            } label: {
-                Image(systemName: "sidebar.leading")
-                    .font(.headline)
-                    .foregroundStyle(QuipslyStudioTheme.sage)
-                    .frame(width: 30, height: 30)
-                    .background(QuipslyStudioTheme.panelLift.opacity(0.42))
+            VStack(spacing: 5) {
+            #if os(macOS)
+                Button {
+                    NotificationCenter.default.post(
+                        name: .quipslyOpenEpisodeCaptureSetup,
+                        object: nil
+                    )
+                    lastMediaAction =
+                        "Episode Capture Setup opened. No permission, room, or recording action was implied."
+                    updateAgentState()
+                } label: {
+                    VStack(spacing: 2) {
+                        Image(systemName: "record.circle.fill")
+                            .font(.headline)
+                        Text("Capture")
+                            .font(.system(size: 8, weight: .black, design: .rounded))
+                            .textCase(.uppercase)
+                    }
+                    .foregroundStyle(QuipslyStudioTheme.clay)
+                    .frame(width: 44, height: 36)
+                    .background(QuipslyStudioTheme.clay.opacity(0.11))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .stroke(QuipslyStudioTheme.clay.opacity(0.23), lineWidth: 1)
+                    )
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help("Open Episode Capture Setup (Command-Shift-R)")
+                .accessibilityIdentifier("quipsly.workbench.openCapture")
+            #endif
+
+                Button {
+                    withAnimation(.easeInOut(duration: 0.16)) {
+                        isInspectorVisible = false
+                    }
+                } label: {
+                    Image(systemName: "sidebar.leading")
+                        .font(.headline)
+                        .foregroundStyle(QuipslyStudioTheme.sage)
+                        .frame(width: 30, height: 30)
+                        .background(QuipslyStudioTheme.panelLift.opacity(0.42))
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .help("Collapse Workbench")
+                .accessibilityIdentifier("quipsly.workbench.collapse")
             }
-            .buttonStyle(.plain)
-            .help("Collapse Workbench")
-            .accessibilityIdentifier("quipsly.workbench.collapse")
         }
         .padding(.horizontal, 16)
         .padding(.top, 16)

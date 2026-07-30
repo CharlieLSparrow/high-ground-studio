@@ -3490,6 +3490,12 @@ This is an active-goal checkpoint, not a completion claim.
   name. Positive runtime proof deliberately launched the obsolete copy,
   reported it as noncanonical, and returned clean after stopping only that
   test process.
+- The combined Mac editor now exposes a visible, accessible **Capture** action
+  in its global workbench header. Its matching semantic launcher returns
+  actual `Episode Capture Setup` window count and visibility after opening;
+  opening alone cannot request permission, choose a room, join, record,
+  upload, or publish. The signed exact-path UI and a six-check live smoke both
+  prove the entry surface.
 - This closes neither Charlie's account handoff nor the physical Mac capture
   gate. Completing Google sign-in persists a device-local refresh token and
   remains an explicit human authorization step. The rehearsal must still

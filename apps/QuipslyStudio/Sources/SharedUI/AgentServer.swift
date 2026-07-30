@@ -1,6 +1,9 @@
 import Foundation
 import Network
 import QuipslyVideoCore
+#if os(macOS)
+import AppKit
+#endif
 #if canImport(Combine)
 import Combine
 #endif
@@ -146,6 +149,30 @@ public class AgentServer: ObservableObject {
                 }
             case "/editor_loop_proof":
                 self?.sendJSON(connection, object: Self.cachedEditorLoopProofPayload())
+            case "/capture_open_setup":
+                Task { @MainActor in
+                    NotificationCenter.default.post(
+                        name: .quipslyOpenEpisodeCaptureSetup,
+                        object: nil
+                    )
+                    #if os(macOS)
+                    let captureWindows = NSApp.windows.filter {
+                        $0.title == "Episode Capture Setup"
+                    }
+                    self?.sendJSON(connection, object: [
+                        "status": "capture_setup_opened",
+                        "windowCount": captureWindows.count,
+                        "windowVisible":
+                            captureWindows.contains(where: \.isVisible),
+                        "truth": "Opening setup does not request permission, select a room, join a call, start recording, upload, or publish.",
+                    ])
+                    #else
+                    self?.sendJSON(connection, object: [
+                        "status": "capture_setup_unavailable",
+                        "truth": "Episode Capture Setup is a macOS surface.",
+                    ], statusCode: 400, reason: "Bad Request")
+                    #endif
+                }
             case "/capture_prepare_local":
                 let values = [
                     "episode_space_id":
@@ -3965,6 +3992,7 @@ public class AgentServer: ObservableObject {
                 "GET /agent_capabilities",
                 "GET /codex_editor_handoff",
                 "GET /editor_loop_proof",
+                "GET /capture_open_setup",
                 "GET /capture_refresh_hardware",
                 "GET /capture_prepare_local?episode_space_id=<id>&participant_id=<id>&input_device_id=<exact-id>&output_device_id=<exact-id>&video_device_id=<exact-id>&include_camera=true|false&camera_signal_verified=true|false",
                 "GET /capture_start_local?input_device_id=<exact-id>&video_device_id=<exact-id>",

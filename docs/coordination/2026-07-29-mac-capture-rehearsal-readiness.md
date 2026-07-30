@@ -2,9 +2,10 @@
 
 **Date:** 2026-07-29  
 **Status:** signed app launch, current hardware enumeration, focused capture
-contracts, exact-bundle enforcement, and the redacted native-account control
-boundary pass; native Quipsly sign-in, app-owned live-signal confirmation,
-physical short take, room join, upload, and cross-device sync remain open
+contracts, visible Capture entry, exact-bundle enforcement, and the redacted
+native-account control boundary pass; native Quipsly sign-in, app-owned
+live-signal confirmation, physical short take, room join, upload, and
+cross-device sync remain open
 
 ## Rehearsal decision
 
@@ -102,6 +103,30 @@ compares full executable paths. Runtime proof deliberately launched that copy,
 reported its exact noncanonical PID while retaining the canonical PID, and
 returned clean after the test copy was stopped. Rehearsal evidence is invalid
 whenever `warning=duplicate_quipsly_bundle_running` is present.
+
+The combined Mac editor now keeps **Capture** visible in the global workbench
+header instead of relying on the application menu alone. Its accessible label,
+help text, and stable identifier are present in exact-app UI readback. The
+equivalent semantic command is:
+
+```bash
+apps/QuipslyStudio/script/agentctl.sh capture-open-setup
+```
+
+The command returns the actual `Episode Capture Setup` window count and
+visibility after opening it. It does not request camera or microphone access,
+choose a room, join LiveKit, start recording, upload, or publish. A live
+launcher smoke verifies the signed bundle, advertised route, visible window,
+declared side-effect boundary, and absence of any duplicate bundle:
+
+```bash
+apps/QuipslyStudio/script/smoke_capture_setup_launcher.sh
+```
+
+The smoke passed all six checks. Exact-path Computer Use also read back the
+visible **Capture** control in the canonical binary. Addressing the app only by
+display name reproduced the stale-installed-copy collision; the duplicate
+guard caught it, and only that exact noncanonical PID was stopped.
 
 ## Focused capture-contract result
 
