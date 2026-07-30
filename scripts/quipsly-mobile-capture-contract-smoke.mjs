@@ -845,7 +845,7 @@ function checkReviewDigestContractSources() {
       && workTagsText.includes("resolvedTags")
       && capturePhoneShellText.includes("availableTags: workTagCatalog")
       && workRouteText.includes("canEditTags: project.canWrite")
-      && workRouteText.includes("const tags = note.tagLinks.map")
+      && workRouteText.includes("const tags = note.tagLinks.flatMap")
       && capturePhoneShellText.includes("workTagDecisionStatus"),
     "nativeCanonicalProjectWorkWorkspace",
     "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, and atomically creates or reuses project vocabulary while reconciling the complete Task, Goal, or document-level Note tag set through one canonical phone outbox decision.",
