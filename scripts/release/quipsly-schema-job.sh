@@ -13,6 +13,8 @@ SOURCE_REF="${SOURCE_REF:-HEAD}"
 
 repo_root="$(git rev-parse --show-toplevel)"
 source_sha="$(git -C "${repo_root}" rev-parse --verify "${SOURCE_REF}^{commit}")"
+fixture_schema="${FIXTURE_SCHEMA:-quipsly_fixture_${source_sha:0:12}}"
+preserve_fixture="${PRESERVE_FIXTURE_SCHEMA:-0}"
 IMAGE_TAG="${IMAGE_TAG:-schema-${source_sha:0:12}}"
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
@@ -35,6 +37,17 @@ case "${MODE}" in
   migrate)
     job_command="pnpm prisma migrate deploy"
     ;;
+  fixture)
+    if [[ ! "${fixture_schema}" =~ ^quipsly_fixture_[a-z0-9_]{8,40}$ ]]; then
+      echo "Unsafe fixture schema '${fixture_schema}'." >&2
+      exit 2
+    fi
+    if [[ "${preserve_fixture}" != "0" && "${preserve_fixture}" != "1" ]]; then
+      echo "PRESERVE_FIXTURE_SCHEMA must be 0 or 1." >&2
+      exit 2
+    fi
+    job_command="node scripts/quipsly-schema-fixture.mjs"
+    ;;
   coaching-capture)
     job_command="node scripts/quipsly-coaching-capture-schema-sync.mjs"
     ;;
@@ -48,7 +61,7 @@ case "${MODE}" in
     job_command="node scripts/quipsly-nest-chat-schema-push.mjs && node scripts/quipsly-production-core-schema-sync.mjs && node scripts/quipsly-coaching-capture-schema-sync.mjs"
     ;;
   *)
-    echo "Unknown MODE '${MODE}'. Expected status, diff, baseline-audit, foundation-repair, resolve-foundation, migrate, coaching-capture, production-core, nest-chat, or targeted." >&2
+    echo "Unknown MODE '${MODE}'. Expected status, diff, baseline-audit, foundation-repair, resolve-foundation, migrate, fixture, coaching-capture, production-core, nest-chat, or targeted." >&2
     exit 2
     ;;
 esac
@@ -103,7 +116,7 @@ gcloud run jobs deploy "${job_name}" \
   --service-account="${SERVICE_ACCOUNT}" \
   --set-cloudsql-instances="${SQL_INSTANCE}" \
   --set-secrets="DATABASE_URL=${DATABASE_SECRET}" \
-  --set-env-vars="QUIPSLY_SCHEMA_SOURCE_SHA=${source_sha},QUIPSLY_SCHEMA_MODE=${MODE}" \
+  --set-env-vars="QUIPSLY_SCHEMA_SOURCE_SHA=${source_sha},QUIPSLY_SCHEMA_MODE=${MODE},QUIPSLY_SCHEMA_FIXTURE_SCHEMA=${fixture_schema},PRESERVE_FIXTURE_SCHEMA=${preserve_fixture}" \
   --command=bash \
   --args="-lc,${job_command}" \
   --tasks=1 \

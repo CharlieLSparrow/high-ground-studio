@@ -104,6 +104,17 @@ After the release files are committed:
 bash scripts/release/quipsly-transcript-worker-context.test.sh
 ```
 
+Before any production migration, exercise the entire committed migration
+history twice in a unique isolated PostgreSQL schema and verify the transcript
+columns, cascading foreign keys, and stable provider-word index:
+
+```bash
+MODE=fixture \
+SOURCE_REF=COMMITTED_SHA \
+PRESERVE_FIXTURE_SCHEMA=0 \
+bash scripts/release/quipsly-schema-job.sh
+```
+
 ## Cloud preparation and promotion
 
 The access command is read-only by default. `APPLY=1` creates the dedicated

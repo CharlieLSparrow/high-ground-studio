@@ -42,6 +42,7 @@ required_paths=(
   scripts/quipsly-production-core-schema-sync.mjs
   scripts/quipsly-coaching-capture-schema-sync.mjs
   scripts/quipsly-foundation-baseline-audit.mjs
+  scripts/quipsly-schema-fixture.mjs
   apps/quipsly/package.json
   apps/web/package.json
   apps/motion-lab/package.json
