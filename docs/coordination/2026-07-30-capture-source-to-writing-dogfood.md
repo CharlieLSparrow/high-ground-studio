@@ -205,6 +205,36 @@ effects.
   **BUILD SUCCEEDED**.
 - `git diff --check`: pass.
 
+## Capture accessibility acceptance
+
+The current source was operated on the preserved iPhone 17 Pro Simulator
+(iOS 26.3.1) through the login, primary recorder, rehearsal, immutable-source
+evidence, and transcript-review journeys.
+
+The first rehearsal run at
+`UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge` found a real clipped
+**Physical proof needed** readiness status. The disclosure now stacks its
+status below **Before you record** at accessibility text sizes while preserving
+the full-width disclosure target, expanded/collapsed semantics, and explicit
+accessibility label.
+
+The release-focused rerun passed **5/5** UI journeys:
+
+- native Google-first login and password recovery at the largest accessibility
+  text size;
+- primary Record surface;
+- largest-text start-recording, rehearsal-check, manuscript, and Watch
+  reachability;
+- immutable source-evidence preview truth boundaries;
+- transcript correction and human-reviewed AI proposal truth boundaries.
+
+Apple's runtime accessibility audit passed `hitRegion`,
+`sufficientElementDescription`, and `textClipped` on the audited surfaces. The
+result bundle is
+`Test-HighGroundCapture-2026.07.30_07-12-19--0600.xcresult`.
+This is current-source Simulator evidence, not physical-device or TestFlight
+evidence; Build 14 remains unchanged for the active rehearsal handoff.
+
 ## Distribution boundary
 
 The actor-private Nest slice is now qualified on a zero-traffic Cloud Run

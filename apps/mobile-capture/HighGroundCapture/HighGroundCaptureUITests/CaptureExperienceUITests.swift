@@ -1237,6 +1237,73 @@ final class CaptureExperienceUITests: XCTestCase {
         ])
     }
 
+    func testRehearsalControlsRemainReachableAtLargestAccessibilityTextSize() throws {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        XCTAssertTrue(
+            app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5)
+        )
+
+        let start = app.buttons["CaptureStartButton"]
+        reveal(start)
+        XCTAssertTrue(
+            start.isHittable,
+            "The primary recording action must remain reachable at the largest accessibility text size."
+        )
+
+        let readiness = app.descendants(matching: .any)[
+            "CaptureRehearsalReadinessCard"
+        ]
+        reveal(readiness)
+        XCTAssertTrue(readiness.exists)
+        let disclosure = app.descendants(matching: .any)[
+            "CaptureRehearsalReadinessDisclosure"
+        ]
+        reveal(disclosure)
+        XCTAssertTrue(
+            disclosure.isHittable,
+            "The pre-record physical-boundary checklist must remain reachable at the largest accessibility text size."
+        )
+        disclosure.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureRehearsalCheck_session"]
+                .waitForExistence(timeout: 5)
+        )
+
+        let manuscript = app.descendants(matching: .any)[
+            "CaptureEpisodeManuscriptCard"
+        ]
+        reveal(manuscript)
+        XCTAssertTrue(manuscript.exists)
+        let openManuscript = app.buttons["CaptureEpisodeManuscriptOpenButton"]
+        reveal(openManuscript)
+        XCTAssertTrue(
+            openManuscript.isHittable,
+            "The canonical episode manuscript must remain reachable at the largest accessibility text size."
+        )
+
+        let watch = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
+        reveal(watch)
+        XCTAssertTrue(
+            watch.exists,
+            "The shared Watch plan must remain reachable at the largest accessibility text size."
+        )
+
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+    }
+
     func testSessionPlanIsAvailableOnThePrimaryIPhoneRecorder() {
         app.tabBars.buttons["Record"].tap()
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))

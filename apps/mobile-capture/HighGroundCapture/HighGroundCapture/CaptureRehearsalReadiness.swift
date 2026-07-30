@@ -31,6 +31,7 @@ private struct CaptureRehearsalCheckItem: Identifiable {
 }
 
 struct CaptureRehearsalReadinessCard: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject private var auth = AuthManager.shared
     @ObservedObject private var audioSession =
         CaptureAudioSessionCoordinator.shared
@@ -54,22 +55,36 @@ struct CaptureRehearsalReadinessCard: View {
             Button {
                 isExpanded.toggle()
             } label: {
-                HStack(alignment: .center, spacing: 10) {
-                    Label("Before you record", systemImage: summarySystemImage)
-                        .font(.headline)
-                        .foregroundStyle(summaryTint)
-                    Spacer()
-                    Text(summaryLabel)
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(summaryTint)
-                        .multilineTextAlignment(.trailing)
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .accessibilityHidden(true)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Label("Before you record", systemImage: summarySystemImage)
+                                .font(.headline)
+                                .foregroundStyle(summaryTint)
+                            Spacer(minLength: 8)
+                            readinessChevron
+                        }
+                        Text(summaryLabel)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(summaryTint)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                } else {
+                    HStack(alignment: .center, spacing: 10) {
+                        Label("Before you record", systemImage: summarySystemImage)
+                            .font(.headline)
+                            .foregroundStyle(summaryTint)
+                        Spacer(minLength: 8)
+                        Text(summaryLabel)
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(summaryTint)
+                            .multilineTextAlignment(.trailing)
+                        readinessChevron
+                    }
+                    .contentShape(Rectangle())
                 }
-                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
@@ -414,6 +429,14 @@ struct CaptureRehearsalReadinessCard: View {
 
     private var summaryTint: Color {
         remainingRequiredCount == 0 && !previewOnly ? .green : .orange
+    }
+
+    private var readinessChevron: some View {
+        Image(systemName: "chevron.right")
+            .font(.caption.weight(.bold))
+            .foregroundStyle(.secondary)
+            .rotationEffect(.degrees(isExpanded ? 90 : 0))
+            .accessibilityHidden(true)
     }
 
     private var runCheckDisabled: Bool {
