@@ -99,6 +99,7 @@ require_absent_text "$fastfile" "HighGroundCapture.xcworkspace" "Fastlane no lon
 require_absent_text "$fastfile" "increment_build_number" "Fastlane does not silently mutate the committed build number"
 require_text "$fastfile" "only_testing: DETERMINISTIC_UI_TESTS" "TestFlight runs the deterministic Capture UI scope"
 require_text "$fastfile" "parallel_testing: false" "Capture UI tests run serially to avoid cloned Simulator launch noise"
+require_text "$fastfile" 'sh("bash", SOURCE_VERIFIER)' "Release source verification preserves worktree paths containing spaces"
 require_text "$fastfile" 'QUIPSLY_CAPTURE_UI_TEST_RUN_ID' "Capture UI evidence is isolated per invocation"
 require_text "$fastfile" 'capture_status.empty? ? "" : "-dirty"' "Capture UI evidence labels working-tree drift"
 require_text "$fastfile" 'lane :candidate do |options|' "Capture exposes an auth-free candidate qualification lane"

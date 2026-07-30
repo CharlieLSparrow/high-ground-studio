@@ -3566,3 +3566,10 @@ This is an active-goal checkpoint, not a completion claim.
   claim. Build 13 must still pass exact committed-source qualification,
   App Store Connect readback, public-group assignment, and the real Scott and
   Charlie rehearsal.
+- The first Build 13 isolated beta invocation operated 36/36 deterministic UI
+  cases successfully from the exact committed source, but correctly stopped
+  before archive or upload when Fastlane split an external detached-worktree
+  path at the space in `My Passport`. Release source verification now launches
+  Bash with the verifier path as a discrete argument, and the source verifier
+  enforces that path-safe boundary. The sealed UI result remains failure
+  evidence; a new exact commit must repeat qualification before upload.

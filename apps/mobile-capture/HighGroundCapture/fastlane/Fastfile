@@ -71,7 +71,10 @@ platform :ios do
 
   desc "Validate source-level privacy and Capture release invariants"
   lane :verify do
-    sh(SOURCE_VERIFIER)
+    # Pass the verifier as an argv element instead of a shell command string.
+    # Release worktrees and external artifact volumes may legitimately contain
+    # spaces; string-form `sh` truncates such paths before process launch.
+    sh("bash", SOURCE_VERIFIER)
   end
 
   desc "Run the deterministic iPhone UX and Share Capture suite serially"
