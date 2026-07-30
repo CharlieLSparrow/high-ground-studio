@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-30 08:17 UTC
+Last verified: 2026-07-30 22:40 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,11 +8,11 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (14)**
+- App: **Quipsly Capture 1.0 (15)**
 - Exact native source:
-  `a2d8835353c372e2cb528b661c28752b61cc492c`
-- Qualified IPA: 20,438,859 bytes, SHA-256
-  `9fa8716e351b1fddd28e9cb303434c4c1833d737f9dc084701767e58ac262972`
+  `c3e02a6ea39d88c91c07a39b762e6efb18a6eb4e`
+- Qualified IPA: 20,760,768 bytes, SHA-256
+  `0e73dde975b4ac93ecfb17eb1b2ddcf1303ecedf71a66826f7b78347e4708687`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -151,7 +151,51 @@ needs to prove.
   accepts pnpm's conventional argument separator instead of rejecting it
   before the readback. The focused CLI/receipt suite passes 6/6.
 
-## Approved Build 14 rehearsal lane
+## Approved Build 15 rehearsal lane
+
+Build 15 supersedes Build 14 for every new install and rehearsal. It preserves
+Build 14's complete coordinated-podcast, source-evidence, Work, and Google
+identity lineage and adds the current production slices that had previously
+existed only in source:
+
+- complete capture-group Studio handoff across ready, partial/retry, and
+  complete states;
+- exact capture-group deep linking into Nest's guided waveform/drift sync
+  review;
+- current-pass Shared Watch materialization and explicit previous-pass
+  clearing without requiring a local playback copy on this phone;
+- canonical source filing and annotation with reusable Nest tags;
+- privacy-bounded diagnostics before and after sign-in;
+- reduced-motion and largest-accessibility-text repairs;
+- removal of the unreachable prototype iPhone editor, exporter, publisher,
+  sample timeline, and fabricated-success graph.
+
+The exact detached source `c3e02a6e…` passed all 45 serialized iPhone UI
+journeys after the release gate exposed and blocked one real source-filing UX
+defect: the annotation keyboard covered the canonical tags with no explicit
+dismissal. Build 15 adds a visible keyboard **Done** action, interactive
+dismissal, and a test that proves the exact annotation survives before tag
+selection. The corrected run then produced and verified the signed
+`1.0 (15)` archive and IPA.
+
+At 22:40 UTC, independent App Store Connect readback reported:
+
+- build ID `5b1a9404-3c1d-45c7-9781-33d298ee2bca`;
+- processing state `VALID`;
+- external state `IN_BETA_TESTING`;
+- beta review state `APPROVED`;
+- Build 15 included in **Quipsly Capture Rehearsal**;
+- complete beta metadata, automatic notification, and open public-link
+  capacity for 100 testers;
+- the uncached public page still exposes the exact Quipsly title, beta heading,
+  and `itms-beta` handoff.
+
+The signed receipt still records
+`physicalTestFlightInstallReadbackPerformed: false`. Apple processing,
+approval, group assignment, and public-link readback do not prove a physical
+iPhone install or a real two-person recording.
+
+## Historical Build 14 rehearsal lane
 
 Build 14 carries the complete coordinated-podcast and source-evidence lineage
 first qualified in Build 9, plus exact local-to-Nest evidence comparison and
@@ -174,11 +218,12 @@ not distributed in Build 13. It is no longer an unuploaded candidate:
 - the exact public page is open and exposes the Quipsly title, beta heading,
   and `itms-beta` TestFlight handoff.
 
-During this rehearsal, expect Build 14's project creation, task
+During a Build 15 rehearsal, expect the same project creation, task
 creation/completion and title/detail/due editing, goal
 title/definition/target editing, project-note body editing, tags, notes, and
-recurring-task controls. The release still requires physical-device readback;
-simulator and provider state do not prove Scott installed or operated Build 14.
+recurring-task controls, plus the Build 15 additions above. The release still
+requires physical-device readback; simulator and provider state do not prove
+Scott installed or operated Build 15.
 
 Historical Build 13 recovery: Fastlane's first upload handoff split the external-volume path at
 `My Passport` and exited before transferring any bytes. App Store Connect
@@ -189,7 +234,7 @@ processed successfully. The pipeline now performs this verified temporary
 staging automatically while preserving the canonical artifact on the release
 volume.
 
-Build 14's **Podcast audio + video** mode creates two immutable local masters
+Build 15's **Podcast audio + video** mode creates two immutable local masters
 under one capture-group identity: a microphone AAC source and a video-only MOV
 source. During a LiveKit call, LiveKit stays the single microphone hardware
 owner and Quipsly records its already-owned local-input PCM instead of opening
@@ -229,11 +274,9 @@ gates. The enabled public external-testing link is the canonical path:
 
 `https://testflight.apple.com/join/XwRRcYUm`
 
-As a redundant internal path, Build 14 is also assigned to **Quipsly Capture
-Internal**. Apple's 08:17 UTC relationship readback confirms the group includes
-the build and the build is `IN_BETA_TESTING`. This can make the app appear
-directly in TestFlight, but the public link remains the recovery path when
-Apple's invitation email or library refresh lags.
+As a redundant internal path, Build 15 was distributed to internal testers
+when the upload completed. The public link remains the canonical recovery path
+when Apple's invitation email or TestFlight library refresh lags.
 
 The public page briefly returned **This beta isn't accepting any new testers
 right now** even though an approved build was assigned, the

@@ -4630,3 +4630,45 @@ This is an active-goal checkpoint, not a completion claim.
   Quipsly TypeScript passes, and the repository's complete Quipsly contract
   run passes 168/168. This is real local database proof, not production
   provider execution or separate-account UI disclosure proof.
+
+### 2026-07-30 production privacy and Capture Build 15 checkpoint
+
+- Released the current-consent transcript quarantine through the exact
+  committed Nest path. Source `b7c2d9c1fcf23ae2b37ef04527b8db0a5ed55a75`
+  built as image digest
+  `sha256:f83c8085d95f5f786b1da4e3e1b23e5cb8cb4f4abc6ec5af43c1c89317f60144`,
+  deployed first as zero-traffic `studio-00454-kom`, passed the signed
+  disposable-reviewer workspace/editor/recorder/session journey, and then
+  moved to 100% traffic. The reviewer Home Nest, grants, membership, database
+  user, and Firebase user were removed and independently verified absent.
+- Production recovery then passed the 108-check mobile Capture contract,
+  public/domain health, Firebase administration and custom-token authority,
+  Cloud SQL, and private media-folder IAM. The transcript worker remains
+  deliberately inactive: all Nest transcript-worker environment variables are
+  unset, the Cloud Run Job is absent, and the Deepgram secret has zero enabled
+  versions.
+- With the postponed rehearsal no longer protecting Build 14, advanced the
+  complete current iPhone source to Build 15. The first exact-commit beta
+  qualification correctly stopped after 44/45 UI journeys when the source
+  annotation keyboard covered the reusable Nest tags. Video evidence showed
+  the real reachability defect. Capture now provides an explicit keyboard
+  **Done** action plus interactive dismissal, preserves the exact annotation,
+  and proves tag selection after typing.
+- Corrected source `c3e02a6ea39d88c91c07a39b762e6efb18a6eb4e`
+  passed all 45 serialized UI journeys, the source/privacy contract, signed
+  archive/export, strict nested signatures, App Store profiles,
+  distribution-safe entitlements, privacy-manifest inspection, app/extension
+  `1.0 (15)` parity, and byte verification. The IPA is 20,760,768 bytes at
+  SHA-256
+  `0e73dde975b4ac93ecfb17eb1b2ddcf1303ecedf71a66826f7b78347e4708687`.
+- App Store Connect processed Build 15 as `VALID`; build ID
+  `5b1a9404-3c1d-45c7-9781-33d298ee2bca` is in the external
+  **Quipsly Capture Rehearsal** group with automatic notification and complete
+  beta metadata, and Apple immediately reported beta review `APPROVED` /
+  `IN_BETA_TESTING`. Independent uncached public-link readback passed the exact
+  Quipsly title, open-beta heading, and `itms-beta` handoff.
+- This is a production Nest release and an approved TestFlight release, not
+  physical-iPhone proof. Scott's Build 15 install, Google account selection,
+  explicit two-person consent, front/rear capture, upload/relaunch recovery,
+  current-pass Watch materialization, human sync approval, and Studio
+  proof-listen/watch remain human-present gates for next week's rehearsal.
