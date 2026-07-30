@@ -4249,3 +4249,49 @@ This is an active-goal checkpoint, not a completion claim.
   gain, start-to-stop headphone listening, live Canon image/camera recording,
   deliberate MV7i route-loss recovery, Episode Room authority, participant
   sync/drift, and human accept/hold/replace remain open.
+
+### 2026-07-30 durable Mac Capture-to-Studio recovery checkpoint
+
+- Operating a finalized local Mac A/V take exposed a second ownership defect:
+  Capture truth said its lanes were attached to the editor, but that attachment
+  existed only in the running process. A normal Quipsly relaunch opened an
+  empty **New Project** even though both masters and their receipts remained
+  safe.
+- Capture now writes a stable capture-group working session through
+  `LocalMediaVault`, atomically replaces the session document, immediately
+  reloads it, and compares the active project, sequence, capture lane IDs,
+  source paths, roles, offsets, fingerprints, receipts, and provenance before
+  it claims a durable Studio handoff. Failure preserves the sources, reports
+  that only the in-process lanes exist, and offers **Retry durable handoff**.
+  A separate **Open in Studio** action is unavailable until save-and-reload
+  verification succeeds.
+- The signed current-source Mac app operated a real local-only take with the
+  direct Shure MV7i selected for both input and output and the built-in MacBook
+  camera used in place of Canon's placeholder feed. Capture group
+  `43c53e60-8d6f-466f-aed7-62ced70b110c` produced:
+  - a 9.8-second, two-channel, 48 kHz, 24-bit PCM WAV, 2,826,496 bytes,
+    SHA-256
+    `c65fa4a06f5b13831f40c1658df239ba52d5af8d7faec67fe4755eeb46d65e6b`;
+  - a 10.167770-second silent H.264 1920x1080 camera reference,
+    24,824,457 bytes, SHA-256
+    `cb7669f20a2fff68698bff337e488e5210e7fec744a9e4801a16094037069e98`;
+  - a measured audio timeline offset of `0.07064375` seconds relative to the
+    earlier camera start.
+- The app-owned take audit held nothing and correctly returned
+  `machine-pass-human-review-required`. It warned that the ambient signal was
+  quiet (peak -57.1 dBFS, RMS -70.5 dBFS) and that local-only capture had no
+  shared capture-clock samples, so spoken gain, waveform/drift review, and
+  human listening remain mandatory.
+- The reload-verified working session is
+  `capture-hgo-macbook-av-durable-20260730-43c53e60-8d6f-466f-aed7-62ced70b110c-working`.
+  Studio opened that exact project, generated separate AAC and 960x540 H.264
+  proxies without changing either original, retained one SHOW decision on
+  each lane, displayed the recorded camera source in Program Output, and
+  advanced the edit playhead during playback.
+- Quitting the entire app and relaunching recovered the same two lanes, proxy
+  references, SHOW decisions, source offset, and Program Output. Playback
+  advanced again after asynchronous proxy validation completed. This proves
+  durable local editor recovery through process death; it does not prove a
+  human proof-listen/watch, reviewed synchronization, Canon R8 capture, a
+  two-person room, Nest START/STOP, upload, transcription, delivery, or
+  publication.

@@ -246,6 +246,13 @@ public class AgentServer: ObservableObject {
                     ) ?? [:]
                     self?.sendJSON(connection, object: receipt)
                 }
+            case "/capture_open_editor":
+                Task { @MainActor in
+                    let receipt = self?.enqueueCommand(
+                        "capture_open_editor"
+                    ) ?? [:]
+                    self?.sendJSON(connection, object: receipt)
+                }
             case "/demo":
                 Task { @MainActor in
                     self?.enqueueCommand("load_demo")
@@ -4033,6 +4040,7 @@ public class AgentServer: ObservableObject {
                 "GET /capture_start_local?input_device_id=<exact-id>&video_device_id=<exact-id>",
                 "GET /capture_stop_local",
                 "GET /capture_audit_local",
+                "GET /capture_open_editor",
                 "GET /demo",
                 "GET /premiere_packet?path=<absolute-packet-json-path>",
                 "GET /import?path=<absolute-file-path>",

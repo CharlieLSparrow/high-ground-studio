@@ -26,6 +26,9 @@ extension Notification.Name {
     static let quipslyOpenEpisodeCaptureSetup = Notification.Name(
         "quipsly.capture.open-episode-setup"
     )
+    static let quipslyOpenMainStudio = Notification.Name(
+        "quipsly.capture.open-main-studio"
+    )
 }
 
 @MainActor

@@ -83,6 +83,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var lastTakeAudit:
         ProductionCaptureTakeAuditResult?
     @Published private(set) var takeAuditError: String?
+    @Published private(set) var editorWorkingSession:
+        CaptureEditorWorkingSessionReceipt?
+    @Published private(set) var isPersistingEditorSession = false
+    @Published private(set) var editorSessionError: String?
     @Published private(set) var agentCommandStatus = "idle"
 
     let captureRoot = FileManager.default.homeDirectoryForCurrentUser
@@ -417,6 +421,36 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             cameraSignalVerificationState = [:]
         }
 
+        let editorSessionState: [String: Any]
+        if let editorWorkingSession {
+            editorSessionState = [
+                "name": editorWorkingSession.name,
+                "path": editorWorkingSession.url.path,
+                "projectID":
+                    editorWorkingSession.projectID
+                    .uuidString.lowercased(),
+                "sequenceID":
+                    editorWorkingSession.sequenceID
+                    .uuidString.lowercased(),
+                "captureGroupID":
+                    editorWorkingSession.captureGroupID
+                    .uuidString.lowercased(),
+                "captureLaneIDs":
+                    editorWorkingSession.captureLaneIDs.map {
+                        $0.uuidString.lowercased()
+                    },
+                "captureLaneCount":
+                    editorWorkingSession.captureLaneIDs.count,
+                "verifiedAt":
+                    editorWorkingSession.verifiedAt
+                    .ISO8601Format(),
+                "truth": editorWorkingSession.truth,
+                "durableAndReloadVerified": true,
+            ]
+        } else {
+            editorSessionState = [:]
+        }
+
         let captureState: [String: Any] = [
             "episodeSpaceID": episodeSpaceID,
             "participantID": participantID,
@@ -457,6 +491,11 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             "lastAudio": lastAudioState,
             "lastVideo": lastVideoState,
             "lastTakeAudit": lastTakeAuditState,
+            "editorWorkingSession": editorSessionState,
+            "isPersistingEditorSession":
+                isPersistingEditorSession,
+            "editorSessionError":
+                editorSessionError ?? "",
         ]
         let status: [String: Any] = [
             "projectTitle": "Episode Capture Setup",
@@ -480,6 +519,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 "start only when exact selected device IDs are reconfirmed",
                 "stop and finalize every active local source",
                 "run deterministic byte and media acceptance",
+                "save and re-open the exact capture-backed editor session before claiming durable handoff",
+                "open the same in-memory project in the normal Studio workspace",
             ],
             "agentCurrentSafeActions": [
                 "GET /capture_status",
@@ -488,6 +529,7 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 "GET /capture_start_local",
                 "GET /capture_stop_local",
                 "GET /capture_audit_local",
+                "GET /capture_open_editor",
             ],
             "captureAgentBoundary":
                 "This launch-only acceptance surface can write local media. It cannot request privacy permission, join a provider room, create a Nest START, upload, deliver, or publish.",
@@ -671,6 +713,16 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 }
                 publishAgentAcceptanceState()
             }
+        case "capture_open_editor":
+            guard editorWorkingSession != nil else {
+                agentCommandStatus =
+                    "open-editor-rejected-no-durable-session"
+                publishAgentAcceptanceState()
+                return
+            }
+            openCaptureInEditor()
+            agentCommandStatus = "capture-editor-opened"
+            publishAgentAcceptanceState()
         default:
             agentCommandStatus =
                 "rejected-unsupported-capture-command"
@@ -698,6 +750,11 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         }
         return video.state == .finalized
             && video.partialVideoPath == nil
+    }
+
+    var canOpenCaptureInEditor: Bool {
+        editorWorkingSession != nil
+            && !isPersistingEditorSession
     }
 
     var selectedVideoDevice: CaptureVideoDeviceSnapshot? {
@@ -1419,10 +1476,25 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                                 "needs-alignment"
                         )
                     attachedLaneIDs.append(videoLaneID)
+                    let editorSessionIsDurable =
+                        await persistCaptureEditorSession()
                     recordingError =
                         "The microphone master did not start: \(startFailure)"
-                    message =
-                        "The silent camera reference is finalized, byte-verified, and attached; the microphone master did not start."
+                    if editorSessionIsDurable {
+                        message =
+                            "The silent camera reference is finalized, byte-verified, and saved in a reload-verified Studio session; the microphone master did not start."
+                    } else {
+                        recordingError = [
+                            recordingError,
+                            editorSessionError.map {
+                                "Durable editor recovery failed: \($0)"
+                            },
+                        ]
+                        .compactMap { $0 }
+                        .joined(separator: " ")
+                        message =
+                            "The silent camera reference is safe and attached in this process, but durable editor recovery needs retry; the microphone master did not start."
+                    }
                 } catch {
                     recordingError =
                         "The microphone master did not start: \(startFailure) The camera reference is finalized and safe, but its editor attachment needs retry: \(error.localizedDescription)"
@@ -1630,6 +1702,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                         )
                     attachedLaneIDs.append(videoLaneID)
                 }
+                let editorSessionIsDurable =
+                    await persistCaptureEditorSession()
                 let sourceSummary: String
                 switch (
                     finalizedAudioReceipt != nil,
@@ -1645,15 +1719,26 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 case (false, false):
                     sourceSummary = "Local source"
                 }
-                if roomCapture == nil {
+                if !editorSessionIsDurable {
+                    recordingError = [
+                        recordingError,
+                        editorSessionError.map {
+                            "Durable editor recovery failed: \($0)"
+                        },
+                    ]
+                    .compactMap { $0 }
+                    .joined(separator: " ")
                     message =
-                        "\(sourceSummary) finalized, byte-verified, and attached to the local editor. No Nest recording boundary was created."
+                        "\(sourceSummary) finalized and byte-verified. The lanes exist in this process, but the reload-verified Studio working session needs retry."
+                } else if roomCapture == nil {
+                    message =
+                        "\(sourceSummary) finalized, byte-verified, and saved in a reload-verified Studio working session. No Nest recording boundary was created."
                 } else if roomReceiptError == nil {
                     message =
-                        "\(sourceSummary) finalized, byte-verified, attached to the editor, and closed in Nest."
+                        "\(sourceSummary) finalized, byte-verified, saved in a reload-verified Studio working session, and closed in Nest."
                 } else {
                     message =
-                        "\(sourceSummary) finalized, byte-verified, and attached; Nest boundary sync needs retry."
+                        "\(sourceSummary) finalized, byte-verified, and saved in a reload-verified Studio working session; Nest boundary sync needs retry."
                 }
             } catch {
                 recordingError = [
@@ -1723,6 +1808,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         canonImportMessage = "New capture group ready."
         lastTakeAudit = nil
         takeAuditError = nil
+        editorWorkingSession = nil
+        editorSessionError = nil
         cameraSignalVerification = nil
         elapsedSeconds = 0
         message = "New episode capture group ready."
@@ -1760,6 +1847,57 @@ final class EpisodeCaptureSetupModel: ObservableObject {
         }
     }
 
+    @discardableResult
+    func persistCaptureEditorSession() async -> Bool {
+        guard !attachedLaneIDs.isEmpty else {
+            editorSessionError =
+                "No verified capture source is attached to the editor yet."
+            editorWorkingSession = nil
+            return false
+        }
+        isPersistingEditorSession = true
+        editorSessionError = nil
+        defer { isPersistingEditorSession = false }
+
+        let snapshot = NativeEditorSession(
+            activeSequenceId: projectStore.activeSequenceId,
+            project: projectStore.project
+        )
+        do {
+            let receipt =
+                try await CaptureEditorWorkingSession
+                .persistAndVerify(
+                    session: snapshot,
+                    episodeSpaceID: episodeSpaceID,
+                    captureGroupID: captureGroupID
+                )
+            UserDefaults.standard.set(
+                receipt.name,
+                forKey:
+                    CaptureEditorWorkingSession
+                    .activeSessionDefaultsKey
+            )
+            editorWorkingSession = receipt
+            return true
+        } catch {
+            editorWorkingSession = nil
+            editorSessionError = error.localizedDescription
+            return false
+        }
+    }
+
+    func openCaptureInEditor() {
+        guard editorWorkingSession != nil else {
+            editorSessionError =
+                "Save and verify the capture-backed editor session before opening Studio."
+            return
+        }
+        NotificationCenter.default.post(
+            name: .quipslyOpenMainStudio,
+            object: nil
+        )
+    }
+
     func importCanonOriginals(_ urls: [URL]) async {
         guard !urls.isEmpty,
               !isRecording,
@@ -1781,6 +1919,8 @@ final class EpisodeCaptureSetupModel: ObservableObject {
 
         isImportingCanon = true
         canonImportError = nil
+        let attachedLaneCountBeforeImport =
+            attachedLaneIDs.count
         defer {
             isImportingCanon = false
             canonImportProgress = nil
@@ -1835,15 +1975,39 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             }
         }
 
-        if failures.isEmpty {
+        let importedAnySource =
+            attachedLaneIDs.count
+                > attachedLaneCountBeforeImport
+        let editorSessionIsDurable =
+            importedAnySource
+                ? await persistCaptureEditorSession()
+                : false
+        let editorDurabilityFailure =
+            importedAnySource
+                && !editorSessionIsDurable
+                ? editorSessionError
+                : nil
+
+        if failures.isEmpty,
+           editorDurabilityFailure == nil {
             canonImportMessage =
                 roomBinding == nil
-                    ? "\(urls.count) camera-card original(s) are byte verified and attached locally. Quipsly will not infer Episode Room authority later; alignment and proxy review remain."
-                    : "\(urls.count) camera-card original(s) are byte verified, attached, and bound to this take's applied START. Preserve them explicitly when ready; waveform, drift, and proxy review remain."
+                    ? "\(urls.count) camera-card original(s) are byte verified and saved in a reload-verified Studio working session. Quipsly will not infer Episode Room authority later; alignment and proxy review remain."
+                    : "\(urls.count) camera-card original(s) are byte verified, saved in a reload-verified Studio working session, and bound to this take's applied START. Preserve them explicitly when ready; waveform, drift, and proxy review remain."
         } else {
-            canonImportError = failures.joined(separator: "\n")
+            canonImportError = (
+                failures
+                    + (
+                        editorDurabilityFailure.map {
+                            ["Studio recovery: \($0)"]
+                        } ?? []
+                    )
+            )
+            .joined(separator: "\n")
             canonImportMessage =
-                "\(urls.count - failures.count) of \(urls.count) camera-card original(s) imported."
+                editorDurabilityFailure == nil
+                    ? "\(urls.count - failures.count) of \(urls.count) camera-card original(s) imported."
+                    : "\(urls.count - failures.count) of \(urls.count) camera-card original(s) are byte verified and safe, but the reload-verified Studio working session needs retry."
         }
     }
 
@@ -2736,6 +2900,7 @@ struct EpisodeCaptureSetupView: View {
                     cameraReferenceCard
                     localMasterCard
                     takeAcceptanceCard
+                    editorHandoffCard
                     audioOnlyRoomCard
                     canonCardMasterCard
                     if let plan = model.plan {
@@ -3982,6 +4147,128 @@ struct EpisodeCaptureSetupView: View {
         }
         .accessibilityIdentifier(
             "EpisodeCaptureTakeAcceptance"
+        )
+    }
+
+    private var editorHandoffCard: some View {
+        GroupBox("Studio handoff") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(
+                        systemName:
+                            model.editorWorkingSession == nil
+                                ? "rectangle.stack.badge.plus"
+                                : "checkmark.rectangle.stack.fill"
+                    )
+                    .font(.title2)
+                    .foregroundStyle(
+                        model.editorWorkingSession == nil
+                            ? Color.secondary
+                            : Color.green
+                    )
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(
+                            model.editorWorkingSession == nil
+                                ? "Preserve the editor handoff"
+                                : "Reload-verified working session"
+                        )
+                        .font(.headline)
+                        Text(
+                            model.editorWorkingSession?.truth
+                                ?? "After finalization, Quipsly writes the exact capture-backed project atomically, reloads it, and only then offers the normal Studio workspace. Source files and receipts remain separate and unchanged."
+                        )
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+                    }
+                    Spacer()
+                }
+
+                if model.isPersistingEditorSession {
+                    ProgressView(
+                        "Saving and reopening the exact project…"
+                    )
+                    .controlSize(.small)
+                }
+
+                if let receipt =
+                    model.editorWorkingSession {
+                    Text(receipt.name)
+                        .font(.caption.monospaced())
+                        .textSelection(.enabled)
+                    HStack(spacing: 10) {
+                        Button {
+                            model.openCaptureInEditor()
+                        } label: {
+                            Label(
+                                "Open in Studio",
+                                systemImage:
+                                    "rectangle.stack.fill"
+                            )
+                        }
+                        .disabled(
+                            !model.canOpenCaptureInEditor
+                        )
+                        .keyboardShortcut(
+                            .return,
+                            modifiers: [.command]
+                        )
+                        .accessibilityIdentifier(
+                            "EpisodeCaptureOpenEditor"
+                        )
+
+                        Button("Reveal saved session") {
+                            NSWorkspace.shared
+                                .activateFileViewerSelecting([
+                                    receipt.url,
+                                ])
+                        }
+                        .accessibilityIdentifier(
+                            "EpisodeCaptureRevealEditorSession"
+                        )
+                    }
+                } else if !model.attachedLaneIDs.isEmpty {
+                    Button {
+                        Task {
+                            _ =
+                                await model
+                                .persistCaptureEditorSession()
+                        }
+                    } label: {
+                        Label(
+                            "Retry durable handoff",
+                            systemImage: "arrow.clockwise"
+                        )
+                    }
+                    .disabled(
+                        model.isPersistingEditorSession
+                    )
+                    .accessibilityIdentifier(
+                        "EpisodeCaptureRetryEditorSession"
+                    )
+                }
+
+                if let error = model.editorSessionError {
+                    Label(
+                        error,
+                        systemImage:
+                            "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+                    .fixedSize(
+                        horizontal: false,
+                        vertical: true
+                    )
+                }
+            }
+            .padding(10)
+        }
+        .accessibilityIdentifier(
+            "EpisodeCaptureEditorHandoff"
         )
     }
 

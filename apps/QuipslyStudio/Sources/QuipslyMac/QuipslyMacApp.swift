@@ -40,6 +40,12 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
             name: .quipslyOpenEpisodeCaptureSetup,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(showMainStudio(_:)),
+            name: .quipslyOpenMainStudio,
+            object: nil
+        )
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
         let arguments = ProcessInfo.processInfo.arguments
@@ -233,6 +239,10 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
         window.makeKeyAndOrderFront(sender)
         episodeCaptureSetupWindow = window
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func showMainStudio(_ sender: Any?) {
+        ensureMainWindow(reason: "capture-editor-handoff")
     }
 
     private func addAudioRoomCommand(

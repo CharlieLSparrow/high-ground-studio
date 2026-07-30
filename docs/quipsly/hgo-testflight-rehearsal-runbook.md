@@ -251,6 +251,13 @@ that the provider accepted the resend; it does not prove mailbox delivery or
 physical installation. On July 29, that exact resend returned HTTP 201 after
 Apple had failed to deliver the original message.
 
+At `2026-07-30T14:45:59Z`, Apple accepted another exact resend for Scott with
+HTTP 201. The named tester still reported `INVITED` immediately beforehand.
+The public link remained open with the exact Quipsly Capture title and
+`itms-beta` handoff at `2026-07-30T14:46:07Z`. Continue to use the public link;
+neither App Store Connect account acceptance nor a successful resend proves a
+TestFlight installation.
+
 The public-link route is intentionally anonymous. Do not wait for the named
 email tester to change state before beginning the rehearsal. Instead, use the
 external-group readback after the tester taps **Start Testing**:
@@ -379,6 +386,22 @@ record controls unlock.
 
 ## Recommended first rehearsal
 
+### Current Mac fallback evidence
+
+Before this rehearsal, the signed current-source Mac app completed one
+local-only MV7i plus built-in-camera take and saved it into a reload-verified
+Studio working session. Studio generated proxies, displayed the recorded
+camera source, advanced playback, and recovered the same two lanes, decisions,
+and `0.07064375`-second source offset after a full app quit and relaunch.
+
+That proof means a safe Mac take no longer disappears from Studio merely
+because the process exits. It does not green-light the room rehearsal: the
+audio was a quiet ambient signal, the Canon feed still showed its utility
+placeholder, no human listened/watched start-to-stop, and no room, Nest
+START/STOP, upload, transcript, or participant sync was involved. Use the
+built-in camera only as an explicit reference fallback; keep the R8's on-card
+file as the production original until the live Canon route is visually proven.
+
 Build 14 exposes four deliberate source modes:
 
 - **Audio** creates a local microphone source. In a joined LiveKit room it
@@ -500,9 +523,10 @@ The rehearsal passes only when:
 - A physical two-account rehearsal is still required; simulator and server
   tests do not substitute for it.
 - Charlie's signed Quipsly Studio app still needs its native Google handoff,
-  app-owned live MV7i/EOS confirmation, physical short take, room join, upload,
-  and cross-device readback. Hardware enumeration and focused contracts do not
-  substitute for those operations.
+  app-owned Episode Room MV7i/Canon coexistence, spoken-gain headphone
+  proof-listen, room join, upload, and cross-device readback. A local-only
+  MV7i plus built-in-camera take now has durable Studio and relaunch proof, but
+  it does not substitute for those operations.
 - Build 14 implements same-iPhone coordinated local audio plus video beside
   LiveKit, but the exact real-device microphone ownership, first PCM,
   Pause/Resume/Flip, upload, and assembled sync path remains unproven until

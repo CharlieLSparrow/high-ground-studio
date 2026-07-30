@@ -413,6 +413,7 @@ Usage:
   script/agentctl.sh capture-start-local INPUT_UID [VIDEO_UID]
   script/agentctl.sh capture-stop-local
   script/agentctl.sh capture-audit-local
+  script/agentctl.sh capture-open-editor
   script/agentctl.sh nest-seed-context
   script/agentctl.sh nest-ensure-writing-document
   script/agentctl.sh nest-writing-queue
@@ -12971,6 +12972,9 @@ else:
     ;;
   capture-audit-local)
     get "/capture_audit_local"
+    ;;
+  capture-open-editor)
+    get "/capture_open_editor"
     ;;
   quipsly-os-operator-board|production-os-operator-board|operator-board|runway-operator-board)
     python3 "$ROOT_DIR/script/build_quipsly_os_operator_board.py"

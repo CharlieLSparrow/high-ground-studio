@@ -1226,3 +1226,67 @@ This closes durable route/take readback and another real direct-MV7i local
 operation. Spoken gain, complete headphone proof-listen, a repaired and live
 Canon USB-streaming path, camera recording, deliberate route-loss recovery, Episode Room authority,
 cross-participant sync/drift, and final human acceptance remain open.
+
+## Implementation checkpoint — July 30, 2026 (durable Capture-to-Studio handoff)
+
+Real operation found that verified capture lanes were previously durable only
+as source files and receipts. Their attachment to the active editor project was
+in-memory, so relaunching Quipsly could display an empty project and make a safe
+take appear lost from Studio.
+
+The Capture surface now:
+
+1. derives one stable working-session name from the Episode Space and capture
+   group;
+2. atomically saves the current `NativeEditorSession` through
+   `LocalMediaVault`;
+3. reloads the written session immediately;
+4. requires the same project and active sequence plus exact capture-lane IDs,
+   source paths, proxy paths, roles, offsets, media shape, fingerprints,
+   receipt paths, capture group, Episode Space, ingest kind, alignment state,
+   and source labels;
+5. writes the verified session name as the normal Studio recovery target; and
+6. enables **Open in Studio** only after that verification passes.
+
+The failure state never changes source bytes or receipts. It says the lanes are
+available only in the current process and exposes **Retry durable handoff**.
+The loopback acceptance command `capture-open-editor` fails closed until a
+verified working session exists.
+
+The signed current-source app then captured a real local-only A/V pair under
+capture group `43c53e60-8d6f-466f-aed7-62ced70b110c`:
+
+- MV7i audio:
+  `/Users/wall-e/Movies/QuipslyCaptures/hgo-macbook-av-durable-20260730/857f0a40-0342-42ae-90cc-61f9e9e097c7/local-mic-master.wav`;
+  9.8 seconds, PCM S24LE, 48 kHz, two channels, 2,826,496 bytes, SHA-256
+  `c65fa4a06f5b13831f40c1658df239ba52d5af8d7faec67fe4755eeb46d65e6b`.
+- Built-in-camera reference:
+  `/Users/wall-e/Movies/QuipslyCaptures/hgo-macbook-av-durable-20260730/3455b54d-924c-4d14-9094-ec05f3d7f74a/local-camera-reference.mov`;
+  10.167770 seconds, silent H.264 1920x1080 at approximately 30 fps,
+  24,824,457 bytes, SHA-256
+  `cb7669f20a2fff68698bff337e488e5210e7fec744a9e4801a16094037069e98`.
+- The camera began first; the audio lane retained an exact
+  `0.07064375`-second offset.
+
+The app-owned audit wrote
+`/Users/wall-e/Movies/QuipslyCaptures/_take-audits/hgo-macbook-av-durable-20260730/43c53e60-8d6f-466f-aed7-62ced70b110c/take-audit-f5439388-7bea-4478-b63c-5b940fe413a6.json`.
+It reported zero holds and two warnings: quiet ambient audio (peak -57.1 dBFS,
+RMS -70.5 dBFS) and no shared capture-clock samples in local-only mode. Its
+disposition is `machine-pass-human-review-required`.
+
+The verified working session is:
+
+`/Users/wall-e/Library/Application Support/Quipsly/MediaVault/sessions/capture-hgo-macbook-av-durable-20260730-43c53e60-8d6f-466f-aed7-62ced70b110c-working.quipsly-session.json`
+
+Studio opened that exact session, generated an AAC audio proxy and a 960x540
+H.264 video proxy, retained both immutable originals, added an explicit SHOW
+decision to each lane, displayed the recorded frame in Program Output, and
+advanced the playhead during edit playback. After a full app quit and relaunch,
+it recovered the same two lanes, proxies, SHOW decisions, source offset, and
+Program Output; playback advanced again after proxy validation converged.
+
+This is machine/operator evidence of durable local recovery and playback state.
+It is not a human proof-listen/watch or reviewed synchronization decision. The
+audio was intentionally quiet, the camera was the built-in MacBook camera
+rather than the R8, and no Episode Room, Nest boundary, upload, transcription,
+delivery, or publication was involved.

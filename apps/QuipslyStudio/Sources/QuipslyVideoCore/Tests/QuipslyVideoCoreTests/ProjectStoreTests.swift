@@ -160,6 +160,189 @@ final class ProjectStoreTests: XCTestCase {
         XCTAssertTrue(receipt.truth.contains("does not prove reviewed alignment"))
     }
 
+    func testCaptureWorkingSessionPersistsAndReloadsExactSourcePair()
+        async throws
+    {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                UUID().uuidString,
+                isDirectory: true
+            )
+        defer {
+            try? FileManager.default.removeItem(
+                at: directory
+            )
+        }
+        let audioDirectory = directory
+            .appendingPathComponent(
+                "audio",
+                isDirectory: true
+            )
+        let videoDirectory = directory
+            .appendingPathComponent(
+                "video",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: audioDirectory,
+            withIntermediateDirectories: true
+        )
+        try FileManager.default.createDirectory(
+            at: videoDirectory,
+            withIntermediateDirectories: true
+        )
+
+        let captureGroupID = UUID()
+        let store = ProjectStore(
+            project: VideoProject(title: "New Project")
+        )
+        _ = try store.attachVerifiedCaptureSource(
+            VerifiedCaptureSourceAttachment(
+                sourceAssetID: "audio-1",
+                captureGroupID: captureGroupID,
+                episodeSpaceID: "HGO Mac A/V",
+                mediaURL: audioDirectory
+                    .appendingPathComponent("master.wav"),
+                originalURL: audioDirectory
+                    .appendingPathComponent("master.wav"),
+                duration: 14,
+                name: "Charlie microphone",
+                role: "charlie_microphone_master",
+                ingestKind: "mac_local_audio_master",
+                sha256: String(repeating: "a", count: 64),
+                sourceReceiptPath: audioDirectory
+                    .appendingPathComponent(
+                        "production-audio-receipt.json"
+                    )
+                    .path,
+                timelineOffsetSeconds: 0.073,
+                alignmentStatus: "capture-clock-proposed"
+            )
+        )
+        _ = try store.attachVerifiedCaptureSource(
+            VerifiedCaptureSourceAttachment(
+                sourceAssetID: "video-1",
+                captureGroupID: captureGroupID,
+                episodeSpaceID: "HGO Mac A/V",
+                mediaURL: videoDirectory
+                    .appendingPathComponent("reference.mov"),
+                originalURL: videoDirectory
+                    .appendingPathComponent("reference.mov"),
+                duration: 14.2,
+                name: "Charlie camera",
+                role: "charlie_camera_reference",
+                ingestKind: "mac_local_video_reference",
+                sha256: String(repeating: "b", count: 64),
+                sourceReceiptPath: videoDirectory
+                    .appendingPathComponent(
+                        "production-video-reference-receipt.json"
+                    )
+                    .path,
+                alignmentStatus: "capture-clock-proposed"
+            )
+        )
+
+        let session = NativeEditorSession(
+            activeSequenceId: store.activeSequenceId,
+            project: store.project
+        )
+        let vault = LocalMediaVault(
+            rootURL: directory
+                .appendingPathComponent(
+                    "vault",
+                    isDirectory: true
+                )
+        )
+        let receipt =
+            try await CaptureEditorWorkingSession
+            .persistAndVerify(
+                session: session,
+                episodeSpaceID: "HGO Mac A/V",
+                captureGroupID: captureGroupID,
+                vault: vault
+            )
+
+        XCTAssertTrue(
+            NativeSessionNamePolicy
+                .isMutableWorkingSession(receipt.name)
+        )
+        XCTAssertEqual(
+            receipt.captureLaneIDs.count,
+            2
+        )
+        XCTAssertEqual(
+            Set(receipt.captureLaneIDs),
+            Set(store.activeSequence?.lanes.map(\.id) ?? [])
+        )
+        XCTAssertTrue(
+            FileManager.default.fileExists(
+                atPath: receipt.url.path
+            )
+        )
+        let reloaded = try await vault.loadSession(
+            named: receipt.name
+        )
+        XCTAssertEqual(
+            reloaded.activeSequenceId,
+            session.activeSequenceId
+        )
+        XCTAssertEqual(
+            reloaded.project.id,
+            session.project.id
+        )
+        XCTAssertEqual(
+            reloaded.project.mediaBin,
+            session.project.mediaBin
+        )
+        let reloadedSequence = try XCTUnwrap(
+            reloaded.project.sequences.first(where: {
+                $0.id == session.activeSequenceId
+            })
+        )
+        let originalSequence = try XCTUnwrap(
+            store.activeSequence
+        )
+        XCTAssertEqual(
+            reloadedSequence.lanes.map(\.id),
+            originalSequence.lanes.map(\.id)
+        )
+        XCTAssertEqual(
+            reloadedSequence.lanes.map(\.sourceVideo),
+            originalSequence.lanes.map(\.sourceVideo)
+        )
+        XCTAssertEqual(
+            reloadedSequence.lanes.map(\.metadata),
+            originalSequence.lanes.map(\.metadata)
+        )
+        XCTAssertTrue(
+            receipt.truth.contains(
+                "durable local editor recovery"
+            )
+        )
+        XCTAssertTrue(
+            receipt.truth.contains(
+                "not reviewed synchronization"
+            )
+        )
+    }
+
+    func testCaptureWorkingSessionNameFitsFilesystemComponentLimit() {
+        let name = CaptureEditorWorkingSession.name(
+            episodeSpaceID:
+                String(repeating: "épisode-long-", count: 80),
+            captureGroupID: UUID()
+        )
+
+        XCTAssertTrue(
+            NativeSessionNamePolicy
+                .isMutableWorkingSession(name)
+        )
+        XCTAssertLessThanOrEqual(
+            "\(name).quipsly-session.json".utf8.count,
+            255
+        )
+    }
+
     func testAttachmentEvidenceFailsClosedOnInvalidAlignmentClaims() {
         let source = VerifiedCaptureSourceAttachment(
             sourceAssetID: "source-1",
