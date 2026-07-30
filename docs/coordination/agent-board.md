@@ -85,23 +85,45 @@ Verified during the Codex application handoff prep on 2026-05-26.
 
 ## Active Lanes
 
-### 2026-07-28 Quipsly Capture Release
+### 2026-07-30 Quipsly Capture and Nest convergence
 
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
+- latest coherent feature commit:
+  `b2313033 feat(capture): restore canonical annotation review on iPhone`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
+  - `apps/quipsly/src/app/api/mobile/capture/today`
+  - `scripts/dev/quipsly-generated-mobile-dogfood.sh`
+  - `scripts/quipsly-mobile-capture-generated-auth-smoke.mjs`
   - `scripts/release/quipsly-capture-*`
-  - Capture release and App Store readiness docs
+  - Capture release, App Store readiness, and unified-product blueprint docs
 - current goal:
-  - preserve Build 6 exact-source evidence, finish physical TestFlight
-    operation, synthetic reviewer/privacy metadata, legal/account-holder
-    decisions, approved screenshots, and authorized App Store delivery
-    readback
+  - keep Build 14 stable for Scott and Charlie's physical rehearsal while
+    advancing coherent iPhone/Nest slices over canonical tasks, goals, notes,
+    tags, annotations, sources, recording, and follow-through
+- current status:
+  - Quipsly Capture 1.0 (14), exact source `a2d8835353`, is live through the
+    open public TestFlight link; physical install and rehearsal readback remain
+    open
+  - production Nest is `studio-00445-rij` at 100% traffic from the same exact
+    source
+  - `b2313033` adds permission-correct annotation Resolve/Reopen on iPhone,
+    canonical tags, exact Nest Research links, and real-Firebase/local-Postgres
+    operated proof with complete cleanup
+  - current checks: 19 Today route tests, Quipsly typecheck, 10 source-evidence
+    contract tests, 802 App Store static checks, focused preview UI, and the
+    generated annotation-review journey all pass
+  - deploy status: `b2313033` is not deployed or distributed; next delivery is
+    a zero-traffic Nest preview followed by exact-source qualification for a
+    later Capture build
+  - rollback: production remains on `studio-00445-rij`; revert `b2313033` if
+    the unpublished annotation slice must be removed
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
   - no private HGO or coaching material in screenshots
-  - no automatic TestFlight distribution
+  - do not replace the known-good Build 14 rehearsal target during active human
+    testing without a coordinated handoff
   - do not save legal, rating, DSA, pricing, territory, privacy, deletion, or
     reviewer-credential answers without account-holder approval
   - no physical-device or provider claim without readback from that boundary

@@ -1565,3 +1565,24 @@ checks, blockers, and next handoff.
 - Video can remain synchronized as an asset layer: local/remote video tracks, YouTube/reference clips, screen/video cues, and later multicam assets align to the high-quality audio spine rather than defining the whole recording system up front.
 - This connects naturally to transcript generation, paper edit, multitrack podcast editing, show notes, clip extraction, and publishing. The editing system should remain robust and multitrack, but connected tangibly to manuscript blocks, recording cues, and transcript ranges.
 - Existing video-editor work remains useful as timeline/render/segment/asset/360 groundwork, but mock assets and toy UI assumptions should not be treated as product truth.
+
+### 2026-07-30 - Canonical annotation review reaches iPhone
+
+- Commit `b2313033` makes Capture Today review the same
+  `StudioSourceAnnotation` records as Nest Research: active and recently
+  resolved evidence, canonical tags, exact-source links, and reversible
+  Resolve/Reopen over one stable ID.
+- Permissions now match Nest: current authorship plus `OWNER`/`EDITOR` write
+  access is required for a decision control or mutation; `VIEWER` remains
+  read-only.
+- A disposable real Firebase identity and loopback PostgreSQL journey operated
+  the compiled iPhone app through resolve and reopen, preserved the source
+  fingerprint and `created` / `resolved` / `reopened` history, then proved
+  database and Firebase cleanup.
+- Verification: Today route 19/19, source-evidence contract 10/10, App Store
+  static 802/802, Quipsly typecheck, focused preview UI, and real generated
+  annotation dogfood all pass.
+- Delivery boundary: Build 14 and production `studio-00445-rij` remain the
+  stable rehearsal pair from exact source `a2d8835353`; `b2313033` is pushed
+  source for a later coordinated Nest preview and Capture release, not yet
+  deployed or distributed.
