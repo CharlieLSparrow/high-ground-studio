@@ -4222,8 +4222,9 @@ This is an active-goal checkpoint, not a completion claim.
   capture routes and take state before an operator re-observed a command.
 - Capture now owns independent loopback-only `GET /capture_status` truth. Main
   editor updates cannot overwrite it. The projection includes exact route IDs,
-  authorization, negotiated preview versus explicit live-signal verification,
-  local-only authority, active/finalized receipts, and take-audit disposition.
+  manufacturer, input/output channel topology, default-route flags, sample
+  rate, authorization, negotiated preview versus explicit live-signal
+  verification, local-only authority, exact finalized PCM shape, and take-audit disposition.
   It adds no external authority; local media commands remain available only in
   bounded `--episode-capture-setup-only` mode.
 - Added canonical `studioctl.sh launch-capture-acceptance` and complete

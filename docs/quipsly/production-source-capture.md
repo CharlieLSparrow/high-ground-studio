@@ -1174,9 +1174,11 @@ command correctly.
 
 Capture now owns an independent, loopback-only `GET /capture_status`
 projection. It contains the exact available and selected input, output, and
-video device IDs; authorization; preview negotiation versus explicit
+video device IDs; manufacturer, channel topology, default-route flags, and
+sample rate; authorization; preview negotiation versus explicit
 live-signal verification; local-only authority; active/finalized receipt
-summaries; and take-audit disposition. Main editor updates cannot overwrite it.
+summaries including exact PCM shape; and take-audit disposition. Main editor
+updates cannot overwrite it.
 The endpoint does not add capture authority: start, stop, and audit commands
 remain registered only in the explicit `--episode-capture-setup-only`
 acceptance launch mode, which cannot answer privacy prompts, join a room,

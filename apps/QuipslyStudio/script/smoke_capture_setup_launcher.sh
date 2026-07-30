@@ -78,9 +78,17 @@ checks = {
         and status_after.get("captureStatusUrl")
             == "http://127.0.0.1:8080/capture_status"
         and status.get("capture", {}).get("availableInputs") is not None
+        and all(
+            int(route.get("inputChannels") or 0) > 0
+            for route in status.get("capture", {}).get("availableInputs", [])
+        )
         and status_after.get("capture", {}).get("captureGroupID")
             == status.get("capture", {}).get("captureGroupID")
         and status.get("capture", {}).get("availableOutputs") is not None
+        and all(
+            int(route.get("outputChannels") or 0) > 0
+            for route in status.get("capture", {}).get("availableOutputs", [])
+        )
         and status.get("capture", {}).get("availableVideoDevices") is not None
     ),
     "noDuplicateBundleRunning": (

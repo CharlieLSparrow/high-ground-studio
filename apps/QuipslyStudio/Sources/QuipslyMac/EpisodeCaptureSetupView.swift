@@ -149,8 +149,18 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             selectedInputState = [
                 "id": selectedAudioInput.id,
                 "name": selectedAudioInput.name,
+                "manufacturer":
+                    selectedAudioInput.manufacturer ?? "",
+                "inputChannels":
+                    selectedAudioInput.inputChannels,
+                "outputChannels":
+                    selectedAudioInput.outputChannels,
                 "sampleRate":
                     selectedAudioInput.nominalSampleRate ?? 0,
+                "isDefaultInput":
+                    selectedAudioInput.isDefaultInput,
+                "isDefaultOutput":
+                    selectedAudioInput.isDefaultOutput,
             ]
         } else {
             selectedInputState = [:]
@@ -161,8 +171,18 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             selectedOutputState = [
                 "id": selectedAudioOutput.id,
                 "name": selectedAudioOutput.name,
+                "manufacturer":
+                    selectedAudioOutput.manufacturer ?? "",
+                "inputChannels":
+                    selectedAudioOutput.inputChannels,
+                "outputChannels":
+                    selectedAudioOutput.outputChannels,
                 "sampleRate":
                     selectedAudioOutput.nominalSampleRate ?? 0,
+                "isDefaultInput":
+                    selectedAudioOutput.isDefaultInput,
+                "isDefaultOutput":
+                    selectedAudioOutput.isDefaultOutput,
             ]
         } else {
             selectedOutputState = [:]
@@ -183,8 +203,14 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 [
                     "id": $0.id,
                     "name": $0.name,
+                    "manufacturer":
+                        ($0.manufacturer ?? "") as Any,
+                    "inputChannels": $0.inputChannels,
+                    "outputChannels": $0.outputChannels,
                     "sampleRate":
                         $0.nominalSampleRate ?? 0,
+                    "isDefaultInput": $0.isDefaultInput,
+                    "isDefaultOutput": $0.isDefaultOutput,
                 ]
             } ?? []
         let availableOutputs: [[String: Any]] =
@@ -192,8 +218,14 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 [
                     "id": $0.id,
                     "name": $0.name,
+                    "manufacturer":
+                        ($0.manufacturer ?? "") as Any,
+                    "inputChannels": $0.inputChannels,
+                    "outputChannels": $0.outputChannels,
                     "sampleRate":
                         $0.nominalSampleRate ?? 0,
+                    "isDefaultInput": $0.isDefaultInput,
+                    "isDefaultOutput": $0.isDefaultOutput,
                 ]
             } ?? []
         let availableVideoDevices: [[String: Any]] =
@@ -211,6 +243,14 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 "path": lastFinalizedReceipt.audioPath,
                 "durationSeconds":
                     lastFinalizedReceipt.durationSeconds,
+                "targetSampleRate":
+                    lastFinalizedReceipt.targetSampleRate,
+                "targetBitDepth":
+                    lastFinalizedReceipt.targetBitDepth,
+                "channelCount":
+                    lastFinalizedReceipt.channelCount,
+                "frameCount":
+                    lastFinalizedReceipt.frameCount,
                 "byteCount":
                     lastFinalizedReceipt.byteCount ?? 0,
                 "sha256":
@@ -219,6 +259,18 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                     lastFinalizedReceipt
                         .routeContinuity?
                         .status.rawValue ?? "legacy-unproved",
+                "inputDevice": [
+                    "id":
+                        lastFinalizedReceipt.inputDevice.id,
+                    "name":
+                        lastFinalizedReceipt.inputDevice.name,
+                    "inputChannels":
+                        lastFinalizedReceipt.inputDevice
+                            .inputChannels,
+                    "outputChannels":
+                        lastFinalizedReceipt.inputDevice
+                            .outputChannels,
+                ],
             ]
         } else {
             lastAudioState = [:]
@@ -242,6 +294,12 @@ final class EpisodeCaptureSetupModel: ObservableObject {
                 "frameCount":
                     liveStatus?.frameCount
                         ?? activeReceipt.frameCount,
+                "targetSampleRate":
+                    activeReceipt.targetSampleRate,
+                "targetBitDepth":
+                    activeReceipt.targetBitDepth,
+                "channelCount":
+                    activeReceipt.channelCount,
                 "sha256":
                     activeReceipt.sha256 ?? "",
                 "failure": activeReceipt.failure ?? "",
