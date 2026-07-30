@@ -74,6 +74,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let taskID: String?
         let taskEditSourceTitle: String?
         let taskEditUpdatedTitle: String?
+        let goalEditSourceTitle: String?
+        let goalEditUpdatedTitle: String?
         let recurrenceSeriesID: String?
         let recurrenceScheduledLocalDate: String?
         let recurrenceAuthoringTitle: String?
@@ -105,6 +107,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 taskID: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_ID"],
                 taskEditSourceTitle: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_SOURCE_TITLE"],
                 taskEditUpdatedTitle: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_UPDATED_TITLE"],
+                goalEditSourceTitle: environment["QUIPSLY_CAPTURE_UI_TEST_GOAL_EDIT_SOURCE_TITLE"],
+                goalEditUpdatedTitle: environment["QUIPSLY_CAPTURE_UI_TEST_GOAL_EDIT_UPDATED_TITLE"],
                 recurrenceSeriesID: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_SERIES_ID"],
                 recurrenceScheduledLocalDate: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_LOCAL_DATE"],
                 recurrenceAuthoringTitle: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_AUTHORING_TITLE"],
@@ -149,6 +153,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             taskID: payload["taskID"] as? String,
             taskEditSourceTitle: payload["taskEditSourceTitle"] as? String,
             taskEditUpdatedTitle: payload["taskEditUpdatedTitle"] as? String,
+            goalEditSourceTitle: payload["goalEditSourceTitle"] as? String,
+            goalEditUpdatedTitle: payload["goalEditUpdatedTitle"] as? String,
             recurrenceSeriesID: payload["recurrenceSeriesID"] as? String,
             recurrenceScheduledLocalDate: payload["recurrenceScheduledLocalDate"] as? String,
             recurrenceAuthoringTitle: payload["recurrenceAuthoringTitle"] as? String,
@@ -1130,6 +1136,62 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(
             waitForRuntimeElement(app.staticTexts[sourceTitle].firstMatch, in: app, timeout: 30, swipeAttempts: 12),
             "The operated smoke must restore the original canonical title before finishing."
+        )
+        XCTAssertFalse(app.staticTexts[updatedTitle].firstMatch.exists)
+    }
+
+    func testCanonicalGoalEditRoundTripsAndRestoresThroughNest() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let goalID = credentials.goalID, !goalID.isEmpty,
+              let sourceTitle = credentials.goalEditSourceTitle, !sourceTitle.isEmpty,
+              let updatedTitle = credentials.goalEditUpdatedTitle, !updatedTitle.isEmpty,
+              sourceTitle != updatedTitle else {
+            throw XCTSkip("The goal-edit journey requires one exact active goal ID plus distinct source and temporary titles.")
+        }
+        let app = try launchSignedInCaptureApp()
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[sourceTitle].firstMatch, in: app, timeout: 25, swipeAttempts: 12),
+            "Today should expose the exact canonical goal title before editing."
+        )
+        let originalTarget = app.descendants(matching: .any)["CaptureTodayGoalTarget_\(goalID)"].firstMatch
+        let originalTargetLabel = originalTarget.exists ? originalTarget.label : nil
+
+        func replaceTitle(with value: String) {
+            let field = app.textFields["CaptureGoalEditTitle"].firstMatch
+            XCTAssertTrue(field.waitForExistence(timeout: 6))
+            field.tap()
+            field.typeKey("a", modifierFlags: .command)
+            field.typeKey(.delete, modifierFlags: [])
+            field.typeText(value)
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureGoalEditBoundary"].exists)
+            let save = app.buttons["CaptureGoalEditSave"].firstMatch
+            XCTAssertTrue(save.isEnabled)
+            save.tap()
+        }
+
+        let edit = app.buttons["CaptureTodayGoalEdit_\(goalID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 15, swipeAttempts: 10))
+        edit.tap()
+        replaceTitle(with: updatedTitle)
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[updatedTitle].firstMatch, in: app, timeout: 30, swipeAttempts: 12),
+            "The edited goal title should return from Nest before the journey proceeds."
+        )
+        if let originalTargetLabel {
+            XCTAssertEqual(
+                app.descendants(matching: .any)["CaptureTodayGoalTarget_\(goalID)"].firstMatch.label,
+                originalTargetLabel,
+                "Editing the goal definition must preserve the exact target decision."
+            )
+        }
+
+        let restore = app.buttons["CaptureTodayGoalEdit_\(goalID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(restore, in: app, timeout: 12, swipeAttempts: 8))
+        restore.tap()
+        replaceTitle(with: sourceTitle)
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[sourceTitle].firstMatch, in: app, timeout: 30, swipeAttempts: 12),
+            "The operated smoke must restore the original canonical goal title before finishing."
         )
         XCTAssertFalse(app.staticTexts[updatedTitle].firstMatch.exists)
     }

@@ -3748,3 +3748,50 @@ This is an active-goal checkpoint, not a completion claim.
   operated on a physical iPhone. Exact committed-source qualification, a new
   TestFlight build, Scott/Charlie physical operation, same-ID production Nest
   readback, and the broader real episode/coaching workflows remain open.
+
+### 2026-07-30 shared canonical goal-edit checkpoint
+
+- Nest Work and Capture Work/Today now edit one owner-scoped canonical Goal
+  instead of creating a mobile or web copy. Both surfaces use the same
+  serializable transaction for title, definition of success, and an explicit
+  **keep / set / clear** target-date decision. An untouched target retains its
+  exact stored instant rather than being reinterpreted in the phone or
+  browser's current timezone. New date-only input is resolved at local noon
+  through a validated IANA timezone so DST does not silently move the user's
+  chosen calendar day.
+- Only active and paused goals are editable. Achieved and archived evidence is
+  historical, inaccessible goals remain indistinguishable from missing ones,
+  and stale revisions fail with an optimistic conflict rather than overwriting
+  another device. The bounded `quipsly-goal-edit-v1` receipt preserves the
+  existing source JSON and declares status, progress evidence, linked tasks,
+  tags, hierarchy, source anchors, provider calendars, and external side
+  effects unchanged.
+- The native client refuses offline edits while retaining its
+  owner-partitioned protected snapshot for reading. It accepts success only
+  when Nest acknowledges the exact goal identity, normalized title and
+  description, requested target decision, new revision, and receipt. A keep
+  decision must return the exact original target instant; set compares the
+  intended local calendar date; clear requires no target.
+  Capture exposes the editor from both Work and Today with explicit boundary
+  copy; canonical achieved/archived goals remain read-only.
+- The generated current-source dogfood lane created a disposable real Firebase
+  user plus Home Nest, canonical project, task, note, goal, and reusable tags
+  in the configured canonical database. It first assigned the goal a real
+  UTC target through the authenticated mobile route. The compiled iPhone
+  Simulator opened that exact goal, changed its title through the native UI,
+  read the new value back from Nest while retaining the displayed target,
+  reopened the goal, and restored the original title. The focused XCTest
+  completed successfully.
+- Cleanup removed the generated project, Home Nest, grant, membership,
+  database user, and Firebase user. Independent post-delete reads reported
+  `databaseArtifactsAbsentAfterCleanup: true` and
+  `firebaseUserAbsentAfterCleanup: true`; the harness also removed its owned
+  local Nest process, Cloud SQL proxy, secret-only temporary directory, and
+  protected credential packet.
+- Verification passes 70 focused server/web tests, Quipsly TypeScript, the
+  complete native app plus UI-test `build-for-testing`, 802 App Store static
+  checks, 74 mobile contract checks, and 7 lifecycle tests. This current
+  source is newer than distributed Build 13. It still requires exact
+  committed-source release qualification, a new TestFlight build, physical
+  Charlie/Scott operation, and same-ID production Nest readback before it can
+  be described as distributed or physically proven.

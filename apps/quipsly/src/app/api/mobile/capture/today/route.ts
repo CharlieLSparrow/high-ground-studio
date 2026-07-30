@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource } from "@high-ground/quipsly-domain/transcript-derived-task";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
 import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets";
@@ -475,6 +476,106 @@ export async function POST(request: Request) {
         title: result.record.title,
         detail: result.record.detail,
         dueAt: result.record.dueAt?.toISOString() ?? null,
+        updatedAt: result.record.updatedAt.toISOString(),
+        receiptId: result.receiptId,
+        boundaries: responseBoundaries(),
+      });
+    }
+    if (action === "goal-edit") {
+      const title = normalizedText(input.title);
+      const normalizedDescription = normalizedText(input.description);
+      const description = normalizedDescription || null;
+      const targetDecision = text(input.targetDecision, 20);
+      const timezone = typeof input.timezone === "string" ? input.timezone.trim() : "";
+      const hasTargetDecision = Object.prototype.hasOwnProperty.call(input, "targetLocalDate");
+      const targetDecisionHasValidType = input.targetLocalDate === null
+        || typeof input.targetLocalDate === "string";
+      const targetLocalDate = typeof input.targetLocalDate === "string"
+        ? input.targetLocalDate.trim()
+        : "";
+      const targetFormatValid = !targetLocalDate || /^\d{4}-\d{2}-\d{2}$/.test(targetLocalDate);
+      const parsedTarget = targetLocalDate && targetFormatValid
+        ? parseRecurrenceStart(`${targetLocalDate}T12:00`, timezone)
+        : null;
+      const targetAt = parsedTarget?.dueAt ?? null;
+      const targetDecisionValid = targetDecision === "KEEP"
+        || targetDecision === "SET"
+        || targetDecision === "CLEAR";
+      const targetPayloadMatchesDecision = targetDecision === "SET"
+        ? Boolean(targetLocalDate && parsedTarget)
+        : !targetLocalDate;
+      if (!title
+          || title.length > 500
+          || normalizedDescription.length > 5_000
+          || !hasTargetDecision
+          || !targetDecisionHasValidType
+          || !targetDecisionValid
+          || !targetPayloadMatchesDecision
+          || timezone.length > 100
+          || (targetDecision === "SET" && !isIanaTimeZone(timezone))
+          || !targetFormatValid
+          || (targetLocalDate && !parsedTarget)) {
+        return NextResponse.json({
+          ok: false,
+          error: "Use a title under 500 characters, description under 5,000 characters, and a valid target date.",
+        }, { status: 400 });
+      }
+      if (targetAt && Math.abs(targetAt.getTime() - now.getTime()) > 20 * 365 * 86_400_000) {
+        return NextResponse.json({
+          ok: false,
+          error: "Choose a target date within twenty years.",
+        }, { status: 400 });
+      }
+
+      const result = await prisma.$transaction(
+        (tx: any) => editCanonicalGoalInTransaction({
+          tx,
+          goalId: id,
+          actorUserId: userId,
+          expectedUpdatedAt: expected,
+          title,
+          description,
+          targetDecision: targetDecision === "SET" && parsedTarget && targetAt ? {
+            kind: "SET" as const,
+            targetAt,
+            requestedLocalDate: targetLocalDate,
+            resolvedLocalDateTime: parsedTarget.resolvedLocalDateTime,
+            timezone: parsedTarget.timezone,
+          } : targetDecision === "CLEAR"
+            ? { kind: "CLEAR" as const }
+            : { kind: "KEEP" as const },
+          surface: "ios-capture-work",
+          now,
+          receiptId,
+        }),
+        { isolationLevel: "Serializable" },
+      );
+      if (result.kind === "not-found") {
+        return NextResponse.json({
+          ok: false,
+          error: "Only the goal owner can edit this goal.",
+        }, { status: 404 });
+      }
+      if (result.kind === "closed") {
+        return NextResponse.json({
+          ok: false,
+          error: "Make this goal active or paused before editing its definition or target.",
+        }, { status: 400 });
+      }
+      if (result.kind === "conflict") {
+        return NextResponse.json({
+          ok: false,
+          code: "CONFLICT",
+          error: "This goal changed elsewhere. Refresh before editing again.",
+        }, { status: 409 });
+      }
+      return NextResponse.json({
+        ok: true,
+        action,
+        id,
+        title: result.record.title,
+        description: result.record.description,
+        targetAt: result.record.targetAt?.toISOString() ?? null,
         updatedAt: result.record.updatedAt.toISOString(),
         receiptId: result.receiptId,
         boundaries: responseBoundaries(),

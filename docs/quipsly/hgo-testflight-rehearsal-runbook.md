@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-30 02:44 UTC
+Last verified: 2026-07-30 05:43 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -141,13 +141,14 @@ is no longer an unuploaded candidate:
 - the exact public page is open and exposes the Quipsly title, beta heading,
   and `itms-beta` TestFlight handoff.
 
-The product worktree now contains a later, operated one-time task-edit slice,
-but that source is **not** part of Build 13. During this rehearsal, expect
-Build 13's project creation, task creation/completion, goals, tags, notes, and
-recurring-task controls; do not treat the absence of the newer title/detail/due
-editor as an installation failure. A later build must repeat exact-source
-qualification and TestFlight readback before that editor becomes a distributed
-claim.
+The product worktree now contains later operated one-time task editing and
+canonical goal editing, but that source is **not** part of Build 13. During
+this rehearsal, expect Build 13's project creation, task creation/completion,
+goals, tags, notes, and recurring-task controls; do not treat the absence of
+the newer task title/detail/due editor or goal title/definition/target editor
+as an installation failure. A later build must repeat exact-source
+qualification and TestFlight readback before either editor becomes a
+distributed claim.
 
 Fastlane's first upload handoff split the external-volume path at
 `My Passport` and exited before transferring any bytes. App Store Connect

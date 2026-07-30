@@ -528,7 +528,7 @@ async function createGeneratedCaptureSession(env, email, sessionBody) {
   }
 }
 
-async function assertGeneratedProjectWork(baseUrl, idToken, suffix) {
+async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTarget = false } = {}) {
   const authorization = `Bearer ${idToken}`;
   const name = `Codex mobile project ${suffix}`;
   const clientRequestId = crypto.randomUUID();
@@ -693,6 +693,7 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix) {
     { body: note.body },
   );
 
+  const goalTitle = "Complete a trustworthy physical-device rehearsal";
   const goal = await requestJson(`${baseUrl}/api/mobile/capture/quick-entry`, {
     method: "POST",
     headers: {
@@ -704,7 +705,7 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix) {
       callRoomId: null,
       projectId,
       kind: "GOAL",
-      title: "Complete a trustworthy physical-device rehearsal",
+      title: goalTitle,
       body: "Review every source and the assembled timeline before publication.",
       tagIds: [proofTag.id],
       newTagLabels: [],
@@ -724,6 +725,38 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix) {
     `Generated project goal and canonical tag reuse failed with HTTP ${goal.response.status}: ${goal.text.slice(0, 240)}`,
     { body: goal.body },
   );
+  let goalTargetLocalDate = null;
+  if (seedGoalTarget) {
+    goalTargetLocalDate = new Date(Date.now() + 45 * 86_400_000).toISOString().slice(0, 10);
+    const goalTarget = await requestJson(`${baseUrl}/api/mobile/capture/today`, {
+      method: "POST",
+      headers: {
+        authorization,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        action: "goal-edit",
+        id: goal.body.entry.id,
+        expectedUpdatedAt: goal.body.entry.updatedAt,
+        title: goalTitle,
+        description: "Review every source and the assembled timeline before publication.",
+        targetDecision: "SET",
+        targetLocalDate: goalTargetLocalDate,
+        timezone: "UTC",
+      }),
+    });
+    assert(
+      goalTarget.response.status === 200
+        && goalTarget.body?.ok === true
+        && goalTarget.body?.action === "goal-edit"
+        && goalTarget.body?.id === goal.body.entry.id
+        && String(goalTarget.body?.targetAt || "").slice(0, 10) === goalTargetLocalDate
+        && typeof goalTarget.body?.receiptId === "string"
+        && goalTarget.body.receiptId.length > 0,
+      `Generated project goal target setup failed with HTTP ${goalTarget.response.status}: ${goalTarget.text.slice(0, 240)}`,
+      { body: goalTarget.body },
+    );
+  }
 
   const work = await requestJson(
     `${baseUrl}/api/mobile/capture/work?projectId=${encodeURIComponent(projectId)}`,
@@ -766,6 +799,9 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix) {
   return {
     taskId: task.body.entry.id,
     taskTitle: taskRequest.title,
+    goalId: goal.body.entry.id,
+    goalTitle,
+    goalTargetLocalDate,
     projectIdPresent: true,
     ownerRole: created.body.project.role,
     projectRetrySafe: replay.body.idempotentReplay === true,
@@ -975,6 +1011,9 @@ function runCaptureRuntimeUISmoke(
     taskId = "",
     taskEditSourceTitle = "",
     taskEditUpdatedTitle = "",
+    goalId = "",
+    goalEditSourceTitle = "",
+    goalEditUpdatedTitle = "",
   } = {},
 ) {
   const scriptPath = path.join(
@@ -996,6 +1035,9 @@ function runCaptureRuntimeUISmoke(
       QUIPSLY_CAPTURE_UI_TEST_TASK_ID: taskId,
       QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_SOURCE_TITLE: taskEditSourceTitle,
       QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_UPDATED_TITLE: taskEditUpdatedTitle,
+      QUIPSLY_CAPTURE_UI_TEST_GOAL_ID: goalId,
+      QUIPSLY_CAPTURE_UI_TEST_GOAL_EDIT_SOURCE_TITLE: goalEditSourceTitle,
+      QUIPSLY_CAPTURE_UI_TEST_GOAL_EDIT_UPDATED_TITLE: goalEditUpdatedTitle,
     },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -1032,7 +1074,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_RUNTIME_UI_MODE
       || "surface",
   ).trim();
-  if (!["surface", "task-edit"].includes(runtimeUISmokeMode)) {
+  if (!["surface", "task-edit", "goal-edit"].includes(runtimeUISmokeMode)) {
     throw new Error(
       `Generated mobile Capture runtime UI mode is not supported: ${runtimeUISmokeMode}`,
     );
@@ -1042,11 +1084,11 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_WORKFLOW
       || "full",
   ).trim();
-  if (!["full", "task-edit"].includes(workflow)) {
+  if (!["full", "task-edit", "goal-edit"].includes(workflow)) {
     throw new Error(`Generated mobile Capture workflow is not supported: ${workflow}`);
   }
-  if (workflow === "task-edit" && runtimeUISmokeMode !== "task-edit") {
-    throw new Error("The task-edit workflow requires --runtime-ui-mode=task-edit.");
+  if (workflow !== "full" && runtimeUISmokeMode !== workflow) {
+    throw new Error(`The ${workflow} workflow requires --runtime-ui-mode=${workflow}.`);
   }
   const suffix = crypto.randomBytes(4).toString("hex");
   const email = `codex-mobile-capture-${suffix}@dev.test`;
@@ -1101,6 +1143,7 @@ async function main() {
       baseUrl,
       firebaseBody.idToken,
       suffix,
+      { seedGoalTarget: workflow === "goal-edit" },
     );
     if (workflow === "full") {
       const generatedRoom = await createGeneratedCaptureSession(env, email, sessionBody);
@@ -1119,6 +1162,9 @@ async function main() {
           taskId: projectWorkProof.taskId,
           taskEditSourceTitle: projectWorkProof.taskTitle,
           taskEditUpdatedTitle: `${projectWorkProof.taskTitle} — edited on iPhone`,
+          goalId: projectWorkProof.goalId,
+          goalEditSourceTitle: projectWorkProof.goalTitle,
+          goalEditUpdatedTitle: `${projectWorkProof.goalTitle} — edited on iPhone`,
         },
       );
     }

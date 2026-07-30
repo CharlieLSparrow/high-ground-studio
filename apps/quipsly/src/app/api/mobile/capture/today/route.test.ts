@@ -266,6 +266,135 @@ describe("mobile Capture Today contract", () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
+  it("edits an owner-scoped goal definition and target without changing progress or source evidence", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-07-30T06:00:00.000Z"));
+    signedIn();
+    const tx = {
+      goal: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "goal-1",
+          roomId: "room-1",
+          status: "ACTIVE",
+          title: "Old direction",
+          description: null,
+          targetAt: null,
+          sourceJson: {
+            schema: "quipsly-transcript-derived-goal-v1",
+            immutableSourceAnchor: { segmentId: "segment-1" },
+          },
+          updatedAt: expected,
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "goal-1",
+          roomId: "room-1",
+          status: "ACTIVE",
+          title: "Publish a proof-listened episode",
+          description: "Both hosts approve the final timeline.",
+          targetAt: new Date("2026-08-15T18:00:00.000Z"),
+          updatedAt: persisted,
+        }),
+      },
+    };
+    const transaction = jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "goal-edit",
+        id: "goal-1",
+        title: "Publish a proof-listened episode",
+        description: "Both hosts approve the final timeline.",
+        targetDecision: "SET",
+        targetLocalDate: "2026-08-15",
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      action: "goal-edit",
+      id: "goal-1",
+      title: "Publish a proof-listened episode",
+      description: "Both hosts approve the final timeline.",
+      targetAt: "2026-08-15T18:00:00.000Z",
+      updatedAt: persisted.toISOString(),
+      receiptId: expect.any(String),
+      boundaries: {
+        externalCalendarMutated: false,
+        providerMutated: false,
+        sourceMutated: false,
+      },
+    });
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(tx.goal.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: {
+        title: "Publish a proof-listened episode",
+        description: "Both hosts approve the final timeline.",
+        targetAt: new Date("2026-08-15T18:00:00.000Z"),
+        sourceJson: expect.objectContaining({
+          immutableSourceAnchor: { segmentId: "segment-1" },
+          editReceipts: [expect.objectContaining({
+            kind: "quipsly-goal-edit-v1",
+            surface: "ios-capture-work",
+            targetDecision: "SET",
+            targetIntent: {
+              requestedLocalDate: "2026-08-15",
+              resolvedLocalDateTime: "2026-08-15T12:00",
+              timezone: "America/Denver",
+            },
+            statusChanged: false,
+            progressChanged: false,
+            taskLinksChanged: false,
+            tagsChanged: false,
+            sourceAnchorChanged: false,
+            externalSideEffects: false,
+          })],
+        }),
+      },
+    }));
+  });
+
+  it("requires an explicit, correctly typed goal target decision", async () => {
+    signedIn();
+    const transaction = jest.fn();
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+    const missingTarget = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "goal-edit",
+        id: "goal-1",
+        title: "Publish a proof-listened episode",
+        targetDecision: "KEEP",
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+    const malformedTarget = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "goal-edit",
+        id: "goal-1",
+        title: "Publish a proof-listened episode",
+        targetDecision: "CLEAR",
+        targetLocalDate: { clear: true },
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+    expect(missingTarget.status).toBe(400);
+    expect(malformedTarget.status).toBe(400);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("creates a DST-safe canonical reminder from the iPhone wall clock without claiming delivery", async () => {
     signedIn();
     const tx = {

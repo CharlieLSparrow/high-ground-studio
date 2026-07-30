@@ -58,6 +58,7 @@ const files = {
   mobileQuickEntryHelper: path.join(root, "apps/quipsly/src/lib/server/mobile-capture-quick-entry.ts"),
   taskRecurrenceServer: path.join(root, "apps/quipsly/src/lib/server/task-recurrence.ts"),
   canonicalTaskStatus: path.join(root, "apps/quipsly/src/lib/server/canonical-task-status.ts"),
+  canonicalGoalEdit: path.join(root, "apps/quipsly/src/lib/server/canonical-goal-edit.ts"),
   roomJoinDiagnosticsRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/rooms/join/diagnostics/route.ts"),
   roomJoinDiagnosticsHelper: path.join(root, "apps/quipsly/src/lib/server/mobile-capture-room-join-diagnostics.ts"),
   recordingMediaPromotion: path.join(root, "apps/quipsly/src/lib/server/recording-media-promotion.ts"),
@@ -180,6 +181,7 @@ const mobileTodayRouteText = read(files.mobileTodayRoute);
 const mobileQuickEntryHelperText = read(files.mobileQuickEntryHelper);
 const taskRecurrenceServerText = read(files.taskRecurrenceServer);
 const canonicalTaskStatusText = read(files.canonicalTaskStatus);
+const canonicalGoalEditText = read(files.canonicalGoalEdit);
 const roomJoinDiagnosticsRouteText = read(files.roomJoinDiagnosticsRoute);
 const roomJoinDiagnosticsHelperText = read(files.roomJoinDiagnosticsHelper);
 const recordingMediaPromotionText = read(files.recordingMediaPromotion);
@@ -324,6 +326,7 @@ requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSignedInIPhoneAuthorsC
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testIPhoneRecurrenceOutboxSurvivesOfflineRelaunchAndConverges"', "runtime UI smoke can select the offline/relaunch recurrence-authoring proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'recurrence-edit)', "runtime UI smoke can select the immutable-history recurrence-edit proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'task-edit)', "runtime UI smoke can operate and restore a canonical one-time task edit");
+requireIncludes(runtimeUISmokeRunnerText, 'goal-edit)', "runtime UI smoke can operate and restore a canonical goal edit");
 requireIncludes(runtimeUISmokeRunnerText, 'recurrence-missed)', "runtime UI smoke can select the explicit missed-occurrence proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'session-note-edit)', "runtime UI smoke can select the protected Session-note edit and relaunch proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
@@ -332,6 +335,7 @@ requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneAuthorsCanonica
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneRecurrenceOutboxSurvivesOfflineRelaunchAndConverges", "runtime UI smoke proves recurrence survives an unreachable Nest plus process relaunch before canonical convergence");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneVersionsThisAndFutureRecurrenceWithoutRewritingHistory", "runtime UI smoke versions this-and-future recurrence through the signed-in iPhone controls");
 requireIncludes(runtimeUISmokeTestsText, "func testOneTimeTaskEditRoundTripsAndRestoresThroughNest", "runtime UI smoke edits and restores one exact canonical task through signed-in iPhone controls");
+requireIncludes(runtimeUISmokeTestsText, "func testCanonicalGoalEditRoundTripsAndRestoresThroughNest", "runtime UI smoke edits and restores one exact canonical goal through signed-in iPhone controls");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneExplicitlySkipsMissedOccurrenceAndContinuesSeries", "runtime UI smoke explicitly preserves one missed occurrence and proves the canonical series continues");
 requireIncludes(runtimeUISmokeTestsText, "func testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox", "runtime UI smoke creates, edits, and relaunches one exact canonical Session note");
 requireIncludes(runtimeUISmokeTestsText, "func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials", "runtime UI smoke opens Apple's protected Google handoff without typing a credential");
@@ -815,6 +819,27 @@ for (const needle of [
   requireIncludes(bridgeText, needle, "fail-closed native task-edit acknowledgement");
 }
 for (const needle of [
+  'accessibilityIdentifier("CaptureWorkGoalEdit_\\(goal.id)")',
+  'accessibilityIdentifier("CaptureTodayGoalEdit_\\(goal.id)")',
+  'accessibilityIdentifier("CaptureGoalEditSave")',
+  'accessibilityIdentifier("CaptureGoalEditBoundary")',
+  "This edits only the goal title, definition of success, and target date.",
+  "Protected offline snapshots remain unchanged until you reconnect.",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "native canonical goal editing UX and side-effect boundary");
+}
+for (const needle of [
+  "func editGoal(",
+  '"action": "goal-edit"',
+  '"targetDecision": targetDecision',
+  'payload.action == "goal-edit"',
+  'case "KEEP":',
+  "acknowledgedTargetLocalDate == requestedTargetLocalDate",
+  "Reconnect to Nest before editing this goal. The protected snapshot was not modified.",
+]) {
+  requireIncludes(bridgeText, needle, "fail-closed native goal-edit acknowledgement");
+}
+for (const needle of [
   "mobileCaptureQuickEntrySeriesId(input.clientRequestId)",
   "initialOccurrencePlan(input.recurrence)",
   'recurrenceRoomId: room.id',
@@ -848,6 +873,33 @@ for (const needle of [
   'code: "CONFLICT"',
 ]) {
   requireIncludes(mobileTodayRouteText, needle, "authenticated mobile one-time task editing route and concurrency boundary");
+}
+for (const needle of [
+  'if (action === "goal-edit")',
+  "editCanonicalGoalInTransaction",
+  'surface: "ios-capture-work"',
+  "hasTargetDecision",
+  'targetDecision === "KEEP"',
+  'targetDecision === "SET"',
+  'targetDecision === "CLEAR"',
+  'code: "CONFLICT"',
+]) {
+  requireIncludes(mobileTodayRouteText, needle, "authenticated mobile goal editing route and concurrency boundary");
+}
+for (const needle of [
+  'kind: "quipsly-goal-edit-v1"',
+  'targetDecision: input.targetDecision.kind',
+  'input.targetDecision.kind === "KEEP"',
+  "statusChanged: false",
+  "progressChanged: false",
+  "taskLinksChanged: false",
+  "tagsChanged: false",
+  "hierarchyChanged: false",
+  "sourceAnchorChanged: false",
+  "providerCalendarEventChanged: false",
+  "externalSideEffects: false",
+]) {
+  requireIncludes(canonicalGoalEditText, needle, "shared canonical goal-edit receipt preserves adjacent evidence and external boundaries");
 }
 for (const needle of [
   "recurrence-revision-request:",

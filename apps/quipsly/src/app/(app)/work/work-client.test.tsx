@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, editWorkTask, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, updateWorkTaskStatus } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, editWorkGoal, editWorkTask, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, updateWorkTaskStatus } from "./actions";
 import { WorkClient } from "./work-client";
 import type { WorkSnapshot } from "./work-model";
 
@@ -16,6 +16,7 @@ jest.mock("./actions", () => ({
   createWorkGoal: jest.fn(),
   createWorkTask: jest.fn(),
   editTaskRecurrence: jest.fn(),
+  editWorkGoal: jest.fn(),
   editWorkTask: jest.fn(),
   linkWorkGoalTask: jest.fn(),
   previewTagMerge: jest.fn(),
@@ -166,6 +167,126 @@ describe("Work Queue interactions", () => {
     const link = screen.getByRole("link", { name: "Return to 0:12–0:17" });
     expect(link).toHaveAttribute("href", "/sessions/room-2#transcript-segment-segment-2");
     expect(screen.getByText("Homer: Build a repeatable coaching review habit.")).toBeInTheDocument();
+  });
+
+  it("edits a canonical goal without implying progress, task, or calendar changes", async () => {
+    const user = userEvent.setup();
+    const goalSnapshot: WorkSnapshot = {
+      ...snapshot,
+      goals: [{
+        id: "goal-1",
+        title: "Build the review habit",
+        description: "Make follow-through visible.",
+        status: "ACTIVE",
+        targetAt: null,
+        achievedAt: null,
+        progressPercent: 25,
+        progressNote: "One review completed.",
+        provenance: "Canonical goal",
+        updatedAt: "2026-07-18T18:00:00.000Z",
+        roomId: null,
+        sessionTitle: null,
+        sessionStart: null,
+        project: null,
+        tags: [],
+        canManageTags: true,
+        parent: null,
+        childCount: 0,
+        linkedTasks: [],
+        sourceAnchor: null,
+      }],
+      counts: { ...snapshot.counts, activeGoals: 1 },
+    };
+    jest.mocked(editWorkGoal).mockResolvedValue({
+      ok: true,
+      goalId: "goal-1",
+      title: "Build a weekly review habit",
+      description: "Review real evidence every Friday.",
+      targetAt: "2026-09-01T18:00:00.000Z",
+      updatedAt: "2026-07-18T18:00:01.000Z",
+      receiptId: "goal-edit-receipt",
+    });
+
+    render(<WorkClient initialSnapshot={goalSnapshot} />);
+    const editGoalSummary = screen.getByText("Edit goal");
+    await user.click(editGoalSummary);
+    const goalEditor = editGoalSummary.closest("details");
+    expect(goalEditor).not.toBeNull();
+    const title = within(goalEditor!).getByRole("textbox", { name: "Goal title" });
+    await user.clear(title);
+    await user.type(title, "Build a weekly review habit");
+    const description = within(goalEditor!).getByRole("textbox", { name: "Definition of success" });
+    await user.clear(description);
+    await user.type(description, "Review real evidence every Friday.");
+    await user.type(within(goalEditor!).getByLabelText("Target date (optional)"), "2026-09-01");
+    await user.click(within(goalEditor!).getByRole("button", { name: "Save goal changes" }));
+
+    expect(editWorkGoal).toHaveBeenCalledWith({
+      goalId: "goal-1",
+      title: "Build a weekly review habit",
+      description: "Review real evidence every Friday.",
+      targetDecision: "SET",
+      targetLocalDate: "2026-09-01",
+      timezone: expect.any(String),
+      expectedUpdatedAt: "2026-07-18T18:00:00.000Z",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("Status, progress evidence, linked tasks, tags, source evidence, and external calendars were left unchanged");
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("keeps an untouched goal target instead of reinterpreting it in the browser timezone", async () => {
+    const user = userEvent.setup();
+    const goal = {
+      id: "goal-keep-target",
+      title: "Keep the original target",
+      description: null,
+      status: "ACTIVE" as const,
+      targetAt: "2026-09-01T18:17:23.456Z",
+      achievedAt: null,
+      progressPercent: null,
+      progressNote: null,
+      provenance: "Canonical goal" as const,
+      updatedAt: "2026-07-18T18:00:00.000Z",
+      roomId: null,
+      sessionTitle: null,
+      sessionStart: null,
+      project: null,
+      tags: [],
+      canManageTags: true,
+      parent: null,
+      childCount: 0,
+      linkedTasks: [],
+      sourceAnchor: null,
+    };
+    jest.mocked(editWorkGoal).mockResolvedValue({
+      ok: true,
+      goalId: goal.id,
+      title: "Keep the exact original target",
+      description: null,
+      targetAt: goal.targetAt,
+      updatedAt: "2026-07-18T18:00:01.000Z",
+      receiptId: "goal-edit-keep-receipt",
+    });
+    render(<WorkClient initialSnapshot={{
+      ...snapshot,
+      goals: [goal],
+      counts: { ...snapshot.counts, activeGoals: 1 },
+    }} />);
+
+    const editGoalSummary = screen.getByText("Edit goal");
+    await user.click(editGoalSummary);
+    const goalEditor = editGoalSummary.closest("details");
+    expect(goalEditor).not.toBeNull();
+    const title = within(goalEditor!).getByRole("textbox", { name: "Goal title" });
+    await user.clear(title);
+    await user.type(title, "Keep the exact original target");
+    await user.click(within(goalEditor!).getByRole("button", { name: "Save goal changes" }));
+
+    expect(editWorkGoal).toHaveBeenCalledWith(expect.objectContaining({
+      goalId: goal.id,
+      targetDecision: "KEEP",
+      targetLocalDate: null,
+    }));
   });
 
   it("opens the derived attention lens without creating an unread notification state", () => {

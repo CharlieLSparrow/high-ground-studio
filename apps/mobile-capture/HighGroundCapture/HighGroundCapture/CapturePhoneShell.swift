@@ -297,6 +297,7 @@ private struct CaptureWorkView: View {
     @State private var showsNewProject = false
     @State private var taskToEdit: MobileCaptureTodayTask?
     @State private var recurrenceToEdit: MobileCaptureTodayTask?
+    @State private var goalToEdit: MobileCaptureTodayGoal?
     @State private var taskTagsToEdit: MobileCaptureTodayTask?
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var noteTagsToEdit: MobileCaptureWorkNote?
@@ -491,6 +492,13 @@ private struct CaptureWorkView: View {
             CaptureRecurrenceEditSheet(
                 client: model.todayClient,
                 task: task,
+                onSaved: reloadSelectedWork
+            )
+        }
+        .sheet(item: $goalToEdit) { goal in
+            CaptureGoalEditSheet(
+                client: model.todayClient,
+                goal: goal,
                 onSaved: reloadSelectedWork
             )
         }
@@ -941,8 +949,27 @@ private struct CaptureWorkView: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
+            if let targetLabel = captureGoalTargetLabel(goal) {
+                Label(targetLabel, systemImage: "flag")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureWorkGoalTarget_\(goal.id)")
+            }
             workTagLabels(effectiveTagLabels(kind: .goal, entityID: goal.id, tagIDs: visibleTagIDs))
             workTagDecisionStatus(kind: .goal, entityID: goal.id)
+            if goal.status == "ACTIVE" || goal.status == "PAUSED" {
+                Button {
+                    goalToEdit = goal
+                } label: {
+                    Label("Edit goal", systemImage: "pencil")
+                        .frame(minHeight: 44)
+                }
+                .font(.caption.weight(.bold))
+                .buttonStyle(.bordered)
+                .disabled(decisionsDisabled)
+                .accessibilityIdentifier("CaptureWorkGoalEdit_\(goal.id)")
+                .accessibilityHint("Edits the canonical goal definition and target without changing progress, tasks, tags, source evidence, or external calendars.")
+            }
             if goal.canEditTags == true {
                 Button {
                     goalTagsToEdit = goal
@@ -1118,6 +1145,7 @@ struct TodayFollowThroughCard: View {
     @State private var reminderToEdit: MobileCaptureTodayTask?
     @State private var reminderToCancel: MobileCaptureTodayTask?
     @State private var taskToEdit: MobileCaptureTodayTask?
+    @State private var goalToEdit: MobileCaptureTodayGoal?
     @State private var taskTagsToEdit: MobileCaptureTodayTask?
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var showsAllCommittedTasks = false
@@ -1534,6 +1562,25 @@ struct TodayFollowThroughCard: View {
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
+                            if let targetLabel = captureGoalTargetLabel(goal) {
+                                Label(targetLabel, systemImage: "flag")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .accessibilityIdentifier("CaptureTodayGoalTarget_\(goal.id)")
+                            }
+                            if goal.status == "ACTIVE" || goal.status == "PAUSED" {
+                                Button {
+                                    goalToEdit = goal
+                                } label: {
+                                    Label("Edit goal", systemImage: "pencil")
+                                        .frame(minHeight: 44)
+                                }
+                                .font(.caption.weight(.bold))
+                                .buttonStyle(.bordered)
+                                .disabled(decisionsDisabled)
+                                .accessibilityIdentifier("CaptureTodayGoalEdit_\(goal.id)")
+                                .accessibilityHint("Edits the canonical goal definition and target without changing progress, tasks, tags, source evidence, or external calendars.")
+                            }
                             if let project = goal.project {
                                 TodayProjectTagLine(
                                     project: project,
@@ -1769,6 +1816,9 @@ struct TodayFollowThroughCard: View {
         }
         .sheet(item: $taskToEdit) { task in
             CaptureTaskEditSheet(client: client, task: task)
+        }
+        .sheet(item: $goalToEdit) { goal in
+            CaptureGoalEditSheet(client: client, goal: goal)
         }
         .sheet(item: $reminderToEdit) { task in
             TodayTaskReminderSheet(client: client, task: task)
@@ -2218,6 +2268,11 @@ private func captureTaskDueLabel(_ task: MobileCaptureTodayTask) -> String? {
     return "\(prefix) \(date.formatted(date: .abbreviated, time: .shortened))"
 }
 
+private func captureGoalTargetLabel(_ goal: MobileCaptureTodayGoal) -> String? {
+    guard let date = captureTaskDate(goal.targetAt) else { return nil }
+    return "Target \(date.formatted(date: .abbreviated, time: .omitted))"
+}
+
 private struct CaptureTaskEditSheet: View {
     @ObservedObject var client: CaptureTodayClient
     let task: MobileCaptureTodayTask
@@ -2350,6 +2405,162 @@ private struct CaptureTaskEditSheet: View {
             }
         }
         .accessibilityIdentifier("CaptureTaskEditSheet")
+    }
+}
+
+private struct CaptureGoalEditSheet: View {
+    @ObservedObject var client: CaptureTodayClient
+    let goal: MobileCaptureTodayGoal
+    var onSaved: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title: String
+    @State private var description: String
+    @State private var includesTargetDate: Bool
+    @State private var targetAt: Date
+    @State private var timezoneID: String
+    private let originalTargetAt: Date?
+    private let originalTimezoneID: String
+
+    init(
+        client: CaptureTodayClient,
+        goal: MobileCaptureTodayGoal,
+        onSaved: (() -> Void)? = nil
+    ) {
+        self.client = client
+        self.goal = goal
+        self.onSaved = onSaved
+        let existingTarget = captureTaskDate(goal.targetAt)
+        let phoneTimezone = TimeZone.autoupdatingCurrent
+        let defaultTarget = Calendar.current.date(
+            byAdding: .day,
+            value: 30,
+            to: Date()
+        ) ?? Date().addingTimeInterval(30 * 86_400)
+        _title = State(initialValue: goal.title)
+        _description = State(initialValue: goal.description ?? "")
+        _includesTargetDate = State(initialValue: existingTarget != nil)
+        _targetAt = State(initialValue: existingTarget ?? defaultTarget)
+        _timezoneID = State(initialValue: phoneTimezone.identifier)
+        originalTargetAt = existingTarget
+        originalTimezoneID = phoneTimezone.identifier
+    }
+
+    private var chosenTimeZone: TimeZone? {
+        TimeZone(identifier: timezoneID.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var canSave: Bool {
+        (goal.status == "ACTIVE" || goal.status == "PAUSED")
+            && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && (targetDecision != "SET" || chosenTimeZone != nil)
+            && !client.isMutating
+    }
+
+    private var targetDecision: String {
+        guard includesTargetDate else {
+            return originalTargetAt == nil ? "KEEP" : "CLEAR"
+        }
+        guard let originalTargetAt else { return "SET" }
+        let normalizedTimezone = timezoneID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard normalizedTimezone == originalTimezoneID,
+              let timezone = TimeZone(identifier: originalTimezoneID) else {
+            return "SET"
+        }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timezone
+        let original = calendar.dateComponents([.year, .month, .day], from: originalTargetAt)
+        let requested = calendar.dateComponents([.year, .month, .day], from: targetAt)
+        return original == requested ? "KEEP" : "SET"
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Goal") {
+                    TextField("Goal title", text: $title, axis: .vertical)
+                        .lineLimit(1...4)
+                        .accessibilityIdentifier("CaptureGoalEditTitle")
+                    TextField("Definition of success", text: $description, axis: .vertical)
+                        .lineLimit(2...8)
+                        .accessibilityIdentifier("CaptureGoalEditDescription")
+                }
+
+                Section("Target") {
+                    Toggle("Set a target date", isOn: $includesTargetDate)
+                        .accessibilityIdentifier("CaptureGoalEditTargetToggle")
+                    if includesTargetDate {
+                        DatePicker(
+                            "Target",
+                            selection: $targetAt,
+                            displayedComponents: [.date]
+                        )
+                        .environment(\.timeZone, chosenTimeZone ?? .autoupdatingCurrent)
+                        .accessibilityIdentifier("CaptureGoalEditTargetDate")
+                    }
+
+                    TextField("IANA timezone", text: $timezoneID)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("CaptureGoalEditTimezone")
+                    Button("Use this iPhone’s timezone") {
+                        timezoneID = TimeZone.autoupdatingCurrent.identifier
+                    }
+                    .accessibilityIdentifier("CaptureGoalEditUsePhoneTimezone")
+                    Label(
+                        chosenTimeZone == nil
+                            ? "Enter a valid IANA timezone, such as America/Denver."
+                            : "Quipsly will preserve this target as a calendar date in \(chosenTimeZone?.identifier ?? timezoneID).",
+                        systemImage: chosenTimeZone == nil ? "exclamationmark.triangle" : "globe.americas"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(chosenTimeZone == nil ? Color.orange : Color.secondary)
+                }
+
+                Section("Boundary") {
+                    Text("This edits only the goal title, definition of success, and target date. It does not change status, progress evidence, linked tasks, tags, hierarchy, source anchors, provider calendars, messages, delivery, or publishing.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureGoalEditBoundary")
+                    Text("Goal editing requires Nest. Protected offline snapshots remain unchanged until you reconnect.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let error = client.errorMessage {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+            .navigationTitle("Edit goal")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(client.isMutating ? "Saving…" : "Save") {
+                        Task {
+                            let saved = await client.editGoal(
+                                goal,
+                                title: title,
+                                description: description,
+                                targetDecision: targetDecision,
+                                targetAt: targetDecision == "SET" ? targetAt : nil,
+                                timezone: timezoneID.trimmingCharacters(in: .whitespacesAndNewlines)
+                            )
+                            if saved {
+                                dismiss()
+                                onSaved?()
+                            }
+                        }
+                    }
+                    .disabled(!canSave)
+                    .accessibilityIdentifier("CaptureGoalEditSave")
+                }
+            }
+        }
+        .accessibilityIdentifier("CaptureGoalEditSheet")
     }
 }
 

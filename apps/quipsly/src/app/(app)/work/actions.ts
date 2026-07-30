@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 
 import { getPrismaClient } from "@/lib/prisma";
+import { editCanonicalGoalInTransaction } from "@/lib/server/canonical-goal-edit";
 import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
 import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-domain/coaching-packet";
@@ -44,6 +45,10 @@ export type WorkGoalMutationResult =
 export type CreateWorkGoalResult =
   | { ok: true; goalId: string; updatedAt: string; receiptId: string }
   | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "UNAVAILABLE"; error: string };
+
+export type EditWorkGoalResult =
+  | { ok: true; goalId: string; title: string; description: string | null; targetAt: string | null; updatedAt: string; receiptId: string }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "CONFLICT" | "UNAVAILABLE"; error: string };
 
 export type SaveWeeklyCommitmentResult =
   | { ok: true; commitmentId: string; updatedAt: string; receiptId: string }
@@ -196,6 +201,10 @@ function cleanText(value: unknown, max: number) {
   return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
 }
 
+function normalizedText(value: unknown) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
 function expectedRevision(value: unknown) {
   const text = cleanId(value, 80);
   const date = new Date(text);
@@ -266,6 +275,130 @@ export async function createWorkGoal(input: {
   } catch (error) {
     console.error("[work] failed to create private goal", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not create this goal. No task, message, or calendar event was created." };
+  }
+}
+
+export async function editWorkGoal(input: {
+  goalId: string;
+  title: string;
+  description?: string | null;
+  targetDecision: "KEEP" | "SET" | "CLEAR";
+  targetLocalDate: string | null;
+  timezone: string;
+  expectedUpdatedAt: string;
+}): Promise<EditWorkGoalResult> {
+  const session = await getQuipslySession();
+  if (!session?.user?.id) {
+    return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before editing a private goal." };
+  }
+
+  const goalId = cleanId(input?.goalId);
+  const title = normalizedText(input?.title);
+  const normalizedDescription = normalizedText(input?.description);
+  const description = normalizedDescription || null;
+  const expectedUpdatedAt = expectedRevision(input?.expectedUpdatedAt);
+  const targetDecision = input?.targetDecision;
+  const timezone = typeof input?.timezone === "string" ? input.timezone.trim() : "";
+  const hasTargetDecision = Boolean(input)
+    && Object.prototype.hasOwnProperty.call(input, "targetLocalDate");
+  const targetDecisionHasValidType = input?.targetLocalDate === null
+    || typeof input?.targetLocalDate === "string";
+  const targetLocalDate = typeof input?.targetLocalDate === "string"
+    ? input.targetLocalDate.trim()
+    : "";
+  const targetFormatValid = !targetLocalDate || /^\d{4}-\d{2}-\d{2}$/.test(targetLocalDate);
+  const parsedTarget = targetLocalDate && targetFormatValid
+    ? parseRecurrenceStart(`${targetLocalDate}T12:00`, timezone)
+    : null;
+  const targetAt = parsedTarget?.dueAt ?? null;
+  const targetDecisionValid = targetDecision === "KEEP"
+    || targetDecision === "SET"
+    || targetDecision === "CLEAR";
+  const targetPayloadMatchesDecision = targetDecision === "SET"
+    ? Boolean(targetLocalDate && parsedTarget)
+    : !targetLocalDate;
+  const now = new Date();
+
+  if (!goalId
+      || !title
+      || title.length > 500
+      || normalizedDescription.length > 5_000
+      || !expectedUpdatedAt
+      || !hasTargetDecision
+      || !targetDecisionHasValidType
+      || !targetDecisionValid
+      || !targetPayloadMatchesDecision
+      || timezone.length > 100
+      || (targetDecision === "SET" && !isIanaTimeZone(timezone))
+      || !targetFormatValid
+      || (targetLocalDate && !parsedTarget)) {
+    return {
+      ok: false,
+      code: "INVALID_INPUT",
+      error: "Use a title under 500 characters, description under 5,000 characters, and a valid target date.",
+    };
+  }
+  if (targetAt && Math.abs(targetAt.getTime() - now.getTime()) > 20 * 365 * 86_400_000) {
+    return { ok: false, code: "INVALID_INPUT", error: "Choose a target date within twenty years." };
+  }
+
+  try {
+    const prisma = getPrismaClient() as any;
+    const result = await prisma.$transaction(
+      (tx: any) => editCanonicalGoalInTransaction({
+        tx,
+        goalId,
+        actorUserId: session.user.id,
+        expectedUpdatedAt,
+        title,
+        description,
+        targetDecision: targetDecision === "SET" && parsedTarget && targetAt ? {
+          kind: "SET" as const,
+          targetAt,
+          requestedLocalDate: targetLocalDate,
+          resolvedLocalDateTime: parsedTarget.resolvedLocalDateTime,
+          timezone: parsedTarget.timezone,
+        } : targetDecision === "CLEAR"
+          ? { kind: "CLEAR" as const }
+          : { kind: "KEEP" as const },
+        surface: "nest-work",
+        now,
+      }),
+      { isolationLevel: "Serializable" },
+    );
+
+    if (result.kind === "not-found") {
+      return { ok: false, code: "NOT_FOUND", error: "Only the goal owner can edit this goal." };
+    }
+    if (result.kind === "closed") {
+      return { ok: false, code: "INVALID_INPUT", error: "Make this goal active or paused before editing its definition or target." };
+    }
+    if (result.kind === "conflict") {
+      return { ok: false, code: "CONFLICT", error: "This goal changed elsewhere. Refresh before editing again." };
+    }
+
+    revalidatePath("/work");
+    revalidatePath("/schedule");
+    revalidatePath("/today");
+    if (result.record.roomId) revalidatePath(`/sessions/${result.record.roomId}`);
+    return {
+      ok: true,
+      goalId,
+      title: result.record.title,
+      description: result.record.description,
+      targetAt: result.record.targetAt?.toISOString() ?? null,
+      updatedAt: result.record.updatedAt.toISOString(),
+      receiptId: result.receiptId,
+    };
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+    if (code === "P2034") {
+      return { ok: false, code: "CONFLICT", error: "This goal changed elsewhere. Refresh before editing again." };
+    }
+    console.error("[work] failed to edit private goal", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not save this goal edit. No task, progress, calendar event, message, or provider action changed." };
   }
 }
 

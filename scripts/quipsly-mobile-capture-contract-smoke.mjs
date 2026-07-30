@@ -662,6 +662,8 @@ function checkReviewDigestContractSources() {
   const capturePhoneShellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
   const workTagsText = sourceText("apps/quipsly/src/lib/server/work-tags.ts");
   const workTagsRouteText = sourceText("apps/quipsly/src/app/api/work/tags/route.ts");
+  const canonicalGoalEditText = sourceText("apps/quipsly/src/lib/server/canonical-goal-edit.ts");
+  const nestWorkActionsText = sourceText("apps/quipsly/src/app/(app)/work/actions.ts");
 
   expect(
     digestRouteText.includes("quipsly-mobile-capture-review-digest-v1")
@@ -802,6 +804,28 @@ function checkReviewDigestContractSources() {
       && bridgeText.includes('payload.action == "task-edit"')
       && todayRouteText.includes('if (action === "task-edit")')
       && todayRouteText.includes('surface: "ios-capture-today"')
+      && capturePhoneShellText.includes("CaptureWorkGoalEdit_")
+      && capturePhoneShellText.includes("CaptureTodayGoalEdit_")
+      && capturePhoneShellText.includes("CaptureGoalEditSave")
+      && capturePhoneShellText.includes("CaptureGoalEditBoundary")
+      && bridgeText.includes("func editGoal(")
+      && bridgeText.includes('"action": "goal-edit"')
+      && bridgeText.includes('"targetDecision": targetDecision')
+      && bridgeText.includes('payload.action == "goal-edit"')
+      && bridgeText.includes('case "KEEP":')
+      && todayRouteText.includes('if (action === "goal-edit")')
+      && todayRouteText.includes('targetDecision === "KEEP"')
+      && todayRouteText.includes('targetDecision === "SET"')
+      && todayRouteText.includes('targetDecision === "CLEAR"')
+      && todayRouteText.includes('surface: "ios-capture-work"')
+      && todayRouteText.includes("editCanonicalGoalInTransaction")
+      && nestWorkActionsText.includes("editCanonicalGoalInTransaction")
+      && nestWorkActionsText.includes('surface: "nest-work"')
+      && canonicalGoalEditText.includes('kind: "quipsly-goal-edit-v1"')
+      && canonicalGoalEditText.includes('input.targetDecision.kind === "KEEP"')
+      && canonicalGoalEditText.includes("sourceAnchorChanged: false")
+      && canonicalGoalEditText.includes("providerCalendarEventChanged: false")
+      && canonicalGoalEditText.includes("externalSideEffects: false")
       && capturePhoneShellText.includes("CaptureWorkGoalTagsEdit_")
       && capturePhoneShellText.includes("CaptureWorkNoteTagsEdit_")
       && capturePhoneShellText.includes("expectedTagRevision: note.tagRevision")

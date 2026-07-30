@@ -4,7 +4,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 
-import { createWorkGoal, createWorkTask, editWorkTask, linkWorkGoalTask, recordWorkGoalProgress, saveWeeklyCommitment, setWorkTaskReminder, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
+import { createWorkGoal, createWorkTask, editWorkGoal, editWorkTask, linkWorkGoalTask, recordWorkGoalProgress, saveWeeklyCommitment, setWorkTaskReminder, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus } from "./actions";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
@@ -395,6 +395,89 @@ describe("Work Queue task decisions", () => {
       description: "Proof-listen the final artifact",
       sourceJson: expect.objectContaining({ creationReceipt: expect.objectContaining({ externalSideEffects: false }) }),
     }) }));
+  });
+
+  it("edits an active goal definition and local target date without changing status or progress", async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date("2026-07-30T06:00:00.000Z"));
+    signedIn();
+    const tx = {
+      goal: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "goal-1",
+          roomId: "room-1",
+          status: "ACTIVE",
+          title: "Old direction",
+          description: null,
+          targetAt: null,
+          sourceJson: { immutableSourceAnchor: { segmentId: "segment-1" } },
+          updatedAt: expected,
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "goal-1",
+          roomId: "room-1",
+          status: "ACTIVE",
+          title: "Publish a proof-listened episode",
+          description: "Both hosts approve the final timeline.",
+          targetAt: new Date("2026-08-15T18:00:00.000Z"),
+          updatedAt: persisted,
+        }),
+      },
+    };
+    const prisma = {
+      $transaction: jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx)),
+    };
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+
+    const result = await editWorkGoal({
+      goalId: "goal-1",
+      title: " Publish a proof-listened episode ",
+      description: " Both hosts approve the final timeline. ",
+      targetDecision: "SET",
+      targetLocalDate: "2026-08-15",
+      timezone: "America/Denver",
+      expectedUpdatedAt: expected.toISOString(),
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      goalId: "goal-1",
+      title: "Publish a proof-listened episode",
+      description: "Both hosts approve the final timeline.",
+      targetAt: "2026-08-15T18:00:00.000Z",
+      updatedAt: persisted.toISOString(),
+      receiptId: expect.any(String),
+    });
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(tx.goal.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        title: "Publish a proof-listened episode",
+        description: "Both hosts approve the final timeline.",
+        targetAt: new Date("2026-08-15T18:00:00.000Z"),
+        sourceJson: expect.objectContaining({
+          immutableSourceAnchor: { segmentId: "segment-1" },
+          editReceipts: [expect.objectContaining({
+            kind: "quipsly-goal-edit-v1",
+            targetDecision: "SET",
+            targetIntent: {
+              requestedLocalDate: "2026-08-15",
+              resolvedLocalDateTime: "2026-08-15T12:00",
+              timezone: "America/Denver",
+            },
+            statusChanged: false,
+            progressChanged: false,
+            taskLinksChanged: false,
+            sourceAnchorChanged: false,
+            externalSideEffects: false,
+          })],
+        }),
+      }),
+    }));
+    expect(revalidatePath).toHaveBeenCalledWith("/work");
+    expect(revalidatePath).toHaveBeenCalledWith("/schedule");
+    expect(revalidatePath).toHaveBeenCalledWith("/today");
+    expect(revalidatePath).toHaveBeenCalledWith("/sessions/room-1");
   });
 
   it("files new work only into a Nest where the actor can write", async () => {

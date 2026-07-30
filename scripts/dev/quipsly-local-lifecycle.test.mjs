@@ -149,8 +149,8 @@ test("generated mobile dogfood is disposable, secret-safe, and current-source", 
     generatedMobileDogfood,
     /quipsly-mobile-capture-generated-auth-smoke\.mjs/,
   );
-  assert.match(generatedMobileDogfood, /--workflow=task-edit/);
-  assert.match(generatedMobileDogfood, /--runtime-ui-mode=task-edit/);
+  assert.match(generatedMobileDogfood, /--workflow="\$\{mode\}"/);
+  assert.match(generatedMobileDogfood, /--runtime-ui-mode="\$\{mode\}"/);
   assert.match(
     generatedMobileDogfood,
     /Secrets are held only in process environment or a mode-0700/,

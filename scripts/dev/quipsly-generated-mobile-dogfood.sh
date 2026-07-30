@@ -18,6 +18,7 @@ usage() {
   cat <<'USAGE'
 Usage:
   scripts/dev/quipsly-generated-mobile-dogfood.sh task-edit
+  scripts/dev/quipsly-generated-mobile-dogfood.sh goal-edit
 
 Runs the current local Nest source with a disposable real Firebase identity and
 canonical database records, then drives the compiled iPhone app in Simulator.
@@ -58,7 +59,7 @@ if [[ "${mode}" == "--help" || "${mode}" == "-h" ]]; then
   usage
   exit 0
 fi
-if [[ "${mode}" != "task-edit" ]]; then
+if [[ "${mode}" != "task-edit" && "${mode}" != "goal-edit" ]]; then
   usage >&2
   fail "Unsupported generated mobile dogfood mode: ${mode}"
 fi
@@ -216,7 +217,7 @@ if [[ "${ready}" != "1" ]]; then
 fi
 
 printf "PASS Local Nest current-source health: %s\n" "${nest_origin}"
-printf "PASS Disposable Firebase/database lane is ready; beginning operated iPhone task-edit journey.\n"
+printf "PASS Disposable Firebase/database lane is ready; beginning operated iPhone %s journey.\n" "${mode}"
 
 (
   cd "${repo_root}"
@@ -233,9 +234,9 @@ printf "PASS Disposable Firebase/database lane is ready; beginning operated iPho
   DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer" \
   node scripts/quipsly-mobile-capture-generated-auth-smoke.mjs \
     --base-url="${nest_origin}" \
-    --workflow=task-edit \
+    --workflow="${mode}" \
     --run-runtime-ui-smoke=1 \
-    --runtime-ui-mode=task-edit
+    --runtime-ui-mode="${mode}"
 )
 
-printf "PASS Operated iPhone task edit completed against current local Nest source.\n"
+printf "PASS Operated iPhone %s completed against current local Nest source.\n" "${mode}"

@@ -1077,6 +1077,8 @@ struct MobileCaptureTodayMutationResponse: Codable {
     let title: String?
     let detail: String?
     let dueAt: String?
+    let description: String?
+    let targetAt: String?
     let nextOccurrenceTaskId: String?
     let materializedCount: Int?
     let reminder: MobileCaptureTodayReminderIntent?
@@ -3165,6 +3167,102 @@ final class CaptureTodayClient: ObservableObject {
         }
     }
 
+    func editGoal(
+        _ goal: MobileCaptureTodayGoal,
+        title: String,
+        description: String,
+        targetDecision: String,
+        targetAt: Date?,
+        timezone: String
+    ) async -> Bool {
+        guard goal.status == "ACTIVE" || goal.status == "PAUSED" else {
+            errorMessage = "Make this goal active or paused before editing its definition or target."
+            return false
+        }
+        let normalizedTitle = Self.normalizedTaskText(title)
+        let normalizedDescription = Self.normalizedTaskText(description)
+        let allowedTargetDecisions = Set(["KEEP", "SET", "CLEAR"])
+        guard !normalizedTitle.isEmpty,
+              normalizedTitle.count <= 500,
+              normalizedDescription.count <= 5_000,
+              allowedTargetDecisions.contains(targetDecision),
+              targetDecision == "SET" ? TimeZone(identifier: timezone) != nil && targetAt != nil : targetAt == nil else {
+            errorMessage = "Add a goal title under 500 characters, keep its definition under 5,000 characters, and choose a valid timezone."
+            return false
+        }
+        guard !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed,
+              !isMutating,
+              let url = URL(string: "\(baseURL)/api/mobile/capture/today") else {
+            errorMessage = "Reconnect to Nest before editing this goal. The protected snapshot was not modified."
+            return false
+        }
+
+        isMutating = true
+        defer { isMutating = false }
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            var requestBody: [String: Any] = [
+                "action": "goal-edit",
+                "id": goal.id,
+                "expectedUpdatedAt": goal.updatedAt,
+                "title": normalizedTitle,
+                "description": normalizedDescription,
+                "targetDecision": targetDecision,
+                "timezone": timezone,
+            ]
+            let requestedTargetLocalDate = targetDecision == "SET" ? targetAt.map {
+                Self.localGoalDateString($0, timezone: timezone)
+            } : nil
+            requestBody["targetLocalDate"] = requestedTargetLocalDate ?? NSNull()
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureToday",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "This goal could not be edited."]
+                )
+            }
+            let acknowledgedTarget = payload.targetAt.flatMap(Self.isoDate)
+            let targetAcknowledged: Bool
+            switch targetDecision {
+            case "KEEP":
+                let originalTarget = goal.targetAt.flatMap(Self.isoDate)
+                targetAcknowledged = acknowledgedTarget == originalTarget
+            case "CLEAR":
+                targetAcknowledged = acknowledgedTarget == nil
+            default:
+                let acknowledgedTargetLocalDate = acknowledgedTarget.map {
+                    Self.localGoalDateString($0, timezone: timezone)
+                }
+                targetAcknowledged = acknowledgedTargetLocalDate == requestedTargetLocalDate
+            }
+            guard payload.action == "goal-edit",
+                  payload.id == goal.id,
+                  payload.title == normalizedTitle,
+                  payload.description == (normalizedDescription.isEmpty ? nil : normalizedDescription),
+                  targetAcknowledged,
+                  payload.updatedAt != nil,
+                  payload.receiptId != nil else {
+                throw NSError(
+                    domain: "CaptureToday",
+                    code: 409,
+                    userInfo: [NSLocalizedDescriptionKey: "Nest returned a different goal edit acknowledgement. Refresh before trying again."]
+                )
+            }
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func setRecurrenceStatus(_ recurrence: MobileCaptureTodayRecurrence, status: String) async -> Bool {
         await mutate(action: "recurrence-status", id: recurrence.seriesId, nextStatus: status, expectedUpdatedAt: recurrence.updatedAt)
     }
@@ -3453,6 +3551,10 @@ final class CaptureTodayClient: ObservableObject {
         formatter.timeZone = TimeZone(identifier: timezone)
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
         return formatter.string(from: date)
+    }
+
+    nonisolated private static func localGoalDateString(_ date: Date, timezone: String) -> String {
+        String(localTaskDateString(date, timezone: timezone).prefix(10))
     }
 
     nonisolated private static func normalizedTaskText(_ value: String) -> String {
