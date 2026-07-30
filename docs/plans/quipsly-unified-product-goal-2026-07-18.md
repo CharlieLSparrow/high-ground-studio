@@ -4138,3 +4138,37 @@ This is an active-goal checkpoint, not a completion claim.
   Deployed same-Nest collaborator denial, a revision-bound promotion receipt,
   coordinated Capture qualification, and physical-iPhone failure recovery
   remain open.
+
+### 2026-07-30 Capture accessibility and Scott handoff checkpoint
+
+- Current-source acceptance found one real Dynamic Type defect at
+  `UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge`: the rehearsal
+  status **Physical proof needed** clipped beside **Before you record**. Commit
+  `09d0e032c42d27235d9f7988c44c0fdf62c1eef8` stacks the status below the
+  title at accessibility text sizes while preserving the full-width target,
+  expanded/collapsed semantics, explicit accessibility label, and ordinary
+  compact layout.
+- The release-focused iPhone 17 Pro / iOS 26.3.1 Simulator rerun passes 5/5
+  journeys: native Google-first login and password recovery at the largest
+  accessibility text size; the primary recorder; largest-text recording,
+  rehearsal, manuscript, and Watch reachability; immutable source-evidence
+  truth boundaries; and transcript correction plus human-reviewed AI proposal
+  boundaries. Apple's runtime audit passes `hitRegion`,
+  `sufficientElementDescription`, and `textClipped`.
+- The exact public TestFlight link remained open on fresh Apple readback.
+  Scott's `shomers@icloud.com` tester still reported `INVITED` in both assigned
+  groups after Apple accepted another invitation resend with HTTP 201. Email
+  delivery remains unproven and is not required: Scott must open the canonical
+  public link in Safari, choose **Start Testing**, accept, install, and read
+  Build 14 back on his physical iPhone.
+- Build 14 is intentionally unchanged and does not contain the accessibility
+  fix above. The new source is not distributed merely because its Simulator
+  journey passed. The next human gate remains Scott's physical installation,
+  `shomers@gmail.com` Quipsly identity attachment, explicit consent, real
+  call, local audio/video and camera-change operation, Shared Watch, upload,
+  timeline, and proof-listen/watch readback.
+- The deployed same-Nest privacy harness remains ready but Google user and ADC
+  credentials require interactive reauthentication. The exact
+  `charlie@highgroundodyssey.com` account is staged at Google's password
+  verification screen; the harness must not run until both credential paths
+  mint tokens again.
