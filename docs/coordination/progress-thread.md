@@ -1631,3 +1631,29 @@ checks, blockers, and next handoff.
 - Delivery boundary: Build 14 and production `studio-00445-rij` remain
   untouched. `bb8d6a57` is committed local source for a later coordinated
   preview and Capture build, not deployed, distributed, or physically proven.
+
+### 2026-07-30 - Reviewed iPhone evidence becomes one private writing draft
+
+- Commit `804e42e2` connects Capture Today annotations to the canonical Nest
+  document kernel. One explicit decision creates one private document and
+  opening block with the working note, immutable quote snapshot, durable
+  citation, and source-annotation backlink.
+- The actor/request UUID, exact annotation revision, writable-project
+  authorization, serializable transaction, and bounded retry make ambiguous
+  delivery converge on the same document. A UUID reused for different source
+  intent conflicts.
+- The iPhone protects the complete decision before sync, partitions it by
+  account, survives relaunch, distinguishes retryable and held failures, and
+  requires an exact document/block/safety acknowledgement before removing it.
+  Corrupt-ledger recovery remains read-only.
+- A disposable real Firebase/local-PostgreSQL run operated the compiled iPhone
+  app through creation and relaunch. Independent readback proved one private
+  document/block/use, exact citation evidence, unchanged source hash and
+  annotation revision, one reversible human operation, exact same-ID replay,
+  no side effects, and complete database/Firebase cleanup.
+- Verification: focused server/API tests 28/28, Quipsly TypeScript 7, protected
+  Swift harness, mobile source contract, App Store/static 873/873, iPhone 17
+  Pro Simulator build, and real native dogfood all pass.
+- Delivery boundary: Build 14 and production `studio-00445-rij` remain
+  untouched. `804e42e2` is committed source for a later coordinated preview
+  and Capture build, not deployed, distributed, or physically proven.

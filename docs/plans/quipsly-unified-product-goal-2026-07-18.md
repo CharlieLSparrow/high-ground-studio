@@ -4040,3 +4040,46 @@ This is an active-goal checkpoint, not a completion claim.
   production `studio-00445-rij` remain untouched for the Scott/Charlie
   rehearsal. The coordinated preview, qualification, later Capture build, and
   physical-iPhone same-ID proof remain open.
+
+### 2026-07-30 protected source-to-writing checkpoint
+
+- Capture Today can now turn a reviewed canonical source annotation into one
+  private Nest writing document with one private opening block, the person's
+  working note, an immutable quote snapshot, a durable citation, and an exact
+  annotation backlink. Looking at, resolving, or reopening evidence still
+  creates no writing.
+- The phone first journals one actor-partitioned decision containing a stable
+  UUID, annotation ID, Nest slug, source title, and exact annotation revision.
+  The ledger survives relaunch, holds permanent mismatches for explicit
+  review, recovers corrupt primary state from a last-known-good copy read-only,
+  and refuses cross-account replay.
+- Nest reauthorizes current `OWNER` or `EDITOR` access and commits the private
+  document, block, evidence use, and reversible human operation in one
+  serializable transaction. Exact replay returns the same IDs; a UUID reused
+  for another annotation, project, or revision conflicts. One bounded retry
+  resolves PostgreSQL serialization or unique-identity races without creating
+  duplicate writing.
+- Native acknowledgement requires the exact action, annotation, UUID,
+  document and block identities, safe Nest URL, private-draft boundary, and
+  explicit false source-mutation/external-side-effect boundaries before the
+  protected decision is removed.
+- The operated acceptance lane used current local Nest source, a disposable
+  real Firebase identity, loopback PostgreSQL, and the compiled iPhone app. It
+  created the private draft, replaced Start with the canonical open link,
+  terminated, relaunched, and projected the same link without offering a
+  second accidental draft.
+- Independent database and API readback proved one evidence use, one private
+  document/block, exact quote and citation, matching immutable-source SHA-256,
+  unchanged annotation revision, one reversible human operation, exact same-ID
+  replay with `reused: true`, no source mutation, no external side effects, and
+  complete database/Firebase cleanup.
+- Verification passes 28/28 focused server/API tests, Quipsly TypeScript 7,
+  the protected Swift outbox harness including corrupt-ledger recovery, the
+  mobile source contract, 873/873 App Store/static checks, an iPhone 17 Pro
+  Simulator build, the runtime creation/relaunch test, and the real generated
+  annotation-writing journey.
+- Feature commit `804e42e2` is newer than Build 14 and production
+  `studio-00445-rij`. Neither distributed boundary changed. A later
+  coordinated release still requires exact-commit zero-traffic preview,
+  authenticated readback, a newly qualified Capture build, physical-iPhone
+  offline/interruption recovery, and same-ID production proof.

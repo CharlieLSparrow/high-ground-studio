@@ -90,12 +90,13 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
 - latest coherent feature commit:
-  `bb8d6a57 feat(capture): annotate filed sources with canonical tags`
+  `804e42e2 feat(capture): hand research evidence into private writing`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
   - `apps/quipsly/src/app/api/mobile/capture/today`
   - `apps/quipsly/src/app/api/mobile/capture/inbox`
   - `apps/quipsly/src/lib/server/personal-source-filing.ts`
+  - `apps/quipsly/src/lib/server/source-annotations.ts`
   - `scripts/dev/quipsly-generated-mobile-dogfood.sh`
   - `scripts/quipsly-mobile-capture-generated-auth-smoke.mjs`
   - `scripts/release/quipsly-capture-*`
@@ -121,16 +122,21 @@ Verified during the Codex application handoff prep on 2026-05-26.
     atomic decision using only the destination Nest's existing canonical tags;
     full replay identity now includes the source, selector, body, visibility,
     purpose, fingerprint, and tag set
-  - current checks: source-filing harness, focused route/unit 11/11,
-    real-PostgreSQL 5/5, Quipsly typecheck, source contract 74/74, App
-    Store/static 848/848, compiled preview UI, and the real generated filing
-    and annotation journey with 148/148 mobile checks all pass
-  - deploy status: `bb8d6a57`, `ff48c69c`, and `b2313033` are not deployed or
-    distributed; next delivery is a zero-traffic Nest preview followed by
-    exact-source qualification for a later Capture build
-  - rollback: production remains on `studio-00445-rij`; revert `bb8d6a57` to
-    remove compound file-and-annotate, revert `ff48c69c` to remove unpublished
-    source filing, and revert `b2313033` to remove unpublished annotation review
+  - `804e42e2` turns one reviewed annotation into exactly one private canonical
+    writing document and citation block through a protected actor-partitioned
+    iPhone outbox, exact acknowledgement, serializable idempotent transaction,
+    and reversible human operation without changing the source
+  - current checks: focused server/API 28/28, Quipsly typecheck, protected
+    writing-outbox harness including corrupt-ledger recovery, mobile source
+    contract, App Store/static 873/873, iPhone 17 Pro Simulator build, and the
+    real generated annotation-writing journey all pass
+  - deploy status: `804e42e2`, `bb8d6a57`, `ff48c69c`, and `b2313033` are not
+    deployed or distributed; next delivery is a zero-traffic Nest preview
+    followed by exact-source qualification for a later Capture build
+  - rollback: production remains on `studio-00445-rij`; revert `804e42e2` to
+    remove unpublished source-to-writing handoff, revert `bb8d6a57` to remove
+    compound file-and-annotate, revert `ff48c69c` to remove unpublished source
+    filing, and revert `b2313033` to remove unpublished annotation review
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
   - no private HGO or coaching material in screenshots
