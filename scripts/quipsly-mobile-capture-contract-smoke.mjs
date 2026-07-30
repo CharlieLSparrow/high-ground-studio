@@ -657,8 +657,7 @@ function checkReviewDigestContractSources() {
   const todayRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/today/route.ts");
   const bridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift");
   const componentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
-  const iPhoneText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/IPhoneQuipslySessionView.swift");
-  const iPadText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/IPadQuipslyStudioView.swift");
+  const contentViewText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ContentView.swift");
   const capturePhoneShellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
   const workTagsText = sourceText("apps/quipsly/src/lib/server/work-tags.ts");
   const workTagsRouteText = sourceText("apps/quipsly/src/app/api/work/tags/route.ts");
@@ -766,16 +765,17 @@ function checkReviewDigestContractSources() {
     "Native capture UI exposes the review digest, safe action packets, and lifecycle safe actions as first-class reviewer and agent readback surfaces.",
   );
   expect(
-    iPhoneText.includes("CapturePhoneShell()")
+    contentViewText.includes("CapturePhoneShell()")
+      && contentViewText.includes("ProtectedOfflineLibraryShell")
+      && contentViewText.includes("mustKeepRecorderVisible")
       && capturePhoneShellText.includes("CaptureRootTab.today")
       && capturePhoneShellText.includes("CaptureRootTab.record")
       && capturePhoneShellText.includes("CaptureRootTab.work")
       && capturePhoneShellText.includes("CaptureRootTab.library")
       && capturePhoneShellText.includes("CaptureRootTab.account")
-      && capturePhoneShellText.includes("Local source is production truth")
-      && iPadText.includes("MobileCaptureReviewDigestPanel()"),
+      && capturePhoneShellText.includes("Local source is production truth"),
     "nativeReviewDigestOnSessionSurfaces",
-    "The capture-first iPhone keeps Today, Record, Work, Library, and Account focused while the legacy iPad studio retains its detailed review digest.",
+    "The production iPhone root keeps Today, Record, Work, Library, and Account focused, preserves active capture across auth expiry, and retains protected offline recovery.",
   );
   expect(
     workRouteText.includes('workspaceKind: "quipsly-mobile-work-v1"')

@@ -1,5 +1,12 @@
 # Original User Request
 
+> Historical input only. The resulting iOS editor/export/publisher experiment
+> was never a production Capture surface and was removed from the iPhone target
+> on 2026-07-30 after its facade export and simulated publishing behavior were
+> audited. The current authority is
+> [`EditorArchitecture.md`](./EditorArchitecture.md): Capture preserves and
+> hands off immutable sources; QuipslyStudio owns deep editing.
+
 ## 2026-06-06T16:56:04Z
 
 Integrate the Quipsly non-destructive video editor and native 360-degree video reframing workflows into the iOS `HighGroundCapture` app.

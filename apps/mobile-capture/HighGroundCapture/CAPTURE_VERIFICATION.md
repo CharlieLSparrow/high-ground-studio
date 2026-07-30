@@ -61,12 +61,12 @@ The final local run records exact results after all hardening changes settled. S
 | Gate | Command or proof | Result |
 |---|---|---|
 | Privacy manifest | `plutil -lint HighGroundCapture/PrivacyInfo.xcprivacy` | PASS — valid plist |
-| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 928/928 |
+| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 947/947 |
 | Redacted tester support contract | `pnpm quipsly:capture:support-snapshot:test` | PASS — exact output, bounded values, whitespace normalization, nonnegative recovery counts, and embedded privacy boundary |
 | Signed-out and Account support, deletion, and accessibility | focused `CaptureLoginExperienceUITests` plus `CaptureExperienceUITests` on iPhone 17 Pro / iOS 26.3.1 | PASS — 7/7; Google-first login, password recovery/creation, signed-out and Account support at accessibility XXXL, `hitRegion`, `sufficientElementDescription`, `textClipped`, both real system Share Sheets without an automatic send, persistent deletion truth, and critical actions clear of the tab bar |
 | Owner isolation | `node --test scripts/quipsly-ios-capture-account-isolation.test.mjs` | PASS — 15/15 |
 | iOS source durability | `node scripts/quipsly-ios-capture-durability-contract.test.mjs` | PASS — 73/73 |
-| Mobile source contracts | `node scripts/quipsly-mobile-capture-contract-smoke.mjs --source-only=1` | PASS — 74/74 source; 104/104 with local network |
+| Mobile source contracts | `node scripts/quipsly-mobile-capture-contract-smoke.mjs --source-only=1` | PASS — 75/75 source; live-network count unchanged pending the next authorized run |
 | Committed release isolation | `scripts/release/quipsly-capture-release-from-commit.test.sh` | PASS — exact SHA, dirty-source exclusion, argument/output preservation, cleanup |
 | Repository TypeScript authority | `bash scripts/ci/typecheck-typescript-7.sh` | PASS — 21/21 on pinned TypeScript 7.0.2 |
 | Security boundaries | `node --experimental-strip-types scripts/quipsly-mobile-capture-security.test.mjs` | PASS — 6/6 |
@@ -83,7 +83,10 @@ The final local run records exact results after all hardening changes settled. S
 | Canonical project-note editing | disposable real Firebase identity, current local Nest, loopback PostgreSQL, and focused iPhone Simulator journey | PASS — temporary title/body read back, exact title/body/revision/tags restored, stable block retained, 2 reversible receipts, zero external effects, database and Firebase residue absent |
 | Debug Simulator | generic iOS Simulator `xcodebuild` | PASS — arm64 and x86_64 |
 | Static analysis | generic iOS Simulator `xcodebuild analyze` | PASS |
-| Unsigned Release | generic iOS device, signing disabled | PASS — two deprecation warnings confined to deferred `ExportManager` / `NativeEditorView` prototypes |
+| Unsigned Release | generic iOS device, Release configuration, signing disabled | PASS — retired facade editor/export sources are absent and the current production graph emits no build warning |
+| UI-test build graph | iPhone 17 Pro / iOS 26.3.1 `build-for-testing` | PASS — only the current experience and room-runtime suites remain in the target; four stale facade-test files are removed |
+| Facade-removal regression | iPhone 17 Pro / iOS 26.3.1, focused login/account/support UI journeys | PASS — 7/7, zero skips; `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_09-53-33--0600.xcresult` |
+| Full mobile preflight | `bash scripts/quipsly-mobile-capture-preflight.sh` | PASS — all source contracts, repository tests, and clean dual-architecture Simulator build completed |
 | Capture UX, native auth, and Share extension | focused `CaptureExperienceUITests`, `CaptureLoginExperienceUITests`, and `ShareCaptureExtensionUITests` | PASS — 26/26, no skips; `/tmp/quipsly-account-deletion-full-ui.xcresult` |
 | Video source modes and consent | focused `CaptureExperienceUITests` on iPhone 16e simulator | PASS — 3/3; exact Audio / Solo video / Podcast camera explanations, separate video choice, and video-only consent cannot enable audio |
 | Finalized video truth and local watch path | static contracts, generic iOS Simulator build, and focused iPhone 17 Pro mode journey | PASS — actual MOV evidence and integrity holds are required for upload eligibility; AVPlayer Library path compiles; focused journey passes 1/1 |

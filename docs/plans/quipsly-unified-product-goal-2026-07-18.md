@@ -4332,3 +4332,37 @@ This is an active-goal checkpoint, not a completion claim.
   passes 928 checks including the typed privacy boundary and all operated UI
   journeys. Physical TestFlight inspection of the generated text remains
   required; no external message was sent during this checkpoint.
+
+### 2026-07-30 Capture facade-removal checkpoint
+
+- A production-boundary audit found an unreachable but compiled legacy iOS
+  graph containing a sample timeline/360 editor, a hard-coded
+  `/Users/wall-e/Dev/high-ground-studio/` media fallback, an exporter that could
+  skip every missing source and still report success, and a publisher that
+  waited two seconds before fabricating successful cloud dispatch. Its own old
+  handoff report explicitly called the exporter an integrity violation, yet the
+  code and stale facade tests had remained in the target.
+- The closed graph is removed rather than hidden: native editor, publisher,
+  publishing client, exporter, sample timeline models, obsolete iPhone/iPad
+  wrappers, mobile reframing compositor/shader, fake clip-preview board,
+  four stale tier-test files, and the obsolete handoff report are gone.
+  QuipslyStudio remains the deep editing/reframing/export authority; Nest
+  remains the collaborative episode and publishing-preparation authority.
+- Release contracts now inspect the actual `ContentView` root and require
+  `CapturePhoneShell`, active-recorder continuity across auth expiry, and
+  protected offline recovery. They fail if any retired file, fabricated
+  success marker, placeholder clip preview, prototype exporter marker, or
+  developer-machine fallback returns.
+- Architecture, project, original-request, verification, and iPhone/future-iPad
+  documents now describe this single production boundary. A future iPad studio
+  is a separately qualified product increment, not dormant sample UI inside
+  Capture.
+- Verification passes the 947-check App Store source gate, the 75-check mobile
+  source contract, generic dual-architecture Simulator build, current UI-test
+  `build-for-testing`, and unsigned generic-device Release build with no warning
+  emitted. A fresh seven-journey login, account, accessibility, and support
+  regression passes with zero skips at
+  `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_09-53-33--0600.xcresult`,
+  and the full mobile preflight completes. Build 14 remains the live rehearsal
+  artifact and was not replaced; this source cleanup is newer than the
+  distributed binary.

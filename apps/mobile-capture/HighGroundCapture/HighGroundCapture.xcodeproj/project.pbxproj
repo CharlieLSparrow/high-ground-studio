@@ -54,8 +54,6 @@
 		A11CE0010000000000000001 /* CaptureExperienceUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CaptureExperienceUITests.swift; sourceTree = "<group>"; };
 		02257ED28F7155C09E2C04AD /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		035ED62C8E00BB7B290AE2EB /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		145AB90F189310EFE693A1D3 /* Tier4_WorkloadTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tier4_WorkloadTests.swift; sourceTree = "<group>"; };
-		3C90D571C28ABD6A12F17616 /* Tier2_BoundaryTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tier2_BoundaryTests.swift; sourceTree = "<group>"; };
 		4667D2BA2FCA1B770008D8F0 /* HighGroundCapture.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HighGroundCapture.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6B2EF348CA5D2E9287A1DA85 /* ShareViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		795121FB5BD540E8A37ADF5E /* ShareCaptureExtension.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = ShareCaptureExtension.entitlements; sourceTree = "<group>"; };
@@ -63,8 +61,6 @@
 		A17F4C120000000000000001 /* QuipslyWebSource.js */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.javascript; path = QuipslyWebSource.js; sourceTree = "<group>"; };
 		A51BD55E77CCFF65A09181F2 /* HighGroundCaptureUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = HighGroundCaptureUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B6C4A3D1F00D7A0000000001 /* CaptureRoomRuntimeSmokeTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CaptureRoomRuntimeSmokeTests.swift; sourceTree = "<group>"; };
-		B443BC0A517355125F07E0AD /* Tier3_CrossFeatureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tier3_CrossFeatureTests.swift; sourceTree = "<group>"; };
-		E1C2F2CC15DFF0C28D925F29 /* Tier1_FeatureTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Tier1_FeatureTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -172,10 +168,6 @@
 			children = (
 				A11CE0010000000000000001 /* CaptureExperienceUITests.swift */,
 				B6C4A3D1F00D7A0000000001 /* CaptureRoomRuntimeSmokeTests.swift */,
-				B443BC0A517355125F07E0AD /* Tier3_CrossFeatureTests.swift */,
-				145AB90F189310EFE693A1D3 /* Tier4_WorkloadTests.swift */,
-				3C90D571C28ABD6A12F17616 /* Tier2_BoundaryTests.swift */,
-				E1C2F2CC15DFF0C28D925F29 /* Tier1_FeatureTests.swift */,
 			);
 			path = HighGroundCaptureUITests;
 			sourceTree = "<group>";

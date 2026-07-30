@@ -26,6 +26,7 @@ const files = {
   appStoreCommittedDraftRunner: path.join(root, "scripts/release/quipsly-capture-screenshots-from-commit.sh"),
   mobileCapturePreflight: path.join(root, "scripts/quipsly-mobile-capture-preflight.sh"),
   generatedMobileCaptureAuthSmoke: path.join(root, "scripts/quipsly-mobile-capture-generated-auth-smoke.mjs"),
+  contentView: path.join(sourceRoot, "ContentView.swift"),
   appDelegate: path.join(sourceRoot, "AppDelegate.swift"),
   authManager: path.join(sourceRoot, "AuthManager.swift"),
   loginView: path.join(sourceRoot, "LoginView.swift"),
@@ -54,8 +55,6 @@ const files = {
   localRecordingPlayback: path.join(sourceRoot, "LocalRecordingPlaybackController.swift"),
   mobileComponents: path.join(sourceRoot, "QuipslyMobileComponents.swift"),
   bridgeModels: path.join(sourceRoot, "BridgeModels.swift"),
-  iPhoneSession: path.join(sourceRoot, "IPhoneQuipslySessionView.swift"),
-  iPadSession: path.join(sourceRoot, "IPadQuipslyStudioView.swift"),
   mobileCaptureReadinessRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts"),
   mobileQuickEntryRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts"),
   mobileTodayRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/today/route.ts"),
@@ -158,6 +157,7 @@ const appStoreDraftMaterializerText = read(files.appStoreDraftMaterializer);
 const appStoreCommittedDraftRunnerText = read(files.appStoreCommittedDraftRunner);
 const mobileCapturePreflightText = read(files.mobileCapturePreflight);
 const generatedMobileCaptureAuthSmokeText = read(files.generatedMobileCaptureAuthSmoke);
+const contentViewText = read(files.contentView);
 const appDelegateText = read(files.appDelegate);
 const authText = read(files.authManager);
 const loginText = read(files.loginView);
@@ -183,8 +183,6 @@ const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
 const bridgeText = read(files.bridgeModels);
-const iPhoneText = read(files.iPhoneSession);
-const iPadText = read(files.iPadSession);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
 const mobileQuickEntryRouteText = read(files.mobileQuickEntryRoute);
 const mobileTodayRouteText = read(files.mobileTodayRoute);
@@ -215,6 +213,31 @@ const reviewerChecklistText = read(files.reviewerChecklist);
 const rehearsalRunbookText = read(files.rehearsalRunbook);
 const envExampleText = read(files.envExample);
 const mobileSwiftSourceTreeText = readSwiftSourceTree(sourceRoot);
+
+for (const retiredPrototypePath of [
+  "HighGroundCapture/ExportManager.swift",
+  "HighGroundCapture/NativeEditorView.swift",
+  "HighGroundCapture/NativePublishingView.swift",
+  "HighGroundCapture/PublishingNetworkClient.swift",
+  "HighGroundCapture/TimelineModels.swift",
+  "HighGroundCapture/AdaptiveQuipslyMobileShell.swift",
+  "HighGroundCapture/IPadQuipslyStudioView.swift",
+  "HighGroundCapture/IPhoneQuipslySessionView.swift",
+  "HighGroundCapture/ReframingEngine/ReframingCompositor.swift",
+  "HighGroundCapture/ReframingEngine/ReframingCompositionInstruction.swift",
+  "HighGroundCapture/ReframingEngine/ReframingShader.metal",
+  "HighGroundCaptureUITests/Tier1_FeatureTests.swift",
+  "HighGroundCaptureUITests/Tier2_BoundaryTests.swift",
+  "HighGroundCaptureUITests/Tier3_CrossFeatureTests.swift",
+  "HighGroundCaptureUITests/Tier4_WorkloadTests.swift",
+  "handoff.md",
+]) {
+  assert(
+    !fs.existsSync(path.join(iosRoot, retiredPrototypePath)),
+    "Retired facade editor, publisher, exporter, and stale-test sources must stay out of the Capture target.",
+    { forbidden: retiredPrototypePath },
+  );
+}
 
 let privacy;
 try {
@@ -737,9 +760,25 @@ for (const needle of [
   requireAnyIncludes(mobileText, [needle, needle.replace("\\(", "(")], "capture reviewer UI");
 }
 
-requireIncludes(iPhoneText, "CapturePhoneShell()", "legacy iPhone entrypoint is quarantined behind the capture-first shell");
-requireIncludes(iPadText, "MobileCaptureRunwayPanel", "iPad capture runway");
-requireIncludes(iPadText, "AppReviewProofPanel", "iPad App Review proof panel");
+requireIncludes(contentViewText, "CapturePhoneShell()", "the app root opens the production capture-first shell");
+requireIncludes(contentViewText, "ProtectedOfflineLibraryShell", "the app root preserves protected offline recovery");
+requireIncludes(contentViewText, "mustKeepRecorderVisible", "the app root keeps active local capture reachable across auth expiry");
+assert(
+  !mobileSwiftSourceTreeText.includes("Simulated Success:"),
+  "Capture must not compile a publisher that fabricates success.",
+);
+assert(
+  !mobileSwiftSourceTreeText.includes("This is a simplified sequential builder for the prototype"),
+  "Capture must not compile the retired facade exporter.",
+);
+assert(
+  !mobileSwiftSourceTreeText.includes("/Users/wall-e/Dev/high-ground-studio/"),
+  "Capture source must not contain a developer-machine media fallback.",
+);
+assert(
+  !mobileSwiftSourceTreeText.includes("Clip preview placeholder"),
+  "Capture must not present a placeholder clip preview as a product surface.",
+);
 for (const needle of [
   "CaptureRootTab.today",
   "CaptureRootTab.record",
@@ -1451,11 +1490,6 @@ requireIncludes(
   "reduceMotion ? nil : .easeOut(duration: 0.3)",
   "transcript evidence return has a non-animated reduced-motion path",
 );
-requireIncludes(
-  iPadText,
-  "withAnimation(reduceMotion ? nil : .default)",
-  "iPad recording focus has a non-animated reduced-motion path",
-);
 requireIncludes(bridgeText, "visibleRecordingIndicatorRequired", "readiness recording policy");
 requireIncludes(bridgeText, "api/account/deletion-request", "native deletion request client");
 requireIncludes(bridgeText, "prepareRoomJoin", "provider room join prep");
@@ -1700,7 +1734,7 @@ const report = {
     "capture diagnostics expose upload recovery, server verification, local retention, and transcript repair state",
     "tester support sharing is explicit, redacted, accessible, and excludes identity, source, path, and credential fields",
     "mobile readiness exposes calendar evidence readiness without making Calendar the source of truth",
-    "iPhone and iPad session surfaces show the capture runway",
+    "the iPhone app root exposes Capture and protected offline recovery without shipping facade editor or publisher surfaces",
     "privacy and account deletion routes are visible from app and web",
     "canonical App Store metadata is within field limits and records an explicit screenshot plan and blocker ledger",
     "reviewer readiness docs include native Firebase auth plus visible-session proof",

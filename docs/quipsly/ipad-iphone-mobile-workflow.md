@@ -1,51 +1,52 @@
-# Quipsly iPad and iPhone Workflow
+# Quipsly iPhone and Future iPad Workflow
 
-## Product direction
+Status: iPhone production boundary; iPad studio deferred
 
-Quipsly mobile should not be a squeezed web editor.
+Last reviewed: 2026-07-30
 
-- iPad is a production studio: manuscript center, media/sync/editor tools nearby,
-  inspector on the side, strong keyboard/pointer support, and a calm command rail.
-- iPhone is a session companion: manuscript first, clip cue visible, local audio
-  capture reliable, uploads resilient, and controls reachable by thumb.
+## Current product
 
-## Borrowed control ideas worth adapting
+Quipsly Capture currently targets iPhone only (`TARGETED_DEVICE_FAMILY = 1`).
+Its root is `ContentView` and its authenticated operating surface is
+`CapturePhoneShell`.
 
-We should borrow patterns, not product identity:
+The five destinations are Today, Record, Work, Library, and Account. They share
+canonical Nest identities for projects, Sessions, notes, tasks, goals, tags,
+annotations, and source evidence while the iPhone remains the trustworthy
+local/offline capture edge.
 
-- Three-pane editor structure on iPad: library/sidebar, work canvas, inspector.
-- Bottom or floating transport controls for play/record/scrub actions.
-- Inline media cards inside the writing surface.
-- Inspector panels for selected clip, tags, outline, and sync.
-- Focus mode that hides everything except the current block and cue.
-- Horizontal quick-action rails for touch-first workflows.
-- Persistent transport controls for play, scrub, record, and mark-break actions.
-- Keyboard shortcuts on iPad/Catalyst for play, step, record, and break markers.
-- Explicit upload/network status so creators trust capture sessions.
+Active local recording stays reachable if authentication expires. A recently
+verified actor may recover that actor's protected offline Library and journal
+private retry-safe work, but cannot mutate consent, rooms, uploads, or other
+network truth until Nest verifies the same identity again.
 
-## Quipsly-specific rule
+## Editing and publishing
 
-The living document remains the spine. Mobile controls should attach to the
-document, not create a separate mobile-only project shape.
+The iPhone does not compile a duplicate editor or publisher.
 
-## Current implementation
+- Nest owns collaborative episode writing, Session chat, research, notes,
+  goals, tasks, calendar, tags, annotations, and review state.
+- QuipslyStudio owns synchronized timeline editing, proof-watch/listen,
+  non-destructive decisions, reframing, export, and publishing preparation.
+- Capture owns immutable local sources, capture-clock evidence, marks,
+  recoverable upload, lightweight review, and explicit Studio handoff.
 
-The existing `HighGroundCapture` app now opens through
-`AdaptiveQuipslyMobileShell`:
+The retired iPad/sample editor graph used placeholder media and simulated export
+and publishing success. It was removed rather than hidden behind navigation.
 
-- iPad and regular-width layouts use `IPadQuipslyStudioView`.
-- iPhone and compact layouts use `IPhoneQuipslySessionView`.
-- Existing native pieces remain available:
-  - `NativeEditorView`
-  - `NativePublishingView`
-  - `UploadManager`
-  - timeline/reframing models
+## Future iPad decision
 
-## Next build steps
+An iPad production surface is a new qualified product increment, not an
+automatic expansion of the iPhone target. Research may justify a manuscript,
+cue, review, or control surface, but implementation must:
 
-1. Replace sample manuscript blocks with data loaded from Nest.
-2. Wire record buttons to `AudioCaptureController`.
-3. Render real clip cue embeds from the episode production payload.
-4. Persist mobile actions back to the same document/tag/media spine.
-5. Add pointer/keyboard shortcuts on iPad for editor actions.
-6. Add iPhone lock-screen/background capture affordances after basic flow is stable.
+1. use the canonical document, Session, source, lane, revision, and tag
+   identities;
+2. preserve immutable media and reversible editorial decisions;
+3. avoid a fourth timeline or publishing authority;
+4. meet keyboard, pointer, Dynamic Type, VoiceOver, interruption, thermal, and
+   long-source performance gates; and
+5. pass real-device and cross-device persisted-state proof before distribution.
+
+Until those gates exist, iPad users should use Nest for collaborative work and
+QuipslyStudio for deep production.

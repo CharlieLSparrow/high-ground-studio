@@ -20,7 +20,10 @@ The shipped iPhone navigation is deliberately limited to:
 4. **Library** — local sources and honest upload/verification state.
 5. **Account** — identity, network policy, storage, privacy, deletion, and sign out.
 
-The older manuscript, 360 editor, publishing, and reviewer-report prototypes are not Capture navigation. They remain separate Studio research and must not be treated as finished Capture features.
+Capture does not compile a second editor, publisher, sample manuscript, fake
+clip preview, or simulated-success export path. Those retired facades were
+removed from the iPhone target. Nest owns collaborative episode work and
+QuipslyStudio owns deep media editing, review, export, and publishing handoff.
 
 ## Implemented baseline
 
@@ -81,6 +84,7 @@ The local-original action and account deletion are intentionally different. Loca
   `docs/quipsly/long-source-verification-worker.md`.
 - Automatic local retention/pruning. The v1 app never silently deletes source recordings; its implemented deletion path is explicit, owner-only, one-original-at-a-time, and tombstoned.
 - End-user provider-egress controls.
-- Native editing, publishing, manuscript, and 360 reframing inside the Capture app.
+- A separately qualified iPad production surface, if product research later
+  proves it belongs outside QuipslyStudio.
 
 These are separate product increments. None may create a second, hidden definition of recording or upload success.

@@ -1,7 +1,7 @@
 # Quipsly Capture iPhone Architecture
 
 Status: implementation baseline
-Last reviewed: 2026-07-27
+Last reviewed: 2026-07-30
 Minimum OS: iOS 17
 Primary product: local-first, consent-aware audio and production-source capture for coaching, podcasts, research interviews, and creator video
 
@@ -23,7 +23,11 @@ The implemented iPhone candidate exposes five focused surfaces:
 4. **Library** — every local source, its upload state, size, duration, server verification, and recovery action.
 5. **Account** — identity, upload policy, storage, privacy, local-original controls, and in-app account-deletion request initiation.
 
-The native 360 editor, publishing prototype, sample manuscript, sample clips, reviewer reports, and simulated actions are not Capture v1 navigation. They may remain in source while separate Studio work continues, but the Capture app must not present prototype or fake-success surfaces as production features.
+Capture v1 does not compile a native 360 editor, publisher, sample manuscript,
+sample clips, placeholder preview, or simulated-success action. The retired
+facade graph was removed from the target rather than hidden behind navigation.
+Nest owns collaborative episode state and QuipslyStudio owns deep media editing,
+review, export, and publishing handoff.
 
 ## UX rules
 
@@ -307,7 +311,10 @@ Simulator proof is necessary for layout, state, auth shell, and API fixtures, bu
 
 ## Release gates
 
-1. iOS 17 generic device and current Simulator builds pass and their warning inventory is reviewed. The current unsigned Release proof has only two deprecation warnings, both in deferred editor/export prototype files outside Capture navigation.
+1. iOS 17 generic device and current Simulator builds pass and their warning
+   inventory is reviewed. The release contract also proves retired facade
+   editor, publisher, exporter, placeholder media, hard-coded developer paths,
+   and stale facade tests are absent from the Capture target.
 2. Focused capture UI tests and backend contract tests pass.
 3. A signed-in test account sees at least one real session.
 4. A physical iPhone produces a playable local source through lock/interruption testing.

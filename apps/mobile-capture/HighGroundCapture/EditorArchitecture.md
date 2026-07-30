@@ -1,27 +1,59 @@
-# Editor Architecture Proposal
+# Capture-to-Studio Editing Boundary
 
-## Native vs. Hybrid Evaluation
+Status: production boundary
 
-The application currently utilizes a `HybridWebView` for audio recording workflows, delegating UI to a web frontend and passing state via `WKScriptMessageHandler`. However, the new Editor UI has drastically different requirements:
+Last reviewed: 2026-07-30
 
-### Hybrid (WKWebView) Approach
-* **Pros**: Reuses potential existing web-based editor logic (Quipsly frontend), write-once-run-anywhere UI.
-* **Cons**:
-  * **Performance Latency**: The 360 Reframing Engine requires a pipeline between the UI timeline and Metal/AVFoundation. Passing high-frequency scrubbing events (60fps) and keyframe transforms (yaw, pitch, fov) across the JavaScript-to-Native bridge introduces unacceptable latency and jitter.
-  * **Synchronization**: Keeping a web-based timeline perfectly synced with a native video player during scrubbing and playback is notoriously difficult and error-prone.
+## Decision
 
-### Native (SwiftUI) Approach
-* **Pros**:
-  * **Tight Integration**: Direct, synchronous access to AVFoundation and Metal contexts.
-  * **Performance**: Butter-smooth 60fps scrubbing and UI updates, critical for a video editing experience.
-  * **State Management**: Complex timeline state (active vs. deactivated clips) can be efficiently managed via SwiftUI's `@State` or `@Observable` constructs, binding directly to the video player's time control status.
-* **Cons**: Requires building the Editor UI from scratch natively on iOS.
+Quipsly Capture is not a second nonlinear editor.
 
-### Recommendation
-**Native (SwiftUI) is the explicitly required approach.** The tight integration required with the 360 reframing engine (Metal/AVFoundation) and the high-performance demands of scrubbing a video timeline make the Hybrid approach non-viable.
+The iPhone owns consent-aware local recording, immutable-source preservation,
+recoverable upload, exact capture-clock and source evidence, light review, and
+an explicit handoff into the canonical Session. Nest owns collaborative
+writing, episode state, review decisions, and shared workflow. QuipslyStudio
+owns deep timeline editing, synchronized playback, reframing, export, and
+publishing preparation.
 
-## Base Data Models
+This boundary avoids three competing timeline implementations and keeps
+source-media truth independent from whichever editor renders it.
 
-The Quipsly non-destructive "toggle editor" paradigm dictates that we mark clips and transcript blocks as deactivated rather than removing the underlying source data. This allows users to recover edited-out sections seamlessly.
+## Non-destructive contract
 
-The models include `TimelineState`, `TimelineClip`, `TransformKeyframe`, `Transcript`, and `TranscriptBlock`. All data models are `Codable` and `Identifiable` (except `Transcript` which wraps an array of blocks). The non-destructive state is maintained using a `deactivated` boolean flag on elements. The models match the Cloud NLE Synchronization structure.
+Capture may record marks, source segments, camera-switch boundaries, clock
+samples, consent receipts, and alignment proposals. It never rewrites source
+bytes to express an edit.
+
+The canonical editing layer keeps stable source and lane identities. Editorial
+decisions such as SHOW, HIDE, trims, transcript overlays, or reframing
+keyframes are reversible projections over those immutable sources. Human review
+is required before a proposal becomes an editorial decision.
+
+## Handoff contract
+
+A Capture-to-Studio handoff is valid only when:
+
+1. the local source is finalized and independently playable;
+2. its owner, Session, source profile, byte count, duration, and digest remain
+   stable;
+3. Nest has a canonical, idempotent source/handoff receipt;
+4. Studio reloads the saved working session and reads back the same lane IDs,
+   roles, offsets, fingerprints, and provenance;
+5. proxy generation leaves the original unchanged; and
+6. export or publication remains a later, explicit, reviewable action.
+
+Capture must never label a placeholder, empty composition, missing asset,
+simulated response, or receipt slot as an exported or published result.
+
+## Retired implementation
+
+The original iOS editor experiment included a sample timeline, 360 compositor,
+hard-coded developer-machine media fallback, a publisher that simulated
+success, and UI tests that expected the facade result. That closed graph was
+unreachable from the production iPhone root and was removed from the target on
+2026-07-30.
+
+Future iPad editing work requires a separate product decision and the same
+source, revision, provenance, performance, accessibility, export-verification,
+and physical-device gates as QuipslyStudio. It may not re-enter Capture as an
+unqualified prototype.
