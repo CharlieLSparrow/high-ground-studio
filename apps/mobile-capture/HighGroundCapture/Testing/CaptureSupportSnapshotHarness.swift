@@ -21,6 +21,7 @@ private struct CaptureSupportSnapshotHarness {
         )
         let snapshot = CaptureSupportSnapshot(
             generatedAt: generatedAt,
+            surface: "Account",
             appVersion: "1.0",
             appBuild: "15",
             deviceModelIdentifier: "iPhone17,3",
@@ -38,6 +39,10 @@ private struct CaptureSupportSnapshotHarness {
         )
         let text = snapshot.shareText
 
+        try require(
+            text.contains("Surface: Account"),
+            "The snapshot must identify the product surface."
+        )
         try require(
             text.contains("App: 1.0 (15)"),
             "The snapshot must identify the exact app build."
@@ -61,6 +66,7 @@ private struct CaptureSupportSnapshotHarness {
 
         let newlineProbe = CaptureSupportSnapshot(
             generatedAt: generatedAt,
+            surface: "Sign-in",
             appVersion: "1.0\nunexpected line",
             appBuild: "",
             deviceModelIdentifier:
@@ -73,8 +79,8 @@ private struct CaptureSupportSnapshotHarness {
             videoCaptureState: "idle",
             roomState: "not connected",
             audioRoutePortType: nil,
-            localOriginalCount: 0,
-            recoverableUploadCount: 0,
+            localOriginalCount: nil,
+            recoverableUploadCount: nil,
             previewMode: true
         ).shareText
 
@@ -91,6 +97,18 @@ private struct CaptureSupportSnapshotHarness {
         try require(
             deviceLine.count == "Device: ".count + 256,
             "Runtime values must remain bounded."
+        )
+        try require(
+            newlineProbe.contains(
+                "Local originals: not inspected"
+            ),
+            "Signed-out support must distinguish uninspected private state from a truthful zero."
+        )
+        try require(
+            newlineProbe.contains(
+                "Recoverable uploads: not inspected"
+            ),
+            "Signed-out support must not invent an upload count."
         )
 
         print("PASS Capture support snapshot privacy contract")

@@ -1702,6 +1702,65 @@ final class CaptureLoginExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["QuipslyCapturePasswordResetButton"].exists)
     }
 
+    func testLoginOffersPrivacyBoundedSupportBeforeAuthenticationAtAccessibilityTextSize() throws {
+        let email =
+            app.textFields["QuipslyCaptureEmailField"]
+        reveal(email, swipingDownFirst: true)
+        email.tap()
+        email.typeText("private.tester@example.com")
+
+        let password =
+            app.secureTextFields[
+                "QuipslyCapturePasswordField"
+            ]
+        password.tap()
+        password.typeText("private password")
+
+        let disclosure =
+            app.buttons[
+                "QuipslyCaptureSignInSupportDisclosure"
+            ]
+        reveal(disclosure)
+        XCTAssertTrue(
+            disclosure.isHittable,
+            "Signed-out support must remain reachable at the largest accessibility text size."
+        )
+        disclosure.tap()
+
+        let boundary =
+            app.staticTexts[
+                "QuipslyCaptureSignInSupportPrivacyBoundary"
+            ]
+        reveal(boundary)
+        XCTAssertTrue(boundary.isHittable)
+        XCTAssertTrue(
+            boundary.label.contains("no email")
+        )
+        XCTAssertTrue(
+            boundary.label.contains("credential")
+        )
+
+        let share =
+            app.buttons[
+                "QuipslyCaptureShareSignInSupport"
+            ]
+        reveal(share)
+        XCTAssertTrue(share.isHittable)
+
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+
+        share.tap()
+        XCTAssertTrue(
+            app.otherElements["ActivityListView"]
+                .waitForExistence(timeout: 5),
+            "Signed-out diagnostics must open the real Share Sheet without attempting authentication or sending automatically."
+        )
+    }
+
     func testCreateAccountRequiresMatchingEightCharacterPassword() {
         let createMode = app.buttons["QuipslyCaptureCreateAccountModeButton"]
         reveal(createMode, swipingDownFirst: true)

@@ -4298,8 +4298,9 @@ This is an active-goal checkpoint, not a completion claim.
 
 ### 2026-07-30 privacy-bounded Capture support checkpoint
 
-- Current source adds a collapsed **Help & diagnostics** card to Account so a
-  TestFlight tester can share actionable install, sign-in, recording, room, or
+- Current source adds a collapsed **Help & diagnostics** card to Account and a
+  separate **Having trouble signing in?** disclosure before authentication so
+  a TestFlight tester can share actionable build, sign-in, recording, room, or
   upload state without manually copying private account or production data.
   Build 14 remains unchanged while Scott's rehearsal handoff is active.
 - The support payload is a standalone Foundation-only contract. Its initializer
@@ -4307,20 +4308,27 @@ This is an active-goal checkpoint, not a completion claim.
   capture/room state, local-original and recoverable-upload counts, and preview
   mode. It has no field for email, account/session/recording identity, source
   text, filename/path, credential, access token, refresh token, or named audio
-  route; every shared copy repeats that boundary.
+  route; every shared copy repeats that boundary. Signed-out support records
+  private local/upload counts as **not inspected** rather than inventing a
+  truthful-looking zero.
 - Operated iPhone 17 Pro / iOS 26.3.1 Simulator proof expanded the card, reached
   the Share action, passed Apple's `hitRegion`,
   `sufficientElementDescription`, and `textClipped` audits, and opened the real
   `ActivityListView` Share Sheet without sending anything. The same action and
-  privacy copy remained reachable at accessibility XXXL. A four-journey Account
-  regression also proved persistent deletion truth and kept deletion/sign-out
-  actions clear of the tab bar. Result:
-  `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_09-26-15--0600.xcresult`.
+  privacy copy remained reachable at accessibility XXXL. The signed-out
+  journey typed synthetic email/password values, opened its independent real
+  Share Sheet, and performed no authentication or automatic send. A combined
+  seven-journey login/Account regression also proved Google-first continuity,
+  password recovery/creation, persistent deletion truth, and controls clear of
+  the tab bar. Result:
+  `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_09-35-33--0600.xcresult`.
 - That run exposed and closed a real semantic defect: applying the disclosure
   identifier to the entire card overwrote the identities of all descendants.
   The header, Share action, privacy copy, and version now retain distinct
-  accessibility identities.
+  accessibility identities. The signed-out audit also found the older Help
+  footer had a text-sized hit target; Help, Privacy, and Terms now provide
+  explicit 44-point interactive regions.
 - The executable payload contract passes, and the App Store source gate now
-  passes 911 checks including the typed privacy boundary and both operated UI
+  passes 928 checks including the typed privacy boundary and all operated UI
   journeys. Physical TestFlight inspection of the generated text remains
   required; no external message was sent during this checkpoint.

@@ -787,6 +787,7 @@ for (const needle of [
 for (const needle of [
   "CaptureSupportSnapshot",
   "privacyBoundary",
+  "Surface:",
   "Audio route type:",
   "Local originals:",
   "Recoverable uploads:",
@@ -820,10 +821,42 @@ for (const forbidden of [
 for (const needle of [
   "testAccountOffersPrivacyBoundedSupportSnapshot",
   "testSupportSnapshotRemainsReachableAtLargestAccessibilityTextSize",
+  "testLoginOffersPrivacyBoundedSupportBeforeAuthenticationAtAccessibilityTextSize",
   "ActivityListView",
   "performAccessibilityAudit",
 ]) {
   requireIncludes(deterministicUITestsText, needle, "operated and accessible Capture support coverage");
+}
+for (const needle of [
+  "Having trouble signing in?",
+  "Share sign-in diagnostics",
+  "QuipslyCaptureSignInSupportDisclosure",
+  "QuipslyCaptureShareSignInSupport",
+  "QuipslyCaptureSignInSupportPrivacyBoundary",
+  "localOriginalCount: nil",
+  "recoverableUploadCount: nil",
+  ".frame(minWidth: 44, minHeight: 44)",
+]) {
+  requireIncludes(loginText, needle, "privacy-bounded signed-out support UX");
+}
+const signInSupportSnapshotBlock = loginText.slice(
+  loginText.indexOf("private var signInSupportSnapshot:"),
+  loginText.indexOf("private var canSubmitPasswordAuth:"),
+);
+for (const forbidden of [
+  "email",
+  "password",
+  "userEmail",
+  "accountOwnerID",
+  "errorMessage",
+  "statusMessage",
+  "recentlyCreatedEmail",
+]) {
+  assert(
+    !signInSupportSnapshotBlock.includes(forbidden),
+    "Signed-out support payload must not read typed identity, credential, or authentication-message state.",
+    { forbidden },
+  );
 }
 for (const needle of [
   "recordingConsentCanRecordVideo == true",

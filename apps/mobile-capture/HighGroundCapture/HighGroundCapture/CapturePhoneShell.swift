@@ -6098,6 +6098,7 @@ private struct CaptureAccountView: View {
         let runtime = CaptureRuntimeEvidence.current()
         return CaptureSupportSnapshot(
             generatedAt: Date(),
+            surface: "Account",
             appVersion: runtime.appVersion,
             appBuild: runtime.appBuild,
             deviceModelIdentifier:

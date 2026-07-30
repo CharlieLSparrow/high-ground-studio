@@ -185,6 +185,85 @@ struct LoginView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(14)
                     .background(.teal.opacity(0.08), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+
+                    DisclosureGroup {
+                        VStack(alignment: .leading, spacing: 12) {
+                            Text("Share a small redacted snapshot if Quipsly will not sign in. It never includes the email or password you typed.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .fixedSize(
+                                    horizontal: false,
+                                    vertical: true
+                                )
+
+                            LabeledContent(
+                                "App",
+                                value: versionLine
+                            )
+                            LabeledContent(
+                                "Nest",
+                                value: supportNestHost
+                            )
+
+                            ShareLink(
+                                item:
+                                    signInSupportSnapshot
+                                        .shareText,
+                                subject: Text(
+                                    "Quipsly Capture sign-in support snapshot"
+                                )
+                            ) {
+                                Label(
+                                    "Share sign-in diagnostics",
+                                    systemImage:
+                                        "square.and.arrow.up"
+                                )
+                                .frame(
+                                    maxWidth: .infinity,
+                                    alignment: .center
+                                )
+                            }
+                            .buttonStyle(.bordered)
+                            .accessibilityHint(
+                                "Opens the iPhone share sheet with redacted build, device, system, and Nest-host diagnostics."
+                            )
+                            .accessibilityIdentifier(
+                                "QuipslyCaptureShareSignInSupport"
+                            )
+
+                            Text(
+                                CaptureSupportSnapshot
+                                    .privacyBoundary
+                            )
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                            .accessibilityIdentifier(
+                                "QuipslyCaptureSignInSupportPrivacyBoundary"
+                            )
+                        }
+                        .padding(.top, 10)
+                    } label: {
+                        Label(
+                            "Having trouble signing in?",
+                            systemImage: "lifepreserver"
+                        )
+                        .font(.subheadline.weight(.semibold))
+                        .accessibilityIdentifier(
+                            "QuipslyCaptureSignInSupportDisclosure"
+                        )
+                    }
+                    .padding(14)
+                    .background(
+                        .regularMaterial,
+                        in: RoundedRectangle(
+                            cornerRadius: 14,
+                            style: .continuous
+                        )
+                    )
                 }
                 .padding(.top, 36)
 
@@ -317,10 +396,22 @@ struct LoginView: View {
 
     @ViewBuilder
     private var legalLinks: some View {
-        Link("Help", destination: URL(string: "https://www.quipsly.com/support")!)
+        Link(destination: URL(string: "https://www.quipsly.com/support")!) {
+            Text("Help")
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
             .accessibilityIdentifier("QuipslyCaptureAccountSupportLink")
-        Link("Privacy", destination: URL(string: "https://www.quipsly.com/privacy")!)
-        Link("Terms", destination: URL(string: "https://www.quipsly.com/terms")!)
+        Link(destination: URL(string: "https://www.quipsly.com/privacy")!) {
+            Text("Privacy")
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
+        Link(destination: URL(string: "https://www.quipsly.com/terms")!) {
+            Text("Terms")
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+        }
     }
 
     private var passwordModeDescription: String {
@@ -335,6 +426,64 @@ struct LoginView: View {
     private var primaryActionTitle: String {
         if authManager.isAuthenticating { return "Working…" }
         return passwordMode == .createAccount ? "Create free account" : "Sign in"
+    }
+
+    private var versionLine: String {
+        let version =
+            Bundle.main.object(
+                forInfoDictionaryKey:
+                    "CFBundleShortVersionString"
+            ) as? String
+            ?? "unknown"
+        let build =
+            Bundle.main.object(
+                forInfoDictionaryKey: "CFBundleVersion"
+            ) as? String
+            ?? "unknown"
+        return "Quipsly Capture \(version) (\(build))"
+    }
+
+    private var supportNestHost: String {
+        let baseURL = normalizedNestBaseURL(
+            ProcessInfo.processInfo.environment[
+                "QUIPSLY_API_BASE_URL"
+            ]
+                ?? (
+                    Bundle.main.object(
+                        forInfoDictionaryKey:
+                            "QUIPSLY_API_BASE_URL"
+                    ) as? String
+                )
+                ?? "https://nest.quipsly.com"
+        )
+        return URL(string: baseURL)?.host
+            ?? "configured Nest"
+    }
+
+    private var signInSupportSnapshot: CaptureSupportSnapshot {
+        let runtime = CaptureRuntimeEvidence.current()
+        return CaptureSupportSnapshot(
+            generatedAt: Date(),
+            surface: "Sign-in",
+            appVersion: runtime.appVersion,
+            appBuild: runtime.appBuild,
+            deviceModelIdentifier:
+                runtime.deviceModelIdentifier,
+            systemName: runtime.systemName,
+            systemVersion: runtime.systemVersion,
+            accountAccessMode:
+                authManager.accessMode.rawValue,
+            nestHost: supportNestHost,
+            audioCaptureState: "not started",
+            videoCaptureState: "not started",
+            roomState: "not connected",
+            audioRoutePortType: nil,
+            localOriginalCount: nil,
+            recoverableUploadCount: nil,
+            previewMode:
+                CaptureLaunchConfiguration
+                    .usesLoginPreview
+        )
     }
 
     private var canSubmitPasswordAuth: Bool {

@@ -7,6 +7,7 @@ import Foundation
 /// coarse runtime and recovery state that is useful for TestFlight support.
 struct CaptureSupportSnapshot {
     let generatedAt: Date
+    let surface: String
     let appVersion: String
     let appBuild: String
     let deviceModelIdentifier: String
@@ -18,14 +19,15 @@ struct CaptureSupportSnapshot {
     let videoCaptureState: String
     let roomState: String
     let audioRoutePortType: String?
-    let localOriginalCount: Int
-    let recoverableUploadCount: Int
+    let localOriginalCount: Int?
+    let recoverableUploadCount: Int?
     let previewMode: Bool
 
     var shareText: String {
         [
             "Quipsly Capture support snapshot",
             "Created: \(Self.timestamp(generatedAt))",
+            "Surface: \(Self.clean(surface))",
             "App: \(Self.clean(appVersion)) (\(Self.clean(appBuild)))",
             "Device: \(Self.clean(deviceModelIdentifier))",
             "System: \(Self.clean(systemName)) \(Self.clean(systemVersion))",
@@ -35,8 +37,8 @@ struct CaptureSupportSnapshot {
             "Video capture: \(Self.clean(videoCaptureState))",
             "Live room: \(Self.clean(roomState))",
             "Audio route type: \(Self.clean(audioRoutePortType ?? "none"))",
-            "Local originals: \(max(0, localOriginalCount))",
-            "Recoverable uploads: \(max(0, recoverableUploadCount))",
+            "Local originals: \(Self.count(localOriginalCount))",
+            "Recoverable uploads: \(Self.count(recoverableUploadCount))",
             "Preview mode: \(previewMode ? "yes" : "no")",
             "",
             Self.privacyBoundary,
@@ -55,6 +57,13 @@ struct CaptureSupportSnapshot {
         return collapsed.isEmpty
             ? "unknown"
             : String(collapsed.prefix(256))
+    }
+
+    private static func count(_ value: Int?) -> String {
+        guard let value else {
+            return "not inspected"
+        }
+        return String(max(0, value))
     }
 
     private static func timestamp(_ date: Date) -> String {
