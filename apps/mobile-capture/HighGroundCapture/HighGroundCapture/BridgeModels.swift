@@ -1375,6 +1375,28 @@ struct MobileCaptureWorkTagTaxonomyResponse: Codable {
     let receiptId: String?
 }
 
+struct MobileCaptureWorkTagCreateResponse: Codable {
+    struct Tag: Codable {
+        let id: String
+        let label: String
+        let slug: String
+        let isActive: Bool
+        let archivedAt: String?
+        let updatedAt: String
+        let aliases: [MobileCaptureWorkTagAlias]
+    }
+
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let projectId: String?
+    let tag: Tag?
+    let aliases: [MobileCaptureWorkTagAlias]?
+    let created: Bool?
+    let revision: Int?
+    let receiptId: String?
+}
+
 struct MobileCaptureWorkWorkspace: Codable, Hashable {
     let project: MobileCaptureWorkProject
     let tasks: [MobileCaptureTodayTask]
@@ -4289,6 +4311,99 @@ final class CaptureWorkClient: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
             return nil
+        }
+    }
+
+    @discardableResult
+    func createTagVocabulary(
+        projectID: String,
+        label: String
+    ) async -> Bool {
+        guard !isMutatingTagVocabulary else { return false }
+        guard !projectID.hasPrefix("preview-") else {
+            tagVocabularyMessage = "Preview only — no canonical tag or assignment was created."
+            return false
+        }
+        guard !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed,
+              workspace?.project.id == projectID,
+              workspace?.project.canWrite == true,
+              brief?.boundaries?.onlineVocabularyManagement == true else {
+            tagVocabularyMessage = "Reconnect to Nest before creating shared vocabulary. This change requires a live editor grant and is never queued offline."
+            return false
+        }
+        let normalizedLabel = label
+            .precomposedStringWithCompatibilityMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(
+                of: #"^#+\s*"#,
+                with: "",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"\s+"#,
+                with: " ",
+                options: .regularExpression
+            )
+        guard !normalizedLabel.isEmpty,
+              normalizedLabel.utf16.count <= 80,
+              let url = URL(string: "\(baseURL)/api/work/tags") else {
+            tagVocabularyMessage = "Enter a reusable tag name of 80 characters or fewer."
+            return false
+        }
+
+        isMutatingTagVocabulary = true
+        defer { isMutatingTagVocabulary = false }
+        errorMessage = nil
+        tagVocabularyMessage = nil
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "operation": "CREATE",
+                "projectId": projectID,
+                "label": normalizedLabel,
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(
+                MobileCaptureWorkTagCreateResponse.self,
+                from: data
+            )
+            guard response.statusCode < 400,
+                  payload.ok,
+                  payload.projectId == projectID,
+                  let savedTag = payload.tag,
+                  savedTag.isActive,
+                  !savedTag.id.isEmpty,
+                  !savedTag.label.isEmpty,
+                  !savedTag.slug.isEmpty,
+                  payload.created != nil else {
+                tagVocabularyMessage = payload.error
+                    ?? "Nest did not acknowledge this canonical tag. Refresh before trying again."
+                if response.statusCode == 409 {
+                    await load(projectID: selectedProjectID)
+                }
+                return false
+            }
+            if payload.created == true {
+                guard let receiptID = payload.receiptId,
+                      !receiptID.isEmpty,
+                      payload.revision == 1 else {
+                    tagVocabularyMessage = "Nest created a tag without complete history evidence. Refresh before using it."
+                    await load(projectID: projectID)
+                    return false
+                }
+                tagVocabularyMessage = "Created #\(savedTag.label) in \(workspace?.project.name ?? "this Nest"). It is not attached to any record until you choose it."
+            } else {
+                tagVocabularyMessage = "Reused existing #\(savedTag.label). No duplicate tag or record assignment was created."
+            }
+            await load(projectID: projectID)
+            return true
+        } catch {
+            tagVocabularyMessage = "Nest could not verify this vocabulary creation. Nothing is queued offline and no assignment was changed."
+            return false
         }
     }
 

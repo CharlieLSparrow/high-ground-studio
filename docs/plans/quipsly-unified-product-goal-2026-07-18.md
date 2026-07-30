@@ -4737,3 +4737,36 @@ was restored.
   the canonical vocabulary slice. It does not claim a physical TestFlight
   installation, real two-person consent/capture, or completion of the required
   real HGO and coaching workflows.
+
+### 2026-07-30 deliberate iPhone vocabulary authoring checkpoint
+
+- Closed the remaining vocabulary bootstrap gap in iPhone Work. An Owner or
+  Editor can now create a reusable canonical tag before a Task, Goal, Note,
+  Session, or document exists. The operation reuses current labels and former
+  aliases, refuses a retired identity rather than duplicating it, and creates
+  no assignment or external side effect.
+- The server rechecks the active project grant inside the same serializable
+  transaction that resolves the identity and records append-only revision 1.
+  New identities return a unique receipt; exact retries return the same
+  identity and revision without adding history.
+- Global Search sees a newly created, unassigned tag immediately and remains
+  constrained to the actor's visible Nests. A separate actor receives no
+  identity or search disclosure.
+- Capture exposes this as a deliberate **Build this vocabulary** section in
+  the project-scoped manager. The UI previews alias reuse and retired-tag
+  restoration, states that the change is live and never queued offline, and
+  explicitly names the Task, Goal, Note, assignment, calendar, message, and
+  publication boundaries.
+- Focused route tests pass 14/14, the real PostgreSQL taxonomy suite passes
+  11/11, TypeScript 7 application checking passes, the native production
+  target builds, and the complete Work XCUITest passes on iPhone 17 Pro.
+- Operated durable QA created tag `Capture vocabulary dogfood`
+  (`cms8666060000x6xlax1zfsxi`) in `High Ground real-work dogfood` as
+  `quipsly.qa@local.test`. A second run reused the same identity at revision 1.
+  Task, Goal, Session, Note, and document assignment counts remained unchanged
+  at zero. This clearly labeled artifact is intentionally retained for future
+  cross-surface regression and real-work testing.
+- This checkpoint is local product proof. Build 16 remains the current
+  production/TestFlight target until this exact source is committed, receives
+  full release qualification, is deployed at zero traffic, and passes the
+  external beta readback.

@@ -118,6 +118,13 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - Build 16 passed 45/45 operated UI journeys, signed artifact verification,
     App Store processing, external beta approval, group assignment, automatic
     notification, and uncached public-link readback
+  - the next exact-source slice adds deliberate iPhone canonical vocabulary
+    authoring without a placeholder record: live grant recheck, serializable
+    create/reuse, append-only history, no assignment, immediate
+    permission-filtered Search discovery, and no offline replay
+  - durable local QA retained `Capture vocabulary dogfood` in
+    `High Ground real-work dogfood` under `quipsly.qa@local.test`; a second run
+    reused the same tag identity and left all five assignment counts unchanged
   - `b2313033` adds permission-correct annotation Resolve/Reopen on iPhone,
     canonical tags, exact Nest Research links, and real-Firebase/local-Postgres
     operated proof with complete cleanup
@@ -133,10 +140,11 @@ Verified during the Codex application handoff prep on 2026-05-26.
     writing document and citation block through a protected actor-partitioned
     iPhone outbox, exact acknowledgement, serializable idempotent transaction,
     and reversible human operation without changing the source
-  - current checks: tag route and real PostgreSQL lifecycle 25/25, pinned
-    TypeScript 7, mobile source contract 76/76, App Store static 947/947,
-    45/45 serialized UI journeys, signed IPA inspection, authenticated
-    production acceptance, and TestFlight readback all pass
+  - current checks: direct-create route 14/14, real PostgreSQL taxonomy 11/11,
+    durable QA 2/2 create/reuse operations, pinned TypeScript 7, mobile source
+    contract, focused Work XCUITest, App Store static 947/947, Build 16's 45/45
+    serialized UI journeys, signed IPA inspection, authenticated production
+    acceptance, and TestFlight readback all pass
   - deploy status: exact source `356f6d82` is deployed and distributed
   - rollback: previous proven Nest revision is `studio-00454-kom`; Build 15
     remains documented and available historically in App Store Connect

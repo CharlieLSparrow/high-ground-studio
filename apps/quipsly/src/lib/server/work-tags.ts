@@ -44,6 +44,29 @@ export type CreateAndAssignWorkTagResult =
 export type WorkTagTaxonomyOperation = "RENAME" | "ARCHIVE" | "RESTORE";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export type CreateWorkTagTaxonomyResult =
+  | {
+      ok: true;
+      projectId: string;
+      tag: {
+        id: string;
+        label: string;
+        slug: string;
+        isActive: boolean;
+        archivedAt: Date | null;
+        updatedAt: Date;
+      };
+      aliases: Array<{ id: string; label: string; slug: string }>;
+      created: boolean;
+      revision: number;
+      receiptId: string | null;
+    }
+  | {
+      ok: false;
+      code: "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "ARCHIVED" | "SLUG_CONFLICT";
+      error: string;
+    };
+
 export type MutateWorkTagTaxonomyResult =
   | {
       ok: true;
@@ -205,6 +228,168 @@ async function writableProjectIds(prisma: PrismaClient, actorEmail: string) {
   return new Set(visibleProjects
     .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
     .map((project) => project.id));
+}
+
+/**
+ * Create or reuse one project-scoped canonical tag without attaching it to a
+ * record. This is deliberately online-only vocabulary authoring: the active
+ * editor grant is rechecked inside the serializable transaction, creation
+ * receives append-only history, and aliases or merge redirects converge on
+ * their existing canonical identity.
+ */
+export async function createWorkTagTaxonomy(input: {
+  prisma: PrismaClient;
+  actorUserId: string;
+  actorEmail: string;
+  projectId: string;
+  label: unknown;
+}): Promise<CreateWorkTagTaxonomyResult> {
+  const actorUserId = cleanId(input.actorUserId);
+  const actorEmail = typeof input.actorEmail === "string"
+    ? input.actorEmail.trim().toLowerCase()
+    : "";
+  const projectId = cleanId(input.projectId);
+  const label = normalizeWorkTagLabel(input.label);
+  if (!actorUserId || !actorEmail || !projectId || !label) {
+    return {
+      ok: false,
+      code: "INVALID_INPUT",
+      error: "Enter a reusable tag name of 80 characters or fewer.",
+    };
+  }
+
+  const visibleProjects = await listProjectsVisibleToEmail(
+    actorEmail,
+    input.prisma,
+  );
+  const visibleProject = visibleProjects.find((project) => project.id === projectId);
+  if (!visibleProject) {
+    return {
+      ok: false,
+      code: "NOT_FOUND",
+      error: "That Nest is not available to this account.",
+    };
+  }
+  if (visibleProject.role !== "OWNER" && visibleProject.role !== "EDITOR") {
+    return {
+      ok: false,
+      code: "FORBIDDEN",
+      error: "Editor access to this Nest is required to create reusable vocabulary.",
+    };
+  }
+
+  const prisma = input.prisma as any;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const result = await prisma.$transaction(async (tx: any) => {
+        const activeGrant = await tx.studioProjectAccessGrant.findFirst({
+          where: {
+            projectId,
+            email: actorEmail,
+            status: "ACTIVE",
+            role: { in: ["OWNER", "EDITOR"] },
+          },
+          select: { id: true },
+        });
+        if (!activeGrant) return { kind: "forbidden" as const };
+
+        const resolved = await resolveReusableProjectTag({
+          tx,
+          projectId,
+          label,
+        });
+        if (!resolved.ok) return { kind: "rejected" as const, result: resolved };
+
+        let receiptId: string | null = null;
+        let revision = 0;
+        if (resolved.created) {
+          receiptId = randomUUID();
+          revision = 1;
+          await tx.studioTagRevision.create({
+            data: {
+              tagId: resolved.tag.id,
+              revision,
+              operation: "create",
+              actorUserId,
+              snapshotJson: {
+                kind: "quipsly-tag-taxonomy-v1",
+                receiptId,
+                projectId,
+                before: null,
+                after: {
+                  label: resolved.tag.label,
+                  slug: resolved.tag.slug,
+                  isActive: true,
+                  archivedAt: null,
+                },
+                assignmentChanged: false,
+                externalSideEffects: false,
+              },
+            },
+          });
+        } else {
+          const latest = await tx.studioTagRevision.aggregate({
+            where: { tagId: resolved.tag.id },
+            _max: { revision: true },
+          });
+          revision = latest._max.revision ?? 0;
+        }
+
+        const saved = await tx.studioTag.findUnique({
+          where: { id: resolved.tag.id },
+          select: {
+            id: true,
+            label: true,
+            slug: true,
+            isActive: true,
+            archivedAt: true,
+            updatedAt: true,
+            aliases: {
+              orderBy: { createdAt: "asc" },
+              select: { id: true, label: true, slug: true },
+            },
+          },
+        });
+        return {
+          kind: "saved" as const,
+          saved,
+          created: resolved.created,
+          revision,
+          receiptId,
+        };
+      }, { isolationLevel: "Serializable", timeout: 30_000 });
+
+      if (result.kind === "forbidden") {
+        return {
+          ok: false,
+          code: "FORBIDDEN",
+          error: "Editor access to this Nest is required to create reusable vocabulary.",
+        };
+      }
+      if (result.kind === "rejected") return result.result;
+      if (!result.saved) {
+        return {
+          ok: false,
+          code: "NOT_FOUND",
+          error: "The canonical tag could not be read after creation.",
+        };
+      }
+      return {
+        ok: true,
+        projectId,
+        tag: result.saved,
+        aliases: result.saved.aliases,
+        created: result.created,
+        revision: result.revision,
+        receiptId: result.receiptId,
+      };
+    } catch (error) {
+      const code = String(safeRecord(error).code || "");
+      if (attempt === 0 && (code === "P2002" || code === "P2034")) continue;
+      throw error;
+    }
+  }
+  throw new Error("The bounded canonical tag creation retry was exhausted.");
 }
 
 function entityWhere(entityKind: WorkTagEntityKind, entityId: string, actorUserId: string) {

@@ -295,6 +295,17 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(manageVocabulary.isHittable, "Shared vocabulary management must be directly reachable from the tag lens.")
         manageVocabulary.tap()
         XCTAssertTrue(app.navigationBars["Tag vocabulary"].waitForExistence(timeout: 5))
+        let previewCreateField = app.textFields["CaptureTagVocabularyCreateField"]
+        XCTAssertTrue(
+            previewCreateField.waitForExistence(timeout: 3),
+            "Work vocabulary must expose deliberate canonical tag creation before a record exists."
+        )
+        let previewCreateTag = app.buttons["CaptureTagVocabularyCreate"]
+        XCTAssertTrue(previewCreateTag.exists)
+        XCTAssertFalse(
+            previewCreateTag.isEnabled,
+            "Preview must explain direct vocabulary creation without pretending to mutate the Nest."
+        )
         XCTAssertTrue(app.descendants(matching: .any)["CaptureTagVocabularyAliases_preview-episode-4"].exists)
         let previewManageTag = app.buttons["CaptureTagVocabularyManage_preview-episode-4"]
         XCTAssertTrue(previewManageTag.exists)

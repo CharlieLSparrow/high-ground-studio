@@ -2365,6 +2365,11 @@ struct TodayFollowThroughCard: View {
 }
 
 private struct CaptureTagVocabularySheet: View {
+    private enum FocusedField: Hashable {
+        case create
+        case rename
+    }
+
     @ObservedObject var client: CaptureWorkClient
     let project: MobileCaptureWorkProject
     let tags: [MobileCaptureWorkTag]
@@ -2373,11 +2378,12 @@ private struct CaptureTagVocabularySheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var searchText = ""
     @State private var showsRetired = false
+    @State private var createLabel = ""
     @State private var renameTagID: String?
     @State private var renameLabel = ""
     @State private var archiveCandidate: MobileCaptureWorkTag?
     @State private var showsArchiveConfirmation = false
-    @FocusState private var renameFieldIsFocused: Bool
+    @FocusState private var focusedField: FocusedField?
 
     private var visibleTags: [MobileCaptureWorkTag] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2399,6 +2405,39 @@ private struct CaptureTagVocabularySheet: View {
 
     private var mutationsDisabled: Bool {
         readOnly || client.isMutatingTagVocabulary
+    }
+
+    private var normalizedCreateLabel: String {
+        createLabel
+            .precomposedStringWithCompatibilityMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(
+                of: #"^#+\s*"#,
+                with: "",
+                options: .regularExpression
+            )
+            .replacingOccurrences(
+                of: #"\s+"#,
+                with: " ",
+                options: .regularExpression
+            )
+    }
+
+    private var matchingCreateTag: MobileCaptureWorkTag? {
+        guard !normalizedCreateLabel.isEmpty else { return nil }
+        return tags.first { tag in
+            tag.label.localizedCaseInsensitiveCompare(normalizedCreateLabel) == .orderedSame
+                || (tag.aliases ?? []).contains {
+                    $0.label.localizedCaseInsensitiveCompare(normalizedCreateLabel) == .orderedSame
+                }
+        }
+    }
+
+    private var createDisabled: Bool {
+        mutationsDisabled
+            || normalizedCreateLabel.isEmpty
+            || normalizedCreateLabel.utf16.count > 80
+            || matchingCreateTag?.isActive == false
     }
 
     var body: some View {
@@ -2426,6 +2465,69 @@ private struct CaptureTagVocabularySheet: View {
                     }
                 }
 
+                if !showsRetired {
+                    Section {
+                        TextField("e.g. Recording day", text: $createLabel)
+                            .textInputAutocapitalization(.sentences)
+                            .autocorrectionDisabled(false)
+                            .focused($focusedField, equals: .create)
+                            .accessibilityLabel("New canonical tag")
+                            .accessibilityIdentifier("CaptureTagVocabularyCreateField")
+                        if let matchingCreateTag {
+                            Label(
+                                matchingCreateTag.isActive
+                                    ? "Existing #\(matchingCreateTag.label) will be reused—no duplicate."
+                                    : "#\(matchingCreateTag.label) is retired. Restore it instead of creating a duplicate.",
+                                systemImage: matchingCreateTag.isActive
+                                    ? "arrow.triangle.2.circlepath"
+                                    : "archivebox"
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(matchingCreateTag.isActive ? .blue : .orange)
+                        } else if !normalizedCreateLabel.isEmpty {
+                            Text("#\(normalizedCreateLabel) will join this Nest’s private vocabulary without being attached to a record.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        if normalizedCreateLabel.utf16.count > 80 {
+                            Label(
+                                "Keep reusable tag names to 80 characters.",
+                                systemImage: "exclamationmark.triangle.fill"
+                            )
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                        }
+                        Button {
+                            let requestedLabel = normalizedCreateLabel
+                            focusedField = nil
+                            Task {
+                                if await client.createTagVocabulary(
+                                    projectID: project.id,
+                                    label: requestedLabel
+                                ) {
+                                    createLabel = ""
+                                }
+                            }
+                        } label: {
+                            Label(
+                                matchingCreateTag == nil
+                                    ? "Create canonical tag"
+                                    : "Reuse canonical tag",
+                                systemImage: matchingCreateTag == nil
+                                    ? "plus.circle.fill"
+                                    : "arrow.triangle.2.circlepath"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(createDisabled)
+                        .accessibilityIdentifier("CaptureTagVocabularyCreate")
+                    } header: {
+                        Text("Build this vocabulary")
+                    } footer: {
+                        Text("Creation is verified live, recorded in tag history, and never queued offline. It creates no Task, Goal, Note, assignment, calendar event, message, or publication.")
+                    }
+                }
+
                 Section {
                     Picker("Vocabulary", selection: $showsRetired) {
                         Text("Active").tag(false)
@@ -2443,7 +2545,7 @@ private struct CaptureTagVocabularySheet: View {
                             description: Text(
                                 showsRetired
                                     ? "Archived names and merge redirects will remain visible here."
-                                    : "Create and assign a reusable tag from any task, goal, or note."
+                                    : "Create the first canonical tag above, then assign it wherever the work belongs."
                             )
                         )
                     } else {
@@ -2485,7 +2587,7 @@ private struct CaptureTagVocabularySheet: View {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") {
-                        renameFieldIsFocused = false
+                        focusedField = nil
                     }
                     .accessibilityIdentifier("CaptureTagVocabularyKeyboardDone")
                 }
@@ -2531,7 +2633,7 @@ private struct CaptureTagVocabularySheet: View {
                             renameLabel = tag.label
                             Task {
                                 await Task.yield()
-                                renameFieldIsFocused = true
+                                focusedField = .rename
                             }
                         } label: {
                             Label("Rename", systemImage: "pencil")
@@ -2573,18 +2675,18 @@ private struct CaptureTagVocabularySheet: View {
                     TextField("Canonical tag name", text: $renameLabel)
                         .textInputAutocapitalization(.sentences)
                         .autocorrectionDisabled(false)
-                        .focused($renameFieldIsFocused)
+                        .focused($focusedField, equals: .rename)
                         .accessibilityIdentifier("CaptureTagVocabularyRenameField")
                     HStack {
                         Button("Cancel") {
-                            renameFieldIsFocused = false
+                            focusedField = nil
                             renameTagID = nil
                             renameLabel = ""
                         }
                         Spacer()
                         Button("Keep old name and rename") {
                             let requestedLabel = renameLabel
-                            renameFieldIsFocused = false
+                            focusedField = nil
                             renameTagID = nil
                             renameLabel = ""
                             Task {

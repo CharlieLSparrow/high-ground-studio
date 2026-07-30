@@ -862,15 +862,22 @@ function checkReviewDigestContractSources() {
       && workRouteText.includes("aliases:")
       && workTagsRouteText.includes("export async function PATCH")
       && workTagsRouteText.includes("mutateWorkTagTaxonomy")
+      && workTagsRouteText.includes("createWorkTagTaxonomy")
       && workTagsRouteText.includes("offlineQueueingAllowed: false")
+      && workTagsRouteText.includes("assignmentChanged: false")
+      && workTagsText.includes("operation: \"create\"")
+      && workTagsText.includes("isolationLevel: \"Serializable\"")
+      && bridgeText.includes("func createTagVocabulary(")
       && bridgeText.includes("func changeTagVocabulary(")
       && bridgeText.includes("These changes require a live revision and are never queued offline.")
       && capturePhoneShellText.includes("CaptureTagVocabularySheet")
       && capturePhoneShellText.includes("CaptureWorkManageTags")
+      && capturePhoneShellText.includes("CaptureTagVocabularyCreateField")
+      && capturePhoneShellText.includes("CaptureTagVocabularyCreate")
       && capturePhoneShellText.includes("CaptureTagVocabularyAliases_")
       && capturePhoneShellText.includes("Use Nest’s vocabulary manager for merge review and history."),
     "nativeCanonicalProjectWorkWorkspace",
-    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, reconciles complete per-record tag decisions through one protected outbox, and manages shared rename/archive/restore vocabulary only against a live canonical revision while routing merge impact and rollback review to Nest.",
+    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, reconciles complete per-record tag decisions through one protected outbox, and creates/reuses or manages shared vocabulary only against a live editor grant while routing merge impact and rollback review to Nest.",
   );
 }
 

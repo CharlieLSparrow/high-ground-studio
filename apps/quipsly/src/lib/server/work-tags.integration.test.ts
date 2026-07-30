@@ -4,7 +4,13 @@ import { randomUUID } from "node:crypto";
 
 import { getPrismaClient } from "@/lib/prisma";
 
-import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags } from "./work-tags";
+import { searchWorkspace } from "./workspace-search";
+import {
+  createAndAssignWorkEntityTag,
+  createWorkTagTaxonomy,
+  mutateWorkTagTaxonomy,
+  replaceWorkEntityTags,
+} from "./work-tags";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
@@ -436,6 +442,131 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
       orderBy: { tagId: "asc" },
       select: { tagId: true },
     })).resolves.toEqual(originalTagLinks);
+  });
+
+  it("authors standalone vocabulary with durable history and immediate permission-filtered discovery", async () => {
+    const originalLabel = `Vocabulary seed ${nonce}`;
+    const renamedLabel = `Production vocabulary ${nonce}`;
+    const created = await createWorkTagTaxonomy({
+      prisma,
+      actorUserId,
+      actorEmail,
+      projectId,
+      label: originalLabel,
+    });
+    expect(created).toMatchObject({
+      ok: true,
+      projectId,
+      created: true,
+      tag: {
+        label: originalLabel,
+        slug: `vocabulary-seed-${nonce}`,
+        isActive: true,
+      },
+      aliases: [],
+      revision: 1,
+      receiptId: expect.any(String),
+    });
+    if (!created.ok) throw new Error("standalone vocabulary setup failed");
+
+    const [revision, assignmentCount, search] = await Promise.all([
+      prisma.studioTagRevision.findUnique({
+        where: { tagId_revision: { tagId: created.tag.id, revision: 1 } },
+      }),
+      Promise.all([
+        prisma.actionItemTagLink.count({ where: { tagId: created.tag.id } }),
+        prisma.goalTagLink.count({ where: { tagId: created.tag.id } }),
+        prisma.callRoomTagLink.count({ where: { tagId: created.tag.id } }),
+        prisma.coachingNoteTagLink.count({ where: { tagId: created.tag.id } }),
+        prisma.studioDocumentTagLink.count({ where: { tagId: created.tag.id } }),
+      ]).then((counts) => counts.reduce((total, count) => total + count, 0)),
+      searchWorkspace(prisma, {
+        actorUserId,
+        query: "Vocabulary seed",
+        visibleProjects: [{
+          id: projectId,
+          slug: `work-tags-main-${nonce}`,
+          name: "High Ground Odyssey",
+          role: "EDITOR",
+        }],
+      }),
+    ]);
+    expect(revision).toMatchObject({
+      operation: "create",
+      actorUserId,
+      snapshotJson: {
+        kind: "quipsly-tag-taxonomy-v1",
+        receiptId: created.receiptId,
+        projectId,
+        before: null,
+        assignmentChanged: false,
+        externalSideEffects: false,
+      },
+    });
+    expect(assignmentCount).toBe(0);
+    expect(search.tags).toEqual([
+      expect.objectContaining({ id: created.tag.id, label: originalLabel }),
+    ]);
+
+    const reused = await createWorkTagTaxonomy({
+      prisma,
+      actorUserId,
+      actorEmail,
+      projectId,
+      label: originalLabel,
+    });
+    expect(reused).toMatchObject({
+      ok: true,
+      created: false,
+      tag: { id: created.tag.id },
+      revision: 1,
+      receiptId: null,
+    });
+    await expect(prisma.studioTagRevision.count({
+      where: { tagId: created.tag.id },
+    })).resolves.toBe(1);
+
+    const renamed = await mutateWorkTagTaxonomy({
+      prisma,
+      actorUserId,
+      actorEmail,
+      tagId: created.tag.id,
+      operation: "RENAME",
+      label: renamedLabel,
+      expectedUpdatedAt: created.tag.updatedAt,
+    });
+    expect(renamed).toMatchObject({
+      ok: true,
+      tag: { id: created.tag.id, label: renamedLabel },
+      revision: 2,
+    });
+    const reusedFromAlias = await createWorkTagTaxonomy({
+      prisma,
+      actorUserId,
+      actorEmail,
+      projectId,
+      label: originalLabel,
+    });
+    expect(reusedFromAlias).toMatchObject({
+      ok: true,
+      created: false,
+      tag: { id: created.tag.id, label: renamedLabel },
+      aliases: [{ label: originalLabel }],
+      revision: 2,
+      receiptId: null,
+    });
+
+    const denied = await createWorkTagTaxonomy({
+      prisma,
+      actorUserId: otherUserId,
+      actorEmail: `work-tags-other-${nonce}@example.test`,
+      projectId,
+      label: `Private vocabulary attempt ${nonce}`,
+    });
+    expect(denied).toMatchObject({ ok: false, code: "NOT_FOUND" });
+    await expect(prisma.studioTag.count({
+      where: { projectId, slug: `private-vocabulary-attempt-${nonce}` },
+    })).resolves.toBe(0);
   });
 
   it("creates one reusable Nest tag and reuses it across canonical work", async () => {

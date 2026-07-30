@@ -114,6 +114,10 @@ The Work surface does not create a second mobile record model.
 - Shared-vocabulary administration is deliberately online-only. A stale
   revision returns a visible conflict and reloads canonical state; Capture
   never queues or replays taxonomy changes whose meaning may have changed.
+- Owners and Editors can also create a canonical vocabulary entry before any
+  Task, Goal, Note, Session, or document needs it. Creation reuses an active
+  tag or historical alias when possible, records the first append-only
+  revision for a new identity, and explicitly changes no assignment.
 - Merge remains in Nest's full vocabulary manager because it rewrites multiple
   assignments and requires side-by-side impact, history, and rollback review.
   Capture shows merge redirects read-only and links directly to that same
@@ -205,6 +209,38 @@ The 2026-07-30 shared-vocabulary checkpoint additionally proves:
   control disabled;
 - higher-impact merge remains routed to Nest's project-scoped manager with its
   audited rollback semantics.
+
+The direct-vocabulary-authoring follow-on additionally proves:
+
+- the same `StudioTag` identity can be deliberately created in iPhone Work
+  without inventing a placeholder Task, Goal, Note, Session, or document;
+- creation rechecks an active Owner/Editor grant inside a serializable
+  transaction and records revision 1 with a unique receipt;
+- retry and former-name reuse converge on the same canonical identity instead
+  of creating a duplicate;
+- the result is immediately available to permission-filtered global Search;
+- native preview mode renders the real creation control but cannot pretend to
+  mutate a Nest;
+- the complete Work UI journey passes on iPhone 17 Pro;
+- durable local QA created and retained canonical tag
+  `Capture vocabulary dogfood` (`cms8666060000x6xlax1zfsxi`) in
+  `High Ground real-work dogfood` under `quipsly.qa@local.test`;
+- a second operation reused that exact identity at revision 1, while
+  independent before/after counts remained zero for Task, Goal, Session, Note,
+  and document assignments.
+
+Run the durable dogfood check only against the dedicated local QA database:
+
+```bash
+QUIPSLY_DURABLE_TAG_QA=1 \
+QUIPSLY_LOCAL_DATABASE_URL=<explicit-local-postgresql-url> \
+pnpm --filter quipsly exec jest --runInBand \
+  --runTestsByPath src/lib/server/work-tags.durable.integration.test.ts
+```
+
+The artifact is intentionally retained. The check neither creates a user nor
+falls back to a production account; it fails unless the dedicated QA actor and
+writable QA Nest already exist.
 
 ## Open release gates
 

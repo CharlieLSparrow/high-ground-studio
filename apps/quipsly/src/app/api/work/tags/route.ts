@@ -4,6 +4,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
   createAndAssignWorkEntityTag,
+  createWorkTagTaxonomy,
   mutateWorkTagTaxonomy,
   replaceWorkEntityTags,
   type WorkTagEntityKind,
@@ -34,6 +35,64 @@ export async function POST(request: Request) {
   const operation = text(body.operation, 40);
   const label = text(body.label, 120);
   const clientRequestId = text(body.clientRequestId, 80).toLowerCase();
+  if (operation === "CREATE") {
+    const projectId = text(body.projectId);
+    if (!projectId || !label) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "INVALID_INPUT",
+          error: "Choose a Nest and enter a reusable tag name.",
+        },
+        { status: 400 },
+      );
+    }
+    try {
+      const result = await createWorkTagTaxonomy({
+        prisma: getPrismaClient(),
+        actorUserId: session.user.id,
+        actorEmail,
+        projectId,
+        label,
+      });
+      if (!result.ok) {
+        const status = result.code === "NOT_FOUND"
+          ? 404
+          : result.code === "ARCHIVED" || result.code === "SLUG_CONFLICT"
+            ? 409
+            : result.code === "INVALID_INPUT"
+              ? 400
+              : 403;
+        return NextResponse.json(result, { status });
+      }
+      return NextResponse.json({
+        ...result,
+        tag: {
+          ...result.tag,
+          archivedAt: result.tag.archivedAt?.toISOString() ?? null,
+          updatedAt: result.tag.updatedAt.toISOString(),
+          aliases: result.aliases,
+        },
+        boundaries: {
+          projectScoped: true,
+          reusableVocabulary: true,
+          assignmentChanged: false,
+          offlineQueueingAllowed: false,
+          externalSideEffects: false,
+        },
+      });
+    } catch (error) {
+      console.error("[work-tags] authenticated vocabulary creation failed", error);
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "UNAVAILABLE",
+          error: "Quipsly could not create this vocabulary. No tag or assignment was changed.",
+        },
+        { status: 503 },
+      );
+    }
+  }
   if (operation === "CREATE_AND_ASSIGN") {
     if (!["task", "goal", "session", "note", "document"].includes(entityKind) || !entityId || !label
       || !Number.isFinite(expectedUpdatedAt.getTime())

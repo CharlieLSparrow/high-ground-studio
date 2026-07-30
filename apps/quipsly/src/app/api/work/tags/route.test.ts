@@ -2,7 +2,12 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags } from "@/lib/server/work-tags";
+import {
+  createAndAssignWorkEntityTag,
+  createWorkTagTaxonomy,
+  mutateWorkTagTaxonomy,
+  replaceWorkEntityTags,
+} from "@/lib/server/work-tags";
 
 import { PATCH, POST } from "./route";
 
@@ -10,6 +15,7 @@ jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 jest.mock("@/lib/server/work-tags", () => ({
   createAndAssignWorkEntityTag: jest.fn(),
+  createWorkTagTaxonomy: jest.fn(),
   mutateWorkTagTaxonomy: jest.fn(),
   replaceWorkEntityTags: jest.fn(),
 }));
@@ -42,6 +48,78 @@ describe("authenticated shared work tags route", () => {
     expect(response.status).toBe(401);
     expect(getPrismaClient).not.toHaveBeenCalled();
     expect(mutateWorkTagTaxonomy).not.toHaveBeenCalled();
+  });
+
+  it("creates standalone canonical vocabulary without assigning a record", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "Person@Example.test" },
+    } as any);
+    const prisma = {};
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+    jest.mocked(createWorkTagTaxonomy).mockResolvedValue({
+      ok: true,
+      projectId: "project-1",
+      tag: {
+        id: "tag-1",
+        label: "Recording day",
+        slug: "recording-day",
+        isActive: true,
+        archivedAt: null,
+        updatedAt: new Date("2026-07-30T23:40:00.000Z"),
+      },
+      aliases: [],
+      created: true,
+      revision: 1,
+      receiptId: "receipt-create",
+    });
+
+    const response = await POST(request({
+      operation: "CREATE",
+      projectId: "project-1",
+      label: "Recording day",
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      projectId: "project-1",
+      created: true,
+      tag: {
+        id: "tag-1",
+        label: "Recording day",
+        updatedAt: "2026-07-30T23:40:00.000Z",
+      },
+      boundaries: {
+        projectScoped: true,
+        reusableVocabulary: true,
+        assignmentChanged: false,
+        offlineQueueingAllowed: false,
+        externalSideEffects: false,
+      },
+    });
+    expect(createWorkTagTaxonomy).toHaveBeenCalledWith({
+      prisma,
+      actorUserId: "user-1",
+      actorEmail: "person@example.test",
+      projectId: "project-1",
+      label: "Recording day",
+    });
+    expect(createAndAssignWorkEntityTag).not.toHaveBeenCalled();
+    expect(replaceWorkEntityTags).not.toHaveBeenCalled();
+  });
+
+  it("rejects incomplete standalone vocabulary before database access", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "person@example.test" },
+    } as any);
+    const response = await POST(request({
+      operation: "CREATE",
+      projectId: "",
+      label: "Recording day",
+    }));
+    expect(response.status).toBe(400);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+    expect(createWorkTagTaxonomy).not.toHaveBeenCalled();
   });
 
   it("returns a canonical rename receipt with preserved-alias boundaries", async () => {
