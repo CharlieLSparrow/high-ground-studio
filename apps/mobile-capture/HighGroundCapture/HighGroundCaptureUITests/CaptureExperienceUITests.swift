@@ -968,6 +968,22 @@ final class CaptureExperienceUITests: XCTestCase {
         )
         annotationBody.tap()
         annotationBody.typeText("Could this frame the episode opening?")
+        let keyboardDone = app.buttons["CaptureSourceFilingKeyboardDone"]
+        XCTAssertTrue(
+            keyboardDone.waitForExistence(timeout: 3),
+            "Source annotation must provide an explicit way to dismiss the keyboard before choosing canonical tags."
+        )
+        keyboardDone.tap()
+        expectation(
+            for: NSPredicate(format: "exists == false"),
+            evaluatedWith: app.keyboards.firstMatch
+        )
+        waitForExpectations(timeout: 3)
+        XCTAssertEqual(
+            annotationBody.value as? String,
+            "Could this frame the episode opening?",
+            "Dismissing the keyboard must preserve the exact source annotation."
+        )
         let canonicalTag = app.switches[
             "CaptureSourceFilingTag_preview-tag-episode-seed"
         ].firstMatch

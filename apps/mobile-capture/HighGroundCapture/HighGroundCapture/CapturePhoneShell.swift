@@ -2357,6 +2357,7 @@ private struct CaptureSourceFilingSheet: View {
     @State private var annotationBody = ""
     @State private var selectedTagIDs: Set<String> = []
     @State private var localMessage: String?
+    @FocusState private var annotationBodyIsFocused: Bool
 
     init(
         client: CaptureSourceInboxClient,
@@ -2461,6 +2462,7 @@ private struct CaptureSourceFilingSheet: View {
                             axis: .vertical
                         )
                         .lineLimit(3 ... 8)
+                        .focused($annotationBodyIsFocused)
                         .accessibilityIdentifier("CaptureSourceFilingAnnotationBody")
 
                         if availableTags.isEmpty {
@@ -2530,6 +2532,7 @@ private struct CaptureSourceFilingSheet: View {
                     }
                 }
             }
+            .scrollDismissesKeyboard(.interactively)
             .navigationTitle("File into Research")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -2569,6 +2572,13 @@ private struct CaptureSourceFilingSheet: View {
                             || client.pendingDecision(for: source.id) != nil
                     )
                     .accessibilityIdentifier("CaptureSourceFilingConfirm")
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        annotationBodyIsFocused = false
+                    }
+                    .accessibilityIdentifier("CaptureSourceFilingKeyboardDone")
                 }
             }
             .interactiveDismissDisabled(client.isSyncing)
