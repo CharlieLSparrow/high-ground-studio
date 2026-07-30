@@ -125,6 +125,9 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - durable local QA retained `Capture vocabulary dogfood` in
     `High Ground real-work dogfood` under `quipsly.qa@local.test`; a second run
     reused the same tag identity and left all five assignment counts unchanged
+  - the app and Share Capture extension are staged at candidate build 17;
+    Build 16 remains canonical until exact-source qualification, Nest preview,
+    upload, approval, group assignment, and public-link readback all pass
   - `b2313033` adds permission-correct annotation Resolve/Reopen on iPhone,
     canonical tags, exact Nest Research links, and real-Firebase/local-Postgres
     operated proof with complete cleanup

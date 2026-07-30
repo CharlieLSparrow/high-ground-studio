@@ -4770,3 +4770,5 @@ was restored.
   production/TestFlight target until this exact source is committed, receives
   full release qualification, is deployed at zero traffic, and passes the
   external beta readback.
+- The app and Share Capture extension now share candidate build number 17.
+  This is only a unique release identity; it is not yet a distribution claim.
