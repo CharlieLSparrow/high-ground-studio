@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
-import { reconcileCaptureTranscriptJob } from "./capture-transcript-reconciliation.js";
+import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 
 export const TRANSCRIPT_CORRECTION_SCHEMA = "quipsly-transcript-correction-v1";
 

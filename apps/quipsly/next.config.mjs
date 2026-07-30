@@ -29,6 +29,7 @@ const config = {
   transpilePackages: [
     "@high-ground/content-studio-domain",
     "@high-ground/quipsly-document-kernel",
+    "@high-ground/quipsly-media-processing",
     "@high-ground/studio-domain",
   ],
   serverExternalPackages: [
@@ -38,6 +39,13 @@ const config = {
   ],
   typescript: {
     ignoreBuildErrors: ignoreBuildTypeErrors,
+  },
+  webpack(webpackConfig) {
+    webpackConfig.resolve.extensionAlias = {
+      ...(webpackConfig.resolve.extensionAlias || {}),
+      ".js": [".ts", ".tsx", ".js"],
+    };
+    return webpackConfig;
   },
 };
 

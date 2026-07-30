@@ -14,8 +14,6 @@ import {
   sourceIDsForDecision,
 } from "@/lib/editor/program-edit-contract";
 
-const prisma = getPrismaClient();
-
 export type EditActor = {
   userId?: string;
   email?: string;
@@ -273,6 +271,7 @@ function parseState(value: unknown): ProgramEditState {
 }
 
 async function episodeRows(projectSlug: string) {
+  const prisma = getPrismaClient();
   return prisma.studioEpisodeProduction.findMany({
     where: { project: { slug: projectSlug } },
     orderBy: [{ createdAt: "asc" }, { slug: "asc" }],
@@ -293,6 +292,7 @@ async function episodeRows(projectSlug: string) {
 }
 
 export async function ensureEpisodeEditBranch(projectSlug: string, episodeSlug: string, actor: EditActor) {
+  const prisma = getPrismaClient();
   const episode = await prisma.studioEpisodeProduction.findFirst({
     where: { slug: episodeSlug, project: { slug: projectSlug } },
     include: { document: { select: { id: true, title: true } } },
@@ -376,6 +376,7 @@ export async function loadEpisodeEditDesk(
   episodeSlug: string | undefined,
   canEdit: boolean,
 ): Promise<EpisodeEditDeskPayload> {
+  const prisma = getPrismaClient();
   const episodes = await episodeRows(projectSlug);
   const selected = episodes.find((episode) => episode.slug === episodeSlug) ?? episodes[0] ?? null;
   if (!selected) {
@@ -472,6 +473,7 @@ export async function saveProgramDecision(input: {
   clientRequestId: string;
   actor: EditActor;
 }) {
+  const prisma = getPrismaClient();
   const { branch } = await ensureEpisodeEditBranch(input.projectSlug, input.episodeSlug, input.actor);
   await prisma.$transaction(async (tx) => {
     const current = await tx.studioEditBranch.findUniqueOrThrow({ where: { id: branch.id } });
@@ -534,6 +536,7 @@ export async function saveTimelineAnnotation(input: {
   tags: string[];
   actor: EditActor;
 }) {
+  const prisma = getPrismaClient();
   const { episode, branch } = await ensureEpisodeEditBranch(input.projectSlug, input.episodeSlug, input.actor);
   await prisma.$transaction(async (tx) => {
     const current = await tx.studioEditBranch.findUniqueOrThrow({ where: { id: branch.id } });
