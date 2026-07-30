@@ -250,6 +250,13 @@ final class CaptureAudioSessionCoordinator: ObservableObject {
     }
 
     private func requirePrivateRouteDuringCapture() throws {
+        // A private output is a Shared Watch requirement, not a blanket
+        // recording requirement. Standalone audio/video capture has no
+        // reference playback to leak into its microphone and must remain
+        // usable without headphones.
+        guard isSharedWatchPlaybackActive else {
+            return
+        }
         guard isLocalCaptureActive || isProviderRoomActive || isCallKitAudioActive else {
             return
         }

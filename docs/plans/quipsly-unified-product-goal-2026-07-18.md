@@ -3531,3 +3531,38 @@ This is an active-goal checkpoint, not a completion claim.
   identity attachment, TestFlight installation, or separate-account privacy.
   Those remain human rehearsal gates and must be read back from the physical
   app and canonical Nest state.
+
+### 2026-07-29 operated production Capture recovery checkpoint
+
+- A safe reviewer account operated the real current-source native app against
+  production Nest, not a preview shell. The signed-in surface proof passed
+  1/1 and reached the real Record Session chooser, explicit consent strip,
+  local recorder, separate live-room join, Library, and Account surfaces.
+- The first capture/recovery attempt exposed two false-positive boundaries.
+  Xcode returned exit 0 when the selected test was skipped because a custom
+  host credential path was not visible to XCTest. The runner now uses one
+  canonical locked mode-0600 host bridge, rejects invisible custom paths,
+  removes the packet before result parsing, preserves an explicit xcresult,
+  and requires exactly one pass with zero failures or skips.
+- The first genuinely executing production take found a product defect:
+  standalone audio capture incorrectly inherited Shared Watch's headphone
+  requirement even when no reference clip was playing. The coordinator now
+  requires a private output only while Shared Watch playback is active.
+  Standalone capture remains independent; active Watch beside recording or a
+  room still fails closed without a private route.
+- The corrected operated journey passed 1/1 in 125.593 seconds. It created and
+  played a real local source, reached exact server verification, killed the
+  app during a second open take, recovered both source identities offline,
+  denied offline recording authority, reconnected, preserved both sources,
+  and explicitly attached the verified source to Studio.
+- Independent production Nest readback matched room
+  `cms6t9su8000b01s618sks7d5`: one 201,559-byte recording asset was
+  `VERIFIED`, exact bytes used the server size-plus-SHA-256 boundary,
+  processing was `RELEASED`, playback was available, the source original was
+  preserved, and the same source was promoted to Studio media. Transcription
+  remained `HELD` because the disposable consent explicitly opted out.
+- The app and extension now declare candidate `1.0 (13)`. This is production
+  simulator/cloud dogfood, not a TestFlight delivery or physical-iPhone
+  claim. Build 13 must still pass exact committed-source qualification,
+  App Store Connect readback, public-group assignment, and the real Scott and
+  Charlie rehearsal.

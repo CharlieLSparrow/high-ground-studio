@@ -311,8 +311,13 @@ requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_PASSWORD", "r
 requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_BASE_URL", "runtime UI smoke can target local Nest");
 requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_MODE", "runtime UI smoke requires an explicit bounded journey mode");
 requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH", "runtime UI smoke can reuse one explicit bounded DerivedData cache");
+requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH", "runtime UI smoke preserves one explicit xcresult proof");
 requireIncludes(runtimeUISmokeRunnerText, 'google-handoff)', "runtime UI smoke can select the no-credential Google provider handoff proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'REQUIRES_PASSWORD_CREDENTIALS=false', "Google handoff proof does not require or serialize a reviewer password");
+requireIncludes(runtimeUISmokeRunnerText, "custom paths are not visible inside the test runner", "credentialed runtime UI smoke rejects a credential path XCTest cannot read");
+requireIncludes(runtimeUISmokeRunnerText, "Another credentialed Capture runtime UI smoke owns the canonical XCTest host bridge", "credentialed runtime UI smokes serialize access to the one protected host bridge");
+requireIncludes(runtimeUISmokeRunnerText, 'skipped !== 0', "runtime UI smoke fails closed when Xcode reports a skipped selected test");
+requireIncludes(runtimeUISmokeRunnerText, 'total !== 1', "runtime UI smoke requires exactly one executed bounded test");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"', "runtime UI smoke retains the non-mutating signed-in surface proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testConsentedCapturePlaybackAndCrashRecovery"', "runtime UI smoke can select the consented recovery proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence"', "runtime UI smoke can select the signed-in recurrence-authoring proof mode");
@@ -870,6 +875,29 @@ for (const needle of [
 ]) {
   requireIncludes(callKitDeactivateBody, needle, "fail-safe CallKit deactivation reconciliation");
 }
+const privateRouteRequirementStart = captureAudioSessionCoordinatorText.indexOf("private func requirePrivateRouteDuringCapture() throws");
+const privateRouteRequirementEnd = captureAudioSessionCoordinatorText.indexOf("private func holdSharedWatchForUnsafeRoute()", privateRouteRequirementStart);
+const privateRouteRequirementBody = captureAudioSessionCoordinatorText.slice(
+  privateRouteRequirementStart,
+  privateRouteRequirementEnd,
+);
+assert(
+  privateRouteRequirementStart >= 0
+    && privateRouteRequirementEnd > privateRouteRequirementStart,
+  "Shared Watch private-route policy must remain inspectable.",
+  { label: "Shared Watch private-route policy body is present" },
+);
+requireIncludes(
+  privateRouteRequirementBody,
+  "guard isSharedWatchPlaybackActive else",
+  "private listening route is required only for active Shared Watch playback",
+);
+assert(
+  privateRouteRequirementBody.indexOf("guard isSharedWatchPlaybackActive else")
+    < privateRouteRequirementBody.indexOf("guard isLocalCaptureActive || isProviderRoomActive || isCallKitAudioActive else"),
+  "Standalone capture must return before evaluating Shared Watch's private-route safety gate.",
+  { label: "standalone capture is independent from Shared Watch headphone policy" },
+);
 for (const needle of [
   "DeliveryDisposition",
   "closeOrphanedStarts",

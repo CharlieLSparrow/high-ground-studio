@@ -28,6 +28,7 @@ TEST_PROJECT_RETAG_LABEL="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_RETAG_LABEL:-}"
 TIMEOUT_SECONDS="${QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:-900}"
 TEST_MODE="${QUIPSLY_CAPTURE_UI_TEST_MODE:-surface}"
 DERIVED_DATA_PATH="${QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH:-}"
+RESULT_BUNDLE_PATH="${QUIPSLY_CAPTURE_UI_TEST_RESULT_BUNDLE_PATH:-/tmp/quipsly-capture-runtime-ui-${TEST_MODE}-$(date -u +%Y%m%dT%H%M%SZ)-$$.xcresult}"
 TEST_CLASS="CaptureRoomRuntimeSmokeTests"
 REQUIRES_PASSWORD_CREDENTIALS=true
 
@@ -175,20 +176,35 @@ echo "Xcode:       $DEVELOPER_DIR_VALUE"
 echo "Destination: $DESTINATION"
 echo "Nest:        $BASE_URL"
 echo "Mode:        $TEST_MODE"
+echo "Result:      $RESULT_BUNDLE_PATH"
 if [[ -n "$DERIVED_DATA_PATH" ]]; then
   echo "DerivedData: $DERIVED_DATA_PATH"
 fi
 
 SMOKE_CREDENTIALS_FILE=""
+SMOKE_CREDENTIALS_LOCK=""
 cleanup_smoke_credentials() {
-  if [[ -n "$SMOKE_CREDENTIALS_FILE" ]]; then
-    rm -f "$SMOKE_CREDENTIALS_FILE"
+  if [[ -n "$SMOKE_CREDENTIALS_FILE" && -f "$SMOKE_CREDENTIALS_FILE" ]]; then
+    unlink "$SMOKE_CREDENTIALS_FILE"
+  fi
+  if [[ -n "$SMOKE_CREDENTIALS_LOCK" && -d "$SMOKE_CREDENTIALS_LOCK" ]]; then
+    rmdir "$SMOKE_CREDENTIALS_LOCK"
   fi
 }
 trap cleanup_smoke_credentials EXIT
 
 if [[ "$REQUIRES_PASSWORD_CREDENTIALS" == true ]]; then
-  SMOKE_CREDENTIALS_FILE="${QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE:-/tmp/quipsly-capture-runtime-ui-smoke-credentials.json}"
+  SMOKE_CREDENTIALS_FILE="/tmp/quipsly-capture-runtime-ui-smoke-credentials.json"
+  requested_credentials_file="${QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE:-$SMOKE_CREDENTIALS_FILE}"
+  if [[ "$requested_credentials_file" != "$SMOKE_CREDENTIALS_FILE" ]]; then
+    echo "The XCTest host bridge requires the exact credential packet path $SMOKE_CREDENTIALS_FILE; custom paths are not visible inside the test runner." >&2
+    exit 2
+  fi
+  SMOKE_CREDENTIALS_LOCK="/tmp/quipsly-capture-runtime-ui-smoke-credentials.lock"
+  if ! mkdir "$SMOKE_CREDENTIALS_LOCK"; then
+    echo "Another credentialed Capture runtime UI smoke owns the canonical XCTest host bridge: $SMOKE_CREDENTIALS_LOCK" >&2
+    exit 3
+  fi
   umask 077
   python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" <<'PY'
 import json
@@ -237,8 +253,59 @@ XCODEBUILD_ARGUMENTS=(
 if [[ -n "$DERIVED_DATA_PATH" ]]; then
   XCODEBUILD_ARGUMENTS+=(-derivedDataPath "$DERIVED_DATA_PATH")
 fi
+if [[ -e "$RESULT_BUNDLE_PATH" ]]; then
+  echo "Refusing to overwrite existing runtime UI result bundle: $RESULT_BUNDLE_PATH" >&2
+  exit 3
+fi
+XCODEBUILD_ARGUMENTS+=(-resultBundlePath "$RESULT_BUNDLE_PATH")
 XCODEBUILD_ARGUMENTS+=(test)
 
 run_with_timeout "$TIMEOUT_SECONDS" \
   "$DEVELOPER_DIR_VALUE/usr/bin/xcodebuild" \
   "${XCODEBUILD_ARGUMENTS[@]}"
+
+cleanup_smoke_credentials
+trap - EXIT
+
+"${XCRUN:-/usr/bin/xcrun}" xcresulttool get test-results summary \
+  --path "$RESULT_BUNDLE_PATH" |
+  node -e '
+let raw = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { raw += chunk; });
+process.stdin.on("end", () => {
+  const [expectedClass, expectedCase] = process.argv.slice(1);
+  const summary = JSON.parse(raw);
+  const passed = Number(summary.passedTests || 0);
+  const failed = Number(summary.failedTests || 0);
+  const skipped = Number(summary.skippedTests || 0);
+  const total = Number(summary.totalTestCount || 0);
+  if (
+    summary.result !== "Passed"
+    || passed !== 1
+    || failed !== 0
+    || skipped !== 0
+    || total !== 1
+  ) {
+    console.error(JSON.stringify({
+      error: "Capture runtime UI proof did not execute exactly one passing test.",
+      expected: `${expectedClass}/${expectedCase}`,
+      result: summary.result || null,
+      passed,
+      failed,
+      skipped,
+      total,
+    }, null, 2));
+    process.exit(4);
+  }
+  console.log(JSON.stringify({
+    ok: true,
+    selectedTest: `${expectedClass}/${expectedCase}`,
+    result: summary.result,
+    passed,
+    failed,
+    skipped,
+    total,
+  }, null, 2));
+});
+' "$TEST_CLASS" "$TEST_CASE"
