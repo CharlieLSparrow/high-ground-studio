@@ -310,6 +310,9 @@ requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_EMAIL", "runt
 requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_PASSWORD", "runtime UI smoke requires explicit test password");
 requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_BASE_URL", "runtime UI smoke can target local Nest");
 requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_MODE", "runtime UI smoke requires an explicit bounded journey mode");
+requireIncludes(runtimeUISmokeRunnerText, "QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH", "runtime UI smoke can reuse one explicit bounded DerivedData cache");
+requireIncludes(runtimeUISmokeRunnerText, 'google-handoff)', "runtime UI smoke can select the no-credential Google provider handoff proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'REQUIRES_PASSWORD_CREDENTIALS=false', "Google handoff proof does not require or serialize a reviewer password");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"', "runtime UI smoke retains the non-mutating signed-in surface proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testConsentedCapturePlaybackAndCrashRecovery"', "runtime UI smoke can select the consented recovery proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence"', "runtime UI smoke can select the signed-in recurrence-authoring proof mode");
@@ -324,6 +327,9 @@ requireIncludes(runtimeUISmokeTestsText, "func testIPhoneRecurrenceOutboxSurvive
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneVersionsThisAndFutureRecurrenceWithoutRewritingHistory", "runtime UI smoke versions this-and-future recurrence through the signed-in iPhone controls");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneExplicitlySkipsMissedOccurrenceAndContinuesSeries", "runtime UI smoke explicitly preserves one missed occurrence and proves the canonical series continues");
 requireIncludes(runtimeUISmokeTestsText, "func testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox", "runtime UI smoke creates, edits, and relaunches one exact canonical Session note");
+requireIncludes(runtimeUISmokeTestsText, "func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials", "runtime UI smoke opens Apple's protected Google handoff without typing a credential");
+requireIncludes(runtimeUISmokeTestsText, '"google.com"', "Google handoff proof asserts the exact external provider before leaving Quipsly");
+requireIncludes(runtimeUISmokeTestsText, "hold duplicate auth attempts", "Google handoff proof keeps duplicate identity attempts disabled");
 requireIncludes(sessionNoteEditOutboxText, "completeFileProtectionUntilFirstUserAuthentication", "Session-note edit outbox protects complete offline intent at rest");
 requireIncludes(sessionNoteEditOutboxText, "ownerAccountID", "Session-note edit outbox partitions drafts by verified actor");
 requireIncludes(capturePhoneShellText, "Skip missed occurrence…", "Capture exposes an explicit missed-occurrence decision instead of an unattended scheduler");
@@ -333,7 +339,7 @@ requireIncludes(canonicalTaskStatusText, 'CanonicalTaskDecisionReason = "MISSED_
 requireIncludes(canonicalTaskStatusText, 'kind: "quipsly-task-occurrence-resolution-v1"', "canonical missed-occurrence resolution writes an inspectable occurrence receipt");
 requireIncludes(canonicalTaskStatusText, "historicalRecordPreserved: true", "canonical missed-occurrence receipts declare preserved history");
 requireIncludes(canonicalTaskStatusText, "externalSideEffects: false", "canonical missed-occurrence decisions cannot imply calendar or provider effects");
-requireIncludes(runtimeUISmokeRunnerText, "-only-testing:HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests/$TEST_CASE", "runtime UI smoke keeps either journey focused to one selected test");
+requireIncludes(runtimeUISmokeRunnerText, '-only-testing:"HighGroundCaptureUITests/$TEST_CLASS/$TEST_CASE"', "runtime UI smoke keeps each journey focused to one selected class and test");
 requireIncludes(runtimeUISmokeRunnerText, "does not bypass auth", "runtime UI smoke documents no auth bypass");
 requireIncludes(generatedMobileCaptureAuthSmokeText, "run-runtime-ui-smoke", "generated auth smoke can run the real native UI proof");
 requireIncludes(generatedMobileCaptureAuthSmokeText, "run-capture-runtime-ui-smoke.sh", "generated auth smoke reuses the native runtime UI runner");

@@ -1,6 +1,63 @@
 import Foundation
 import XCTest
 
+final class CaptureGoogleHandoffRuntimeUITests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        continueAfterFailure = false
+    }
+
+    func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials() {
+        let environment = ProcessInfo.processInfo.environment
+        let app = XCUIApplication()
+        app.launchArguments.append("--capture-login-ui-preview")
+        app.launchEnvironment["QUIPSLY_API_BASE_URL"] =
+            environment["QUIPSLY_CAPTURE_UI_TEST_BASE_URL"]
+            ?? "https://nest.quipsly.com"
+        app.launch()
+
+        let googleButton = app.buttons["QuipslyCaptureGoogleSignInButton"]
+        XCTAssertTrue(
+            googleButton.waitForExistence(timeout: 15),
+            "The real compiled login surface should expose native Google sign-in."
+        )
+        XCTAssertTrue(googleButton.isEnabled)
+        googleButton.tap()
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let providerAlert = springboard.alerts.firstMatch
+        XCTAssertTrue(
+            providerAlert.waitForExistence(timeout: 10),
+            "A fresh simulator should show Apple's protected google.com web-auth prompt."
+        )
+        XCTAssertTrue(
+            providerAlert.staticTexts.matching(
+                NSPredicate(format: "label CONTAINS[c] %@", "google.com")
+            ).firstMatch.exists,
+            "The protected web-auth prompt should identify google.com before leaving Quipsly."
+        )
+        let continueButton = providerAlert.buttons["Continue"]
+        XCTAssertTrue(
+            continueButton.waitForExistence(timeout: 3),
+            "Apple's protected web-auth prompt should offer Continue."
+        )
+        continueButton.tap()
+
+        XCTAssertFalse(
+            providerAlert.waitForExistence(timeout: 3),
+            "Continue should leave the confirmation alert for Apple's isolated provider web-auth session."
+        )
+        XCTAssertTrue(
+            googleButton.waitForExistence(timeout: 3),
+            "Quipsly should remain alive behind the protected authentication session."
+        )
+        XCTAssertFalse(
+            googleButton.isEnabled,
+            "Quipsly should hold duplicate auth attempts while Google's protected session is active."
+        )
+    }
+}
+
 final class CaptureRoomRuntimeSmokeTests: XCTestCase {
     override func setUp() {
         super.setUp()

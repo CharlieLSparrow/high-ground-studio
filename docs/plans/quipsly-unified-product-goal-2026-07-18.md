@@ -3509,3 +3509,25 @@ This is an active-goal checkpoint, not a completion claim.
   remains an explicit human authorization step. The rehearsal must still
   prove the MV7i/EOS route, local WAV/MOV, listen/watch, two-person room,
   verified upload, and same-ID Nest/Studio readback.
+
+### 2026-07-29 native Google provider-handoff checkpoint
+
+- Build 12's exact source contains the visible native **Continue with Google**
+  button, the intended iOS OAuth client ID, and the registered callback
+  scheme. Scott's Apple/TestFlight identity remains `shomers@icloud.com`;
+  Quipsly must attach his verified Google identity `shomers@gmail.com` to the
+  already-existing canonical user instead of creating a password account or
+  waiting for a Quipsly verification email.
+- An operated current-source install on the iPhone 17 Pro simulator tapped the
+  real compiled button, confirmed Apple's protected authentication prompt
+  named `google.com`, continued into Google's isolated authentication session,
+  and visually reached the page identifying **Quipsly** as the OAuth audience.
+  No provider credential or account was entered.
+- A new explicit `google-handoff` runtime lane passed 1/1. It requires no test
+  email or password, writes no credential fixture, selects only the bounded
+  provider-handoff test, and supports one explicitly selected DerivedData
+  cache. The deterministic release UI suite remains unchanged.
+- This proves app-to-provider reachability, not Scott's physical login,
+  identity attachment, TestFlight installation, or separate-account privacy.
+  Those remain human rehearsal gates and must be read back from the physical
+  app and canonical Nest state.

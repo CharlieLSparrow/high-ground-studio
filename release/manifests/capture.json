@@ -31,6 +31,7 @@
         "scripts/quipsly-hgo-rehearsal-preflight.mjs",
         "scripts/quipsly-hgo-rehearsal-preflight.test.mjs",
         "scripts/quipsly-ios-capture-app-store-static-smoke.mjs",
+        "scripts/quipsly-mobile-provider-room-static-smoke.mjs",
         "scripts/release/quipsly-app-store-connect-assign-build.mjs",
         "scripts/release/quipsly-app-store-connect-assign-build.test.mjs",
         "scripts/release/quipsly-app-store-connect-external-beta.mjs",

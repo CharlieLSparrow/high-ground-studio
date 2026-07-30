@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-29 23:35 UTC
+Last verified: 2026-07-30 00:58 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -82,6 +82,16 @@ needs to prove.
   email. The redacted receipt is
   `/private/tmp/quipsly-capture-rehearsal/homer-identity-readback.json`, mode
   0600.
+- Build 12's exact source contains the native **Continue with Google** surface,
+  the Quipsly iOS OAuth client ID, and its registered callback scheme. On
+  2026-07-30, an operated current-source simulator journey tapped that real
+  button, confirmed Apple's protected prompt identified `google.com`, selected
+  **Continue**, and reached Google's page identifying **Quipsly** as the OAuth
+  audience. No provider account or credential was entered. The matching
+  opt-in XCUITest passed 1/1 through the protected-provider handoff and stores
+  no reviewer password. This proves the app-to-Google boundary; only Scott's
+  action on his physical iPhone can link `shomers@gmail.com` to his existing
+  Quipsly user.
 - At 11:49 UTC, zero-traffic preview `studio-00429-niv` proved the complete
   read-only native rehearsal boundary from exact deployed source
   `8fa86d46977074f90386663fae92ea2fe0166167`. An outsider received HTTP 401
@@ -219,6 +229,18 @@ account selected inside Capture is `shomers@gmail.com`. They identify Scott at
 different provider boundaries and are intentionally not merged by email. The
 public TestFlight link avoids the unreliable private-email invitation path
 entirely.
+
+The no-credential provider-boundary check can be repeated independently of the
+signed-in runtime journeys:
+
+```bash
+QUIPSLY_CAPTURE_UI_TEST_MODE=google-handoff \
+  QUIPSLY_CAPTURE_UI_TEST_DESTINATION='platform=iOS Simulator,name=iPhone 17 Pro' \
+  bash apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh
+```
+
+It intentionally stops before selecting a Google account. It cannot prove
+Scott's successful login or canonical Quipsly identity attachment.
 
 If the public link does not hand off to TestFlight:
 

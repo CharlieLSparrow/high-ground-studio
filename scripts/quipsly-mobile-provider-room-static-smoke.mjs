@@ -75,7 +75,7 @@ assertIncludes("BridgeModels", bridge, "STOP_EGRESS", "staff/operator stop route
 assertIncludes("runtime UI smoke", runtimeUISmokeRunner, "QUIPSLY_CAPTURE_UI_TEST_BASE_URL", "runtime UI smoke should target the intended Nest backend");
 assertIncludes("runtime UI smoke", runtimeUISmokeRunner, 'TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"', "runtime UI smoke should retain the focused room surface proof");
 assertIncludes("runtime UI smoke", runtimeUISmokeRunner, 'TEST_CASE="testConsentedCapturePlaybackAndCrashRecovery"', "runtime UI smoke should expose the opt-in real capture recovery proof");
-assertIncludes("runtime UI smoke", runtimeUISmokeRunner, "-only-testing:HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests/$TEST_CASE", "runtime UI smoke should focus either proof to one selected test");
+assertIncludes("runtime UI smoke", runtimeUISmokeRunner, '-only-testing:"HighGroundCaptureUITests/$TEST_CLASS/$TEST_CASE"', "runtime UI smoke should focus every proof to one selected class and test");
 assertIncludes("runtime UI smoke", runtimeUISmokeRunner, "does not bypass auth", "runtime UI smoke must keep auth truth explicit");
 
 assertIncludes("room join route", joinRoute, "createLiveKitJoinToken", "Nest, not iOS, should mint provider room tokens");

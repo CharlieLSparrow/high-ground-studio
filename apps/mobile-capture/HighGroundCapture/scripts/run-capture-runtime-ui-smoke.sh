@@ -27,8 +27,19 @@ TEST_PROJECT_TAG_LABEL="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_TAG_LABEL:-}"
 TEST_PROJECT_RETAG_LABEL="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_RETAG_LABEL:-}"
 TIMEOUT_SECONDS="${QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:-900}"
 TEST_MODE="${QUIPSLY_CAPTURE_UI_TEST_MODE:-surface}"
+DERIVED_DATA_PATH="${QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH:-}"
+TEST_CLASS="CaptureRoomRuntimeSmokeTests"
+REQUIRES_PASSWORD_CREDENTIALS=true
 
 case "$TEST_MODE" in
+  google-handoff)
+    TEST_CLASS="CaptureGoogleHandoffRuntimeUITests"
+    TEST_CASE="testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials"
+    REQUIRES_PASSWORD_CREDENTIALS=false
+    if [[ -z "${QUIPSLY_CAPTURE_UI_TEST_BASE_URL:-}" ]]; then
+      BASE_URL="https://nest.quipsly.com"
+    fi
+    ;;
   surface)
     TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"
     ;;
@@ -120,12 +131,12 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected surface, room-join, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, room-join, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
     exit 2
     ;;
 esac
 
-if [[ -z "$TEST_EMAIL" || -z "$TEST_PASSWORD" ]]; then
+if [[ "$REQUIRES_PASSWORD_CREDENTIALS" == true && ( -z "$TEST_EMAIL" || -z "$TEST_PASSWORD" ) ]]; then
   cat >&2 <<'EOF'
 Missing Capture runtime UI smoke credentials.
 
@@ -164,15 +175,22 @@ echo "Xcode:       $DEVELOPER_DIR_VALUE"
 echo "Destination: $DESTINATION"
 echo "Nest:        $BASE_URL"
 echo "Mode:        $TEST_MODE"
+if [[ -n "$DERIVED_DATA_PATH" ]]; then
+  echo "DerivedData: $DERIVED_DATA_PATH"
+fi
 
-SMOKE_CREDENTIALS_FILE="${QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE:-/tmp/quipsly-capture-runtime-ui-smoke-credentials.json}"
+SMOKE_CREDENTIALS_FILE=""
 cleanup_smoke_credentials() {
-  rm -f "$SMOKE_CREDENTIALS_FILE"
+  if [[ -n "$SMOKE_CREDENTIALS_FILE" ]]; then
+    rm -f "$SMOKE_CREDENTIALS_FILE"
+  fi
 }
 trap cleanup_smoke_credentials EXIT
 
-umask 077
-python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" <<'PY'
+if [[ "$REQUIRES_PASSWORD_CREDENTIALS" == true ]]; then
+  SMOKE_CREDENTIALS_FILE="${QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE:-/tmp/quipsly-capture-runtime-ui-smoke-credentials.json}"
+  umask 077
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" <<'PY'
 import json
 import sys
 
@@ -202,6 +220,7 @@ with open(path, "w", encoding="utf-8") as handle:
         handle,
     )
 PY
+fi
 
 export QUIPSLY_CAPTURE_UI_TEST_BASE_URL="$BASE_URL"
 export QUIPSLY_CAPTURE_UI_TEST_EMAIL="$TEST_EMAIL"
@@ -209,10 +228,17 @@ export QUIPSLY_CAPTURE_UI_TEST_PASSWORD="$TEST_PASSWORD"
 export QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE="$SMOKE_CREDENTIALS_FILE"
 export DEVELOPER_DIR="$DEVELOPER_DIR_VALUE"
 
+XCODEBUILD_ARGUMENTS=(
+  -project "$PROJECT_PATH"
+  -scheme HighGroundCapture
+  -destination "$DESTINATION"
+  -only-testing:"HighGroundCaptureUITests/$TEST_CLASS/$TEST_CASE"
+)
+if [[ -n "$DERIVED_DATA_PATH" ]]; then
+  XCODEBUILD_ARGUMENTS+=(-derivedDataPath "$DERIVED_DATA_PATH")
+fi
+XCODEBUILD_ARGUMENTS+=(test)
+
 run_with_timeout "$TIMEOUT_SECONDS" \
   "$DEVELOPER_DIR_VALUE/usr/bin/xcodebuild" \
-    -project "$PROJECT_PATH" \
-    -scheme HighGroundCapture \
-    -destination "$DESTINATION" \
-    -only-testing:HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests/$TEST_CASE \
-    test
+  "${XCODEBUILD_ARGUMENTS[@]}"
