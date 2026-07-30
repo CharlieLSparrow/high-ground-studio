@@ -31,6 +31,9 @@ USAGE
 
 while (($#)); do
   case "$1" in
+    --)
+      shift
+      ;;
     --output)
       [[ $# -ge 2 ]] || {
         echo "--output requires a value." >&2

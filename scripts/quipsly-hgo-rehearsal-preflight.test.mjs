@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import {
@@ -8,6 +9,11 @@ import {
   parseArguments,
 } from "./quipsly-hgo-rehearsal-preflight.mjs";
 import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./release/quipsly-capture-release-target.mjs";
+
+const livePreflightShell = await readFile(
+  new URL("./quipsly-hgo-rehearsal-live-preflight.sh", import.meta.url),
+  "utf8",
+);
 
 function fixture(overrides = {}) {
   const base = {
@@ -111,6 +117,13 @@ test("argument parser requires every redacted evidence input", () => {
   ]);
   assert.equal(parsed.outputPath, "receipt.json");
   assert.equal(parsed.captureLauncherSmokePath, "capture-smoke.json");
+});
+
+test("pnpm argument separator reaches the live preflight harmlessly", () => {
+  assert.match(
+    livePreflightShell,
+    /case "\$1" in\s+--\)\s+shift\s+;;/,
+  );
 });
 
 test("open public beta plus staged room is ready to begin human rehearsal", () => {

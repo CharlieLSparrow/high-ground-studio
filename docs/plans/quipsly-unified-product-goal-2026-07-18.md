@@ -4489,3 +4489,44 @@ This is an active-goal checkpoint, not a completion claim.
   passed alongside the original staged-clip journey and the largest
   accessibility-text rehearsal audit. The complete mobile preflight passed
   again after the change.
+
+### 2026-07-30 Scott identity and invited-user production proof checkpoint
+
+- Fresh production readback resolves `shomers@gmail.com` to the already-created
+  active Quipsly person, free membership, active editor grant, invite ledger,
+  two-person podcast Room, episode workspace, and independent REQUESTED
+  consent. Every rehearsal repair operation remains false. Firebase correctly
+  reports no credential for that mailbox yet, so the remaining identity step
+  is Scott's physical **Continue with Google** action; neither password signup
+  nor a Quipsly verification email is appropriate.
+- Operated the real generated-invite journey against the exact
+  `high-ground-odyssey-rehearsal` Nest with a disposable verified Firebase
+  identity that began without a Quipsly UID. Production passed login,
+  just-in-time identity attachment, native bearer/session checks, invite
+  acceptance, project and Home Nest access, editor/recorder/research/publishing
+  reachability, logout, and cookie clearing. Cleanup removed the generated
+  invite, grants, Home Nest, membership, database user, Firebase user, token
+  file, Cloud SQL proxy, and private work directory. Independent Firebase and
+  rehearsal readbacks found no generated identity residue and no mutation to
+  Scott's prepared state.
+- The live invited-user wrapper itself is now production-grade rather than
+  dependent on a developer shell. It validates the destination, reads the
+  public Firebase client key from that exact Nest origin without printing or
+  pinning it, owns secret/config/proxy files in one mode-077 lifecycle
+  directory, waits for proxy readiness, and cleans its complete process
+  boundary. A focused source contract, shell syntax check, and the repeated
+  live production journey pass.
+- The consolidated live rehearsal command then exposed and closed its own pnpm
+  CLI boundary defect: the documented `-- --output` form forwarded the
+  separator, which the shell rejected. The wrapper now accepts it, the focused
+  suite passes 6/6, and the same command produced a mode-0600 receipt with all
+  ten infrastructure checks green. It proves Build 14, the public link, exact
+  production Nest source, prepared Scott identity, two-person Room, REQUESTED
+  consent, 34 manuscript blocks, paused three-clip Watch state, protected
+  media, and the canonical signed Mac bundle. It deliberately reports
+  `readyToBeginHumanRehearsal:true` and `readyToRecordNow:false`.
+- Build 14 was not uploaded, reassigned, or replaced. The public TestFlight
+  handoff remains the installation authority; Scott's physical install, Google
+  account selection, consent, two-person audio/video capture, Shared Watch,
+  upload, timeline materialization, and proof-listen/watch remain human-present
+  gates.

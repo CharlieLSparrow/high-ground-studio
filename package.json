@@ -49,6 +49,7 @@
     "quipsly:cloudrun:deploy-preview": "bash scripts/release/quipsly-deploy-preview.sh",
     "quipsly:cloudrun:smoke-generated-reviewer": "bash scripts/release/quipsly-generated-reviewer.sh smoke",
     "quipsly:cloudrun:promote-generated-reviewer": "bash scripts/release/quipsly-generated-reviewer.sh promote-preview",
+    "quipsly:auth:invited-user-smoke": "bash scripts/quipsly-live-invited-user-smoke.sh",
     "quipsly:web:deploy": "bash scripts/quipsly-web-deploy.sh",
     "quipsly:web:stage": "STAGE_ONLY=1 bash scripts/quipsly-web-deploy.sh",
     "quipsly:cloudrun:promote-preview": "bash scripts/release/quipsly-promote-preview.sh",

@@ -120,6 +120,36 @@ needs to prove.
   `acddc14133f11580d602fa744f4b448a8e16061b81aebe9597e832df3b8175e3`.
   Lucy and Samwise also probe cleanly, and no `.crdownload`, `.download`, or
   `.part` file remains.
+- At 17:56 UTC, a fresh production generated-invite rehearsal targeted the
+  exact `high-ground-odyssey-rehearsal` Nest. A disposable verified Firebase
+  identity began with no Quipsly UID binding, then passed Firebase login,
+  server-side just-in-time identity attachment, native session check, invite
+  acceptance, protected project access, Home Nest creation, account switching,
+  editor/recorder/research/publishing reachability, logout, and cookie
+  clearing. Independent cleanup removed the generated invite, grants, Home
+  Nest, membership, Quipsly user, Firebase user, token file, proxy, and
+  work directory. The rehearsal state was then read back unchanged: Scott's
+  canonical Quipsly user, editor grant, membership, participant, and REQUESTED
+  consent remain ready; Firebase still has no `shomers@gmail.com` credential,
+  which is the expected state until he chooses **Continue with Google**.
+- That proof no longer relies on an undeclared developer-machine Firebase key.
+  `pnpm quipsly:auth:invited-user-smoke` validates its target, reads the public
+  client configuration from the exact Nest origin without printing it, uses a
+  private lifecycle-owned work directory, waits for its owned Cloud SQL proxy,
+  and cleans the complete process boundary on success or failure.
+- At 17:58 UTC, the consolidated live rehearsal preflight passed all ten
+  infrastructure checks against current providers. It read back Build 14 in
+  beta testing, the open public handoff, exact deployed Nest source
+  `a2d8835353c372e2cb528b661c28752b61cc492c`, Scott's ready just-in-time
+  Google-link state, the two-person Room, both REQUESTED consent rows, all 34
+  manuscript blocks, Be Curious selected and paused at Watch revision 5, all
+  three protected media objects, and the one canonical signed Mac bundle.
+  `readyToBeginHumanRehearsal` is true while `readyToRecordNow` correctly
+  remains false. The redacted receipt is
+  `/private/tmp/quipsly-hgo-rehearsal-preflight-20260730-1758.json`, mode 0600.
+- The `pnpm quipsly:capture:rehearsal-preflight -- --output ...` entry point now
+  accepts pnpm's conventional argument separator instead of rejecting it
+  before the readback. The focused CLI/receipt suite passes 6/6.
 
 ## Approved Build 14 rehearsal lane
 
