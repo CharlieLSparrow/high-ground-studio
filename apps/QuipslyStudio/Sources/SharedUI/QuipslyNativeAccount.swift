@@ -203,14 +203,7 @@ private enum QuipslyNativeAccountKeychain {
             return
         }
         guard updateStatus == errSecItemNotFound else {
-            throw NSError(
-                domain: NSOSStatusErrorDomain,
-                code: Int(updateStatus),
-                userInfo: [
-                    NSLocalizedDescriptionKey:
-                        "Keychain refused to update the native Quipsly credential.",
-                ]
-            )
+            throw keychainError(action: "update", status: updateStatus)
         }
 
         var addQuery = identityQuery
@@ -219,10 +212,25 @@ private enum QuipslyNativeAccountKeychain {
             kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         guard status == errSecSuccess else {
-            throw NSError(domain: NSOSStatusErrorDomain, code: Int(status), userInfo: [
-                NSLocalizedDescriptionKey: "Keychain refused to save the native Quipsly credential.",
-            ])
+            throw keychainError(action: "save", status: status)
         }
+    }
+
+    private static func keychainError(
+        action: String,
+        status: OSStatus
+    ) -> NSError {
+        let systemMessage = SecCopyErrorMessageString(status, nil) as String?
+        let detail = systemMessage.map { " \($0)" } ?? ""
+        return NSError(
+            domain: NSOSStatusErrorDomain,
+            code: Int(status),
+            userInfo: [
+                NSLocalizedDescriptionKey:
+                    "Keychain could not \(action) the native Quipsly credential "
+                    + "(OSStatus \(status)).\(detail)",
+            ]
+        )
     }
 
     private static func load(account: String) -> Data? {

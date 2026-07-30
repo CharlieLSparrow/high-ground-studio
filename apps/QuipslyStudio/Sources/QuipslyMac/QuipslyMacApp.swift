@@ -254,6 +254,12 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
     }
 
     func ensureMainWindow(reason: String) {
+        if let mainWindow, mainWindow.isVisible, !mainWindow.isMiniaturized {
+            mainWindow.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
         AgentServer.shared.writeStatus([
             "projectTitle": "Quipsly Studio Launching",
             "launchStage": "ensure_main_window_started",
@@ -261,12 +267,6 @@ private final class QuipslyMacApplicationDelegate: NSObject, NSApplicationDelega
             "windowVisible": mainWindow?.isVisible ?? false,
             "windowCount": NSApp.windows.count
         ])
-
-        if let mainWindow, mainWindow.isVisible, !mainWindow.isMiniaturized {
-            mainWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
 
         AgentServer.shared.writeStatus([
             "projectTitle": "Quipsly Studio Launching",

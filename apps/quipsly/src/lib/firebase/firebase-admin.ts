@@ -2,6 +2,8 @@ import { initializeApp, getApps, getApp, cert, applicationDefault } from 'fireba
 import { getAuth } from 'firebase-admin/auth';
 import { getFirestore } from 'firebase-admin/firestore';
 
+import { resolveFirebaseCustomTokenServiceAccount } from './firebase-custom-token-signer';
+
 type FirebaseAdminCredentialSource =
   | "service-account-json-env"
   | "service-account-pieces-env"
@@ -15,6 +17,7 @@ type FirebaseServiceAccountJson = {
 
 type FirebaseAdminRuntimeInfo = {
   projectId: string | null;
+  customTokenServiceAccountId: string | null;
   credentialSource: FirebaseAdminCredentialSource;
   credentialEnvName: string | null;
   explicitProjectId: boolean;
@@ -128,6 +131,8 @@ function resolveFirebaseAdminCredential() {
 }
 
 const resolvedAdminCredential = resolveFirebaseAdminCredential();
+const customTokenServiceAccountId =
+  resolveFirebaseCustomTokenServiceAccount();
 
 const initAdmin = () => {
   if (getApps().length > 0) {
@@ -137,10 +142,14 @@ const initAdmin = () => {
   return initializeApp({
     projectId: resolvedAdminCredential.runtimeInfo.projectId || undefined,
     credential: resolvedAdminCredential.credential,
+    serviceAccountId: customTokenServiceAccountId || undefined,
   });
 };
 
 const app = initAdmin();
-export const firebaseAdminRuntimeInfo: FirebaseAdminRuntimeInfo = resolvedAdminCredential.runtimeInfo;
+export const firebaseAdminRuntimeInfo: FirebaseAdminRuntimeInfo = {
+  ...resolvedAdminCredential.runtimeInfo,
+  customTokenServiceAccountId,
+};
 export const adminAuth = getAuth(app);
 export const adminDb = getFirestore(app);

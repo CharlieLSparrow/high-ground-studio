@@ -5,11 +5,21 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 AGENTCTL="$ROOT_DIR/script/agentctl.sh"
 BASE_URL="$("$AGENTCTL" agent-url)"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/quipsly-native-account-smoke.XXXXXX")"
+APP_BUNDLE="$ROOT_DIR/DerivedData/Build/Products/Debug/QuipslyMac.app"
+EXPECTED_KEYCHAIN_GROUP="585GUXMY5M.com.highground.QuipslyMac"
 
 cleanup() {
   rm -rf "$WORK_DIR"
 }
 trap cleanup EXIT
+
+codesign -d --entitlements :- "$APP_BUNDLE" \
+  >"$WORK_DIR/app-entitlements.plist" 2>/dev/null
+actual_keychain_group="$(
+  /usr/libexec/PlistBuddy \
+    -c "Print :keychain-access-groups:0" \
+    "$WORK_DIR/app-entitlements.plist" 2>/dev/null || true
+)"
 
 "$AGENTCTL" health >"$WORK_DIR/health.json"
 "$AGENTCTL" commands >"$WORK_DIR/commands.json"
@@ -40,7 +50,9 @@ python3 - \
   "$WORK_DIR/denied.json" \
   "$WORK_DIR/unsafe-cli.stderr" \
   "$denied_status" \
-  "$unsafe_cli_status" <<'PY'
+  "$unsafe_cli_status" \
+  "$actual_keychain_group" \
+  "$EXPECTED_KEYCHAIN_GROUP" <<'PY'
 import json
 import pathlib
 import sys
@@ -54,6 +66,8 @@ import sys
     unsafe_cli_stderr_path,
     denied_status,
     unsafe_cli_status,
+    actual_keychain_group,
+    expected_keychain_group,
 ) = sys.argv[1:]
 
 
@@ -97,6 +111,9 @@ forbidden_secret_keys = {
 observed_keys = set(collect_keys({"status": status, "nativeAccount": native_account}))
 
 checks = {
+    "dataProtectionKeychainEntitled": (
+        actual_keychain_group == expected_keychain_group
+    ),
     "agentHealthy": health.get("status") == "ok",
     "routeAdvertised": expected_route in command_list,
     "statusCommandAcknowledged": (

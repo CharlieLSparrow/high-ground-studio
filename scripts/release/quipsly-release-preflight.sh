@@ -6,6 +6,7 @@ PROJECT_ID="${PROJECT_ID:-high-ground-odyssey}"
 SERVICE_NAME="${SERVICE_NAME:-studio}"
 HOST_HEADER="${HOST_HEADER:-nest.quipsly.com}"
 FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-quipsly-reef}"
+FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT="${FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT:-firebase-adminsdk-fbsvc@${FIREBASE_PROJECT_ID}.iam.gserviceaccount.com}"
 RUNTIME_SERVICE_ACCOUNT="${RUNTIME_SERVICE_ACCOUNT:-studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com}"
 CONTEXT_WARN_MIB="${CONTEXT_WARN_MIB:-150}"
 CONTEXT_MAX_MIB="${CONTEXT_MAX_MIB:-300}"
@@ -300,6 +301,7 @@ const present = new Set(env.map((item) => item.name));
 const envValueByName = new Map(env.map((item) => [item.name, item.value]));
 const required = [
   "FIREBASE_PROJECT_ID",
+  "FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT",
   "NEXT_PUBLIC_FIREBASE_API_KEY",
   "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
   "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
@@ -337,6 +339,18 @@ if gcloud projects get-iam-policy "${FIREBASE_PROJECT_ID}" \
   pass "Cloud Run runtime service account can administer Firebase Auth in ${FIREBASE_PROJECT_ID}."
 else
   warn "Could not verify roles/firebaseauth.admin for ${RUNTIME_SERVICE_ACCOUNT} on ${FIREBASE_PROJECT_ID}. If no Firebase private key secrets are mounted, live session-cookie minting may fail."
+fi
+
+if gcloud iam service-accounts get-iam-policy \
+  "${FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT}" \
+  --project="${FIREBASE_PROJECT_ID}" \
+  --flatten="bindings[].members" \
+  --filter="bindings.role:roles/iam.serviceAccountTokenCreator AND bindings.members:serviceAccount:${RUNTIME_SERVICE_ACCOUNT}" \
+  --format="value(bindings.role)" 2>/dev/null \
+  | grep -q "roles/iam.serviceAccountTokenCreator"; then
+  pass "Cloud Run runtime may sign Firebase custom tokens as the dedicated ${FIREBASE_PROJECT_ID} service account."
+else
+  fail "Cloud Run runtime cannot sign as ${FIREBASE_CUSTOM_TOKEN_SERVICE_ACCOUNT}; Mac and other custom-token exchanges will be rejected by Firebase."
 fi
 
 print_step "Next release commands"

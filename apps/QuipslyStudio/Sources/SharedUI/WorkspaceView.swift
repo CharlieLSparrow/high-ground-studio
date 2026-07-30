@@ -1924,6 +1924,12 @@ struct WorkspaceView: View {
         .onReceive(NotificationCenter.default.publisher(for: .quipslyAgentCommandQueued)) { _ in
             handleAgentCommandDispatch(fallbackToLegacy: false)
         }
+        .onReceive(nativeAccountStore.objectWillChange) { _ in
+            Task { @MainActor in
+                await Task.yield()
+                updateAgentState()
+            }
+        }
         .onReceive(Timer.publish(every: 0.5, on: .main, in: .common).autoconnect()) { _ in
             handleAgentCommandDispatch(fallbackToLegacy: false)
             refreshProxyJobSnapshotIfNeeded()
