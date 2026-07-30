@@ -1,6 +1,6 @@
 # Agent Board
 
-Last updated: 2026-06-02
+Last updated: 2026-07-30
 
 Use this board as the async coordination surface for concurrent Codex work.
 Keep entries short and current.
@@ -90,10 +90,12 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
 - latest coherent feature commit:
-  `b2313033 feat(capture): restore canonical annotation review on iPhone`
+  `ff48c69c feat(capture): file private sources into Nest research`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
   - `apps/quipsly/src/app/api/mobile/capture/today`
+  - `apps/quipsly/src/app/api/mobile/capture/inbox`
+  - `apps/quipsly/src/lib/server/personal-source-filing.ts`
   - `scripts/dev/quipsly-generated-mobile-dogfood.sh`
   - `scripts/quipsly-mobile-capture-generated-auth-smoke.mjs`
   - `scripts/release/quipsly-capture-*`
@@ -111,14 +113,20 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - `b2313033` adds permission-correct annotation Resolve/Reopen on iPhone,
     canonical tags, exact Nest Research links, and real-Firebase/local-Postgres
     operated proof with complete cleanup
-  - current checks: 19 Today route tests, Quipsly typecheck, 10 source-evidence
-    contract tests, 802 App Store static checks, focused preview UI, and the
-    generated annotation-review journey all pass
-  - deploy status: `b2313033` is not deployed or distributed; next delivery is
-    a zero-traffic Nest preview followed by exact-source qualification for a
-    later Capture build
+  - `ff48c69c` adds a deliberate iPhone Inbox-to-Research filing workflow over
+    actor-owned private Snippets and Bookmarks, exact source revisions, a
+    protected account-partitioned outbox, canonical immutable Research sources,
+    and idempotent receipt readback without mutating the private capture
+  - current checks: source-filing harness, route 5/5, real-PostgreSQL 4/4,
+    Quipsly typecheck, 10/10 Nest source-evidence, 831/831 App Store/static,
+    focused preview UI, and the real generated filing journey with 148/148
+    mobile contract checks all pass
+  - deploy status: `ff48c69c` and `b2313033` are not deployed or distributed;
+    next delivery is a zero-traffic Nest preview followed by exact-source
+    qualification for a later Capture build
   - rollback: production remains on `studio-00445-rij`; revert `b2313033` if
-    the unpublished annotation slice must be removed
+    the unpublished annotation slice must be removed and revert `ff48c69c` if
+    the unpublished source-filing slice must be removed
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
   - no private HGO or coaching material in screenshots

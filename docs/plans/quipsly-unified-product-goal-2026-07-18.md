@@ -3948,3 +3948,48 @@ This is an active-goal checkpoint, not a completion claim.
   zero-traffic Nest preview, qualified from exact committed source, released
   in a later TestFlight build, and operated on a physical iPhone before it is
   described as distributed or physically proven.
+
+### 2026-07-30 private-source Inbox to canonical Research checkpoint
+
+- Capture Today now exposes the signed-in person's unfiled private Snippets
+  and Bookmarks as an Inbox, together with only the Nest projects where that
+  person currently has `OWNER` or `EDITOR` access. Looking at a source remains
+  read-only; filing requires a deliberate destination choice and confirmation.
+- One filing decision carries a stable UUID, exact private capture ID, expected
+  source revision, and canonical destination project. Nest rejects a stale
+  phone decision if the private source changed after review, while an exact
+  retry returns the already-committed filing and Research source instead of
+  duplicating either record.
+- The canonical Research source pins the original capture time, current
+  capture count, source text, URL evidence, and SHA-256 fingerprint. Filing
+  does not rewrite or delete the private Snippet or Bookmark, import a webpage,
+  mutate source material, publish anything, or contact an external provider.
+  The source leaves the iPhone Inbox only after the exact server receipt is
+  acknowledged.
+- Pending decisions live in a file-protected, backup-excluded,
+  actor-partitioned native outbox. The iPhone preserves the complete source
+  revision and destination across relaunch, separates retryable transport
+  failures from held conflicts, refuses cross-account replay, and retains a
+  last-known-good read-only Inbox snapshot for offline review.
+- The operated acceptance lane used a disposable real Firebase identity,
+  current local Nest source, loopback PostgreSQL, and the compiled iPhone app.
+  The app selected a real canonical Nest, filed one seeded private source, saw
+  it leave the unfiled projection, and exposed the exact Nest Research return
+  link. Independent database and API readback proved one filing, one immutable
+  Research source, the same decision UUID and identities, an unchanged private
+  capture, an exact idempotent replay, and the matching Research export.
+- The same operated run completed all 148 mobile contract checks, including 23
+  authenticated checks. Cleanup deleted the disposable room, project, Home
+  Nest, grant, membership, database user, and Firebase user, then independently
+  proved both database and Firebase absence.
+- Current-source verification passes the protected native outbox harness, five
+  route-contract tests, four real-PostgreSQL integration cases, Quipsly
+  TypeScript, the focused preview UI test, the operated filing journey, 10
+  Nest source-evidence checks, 831 App Store/static checks, and the focused
+  security and release-policy suites.
+- Feature commit `ff48c69c` is newer than distributed Build 14 and production
+  `studio-00445-rij`. No Build 15 was created and no production traffic was
+  changed. A later coordinated release must still use exact committed-source
+  qualification, zero-traffic Nest preview, physical-iPhone operation,
+  interruption/offline recovery, and same-ID production Research readback
+  before this slice can be described as distributed or physically proven.

@@ -1586,3 +1586,25 @@ checks, blockers, and next handoff.
   stable rehearsal pair from exact source `a2d8835353`; `b2313033` is pushed
   source for a later coordinated Nest preview and Capture release, not yet
   deployed or distributed.
+
+### 2026-07-30 - Private-source Inbox files deliberately into Nest Research
+
+- Commit `ff48c69c` makes Capture Today project the signed-in person's unfiled
+  private Snippets and Bookmarks plus their writable Nest destinations.
+- Filing is one deliberate, protected, account-partitioned decision with a
+  stable UUID and exact source revision. Nest creates or reuses one canonical
+  immutable Research source and filing receipt, rejects stale review, leaves
+  the private capture unchanged, and performs no webpage import, publication,
+  provider call, or other external side effect.
+- A disposable real Firebase identity, loopback PostgreSQL, current local Nest,
+  and the compiled iPhone app operated the full filing path. Independent
+  readback proved the exact source/fingerprint, unchanged private capture,
+  idempotent replay, Research export, and complete database/Firebase cleanup.
+- Verification: native outbox harness, Inbox route 5/5, real-PostgreSQL 4/4,
+  Quipsly typecheck, focused preview UI, real generated dogfood with 148/148
+  mobile contract checks, Nest evidence 10/10, App Store/static 831/831, and
+  focused security/release tests all pass.
+- Delivery boundary: Build 14 and production `studio-00445-rij` remain
+  untouched for the Scott/Charlie rehearsal. `ff48c69c` is committed source
+  for a later coordinated preview and Capture release, not deployed,
+  distributed, or physically proven.
