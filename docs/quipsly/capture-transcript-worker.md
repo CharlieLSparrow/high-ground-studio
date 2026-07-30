@@ -35,7 +35,8 @@ provider timings, the raw provider receipt, or source media.
    A crash after the provider call therefore reuses that receipt instead of
    issuing another billable request.
 7. Nest validates the completed manifest and result, then rechecks consent
-   immediately before a serializable append-only database projection.
+   immediately before and again inside the serializable append-only database
+   projection.
 8. Nest exposes reviewed text plus immutable provider word anchors through an
    authenticated, no-store canonical handoff.
 9. QuipslyStudio imports the exact transcript job identity, saves a native
@@ -51,6 +52,8 @@ provider timings, the raw provider receipt, or source media.
 | Crash after provider response | Stored raw response is reused |
 | Existing segment or word evidence | New transcript version required |
 | Consent revoked before projection | Worker receipt remains private; zero transcript text rows are created |
+| Consent revoked after projection | Provider rows remain immutable but the job becomes held and every transcript/packet projection is quarantined |
+| Consent explicitly restored | The same provider rows are released after a fresh all-party check; no provider call or row rewrite occurs |
 | Worker not configured | Durable outbox remains queued; Nest reports configuration required |
 | Superseded handoff URL | HTTP 409; Studio cannot import stale identity |
 
@@ -84,6 +87,11 @@ pnpm --filter @high-ground/quipsly-media-processing typecheck
 pnpm quipsly:transcript-worker:build
 pnpm quipsly:transcript-worker:test
 pnpm --filter quipsly typecheck
+
+QUIPSLY_LOCAL_DB_SMOKE=1 \
+QUIPSLY_LOCAL_DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio \
+pnpm --filter quipsly exec jest --runInBand --runTestsByPath \
+  src/lib/server/capture-transcript-privacy.integration.test.ts
 
 cd apps/QuipslyStudio/Sources/QuipslyVideoCore
 swift test

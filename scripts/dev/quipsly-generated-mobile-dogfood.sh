@@ -258,7 +258,7 @@ nest_dist_dir="${repo_root}/apps/quipsly/${nest_dist_name}"
     QUIPSLY_OWNER_OVERRIDE=false \
     QUIPSLY_LOCAL_MEDIA_UPLOADS=true \
     QUIPSLY_BUILD_DIST_DIR="${nest_dist_name}" \
-    node node_modules/next/dist/bin/next dev \
+    node node_modules/next/dist/bin/next dev --webpack \
       --hostname 127.0.0.1 \
       --port "${nest_port}"
 ) >"${work_dir}/nest.log" 2>&1 &

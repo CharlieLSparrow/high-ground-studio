@@ -1,5 +1,8 @@
 import {
+  buildMobileCaptureConsentVersions,
   buildMobileCaptureProviderCompositeReadiness,
+  mobileCaptureAllPartiesAllowTranscription,
+  mobileCaptureAllPartiesReady,
   mobileCaptureConsentVersion,
 } from "./mobile-capture-consent-readiness.js";
 
@@ -161,6 +164,41 @@ export function mobileCaptureProcessingGateFromEvidence({
         error: transcript
           ? "Transcript source media no longer matches the immutable upload evidence recorded at finalization."
           : "Capture media no longer matches the immutable object, size, and SHA-256 evidence recorded at finalization.",
+      };
+    }
+    if (!room) {
+      return {
+        allowed: false,
+        receipt: normalizedReceipts[0],
+        errorCode: "CURRENT_CAPTURE_ROOM_REQUIRED",
+        error: "The capture room is unavailable, so current participant consent cannot be verified.",
+      };
+    }
+    const consentVersions = buildMobileCaptureConsentVersions({
+      participants: room.participants,
+      consents: room.recordingConsents,
+    });
+    const sourceType = recordingAsset?.kind === "LOCAL_VIDEO"
+      || recordingAsset?.kind === "SCREEN_REFERENCE"
+      ? "video"
+      : "audio";
+    if (!mobileCaptureAllPartiesReady(consentVersions, sourceType)) {
+      return {
+        allowed: false,
+        receipt: normalizedReceipts[0],
+        errorCode: "CURRENT_ALL_PARTY_SOURCE_CONSENT_REQUIRED",
+        error: "Current all-party recording consent is required before processing or disclosing this captured source.",
+      };
+    }
+    if (
+      transcript
+      && !mobileCaptureAllPartiesAllowTranscription(consentVersions)
+    ) {
+      return {
+        allowed: false,
+        receipt: normalizedReceipts[0],
+        errorCode: "CURRENT_ALL_PARTY_TRANSCRIPTION_CONSENT_REQUIRED",
+        error: "Current all-party transcription consent is required before transcript processing or disclosure.",
       };
     }
     return { allowed: true, receipt: normalizedReceipts[0] };

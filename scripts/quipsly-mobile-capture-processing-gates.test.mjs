@@ -59,6 +59,50 @@ const prismaWithRoom = (room, ...receipts) => ({
     },
   },
 });
+const currentConsent = ({
+  id,
+  participantId,
+  userId,
+  canRecordVideo = false,
+  canTranscribe = true,
+  status = "GRANTED",
+  revokedAt = null,
+}) => ({
+  id,
+  participantId,
+  userId,
+  status,
+  canRecordAudio: status === "GRANTED",
+  canRecordVideo: status === "GRANTED" && canRecordVideo,
+  canTranscribe: status === "GRANTED" && canTranscribe,
+  policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+  consentedAt: "2026-07-18T01:00:00.000Z",
+  revokedAt,
+  updatedAt: revokedAt || "2026-07-18T01:00:00.000Z",
+  metadataJson: {
+    consentEvidenceVersion: 2,
+    consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+    recordingChoiceExplicit: true,
+    transcriptionChoiceExplicit: true,
+    allAudibleParticipantsNotifiedAndAgreed: true,
+    presentationEvidence: {
+      version: 1,
+      surface: "quipsly-capture-consent-v2",
+    },
+  },
+});
+const releasedMobileRoom = {
+  participants: [
+    { id: "mobile-participant-a", userId: "mobile-user-a", role: "HOST" },
+  ],
+  recordingConsents: [
+    currentConsent({
+      id: "mobile-consent-a",
+      participantId: "mobile-participant-a",
+      userId: "mobile-user-a",
+    }),
+  ],
+};
 
 const mediaHeld = await mobileCaptureMediaProcessingGate({
   prisma: prismaWith({
@@ -73,7 +117,7 @@ assert.equal(mediaHeld.allowed, false,
 assert.equal(mediaHeld.errorCode, "ALL_PARTY_SOURCE_CONSENT_REQUIRED");
 
 const mediaReleased = await mobileCaptureMediaProcessingGate({
-  prisma: prismaWith(releasedReceipt()),
+  prisma: prismaWithRoom(releasedMobileRoom, releasedReceipt()),
   recordingAsset: asset,
 });
 assert.equal(mediaReleased.allowed, true);
@@ -113,10 +157,35 @@ assert.equal(held.allowed, false);
 assert.equal(held.errorCode, "ALL_PARTY_TRANSCRIPTION_CONSENT_REQUIRED");
 
 const released = await mobileCaptureTranscriptProcessingGate({
-  prisma: prismaWith(releasedReceipt()),
+  prisma: prismaWithRoom(releasedMobileRoom, releasedReceipt()),
   recordingAsset: asset,
 });
 assert.equal(released.allowed, true);
+
+const revokedMobileRoom = structuredClone(releasedMobileRoom);
+revokedMobileRoom.recordingConsents[0] = currentConsent({
+  id: "mobile-consent-a",
+  participantId: "mobile-participant-a",
+  userId: "mobile-user-a",
+  status: "REVOKED",
+  revokedAt: "2026-07-18T02:00:00.000Z",
+});
+const revokedMedia = await mobileCaptureMediaProcessingGate({
+  prisma: prismaWithRoom(revokedMobileRoom, releasedReceipt()),
+  recordingAsset: asset,
+});
+assert.equal(revokedMedia.allowed, false,
+  "a finalization release cannot outlive current recording consent");
+assert.equal(
+  revokedMedia.errorCode,
+  "CURRENT_ALL_PARTY_SOURCE_CONSENT_REQUIRED",
+);
+const revokedTranscript = await mobileCaptureTranscriptProcessingGate({
+  prisma: prismaWithRoom(revokedMobileRoom, releasedReceipt()),
+  recordingAsset: asset,
+});
+assert.equal(revokedTranscript.allowed, false,
+  "a finalization release cannot outlive current transcription consent");
 
 const staleReleaseCannotRebindHeldBytes = await mobileCaptureMediaProcessingGate({
   prisma: prismaWith(releasedReceipt()),
@@ -180,52 +249,18 @@ const providerRoom = {
     { id: "participant-b", userId: "user-b", role: "GUEST" },
   ],
   recordingConsents: [
-    {
+    currentConsent({
       id: "consent-a",
       participantId: "participant-a",
       userId: "user-a",
-      status: "GRANTED",
-      canRecordAudio: true,
       canRecordVideo: true,
-      canTranscribe: true,
-      policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
-      consentedAt: "2026-07-18T01:00:00.000Z",
-      updatedAt: "2026-07-18T01:00:00.000Z",
-      metadataJson: {
-        consentEvidenceVersion: 2,
-        consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
-        recordingChoiceExplicit: true,
-        transcriptionChoiceExplicit: true,
-        allAudibleParticipantsNotifiedAndAgreed: true,
-        presentationEvidence: {
-          version: 1,
-          surface: "quipsly-capture-consent-v2",
-        },
-      },
-    },
-    {
+    }),
+    currentConsent({
       id: "consent-b",
       participantId: "participant-b",
       userId: "user-b",
-      status: "GRANTED",
-      canRecordAudio: true,
       canRecordVideo: true,
-      canTranscribe: true,
-      policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
-      consentedAt: "2026-07-18T01:00:00.000Z",
-      updatedAt: "2026-07-18T01:00:00.000Z",
-      metadataJson: {
-        consentEvidenceVersion: 2,
-        consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
-        recordingChoiceExplicit: true,
-        transcriptionChoiceExplicit: true,
-        allAudibleParticipantsNotifiedAndAgreed: true,
-        presentationEvidence: {
-          version: 1,
-          surface: "quipsly-capture-consent-v2",
-        },
-      },
-    },
+    }),
   ],
 };
 const providerVersions = buildMobileCaptureConsentVersions({

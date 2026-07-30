@@ -4594,3 +4594,39 @@ This is an active-goal checkpoint, not a completion claim.
   exposing it in shell history, deploy the committed worker, read back
   least-privilege IAM, execute this fixture, then prove consent revocation
   blocks database text projection before activating the Nest worker path.
+
+### 2026-07-30 current-consent transcript quarantine checkpoint
+
+- The provider-to-database audit exposed a privacy ownership defect: a mobile
+  finalization receipt proved consent at upload but caused later processing
+  gates to skip the room's current participant ledger. A later decline or
+  revocation could therefore leave the old release receipt sufficient for new
+  transcript projection.
+- Normalized mobile sources now require both the immutable finalization receipt
+  and current all-party source/transcription consent. A released receipt cannot
+  outlive a participant's current choice. Completed transcript reads also
+  recheck this gate, and transcript row creation repeats it inside the same
+  serializable transaction that writes provider text and word anchors.
+- Declining, revoking, or explicitly withholding transcription consent now
+  atomically places every queued, running, or completed transcript in the room
+  on a privacy hold. Immutable provider rows and source media are preserved,
+  but the job status quarantines transcript, packet, task, goal, and handoff
+  projections. A later explicit all-party grant can release only the exact
+  matching provider evidence; it cannot call the provider again or rewrite row
+  identities.
+- Operating the real local stack found that Next 16's new Turbopack default
+  rejected Quipsly's intentional webpack extension-alias configuration.
+  Quipsly local development and generated mobile dogfood now select webpack
+  explicitly, making the bundler a repository-owned contract rather than a
+  drifting framework default. Docker Desktop's stale backend was restarted,
+  PostgreSQL came back with all 32 migrations current, Firebase Auth was
+  reused, and local Nest passed health, signed-out shell, and Projects shell
+  checks at `http://127.0.0.1:3012`.
+- The real PostgreSQL privacy journey completed a canonical transcript,
+  retained the exact segment and word identities, revoked consent, read the
+  job back held with the projected rows preserved but quarantined, restored
+  current consent, and read the same row identities back completed without a
+  provider or row rewrite. Focused Jest passes 7/7, lifecycle passes 7/7,
+  Quipsly TypeScript passes, and the repository's complete Quipsly contract
+  run passes 168/168. This is real local database proof, not production
+  provider execution or separate-account UI disclosure proof.

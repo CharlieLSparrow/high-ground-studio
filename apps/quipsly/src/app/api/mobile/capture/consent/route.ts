@@ -12,6 +12,7 @@ import {
   MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
   mobileCaptureConsentHasCurrentPolicyEvidence,
 } from "@/lib/server/mobile-capture-consent-readiness.js";
+import { quarantineRoomTranscriptsForConsentChange } from "@/lib/server/capture-transcript-privacy";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -269,12 +270,32 @@ export async function POST(request: Request) {
     },
   };
 
-  const consent = existing
-    ? await prisma.recordingConsent.update({
-        where: { id: existing.id },
-        data,
-      })
-    : await prisma.recordingConsent.create({ data });
+  const shouldQuarantineTranscripts =
+    consentAction !== "GRANT"
+    || consentState.canTranscribe !== true;
+  const mutation = await prisma.$transaction(async (tx: any) => {
+    const consent = existing
+      ? await tx.recordingConsent.update({
+          where: { id: existing.id },
+          data,
+        })
+      : await tx.recordingConsent.create({ data });
+    const transcriptPrivacy = shouldQuarantineTranscripts
+      ? await quarantineRoomTranscriptsForConsentChange({
+          prisma: tx,
+          roomId: room.id,
+          changedByUserId: userId,
+          consentAction: consentAction as "GRANT" | "DECLINE" | "REVOKE",
+        })
+      : {
+          transcriptJobCount: 0,
+          projectedTranscriptCount: 0,
+          transcriptRowsDeleted: false,
+          sourceMediaMutated: false,
+        };
+    return { consent, transcriptPrivacy };
+  }, { isolationLevel: "Serializable" });
+  const { consent, transcriptPrivacy } = mutation;
 
   const participants = room.participants.some((item: any) => item.id === participant.id)
     ? room.participants
@@ -368,6 +389,11 @@ export async function POST(request: Request) {
       externalInviteSent: false,
       mediaMutated: false,
       storageMutated: false,
+      transcriptJobsQuarantined: transcriptPrivacy.transcriptJobCount,
+      projectedTranscriptsQuarantined:
+        transcriptPrivacy.projectedTranscriptCount,
+      transcriptRowsDeleted: transcriptPrivacy.transcriptRowsDeleted,
+      sourceMediaMutated: transcriptPrivacy.sourceMediaMutated,
       secretExposed: false,
     },
   });

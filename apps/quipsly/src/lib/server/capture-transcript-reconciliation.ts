@@ -50,13 +50,7 @@ export async function reconcileCaptureTranscriptJob(input: {
     };
   }
   if (job.status === "COMPLETED") {
-    return {
-      status: "completed",
-      transcriptJobId: job.id,
-      segmentCount: job._count.segments,
-      wordCount: job._count.words,
-      alreadyCompleted: true,
-    };
+    return recheckCompletedTranscriptPrivacy(input.prisma, job);
   }
   if (!job.asset) {
     return failJob(
@@ -163,33 +157,12 @@ export async function reconcileCaptureTranscriptJob(input: {
     recordingAsset: job.asset,
   });
   if (!gate.allowed) {
-    const prior = jsonObject(job.resultJson);
-    await input.prisma.transcriptJob.update({
-      where: { id: job.id },
-      data: {
-        status: "HELD",
-        provider: "processing-hold",
-        errorMessage: gate.error,
-        processingResultObject: resultObjectName,
-        resultJson: {
-          ...prior,
-          source: "capture-transcript-background-worker",
-          hold: {
-            code: gate.errorCode,
-            message: gate.error,
-            heldAt: new Date().toISOString(),
-            workerResultPreservedPrivately: true,
-            transcriptTextProjected: false,
-            explicitReleaseRequired: true,
-          },
-        },
-      },
-    });
-    return {
-      status: "held",
-      transcriptJobId: job.id,
-      message: gate.error,
-    };
+    return holdTranscriptForCurrentConsent(
+      input.prisma,
+      job,
+      gate,
+      resultObjectName,
+    );
   }
 
   return commitResult(input.prisma, job, result, resultObjectName);
@@ -205,10 +178,29 @@ async function commitResult(
     const locked = await tx.transcriptJob.findUnique({
       where: { id: job.id },
       include: {
+        asset: true,
         _count: { select: { segments: true, words: true } },
       },
     });
     if (!locked) throw new Error("Transcript job disappeared.");
+    if (!locked.asset) {
+      throw new Error("Transcript job lost its recording asset.");
+    }
+    // The outer check improves UX, but only this serializable recheck is
+    // allowed to precede transcript-row creation. A consent update racing this
+    // transaction causes one side to retry instead of leaking text.
+    const gate = await mobileCaptureTranscriptProcessingGate({
+      prisma: tx,
+      recordingAsset: locked.asset,
+    });
+    if (!gate.allowed) {
+      return holdTranscriptForCurrentConsent(
+        tx,
+        locked,
+        gate,
+        resultObjectName,
+      );
+    }
     if (locked.status === "COMPLETED") {
       return {
         status: "completed",
@@ -219,9 +211,38 @@ async function commitResult(
       } as const;
     }
     if (locked._count.segments > 0 || locked._count.words > 0) {
-      throw new Error(
-        "Transcript version already contains immutable provider evidence.",
-      );
+      if (!existingProviderEvidenceMatches(locked, result, resultObjectName)) {
+        throw new Error(
+          "Transcript version contains different immutable provider evidence.",
+        );
+      }
+      const prior = jsonObject(locked.resultJson);
+      await tx.transcriptJob.update({
+        where: { id: locked.id },
+        data: {
+          status: "COMPLETED",
+          provider: result.provider.name,
+          completedAt: locked.completedAt || new Date(result.completedAt),
+          errorMessage: null,
+          resultJson: {
+            ...prior,
+            source: "capture-transcript-background-worker",
+            consentHoldRelease: {
+              releasedAt: new Date().toISOString(),
+              currentAllPartyConsentRechecked: true,
+              providerEvidenceRewritten: false,
+              transcriptRowsRewritten: false,
+            },
+          },
+        },
+      });
+      return {
+        status: "completed",
+        transcriptJobId: locked.id,
+        segmentCount: locked._count.segments,
+        wordCount: locked._count.words,
+        alreadyCompleted: true,
+      } as const;
     }
 
     const segmentIds: string[] = [];
@@ -312,6 +333,114 @@ async function commitResult(
       alreadyCompleted: false,
     } as const;
   }, { isolationLevel: "Serializable" });
+}
+
+async function recheckCompletedTranscriptPrivacy(
+  prisma: any,
+  snapshot: any,
+): Promise<CaptureTranscriptReconciliation> {
+  if (!snapshot.asset) {
+    return failJob(
+      prisma,
+      snapshot,
+      "Completed transcript has no recording asset.",
+    );
+  }
+  return prisma.$transaction(async (tx: any) => {
+    const locked = await tx.transcriptJob.findUnique({
+      where: { id: snapshot.id },
+      include: {
+        asset: true,
+        _count: { select: { segments: true, words: true } },
+      },
+    });
+    if (!locked) throw new Error("Transcript job disappeared.");
+    if (!locked.asset) {
+      throw new Error("Completed transcript lost its recording asset.");
+    }
+    if (locked.status !== "COMPLETED") {
+      return {
+        status: locked.status === "HELD" ? "held" : "pending",
+        transcriptJobId: locked.id,
+        message: locked.errorMessage,
+      } as const;
+    }
+    const gate = await mobileCaptureTranscriptProcessingGate({
+      prisma: tx,
+      recordingAsset: locked.asset,
+    });
+    if (!gate.allowed) {
+      return holdTranscriptForCurrentConsent(
+        tx,
+        locked,
+        gate,
+        locked.processingResultObject,
+      );
+    }
+    return {
+      status: "completed",
+      transcriptJobId: locked.id,
+      segmentCount: locked._count.segments,
+      wordCount: locked._count.words,
+      alreadyCompleted: true,
+    } as const;
+  }, { isolationLevel: "Serializable" });
+}
+
+async function holdTranscriptForCurrentConsent(
+  prisma: any,
+  job: any,
+  gate: { error?: string | null; errorCode?: string | null },
+  resultObjectName: string | null,
+): Promise<CaptureTranscriptReconciliation> {
+  const message = gate.error
+    || "Current all-party transcription consent is required.";
+  const prior = jsonObject(job.resultJson);
+  const segmentCount = Number(job._count?.segments || 0);
+  const wordCount = Number(job._count?.words || 0);
+  await prisma.transcriptJob.update({
+    where: { id: job.id },
+    data: {
+      status: "HELD",
+      provider: "processing-hold",
+      errorMessage: message,
+      processingResultObject: resultObjectName,
+      resultJson: {
+        ...prior,
+        source: "capture-transcript-background-worker",
+        hold: {
+          code: gate.errorCode || "CURRENT_TRANSCRIPT_CONSENT_REQUIRED",
+          message,
+          heldAt: new Date().toISOString(),
+          workerResultPreservedPrivately: Boolean(resultObjectName),
+          transcriptTextProjected: segmentCount > 0 || wordCount > 0,
+          projectedRowsPreservedButQuarantined:
+            segmentCount > 0 || wordCount > 0,
+          explicitReleaseRequired: true,
+        },
+      },
+    },
+  });
+  return {
+    status: "held",
+    transcriptJobId: job.id,
+    message,
+  };
+}
+
+function existingProviderEvidenceMatches(
+  job: any,
+  result: CaptureTranscriptResult,
+  resultObjectName: string,
+) {
+  return (
+    job._count?.segments === result.segments.length
+    && job._count?.words === result.words.length
+    && job.processingResultObject === resultObjectName
+    && job.providerRequestId === result.provider.requestId
+    && job.providerResponseObject === result.rawProviderResponse.objectName
+    && job.workerBuildId === result.worker.buildId
+  );
 }
 
 async function failJob(

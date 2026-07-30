@@ -44,6 +44,13 @@ test("machine-wide services use machine-wide ownership state", () => {
     up,
     /compose --project-name "\$\{compose_project\}" up -d postgres/,
   );
+  assert.match(
+    readFileSync(
+      fileURLToPath(new URL("../../apps/quipsly/package.json", import.meta.url)),
+      "utf8",
+    ),
+    /"dev": "next dev --webpack"/,
+  );
   assert.match(up, /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}"/);
   assert.doesNotMatch(up, /source "\$\{local_env_file\}"/);
   assert.match(up, /"Nest projects shell"/);
@@ -144,7 +151,10 @@ test("generated mobile dogfood is disposable, secret-safe, and current-source", 
     /"\$\{TMPDIR:-\/private\/tmp\}"\/quipsly-generated-mobile-dogfood\.\*/,
   );
   assert.match(generatedMobileDogfood, /gcloud secrets versions access latest/);
-  assert.match(generatedMobileDogfood, /node node_modules\/next\/dist\/bin\/next dev/);
+  assert.match(
+    generatedMobileDogfood,
+    /node node_modules\/next\/dist\/bin\/next dev --webpack/,
+  );
   assert.match(
     generatedMobileDogfood,
     /quipsly-mobile-capture-generated-auth-smoke\.mjs/,

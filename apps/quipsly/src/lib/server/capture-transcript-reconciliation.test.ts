@@ -296,4 +296,182 @@ describe("capture transcript reconciliation", () => {
       }),
     }));
   });
+
+  it("rechecks consent inside the serializable write and projects no text after a racing revocation", async () => {
+    const { manifest, result } = completedReceipts();
+    installBucketObjects({
+      [buildCaptureTranscriptManifestObjectName(jobId)]: manifest,
+      [buildCaptureTranscriptResultObjectName(jobId)]: result,
+    });
+    jest.mocked(mobileCaptureTranscriptProcessingGate)
+      .mockResolvedValueOnce({ allowed: true } as any)
+      .mockResolvedValueOnce({
+        allowed: false,
+        error: "Current transcription consent was revoked.",
+        errorCode: "CURRENT_ALL_PARTY_TRANSCRIPTION_CONSENT_REQUIRED",
+      } as any);
+    const jobUpdate = jest.fn().mockResolvedValue({});
+    const segmentCreate = jest.fn();
+    const wordCreateMany = jest.fn();
+    const tx = {
+      transcriptJob: {
+        findUnique: jest.fn().mockResolvedValue(canonicalJob()),
+        update: jobUpdate,
+      },
+      transcriptSegment: { create: segmentCreate },
+      transcriptWord: { createMany: wordCreateMany },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
+      callRoom: { findUnique: jest.fn() },
+    };
+    const prisma = {
+      transcriptJob: {
+        findUnique: jest.fn().mockResolvedValue(canonicalJob()),
+      },
+      $transaction: jest.fn(
+        async (operation: (client: typeof tx) => unknown) => operation(tx),
+      ),
+    };
+
+    await expect(reconcileCaptureTranscriptJob({
+      prisma,
+      transcriptJobId: jobId,
+    })).resolves.toMatchObject({
+      status: "held",
+      transcriptJobId: jobId,
+    });
+    expect(segmentCreate).not.toHaveBeenCalled();
+    expect(wordCreateMany).not.toHaveBeenCalled();
+    expect(jobUpdate).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: "HELD",
+        resultJson: expect.objectContaining({
+          hold: expect.objectContaining({
+            transcriptTextProjected: false,
+            projectedRowsPreservedButQuarantined: false,
+          }),
+        }),
+      }),
+    }));
+  });
+
+  it("quarantines an already-completed transcript when current consent is revoked", async () => {
+    const completed = {
+      ...canonicalJob(),
+      status: "COMPLETED",
+      provider: "deepgram",
+      processingResultObject: buildCaptureTranscriptResultObjectName(jobId),
+      _count: { segments: 1, words: 1 },
+    };
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({
+      allowed: false,
+      error: "Current transcription consent was revoked.",
+      errorCode: "CURRENT_ALL_PARTY_TRANSCRIPTION_CONSENT_REQUIRED",
+    } as any);
+    const update = jest.fn().mockResolvedValue({});
+    const tx = {
+      transcriptJob: {
+        findUnique: jest.fn().mockResolvedValue(completed),
+        update,
+      },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
+      callRoom: { findUnique: jest.fn() },
+    };
+    const prisma = {
+      transcriptJob: {
+        findUnique: jest.fn().mockResolvedValue(completed),
+        update,
+      },
+      $transaction: jest.fn(
+        async (operation: (client: typeof tx) => unknown) => operation(tx),
+      ),
+    };
+
+    await expect(reconcileCaptureTranscriptJob({
+      prisma,
+      transcriptJobId: jobId,
+    })).resolves.toMatchObject({
+      status: "held",
+      transcriptJobId: jobId,
+    });
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: "HELD",
+        resultJson: expect.objectContaining({
+          hold: expect.objectContaining({
+            transcriptTextProjected: true,
+            projectedRowsPreservedButQuarantined: true,
+          }),
+        }),
+      }),
+    }));
+  });
+
+  it("releases matching quarantined provider rows without rewriting them", async () => {
+    const { manifest, result } = completedReceipts();
+    installBucketObjects({
+      [buildCaptureTranscriptManifestObjectName(jobId)]: manifest,
+      [buildCaptureTranscriptResultObjectName(jobId)]: result,
+    });
+    jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({
+      allowed: true,
+    } as any);
+    const held = {
+      ...canonicalJob(),
+      status: "HELD",
+      provider: "processing-hold",
+      completedAt: new Date(result.completedAt),
+      processingResultObject: buildCaptureTranscriptResultObjectName(jobId),
+      providerRequestId: result.provider.requestId,
+      providerResponseObject: result.rawProviderResponse.objectName,
+      workerBuildId: result.worker.buildId,
+      _count: { segments: 1, words: 1 },
+      resultJson: { hold: { explicitReleaseRequired: true } },
+    };
+    const update = jest.fn().mockResolvedValue({});
+    const segmentCreate = jest.fn();
+    const wordCreateMany = jest.fn();
+    const tx = {
+      transcriptJob: {
+        findUnique: jest.fn().mockResolvedValue(held),
+        update,
+      },
+      transcriptSegment: { create: segmentCreate },
+      transcriptWord: { createMany: wordCreateMany },
+      mobileCaptureFinalizationReceipt: { findMany: jest.fn() },
+      callRoom: { findUnique: jest.fn() },
+    };
+    const prisma = {
+      transcriptJob: {
+        findUnique: jest.fn().mockResolvedValue(held),
+      },
+      $transaction: jest.fn(
+        async (operation: (client: typeof tx) => unknown) => operation(tx),
+      ),
+    };
+
+    await expect(reconcileCaptureTranscriptJob({
+      prisma,
+      transcriptJobId: jobId,
+    })).resolves.toEqual({
+      status: "completed",
+      transcriptJobId: jobId,
+      segmentCount: 1,
+      wordCount: 1,
+      alreadyCompleted: true,
+    });
+    expect(segmentCreate).not.toHaveBeenCalled();
+    expect(wordCreateMany).not.toHaveBeenCalled();
+    expect(update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: "COMPLETED",
+        resultJson: expect.objectContaining({
+          consentHoldRelease: expect.objectContaining({
+            currentAllPartyConsentRechecked: true,
+            providerEvidenceRewritten: false,
+            transcriptRowsRewritten: false,
+          }),
+        }),
+      }),
+    }));
+  });
 });

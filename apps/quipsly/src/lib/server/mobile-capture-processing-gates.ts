@@ -21,12 +21,14 @@ async function mobileCaptureProcessingGate(args: {
     prisma: args.prisma,
     recordingAssetId: args.recordingAsset.id,
   });
-  const room = receipts.length === 0
-    ? await args.prisma.callRoom.findUnique({
-        where: { id: args.recordingAsset.roomId },
-        include: { participants: true, recordingConsents: true },
-      })
-    : null;
+  // A release receipt proves what was authorized at finalization; it is not a
+  // permanent substitute for the room's current consent state. Always read
+  // the current participant ledger so later decline/revocation quarantines
+  // new processing and transcript disclosure without rewriting source bytes.
+  const room = await args.prisma.callRoom.findUnique({
+    where: { id: args.recordingAsset.roomId },
+    include: { participants: true, recordingConsents: true },
+  });
   return mobileCaptureProcessingGateFromEvidence({
     recordingAsset: args.recordingAsset,
     receipts,
