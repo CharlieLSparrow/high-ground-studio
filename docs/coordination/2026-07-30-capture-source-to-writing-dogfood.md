@@ -1,136 +1,227 @@
-# Capture Source-to-Writing Checkpoint
+# Capture Source-to-Writing Ownership Checkpoint
 
 Date: 2026-07-30
 Branch: `codex/quipsly-product-20260724`
-Feature commit: `804e42e2`
+Feature commit: `aca8aa0a5c4f87e0f7425aaeceb34712be04bf59`
 
 ## Outcome
 
-Quipsly Capture can now turn one reviewed source annotation into exactly one
-private canonical Nest writing draft. The draft starts with the person's
-working note, an immutable quote snapshot, and a durable citation back to the
-canonical Research annotation.
+Quipsly now carries one explicit person-level ownership boundary through the
+canonical Nest document kernel. A reviewed Research annotation becomes one
+actor-owned writing document containing:
 
-The handoff remains an explicit human decision:
+1. a pinned, immutable source-evidence block; and
+2. a separate editable response block.
 
-- looking at or resolving an annotation does not create writing;
-- the iPhone protects the complete decision before network use;
-- Nest creates only a private document and private opening block;
-- the immutable source and annotation revision remain unchanged;
-- no task, calendar event, message, provider request, delivery, or publication
-  is created.
+The source, citation, and response no longer share one editable text field.
+The returned iPhone and Nest link targets and highlights the response block
+without manufacturing focus or opening the keyboard unexpectedly.
 
-## Canonical architecture
+The handoff remains one explicit human action:
 
-- Capture Today projects permission-filtered `StudioSourceAnnotation` records
-  and the current person's existing `StudioSourceAnnotationUse`, if one exists.
-- `POST /api/mobile/capture/today` accepts `source-annotation-draft` only for an
-  authenticated person with current `OWNER` or `EDITOR` access to the exact
-  project.
-- The request includes a stable UUID, exact annotation ID, project slug, and
-  optimistic annotation revision.
-- A serializable transaction creates one private `StudioDocument`, one private
-  `StudioDocumentBlock`, one append-only evidence-use record, and one
-  reversible human `StudioDocumentOperation`.
-- The unique actor/request identity and bounded serialization retry converge
-  racing or ambiguous requests on the same canonical document. Exact replay
-  returns the existing document and block. Reusing the UUID for another
-  annotation, project, or revision returns a conflict.
-- The evidence-use receipt stores the exact quote snapshot, citation label,
-  source fingerprint, source-unit ID, and annotation revision.
+- reading, annotating, or resolving a source does not create writing;
+- Capture protects the complete decision before network use;
+- Nest creates an actor-owned document only after current write authorization;
+- source bytes, annotation text, and annotation revision remain unchanged;
+- no task, goal, calendar event, notification, message, provider request,
+  delivery, or publication is created.
 
-No schema migration was required. The slice uses the existing document kernel,
-source annotation, evidence-use, and operation models rather than introducing
-a second writing or citation system.
+## Canonical ownership model
 
-## Trustworthy iPhone edge
+`StudioDocument.personalOwnerUserId` is the single document-level rule:
 
-`SourceAnnotationDraftOutbox` stores the complete decision in a file-protected,
-actor-partitioned ledger before sync. It retains one UUID across relaunch and
-retry, distinguishes retryable transport failures from held permanent
-conflicts, and removes a decision only after an exact server acknowledgement.
+- `NULL` means the document follows the existing Nest membership boundary;
+- a user ID means only that actor can read or mutate the document, even when
+  other editors belong to the same Nest.
 
-The acknowledgement must match:
+This is not a second document store and does not overload the historical
+`isPrivate` projection flag. The personal document still uses the same stable
+document identity, blocks, revisions, tags, anchors, evidence uses, operations,
+and portability substrate as shared writing.
 
-- action, annotation ID, and client request UUID;
-- non-empty document and block database plus stable IDs;
-- the expected `/create` project and document;
-- private-draft, no-source-mutation, and no-external-side-effect boundaries.
+`personal-writing-documents.ts` centralizes:
 
-A corrupt primary ledger recovers its last-known-good account partition
-read-only and refuses new writes. Switching Quipsly accounts hides another
-person's decisions without deleting them.
+- primary-email and alias resolution to the canonical user ID;
+- the shared-or-owned Prisma visibility predicate;
+- indistinguishable not-found enforcement for direct reads and writes.
 
-## UX
+The boundary is applied across Create, Nest pages, notebooks, Library, mobile
+Today and Work, native notes, transcript-derived drafts, source filing,
+storyboards, canonical note editing, bidirectional sync, workspace search,
+assistant context, research context packets, embedding/index maintenance,
+portable export/restore, tags, and account deletion.
 
-Each eligible Today annotation now has one calm writing affordance:
+## Migrations and historical safety
 
-- **Start private draft** protects and syncs the decision;
-- **Private draft queued for Nest** remains visible offline;
-- a permanent mismatch exposes **Retry draft** and **Discard** rather than
-  silently inventing another decision;
-- **Open private draft** appears only after canonical readback and survives
-  relaunch.
+`20260730110000_add_personal_writing_document_owner`:
 
-Capture does not unexpectedly open Safari after creation. The explicit open
-link is presented after Nest confirms the durable document identity.
+- adds the nullable owner foreign key and index;
+- backfills canonical native notes from `QuipslyNote.userId`;
+- backfills Capture quick notes and transcript drafts from durable operation
+  receipts;
+- resolves older Nest quick-note actors through canonical primary or alias
+  email without guessing.
 
-## Operated evidence
+`20260730121500_backfill_personal_evidence_draft_owner`:
 
-The acceptance journey used:
+- finds historical evidence-to-writing documents through
+  `StudioSourceAnnotationUse`;
+- assigns an owner only when exactly one distinct actor is present;
+- leaves ambiguous history shared for deliberate human review.
 
-- current local Nest source;
-- a disposable real Firebase identity;
-- loopback PostgreSQL;
-- the compiled Quipsly Capture app on an iPhone 17 Pro Simulator.
+The first migration has an operator-owned structural rollback. Because the
+second migration is a safety backfill, there is no blind data rollback that
+would erase legitimate current ownership. Application rollback is safe while
+the additive column remains. Dropping the column requires first proving that no
+document relies on personal ownership and accepting that the access evidence
+will be removed.
 
-The app opened Today, found the exact seeded annotation, tapped **Start private
-draft**, received the canonical acknowledgement, replaced the start action
-with **Open private draft**, terminated, relaunched, and projected the same
-open link without offering a second accidental draft.
+Legacy portable bundles did not carry an explicit owner bit. A private note
+from such a bundle now restores to the importing actor rather than silently
+widening to every collaborator.
 
-Independent API and database readback proved:
+## Immutable evidence and editable response
 
-- exactly one active `StudioSourceAnnotationUse`;
-- one private document and one private opening block;
-- the exact working note, quote snapshot, citation, and annotation backlink;
-- matching immutable-source SHA-256;
-- unchanged annotation revision;
-- exactly one reversible human operation;
-- exact UUID replay returned the same document and block with `reused: true`;
-- source mutation and external side effects remained false.
+One serializable source-to-writing transaction creates:
 
-Cleanup deleted the generated evidence use, annotation, project, Home Nest,
-grant, membership, database user, and Firebase user. Independent residue checks
-reported:
+- the actor-owned `StudioDocument`;
+- block 1, `annotation-evidence:*`, containing only the exact quote and
+  citation snapshot;
+- block 2, `annotation-response:*`, containing the person's editable thought;
+- the append-only `StudioSourceAnnotationUse`;
+- one reversible `StudioDocumentOperation`.
 
-- `databaseArtifactsAbsentAfterCleanup: true`
-- `firebaseUserAbsentAfterCleanup: true`
+The evidence use records both block identities. An exact idempotent replay must
+recover and match the response identity; an old or malformed partial receipt
+fails closed instead of guessing which block should open.
+
+The common immutable-source guard now protects both transcript evidence and
+annotation evidence from edit, split, merge, delete, bulk structure operations,
+and assistant mutations. The writing desk labels the evidence as read-only and
+keeps the response editable.
+
+## Retrieval, AI, and tagging policy
+
+Shared Nest retrieval and AI indexing exclude every personal document.
+Actor-partitioned model indexes do not exist yet, so omission is safer than
+placing private writing in a shared vector or keyword corpus. Direct context
+packets may include a personal document only after the actor-level document
+predicate succeeds.
+
+Embedding sync deletes stale personal-document embeddings and shared retrieval
+queries independently re-check the backing document. This prevents a stale
+index row from bypassing the current ownership boundary.
+
+A project editor also cannot use tag-merge preview or apply to infer counts
+from, expose, or rewrite another actor's private writing. Quipsly reports a
+generic ownership conflict and leaves the private tag relationships unchanged
+until each owner reconciles them intentionally.
+
+## Trustworthy iPhone acknowledgement
+
+The native response now requires:
+
+- document database and stable IDs;
+- immutable evidence-block database and stable IDs;
+- editable response-block database and stable IDs;
+- the exact project, document, and response block in the `/create` URL;
+- private-writing, source-unchanged, and no-external-side-effect boundaries;
+- an explicit replay result.
+
+Capture holds a protected outbox decision for review if any identity or safety
+field differs. The acknowledgement does not auto-open Safari; **Open private
+draft** remains an explicit action after canonical readback.
+
+## Operated local proof
+
+The owner journey used the running local Nest, a disposable Firebase emulator
+identity, and the persisted local PostgreSQL database:
+
+- opened the exact actor-owned document;
+- observed **Only you**, **Pinned source evidence**, and **Read-only source
+  snapshot**;
+- verified the evidence block was read-only and the response block editable;
+- added a real design consequence to the response;
+- observed **Saved**;
+- reloaded and read the exact edited response back while the evidence remained
+  byte-for-byte unchanged.
+
+A second disposable identity was granted active `EDITOR` access to the same
+Nest:
+
+- signed in and opened the shared Nest normally;
+- attempted the exact actor-owned document and response URL;
+- received truthful “document is not available to this account” UX while Nest
+  access remained visible;
+- opened the normal writing desk and Library;
+- found zero links to the private document ID on either surface.
+
+The local Docker control plane and PostgreSQL handshake stalled during the
+journey. Restarting Docker recovered the existing volume without data loss.
+That real failure also produced two fixes:
+
+- the Prisma adapter is now created only when the process creates the singleton
+  client, avoiding discarded adapter/pool construction;
+- transaction-pool exhaustion (`P2028`) waits through a bounded identity
+  transaction window and returns service-unavailable instead of falsely
+  accusing the person's credentials.
+
+## Real-source dogfood
+
+The current repository sources were used rather than synthetic prose:
+
+- coaching weekly commitments;
+- Episode 4 editing hardening;
+- the coaching/Capture production spine;
+- High Ground Odyssey TestFlight human gates.
+
+All four persisted one actor-owned document with distinct immutable evidence
+and editable response blocks. A repeated apply returned the same annotation,
+document, evidence block, response block, and URL for every source with
+`annotation: true` and `draft: true`; no duplicate writing or source mutation
+occurred.
+
+Portable export/restore also round-tripped an actor-owned evidence document,
+both blocks, source label, source path, and owner boundary into a second Nest.
+The restore remained idempotent and did not overwrite a destination edit,
+reactivate reminders, schedule work, fetch providers, or create external
+effects.
 
 ## Verification
 
-- Focused source service and Today route tests: 28/28
-- Quipsly TypeScript 7 typecheck: pass
-- Protected native outbox harness, including relaunch, account isolation,
-  held retry, exact acknowledgement, and corrupt-ledger recovery: pass
-- Mobile source-contract checks: pass
-- App Store/static checks: 873/873
-- iPhone 17 Pro Simulator build: pass
-- Real generated Firebase/PostgreSQL/native annotation-writing journey: pass
-- `git diff --check`: pass
+- Complete Quipsly Jest run: **180 suites / 881 tests passed**; 28 suites / 84
+  environment-gated tests skipped.
+- Live local PostgreSQL matrix: **7 suites / 19 tests passed**.
+- Quipsly TypeScript 7 typecheck: pass.
+- Prisma: **31 migrations**, local schema up to date.
+- Source-only mobile Capture contract: pass.
+- Protected source-annotation outbox harness: pass.
+- Capture Nest source-evidence contract: **10/10**.
+- Capture App Store/static checks: **877/877**.
+- Repeated four-source persisted dogfood: pass.
+- Same-Nest rendered collaborator denial: pass.
+- Focused immutable-source label UI: **4/4**.
+- LiveKit dependency resolution and complete unsigned iOS Simulator build:
+  **BUILD SUCCEEDED**.
+- `git diff --check`: pass.
 
-## Delivery boundary
+## Distribution boundary
 
-This feature is committed source, not a distributed rehearsal build. Quipsly
-Capture 1.0 (14), exact source `a2d8835353`, and production Nest
-`studio-00445-rij` remain untouched for Scott and Charlie's physical
-rehearsal.
+This is committed source, not a distributed rehearsal build.
+
+Quipsly Capture **1.0 (14)**, exact source
+`a2d8835353c372e2cb528b661c28752b61cc492c`, production Nest
+`studio-00445-rij`, and the public TestFlight handoff remain untouched for
+Scott and Charlie's physical rehearsal.
 
 A later coordinated release must still:
 
-1. deploy the exact committed Nest source as a zero-traffic preview;
-2. pass authenticated preview smoke and immutable source/image readback;
-3. qualify a new Capture build from the same committed source;
-4. install and operate it on a physical iPhone;
-5. prove offline/interruption recovery and same-ID production readback before
-   this slice is described as distributed or physically proven.
+1. build and smoke an exact committed Nest preview with both migrations;
+2. verify actor-owner readback and same-Nest denial against that preview;
+3. promote the exact image only after authenticated and immutable-source
+   readback;
+4. qualify and upload a new Capture build from the same committed source;
+5. install and operate it on a physical iPhone;
+6. repeat offline/interruption recovery, same-ID production readback, portable
+   export/restore, and source/response editing before describing this slice as
+   distributed or physically proven.

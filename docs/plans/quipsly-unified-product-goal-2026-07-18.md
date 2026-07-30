@@ -4083,3 +4083,40 @@ This is an active-goal checkpoint, not a completion claim.
   coordinated release still requires exact-commit zero-traffic preview,
   authenticated readback, a newly qualified Capture build, physical-iPhone
   offline/interruption recovery, and same-ID production proof.
+
+### 2026-07-30 actor-private source-to-writing ownership checkpoint
+
+- Feature commit
+  `aca8aa0a5c4f87e0f7425aaeceb34712be04bf59` moves private writing from a
+  projection-only promise to one canonical document-kernel rule:
+  `StudioDocument.personalOwnerUserId`. Shared Nest documents retain their
+  membership boundary; an owned document is visible and mutable only to its
+  actor even when another person is an editor of the same Nest.
+- A source-annotation handoff now creates one immutable
+  `annotation-evidence:*` block and one separate editable
+  `annotation-response:*` block. Capture requires both stable identities and
+  returns to the response block. The writing desk truthfully distinguishes
+  **Pinned source evidence** from **Pinned transcript evidence**.
+- Two reversible, additive migrations establish the owner column and
+  conservatively backfill native notes, quick notes, transcript drafts, and
+  unambiguous historical evidence drafts. Ambiguous history remains shared for
+  human review rather than receiving a guessed owner.
+- Create, Library, Nest, Today, Work, notes, transcript drafts, search,
+  assistant context, indexing, tagging, sync, portability, and deletion all
+  enforce the same predicate. Shared AI indexes omit personal documents; tag
+  merge fails closed when another owner's private relationships are involved.
+- Operated local Nest proof used an owner and a second same-Nest editor. The
+  owner edited the response and read it back after reload while evidence stayed
+  unchanged. The collaborator retained normal Nest access but received an
+  indistinguishable document denial and found no private-document link in
+  Create or Library.
+- Verification covers 180 Quipsly suites / 881 passing tests, 19 live
+  PostgreSQL cases, TypeScript 7, 31 applied migrations, the protected native
+  outbox, source contracts, 877 App Store/static checks, a complete iOS
+  Simulator build, four persisted real-source dogfood handoffs, same-Nest
+  rendered denial, and portable export/restore.
+- This slice is committed source, not a distributed claim. Build 14, production
+  `studio-00445-rij`, and the public TestFlight rehearsal handoff remain
+  unchanged. The open gate is an exact-commit zero-traffic Nest preview,
+  authenticated owner/collaborator readback, coordinated Capture release, and
+  physical-iPhone offline/interruption plus same-ID production proof.
