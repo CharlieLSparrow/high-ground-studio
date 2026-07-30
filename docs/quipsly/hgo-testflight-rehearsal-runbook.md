@@ -230,6 +230,22 @@ If the public link does not hand off to TestFlight:
 
 ## Ten-minute preflight
 
+From the exact product worktree, run the consolidated live readback first:
+
+```bash
+pnpm quipsly:capture:rehearsal-preflight \
+  --output /private/tmp/quipsly-hgo-rehearsal-preflight-current.json
+```
+
+`infrastructureReady: true` proves the current Build 12/public-link boundary,
+the exact private production Room, two participant records, just-in-time
+Scott Google linking, the 34-block manuscript, all three protected Watch
+objects, and the signed canonical Mac launcher. It intentionally leaves
+`readyToRecordNow: false` until physical installation, Charlie's Mac handoff,
+both human consent decisions, device routes, a listened/watched disposable
+take, the two-person room, and same-ID upload/timeline readback are separately
+proved. Never edit that receipt to make a human or physical gate green.
+
 Both people:
 
 1. Use headphones to avoid speaker echo.

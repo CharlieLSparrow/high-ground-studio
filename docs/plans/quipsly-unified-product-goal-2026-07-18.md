@@ -3496,6 +3496,14 @@ This is an active-goal checkpoint, not a completion claim.
   opening alone cannot request permission, choose a room, join, record,
   upload, or publish. The signed exact-path UI and a six-check live smoke both
   prove the entry surface.
+- One consolidated live rehearsal preflight now composes current App Store
+  Connect, the public TestFlight handoff, the exact production Room, Scott's
+  just-in-time Google link readiness, manuscript/Watch/protected-media proof,
+  and the canonical signed Mac app into a redacted mode-0600 receipt. Its ten
+  infrastructure checks pass. It reports ready to begin the human rehearsal
+  while keeping ready-to-record false until physical install, saved Mac
+  session, both consent decisions, device routes, review, room operation, and
+  same-ID upload/timeline readback exist.
 - This closes neither Charlie's account handoff nor the physical Mac capture
   gate. Completing Google sign-in persists a device-local refresh token and
   remains an explicit human authorization step. The rehearsal must still

@@ -60,6 +60,8 @@
     "quipsly:capture:app-store-readback:test": "node --test scripts/release/quipsly-app-store-connect-readback.test.mjs",
     "quipsly:capture:app-store-assign-build": "node scripts/release/quipsly-app-store-connect-assign-build.mjs",
     "quipsly:capture:testflight-public-link-readback": "node scripts/release/quipsly-testflight-public-link-readback.mjs",
+    "quipsly:capture:rehearsal-preflight": "bash scripts/quipsly-hgo-rehearsal-live-preflight.sh",
+    "quipsly:capture:rehearsal-preflight:test": "node --test scripts/quipsly-hgo-rehearsal-preflight.test.mjs",
     "quipsly:capture:nest-evidence:test": "bash apps/mobile-capture/HighGroundCapture/scripts/test-nest-source-evidence-contract.sh",
     "quipsly:local:up": "bash scripts/dev/quipsly-local-up.sh",
     "quipsly:local:down": "bash scripts/dev/quipsly-local-down.sh",

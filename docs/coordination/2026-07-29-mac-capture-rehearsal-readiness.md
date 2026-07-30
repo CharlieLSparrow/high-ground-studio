@@ -177,6 +177,36 @@ Evidence:
 This proves the deployed native-session boundary for the synthetic reviewer.
 It does not prove Charlie's Mac handoff or Scott's first Google sign-in.
 
+## Consolidated rehearsal preflight
+
+The new fail-closed live preflight:
+
+```bash
+pnpm quipsly:capture:rehearsal-preflight \
+  --output /private/tmp/quipsly-hgo-rehearsal-preflight-current.json
+```
+
+passed all ten infrastructure checks against current external state:
+
+- Build 12 valid and `IN_BETA_TESTING`;
+- exact public TestFlight page and handoff open;
+- private production rehearsal Room with two participants and LiveKit
+  configured;
+- Scott's first verified Google sign-in ready for just-in-time Firebase
+  linking without a verification email;
+- 34 stable manuscript blocks with outsider denial;
+- Be Curious selected at revision 5, paused at zero, with no invented Watch
+  session or watched spans;
+- all three protected clips outsider-denied and byte/hash exact;
+- canonical signed Mac bundle running without a duplicate;
+- redacted native-account boundary passing;
+- visible Capture launcher and actual setup window passing.
+
+The receipt correctly reports `readyToBeginHumanRehearsal: true` and
+`readyToRecordNow: false`. It will not infer Scott's physical install,
+Charlie's saved Mac session, either person's consent, hardware routes,
+listen/watch review, two-person operation, or upload/timeline readback.
+
 ## Physical rehearsal sequence
 
 1. Open Quipsly Studio **Account** and complete Charlie's Google handoff.
