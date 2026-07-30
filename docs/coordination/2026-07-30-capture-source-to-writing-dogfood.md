@@ -207,21 +207,70 @@ effects.
 
 ## Distribution boundary
 
-This is committed source, not a distributed rehearsal build.
+The actor-private Nest slice is now qualified on a zero-traffic Cloud Run
+preview. It is still not the production surface or a distributed Capture
+build.
+
+Before migration, on-demand Cloud SQL backup `1785413794634` completed
+successfully with description
+`quipsly-personal-writing-1627428e-pre-migration`. Exact-schema Cloud Build
+`a969f3ac-e739-4db6-97b2-cf702ef630e6` produced the schema image from commit
+`1627428e905d011642c92fcfa3807f5d7512ff6e`. Read-only status execution
+`quipsly-schema-status-mhwjq` found exactly the two expected pending
+migrations. Migration execution `quipsly-schema-migrate-lrms9` applied only:
+
+- `20260730110000_add_personal_writing_document_owner`;
+- `20260730121500_backfill_personal_evidence_draft_owner`.
+
+Status execution `quipsly-schema-status-pnvgs` then reported all 31 migrations
+up to date.
+
+Exact-source Nest Cloud Build
+`3adae171-0ea4-490d-9601-e9a068b7ea91` passed the strict production build,
+TypeScript, all 150 page-generation routes, image publication, and required
+route-bundle inspection. Its Artifact Registry manifest-list digest is
+`sha256:2bcd687afb929299b0297c47a723fd5563ed747b2048fec7acb355ba06e01028`.
+
+Cloud Run revision `studio-00447-jol` is ready at the `quipsly-preview` tag and
+serves zero percent of default traffic. Runtime health independently reports:
+
+- source SHA and image tag
+  `1627428e905d011642c92fcfa3807f5d7512ff6e`;
+- release channel `preview`;
+- revision `studio-00447-jol`;
+- resolved amd64 image manifest
+  `sha256:eebccd541f5063a191b5667ad132a2fcda6f8a1b1eca216913b5e380bda99205`.
+
+Preview operation proved:
+
+- a generated owner completed Firebase login, session exchange, native session
+  check, Home Nest, Sessions, writing, editor, recorder, Research, Publishing,
+  logout, and bounded database/Firebase cleanup;
+- the compiled Quipsly Capture app performed **Start private draft** against
+  the preview and produced one actor-owned document, immutable evidence block,
+  editable response block, response-focused handoff, exact replay, unchanged
+  source and annotation revision, reversible human operation, and no external
+  effect;
+- the complete generated Capture network contract passed **149/149** checks,
+  including 23 authenticated checks, provider join readiness without recording,
+  Session context, canonical task/goal/note/tag persistence, and complete
+  cleanup.
 
 Quipsly Capture **1.0 (14)**, exact source
 `a2d8835353c372e2cb528b661c28752b61cc492c`, production Nest
 `studio-00445-rij`, and the public TestFlight handoff remain untouched for
-Scott and Charlie's physical rehearsal.
+Scott and Charlie's physical rehearsal. Production traffic remains 100% on
+`studio-00445-rij`; the preview was deliberately not promoted during the
+rehearsal. Apple's public handoff was reread after preview qualification and
+still returned the exact open Quipsly Capture beta page and `itms-beta` link.
 
 A later coordinated release must still:
 
-1. build and smoke an exact committed Nest preview with both migrations;
-2. verify actor-owner readback and same-Nest denial against that preview;
-3. promote the exact image only after authenticated and immutable-source
-   readback;
-4. qualify and upload a new Capture build from the same committed source;
-5. install and operate it on a physical iPhone;
-6. repeat offline/interruption recovery, same-ID production readback, portable
+1. repeat same-Nest collaborator denial against the deployed preview;
+2. promote the exact image only after the physical rehearsal is no longer in
+   flight and the promotion smoke creates a revision-bound receipt;
+3. qualify and upload a new Capture build from the same committed source;
+4. install and operate it on a physical iPhone;
+5. repeat offline/interruption recovery, same-ID production readback, portable
    export/restore, and source/response editing before describing this slice as
    distributed or physically proven.

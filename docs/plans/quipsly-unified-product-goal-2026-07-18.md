@@ -4120,3 +4120,21 @@ This is an active-goal checkpoint, not a completion claim.
   unchanged. The open gate is an exact-commit zero-traffic Nest preview,
   authenticated owner/collaborator readback, coordinated Capture release, and
   physical-iPhone offline/interruption plus same-ID production proof.
+- The exact-commit preview gate is now partly closed. Backup `1785413794634`
+  completed before exact-schema execution
+  `quipsly-schema-migrate-lrms9` applied only the two owner migrations; status
+  execution `quipsly-schema-status-pnvgs` reports all 31 migrations current.
+  Cloud Build `3adae171-0ea4-490d-9601-e9a068b7ea91` produced Artifact
+  Registry digest `sha256:2bcd687a...`, and ready zero-traffic revision
+  `studio-00447-jol` reads back exact source `1627428e...`.
+- A generated owner operated the deployed web surfaces with complete cleanup.
+  The compiled iPhone Simulator then performed the annotation-to-writing
+  decision against that preview and proved actor ownership, immutable evidence,
+  editable response, exact replay, preserved source/revision, and no external
+  effect. A full generated network run passed 149 Capture checks, including 23
+  authenticated checks, and independently proved cleanup.
+- Production remains 100% on `studio-00445-rij`; the preview was deliberately
+  not promoted while Scott and Charlie's Build 14 rehearsal is in flight.
+  Deployed same-Nest collaborator denial, a revision-bound promotion receipt,
+  coordinated Capture qualification, and physical-iPhone failure recovery
+  remain open.
