@@ -1237,6 +1237,7 @@ struct TodayFollowThroughCard: View {
     @ObservedObject var client: CaptureTodayClient
     @ObservedObject var inboxClient: CaptureSourceInboxClient
     let previewOnly: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var recurrenceToEnd: MobileCaptureTodayRecurrence?
     @State private var recurrenceToEdit: MobileCaptureTodayTask?
@@ -1576,7 +1577,9 @@ struct TodayFollowThroughCard: View {
                     }
                     if client.tasks.count > 3 {
                         Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
+                            withAnimation(
+                                reduceMotion ? nil : .easeInOut(duration: 0.2)
+                            ) {
                                 showsAllCommittedTasks.toggle()
                             }
                         } label: {
@@ -8188,6 +8191,8 @@ private func accountDeletionDate(_ value: String?) -> String? {
 }
 
 private struct GlobalCaptureBanner: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let title: String
     let duration: TimeInterval
     let tint: Color
@@ -8198,7 +8203,10 @@ private struct GlobalCaptureBanner: View {
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: isPulsing ? "record.circle.fill" : "pause.circle.fill")
-                    .symbolEffect(.pulse, isActive: isPulsing)
+                    .symbolEffect(
+                        .pulse,
+                        isActive: isPulsing && !reduceMotion
+                    )
                 Text(title)
                     .font(.subheadline.weight(.bold))
                 Spacer()

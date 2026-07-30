@@ -990,6 +990,8 @@ extension CaptureTranscriptPlaybackController: AVAudioPlayerDelegate {
 }
 
 struct CaptureTranscriptReviewView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     let roomID: String
     let sessionTitle: String
     let recording: LocalRecording?
@@ -1076,7 +1078,9 @@ struct CaptureTranscriptReviewView: View {
                         }
                         if !client.packetActionCandidates.isEmpty {
                             packetTaskReviewSection { segmentID in
-                                withAnimation(.easeOut(duration: 0.3)) {
+                                withAnimation(
+                                    reduceMotion ? nil : .easeOut(duration: 0.3)
+                                ) {
                                     scrollTargetSegmentID = segmentID
                                 }
                                 accessibilityFocusedSegmentID = segmentID
@@ -1084,7 +1088,9 @@ struct CaptureTranscriptReviewView: View {
                         }
                         if !client.packetGoalCandidates.isEmpty {
                             packetGoalReviewSection { segmentID in
-                                withAnimation(.easeOut(duration: 0.3)) {
+                                withAnimation(
+                                    reduceMotion ? nil : .easeOut(duration: 0.3)
+                                ) {
                                     scrollTargetSegmentID = segmentID
                                 }
                                 accessibilityFocusedSegmentID = segmentID
@@ -1121,7 +1127,9 @@ struct CaptureTranscriptReviewView: View {
                 await client.load(roomID: roomID, previewOnly: previewOnly)
                 guard let focusSegmentID,
                       client.desk?.segments.contains(where: { $0.id == focusSegmentID }) == true else { return }
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(
+                    reduceMotion ? nil : .easeOut(duration: 0.3)
+                ) {
                     scrollTargetSegmentID = focusSegmentID
                 }
                 accessibilityFocusedSegmentID = focusSegmentID

@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct IPadQuipslyStudioView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     @Binding var selectedSection: MobileWorkspaceSection
     @Binding var selectedInspector: MobileInspectorMode
     @Binding var selectedBlockID: MobileManuscriptBlock.ID?
@@ -69,7 +71,7 @@ struct IPadQuipslyStudioView: View {
         }
         .onChange(of: audioCapture.isRecording) { _, isRecording in
             if isRecording {
-                withAnimation {
+                withAnimation(reduceMotion ? nil : .default) {
                     showFocusMode = true
                 }
             }

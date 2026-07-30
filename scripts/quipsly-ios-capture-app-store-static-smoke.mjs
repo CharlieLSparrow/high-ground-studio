@@ -48,6 +48,7 @@ const files = {
   sessionNoteEditOutbox: path.join(sourceRoot, "SessionNoteEditOutbox.swift"),
   captureReceiptStore: path.join(sourceRoot, "CaptureRoomReceiptStore.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
+  transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
   localRecordingLibrary: path.join(sourceRoot, "LocalRecordingLibrary.swift"),
   localRecordingPlayback: path.join(sourceRoot, "LocalRecordingPlaybackController.swift"),
   mobileComponents: path.join(sourceRoot, "QuipslyMobileComponents.swift"),
@@ -175,6 +176,7 @@ const sourceAnnotationDraftOutboxText = read(files.sourceAnnotationDraftOutbox);
 const sessionNoteEditOutboxText = read(files.sessionNoteEditOutbox);
 const captureReceiptStoreText = read(files.captureReceiptStore);
 const capturePhoneShellText = read(files.capturePhoneShell);
+const transcriptReviewText = read(files.transcriptReview);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
@@ -1333,6 +1335,31 @@ requireIncludes(mobileText, "SOURCE-SAFE", "native source-safe badge");
 requireIncludes(mobileText, "if let primaryCallPath = contract.primaryCallPath", "native primary call path visible");
 requireIncludes(mobileText, "if let fallbackCallImport = contract.fallbackCallImport", "native fallback import visible");
 requireIncludes(mobileText, "accessibilityIdentifier(\"NativeCaptureContractPanel\")", "native capture contract accessibility");
+requireIncludes(
+  capturePhoneShellText,
+  "@Environment(\\.accessibilityReduceMotion) private var reduceMotion",
+  "phone capture surfaces read the system reduced-motion preference",
+);
+requireIncludes(
+  capturePhoneShellText,
+  "isActive: isPulsing && !reduceMotion",
+  "live capture banner disables its pulse when reduced motion is enabled",
+);
+requireIncludes(
+  capturePhoneShellText,
+  "reduceMotion ? nil : .easeInOut(duration: 0.2)",
+  "Today follow-through expansion has a non-animated reduced-motion path",
+);
+requireIncludes(
+  transcriptReviewText,
+  "reduceMotion ? nil : .easeOut(duration: 0.3)",
+  "transcript evidence return has a non-animated reduced-motion path",
+);
+requireIncludes(
+  iPadText,
+  "withAnimation(reduceMotion ? nil : .default)",
+  "iPad recording focus has a non-animated reduced-motion path",
+);
 requireIncludes(bridgeText, "visibleRecordingIndicatorRequired", "readiness recording policy");
 requireIncludes(bridgeText, "api/account/deletion-request", "native deletion request client");
 requireIncludes(bridgeText, "prepareRoomJoin", "provider room join prep");

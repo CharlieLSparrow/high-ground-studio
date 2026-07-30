@@ -4172,3 +4172,19 @@ This is an active-goal checkpoint, not a completion claim.
   `charlie@highgroundodyssey.com` account is staged at Google's password
   verification screen; the harness must not run until both credential paths
   mint tokens again.
+- Current source now honors the system reduced-motion preference at every
+  remaining explicit animation in the core Capture journey: Today expansion,
+  transcript task/goal/source return, recording-triggered iPad focus, and the
+  global live-capture pulse all have non-animated alternatives. Existing audio
+  meter and press feedback guards remain in place.
+- Operated reduced-motion proof set the iPhone 17 Pro / iOS 26.3.1 Simulator's
+  real `com.apple.Accessibility` `ReduceMotionEnabled` preference to `1`, then
+  passed 3/3 compiled journeys covering the primary recorder and Apple
+  accessibility audit, canonical Today follow-through, and transcript
+  truth/review boundaries. Result:
+  `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_07-23-31--0600.xcresult`.
+  The preference was restored and independently read back as `0`.
+- This is Simulator reduced-motion validation, not VoiceOver, Voice Control,
+  Switch Control, or physical-device proof. The static App Store gate now
+  prevents the explicit reduced-motion guards from silently disappearing; a
+  physical TestFlight pass with the system preference enabled remains required.
