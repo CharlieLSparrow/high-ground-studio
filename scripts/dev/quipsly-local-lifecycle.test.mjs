@@ -149,6 +149,42 @@ test("generated mobile dogfood is disposable, secret-safe, and current-source", 
     generatedMobileDogfood,
     /quipsly-mobile-capture-generated-auth-smoke\.mjs/,
   );
+  assert.match(
+    generatedMobileDogfood,
+    /QUIPSLY_GENERATED_MOBILE_DATABASE_TARGET:-local/,
+  );
+  assert.match(
+    generatedMobileDogfood,
+    /QUIPSLY_GENERATED_MOBILE_DATABASE_TARGET=canonical/,
+  );
+  assert.match(
+    generatedMobileDogfood,
+    /generated mobile local database target must use a loopback host/i,
+  );
+  assert.match(
+    generatedMobileDogfood,
+    /Canonical dogfood cannot also receive a local database override/,
+  );
+  assert.match(
+    generatedMobileDogfood,
+    /nest_dist_name="\.next-mobile-dogfood"/,
+  );
+  assert.match(
+    generatedMobileDogfood,
+    /QUIPSLY_BUILD_DIST_DIR="\$\{nest_dist_name\}"/,
+  );
+  assert.match(
+    generatedMobileDogfood,
+    /apps\/quipsly\/\.next-mobile-dogfood/,
+  );
+  assert.match(
+    generatedMobileDogfood,
+    /shlock -p "\$\$" -f "\$\{dogfood_lock_file\}"/,
+  );
+  assert.match(
+    generatedMobileDogfood,
+    /unlink "\$\{dogfood_lock_file\}"/,
+  );
   assert.match(generatedMobileDogfood, /--workflow="\$\{mode\}"/);
   assert.match(generatedMobileDogfood, /--runtime-ui-mode="\$\{mode\}"/);
   assert.match(

@@ -51,6 +51,34 @@ Never run the baseline migration directly against a populated database. First:
 `migrate resolve` changes only Prisma's migration ledger. It does not apply the
 SQL, which is why the zero-diff check and backup are mandatory gates.
 
+## Applied ledger entry with missing live objects
+
+An applied checksum is not proof that every object from that migration still
+exists. If `_prisma_migrations` reports a migration as applied but
+`prisma migrate diff` or runtime behavior proves that its table, column, index,
+constraint, or backfill is missing:
+
+1. Stop application rollout and preserve the migration ledger plus a schema
+   dump and restorable backup.
+2. Do not edit the already-applied migration and do not mark it rolled back.
+3. Add a new forward-only repair migration. Make every repair operation
+   idempotent where PostgreSQL permits it (`IF NOT EXISTS` plus catalog checks
+   for constraints), preserve existing rows, and reproduce the checked-in
+   schema's indexes, foreign keys, and required backfill.
+4. Apply the repair to an explicit disposable or local target first.
+5. Run `prisma migrate diff --from-config-datasource --to-schema
+   prisma/schema.prisma --exit-code`; success requires `No difference
+   detected`.
+6. Exercise the runtime path that originally revealed the drift. A zero schema
+   diff alone does not prove application behavior.
+7. Release the repair before any application revision that requires the
+   missing object, then read the target schema and application behavior back.
+
+This keeps historical checksums truthful while making repair and rollback
+decisions reviewable. The rollback for an additive repair is normally an
+application rollback; do not drop restored data-bearing objects merely to
+reverse the migration.
+
 ## Change policy
 
 - Add a migration for every Prisma schema change.

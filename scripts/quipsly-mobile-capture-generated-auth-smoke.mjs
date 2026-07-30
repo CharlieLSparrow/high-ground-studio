@@ -140,15 +140,43 @@ function createPrisma(env) {
 }
 
 async function requestJson(url, options = {}) {
-  const response = await fetch(url, options);
-  const text = await response.text();
-  let body = {};
-  try {
-    body = JSON.parse(text);
-  } catch {
-    body = { unparsedBodyPrefix: text.slice(0, 160) };
+  const method = String(options.method || "GET").toUpperCase();
+  const safeToRetry = method === "GET" || method === "HEAD";
+  const attempts = safeToRetry ? 2 : 1;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const requestOptions = attempt === 0
+        ? options
+        : {
+          ...options,
+          headers: {
+            ...Object.fromEntries(new Headers(options.headers || {}).entries()),
+            connection: "close",
+          },
+        };
+      const response = await fetch(url, requestOptions);
+      const text = await response.text();
+      let body = {};
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = { unparsedBodyPrefix: text.slice(0, 160) };
+      }
+      return { response, body, text };
+    } catch (error) {
+      if (attempt + 1 >= attempts) {
+        const causeCode = error?.cause?.code
+          ? ` (${String(error.cause.code)})`
+          : "";
+        throw new Error(
+          `${method} ${new URL(url).pathname} transport failed after ${attempts} attempt${attempts === 1 ? "" : "s"}${causeCode}.`,
+          { cause: error },
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
+    }
   }
-  return { response, body, text };
+  throw new Error(`${method} ${new URL(url).pathname} transport failed.`);
 }
 
 async function assertServerFirebaseAdminPreflight(baseUrl) {
@@ -660,6 +688,8 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
     { tags: task.body.entry.tags },
   );
 
+  const noteTitle = "Recording rehearsal notes";
+  const noteBody = "The iPhone copy must survive interruption until verified upload.";
   const note = await requestJson(`${baseUrl}/api/mobile/capture/quick-entry`, {
     method: "POST",
     headers: {
@@ -671,8 +701,8 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
       callRoomId: null,
       projectId,
       kind: "NOTE",
-      title: "Recording rehearsal notes",
-      body: "The iPhone copy must survive interruption until verified upload.",
+      title: noteTitle,
+      body: noteBody,
       tagIds: [episodeTag.id],
       newTagLabels: ["Field notes"],
       capturedAt,
@@ -787,6 +817,17 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
       goalCount: goals.length,
     },
   );
+  const workNote = notes.find((entry) => entry.id === note.body.entry.id);
+  assert(
+    workNote?.canEditContent === true
+      && typeof workNote?.contentRevision === "string"
+      && /^[0-9a-f]{64}$/.test(workNote.contentRevision)
+      && Array.isArray(workNote?.blocks)
+      && workNote.blocks.length === 1
+      && workNote.blocks[0]?.body === noteBody,
+    "Generated project Work readback did not expose the canonical note's stable editable block and content revision.",
+    { note: workNote },
+  );
   assert(
     tags.length === 3
       && tags.some((tag) => tag.id === episodeTag.id && tag.usageCount === 2)
@@ -802,6 +843,15 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
     goalId: goal.body.entry.id,
     goalTitle,
     goalTargetLocalDate,
+    noteId: note.body.entry.id,
+    noteTitle,
+    noteBody,
+    noteBodyBlockId: workNote.blocks[0].id,
+    noteBodyBlockStableId: workNote.blocks[0].stableId,
+    noteInitialContentRevision: workNote.contentRevision,
+    noteTagIds: workNote.tagIds,
+    projectId,
+    projectName: name,
     projectIdPresent: true,
     ownerRole: created.body.project.role,
     projectRetrySafe: replay.body.idempotentReplay === true,
@@ -1001,6 +1051,117 @@ function runMobileCaptureContractSmoke(env, baseUrl, idToken) {
   return payload;
 }
 
+async function assertGeneratedDocumentNoteRestored(
+  env,
+  baseUrl,
+  idToken,
+  projectWorkProof,
+) {
+  const authorization = `Bearer ${idToken}`;
+  const work = await requestJson(
+    `${baseUrl}/api/mobile/capture/work?projectId=${encodeURIComponent(projectWorkProof.projectId)}`,
+    { headers: { authorization } },
+  );
+  const notes = Array.isArray(work.body?.workspace?.notes)
+    ? work.body.workspace.notes
+    : [];
+  const note = notes.find((entry) => entry.id === projectWorkProof.noteId);
+  assert(
+    work.response.status === 200
+      && work.body?.ok === true
+      && note?.title === projectWorkProof.noteTitle
+      && note?.blocks?.length === 1
+      && note.blocks[0]?.id === projectWorkProof.noteBodyBlockId
+      && note.blocks[0]?.stableId === projectWorkProof.noteBodyBlockStableId
+      && note.blocks[0]?.body === projectWorkProof.noteBody
+      && note.contentRevision === projectWorkProof.noteInitialContentRevision
+      && JSON.stringify([...(note.tagIds || [])].sort())
+        === JSON.stringify([...(projectWorkProof.noteTagIds || [])].sort()),
+    "The operated iPhone note-edit journey did not restore the exact canonical title, stable body, content fingerprint, and tags through Work.",
+    {
+      status: work.response.status,
+      note: note
+        ? {
+          id: note.id,
+          title: note.title,
+          contentRevision: note.contentRevision,
+          blockIds: note.blocks?.map((block) => block.id),
+          tagIds: note.tagIds,
+        }
+        : null,
+    },
+  );
+
+  const prisma = createPrisma(env);
+  try {
+    const [saved, operations] = await Promise.all([
+      prisma.studioDocument.findUnique({
+        where: { id: projectWorkProof.noteId },
+        select: {
+          title: true,
+          tagLinks: { select: { tagId: true } },
+          blocks: {
+            where: { archivedAt: null },
+            orderBy: [{ order: "asc" }, { id: "asc" }],
+            select: { id: true, stableId: true, order: true, body: true },
+          },
+        },
+      }),
+      prisma.studioDocumentOperation.findMany({
+        where: {
+          documentId: projectWorkProof.noteId,
+          operationType: "document-note-content-edit",
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          reversible: true,
+          beforeJson: true,
+          afterJson: true,
+        },
+      }),
+    ]);
+    const savedTagIds = (saved?.tagLinks || [])
+      .map((link) => link.tagId)
+      .sort();
+    const expectedTagIds = [...(projectWorkProof.noteTagIds || [])].sort();
+    assert(
+      saved?.title === projectWorkProof.noteTitle
+        && saved.blocks.some((block) =>
+          block.id === projectWorkProof.noteBodyBlockId
+          && block.stableId === projectWorkProof.noteBodyBlockStableId
+          && block.body === projectWorkProof.noteBody)
+        && JSON.stringify(savedTagIds) === JSON.stringify(expectedTagIds)
+        && operations.length === 2
+        && new Set(operations.map((operation) => operation.id)).size === 2
+        && operations.every((operation) =>
+          operation.reversible === true
+          && operation.beforeJson
+          && operation.afterJson?.anchorsPreserved === true
+          && operation.afterJson?.tagsChanged === false
+          && operation.afterJson?.structureChanged === false
+          && operation.afterJson?.sourceMutated === false
+          && operation.afterJson?.externalSideEffects === false),
+      "The canonical database did not retain two reversible, side-effect-free note edit receipts and the restored stable block.",
+      {
+        title: saved?.title,
+        blockIds: saved?.blocks.map((block) => block.id),
+        operationCount: operations.length,
+      },
+    );
+    return {
+      exactTitleAndBodyRestored: true,
+      stableBodyBlockRestored: true,
+      originalContentRevisionRestored: true,
+      tagsPreserved: true,
+      reversibleOperationCount: operations.length,
+      externalSideEffects: false,
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 function runCaptureRuntimeUISmoke(
   env,
   baseUrl,
@@ -1014,6 +1175,13 @@ function runCaptureRuntimeUISmoke(
     goalId = "",
     goalEditSourceTitle = "",
     goalEditUpdatedTitle = "",
+    noteId = "",
+    noteBodyBlockId = "",
+    noteEditSourceTitle = "",
+    noteEditUpdatedTitle = "",
+    noteEditSourceBody = "",
+    noteEditUpdatedBody = "",
+    projectName = "",
   } = {},
 ) {
   const scriptPath = path.join(
@@ -1038,9 +1206,17 @@ function runCaptureRuntimeUISmoke(
       QUIPSLY_CAPTURE_UI_TEST_GOAL_ID: goalId,
       QUIPSLY_CAPTURE_UI_TEST_GOAL_EDIT_SOURCE_TITLE: goalEditSourceTitle,
       QUIPSLY_CAPTURE_UI_TEST_GOAL_EDIT_UPDATED_TITLE: goalEditUpdatedTitle,
+      QUIPSLY_CAPTURE_UI_TEST_NOTE_ID: noteId,
+      QUIPSLY_CAPTURE_UI_TEST_NOTE_BODY_BLOCK_ID: noteBodyBlockId,
+      QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_SOURCE_TITLE: noteEditSourceTitle,
+      QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_TITLE: noteEditUpdatedTitle,
+      QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_SOURCE_BODY: noteEditSourceBody,
+      QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_BODY: noteEditUpdatedBody,
+      QUIPSLY_CAPTURE_UI_TEST_PROJECT_NAME: projectName,
     },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
+    maxBuffer: 64 * 1024 * 1024,
   });
 
   assert(
@@ -1049,6 +1225,8 @@ function runCaptureRuntimeUISmoke(
     {
       stdoutTail: result.stdout.slice(-1600),
       stderrTail: result.stderr.slice(-1600),
+      signal: result.signal || null,
+      spawnError: result.error?.message || null,
     },
   );
 
@@ -1074,7 +1252,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_RUNTIME_UI_MODE
       || "surface",
   ).trim();
-  if (!["surface", "task-edit", "goal-edit"].includes(runtimeUISmokeMode)) {
+  if (!["surface", "task-edit", "goal-edit", "note-edit"].includes(runtimeUISmokeMode)) {
     throw new Error(
       `Generated mobile Capture runtime UI mode is not supported: ${runtimeUISmokeMode}`,
     );
@@ -1084,7 +1262,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_WORKFLOW
       || "full",
   ).trim();
-  if (!["full", "task-edit", "goal-edit"].includes(workflow)) {
+  if (!["full", "task-edit", "goal-edit", "note-edit"].includes(workflow)) {
     throw new Error(`Generated mobile Capture workflow is not supported: ${workflow}`);
   }
   if (workflow !== "full" && runtimeUISmokeMode !== workflow) {
@@ -1103,6 +1281,7 @@ async function main() {
   let roomJoinProof = null;
   let sessionContextProof = null;
   let runtimeUISmoke = { requested: shouldRunRuntimeUISmoke, passed: false };
+  let noteEditRestoration = null;
 
   try {
     await assertServerFirebaseAdminPreflight(baseUrl);
@@ -1165,8 +1344,23 @@ async function main() {
           goalId: projectWorkProof.goalId,
           goalEditSourceTitle: projectWorkProof.goalTitle,
           goalEditUpdatedTitle: `${projectWorkProof.goalTitle} — edited on iPhone`,
+          noteId: projectWorkProof.noteId,
+          noteBodyBlockId: projectWorkProof.noteBodyBlockId,
+          noteEditSourceTitle: projectWorkProof.noteTitle,
+          noteEditUpdatedTitle: `${projectWorkProof.noteTitle} — edited on iPhone`,
+          noteEditSourceBody: projectWorkProof.noteBody,
+          noteEditUpdatedBody: `${projectWorkProof.noteBody} Temporary operated iPhone edit.`,
+          projectName: projectWorkProof.projectName,
         },
       );
+      if (workflow === "note-edit") {
+        noteEditRestoration = await assertGeneratedDocumentNoteRestored(
+          env,
+          baseUrl,
+          firebaseBody.idToken,
+          projectWorkProof,
+        );
+      }
     }
     smokeSucceeded = true;
   } finally {
@@ -1195,6 +1389,7 @@ async function main() {
       roomJoin: roomJoinProof,
       sessionContext: sessionContextProof,
       runtimeUISmoke,
+      noteEditRestoration,
       mobileCaptureContract: contractReport
         ? {
           authenticated: contractReport.authenticated === true,

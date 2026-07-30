@@ -232,6 +232,42 @@ Before treating a change as useful, operate the visible app:
 
 A passing build without this readback is not equivalent to a working product.
 
+### Operated iPhone Simulator edit journeys
+
+The generated mobile dogfood commands run current local Nest source, use a
+disposable real Firebase identity, drive the compiled iPhone app, and prove
+post-run identity/database cleanup. Their random-port Nest process uses an
+isolated `.next-mobile-dogfood-*` directory, so the normal port-3012
+development server can remain open. They default to the loopback PostgreSQL
+database; this keeps ordinary development away from Cloud SQL:
+
+```bash
+pnpm quipsly:mobile:dogfood-task-edit
+pnpm quipsly:mobile:dogfood-goal-edit
+pnpm quipsly:mobile:dogfood-note-edit
+```
+
+The note journey edits one exact canonical project note, reads the temporary
+title and body back through Work, restores the originals, and independently
+checks the original content revision and tag set, stable block identity,
+exactly two reversible operation receipts, and zero external side effects.
+Every journey removes its generated project, Home Nest, grants, membership,
+database user, and Firebase user, then proves both providers contain no
+residue. A failed run prints only the local Nest diagnostic tail and still
+removes its secret-only temporary directory.
+
+Canonical Cloud SQL is a separate, explicit credentialed lane:
+
+```bash
+QUIPSLY_GENERATED_MOBILE_DATABASE_TARGET=canonical \
+  pnpm quipsly:mobile:dogfood-note-edit
+```
+
+Do not set the canonical target casually. It requires current Google Cloud
+authorization and the same cleanup/readback discipline as a production smoke.
+Neither target proves a physical iPhone, a distributed TestFlight binary, or
+human completion of real episode/coaching work.
+
 ## 6. Rehearse portable recovery
 
 Create a dedicated destination Nest and follow

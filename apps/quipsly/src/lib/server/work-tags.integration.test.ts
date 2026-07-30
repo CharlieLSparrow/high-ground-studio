@@ -416,6 +416,11 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
 
   it("rejects cross-Nest tags, a different actor, and stale revisions without writes", async () => {
     const currentTask = await prisma.actionItem.findUniqueOrThrow({ where: { id: taskId } });
+    const originalTagLinks = await prisma.actionItemTagLink.findMany({
+      where: { actionItemId: taskId },
+      orderBy: { tagId: "asc" },
+      select: { tagId: true },
+    });
     const crossProject = await replaceWorkEntityTags({ prisma, actorUserId, actorEmail, entityKind: "task", entityId: taskId, tagIds: [otherTagId], expectedUpdatedAt: currentTask.updatedAt });
     const otherActor = await replaceWorkEntityTags({ prisma, actorUserId: otherUserId, actorEmail, entityKind: "task", entityId: taskId, tagIds: [], expectedUpdatedAt: currentTask.updatedAt });
     const stale = await replaceWorkEntityTags({ prisma, actorUserId, actorEmail, entityKind: "task", entityId: taskId, tagIds: [], expectedUpdatedAt: taskUpdatedAt });
@@ -426,7 +431,11 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     expect(otherActor).toMatchObject({ ok: false, code: "NOT_FOUND" });
     expect(stale).toMatchObject({ ok: false, code: "CONFLICT" });
     expect(viewer).toMatchObject({ ok: false, code: "FORBIDDEN" });
-    await expect(prisma.actionItemTagLink.findMany({ where: { actionItemId: taskId }, select: { tagId: true } })).resolves.toEqual([{ tagId }]);
+    await expect(prisma.actionItemTagLink.findMany({
+      where: { actionItemId: taskId },
+      orderBy: { tagId: "asc" },
+      select: { tagId: true },
+    })).resolves.toEqual(originalTagLinks);
   });
 
   it("creates one reusable Nest tag and reuses it across canonical work", async () => {

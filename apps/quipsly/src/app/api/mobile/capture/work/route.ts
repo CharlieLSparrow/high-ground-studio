@@ -7,6 +7,10 @@ import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { nestProjectGoalWhere, nestProjectTaskWhere } from "@/lib/server/nest-project-follow-through";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
+import {
+  canonicalDocumentNoteSelect,
+  projectCanonicalDocumentNote,
+} from "@/lib/server/canonical-document-note-edit";
 
 export const dynamic = "force-dynamic";
 
@@ -159,24 +163,7 @@ export async function GET(request: Request) {
       },
       orderBy: { updatedAt: "desc" },
       take: 60,
-      select: {
-        id: true,
-        stableId: true,
-        title: true,
-        tagRevision: true,
-        updatedAt: true,
-        blocks: {
-          where: { archivedAt: null },
-          orderBy: { order: "asc" },
-          take: 4,
-          select: { id: true, order: true, title: true, body: true },
-        },
-        tagLinks: {
-          where: { tag: { projectId: selectedProject.id } },
-          orderBy: { createdAt: "asc" },
-          select: { tag: { select: { id: true, label: true } } },
-        },
-      },
+      select: canonicalDocumentNoteSelect,
     }),
     prisma.studioTag.findMany({
       where: { projectId: selectedProject.id },
@@ -263,7 +250,12 @@ export async function GET(request: Request) {
   const notes = noteRows.map((note) => {
     const bodyBlocks = note.blocks.filter((block) => block.order > 0 || block.title !== "Note Title");
     const noteText = bodyBlocks.map((block) => block.body).join("\n\n") || note.blocks.map((block) => block.body).join("\n\n");
-    const tags = note.tagLinks.map((link) => link.tag);
+    const tagsById = new Map(tagRows.map((tag) => [tag.id, tag] as const));
+    const tags = note.tagLinks.flatMap((link) => {
+      const tag = tagsById.get(link.tagId);
+      return tag ? [tag] : [];
+    });
+    const content = projectCanonicalDocumentNote(note);
     return {
       id: note.id,
       stableId: note.stableId,
@@ -272,6 +264,10 @@ export async function GET(request: Request) {
       tagRevision: note.tagRevision,
       updatedAt: note.updatedAt.toISOString(),
       canEditTags: project.canWrite,
+      canEditContent: project.canWrite && content.canEditContent,
+      contentRevision: content.contentRevision,
+      contentEditBoundary: content.contentEditBoundary,
+      blocks: content.blocks,
       tagIds: tags.map((tag) => tag.id),
       tagLabels: tags.map((tag) => tag.label),
       webPath: `/create?project=${encodeURIComponent(selectedProject.slug)}&document=${encodeURIComponent(note.id)}`,

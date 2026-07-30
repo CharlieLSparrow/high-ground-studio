@@ -301,6 +301,7 @@ private struct CaptureWorkView: View {
     @State private var taskTagsToEdit: MobileCaptureTodayTask?
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var noteTagsToEdit: MobileCaptureWorkNote?
+    @State private var noteToEdit: MobileCaptureWorkNote?
 
     init(model: CaptureExperienceModel) {
         self.model = model
@@ -436,6 +437,11 @@ private struct CaptureWorkView: View {
                         .foregroundStyle(.orange)
                         .accessibilityIdentifier("CaptureWorkStatus")
                 }
+                if client.pendingDocumentNoteEditCount > 0
+                    || client.heldDocumentNoteEditCount > 0
+                    || client.documentNoteEditMessage != nil {
+                    documentNoteEditStatus
+                }
 
                 if let workspace {
                     projectSummary(workspace)
@@ -555,6 +561,16 @@ private struct CaptureWorkView: View {
                 )
             }
         }
+        .sheet(item: $noteToEdit) { note in
+            if let project = selectedProject {
+                CaptureDocumentNoteEditSheet(
+                    client: client,
+                    note: note,
+                    project: project
+                )
+                .presentationDetents([.large])
+            }
+        }
         .onAppear {
             selectedProjectID = selectedProjectID ?? client.selectedProjectID
         }
@@ -575,6 +591,47 @@ private struct CaptureWorkView: View {
             }
         }
         .accessibilityIdentifier("CaptureWorkView")
+    }
+
+    private var documentNoteEditStatus: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: client.heldDocumentNoteEditCount > 0 ? "exclamationmark.shield.fill" : "lock.iphone")
+                    .foregroundStyle(client.heldDocumentNoteEditCount > 0 ? .orange : CapturePalette.accent)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(client.heldDocumentNoteEditCount > 0
+                         ? "Project-note draft needs review"
+                         : "Project-note edit protected")
+                        .font(.caption.weight(.bold))
+                    if let message = client.documentNoteEditMessage {
+                        Text(message)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("\(client.pendingDocumentNoteEditCount) waiting · \(client.heldDocumentNoteEditCount) held")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+            }
+            if client.pendingDocumentNoteEditCount > 0 {
+                Button {
+                    Task { await client.retryDocumentNoteEdits() }
+                } label: {
+                    Label("Retry protected edits", systemImage: "arrow.clockwise")
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .disabled(
+                    client.isSyncingDocumentNoteEdits
+                        || !AuthManager.shared.networkActionsAllowed
+                )
+                .accessibilityIdentifier("CaptureWorkNoteEditsRetry")
+            }
+        }
+        .padding(13)
+        .background(.orange.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .accessibilityIdentifier("CaptureWorkNoteEditStatus")
     }
 
     private var header: some View {
@@ -1004,6 +1061,7 @@ private struct CaptureWorkView: View {
             canonicalTagIDs: note.tagIds
         )
         let visibleTagLabels = effectiveTagLabels(kind: .document, entityID: note.id, tagIDs: visibleTagIDs)
+        let pendingEdit = client.pendingDocumentNoteEdit(for: note.id)
         VStack(alignment: .leading, spacing: 8) {
             if let url = URL(string: "\(baseURL)\(note.webPath)") {
                 Link(destination: url) {
@@ -1015,8 +1073,38 @@ private struct CaptureWorkView: View {
             } else {
                 workNoteContent(note, tagLabels: visibleTagLabels)
             }
+            if let pendingEdit {
+                Label(
+                    pendingEdit.disposition == .held
+                        ? "Protected draft held for review"
+                        : "Protected draft waiting for Nest",
+                    systemImage: pendingEdit.disposition == .held
+                        ? "exclamationmark.shield"
+                        : "lock.iphone"
+                )
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(pendingEdit.disposition == .held ? .orange : CapturePalette.accent)
+                .accessibilityIdentifier("CaptureWorkNoteEditState_\(note.id)")
+            }
             workTagDecisionStatus(kind: .document, entityID: note.id)
-            if note.canEditTags == true, note.tagRevision != nil {
+            HStack(spacing: 8) {
+                if note.canEditContent == true, note.contentRevision != nil, note.blocks?.isEmpty == false {
+                    Button {
+                        noteToEdit = note
+                    } label: {
+                        Label(
+                            model.usesPreviewData ? "Explore note" : pendingEdit?.disposition == .held ? "Review draft" : "Edit note",
+                            systemImage: "square.and.pencil"
+                        )
+                        .frame(minHeight: 44)
+                    }
+                    .font(.caption.weight(.bold))
+                    .buttonStyle(.borderedProminent)
+                    .disabled(pendingEdit?.disposition == .pending || client.isSyncingDocumentNoteEdits)
+                    .accessibilityIdentifier("CaptureWorkNoteEdit_\(note.id)")
+                    .accessibilityHint("Protects the complete title and stable block content before Nest reconciles the canonical document revision.")
+                }
+                if note.canEditTags == true, note.tagRevision != nil {
                 Button {
                     noteTagsToEdit = note
                 } label: {
@@ -1029,6 +1117,12 @@ private struct CaptureWorkView: View {
                 .accessibilityLabel("\(model.usesPreviewData ? "Explore" : "Edit") tags for \(note.title)")
                 .accessibilityIdentifier("CaptureWorkNoteTagsEdit_\(note.id)")
                 .accessibilityHint("Protects the complete document tag selection on this iPhone before reconciling it with the same Nest.")
+                }
+            }
+            if note.canEditContent != true, let boundary = note.contentEditBoundary {
+                Text(boundary)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(14)
@@ -1896,6 +1990,255 @@ struct TodayFollowThroughCard: View {
             return "Time needs review · \(focus.timezone)"
         }
         return "\(start.formatted(date: .abbreviated, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened)) · \(focus.timezone)"
+    }
+}
+
+private struct CaptureDocumentNoteEditSheet: View {
+    @ObservedObject var client: CaptureWorkClient
+    let note: MobileCaptureWorkNote
+    let project: MobileCaptureWorkProject
+
+    @Environment(\.dismiss) private var dismiss
+    @FocusState private var focusedBlockID: String?
+    @State private var title: String
+    @State private var blocks: [MobileCaptureWorkNoteBlock]
+    @State private var localMessage: String?
+
+    init(
+        client: CaptureWorkClient,
+        note: MobileCaptureWorkNote,
+        project: MobileCaptureWorkProject
+    ) {
+        self.client = client
+        self.note = note
+        self.project = project
+        let protectedEdit = client.pendingDocumentNoteEdit(for: note.id)
+        _title = State(initialValue: protectedEdit?.title ?? note.title)
+        _blocks = State(initialValue: protectedEdit?.blocks.map {
+            MobileCaptureWorkNoteBlock(
+                id: $0.id,
+                stableId: $0.stableId,
+                order: $0.order,
+                body: $0.body
+            )
+        } ?? note.blocks ?? [])
+    }
+
+    private var protectedEdit: PendingDocumentNoteEdit? {
+        client.pendingDocumentNoteEdit(for: note.id)
+    }
+
+    private var normalizedTitle: String {
+        title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    private var normalizedBodies: [String] {
+        blocks.map {
+            $0.body
+                .replacingOccurrences(of: "\r\n", with: "\n")
+                .replacingOccurrences(of: "\r", with: "\n")
+        }
+    }
+
+    private var validationMessage: String? {
+        if normalizedTitle.isEmpty {
+            return "Add a title before protecting this edit."
+        }
+        if normalizedTitle.count > 160 {
+            return "Shorten the title to 160 characters. Quipsly will not truncate it."
+        }
+        if blocks.isEmpty {
+            return "Refresh this note before editing its stable sections."
+        }
+        if Set(blocks.map(\.id)).count != blocks.count
+            || Set(blocks.map(\.stableId)).count != blocks.count {
+            return "The stable section identities need a refresh before this note can be edited."
+        }
+        if let oversized = blocks.first(where: { $0.body.count > 20_000 }) {
+            return "Section \(oversized.order) is over 20,000 characters. Quipsly will not truncate it."
+        }
+        if normalizedBodies.reduce(0, { $0 + $1.count }) > 60_000 {
+            return "This focused iPhone edit is over 60,000 characters. Continue the structured note in Nest."
+        }
+        if !blocks.contains(where: {
+            !$0.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) {
+            return "Keep at least one non-empty note section."
+        }
+        if normalizedTitle == note.title
+            && normalizedBodies == (note.blocks ?? []).map(\.body) {
+            return "Change the title or note before saving."
+        }
+        return nil
+    }
+
+    private var canSave: Bool {
+        validationMessage == nil
+            && !client.isSyncingDocumentNoteEdits
+            && protectedEdit?.disposition != .pending
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Label(project.name, systemImage: project.isHomeNest ? "house.fill" : "square.grid.2x2.fill")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(CapturePalette.accent)
+                        Text("Edit the canonical note")
+                            .font(.title2.weight(.bold))
+                        Text(note.contentEditBoundary ?? "This updates the same private Nest document.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureWorkNoteEditBoundary")
+                    }
+
+                    if let protectedEdit {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label(
+                                protectedEdit.disposition == .held
+                                    ? "Protected draft held for review"
+                                    : "Protected draft waiting for Nest",
+                                systemImage: protectedEdit.disposition == .held
+                                    ? "exclamationmark.shield.fill"
+                                    : "lock.iphone"
+                            )
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.orange)
+                            if let message = protectedEdit.lastErrorMessage {
+                                Text(message)
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding(12)
+                        .background(.orange.opacity(0.1), in: RoundedRectangle(cornerRadius: 14))
+                        .accessibilityIdentifier("CaptureWorkNoteEditProtectedDraft")
+                    }
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Title")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.secondary)
+                        TextField("Note title", text: $title)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityIdentifier("CaptureWorkNoteEditTitle")
+                    }
+
+                    ForEach(Array(blocks.enumerated()), id: \.element.id) { index, block in
+                        VStack(alignment: .leading, spacing: 6) {
+                            if blocks.count > 1 {
+                                Text("Section \(index + 1)")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Note")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            TextEditor(text: Binding(
+                                get: { blocks[index].body },
+                                set: { nextBody in
+                                    blocks[index] = MobileCaptureWorkNoteBlock(
+                                        id: block.id,
+                                        stableId: block.stableId,
+                                        order: block.order,
+                                        body: nextBody
+                                    )
+                                }
+                            ))
+                            .frame(minHeight: blocks.count == 1 ? 220 : 140)
+                            .padding(8)
+                            .background(.background, in: RoundedRectangle(cornerRadius: 12))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(.primary.opacity(0.12))
+                            }
+                            .focused($focusedBlockID, equals: block.id)
+                            .accessibilityIdentifier("CaptureWorkNoteEditBody_\(block.id)")
+                            Text("\(block.body.count.formatted()) / 20,000 characters")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(block.body.count > 20_000 ? .orange : .secondary)
+                        }
+                    }
+
+                    if let validationMessage {
+                        Label(validationMessage, systemImage: "exclamationmark.triangle")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("CaptureWorkNoteEditValidation")
+                    }
+
+                    if let localMessage {
+                        Text(localMessage)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("CaptureWorkNoteEditMessage")
+                    }
+
+                    Button {
+                        let saved = client.saveDocumentNoteEdit(
+                            note: note,
+                            projectID: project.id,
+                            title: title,
+                            blocks: blocks,
+                            replacingHeld: protectedEdit?.disposition == .held
+                        )
+                        if saved {
+                            dismiss()
+                        } else {
+                            localMessage = client.errorMessage
+                                ?? "This note draft could not be protected."
+                        }
+                    } label: {
+                        Label(
+                            note.id.hasPrefix("preview-")
+                                ? "Explore protected save"
+                                : AuthManager.shared.networkActionsAllowed
+                                    ? "Protect & sync note"
+                                    : "Protect for later sync",
+                            systemImage: "lock.shield"
+                        )
+                        .frame(maxWidth: .infinity)
+                        .frame(minHeight: 50)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!canSave)
+                    .accessibilityIdentifier("CaptureWorkNoteEditSave")
+
+                    if protectedEdit?.disposition == .held {
+                        Button(role: .destructive) {
+                            Task {
+                                await client.discardDocumentNoteEdit(noteID: note.id)
+                                dismiss()
+                            }
+                        } label: {
+                            Label("Discard protected draft", systemImage: "trash")
+                                .frame(maxWidth: .infinity)
+                                .frame(minHeight: 48)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityIdentifier("CaptureWorkNoteEditDiscard")
+                    }
+                }
+                .padding(18)
+            }
+            .background(CaptureCanvas())
+            .navigationTitle("Project note")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") { focusedBlockID = nil }
+                        .accessibilityIdentifier("CaptureWorkNoteEditKeyboardDone")
+                }
+            }
+        }
+        .accessibilityIdentifier("CaptureWorkNoteEditSheet")
     }
 }
 

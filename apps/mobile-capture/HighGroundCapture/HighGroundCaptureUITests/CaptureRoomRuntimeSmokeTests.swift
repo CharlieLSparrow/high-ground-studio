@@ -76,6 +76,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let taskEditUpdatedTitle: String?
         let goalEditSourceTitle: String?
         let goalEditUpdatedTitle: String?
+        let noteID: String?
+        let noteBodyBlockID: String?
+        let noteEditSourceTitle: String?
+        let noteEditUpdatedTitle: String?
+        let noteEditSourceBody: String?
+        let noteEditUpdatedBody: String?
         let recurrenceSeriesID: String?
         let recurrenceScheduledLocalDate: String?
         let recurrenceAuthoringTitle: String?
@@ -109,6 +115,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 taskEditUpdatedTitle: environment["QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_UPDATED_TITLE"],
                 goalEditSourceTitle: environment["QUIPSLY_CAPTURE_UI_TEST_GOAL_EDIT_SOURCE_TITLE"],
                 goalEditUpdatedTitle: environment["QUIPSLY_CAPTURE_UI_TEST_GOAL_EDIT_UPDATED_TITLE"],
+                noteID: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_ID"],
+                noteBodyBlockID: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_BODY_BLOCK_ID"],
+                noteEditSourceTitle: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_SOURCE_TITLE"],
+                noteEditUpdatedTitle: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_TITLE"],
+                noteEditSourceBody: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_SOURCE_BODY"],
+                noteEditUpdatedBody: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_BODY"],
                 recurrenceSeriesID: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_SERIES_ID"],
                 recurrenceScheduledLocalDate: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_LOCAL_DATE"],
                 recurrenceAuthoringTitle: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_AUTHORING_TITLE"],
@@ -155,6 +167,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             taskEditUpdatedTitle: payload["taskEditUpdatedTitle"] as? String,
             goalEditSourceTitle: payload["goalEditSourceTitle"] as? String,
             goalEditUpdatedTitle: payload["goalEditUpdatedTitle"] as? String,
+            noteID: payload["noteID"] as? String,
+            noteBodyBlockID: payload["noteBodyBlockID"] as? String,
+            noteEditSourceTitle: payload["noteEditSourceTitle"] as? String,
+            noteEditUpdatedTitle: payload["noteEditUpdatedTitle"] as? String,
+            noteEditSourceBody: payload["noteEditSourceBody"] as? String,
+            noteEditUpdatedBody: payload["noteEditUpdatedBody"] as? String,
             recurrenceSeriesID: payload["recurrenceSeriesID"] as? String,
             recurrenceScheduledLocalDate: payload["recurrenceScheduledLocalDate"] as? String,
             recurrenceAuthoringTitle: payload["recurrenceAuthoringTitle"] as? String,
@@ -1194,6 +1212,102 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The operated smoke must restore the original canonical goal title before finishing."
         )
         XCTAssertFalse(app.staticTexts[updatedTitle].firstMatch.exists)
+    }
+
+    func testCanonicalDocumentNoteEditRoundTripsAndRestoresThroughNest() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let noteID = credentials.noteID, !noteID.isEmpty,
+              let bodyBlockID = credentials.noteBodyBlockID, !bodyBlockID.isEmpty,
+              let projectName = credentials.projectName, !projectName.isEmpty,
+              let sourceTitle = credentials.noteEditSourceTitle, !sourceTitle.isEmpty,
+              let updatedTitle = credentials.noteEditUpdatedTitle, !updatedTitle.isEmpty,
+              let sourceBody = credentials.noteEditSourceBody, !sourceBody.isEmpty,
+              let updatedBody = credentials.noteEditUpdatedBody, !updatedBody.isEmpty,
+              sourceTitle != updatedTitle,
+              sourceBody != updatedBody else {
+            throw XCTSkip("The note-edit journey requires exact note and stable body-block IDs, one writable Nest, and distinct source and temporary title/body values.")
+        }
+
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Work", in: app)
+        XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 20))
+
+        let projectPicker = app.descendants(matching: .any)["CaptureWorkProjectPicker"].firstMatch
+        XCTAssertTrue(projectPicker.waitForExistence(timeout: 10))
+        projectPicker.tap()
+        let projectChoice = app.buttons[projectName].firstMatch
+        XCTAssertTrue(projectChoice.waitForExistence(timeout: 6))
+        projectChoice.tap()
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[sourceTitle].firstMatch, in: app, timeout: 25, swipeAttempts: 12),
+            "Work should expose the exact canonical source note before editing."
+        )
+        XCTAssertTrue(app.staticTexts[sourceBody].firstMatch.exists)
+
+        func replaceNote(title: String, body: String) {
+            let sheet = app.descendants(matching: .any)["CaptureWorkNoteEditSheet"].firstMatch
+            XCTAssertTrue(sheet.waitForExistence(timeout: 8))
+            XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkNoteEditBoundary"].exists)
+
+            let titleField = app.textFields["CaptureWorkNoteEditTitle"].firstMatch
+            XCTAssertTrue(titleField.waitForExistence(timeout: 6))
+            titleField.tap()
+            titleField.typeKey("a", modifierFlags: .command)
+            titleField.typeKey(.delete, modifierFlags: [])
+            titleField.typeText(title)
+
+            let bodyField = app.textViews["CaptureWorkNoteEditBody_\(bodyBlockID)"].firstMatch
+            XCTAssertTrue(bodyField.waitForExistence(timeout: 6))
+            bodyField.tap()
+            bodyField.typeKey("a", modifierFlags: .command)
+            bodyField.typeKey(.delete, modifierFlags: [])
+            bodyField.typeText(body)
+
+            let keyboardDone = app.buttons["CaptureWorkNoteEditKeyboardDone"].firstMatch
+            if keyboardDone.waitForExistence(timeout: 3) {
+                keyboardDone.tap()
+            }
+            let save = app.buttons["CaptureWorkNoteEditSave"].firstMatch
+            for _ in 0..<5 where !save.isHittable {
+                sheet.swipeUp()
+            }
+            XCTAssertTrue(save.isEnabled)
+            save.tap()
+            XCTAssertTrue(
+                sheet.waitForNonExistence(timeout: 8),
+                "Protecting the complete note intent should close the editor before asynchronous reconciliation."
+            )
+        }
+
+        let edit = app.buttons["CaptureWorkNoteEdit_\(noteID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(edit, in: app, timeout: 15, swipeAttempts: 10))
+        edit.tap()
+        replaceNote(title: updatedTitle, body: updatedBody)
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[updatedTitle].firstMatch, in: app, timeout: 35, swipeAttempts: 12),
+            "The temporary title should return from Nest before the journey proceeds."
+        )
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[updatedBody].firstMatch, in: app, timeout: 15, swipeAttempts: 8),
+            "The exact temporary stable-block body should return from Nest."
+        )
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureWorkNoteEditState_\(noteID)"].exists)
+
+        let restore = app.buttons["CaptureWorkNoteEdit_\(noteID)"].firstMatch
+        XCTAssertTrue(waitForRuntimeElement(restore, in: app, timeout: 15, swipeAttempts: 10))
+        restore.tap()
+        replaceNote(title: sourceTitle, body: sourceBody)
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[sourceTitle].firstMatch, in: app, timeout: 35, swipeAttempts: 12),
+            "The operated smoke must restore the original canonical note title before finishing."
+        )
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[sourceBody].firstMatch, in: app, timeout: 15, swipeAttempts: 8),
+            "The operated smoke must restore the original stable-block body before finishing."
+        )
+        XCTAssertFalse(app.staticTexts[updatedTitle].firstMatch.exists)
+        XCTAssertFalse(app.staticTexts[updatedBody].firstMatch.exists)
+        XCTAssertFalse(app.descendants(matching: .any)["CaptureWorkNoteEditState_\(noteID)"].exists)
     }
 
     func testCanonicalWorkTagsRoundTripThroughSignedInToday() throws {

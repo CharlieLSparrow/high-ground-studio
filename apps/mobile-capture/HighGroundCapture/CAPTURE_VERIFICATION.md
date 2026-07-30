@@ -77,6 +77,7 @@ The final local run records exact results after all hardening changes settled. S
 | Account deletion API | focused Jest policy/route suite | PASS — 7/7 |
 | Account deletion operating loop | disposable verified Firebase-emulator identity against local Nest/Postgres | PASS — create, idempotent replay, reopen, review, completion readback, and cleanup |
 | Account deletion iPhone UX | focused iPhone 17 Pro iOS 26.3.1 simulator journey | PASS — 1/1; 30-day timing, persistent-status explanation, and preview no-write boundary |
+| Canonical project-note editing | disposable real Firebase identity, current local Nest, loopback PostgreSQL, and focused iPhone Simulator journey | PASS — temporary title/body read back, exact title/body/revision/tags restored, stable block retained, 2 reversible receipts, zero external effects, database and Firebase residue absent |
 | Debug Simulator | generic iOS Simulator `xcodebuild` | PASS — arm64 and x86_64 |
 | Static analysis | generic iOS Simulator `xcodebuild analyze` | PASS |
 | Unsigned Release | generic iOS device, signing disabled | PASS — two deprecation warnings confined to deferred `ExportManager` / `NativeEditorView` prototypes |

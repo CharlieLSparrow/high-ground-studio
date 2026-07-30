@@ -8,23 +8,35 @@ mode="${1:-task-edit}"
 
 project_id="${PROJECT_ID:-high-ground-odyssey}"
 database_secret="${QUIPSLY_GENERATED_MOBILE_DATABASE_SECRET:-studio-database-url}"
+database_target="${QUIPSLY_GENERATED_MOBILE_DATABASE_TARGET:-local}"
+local_database_url="${QUIPSLY_GENERATED_MOBILE_LOCAL_DATABASE_URL:-postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio}"
 firebase_config_origin="${QUIPSLY_GENERATED_MOBILE_FIREBASE_CONFIG_ORIGIN:-https://nest.quipsly.com}"
 firebase_project_id="${FIREBASE_PROJECT_ID:-quipsly-reef}"
 work_dir="$(mktemp -d "${TMPDIR:-/private/tmp}/quipsly-generated-mobile-dogfood.XXXXXX")"
+dogfood_lock_file="${TMPDIR:-/private/tmp}/quipsly-generated-mobile-dogfood.lock"
+dogfood_lock_held=0
 proxy_pid=""
 nest_pid=""
+nest_dist_dir=""
 
 usage() {
   cat <<'USAGE'
 Usage:
   scripts/dev/quipsly-generated-mobile-dogfood.sh task-edit
   scripts/dev/quipsly-generated-mobile-dogfood.sh goal-edit
+  scripts/dev/quipsly-generated-mobile-dogfood.sh note-edit
 
 Runs the current local Nest source with a disposable real Firebase identity and
-canonical database records, then drives the compiled iPhone app in Simulator.
+loopback PostgreSQL records, then drives the compiled iPhone app in Simulator.
 The generated-user harness owns cleanup and verifies no test identity or work
 records remain. Secrets are held only in process environment or a mode-0700
 temporary directory and are never printed.
+
+The database target defaults to `local`. Canonical Cloud SQL is an explicit,
+credentialed lane:
+
+  QUIPSLY_GENERATED_MOBILE_DATABASE_TARGET=canonical \
+    scripts/dev/quipsly-generated-mobile-dogfood.sh note-edit
 USAGE
 }
 
@@ -34,6 +46,11 @@ fail() {
 }
 
 cleanup() {
+  local exit_status=$?
+  if [[ "${exit_status}" -ne 0 && -f "${work_dir}/nest.log" ]]; then
+    printf "FAIL Local Nest diagnostic tail follows (temporary work directory will still be removed):\n" >&2
+    tail -120 "${work_dir}/nest.log" >&2 || true
+  fi
   if [[ -n "${nest_pid}" ]]; then
     kill "${nest_pid}" >/dev/null 2>&1 || true
     wait "${nest_pid}" >/dev/null 2>&1 || true
@@ -44,6 +61,16 @@ cleanup() {
     wait "${proxy_pid}" >/dev/null 2>&1 || true
     proxy_pid=""
   fi
+  if [[ -n "${nest_dist_dir}" ]]; then
+    case "${nest_dist_dir}" in
+      "${repo_root}/apps/quipsly/.next-mobile-dogfood")
+        rm -rf -- "${nest_dist_dir}"
+        ;;
+      *)
+        printf "WARN Refusing to remove unexpected generated Nest build directory: %s\n" "${nest_dist_dir}" >&2
+        ;;
+    esac
+  fi
   case "${work_dir}" in
     "${TMPDIR:-/private/tmp}"/quipsly-generated-mobile-dogfood.*)
       rm -rf -- "${work_dir}"
@@ -52,6 +79,11 @@ cleanup() {
       printf "WARN Refusing to remove unexpected dogfood work directory: %s\n" "${work_dir}" >&2
       ;;
   esac
+  if [[ "${dogfood_lock_held}" == "1" ]]; then
+    unlink "${dogfood_lock_file}" >/dev/null 2>&1 || true
+    dogfood_lock_held=0
+  fi
+  return "${exit_status}"
 }
 trap cleanup EXIT
 
@@ -59,18 +91,32 @@ if [[ "${mode}" == "--help" || "${mode}" == "-h" ]]; then
   usage
   exit 0
 fi
-if [[ "${mode}" != "task-edit" && "${mode}" != "goal-edit" ]]; then
+if [[ "${mode}" != "task-edit" && "${mode}" != "goal-edit" && "${mode}" != "note-edit" ]]; then
   usage >&2
   fail "Unsupported generated mobile dogfood mode: ${mode}"
 fi
+if [[ "${database_target}" != "local" && "${database_target}" != "canonical" ]]; then
+  fail "QUIPSLY_GENERATED_MOBILE_DATABASE_TARGET must be local or canonical."
+fi
+if [[ "${database_target}" == "canonical" && -n "${QUIPSLY_GENERATED_MOBILE_LOCAL_DATABASE_URL:-}" ]]; then
+  fail "Canonical dogfood cannot also receive a local database override."
+fi
 
-for command in gcloud curl node python3 cloud-sql-proxy; do
+required_commands=(curl node python3 shlock)
+if [[ "${database_target}" == "canonical" ]]; then
+  required_commands+=(gcloud cloud-sql-proxy)
+fi
+for command in "${required_commands[@]}"; do
   command -v "${command}" >/dev/null 2>&1 || fail "Required command is unavailable: ${command}"
 done
 [[ -x "/Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild" ]] \
   || fail "Full Xcode is required for the operated iPhone Simulator journey."
 [[ -f "${repo_root}/apps/quipsly/node_modules/next/dist/bin/next" ]] \
   || fail "Install the Quipsly workspace dependencies before running generated mobile dogfood."
+if ! shlock -p "$$" -f "${dogfood_lock_file}"; then
+  fail "Another generated mobile dogfood run owns ${dogfood_lock_file}."
+fi
+dogfood_lock_held=1
 
 free_port() {
   python3 <<'PY'
@@ -81,9 +127,22 @@ with socket.socket() as listener:
 PY
 }
 
-database_url="$(gcloud secrets versions access latest \
-  --secret="${database_secret}" \
-  --project="${project_id}")"
+if [[ "${database_target}" == "local" ]]; then
+  database_url="$(
+    DATABASE_URL="${local_database_url}" node <<'NODE'
+const url = new URL(process.env.DATABASE_URL);
+if (!["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)) {
+  process.stderr.write("The generated mobile local database target must use a loopback host.\n");
+  process.exit(1);
+}
+process.stdout.write(url.toString());
+NODE
+  )" || fail "The generated mobile local database target is not a safe loopback PostgreSQL URL."
+else
+  database_url="$(gcloud secrets versions access latest \
+    --secret="${database_secret}" \
+    --project="${project_id}")"
+fi
 [[ -n "${database_url}" ]] || fail "The configured database secret was empty."
 
 firebase_config_file="${work_dir}/firebase-client-config.json"
@@ -175,6 +234,8 @@ fi
 nest_port="$(free_port)"
 nest_origin="http://127.0.0.1:${nest_port}"
 auth_secret="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(48).toString("base64url"))')"
+nest_dist_name=".next-mobile-dogfood"
+nest_dist_dir="${repo_root}/apps/quipsly/${nest_dist_name}"
 
 (
   cd "${repo_root}/apps/quipsly"
@@ -193,6 +254,7 @@ auth_secret="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(
     GOOGLE_CLOUD_PROJECT="${firebase_project_id}" \
     QUIPSLY_OWNER_OVERRIDE=false \
     QUIPSLY_LOCAL_MEDIA_UPLOADS=true \
+    QUIPSLY_BUILD_DIST_DIR="${nest_dist_name}" \
     node node_modules/next/dist/bin/next dev \
       --hostname 127.0.0.1 \
       --port "${nest_port}"
@@ -217,7 +279,7 @@ if [[ "${ready}" != "1" ]]; then
 fi
 
 printf "PASS Local Nest current-source health: %s\n" "${nest_origin}"
-printf "PASS Disposable Firebase/database lane is ready; beginning operated iPhone %s journey.\n" "${mode}"
+printf "PASS Disposable real-Firebase/%s-database lane is ready; beginning operated iPhone %s journey.\n" "${database_target}" "${mode}"
 
 (
   cd "${repo_root}"

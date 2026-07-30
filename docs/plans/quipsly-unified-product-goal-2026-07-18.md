@@ -3795,3 +3795,65 @@ This is an active-goal checkpoint, not a completion claim.
   committed-source release qualification, a new TestFlight build, physical
   Charlie/Scott operation, and same-ID production Nest readback before it can
   be described as distributed or physically proven.
+
+### 2026-07-30 canonical document-note edit and schema-repair checkpoint
+
+- Capture Work now edits the same canonical `StudioDocument` note used by Nest,
+  without creating a phone-specific copy. The editor carries the complete
+  stable block set and an exact SHA-256 content revision. Nest rechecks access,
+  note classification, stable IDs, optimistic revision, reviewed evidence,
+  and kernel anchors inside a serializable transaction. Title/body edits
+  preserve tags, project, structure, immutable sources, publication state, and
+  external providers.
+- Kernel remapping is intentionally fail-closed. Whole-body classification
+  spans follow a safe whole-body edit; partial spans shift only when their
+  selected text remains uniquely identifiable. Replacement or collapse of
+  reviewed evidence is held for review instead of silently moving an anchor.
+  The response records changed blocks plus reversible before/after evidence
+  and explicitly reports no source mutation or external side effects.
+- The iPhone stores complete owner-partitioned pending drafts in a protected,
+  backup-excluded, last-known-good outbox. It never truncates a title or block.
+  A successful acknowledgement must match the exact note/project identity,
+  stable block set, content, new revision shape, and deterministic receipt.
+  Retry, held-review, and discard controls remain visible from Work.
+- The first operated run found a real cross-language boundary defect: Nest
+  hashed a JSON-quoted receipt string while Swift hashed raw UTF-8. The phone
+  correctly held the persisted edit rather than discarding its draft. The
+  server now hashes the same raw actor/document/request contract, and the
+  database integration suite asserts that exact digest.
+- Runtime testing also exposed migration-ledger drift. The local database
+  marked `20260728223500_add_document_tags` and
+  `20260728183000_add_user_auth_identities` applied with their checked-in
+  checksums, while `StudioDocument.tagRevision`,
+  `StudioDocumentTagLink`, and `UserAuthIdentity` were physically absent.
+  Two new additive, idempotent forward-repair migrations recreate and backfill
+  the missing objects without rewriting applied history. Local `migrate diff`
+  then reports no schema difference.
+- The passing operated journey ran current local Nest, loopback PostgreSQL, and
+  a disposable real Firebase identity through the compiled iPhone Simulator.
+  It changed one exact canonical note's title/body, read the temporary version
+  back from Nest, reopened and restored the originals, cleared the protected
+  outbox, and independently proved the original title, stable body block,
+  64-character content revision, and tag set. PostgreSQL retained exactly two
+  reversible human edit receipts with zero external effects.
+- Cleanup removed the generated project, Home Nest, grant, membership,
+  database user, and Firebase user. Independent reads reported both
+  `databaseArtifactsAbsentAfterCleanup: true` and
+  `firebaseUserAbsentAfterCleanup: true`. Focused verification passes 6 route
+  tests, 12 real-PostgreSQL integration tests, Quipsly TypeScript, the native
+  outbox harness, and the 1/1 operated UI journey.
+- The dogfood pipeline now defaults to loopback PostgreSQL. Canonical Cloud SQL
+  requires the explicit
+  `QUIPSLY_GENERATED_MOBILE_DATABASE_TARGET=canonical` boundary, preventing an
+  ordinary local command from silently selecting the shared database secret.
+  A PID-aware lock and predeclared `.next-mobile-dogfood` build directory let
+  it run beside the normal port-3012 Nest without sharing Next's lock or
+  rewriting tracked TypeScript configuration.
+  Safe GET/HEAD post-verification retries one stale transport socket after the
+  blocking Xcode run; mutations are not generically retried.
+- This is strong real-auth/local-data Simulator evidence, not physical-iPhone
+  or distributed proof. The forward repairs still require committed-source
+  release qualification and authorized target readback before a new
+  application revision depends on them. A new TestFlight build, Charlie and
+  Scott physical operation, interruption/offline recovery, same-ID production
+  Nest readback, and the broader real episode/coaching workflows remain open.

@@ -27,7 +27,9 @@
     ".next-release/types/**/*.ts",
     ".next-release/dev/types/**/*.ts",
     ".next-recovery-lab/types/**/*.ts",
-    ".next-recovery-lab/dev/types/**/*.ts"
+    ".next-recovery-lab/dev/types/**/*.ts",
+    ".next-mobile-dogfood/types/**/*.ts",
+    ".next-mobile-dogfood/dev/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
 }

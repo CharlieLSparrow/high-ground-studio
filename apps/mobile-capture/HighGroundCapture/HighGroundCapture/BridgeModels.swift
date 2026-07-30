@@ -1122,9 +1122,73 @@ struct MobileCaptureWorkNote: Codable, Identifiable, Hashable {
     let tagRevision: Int?
     let updatedAt: String
     let canEditTags: Bool?
+    let canEditContent: Bool?
+    let contentRevision: String?
+    let contentEditBoundary: String?
+    let blocks: [MobileCaptureWorkNoteBlock]?
     let tagIds: [String]
     let tagLabels: [String]
     let webPath: String
+}
+
+struct MobileCaptureWorkNoteBlock: Codable, Identifiable, Hashable {
+    let id: String
+    let stableId: String
+    let order: Int
+    let body: String
+}
+
+private struct MobileCaptureWorkNoteEditRequest: Encodable {
+    struct Block: Encodable {
+        let id: String
+        let stableId: String
+        let body: String
+    }
+
+    let clientRequestId: String
+    let expectedContentRevision: String
+    let title: String
+    let blocks: [Block]
+
+    init(edit: PendingDocumentNoteEdit) {
+        clientRequestId = edit.clientRequestID
+        expectedContentRevision = edit.expectedContentRevision
+        title = edit.title
+        blocks = edit.blocks.map {
+            Block(id: $0.id, stableId: $0.stableId, body: $0.body)
+        }
+    }
+}
+
+struct MobileCaptureWorkNoteEditResponse: Decodable {
+    struct Note: Decodable {
+        let id: String
+        let stableId: String
+        let projectId: String
+        let projectSlug: String
+        let title: String
+        let blocks: [MobileCaptureWorkNoteBlock]
+        let contentRevision: String
+        let updatedAt: String
+        let canEditContent: Bool
+        let contentEditBoundary: String
+    }
+
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let schema: String?
+    let note: Note?
+    let current: Note?
+    let receiptId: String?
+    let idempotentReplay: Bool?
+    let changedBlockIds: [String]?
+}
+
+enum MobileCaptureWorkNoteEditSyncResult {
+    case acknowledged(idempotentReplay: Bool, message: String)
+    case retryable(message: String)
+    case held(code: String?, message: String)
 }
 
 struct MobileCaptureWorkTag: Codable, Identifiable, Hashable {
@@ -3641,9 +3705,14 @@ final class CaptureWorkClient: ObservableObject {
     @Published private(set) var isLoading = false
     @Published private(set) var isCreatingProject = false
     @Published private(set) var isUsingProtectedCache = false
+    @Published private(set) var isSyncingDocumentNoteEdits = false
+    @Published private(set) var pendingDocumentNoteEditCount = 0
+    @Published private(set) var heldDocumentNoteEditCount = 0
+    @Published var documentNoteEditMessage: String?
     @Published var errorMessage: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
+    private let documentNoteEditOutbox = DocumentNoteEditOutbox.shared
 
     private struct ProtectedCache: Codable {
         let schemaVersion: Int
@@ -3655,6 +3724,89 @@ final class CaptureWorkClient: ObservableObject {
     var projects: [MobileCaptureWorkProject] { brief?.projects ?? [] }
     var workspace: MobileCaptureWorkWorkspace? { brief?.workspace }
     var selectedProjectID: String? { brief?.selectedProjectId }
+
+    func pendingDocumentNoteEdit(for noteID: String) -> PendingDocumentNoteEdit? {
+        documentNoteEditOutbox.edit(for: noteID)
+    }
+
+    @discardableResult
+    func saveDocumentNoteEdit(
+        note: MobileCaptureWorkNote,
+        projectID: String,
+        title: String,
+        blocks: [MobileCaptureWorkNoteBlock],
+        replacingHeld: Bool
+    ) -> Bool {
+        if note.id.hasPrefix("preview-") {
+            documentNoteEditMessage = "Preview only — no canonical document note or revision was changed."
+            return true
+        }
+        guard note.canEditContent == true,
+              let expectedContentRevision = note.contentRevision,
+              expectedContentRevision.count == 64,
+              let canonicalBlocks = note.blocks,
+              !canonicalBlocks.isEmpty,
+              canonicalBlocks.map(\.id) == blocks.map(\.id) else {
+            errorMessage = "Refresh this project note before protecting an edit."
+            return false
+        }
+        let normalizedTitle = title
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+        let normalizedBlocks = blocks.map {
+            MobileCaptureWorkNoteBlock(
+                id: $0.id,
+                stableId: $0.stableId,
+                order: $0.order,
+                body: $0.body
+                    .replacingOccurrences(of: "\r\n", with: "\n")
+                    .replacingOccurrences(of: "\r", with: "\n")
+            )
+        }
+        guard normalizedTitle != note.title
+                || normalizedBlocks.map(\.body) != canonicalBlocks.map(\.body) else {
+            errorMessage = "Change the note title or body before saving."
+            return false
+        }
+        do {
+            let edit = try documentNoteEditOutbox.enqueue(
+                projectID: projectID,
+                noteID: note.id,
+                title: normalizedTitle,
+                blocks: normalizedBlocks,
+                expectedContentRevision: expectedContentRevision,
+                replacingHeld: replacingHeld
+            )
+            publishDocumentNoteEditCounts()
+            documentNoteEditMessage = "The complete note edit is protected on this iPhone. Nest will recheck access, stable blocks, anchors, and the exact content revision before applying it."
+            Task { [weak self] in
+                await self?.syncDocumentNoteEdit(edit, refreshWork: true)
+            }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func retryDocumentNoteEdits() async {
+        let synchronized = await flushDocumentNoteEdits()
+        if synchronized {
+            await load(projectID: selectedProjectID)
+        } else if let held = documentNoteEditOutbox.entries.first(where: { $0.disposition == .held }) {
+            documentNoteEditMessage = held.lastErrorMessage
+                ?? "A protected project-note edit needs review beside Nest's current revision."
+        } else if documentNoteEditOutbox.pendingCount == 0 {
+            documentNoteEditMessage = "No protected project-note edits need retry."
+        }
+    }
+
+    func discardDocumentNoteEdit(noteID: String) async {
+        documentNoteEditOutbox.discard(noteID: noteID)
+        publishDocumentNoteEditCounts()
+        documentNoteEditMessage = "The protected iPhone draft was discarded. The canonical Nest note was not changed."
+        await load(projectID: selectedProjectID)
+    }
 
     func createProject(
         name: String,
@@ -3816,6 +3968,17 @@ final class CaptureWorkClient: ObservableObject {
                         tagRevision: 0,
                         updatedAt: now,
                         canEditTags: true,
+                        canEditContent: true,
+                        contentRevision: String(repeating: "a", count: 64),
+                        contentEditBoundary: "Preview only — a real save would update this same private Nest document without sending or publishing anything.",
+                        blocks: [
+                            MobileCaptureWorkNoteBlock(
+                                id: "preview-work-note-body",
+                                stableId: "preview-work-note-body",
+                                order: 0,
+                                body: "Begin with the moment the obvious answer stopped being obvious."
+                            ),
+                        ],
                         tagIds: ["preview-episode-4"],
                         tagLabels: ["Episode 4"],
                         webPath: "/create?project=preview-high-ground&document=preview-work-note"
@@ -3877,6 +4040,12 @@ final class CaptureWorkClient: ObservableObject {
             brief = payload
             isUsingProtectedCache = false
             persist(payload)
+            publishDocumentNoteEditCounts()
+            if await flushDocumentNoteEdits() {
+                isLoading = false
+                await load(projectID: projectID)
+                return
+            }
         } catch {
             if brief == nil { _ = restoreProtectedCache() }
             isUsingProtectedCache = brief != nil
@@ -3884,6 +4053,156 @@ final class CaptureWorkClient: ObservableObject {
                 ? "Nest is unavailable. Showing the last protected project snapshot; changes stay disabled until the canonical records can be verified."
                 : error.localizedDescription
         }
+    }
+
+    @discardableResult
+    private func flushDocumentNoteEdits() async -> Bool {
+        guard !isSyncingDocumentNoteEdits,
+              AuthManager.shared.networkActionsAllowed else {
+            publishDocumentNoteEditCounts()
+            return false
+        }
+        let candidates = documentNoteEditOutbox.entries.filter {
+            $0.disposition == .pending
+        }
+        guard !candidates.isEmpty else {
+            publishDocumentNoteEditCounts()
+            return false
+        }
+        isSyncingDocumentNoteEdits = true
+        defer {
+            isSyncingDocumentNoteEdits = false
+            publishDocumentNoteEditCounts()
+        }
+        var synchronizedAny = false
+        for edit in candidates {
+            if await syncDocumentNoteEdit(edit, refreshWork: false) {
+                synchronizedAny = true
+            }
+        }
+        return synchronizedAny
+    }
+
+    @discardableResult
+    private func syncDocumentNoteEdit(
+        _ edit: PendingDocumentNoteEdit,
+        refreshWork: Bool
+    ) async -> Bool {
+        guard documentNoteEditOutbox.entries.contains(where: { $0.id == edit.id }) else {
+            return false
+        }
+        guard AuthManager.shared.networkActionsAllowed else {
+            documentNoteEditMessage = "Nest is offline. The complete project-note edit remains protected on this iPhone."
+            return false
+        }
+        let encodedNoteID = edit.noteID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
+            ?? edit.noteID
+        guard let url = URL(string: "\(baseURL)/api/mobile/capture/work/notes/\(encodedNoteID)") else {
+            let message = "The configured Nest URL is invalid. The protected note draft remains on this iPhone."
+            documentNoteEditOutbox.markHeld(edit.id, code: "BAD_NEST_URL", message: message)
+            documentNoteEditMessage = message
+            return false
+        }
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "PATCH"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONEncoder().encode(
+                MobileCaptureWorkNoteEditRequest(edit: edit)
+            )
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(
+                MobileCaptureWorkNoteEditResponse.self,
+                from: data
+            )
+            if response.statusCode >= 500
+                || response.statusCode == 408
+                || response.statusCode == 429 {
+                let message = payload.error
+                    ?? "Nest is temporarily unavailable. The complete note draft remains protected for retry."
+                documentNoteEditOutbox.markRetryable(edit.id, message: message)
+                documentNoteEditMessage = message
+                return false
+            }
+            guard response.statusCode < 400,
+                  payload.ok,
+                  payload.schema == "quipsly-mobile-document-note-edit-v1",
+                  let saved = payload.note else {
+                let message = payload.error
+                    ?? "Nest held this note edit. Review the protected iPhone draft beside the canonical note."
+                documentNoteEditOutbox.markHeld(edit.id, code: payload.code, message: message)
+                documentNoteEditMessage = message
+                return false
+            }
+
+            let expectedReceipt = Self.documentNoteEditReceiptID(
+                ownerID: edit.ownerAccountID,
+                noteID: edit.noteID,
+                requestID: edit.clientRequestID
+            )
+            let expectedBlocks = edit.blocks
+                .sorted { $0.order == $1.order ? $0.id < $1.id : $0.order < $1.order }
+            let acknowledgedBlocks = saved.blocks
+                .sorted { $0.order == $1.order ? $0.id < $1.id : $0.order < $1.order }
+            let blocksMatch = zip(expectedBlocks, acknowledgedBlocks).allSatisfy { pair in
+                pair.0.id == pair.1.id
+                    && pair.0.stableId == pair.1.stableId
+                    && pair.0.order == pair.1.order
+                    && pair.0.body == pair.1.body
+            } && expectedBlocks.count == acknowledgedBlocks.count
+            guard saved.id == edit.noteID,
+                  saved.projectId == edit.projectID,
+                  saved.title == edit.title,
+                  blocksMatch,
+                  saved.contentRevision.range(
+                    of: "^[0-9a-f]{64}$",
+                    options: .regularExpression
+                  ) != nil,
+                  payload.receiptId == expectedReceipt else {
+                let message = "Nest returned a different note, stable block set, content, or revision receipt. The protected iPhone draft is held for review."
+                documentNoteEditOutbox.markHeld(
+                    edit.id,
+                    code: "DOCUMENT_NOTE_EDIT_ACKNOWLEDGEMENT_MISMATCH",
+                    message: message
+                )
+                documentNoteEditMessage = message
+                return false
+            }
+
+            documentNoteEditOutbox.markAcknowledged(edit.id)
+            publishDocumentNoteEditCounts()
+            documentNoteEditMessage = payload.idempotentReplay == true
+                ? "Nest already applied this exact protected note edit; no revision was duplicated."
+                : "The canonical project note is updated. Stable blocks and safe anchors were preserved; nothing was sent or published."
+            if refreshWork {
+                await load(projectID: edit.projectID)
+            }
+            return true
+        } catch {
+            let message = "\(error.localizedDescription) The complete note draft remains protected for retry."
+            documentNoteEditOutbox.markRetryable(edit.id, message: message)
+            documentNoteEditMessage = message
+            publishDocumentNoteEditCounts()
+            return false
+        }
+    }
+
+    private func publishDocumentNoteEditCounts() {
+        pendingDocumentNoteEditCount = documentNoteEditOutbox.pendingCount
+        heldDocumentNoteEditCount = documentNoteEditOutbox.heldCount
+    }
+
+    nonisolated private static func documentNoteEditReceiptID(
+        ownerID: String,
+        noteID: String,
+        requestID: String
+    ) -> String {
+        let digest = SHA256.hash(data: Data("\(ownerID)|\(noteID)|\(requestID)".utf8))
+            .map { String(format: "%02x", $0) }
+            .joined()
+            .prefix(32)
+        return "document-note-edit-\(digest)"
     }
 
     static func clearProtectedCache() {
