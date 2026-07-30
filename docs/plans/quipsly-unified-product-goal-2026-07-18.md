@@ -4234,8 +4234,9 @@ This is an active-goal checkpoint, not a completion claim.
 - Current-source signed Mac operation read camera and microphone permission as
   authorized, selected the direct Shure MV7i UID for both 48 kHz input and
   output, and saw EOS Webcam Utility plus the MacBook Pro camera. EOS negotiated
-  1920x1080 up to 30 fps, but remained explicitly signal-unverified because no
-  visual moving-image proof was performed.
+  1920x1080 up to 30 fps, but a window-only readback of Quipsly's real preview
+  showed Canon's EOS Webcam Utility placeholder rather than a live R8 image.
+  The app correctly kept the camera signal unverified and did not arm video.
 - A bounded local-only direct-MV7i take finalized a 19.7-second two-channel 48 kHz,
   24-bit PCM WAV with 5,677,696 bytes and SHA-256
   `ec169ed9601a5cc78d755d60d015ec84570293e1871f8cd8f2c277aea9580ca6`.

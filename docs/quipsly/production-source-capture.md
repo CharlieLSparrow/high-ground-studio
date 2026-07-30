@@ -1211,13 +1211,16 @@ Fresh analysis measured a real but quiet signal at peak -49.8 dBFS and RMS
 -68.6 dBFS. The disposition is therefore correctly
 `machine-pass-human-review-required`, not production approval. EOS Webcam
 Utility separately negotiated 1920x1080 at up to 30 fps, but Quipsly retained
-`cameraSignalVerified=false`: format negotiation is not evidence that the R8
-is awake or producing a moving live image.
+`cameraSignalVerified=false`. A window-only readback of the real Quipsly
+preview showed Canon's **EOS Webcam Utility** placeholder rather than a live
+R8 image, so the app correctly refused to arm a camera reference. Format
+negotiation is not evidence that the camera is awake or producing a moving
+image.
 
 Independent `ffprobe`, `stat`, and `shasum` readback confirmed PCM S24LE,
 48 kHz, two channels, 19.700 seconds, 5,677,696 bytes, and the same SHA-256.
 
 This closes durable route/take readback and another real direct-MV7i local
-operation. Spoken gain, complete headphone proof-listen, live Canon image,
-camera recording, deliberate route-loss recovery, Episode Room authority,
+operation. Spoken gain, complete headphone proof-listen, a repaired and live
+Canon USB-streaming path, camera recording, deliberate route-loss recovery, Episode Room authority,
 cross-participant sync/drift, and final human acceptance remain open.
