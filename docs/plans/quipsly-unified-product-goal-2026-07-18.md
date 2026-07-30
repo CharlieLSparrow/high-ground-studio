@@ -4295,3 +4295,32 @@ This is an active-goal checkpoint, not a completion claim.
   human proof-listen/watch, reviewed synchronization, Canon R8 capture, a
   two-person room, Nest START/STOP, upload, transcription, delivery, or
   publication.
+
+### 2026-07-30 privacy-bounded Capture support checkpoint
+
+- Current source adds a collapsed **Help & diagnostics** card to Account so a
+  TestFlight tester can share actionable install, sign-in, recording, room, or
+  upload state without manually copying private account or production data.
+  Build 14 remains unchanged while Scott's rehearsal handoff is active.
+- The support payload is a standalone Foundation-only contract. Its initializer
+  accepts exact app build, coarse device/system and audio-route type, Nest host,
+  capture/room state, local-original and recoverable-upload counts, and preview
+  mode. It has no field for email, account/session/recording identity, source
+  text, filename/path, credential, access token, refresh token, or named audio
+  route; every shared copy repeats that boundary.
+- Operated iPhone 17 Pro / iOS 26.3.1 Simulator proof expanded the card, reached
+  the Share action, passed Apple's `hitRegion`,
+  `sufficientElementDescription`, and `textClipped` audits, and opened the real
+  `ActivityListView` Share Sheet without sending anything. The same action and
+  privacy copy remained reachable at accessibility XXXL. A four-journey Account
+  regression also proved persistent deletion truth and kept deletion/sign-out
+  actions clear of the tab bar. Result:
+  `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_09-26-15--0600.xcresult`.
+- That run exposed and closed a real semantic defect: applying the disclosure
+  identifier to the entire card overwrote the identities of all descendants.
+  The header, Share action, privacy copy, and version now retain distinct
+  accessibility identities.
+- The executable payload contract passes, and the App Store source gate now
+  passes 911 checks including the typed privacy boundary and both operated UI
+  journeys. Physical TestFlight inspection of the generated text remains
+  required; no external message was sent during this checkpoint.

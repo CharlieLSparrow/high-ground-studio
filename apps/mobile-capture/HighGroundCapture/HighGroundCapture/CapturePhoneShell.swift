@@ -5860,6 +5860,7 @@ private struct CaptureLibraryPreviewSourceCard: View {
 private struct CaptureAccountView: View {
     @ObservedObject var model: CaptureExperienceModel
     @EnvironmentObject private var audioCapture: AudioCaptureController
+    @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var auth = AuthManager.shared
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var deletionClient = AccountDeletionClient()
@@ -5905,6 +5906,69 @@ private struct CaptureAccountView: View {
                 }
                 .captureCard()
 
+                DisclosureGroup {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Share a small redacted snapshot when a TestFlight install, sign-in, recording, room, or upload needs help.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                        LabeledContent(
+                            "App",
+                            value: versionLine
+                        )
+                        LabeledContent(
+                            "Nest",
+                            value: supportNestHost
+                        )
+
+                        ShareLink(
+                            item: supportSnapshot.shareText,
+                            subject: Text(
+                                "Quipsly Capture support snapshot"
+                            )
+                        ) {
+                            Label(
+                                "Share support snapshot",
+                                systemImage: "square.and.arrow.up"
+                            )
+                            .frame(
+                                maxWidth: .infinity,
+                                alignment: .center
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityHint(
+                            "Opens the iPhone share sheet with redacted app, device, route-type, and local-state diagnostics."
+                        )
+                        .accessibilityIdentifier(
+                            "CaptureShareSupportSnapshot"
+                        )
+
+                        Text(CaptureSupportSnapshot.privacyBoundary)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
+                            .accessibilityIdentifier(
+                                "CaptureSupportPrivacyBoundary"
+                            )
+                    }
+                    .padding(.top, 12)
+                } label: {
+                    Label(
+                        "Help & diagnostics",
+                        systemImage: "lifepreserver"
+                    )
+                    .font(.headline)
+                    .accessibilityIdentifier(
+                        "CaptureSupportDisclosure"
+                    )
+                }
+                .captureCard()
+
                 VStack(alignment: .leading, spacing: 0) {
                     Link(destination: URL(string: "\(baseURL)/privacy")!) {
                         AccountLinkRow(label: "Privacy policy", systemImage: "hand.raised")
@@ -5946,6 +6010,9 @@ private struct CaptureAccountView: View {
                 Text(versionLine)
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
+                    .accessibilityIdentifier(
+                        "CaptureVersionBuild"
+                    )
             }
             .padding(.horizontal, 18)
             .padding(.top, 16)
@@ -6020,6 +6087,42 @@ private struct CaptureAccountView: View {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return "Quipsly Capture \(version) (\(build))"
+    }
+
+    private var supportNestHost: String {
+        URL(string: baseURL)?.host
+            ?? "configured Nest"
+    }
+
+    private var supportSnapshot: CaptureSupportSnapshot {
+        let runtime = CaptureRuntimeEvidence.current()
+        return CaptureSupportSnapshot(
+            generatedAt: Date(),
+            appVersion: runtime.appVersion,
+            appBuild: runtime.appBuild,
+            deviceModelIdentifier:
+                runtime.deviceModelIdentifier,
+            systemName: runtime.systemName,
+            systemVersion: runtime.systemVersion,
+            accountAccessMode: auth.accessMode.rawValue,
+            nestHost: supportNestHost,
+            audioCaptureState:
+                audioCapture.captureState.rawValue,
+            videoCaptureState:
+                videoCapture.state.rawValue,
+            roomState:
+                model.providerRoom.isConnected
+                    ? "connected"
+                    : model.providerRoom.isConnecting
+                        ? "connecting"
+                        : "not connected",
+            audioRoutePortType:
+                runtime.audioRoutePortType,
+            localOriginalCount: localOriginalCount,
+            recoverableUploadCount:
+                model.uploadManager.recoverableUploadCount,
+            previewMode: model.usesPreviewData
+        )
     }
 }
 

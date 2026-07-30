@@ -1380,6 +1380,116 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Request account deletion"].isHittable)
     }
 
+    func testAccountOffersPrivacyBoundedSupportSnapshot() throws {
+        app.tabBars.buttons["Account"].tap()
+
+        let disclosure =
+            app.buttons["CaptureSupportDisclosure"]
+        reveal(disclosure)
+        XCTAssertTrue(
+            disclosure.waitForExistence(timeout: 5)
+        )
+        disclosure.tap()
+
+        let share =
+            app.descendants(matching: .any)[
+                "CaptureShareSupportSnapshot"
+            ]
+        reveal(share)
+        XCTAssertTrue(
+            share.isHittable,
+            """
+            A tester must be able to reach the support snapshot without navigating away from Account.
+            \(share.debugDescription)
+            """
+        )
+
+        let boundary =
+            app.staticTexts[
+                "CaptureSupportPrivacyBoundary"
+            ]
+        XCTAssertTrue(boundary.exists)
+        XCTAssertTrue(
+            boundary.label.contains("no email")
+        )
+        XCTAssertTrue(
+            boundary.label.contains("access token")
+        )
+        XCTAssertTrue(
+            boundary.label.contains("source text")
+        )
+        XCTAssertTrue(
+            app.staticTexts[
+                "CaptureVersionBuild"
+            ].exists
+        )
+
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+
+        share.tap()
+        let shareSheet =
+            app.otherElements["ActivityListView"]
+        XCTAssertTrue(
+            shareSheet.waitForExistence(timeout: 5),
+            """
+            The support action must open the system share sheet without sending anything automatically.
+            \(app.debugDescription)
+            """
+        )
+    }
+
+    func testSupportSnapshotRemainsReachableAtLargestAccessibilityTextSize() throws {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=account",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launch()
+
+        XCTAssertTrue(
+            app.navigationBars["Account"].waitForExistence(timeout: 12)
+        )
+
+        let disclosure =
+            app.buttons["CaptureSupportDisclosure"]
+        reveal(disclosure)
+        XCTAssertTrue(
+            disclosure.isHittable,
+            "Help and diagnostics must remain reachable at the largest accessibility text size."
+        )
+        disclosure.tap()
+
+        let share =
+            app.buttons["CaptureShareSupportSnapshot"]
+        reveal(share)
+        XCTAssertTrue(
+            share.isHittable,
+            "The redacted support snapshot must remain reachable at the largest accessibility text size."
+        )
+
+        let boundary =
+            app.staticTexts[
+                "CaptureSupportPrivacyBoundary"
+            ]
+        reveal(boundary)
+        XCTAssertTrue(
+            boundary.isHittable,
+            "The privacy boundary must remain readable before a tester shares diagnostics."
+        )
+
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
+    }
+
     func testAccountDeletionExplainsTimingAndPersistentStatusBeforeSubmission() {
         app.tabBars.buttons["Account"].tap()
 

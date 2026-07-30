@@ -2,7 +2,7 @@
 
 Candidate date: 2026-07-18
 
-Latest addendum: 2026-07-27
+Latest addendum: 2026-07-30
 
 Scope: iPhone capture app, mobile-capture Nest APIs, durable media upload, and release-readiness surfaces
 
@@ -52,6 +52,7 @@ Passing an earlier gate does not imply a later gate.
 | An armed camera profile could be mistaken for the shape of the finished MOV | Finalization now decodes every track through EOF, persists actual encoded/presentation dimensions, rotation, codec, frame rate, audio shape, and duration, and fails upload closed on negotiated-versus-recorded integrity drift while preserving playback. |
 | Camera output and preview assumed every source was portrait at 90° | Apple rotation coordinators now supply separate horizon-level preview and capture angles. The movie angle is locked before START, persisted in source-profile v3, presented as portrait/landscape in the UX, and compared with the finished QuickTime transform before upload. |
 | Camera configuration did not guarantee unlock when a selected format setter threw | Configuration now releases the `AVCaptureDevice` lock with `defer` on every Swift error path. |
+| TestFlight support could require a tester to disclose identity, source, path, or credential data manually | Account now exposes one collapsed **Help & diagnostics** card with an explicit Share action. Its narrowly typed payload includes only build, coarse device/system/route type, Nest host, capture/room state, and recovery counts; it accepts no email, account/session/recording ID, source text, filename/path, credential, or token fields and carries that boundary in every shared copy. |
 
 ## Automated evidence
 
@@ -60,7 +61,9 @@ The final local run records exact results after all hardening changes settled. S
 | Gate | Command or proof | Result |
 |---|---|---|
 | Privacy manifest | `plutil -lint HighGroundCapture/PrivacyInfo.xcprivacy` | PASS — valid plist |
-| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 701/701 |
+| App Store/static UX | `node scripts/quipsly-ios-capture-app-store-static-smoke.mjs` | PASS — 911/911 |
+| Redacted tester support contract | `pnpm quipsly:capture:support-snapshot:test` | PASS — exact output, bounded values, whitespace normalization, nonnegative recovery counts, and embedded privacy boundary |
+| Account support, deletion, and accessibility | focused `CaptureExperienceUITests` on iPhone 17 Pro / iOS 26.3.1 | PASS — 4/4; default and accessibility XXXL support reachability, `hitRegion`, `sufficientElementDescription`, `textClipped`, real system Share Sheet operation without an automatic send, persistent deletion truth, and critical actions clear of the tab bar |
 | Owner isolation | `node --test scripts/quipsly-ios-capture-account-isolation.test.mjs` | PASS — 15/15 |
 | iOS source durability | `node scripts/quipsly-ios-capture-durability-contract.test.mjs` | PASS — 73/73 |
 | Mobile source contracts | `node scripts/quipsly-mobile-capture-contract-smoke.mjs --source-only=1` | PASS — 74/74 source; 104/104 with local network |
@@ -103,6 +106,9 @@ These checks cannot be substituted with source inspection or Simulator output:
 - Confirm each resulting source is playable, remains visible in the correct account's Library, resumes upload, and becomes **Verified in Quipsly** without local deletion.
 - Join a Nest-issued LiveKit packet and prove CallKit activation/deactivation, remote participant updates, mute, disconnect/reset, and simultaneous local-source behavior.
 - Install the archived candidate through TestFlight and repeat the critical record/save/upload verification on the distributed binary.
+- Open **Help & diagnostics** in the distributed binary, inspect the generated
+  payload before sending it, and confirm the physical iPhone Share Sheet
+  contains no identity, content, path, session, or credential data.
 
 The canonical archive/upload procedure is
 [`docs/quipsly/ios-capture-release-runbook.md`](../../../docs/quipsly/ios-capture-release-runbook.md).

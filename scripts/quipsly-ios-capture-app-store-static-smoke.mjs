@@ -48,6 +48,7 @@ const files = {
   sessionNoteEditOutbox: path.join(sourceRoot, "SessionNoteEditOutbox.swift"),
   captureReceiptStore: path.join(sourceRoot, "CaptureRoomReceiptStore.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
+  captureSupportSnapshot: path.join(sourceRoot, "CaptureSupportSnapshot.swift"),
   transcriptReview: path.join(sourceRoot, "TranscriptCorrectionReview.swift"),
   localRecordingLibrary: path.join(sourceRoot, "LocalRecordingLibrary.swift"),
   localRecordingPlayback: path.join(sourceRoot, "LocalRecordingPlaybackController.swift"),
@@ -176,6 +177,7 @@ const sourceAnnotationDraftOutboxText = read(files.sourceAnnotationDraftOutbox);
 const sessionNoteEditOutboxText = read(files.sessionNoteEditOutbox);
 const captureReceiptStoreText = read(files.captureReceiptStore);
 const capturePhoneShellText = read(files.capturePhoneShell);
+const captureSupportSnapshotText = read(files.captureSupportSnapshot);
 const transcriptReviewText = read(files.transcriptReview);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
@@ -771,6 +773,57 @@ for (const needle of [
   "model.providerControlsLockedForLocalCapture",
 ]) {
   requireIncludes(capturePhoneShellText, needle, "capture-first iPhone UX");
+}
+for (const needle of [
+  "Help & diagnostics",
+  "Share support snapshot",
+  "CaptureSupportDisclosure",
+  "CaptureShareSupportSnapshot",
+  "CaptureSupportPrivacyBoundary",
+  "CaptureVersionBuild",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "privacy-bounded Capture support UX");
+}
+for (const needle of [
+  "CaptureSupportSnapshot",
+  "privacyBoundary",
+  "Audio route type:",
+  "Local originals:",
+  "Recoverable uploads:",
+  "Preview mode:",
+]) {
+  requireIncludes(captureSupportSnapshotText, needle, "redacted Capture support contract");
+}
+const supportSnapshotFields = captureSupportSnapshotText.slice(
+  captureSupportSnapshotText.indexOf("let generatedAt:"),
+  captureSupportSnapshotText.indexOf("var shareText:"),
+);
+for (const forbidden of [
+  "email",
+  "accountID",
+  "sessionID",
+  "recordingID",
+  "sourceText",
+  "filename",
+  "filePath",
+  "credential",
+  "accessToken",
+  "refreshToken",
+  "audioRouteName",
+]) {
+  assert(
+    !supportSnapshotFields.includes(forbidden),
+    "Capture support snapshot initializer must not accept private identity, source, path, or credential fields.",
+    { forbidden },
+  );
+}
+for (const needle of [
+  "testAccountOffersPrivacyBoundedSupportSnapshot",
+  "testSupportSnapshotRemainsReachableAtLargestAccessibilityTextSize",
+  "ActivityListView",
+  "performAccessibilityAudit",
+]) {
+  requireIncludes(deterministicUITestsText, needle, "operated and accessible Capture support coverage");
 }
 for (const needle of [
   "recordingConsentCanRecordVideo == true",
@@ -1612,6 +1665,7 @@ const report = {
     "recording state is visible and broadcast to the UI",
     "local recordings are preserved and uploaded directly with protected, retryable GCS resumable sessions",
     "capture diagnostics expose upload recovery, server verification, local retention, and transcript repair state",
+    "tester support sharing is explicit, redacted, accessible, and excludes identity, source, path, and credential fields",
     "mobile readiness exposes calendar evidence readiness without making Calendar the source of truth",
     "iPhone and iPad session surfaces show the capture runway",
     "privacy and account deletion routes are visible from app and web",
