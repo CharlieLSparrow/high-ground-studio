@@ -3573,3 +3573,11 @@ This is an active-goal checkpoint, not a completion claim.
   Bash with the verifier path as a discrete argument, and the source verifier
   enforces that path-safe boundary. The sealed UI result remains failure
   evidence; a new exact commit must repeat qualification before upload.
+- The next exact-source invocation stopped before archive or upload at 35/36:
+  the Repeat menu visibly remained on “Does not repeat” after automation tapped
+  “Fixed schedule,” and the still-focused keyboard caused the generic reveal
+  helper to scroll its suggestion strip instead of the task form. The failure
+  recording and 44 attachments are preserved outside the repository. Repeat
+  now uses the standard navigation-link picker, the task form has a stable
+  identity, and qualification must read back the committed selection before
+  accepting the first-due controls.

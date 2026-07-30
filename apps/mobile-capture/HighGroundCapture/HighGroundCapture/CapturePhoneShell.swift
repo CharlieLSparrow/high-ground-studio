@@ -3720,6 +3720,7 @@ struct CaptureQuickEntrySheet: View {
                 Text("Fixed schedule").tag("FIXED")
                 Text("After completion").tag("COMPLETION")
             }
+            .pickerStyle(.navigationLink)
             .accessibilityIdentifier("CaptureQuickEntryRecurrenceMode")
 
             if recurrenceMode != "NONE" {
@@ -4141,6 +4142,7 @@ struct CaptureQuickEntrySheet: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             }
+            .accessibilityIdentifier("CaptureQuickEntryForm")
             .scrollDismissesKeyboard(.interactively)
             .navigationTitle("Quick \(kind.title)")
             .navigationBarTitleDisplayMode(.inline)

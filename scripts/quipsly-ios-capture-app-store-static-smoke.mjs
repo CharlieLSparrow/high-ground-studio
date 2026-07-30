@@ -774,6 +774,8 @@ for (const needle of [
 for (const needle of [
   'Text("Fixed schedule").tag("FIXED")',
   'Text("After completion").tag("COMPLETION")',
+  ".pickerStyle(.navigationLink)",
+  '.accessibilityIdentifier("CaptureQuickEntryForm")',
   '"First due"',
   'Text("Timezone")',
   'Text(recurrenceTimezoneID)',

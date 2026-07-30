@@ -582,10 +582,18 @@ final class CaptureExperienceUITests: XCTestCase {
         let fixed = app.buttons["Fixed schedule"].firstMatch
         XCTAssertTrue(fixed.waitForExistence(timeout: 5))
         fixed.tap()
+        XCTAssertEqual(
+            repeatPicker.value as? String,
+            "Fixed schedule",
+            "Repeat selection must return to the task form with an explicit committed readback."
+        )
 
         let firstDue = app.descendants(matching: .any)["CaptureQuickEntryRecurrenceFirstDue"].firstMatch
         reveal(firstDue)
-        XCTAssertTrue(firstDue.exists)
+        XCTAssertTrue(
+            firstDue.exists,
+            "A committed recurring task must expose its first canonical due time."
+        )
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryRecurrenceFrequency"].exists)
         XCTAssertTrue(app.descendants(matching: .any)["CaptureQuickEntryRecurrenceInterval"].exists)
 
@@ -1225,7 +1233,8 @@ final class CaptureExperienceUITests: XCTestCase {
         // Anchor scrolling to the app's actual vertical ScrollView so the same
         // reachability assertion exercises both full-screen iPhone and
         // windowed iPad layouts.
-        let scrollSurface = app.scrollViews.firstMatch
+        let namedForm = app.descendants(matching: .any)["CaptureQuickEntryForm"].firstMatch
+        let scrollSurface = namedForm.exists ? namedForm : app.scrollViews.firstMatch
         for _ in 0..<8 {
             if element.exists, element.frame.maxY <= app.frame.minY + 72 {
                 if scrollSurface.exists {
