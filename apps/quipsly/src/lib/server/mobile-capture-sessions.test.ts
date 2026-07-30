@@ -8,6 +8,7 @@ jest.mock("@high-ground/quipsly-domain/coaching-packet", () => ({
 
 import { recordingContentReadiness } from "./mobile-capture-content-readiness";
 import {
+  captureGroupStudioHandoff,
   captureSourceSummaries,
   canonicalMobileSessionEpisodeSlug,
   canonicalMobileSessionProject,
@@ -364,6 +365,74 @@ describe("mobile Session canonical capture sources", () => {
         status: "QUEUED",
         segmentCount: 0,
       },
+    });
+  });
+
+  it("offers only the complete newest capture group to Studio", () => {
+    const handoff = captureGroupStudioHandoff([
+      {
+        recordingAssetId: "video-back",
+        captureGroupId: "take-2",
+        exactBytesVerified: true,
+        recordingStatus: "VERIFIED",
+        processingDisposition: "RELEASED",
+        mediaAssetId: null,
+      },
+      {
+        recordingAssetId: "audio-master",
+        captureGroupId: "take-2",
+        exactBytesVerified: true,
+        recordingStatus: "VERIFIED",
+        processingDisposition: "RELEASED",
+        mediaAssetId: "media-audio",
+      },
+      {
+        recordingAssetId: "older-video",
+        captureGroupId: "take-1",
+        exactBytesVerified: true,
+        recordingStatus: "VERIFIED",
+        processingDisposition: "RELEASED",
+        mediaAssetId: null,
+      },
+    ]);
+
+    expect(handoff).toMatchObject({
+      captureGroupId: "take-2",
+      sourceCount: 2,
+      verifiedSourceCount: 2,
+      promotedSourceCount: 1,
+      ready: true,
+      complete: false,
+      sourceSetRequired: true,
+      sources: [
+        { recordingAssetId: "video-back" },
+        { recordingAssetId: "audio-master" },
+      ],
+    });
+  });
+
+  it("holds Studio handoff until every newest-group source is released", () => {
+    expect(captureGroupStudioHandoff([
+      {
+        recordingAssetId: "video-front",
+        captureGroupId: "take-3",
+        exactBytesVerified: true,
+        recordingStatus: "VERIFIED",
+        processingDisposition: "RELEASED",
+      },
+      {
+        recordingAssetId: "audio-master",
+        captureGroupId: "take-3",
+        exactBytesVerified: true,
+        recordingStatus: "VERIFIED",
+        processingDisposition: "HELD",
+      },
+    ])).toMatchObject({
+      captureGroupId: "take-3",
+      sourceCount: 2,
+      verifiedSourceCount: 1,
+      ready: false,
+      complete: false,
     });
   });
 });

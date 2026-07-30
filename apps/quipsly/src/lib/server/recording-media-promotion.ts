@@ -8,6 +8,7 @@ import {
 import { toGcsUri } from "@/lib/server/gcs";
 import { mobileCaptureMediaProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
 import { attachAssetToNest, createWorkflowJob } from "@/lib/server/quipsly-core";
+import { sessionActorAccessWhere } from "@/lib/server/session-access";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 type PromotionInput = {
@@ -221,16 +222,27 @@ function titleFor(asset: any, room: any) {
 }
 
 function canAccessRecordingAssetWhere(input: PromotionInput) {
-  if (input.isStaff) return { id: input.recordingAssetId };
-
   return {
+    ...canAccessRecordingRoomAssetsWhere(input),
     id: input.recordingAssetId,
-    OR: [
-      { room: { createdByUserId: input.actorUserId } },
-      { room: { participants: { some: { userId: input.actorUserId } } } },
-      { room: { booking: { clientUserId: input.actorUserId } } },
-      { room: { booking: { coachUserId: input.actorUserId } } },
-    ],
+  };
+}
+
+function canAccessRecordingRoomAssetsWhere(input: {
+  actorUserId: string;
+  actorEmail?: string | null;
+  isStaff?: boolean;
+  roomId?: string | null;
+}) {
+  const roomId = text(input.roomId);
+  if (input.isStaff) return roomId ? { roomId } : {};
+  return {
+    ...(roomId ? { roomId } : {}),
+    room: sessionActorAccessWhere({
+      id: input.actorUserId,
+      email: input.actorEmail,
+      isStaff: false,
+    }),
   };
 }
 
@@ -1003,4 +1015,300 @@ export async function promoteRecordingAssetToStudioMedia(input: PromotionInput) 
     message: "Verified recording is now available as Quipsly media.",
   };
   });
+}
+
+type CaptureGroupPromotionSource = {
+  recordingAssetId: string;
+  captureGroupId: string;
+  status: string;
+  recordedStartedAt?: Date | string | null;
+};
+
+export function captureGroupIdForRecordingAsset(
+  asset: any,
+  finalizationReceipts: any[] = [],
+) {
+  const manifest = asRecord(asset?.localManifestJson);
+  const receipt = finalizationReceipts
+    .filter((candidate) => text(candidate?.recordingAssetId) === text(asset?.id))
+    .sort((left, right) => (
+      String(right?.createdAt || "").localeCompare(String(left?.createdAt || ""))
+    ))[0];
+  return (
+    text(manifest.captureGroupId)
+    || text(manifest.captureId)
+    || text(receipt?.captureGroupId)
+    || text(receipt?.captureId)
+    || text(asset?.id)
+  ).toLowerCase();
+}
+
+function normalizedAssetIds(values: unknown) {
+  if (!Array.isArray(values)) return [];
+  return [...new Set(values
+    .map((value) => text(value))
+    .filter(Boolean))]
+    .sort();
+}
+
+export function resolveCaptureGroupPromotionPlan(input: {
+  captureGroupId: string;
+  expectedRecordingAssetIds: string[];
+  sources: CaptureGroupPromotionSource[];
+}) {
+  const captureGroupId = text(input.captureGroupId).toLowerCase();
+  const expectedRecordingAssetIds = normalizedAssetIds(
+    input.expectedRecordingAssetIds,
+  );
+  if (!captureGroupId || expectedRecordingAssetIds.length === 0) {
+    return {
+      ok: false as const,
+      status: "capture-group-snapshot-required",
+      httpStatus: 400,
+      message:
+        "Choose one exact capture group and refresh its source list before attaching it to Studio.",
+    };
+  }
+  if (expectedRecordingAssetIds.length > 64) {
+    return {
+      ok: false as const,
+      status: "capture-group-too-large",
+      httpStatus: 400,
+      message:
+        "This capture group has more than 64 source boundaries. Review and split the handoff before attaching it to Studio.",
+    };
+  }
+
+  const sources = input.sources
+    .filter((source) => text(source.captureGroupId).toLowerCase() === captureGroupId)
+    .sort((left, right) => {
+      const byStart = String(left.recordedStartedAt || "")
+        .localeCompare(String(right.recordedStartedAt || ""));
+      return byStart || left.recordingAssetId.localeCompare(right.recordingAssetId);
+    });
+  const actualRecordingAssetIds = normalizedAssetIds(
+    sources.map((source) => source.recordingAssetId),
+  );
+  if (actualRecordingAssetIds.length === 0) {
+    return {
+      ok: false as const,
+      status: "capture-group-not-found",
+      httpStatus: 404,
+      message:
+        "That capture group is no longer visible in this Session. Refresh before retrying.",
+    };
+  }
+  if (
+    actualRecordingAssetIds.length !== expectedRecordingAssetIds.length
+    || actualRecordingAssetIds.some(
+      (recordingAssetId, index) =>
+        recordingAssetId !== expectedRecordingAssetIds[index],
+    )
+  ) {
+    return {
+      ok: false as const,
+      status: "capture-group-source-set-changed",
+      httpStatus: 409,
+      captureGroupId,
+      expectedRecordingAssetIds,
+      actualRecordingAssetIds,
+      message:
+        "The capture group changed after it was shown on the iPhone. Refresh and review the complete source set before attaching anything.",
+    };
+  }
+
+  const unverified = sources.filter(
+    (source) => text(source.status).toUpperCase() !== "VERIFIED",
+  );
+  if (unverified.length > 0) {
+    return {
+      ok: false as const,
+      status: "capture-group-awaiting-verification",
+      httpStatus: 409,
+      captureGroupId,
+      expectedRecordingAssetIds,
+      actualRecordingAssetIds,
+      blockedRecordingAssetIds: unverified.map(
+        (source) => source.recordingAssetId,
+      ),
+      message:
+        "Every source in the capture group must pass exact-byte verification before Studio handoff.",
+    };
+  }
+
+  return {
+    ok: true as const,
+    status: "capture-group-ready",
+    captureGroupId,
+    expectedRecordingAssetIds,
+    actualRecordingAssetIds,
+    sources,
+  };
+}
+
+type CaptureGroupPromotionInput = Omit<PromotionInput, "recordingAssetId"> & {
+  roomId: string;
+  captureGroupId: string;
+  expectedRecordingAssetIds: string[];
+  promoteOne?: typeof promoteRecordingAssetToStudioMedia;
+  processingGate?: typeof mobileCaptureMediaProcessingGate;
+};
+
+/**
+ * Converges one explicit capture-group snapshot into Studio.
+ *
+ * Every source is preflighted before the first promotion. Each source then
+ * uses the existing idempotent, per-source transaction; a retry reuses already
+ * promoted identities and continues only the missing work. This avoids a
+ * long-running cross-source transaction while never hiding a partial result.
+ */
+export async function promoteRecordingCaptureGroupToStudioMedia(
+  input: CaptureGroupPromotionInput,
+) {
+  const prisma = input.prisma ?? getPrismaClient();
+  const roomId = text(input.roomId);
+  const captureGroupId = text(input.captureGroupId).toLowerCase();
+  if (!roomId || !captureGroupId) {
+    return {
+      ok: false,
+      status: "capture-group-identity-required",
+      httpStatus: 400,
+      message: "Session and capture-group identity are required.",
+    };
+  }
+
+  const assets = await prisma.recordingAsset.findMany({
+    where: canAccessRecordingRoomAssetsWhere({ ...input, roomId }),
+    orderBy: [{ recordedStartedAt: "asc" }, { id: "asc" }],
+  });
+  const assetIds = assets.map((asset: any) => asset.id);
+  const finalizationReceipts = assetIds.length > 0
+    ? await prisma.mobileCaptureFinalizationReceipt.findMany({
+        where: { recordingAssetId: { in: assetIds } },
+        orderBy: { createdAt: "asc" },
+      })
+    : [];
+  const plan = resolveCaptureGroupPromotionPlan({
+    captureGroupId,
+    expectedRecordingAssetIds: input.expectedRecordingAssetIds,
+    sources: assets
+      .filter((asset: any) => !isProviderRecordingReceiptSlot(asset))
+      .map((asset: any) => ({
+        recordingAssetId: asset.id,
+        captureGroupId: captureGroupIdForRecordingAsset(
+          asset,
+          finalizationReceipts,
+        ),
+        status: text(asset.status).toUpperCase(),
+        recordedStartedAt: asset.recordedStartedAt,
+      })),
+  });
+  if (!plan.ok) return plan;
+
+  const assetsById = new Map(
+    assets.map((asset: any) => [asset.id, asset]),
+  );
+  const processingGate =
+    input.processingGate ?? mobileCaptureMediaProcessingGate;
+  const processingHolds: Array<{
+    recordingAssetId: string;
+    errorCode: string;
+    error: string;
+  }> = [];
+  for (const source of plan.sources) {
+    const asset = assetsById.get(source.recordingAssetId);
+    const gate = await processingGate({
+      prisma,
+      recordingAsset: asset,
+    });
+    if (!gate.allowed) {
+      processingHolds.push({
+        recordingAssetId: source.recordingAssetId,
+        errorCode: gate.errorCode,
+        error: gate.error,
+      });
+    }
+  }
+  if (processingHolds.length > 0) {
+    return {
+      ok: false,
+      status: "capture-group-processing-held",
+      httpStatus: 409,
+      captureGroupId: plan.captureGroupId,
+      expectedSourceCount: plan.sources.length,
+      blockedRecordingAssetIds: processingHolds.map(
+        (hold) => hold.recordingAssetId,
+      ),
+      holds: processingHolds,
+      message:
+        "Studio handoff is held because at least one source lacks released consent or exact-byte processing evidence.",
+      boundaries: {
+        sourceSetMatched: true,
+        promotedSourceCount: 0,
+        originalSourcesMutated: false,
+        copiedBlobs: false,
+        partialResultHidden: false,
+      },
+    };
+  }
+
+  const promoteOne =
+    input.promoteOne ?? promoteRecordingAssetToStudioMedia;
+  const results: Array<{
+    recordingAssetId: string;
+    ok: boolean;
+    status: string;
+    message: string;
+    mediaAssetId: string | null;
+  }> = [];
+  for (const source of plan.sources) {
+    const result = await promoteOne({
+      prisma,
+      recordingAssetId: source.recordingAssetId,
+      actorUserId: input.actorUserId,
+      actorEmail: input.actorEmail,
+      isStaff: input.isStaff,
+      nestSlug: input.nestSlug,
+      episodeSlug: input.episodeSlug,
+    });
+    results.push({
+      recordingAssetId: source.recordingAssetId,
+      ok: result.ok === true,
+      status: text(result.status) || (result.ok ? "promoted" : "failed"),
+      message: text(result.message),
+      mediaAssetId: text(result.mediaAsset?.id) || null,
+    });
+  }
+
+  const failedResults = results.filter((result) => !result.ok);
+  const alreadyPromotedSourceCount = results.filter(
+    (result) => result.ok && result.status === "already-promoted",
+  ).length;
+  const promotedSourceCount = results.length - failedResults.length;
+  const complete = failedResults.length === 0;
+  return {
+    ok: complete,
+    status: complete
+      ? "capture-group-promoted"
+      : "capture-group-partially-promoted",
+    ...(complete ? {} : { httpStatus: 409 }),
+    captureGroupId: plan.captureGroupId,
+    expectedSourceCount: plan.sources.length,
+    promotedSourceCount,
+    alreadyPromotedSourceCount,
+    failedSourceCount: failedResults.length,
+    results,
+    message: complete
+      ? `${promotedSourceCount} verified capture ${promotedSourceCount === 1 ? "source is" : "sources are"} attached to Studio under one capture-group identity.`
+      : `${promotedSourceCount} of ${plan.sources.length} sources reached Studio. Retry the same group to reuse completed identities and continue the missing handoffs.`,
+    boundaries: {
+      sourceSetMatched: true,
+      originalSourcesMutated: false,
+      copiedBlobs: false,
+      alignmentRemainsProposal: true,
+      humanSyncReviewRequired: true,
+      partialResultHidden: false,
+      retryIsIdempotent: true,
+    },
+  };
 }

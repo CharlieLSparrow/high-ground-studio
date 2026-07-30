@@ -1509,6 +1509,73 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Submit"].isEnabled, "Preview mode must explain deletion without submitting a real request.")
     }
 
+    func testStudioHandoffKeepsTheWholeCaptureGroupVisibleAcrossReadyRetryAndCompleteStates() {
+        app.tabBars.buttons["Record"].tap()
+
+        func chooseSession(_ id: String) {
+            let chooser = app.buttons["CaptureSessionChooser"]
+            XCTAssertTrue(chooser.waitForExistence(timeout: 5))
+            chooser.tap()
+
+            let row = app.buttons["CaptureSessionPicker_\(id)"]
+            for _ in 0..<8 where !row.exists || !row.isHittable {
+                app.swipeUp()
+            }
+            XCTAssertTrue(row.exists, "The deterministic capture-group fixture must be reachable in the real session picker.")
+            XCTAssertTrue(row.isHittable)
+            row.tap()
+        }
+
+        func assertHandoff(
+            sessionID: String,
+            expectedStatus: String,
+            expectedButtonLabel: String,
+            expectedButtonEnabled: Bool,
+            expectedDetail: String
+        ) {
+            let card = app.descendants(matching: .any)["CaptureStudioHandoffCard_\(sessionID)"]
+            reveal(card)
+            XCTAssertTrue(card.waitForExistence(timeout: 5))
+
+            let status = app.descendants(matching: .any)["CaptureStudioPromotionStatus_\(sessionID)"]
+            XCTAssertEqual(status.label, expectedStatus)
+
+            let button = app.buttons["CaptureAttachToStudioButton_\(sessionID)"]
+            XCTAssertEqual(button.label, expectedButtonLabel)
+            XCTAssertEqual(button.isEnabled, expectedButtonEnabled)
+            XCTAssertTrue(app.staticTexts[expectedDetail].exists)
+        }
+
+        chooseSession("preview-studio-group-ready")
+        assertHandoff(
+            sessionID: "preview-studio-group-ready",
+            expectedStatus: "2 sources ready",
+            expectedButtonLabel: "Attach group",
+            expectedButtonEnabled: true,
+            expectedDetail: "All 2 sources in this capture group passed exact-byte verification and can move to Studio together."
+        )
+        app.buttons["CaptureAttachToStudioButton_preview-studio-group-ready"].tap()
+        XCTAssertTrue(app.staticTexts["Preview mode shows the Studio handoff without changing media."].exists)
+
+        chooseSession("preview-studio-group-partial")
+        assertHandoff(
+            sessionID: "preview-studio-group-partial",
+            expectedStatus: "1 of 2 in Studio",
+            expectedButtonLabel: "Attach group",
+            expectedButtonEnabled: true,
+            expectedDetail: "1 of 2 capture-group sources reached Studio. Retry safely to continue the exact same handoff."
+        )
+
+        chooseSession("preview-studio-group-complete")
+        assertHandoff(
+            sessionID: "preview-studio-group-complete",
+            expectedStatus: "2 sources in Studio",
+            expectedButtonLabel: "Group in Studio",
+            expectedButtonEnabled: false,
+            expectedDetail: "The complete 2-source capture group is attached to Studio. Every original remains immutable capture evidence."
+        )
+    }
+
     private func assertFocusedTranscriptSegment(
         _ segmentID: String,
         file: StaticString = #filePath,

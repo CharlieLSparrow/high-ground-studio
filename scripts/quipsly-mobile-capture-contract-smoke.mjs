@@ -898,6 +898,7 @@ function checkTranscriptCorrectionContractSources() {
   const sessionReviewPageText = sourceText("apps/quipsly/src/app/(app)/sessions/[roomId]/page.tsx");
   const workTagsRouteText = sourceText("apps/quipsly/src/app/api/work/tags/route.ts");
   const recordingPromotionText = sourceText("apps/quipsly/src/lib/server/recording-media-promotion.ts");
+  const recordingPromotionRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/recordings/promote/route.ts");
   const episodeInventoryText = sourceText("apps/quipsly/src/app/api/media-vault/episode-inventory/route.ts");
   const editorText = sourceText("apps/quipsly/src/app/(app)/editor/page.tsx");
   const quickEntryText = sourceText("apps/quipsly/src/lib/server/mobile-capture-quick-entry.ts");
@@ -1373,6 +1374,30 @@ function checkTranscriptCorrectionContractSources() {
       && editorText.includes("Tag labels are a handoff snapshot; the Session remains canonical."),
     "canonicalSessionStudioHandoff",
     "A verified capture uses its canonical Session project, persists one idempotent Nest and episode handoff receipt with tag provenance, and exposes the source Session back inside Studio without mutating original media.",
+  );
+  expect(
+    recordingPromotionText.includes("resolveCaptureGroupPromotionPlan")
+      && recordingPromotionText.includes('"capture-group-source-set-changed"')
+      && recordingPromotionText.includes('"capture-group-processing-held"')
+      && recordingPromotionText.includes("originalSourcesMutated: false")
+      && recordingPromotionText.includes("alignmentRemainsProposal: true")
+      && recordingPromotionText.includes("retryIsIdempotent: true")
+      && recordingPromotionRouteText.includes("expectedRecordingAssetIds")
+      && recordingPromotionRouteText.includes("promoteRecordingCaptureGroupToStudioMedia")
+      && mobileCaptureSessionsText.includes("captureGroupStudioHandoff")
+      && mobileCaptureSessionsText.includes("captureGroupPromotionRequiresCompleteSourceSet: true")
+      && bridgeText.includes("MobileCaptureSourceSummary")
+      && bridgeText.includes('requestBody["captureGroupId"] = captureGroupID')
+      && bridgeText.includes('requestBody["expectedRecordingAssetIds"]')
+      && captureExperienceText.includes("complete capture group")
+      && shellText.includes('"Attach group"')
+      && shellText.includes('"Group in Studio"')
+      && captureUITestText.includes("testStudioHandoffKeepsTheWholeCaptureGroupVisibleAcrossReadyRetryAndCompleteStates")
+      && captureUITestText.includes('expectedStatus: "2 sources ready"')
+      && captureUITestText.includes('expectedStatus: "1 of 2 in Studio"')
+      && captureUITestText.includes('expectedStatus: "2 sources in Studio"'),
+    "completeCaptureGroupStudioHandoff",
+    "iPhone and Nest attach the newest verified podcast take as one exact source-set snapshot, preserve every source original, expose partial retry truth, and keep clock alignment as a human-reviewed proposal.",
   );
   expect(
     packetRouteText.includes("buildPacketGoalCandidates")

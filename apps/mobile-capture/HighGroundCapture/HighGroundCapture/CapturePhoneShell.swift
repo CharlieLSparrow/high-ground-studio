@@ -7555,10 +7555,10 @@ private struct StudioHandoffCard: View {
                 } label: {
                     if model.isPromotingRecordingToStudio {
                         ProgressView()
-                            .accessibilityLabel("Attaching recording to Studio")
+                            .accessibilityLabel("Attaching capture group to Studio")
                     } else {
                         Label(
-                            session.recordingPromotedToStudioMedia ? "Attached to Studio" : "Attach to Studio",
+                            studioHandoffActionLabel,
                             systemImage: session.recordingPromotedToStudioMedia ? "checkmark" : "arrow.right"
                         )
                     }
@@ -7582,15 +7582,23 @@ private struct StudioHandoffCard: View {
 
     private var studioHandoffHint: String {
         if captureIsActive {
-            return "Stop and save the active take before attaching verified media to Studio."
+            return "Stop and save the active take before attaching its complete verified capture group to Studio."
         }
         if session.recordingPromotedToStudioMedia {
-            return "The verified recording is already available to the same Nest in Studio."
+            return "Every verified source in this capture group is already available to the same Nest in Studio."
         }
         if session.canPromoteRecordingToStudioMedia {
-            return "Attaches the verified recording to this Nest's Studio media without deleting or changing the original."
+            return "Attaches the exact verified capture-group source set to this Nest's Studio media without deleting or changing any original."
         }
         return session.recordingMediaVaultLine
+    }
+
+    private var studioHandoffActionLabel: String {
+        let sourceCount = session.studioHandoffSources.count
+        if session.recordingPromotedToStudioMedia {
+            return sourceCount > 1 ? "Group in Studio" : "Attached to Studio"
+        }
+        return sourceCount > 1 ? "Attach group" : "Attach to Studio"
     }
 }
 

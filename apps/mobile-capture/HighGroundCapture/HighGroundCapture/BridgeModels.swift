@@ -439,6 +439,38 @@ enum MobileSessionNoteEditSyncResult {
     case held(code: String?, message: String)
 }
 
+struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
+    let recordingAssetId: String
+    let captureGroupId: String?
+    let fileName: String?
+    let kind: String?
+    let contentType: String?
+    let recordingStatus: String?
+    let exactBytesVerified: Bool?
+    let processingDisposition: String?
+    let recordedStartedAt: String?
+    let recordedStoppedAt: String?
+    let mediaAssetId: String?
+    let playbackUrl: String?
+
+    var id: String { recordingAssetId }
+
+    var isVerifiedForStudio: Bool {
+        recordingStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased() == "VERIFIED"
+            && exactBytesVerified == true
+            && processingDisposition?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .uppercased() == "RELEASED"
+    }
+
+    var isPromotedToStudio: Bool {
+        mediaAssetId?.trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
+    }
+}
+
 struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let id: String
     let callRoomId: String
@@ -490,6 +522,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let paymentStatus: String?
     let calendarStatus: String?
     let recordingCount: Int
+    var captureSources: [MobileCaptureSourceSummary]? = nil
     let providerRecordingReceiptSlotId: String?
     let providerRecordingReceiptStatus: String?
     let providerRecordingReceiptNextAction: String?
@@ -770,12 +803,41 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         return ["UPLOADED", "VERIFIED"].contains(assetStatus)
     }
 
+    var studioHandoffCaptureGroupID: String? {
+        captureSources?
+            .compactMap(\.captureGroupId)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+    }
+
+    var studioHandoffSources: [MobileCaptureSourceSummary] {
+        guard let captureGroupID = studioHandoffCaptureGroupID else {
+            return []
+        }
+        return (captureSources ?? []).filter {
+            $0.captureGroupId?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                == captureGroupID
+        }
+    }
+
     var recordingPromotedToStudioMedia: Bool {
-        latestRecordingMediaAssetId?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false
+        let sources = studioHandoffSources
+        if !sources.isEmpty {
+            return sources.allSatisfy(\.isPromotedToStudio)
+        }
+        return latestRecordingMediaAssetId?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty == false
     }
 
     var canPromoteRecordingToStudioMedia: Bool {
         guard projectSlug?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false else { return false }
+        let sources = studioHandoffSources
+        if !sources.isEmpty {
+            return sources.allSatisfy(\.isVerifiedForStudio)
+                && sources.contains { !$0.isPromotedToStudio }
+        }
         if actionPacket?.capabilities?.canPromoteRecordingToMedia == true { return true }
         guard latestRecordingAssetId != nil, !recordingPromotedToStudioMedia else { return false }
         let assetStatus = latestRecordingAssetStatus?.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() ?? ""
@@ -783,6 +845,21 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     }
 
     var recordingPromotionBadgeLabel: String {
+        let sources = studioHandoffSources
+        if !sources.isEmpty {
+            let promotedCount = sources.filter(\.isPromotedToStudio).count
+            if promotedCount == sources.count {
+                return "\(sources.count) \(sources.count == 1 ? "source" : "sources") in Studio"
+            }
+            if promotedCount > 0 {
+                return "\(promotedCount) of \(sources.count) in Studio"
+            }
+            if sources.allSatisfy(\.isVerifiedForStudio) {
+                return "\(sources.count) \(sources.count == 1 ? "source" : "sources") ready"
+            }
+            let verifiedCount = sources.filter(\.isVerifiedForStudio).count
+            return "\(verifiedCount) of \(sources.count) verified"
+        }
         if recordingPromotedToStudioMedia { return "Studio media ready" }
         if latestRecordingAssetId != nil && projectSlug?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty != false {
             return "Choose a Nest"
@@ -794,6 +871,21 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     }
 
     var recordingMediaVaultLine: String {
+        let sources = studioHandoffSources
+        if !sources.isEmpty {
+            let promotedCount = sources.filter(\.isPromotedToStudio).count
+            if promotedCount == sources.count {
+                return "The complete \(sources.count)-source capture group is attached to Studio. Every original remains immutable capture evidence."
+            }
+            if promotedCount > 0 {
+                return "\(promotedCount) of \(sources.count) capture-group sources reached Studio. Retry safely to continue the exact same handoff."
+            }
+            if sources.allSatisfy(\.isVerifiedForStudio) {
+                return "All \(sources.count) sources in this capture group passed exact-byte verification and can move to Studio together."
+            }
+            let verifiedCount = sources.filter(\.isVerifiedForStudio).count
+            return "\(verifiedCount) of \(sources.count) capture-group sources are verified. Studio handoff waits for the complete group."
+        }
         if let mediaAssetId = latestRecordingMediaAssetId, !mediaAssetId.isEmpty {
             return "Promoted to Studio media: \(mediaAssetId). The original recording remains capture evidence."
         }
@@ -1550,6 +1642,14 @@ struct MobileCapturePromotedMediaAsset: Codable, Hashable {
 }
 
 struct MobileCaptureRecordingPromotionResponse: Codable {
+    struct SourceResult: Codable, Hashable {
+        let recordingAssetId: String
+        let ok: Bool
+        let status: String?
+        let message: String?
+        let mediaAssetId: String?
+    }
+
     let ok: Bool
     let error: String?
     let status: String?
@@ -1563,6 +1663,12 @@ struct MobileCaptureRecordingPromotionResponse: Codable {
     let episodeSlug: String?
     let mediaKind: String?
     let importRole: String?
+    let captureGroupId: String?
+    let expectedSourceCount: Int?
+    let promotedSourceCount: Int?
+    let alreadyPromotedSourceCount: Int?
+    let failedSourceCount: Int?
+    let results: [SourceResult]?
 
     var statusLine: String {
         if let message, !message.isEmpty { return message }
@@ -5510,15 +5616,23 @@ final class CaptureSessionClient: ObservableObject {
     }
 
     func promoteRecordingToStudioMedia(for session: MobileCaptureSession) async -> Bool {
-        guard let recordingAssetId = session.latestRecordingAssetId else {
+        let captureGroupID = session.studioHandoffCaptureGroupID
+        let captureGroupSources = session.studioHandoffSources
+        let recordingAssetID = session.latestRecordingAssetId
+        guard captureGroupID != nil || recordingAssetID != nil else {
             status = "No verified recording"
             errorMessage = "Record and upload before promoting media into Studio."
             return false
         }
-        guard session.canPromoteRecordingToStudioMedia || !session.recordingPromotedToStudioMedia else {
-            status = session.recordingPromotedToStudioMedia ? "Studio media already ready" : "Recording not verified"
+        if session.recordingPromotedToStudioMedia {
+            status = "Studio media already ready"
+            errorMessage = nil
+            return true
+        }
+        guard session.canPromoteRecordingToStudioMedia else {
+            status = "Recording not verified"
             errorMessage = session.recordingMediaVaultLine
-            return session.recordingPromotedToStudioMedia
+            return false
         }
         guard let url = URL(string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/mobile/capture/recordings/promote") else {
             status = "Bad Nest URL"
@@ -5533,9 +5647,15 @@ final class CaptureSessionClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            var requestBody: [String: String] = [
-                "recordingAssetId": recordingAssetId,
-            ]
+            var requestBody: [String: Any] = [:]
+            if let captureGroupID, !captureGroupSources.isEmpty {
+                requestBody["roomId"] = session.callRoomId
+                requestBody["captureGroupId"] = captureGroupID
+                requestBody["expectedRecordingAssetIds"] =
+                    captureGroupSources.map(\.recordingAssetId)
+            } else if let recordingAssetID {
+                requestBody["recordingAssetId"] = recordingAssetID
+            }
             if session.projectId?.isEmpty != false,
                let projectSlug = session.projectSlug,
                !projectSlug.isEmpty {
@@ -5558,7 +5678,7 @@ final class CaptureSessionClient: ObservableObject {
             }
 
             status = payload.statusLine
-            errorMessage = payload.playbackUrl ?? payload.targetNestSlug
+            errorMessage = nil
             await load()
             return true
         } catch {

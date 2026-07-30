@@ -899,6 +899,15 @@ final class CaptureExperienceModel: ObservableObject {
             errorMessage = "Stop and save the active take before attaching its verified recording to Studio."
             return
         }
+        if session.recordingPromotedToStudioMedia {
+            errorMessage = nil
+            message = "This complete capture group is already available in Studio. Every original remains preserved."
+            return
+        }
+        guard session.canPromoteRecordingToStudioMedia else {
+            errorMessage = session.recordingMediaVaultLine
+            return
+        }
         guard !usesPreviewData else {
             message = "Preview mode shows the Studio handoff without changing media."
             return
@@ -923,7 +932,10 @@ final class CaptureExperienceModel: ObservableObject {
         }
 
         selectedSessionID = session.id
-        message = "Studio media ready. The immutable local source and server recording evidence remain preserved."
+        let sourceCount = session.studioHandoffSources.count
+        message = sourceCount > 1
+            ? "Studio handoff complete for all \(sourceCount) capture-group sources. Every immutable original and server receipt remains preserved."
+            : "Studio media ready. The immutable local source and server recording evidence remain preserved."
     }
 
     func prepareVideoCapture(
@@ -2426,6 +2438,83 @@ extension MobileCaptureSession {
                 consentGranted: false,
                 scheduledStart: ISO8601DateFormatter().string(from: Date().addingTimeInterval(24 * 60 * 60))
             ),
+            capturePreview(
+                id: "preview-studio-group-ready",
+                title: "Studio group ready",
+                purpose: "PODCAST",
+                consentGranted: true,
+                scheduledStart: nil,
+                captureSources: captureGroupPreviewSources(
+                    captureGroupID: "preview-take-ready",
+                    promotedSourceCount: 0
+                )
+            ),
+            capturePreview(
+                id: "preview-studio-group-partial",
+                title: "Studio group retry",
+                purpose: "PODCAST",
+                consentGranted: true,
+                scheduledStart: nil,
+                captureSources: captureGroupPreviewSources(
+                    captureGroupID: "preview-take-partial",
+                    promotedSourceCount: 1
+                )
+            ),
+            capturePreview(
+                id: "preview-studio-group-complete",
+                title: "Studio group complete",
+                purpose: "PODCAST",
+                consentGranted: true,
+                scheduledStart: nil,
+                captureSources: captureGroupPreviewSources(
+                    captureGroupID: "preview-take-complete",
+                    promotedSourceCount: 2
+                )
+            ),
+        ]
+    }
+
+    private static func captureGroupPreviewSources(
+        captureGroupID: String,
+        promotedSourceCount: Int
+    ) -> [MobileCaptureSourceSummary] {
+        [
+            MobileCaptureSourceSummary(
+                recordingAssetId: "\(captureGroupID)-audio",
+                captureGroupId: captureGroupID,
+                fileName: "audio-master.m4a",
+                kind: "LOCAL_AUDIO",
+                contentType: "audio/mp4",
+                recordingStatus: "VERIFIED",
+                exactBytesVerified: true,
+                processingDisposition: "RELEASED",
+                recordedStartedAt: "2026-07-30T15:00:00.000Z",
+                recordedStoppedAt: "2026-07-30T15:30:00.000Z",
+                mediaAssetId: promotedSourceCount >= 1
+                    ? "\(captureGroupID)-audio-media"
+                    : nil,
+                playbackUrl: promotedSourceCount >= 1
+                    ? "/api/ingest/media/\(captureGroupID)-audio"
+                    : nil
+            ),
+            MobileCaptureSourceSummary(
+                recordingAssetId: "\(captureGroupID)-video",
+                captureGroupId: captureGroupID,
+                fileName: "camera-front.mov",
+                kind: "LOCAL_VIDEO",
+                contentType: "video/quicktime",
+                recordingStatus: "VERIFIED",
+                exactBytesVerified: true,
+                processingDisposition: "RELEASED",
+                recordedStartedAt: "2026-07-30T15:00:00.080Z",
+                recordedStoppedAt: "2026-07-30T15:30:00.080Z",
+                mediaAssetId: promotedSourceCount >= 2
+                    ? "\(captureGroupID)-video-media"
+                    : nil,
+                playbackUrl: promotedSourceCount >= 2
+                    ? "/api/ingest/media/\(captureGroupID)-video"
+                    : nil
+            ),
         ]
     }
 
@@ -2437,7 +2526,8 @@ extension MobileCaptureSession {
         canRecordAudio: Bool? = nil,
         canRecordVideo: Bool? = nil,
         canTranscribe: Bool = false,
-        scheduledStart: String?
+        scheduledStart: String?,
+        captureSources: [MobileCaptureSourceSummary] = []
     ) -> MobileCaptureSession {
         let audioConsentGranted = consentGranted && (canRecordAudio ?? true)
         let videoConsentGranted = consentGranted && (canRecordVideo ?? true)
@@ -2524,17 +2614,22 @@ extension MobileCaptureSession {
             paymentPolicy: "NOT_REQUIRED",
             paymentStatus: "NOT_REQUIRED",
             calendarStatus: "READY",
-            recordingCount: 0,
+            recordingCount: captureSources.count,
+            captureSources: captureSources.isEmpty ? nil : captureSources,
             providerRecordingReceiptSlotId: nil,
             providerRecordingReceiptStatus: nil,
             providerRecordingReceiptNextAction: nil,
             transcriptJobCount: 0,
-            latestRecordingAssetId: nil,
-            latestRecordingAssetStatus: nil,
-            latestRecordingFileName: nil,
-            latestRecordingMediaAssetId: nil,
-            latestRecordingPlaybackUrl: nil,
-            latestRecordingPromotionStatus: nil,
+            latestRecordingAssetId: captureSources.first?.recordingAssetId,
+            latestRecordingAssetStatus: captureSources.first?.recordingStatus,
+            latestRecordingFileName: captureSources.first?.fileName,
+            latestRecordingMediaAssetId: captureSources.first?.mediaAssetId,
+            latestRecordingPlaybackUrl: captureSources.first?.playbackUrl,
+            latestRecordingPromotionStatus: captureSources.isEmpty
+                ? nil
+                : captureSources.allSatisfy(\.isPromotedToStudio)
+                    ? "promoted"
+                    : "ready-to-promote",
             latestTranscriptJobId: nil,
             latestTranscriptStatus: nil,
             latestTranscriptProvider: nil,

@@ -4,8 +4,10 @@ jest.mock("server-only", () => ({}));
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 
 import {
+  promoteRecordingCaptureGroupToStudioMedia,
   recordingPromotionSyncEvidence,
   recordingSessionHandoffContext,
+  resolveCaptureGroupPromotionPlan,
   resolveRecordingPromotionTarget,
 } from "./recording-media-promotion";
 
@@ -163,5 +165,320 @@ describe("capture Session to Studio handoff boundary", () => {
 
     expect(sync).not.toHaveProperty("alignment");
     expect(sync.captureGroupId).toBe("take-1");
+  });
+
+  it("requires the exact reviewed capture-group source set before any handoff", () => {
+    const sources = [
+      {
+        recordingAssetId: "video-front",
+        captureGroupId: "take-1",
+        status: "VERIFIED",
+        recordedStartedAt: "2026-07-30T12:00:00.000Z",
+      },
+      {
+        recordingAssetId: "audio-master",
+        captureGroupId: "take-1",
+        status: "VERIFIED",
+        recordedStartedAt: "2026-07-30T12:00:01.000Z",
+      },
+      {
+        recordingAssetId: "video-back",
+        captureGroupId: "take-1",
+        status: "VERIFIED",
+        recordedStartedAt: "2026-07-30T12:03:00.000Z",
+      },
+    ];
+
+    expect(resolveCaptureGroupPromotionPlan({
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: [
+        "audio-master",
+        "video-back",
+        "video-front",
+      ],
+      sources,
+    })).toMatchObject({
+      ok: true,
+      status: "capture-group-ready",
+      actualRecordingAssetIds: [
+        "audio-master",
+        "video-back",
+        "video-front",
+      ],
+      sources: [
+        { recordingAssetId: "video-front" },
+        { recordingAssetId: "audio-master" },
+        { recordingAssetId: "video-back" },
+      ],
+    });
+
+    expect(resolveCaptureGroupPromotionPlan({
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: ["audio-master", "video-front"],
+      sources,
+    })).toMatchObject({
+      ok: false,
+      status: "capture-group-source-set-changed",
+      httpStatus: 409,
+    });
+  });
+
+  it("holds the whole capture group when any source is not verified", () => {
+    expect(resolveCaptureGroupPromotionPlan({
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: ["audio-master", "video-front"],
+      sources: [
+        {
+          recordingAssetId: "audio-master",
+          captureGroupId: "take-1",
+          status: "VERIFIED",
+        },
+        {
+          recordingAssetId: "video-front",
+          captureGroupId: "take-1",
+          status: "UPLOADING",
+        },
+      ],
+    })).toMatchObject({
+      ok: false,
+      status: "capture-group-awaiting-verification",
+      blockedRecordingAssetIds: ["video-front"],
+    });
+  });
+
+  it("converges every verified source and reports idempotent partial truth", async () => {
+    const assets = [
+      {
+        id: "video-front",
+        roomId: "room-1",
+        status: "VERIFIED",
+        recordedStartedAt: new Date("2026-07-30T12:00:00.000Z"),
+        localManifestJson: { captureGroupId: "take-1" },
+      },
+      {
+        id: "audio-master",
+        roomId: "room-1",
+        status: "VERIFIED",
+        recordedStartedAt: new Date("2026-07-30T12:00:01.000Z"),
+        localManifestJson: { captureGroupId: "take-1" },
+      },
+    ];
+    const prisma = {
+      recordingAsset: {
+        findMany: jest.fn().mockResolvedValue(assets),
+      },
+      mobileCaptureFinalizationReceipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const promoteOne = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: "already-promoted",
+        message: "Already ready.",
+        mediaAsset: { id: "media-video" },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: "promoted",
+        message: "Ready.",
+        mediaAsset: { id: "media-audio" },
+      });
+
+    const result = await promoteRecordingCaptureGroupToStudioMedia({
+      prisma,
+      roomId: "room-1",
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: ["audio-master", "video-front"],
+      actorUserId: "user-1",
+      actorEmail: "user@example.test",
+      nestSlug: "high-ground",
+      episodeSlug: "episode-1",
+      processingGate: jest.fn().mockResolvedValue({ allowed: true }),
+      promoteOne: promoteOne as any,
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: "capture-group-promoted",
+      expectedSourceCount: 2,
+      promotedSourceCount: 2,
+      alreadyPromotedSourceCount: 1,
+      failedSourceCount: 0,
+      boundaries: {
+        sourceSetMatched: true,
+        originalSourcesMutated: false,
+        copiedBlobs: false,
+        alignmentRemainsProposal: true,
+        humanSyncReviewRequired: true,
+        retryIsIdempotent: true,
+      },
+    });
+    expect(promoteOne).toHaveBeenCalledTimes(2);
+    expect(promoteOne.mock.calls.map(([call]) => call.recordingAssetId)).toEqual([
+      "video-front",
+      "audio-master",
+    ]);
+    expect(prisma.recordingAsset.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          roomId: "room-1",
+          room: {
+            OR: expect.arrayContaining([
+              {
+                project: {
+                  accessGrants: {
+                    some: {
+                      email: "user@example.test",
+                      status: "ACTIVE",
+                    },
+                  },
+                },
+              },
+            ]),
+          },
+        },
+      }),
+    );
+  });
+
+  it("preflights every source and writes nothing when one source is held", async () => {
+    const assets = [
+      {
+        id: "video-front",
+        roomId: "room-1",
+        status: "VERIFIED",
+        recordedStartedAt: new Date("2026-07-30T12:00:00.000Z"),
+        localManifestJson: { captureGroupId: "take-1" },
+      },
+      {
+        id: "audio-master",
+        roomId: "room-1",
+        status: "VERIFIED",
+        recordedStartedAt: new Date("2026-07-30T12:00:01.000Z"),
+        localManifestJson: { captureGroupId: "take-1" },
+      },
+    ];
+    const prisma = {
+      recordingAsset: {
+        findMany: jest.fn().mockResolvedValue(assets),
+      },
+      mobileCaptureFinalizationReceipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const processingGate = jest.fn()
+      .mockResolvedValueOnce({ allowed: true })
+      .mockResolvedValueOnce({
+        allowed: false,
+        errorCode: "CAPTURE_PROCESSING_HELD",
+        error: "Audio source awaits consent release.",
+      });
+    const promoteOne = jest.fn();
+
+    const result = await promoteRecordingCaptureGroupToStudioMedia({
+      prisma,
+      roomId: "room-1",
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: ["audio-master", "video-front"],
+      actorUserId: "user-1",
+      actorEmail: "user@example.test",
+      processingGate: processingGate as any,
+      promoteOne: promoteOne as any,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: "capture-group-processing-held",
+      httpStatus: 409,
+      expectedSourceCount: 2,
+      blockedRecordingAssetIds: ["audio-master"],
+      boundaries: {
+        sourceSetMatched: true,
+        promotedSourceCount: 0,
+        originalSourcesMutated: false,
+        copiedBlobs: false,
+        partialResultHidden: false,
+      },
+    });
+    expect(processingGate).toHaveBeenCalledTimes(2);
+    expect(promoteOne).not.toHaveBeenCalled();
+  });
+
+  it("returns explicit retry-safe partial truth after a mid-group failure", async () => {
+    const assets = [
+      {
+        id: "video-front",
+        roomId: "room-1",
+        status: "VERIFIED",
+        recordedStartedAt: new Date("2026-07-30T12:00:00.000Z"),
+        localManifestJson: { captureGroupId: "take-1" },
+      },
+      {
+        id: "audio-master",
+        roomId: "room-1",
+        status: "VERIFIED",
+        recordedStartedAt: new Date("2026-07-30T12:00:01.000Z"),
+        localManifestJson: { captureGroupId: "take-1" },
+      },
+    ];
+    const prisma = {
+      recordingAsset: {
+        findMany: jest.fn().mockResolvedValue(assets),
+      },
+      mobileCaptureFinalizationReceipt: {
+        findMany: jest.fn().mockResolvedValue([]),
+      },
+    };
+    const promoteOne = jest.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: "promoted",
+        message: "Video ready.",
+        mediaAsset: { id: "media-video" },
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: "promotion-held",
+        message: "Audio promotion held.",
+      });
+
+    const result = await promoteRecordingCaptureGroupToStudioMedia({
+      prisma,
+      roomId: "room-1",
+      captureGroupId: "take-1",
+      expectedRecordingAssetIds: ["audio-master", "video-front"],
+      actorUserId: "user-1",
+      actorEmail: "user@example.test",
+      processingGate: jest.fn().mockResolvedValue({ allowed: true }),
+      promoteOne: promoteOne as any,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      status: "capture-group-partially-promoted",
+      httpStatus: 409,
+      expectedSourceCount: 2,
+      promotedSourceCount: 1,
+      alreadyPromotedSourceCount: 0,
+      failedSourceCount: 1,
+      results: [
+        {
+          recordingAssetId: "video-front",
+          ok: true,
+          mediaAssetId: "media-video",
+        },
+        {
+          recordingAssetId: "audio-master",
+          ok: false,
+          status: "promotion-held",
+          mediaAssetId: null,
+        },
+      ],
+      boundaries: {
+        partialResultHidden: false,
+        retryIsIdempotent: true,
+      },
+    });
   });
 });

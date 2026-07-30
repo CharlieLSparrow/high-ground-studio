@@ -304,6 +304,38 @@ export function captureSourceSummaries(
     ));
 }
 
+export function captureGroupStudioHandoff(captureSources: any[]) {
+  const captureGroupId = label(captureSources[0]?.captureGroupId);
+  const sources = captureGroupId
+    ? captureSources.filter((source: any) => (
+        label(source.captureGroupId) === captureGroupId
+      ))
+    : [];
+  const verifiedSourceCount = sources.filter((source: any) => (
+    source.exactBytesVerified === true
+    && label(source.recordingStatus)?.toUpperCase() === "VERIFIED"
+    && label(source.processingDisposition)?.toUpperCase() === "RELEASED"
+  )).length;
+  const promotedSourceCount = sources.filter((source: any) => (
+    Boolean(label(source.mediaAssetId))
+  )).length;
+
+  return {
+    captureGroupId: captureGroupId || null,
+    sourceCount: sources.length,
+    verifiedSourceCount,
+    promotedSourceCount,
+    ready:
+      sources.length > 0
+      && verifiedSourceCount === sources.length,
+    complete:
+      sources.length > 0
+      && promotedSourceCount === sources.length,
+    sourceSetRequired: true,
+    sources,
+  };
+}
+
 function captureProcessingGate(room: any, asset: any, receipts: any[], transcript: boolean) {
   if (!asset) {
     return {
@@ -653,6 +685,9 @@ function buildMobileCaptureActionPacket(input: {
   latestTranscriptStatus?: string | null;
   latestRecordingAssetStatus?: string | null;
   latestRecordingPromotion?: Record<string, unknown> | null;
+  captureGroupSourceCount: number;
+  captureGroupVerifiedSourceCount: number;
+  captureGroupPromotedSourceCount: number;
   packetSummaryNoteId?: string | null;
   providerRecordingReceiptSlotId?: string | null;
   mediaProcessingAllowed: boolean;
@@ -669,12 +704,16 @@ function buildMobileCaptureActionPacket(input: {
     canJoin &&
     !input.providerRecordingReceiptSlotId &&
     input.lifecycle.readyForCapture === true;
-  const canPromoteRecordingToMedia =
-    input.mediaProcessingAllowed &&
-    input.recordingCount > 0 &&
-    latestRecordingAssetStatus === "VERIFIED" &&
-    Boolean(sessionProject.projectSlug) &&
-    !label(latestRecordingPromotion.mediaAssetId);
+  const hasCaptureGroupProjection = input.captureGroupSourceCount > 0;
+  const canPromoteRecordingToMedia = hasCaptureGroupProjection
+    ? input.captureGroupVerifiedSourceCount === input.captureGroupSourceCount
+      && input.captureGroupPromotedSourceCount < input.captureGroupSourceCount
+      && Boolean(sessionProject.projectSlug)
+    : input.mediaProcessingAllowed
+      && input.recordingCount > 0
+      && latestRecordingAssetStatus === "VERIFIED"
+      && Boolean(sessionProject.projectSlug)
+      && !label(latestRecordingPromotion.mediaAssetId);
   const canRunTranscript =
     input.transcriptProcessingAllowed &&
     input.recordingCount > 0 &&
@@ -724,6 +763,7 @@ function buildMobileCaptureActionPacket(input: {
       providerRecordingStartAvailable: false,
       noHiddenRecording: true,
       reviewOnlyUntilUserActs: true,
+      captureGroupPromotionRequiresCompleteSourceSet: true,
     },
   };
 }
@@ -761,6 +801,7 @@ export function mapMobileCaptureSessionsForUser(input: {
       finalizationReceipts,
       captureMediaAssets,
     );
+    const studioHandoff = captureGroupStudioHandoff(captureSources);
     const contentReadiness = recordingContentReadiness(allRecordingAssets, room.purpose);
     const latestTranscriptStatus = latestTranscriptJob?.status ?? null;
     const latestRecordingAsset = allRecordingAssets.find((asset: any) => asset.id === latestTranscriptJob?.assetId)
@@ -925,6 +966,9 @@ export function mapMobileCaptureSessionsForUser(input: {
       latestTranscriptStatus,
       latestRecordingAssetStatus: latestRecordingAsset?.status ?? null,
       latestRecordingPromotion,
+      captureGroupSourceCount: studioHandoff.sourceCount,
+      captureGroupVerifiedSourceCount: studioHandoff.verifiedSourceCount,
+      captureGroupPromotedSourceCount: studioHandoff.promotedSourceCount,
       packetSummaryNoteId,
       providerRecordingReceiptSlotId: receiptSlot?.id ?? null,
       mediaProcessingAllowed: mediaProcessingGate.allowed,
@@ -1010,6 +1054,15 @@ export function mapMobileCaptureSessionsForUser(input: {
       calendarStatus: booking?.calendarLinks?.[0]?.status || null,
       recordingCount,
       captureSources,
+      studioHandoff: {
+        captureGroupId: studioHandoff.captureGroupId,
+        sourceCount: studioHandoff.sourceCount,
+        verifiedSourceCount: studioHandoff.verifiedSourceCount,
+        promotedSourceCount: studioHandoff.promotedSourceCount,
+        ready: studioHandoff.ready,
+        complete: studioHandoff.complete,
+        sourceSetRequired: studioHandoff.sourceSetRequired,
+      },
       providerRecordingReceiptSlotId: receiptSlot?.id ?? null,
       providerRecordingReceiptStatus: receiptSlot?.status ?? null,
       providerRecordingReceiptNextAction: receiptSlot

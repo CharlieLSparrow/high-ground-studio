@@ -4366,3 +4366,42 @@ This is an active-goal checkpoint, not a completion claim.
   and the full mobile preflight completes. Build 14 remains the live rehearsal
   artifact and was not replaced; this source cleanup is newer than the
   distributed binary.
+
+### 2026-07-30 complete iPhone capture-group Studio handoff checkpoint
+
+- Auditing the current audio/video and camera-switch paths exposed an ownership
+  defect at the handoff boundary: a coordinated podcast take or front/rear
+  camera switch correctly produced multiple immutable files under one capture
+  group, but the iPhone’s **Continue in Studio** action promoted only
+  `latestRecordingAssetId`. The other verified masters could remain behind
+  while the UX implied the take was ready.
+- The Session projection now exposes the newest capture group as one explicit
+  Studio-handoff unit. The iPhone names every reviewed recording-asset ID in
+  that group and visibly distinguishes all-ready, partial/retryable, and
+  complete states. A group action is unavailable until every source has exact
+  byte verification and processing release; a completed group is not offered
+  again as new work.
+- The authenticated Nest route preserves the installed Build 14 single-source
+  request for compatibility, while current source may submit `roomId`,
+  `captureGroupId`, and the exact expected source set. Nest re-resolves
+  actor-accessible Session assets, fails closed if the set changed or any source
+  is held, preflights the entire group before the first write, and then reuses
+  the existing per-source idempotent promotion transaction. Mid-group failure
+  is returned as explicit partial truth and the same request safely continues
+  missing identities on retry. No original is changed or copied, and clock
+  alignment remains a proposal requiring waveform/drift review and human
+  approval.
+- Verification passes 31/31 focused server, projection, and API tests, including
+  whole-group no-write under a processing hold and explicit retry-safe
+  mid-group failure truth; Quipsly
+  TypeScript; a generic arm64/x86_64 iOS Simulator build; and 76/76 mobile
+  source contracts. An operated iPhone 17 Pro / iOS 26.3.1 Simulator journey
+  used the actual Record session chooser and handoff card to read back
+  **2 sources ready**, **1 of 2 in Studio**, and **2 sources in Studio**, with
+  the action changing from **Attach group** to disabled **Group in Studio**.
+  Result:
+  `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_10-19-20--0600.xcresult`.
+- Build 14 remains untouched for Scott’s live TestFlight handoff. This source
+  slice is newer than that distributed binary, and Simulator operation does
+  not prove a real multi-file upload, authenticated production promotion,
+  physical-iPhone recovery, sync approval, or Studio proof-watch/listen.
