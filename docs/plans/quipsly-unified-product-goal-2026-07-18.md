@@ -4473,3 +4473,19 @@ This is an active-goal checkpoint, not a completion claim.
   and was not replaced, deployed, or submitted. Physical two-person operation,
   production Watch materialization on recorded media, human sync approval,
   and proof-listen/watch remain required.
+- Independent PostgreSQL readback then found the real dogfood room still held
+  a compatible legacy revision-only timeline receipt without
+  `sourceSegmentIds`. The exact materialization verifier now refuses to use
+  that weaker receipt as a permanent no-write condition. The real store
+  upgraded revision 5 to 6 with the exact current segment ID and matching
+  `episode-room-watch-<segment>` derivative while preserving hashes of the
+  imported source, Watch clip, and segment ledger. Replaying the same request
+  returned revision 6 without changing `updatedAt`, receipt count, or the
+  complete production JSON digest.
+- Closed a related iPhone ownership defect: sync/clear state and the assembled
+  Nest handoff no longer disappear merely because this phone has not
+  downloaded—or has removed—its protected playback copy. Two focused iPhone
+  17 Pro tests operated exact-current and stale-previous projections; both
+  passed alongside the original staged-clip journey and the largest
+  accessibility-text rehearsal audit. The complete mobile preflight passed
+  again after the change.

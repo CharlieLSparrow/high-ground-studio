@@ -7,11 +7,40 @@ final class CaptureExperienceUITests: XCTestCase {
         continueAfterFailure = false
         app = XCUIApplication()
         app.launchArguments = ["--capture-ui-preview"]
+        let launchesWatchPreview: Bool
+        if name.contains(
+            "testEpisodeWatchKeepsExactCurrentPassVisibleWithoutALocalClip"
+        ) {
+            launchesWatchPreview = true
+            app.launchArguments += [
+                "--capture-ui-preview-tab=record",
+                "--capture-watch-preview-state=current-pass",
+            ]
+        } else if name.contains(
+            "testEpisodeWatchKeepsPreviousPassClearActionVisibleWithoutALocalClip"
+        ) {
+            launchesWatchPreview = true
+            app.launchArguments += [
+                "--capture-ui-preview-tab=record",
+                "--capture-watch-preview-state=previous-pass",
+            ]
+        } else {
+            launchesWatchPreview = false
+        }
         app.launch()
-        XCTAssertTrue(
-            app.descendants(matching: .any)["CapturePreviewModeBadge"].waitForExistence(timeout: 12),
-            "The deterministic capture preview should launch without credentials or network access."
-        )
+        if launchesWatchPreview {
+            XCTAssertTrue(
+                app.otherElements["CaptureRecorderHero"]
+                    .waitForExistence(timeout: 12),
+                "The deterministic Watch preview should launch directly in the recorder without credentials or network access."
+            )
+        } else {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["CapturePreviewModeBadge"]
+                    .waitForExistence(timeout: 12),
+                "The deterministic capture preview should launch without credentials or network access."
+            )
+        }
     }
 
     func testCaptureFirstNavigationKeepsFiveFocusedDestinations() {
@@ -86,6 +115,65 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(boundary.exists)
         XCTAssertTrue(boundary.label.contains("Start recording before Play together"))
         XCTAssertTrue(boundary.label.contains("private preview never changes shared state"))
+    }
+
+    func testEpisodeWatchKeepsExactCurrentPassVisibleWithoutALocalClip() {
+        let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
+        reveal(card)
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.buttons["CaptureEpisodeWatchPrepareButton"].exists,
+            "The protected clip remains a separate local-download concern."
+        )
+
+        let timeline = app.descendants(matching: .any)[
+            "CaptureEpisodeWatchSyncTimelineButton"
+        ]
+        reveal(timeline)
+        XCTAssertTrue(
+            timeline.waitForExistence(timeout: 5),
+            "Canonical timeline state must remain visible without a downloaded clip."
+        )
+        XCTAssertEqual(timeline.label, "1 watched span in editor")
+        XCTAssertFalse(
+            timeline.isEnabled,
+            "An exact current pass must not offer a redundant materialization."
+        )
+
+        let editor = app.descendants(matching: .any)[
+            "CaptureEpisodeWatchOpenEditorLink"
+        ]
+        reveal(editor)
+        XCTAssertTrue(
+            editor.exists,
+            "A materialized exact pass should expose the assembled Nest editor even without local media."
+        )
+    }
+
+    func testEpisodeWatchKeepsPreviousPassClearActionVisibleWithoutALocalClip() {
+        let card = app.descendants(matching: .any)["CaptureEpisodeWatchCard"]
+        reveal(card)
+        XCTAssertTrue(card.waitForExistence(timeout: 5))
+
+        let timeline = app.descendants(matching: .any)[
+            "CaptureEpisodeWatchSyncTimelineButton"
+        ]
+        reveal(timeline)
+        XCTAssertTrue(
+            timeline.waitForExistence(timeout: 5),
+            "A previous materialization must remain recoverable after the local clip is removed."
+        )
+        XCTAssertEqual(timeline.label, "Clear previous watch pass")
+        XCTAssertFalse(
+            timeline.isEnabled,
+            "Deterministic preview surfaces state without faking a shared Nest mutation."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)[
+                "CaptureEpisodeWatchOpenEditorLink"
+            ].exists,
+            "A stale prior pass must not be presented as the current assembled episode."
+        )
     }
 
     func testEpisodeManuscriptIsReadableBesideTheRecorderWithoutCreatingAnEditableCopy() {

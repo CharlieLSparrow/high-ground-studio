@@ -223,6 +223,75 @@ final class MobileEpisodeWatchClient: ObservableObject {
     }
 
     func loadPreview(session: MobileCaptureSession) {
+        let previewState = Self.previewState
+        let currentPassID = "preview-watch-pass-current"
+        let currentSegmentID = "preview-watch-segment-current"
+        let previousSegmentID = "preview-watch-segment-previous"
+        let watchSession: MobileEpisodeWatchSession?
+        let segments: [MobileEpisodeWatchSegment]
+        let timelineSync: MobileEpisodeWatchTimelineSync?
+
+        switch previewState {
+        case .staged:
+            watchSession = nil
+            segments = []
+            timelineSync = nil
+        case .currentPass:
+            watchSession = MobileEpisodeWatchSession(
+                id: currentPassID,
+                startedAt: "2026-07-30T16:00:00.000Z",
+                startedBy: "preview-host",
+                recordingRoomId: session.callRoomId,
+                recordingStartedAt: "2026-07-30T16:00:00.000Z"
+            )
+            segments = [
+                MobileEpisodeWatchSegment(
+                    id: currentSegmentID,
+                    sessionId: currentPassID,
+                    clipId: "preview-be-curious",
+                    sourceStartSeconds: 38.4,
+                    sourceEndSeconds: 51.2,
+                    episodeStartSeconds: 420.0,
+                    episodeEndSeconds: 432.8
+                ),
+            ]
+            timelineSync = MobileEpisodeWatchTimelineSync(
+                syncedAt: "2026-07-30T16:12:00.000Z",
+                syncedBy: "preview-host",
+                sourceRevision: 7,
+                segmentCount: 1,
+                timelineClipCount: 1,
+                sourceSegmentIds: [currentSegmentID]
+            )
+        case .previousPass:
+            watchSession = MobileEpisodeWatchSession(
+                id: currentPassID,
+                startedAt: "2026-07-30T16:20:00.000Z",
+                startedBy: "preview-host",
+                recordingRoomId: session.callRoomId,
+                recordingStartedAt: "2026-07-30T16:20:00.000Z"
+            )
+            segments = [
+                MobileEpisodeWatchSegment(
+                    id: previousSegmentID,
+                    sessionId: "preview-watch-pass-previous",
+                    clipId: "preview-be-curious",
+                    sourceStartSeconds: 12.0,
+                    sourceEndSeconds: 24.0,
+                    episodeStartSeconds: 180.0,
+                    episodeEndSeconds: 192.0
+                ),
+            ]
+            timelineSync = MobileEpisodeWatchTimelineSync(
+                syncedAt: "2026-07-30T16:18:00.000Z",
+                syncedBy: "preview-host",
+                sourceRevision: 7,
+                segmentCount: 1,
+                timelineClipCount: 1,
+                sourceSegmentIds: [previousSegmentID]
+            )
+        }
+
         currentSession = session
         currentContextKey = "preview|\(session.id)"
         canEdit = true
@@ -234,7 +303,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             positionSeconds: 43.2,
             effectiveAt: ISO8601DateFormatter().string(from: Date()),
             durationSeconds: 254.63,
-            session: nil,
+            session: watchSession,
             clips: [
                 MobileEpisodeWatchClip(
                     assetId: "preview-be-curious",
@@ -261,12 +330,41 @@ final class MobileEpisodeWatchClient: ObservableObject {
                     durationSeconds: 240.91
                 )
             ],
-            segments: [],
-            timelineSync: nil
+            segments: segments,
+            timelineSync: timelineSync
         )
         displayPosition = 43.2
-        statusMessage = "Lead clip is staged for the episode rehearsal."
+        statusMessage = switch previewState {
+        case .staged:
+            "Lead clip is staged for the episode rehearsal."
+        case .currentPass:
+            "The exact current Watch pass is already assembled in Nest."
+        case .previousPass:
+            "A previous Watch pass remains assembled; the current pass is empty."
+        }
         errorMessage = nil
+    }
+
+    private enum PreviewState: String {
+        case staged
+        case currentPass = "current-pass"
+        case previousPass = "previous-pass"
+    }
+
+    private static var previewState: PreviewState {
+        #if DEBUG
+        let prefix = "--capture-watch-preview-state="
+        guard let argument = ProcessInfo.processInfo.arguments.first(
+            where: { $0.hasPrefix(prefix) }
+        ) else {
+            return .staged
+        }
+        return PreviewState(
+            rawValue: String(argument.dropFirst(prefix.count))
+        ) ?? .staged
+        #else
+        return .staged
+        #endif
     }
 
     func stop() {
@@ -1480,56 +1578,6 @@ struct MobileEpisodeWatchCard: View {
                         "CaptureEpisodeWatchRemoveDownloadButton"
                     )
 
-                    if client.room?.hasTimelineWork == true {
-                        Button {
-                            Task {
-                                await client.syncWatchedSpans(session: session)
-                            }
-                        } label: {
-                            Label(
-                                timelineButtonLabel,
-                                systemImage: client.room?.timelineIsCurrent == true
-                                    ? "checkmark.circle.fill"
-                                    : "timeline.selection"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(client.room?.timelineIsCurrent == true ? .green : nil)
-                        .disabled(
-                            client.isMutating
-                                || !client.canEdit
-                                || !client.sharedConnectionReady
-                                || client.isSharedPlaying
-                                || client.room?.timelineIsCurrent == true
-                                || previewOnly
-                        )
-                        .accessibilityHint(
-                            "Materializes receipt-backed derivatives in the episode editor without changing the source clip."
-                        )
-                        .accessibilityIdentifier(
-                            "CaptureEpisodeWatchSyncTimelineButton"
-                        )
-                    }
-
-                    if client.room?.timelineIsCurrent == true,
-                       let editorURL {
-                        Link(destination: editorURL) {
-                            Label(
-                                "Open assembled episode in Nest",
-                                systemImage: "rectangle.portrait.and.arrow.forward"
-                            )
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.bordered)
-                        .accessibilityHint(
-                            "Opens the exact non-destructive episode editor for these watched spans."
-                        )
-                        .accessibilityIdentifier(
-                            "CaptureEpisodeWatchOpenEditorLink"
-                        )
-                    }
-
                     if !client.sharedClockReady(
                         for: session,
                         captureIsActive: captureIsActive
@@ -1605,6 +1653,56 @@ struct MobileEpisodeWatchCard: View {
                     )
                     .accessibilityIdentifier(
                         "CaptureEpisodeWatchPrepareButton"
+                    )
+                }
+
+                if client.room?.hasTimelineWork == true {
+                    Button {
+                        Task {
+                            await client.syncWatchedSpans(session: session)
+                        }
+                    } label: {
+                        Label(
+                            timelineButtonLabel,
+                            systemImage: client.room?.timelineIsCurrent == true
+                                ? "checkmark.circle.fill"
+                                : "timeline.selection"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(client.room?.timelineIsCurrent == true ? .green : nil)
+                    .disabled(
+                        client.isMutating
+                            || !client.canEdit
+                            || !client.sharedConnectionReady
+                            || client.isSharedPlaying
+                            || client.room?.timelineIsCurrent == true
+                            || previewOnly
+                    )
+                    .accessibilityHint(
+                        "Materializes receipt-backed derivatives in the episode editor without changing the source clip."
+                    )
+                    .accessibilityIdentifier(
+                        "CaptureEpisodeWatchSyncTimelineButton"
+                    )
+                }
+
+                if client.room?.timelineIsCurrent == true,
+                   let editorURL {
+                    Link(destination: editorURL) {
+                        Label(
+                            "Open assembled episode in Nest",
+                            systemImage: "rectangle.portrait.and.arrow.forward"
+                        )
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityHint(
+                        "Opens the exact non-destructive episode editor for these watched spans."
+                    )
+                    .accessibilityIdentifier(
+                        "CaptureEpisodeWatchOpenEditorLink"
                     )
                 }
 

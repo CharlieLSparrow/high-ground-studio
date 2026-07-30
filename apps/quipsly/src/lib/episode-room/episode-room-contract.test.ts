@@ -389,6 +389,12 @@ describe("Episode Room contract", () => {
     };
 
     expect(episodeRoomTimelineIsCurrent(legacy)).toBe(true);
+    expect(
+      episodeRoomTimelineMaterializationIsCurrent(
+        legacy,
+        episodeRoomTimelineClips(legacy),
+      ),
+    ).toBe(false);
     expect(episodeRoomTimelineIsCurrent({
       ...legacy,
       revision: legacy.revision + 1,

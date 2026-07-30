@@ -1,7 +1,7 @@
 # Quipsly Episode Room
 
 Status: web production deployed; native Watch candidate proven in zero-traffic preview; physical capture remains open
-Last updated: 2026-07-29
+Last updated: 2026-07-30
 
 ## Product promise
 
@@ -173,6 +173,10 @@ The native transport follows these production boundaries:
   every receipt in history. The action replaces only prior
   `quipsly-episode-room-watch.v1` derivatives and never modifies source media
   or unrelated timeline clips.
+- Timeline materialization is canonical Nest state, not a property of the
+  iPhone cache. The current/clear action and exact-editor handoff therefore
+  remain visible after the protected local clip is removed or before it is
+  downloaded.
 - A successful current sync exposes **Open assembled episode in Nest**, linked
   to the exact project and episode editor rather than a generic dashboard.
 
@@ -266,7 +270,10 @@ the total episode timeline row count. Before accepting a redundant sync, the
 store verifies the exact generated derivative IDs and receipt-bound segment
 IDs already persisted; an exact repeat returns without writing a revision or
 receipt. Legacy revision-only sync receipts remain readable until a current
-client rematerializes them.
+client rematerializes them. The exact no-write verifier deliberately rejects a
+legacy receipt even when its old revision matches, so one deliberate sync
+upgrades it to sorted source-segment identity; retries of that upgraded request
+are then write-free.
 
 The shared episode editor reads those derivatives as a dedicated **Shared
 Watch derivatives** lane below the protected decision timeline. Every rendered

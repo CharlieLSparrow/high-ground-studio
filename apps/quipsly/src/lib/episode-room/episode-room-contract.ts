@@ -710,6 +710,10 @@ export function episodeRoomTimelineMaterializationIsCurrent(
   state: EpisodeRoomState,
   persistedTimelineRows: unknown,
 ) {
+  // The legacy revision-only receipt remains display-compatible, but it is not
+  // strong enough to suppress a write forever. A deliberate sync upgrades that
+  // receipt to exact current-pass segment identity.
+  if (!state.timelineSync?.sourceSegmentIds) return false;
   if (!episodeRoomTimelineIsCurrent(state)) return false;
   const rows = Array.isArray(persistedTimelineRows)
     ? persistedTimelineRows
