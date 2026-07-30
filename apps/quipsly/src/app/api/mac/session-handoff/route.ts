@@ -66,6 +66,74 @@ function errorPage(error: MacFirebaseHandoffError) {
   );
 }
 
+function isAllowedPublicHostname(hostname: string) {
+  const normalized = hostname.toLowerCase();
+  const cloudRunServiceHost = process.env.QUIPSLY_LEGACY_STUDIO_HOST
+    ?.trim()
+    .toLowerCase();
+  const isThisCloudRunService = Boolean(
+    cloudRunServiceHost
+    && (
+      normalized === cloudRunServiceHost
+      || (
+        normalized.endsWith(`---${cloudRunServiceHost}`)
+        && /^[a-z0-9-]+$/.test(
+          normalized.slice(0, -(`---${cloudRunServiceHost}`).length),
+        )
+      )
+    ),
+  );
+  return normalized === "quipsly.com"
+    || normalized.endsWith(".quipsly.com")
+    || isThisCloudRunService
+    || normalized === "localhost"
+    || normalized === "127.0.0.1"
+    || normalized === "0.0.0.0"
+    || (process.env.NODE_ENV === "test" && normalized.endsWith(".test"));
+}
+
+function publicRequestOrigin(request: Request) {
+  const requestUrl = new URL(request.url);
+  const forwardedHost = request.headers
+    .get("x-forwarded-host")
+    ?.split(",")[0]
+    ?.trim();
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0]
+    ?.trim()
+    ?.toLowerCase();
+  const host = forwardedHost || request.headers.get("host") || requestUrl.host;
+  const protocol = forwardedProto || requestUrl.protocol.replace(/:$/, "");
+
+  let origin: URL;
+  try {
+    origin = new URL(`${protocol}://${host}`);
+  } catch {
+    throw new MacFirebaseHandoffError(
+      "invalid-public-origin",
+      "Nest could not verify the public sign-in address. Start again from Quipsly Studio.",
+    );
+  }
+
+  const loopback = ["localhost", "127.0.0.1", "0.0.0.0"]
+    .includes(origin.hostname.toLowerCase());
+  const testHost = process.env.NODE_ENV === "test"
+    && origin.hostname.toLowerCase().endsWith(".test");
+  if (
+    !isAllowedPublicHostname(origin.hostname)
+    || (origin.protocol !== "https:" && !(loopback || testHost))
+    || origin.username
+    || origin.password
+  ) {
+    throw new MacFirebaseHandoffError(
+      "invalid-public-origin",
+      "Nest could not verify the public sign-in address. Start again from Quipsly Studio.",
+    );
+  }
+  return origin.origin;
+}
+
 export async function GET(request: Request) {
   const requestUrl = new URL(request.url);
   if (requestUrl.searchParams.get("native") !== "1") {
@@ -95,15 +163,20 @@ export async function GET(request: Request) {
 
   const session = await auth();
   if (!session?.user?.id) {
-    const callbackPath = `${requestUrl.pathname}${requestUrl.search}`;
-    const loginUrl = new URL("/login", requestUrl.origin);
-    loginUrl.searchParams.set("callbackUrl", callbackPath);
-    return NextResponse.redirect(loginUrl, {
-      headers: {
-        "cache-control": "no-store",
-        "referrer-policy": "no-referrer",
-      },
-    });
+    try {
+      const callbackPath = `${requestUrl.pathname}${requestUrl.search}`;
+      const loginUrl = new URL("/login", publicRequestOrigin(request));
+      loginUrl.searchParams.set("callbackUrl", callbackPath);
+      return NextResponse.redirect(loginUrl, {
+        headers: {
+          "cache-control": "no-store",
+          "referrer-policy": "no-referrer",
+        },
+      });
+    } catch (error) {
+      if (error instanceof MacFirebaseHandoffError) return errorPage(error);
+      throw error;
+    }
   }
 
   try {

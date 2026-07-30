@@ -42,7 +42,14 @@ private struct FirebaseCustomTokenSignInResponse: Decodable {
     let idToken: String
     let refreshToken: String
     let expiresIn: String
-    let localId: String
+}
+
+private struct FirebaseRESTErrorEnvelope: Decodable {
+    struct FirebaseRESTError: Decodable {
+        let message: String?
+    }
+
+    let error: FirebaseRESTError?
 }
 
 private struct NativeBrowserExchangeEnvelope: Decodable {
@@ -873,15 +880,43 @@ final class QuipslyNativeAccountStore: ObservableObject {
             ])
         }
         guard (200 ..< 300).contains(http.statusCode) else {
+            let firebaseCode = firebaseRESTErrorCode(from: data)
+            let detail = firebaseCode.map { " (\($0))" } ?? ""
             throw NSError(domain: "QuipslyNativeAccount", code: http.statusCode, userInfo: [
                 NSLocalizedDescriptionKey:
-                    "Firebase could not exchange the one-time Quipsly credential. Start sign-in again.",
+                    "Firebase could not exchange the one-time Quipsly credential\(detail). Start sign-in again.",
             ])
         }
         return try JSONDecoder().decode(
             FirebaseCustomTokenSignInResponse.self,
             from: data
         )
+    }
+
+    private func firebaseRESTErrorCode(from data: Data) -> String? {
+        guard
+            let message = try? JSONDecoder()
+                .decode(FirebaseRESTErrorEnvelope.self, from: data)
+                .error?
+                .message
+        else {
+            return nil
+        }
+
+        let code = message
+            .split(separator: ":", maxSplits: 1)
+            .first
+            .map(String.init)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard
+            let code,
+            !code.isEmpty,
+            code.count <= 80,
+            code.allSatisfy({ $0.isUppercase || $0.isNumber || $0 == "_" || $0 == "-" })
+        else {
+            return nil
+        }
+        return code
     }
 
     private func signInWithPassword(

@@ -51,6 +51,8 @@ const browserSession = auth as jest.Mock;
 const createHandoff = createMacFirebaseHandoff as jest.Mock;
 const state = "s".repeat(43);
 const challenge = "c".repeat(43);
+const originalCloudRunServiceHost =
+  process.env.QUIPSLY_LEGACY_STUDIO_HOST;
 
 function handoffRequest(extra = "") {
   return new Request(
@@ -61,7 +63,20 @@ function handoffRequest(extra = "") {
 }
 
 describe("Mac browser handoff route", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    process.env.QUIPSLY_LEGACY_STUDIO_HOST =
+      "studio-hm2odnvjga-uc.a.run.app";
+  });
+
+  afterAll(() => {
+    if (originalCloudRunServiceHost === undefined) {
+      delete process.env.QUIPSLY_LEGACY_STUDIO_HOST;
+    } else {
+      process.env.QUIPSLY_LEGACY_STUDIO_HOST =
+        originalCloudRunServiceHost;
+    }
+  });
 
   it("redirects an unsigned browser through the normal Quipsly login and preserves the native request", async () => {
     browserSession.mockResolvedValue(null);
@@ -76,6 +91,53 @@ describe("Mac browser handoff route", () => {
     );
     expect(location.searchParams.get("callbackUrl")).toContain(
       `codeChallenge=${challenge}`,
+    );
+  });
+
+  it("uses the verified forwarded Cloud Run host instead of the internal listener origin", async () => {
+    browserSession.mockResolvedValue(null);
+    const internalRequest = new Request(
+      "http://0.0.0.0:8080/api/mac/session-handoff"
+        + `?native=1&callbackScheme=quipslymac&state=${state}`
+        + `&codeChallenge=${challenge}&deviceLabel=Studio`,
+      {
+        headers: {
+          "x-forwarded-host":
+            "quipsly-preview---studio-hm2odnvjga-uc.a.run.app",
+          "x-forwarded-proto": "https",
+        },
+      },
+    );
+
+    const response = await GET(internalRequest);
+
+    expect(response.status).toBe(307);
+    const location = new URL(response.headers.get("location")!);
+    expect(location.origin).toBe(
+      "https://quipsly-preview---studio-hm2odnvjga-uc.a.run.app",
+    );
+    expect(location.pathname).toBe("/login");
+  });
+
+  it("rejects an untrusted forwarded host instead of creating an open redirect", async () => {
+    browserSession.mockResolvedValue(null);
+    const response = await GET(new Request(
+      "http://0.0.0.0:8080/api/mac/session-handoff"
+        + `?native=1&callbackScheme=quipslymac&state=${state}`
+        + `&codeChallenge=${challenge}&deviceLabel=Studio`,
+      {
+        headers: {
+          "x-forwarded-host":
+            "attacker-preview---other-service-uc.a.run.app",
+          "x-forwarded-proto": "https",
+        },
+      },
+    ));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("location")).toBeNull();
+    expect(await response.text()).toContain(
+      "could not verify the public sign-in address",
     );
   });
 
