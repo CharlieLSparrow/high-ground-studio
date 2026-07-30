@@ -2,16 +2,24 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { createAndAssignWorkEntityTag, replaceWorkEntityTags } from "@/lib/server/work-tags";
+import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags } from "@/lib/server/work-tags";
 
-import { POST } from "./route";
+import { PATCH, POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
-jest.mock("@/lib/server/work-tags", () => ({ createAndAssignWorkEntityTag: jest.fn(), replaceWorkEntityTags: jest.fn() }));
+jest.mock("@/lib/server/work-tags", () => ({
+  createAndAssignWorkEntityTag: jest.fn(),
+  mutateWorkTagTaxonomy: jest.fn(),
+  replaceWorkEntityTags: jest.fn(),
+}));
 
 function request(body: unknown) {
   return new Request("http://localhost/api/work/tags", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+}
+
+function patchRequest(body: unknown) {
+  return new Request("http://localhost/api/work/tags", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 }
 
 describe("authenticated shared work tags route", () => {
@@ -22,6 +30,108 @@ describe("authenticated shared work tags route", () => {
     const response = await POST(request({}));
     expect(response.status).toBe(401);
     expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("rejects a signed-out vocabulary mutation before database access", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
+    const response = await PATCH(patchRequest({
+      tagId: "tag-1",
+      operation: "ARCHIVE",
+      expectedUpdatedAt: "2026-07-30T12:00:00.000Z",
+    }));
+    expect(response.status).toBe(401);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+    expect(mutateWorkTagTaxonomy).not.toHaveBeenCalled();
+  });
+
+  it("returns a canonical rename receipt with preserved-alias boundaries", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "Person@Example.test" },
+    } as any);
+    const prisma = {};
+    jest.mocked(getPrismaClient).mockReturnValue(prisma as any);
+    jest.mocked(mutateWorkTagTaxonomy).mockResolvedValue({
+      ok: true,
+      operation: "RENAME",
+      projectId: "project-1",
+      tag: {
+        id: "tag-1",
+        label: "Episode four",
+        slug: "episode-four",
+        isActive: true,
+        archivedAt: null,
+        updatedAt: new Date("2026-07-30T12:01:00.000Z"),
+      },
+      aliases: [{ id: "alias-1", label: "Episode 4", slug: "episode-4" }],
+      revision: 2,
+      receiptId: "receipt-rename",
+    });
+    const response = await PATCH(patchRequest({
+      tagId: "tag-1",
+      operation: "rename",
+      label: "Episode four",
+      expectedUpdatedAt: "2026-07-30T12:00:00.000Z",
+    }));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      operation: "RENAME",
+      tag: {
+        archivedAt: null,
+        updatedAt: "2026-07-30T12:01:00.000Z",
+      },
+      aliases: [{ label: "Episode 4", slug: "episode-4" }],
+      boundaries: {
+        projectScoped: true,
+        aliasesPreserved: true,
+        existingAssignmentsPreserved: true,
+        offlineQueueingAllowed: false,
+        externalSideEffects: false,
+      },
+    });
+    expect(mutateWorkTagTaxonomy).toHaveBeenCalledWith(expect.objectContaining({
+      prisma,
+      actorUserId: "user-1",
+      actorEmail: "person@example.test",
+      tagId: "tag-1",
+      operation: "RENAME",
+      label: "Episode four",
+      expectedUpdatedAt: new Date("2026-07-30T12:00:00.000Z"),
+    }));
+  });
+
+  it("maps stale vocabulary revisions to a conflict without claiming a mutation", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "person@example.test" },
+    } as any);
+    jest.mocked(getPrismaClient).mockReturnValue({} as any);
+    jest.mocked(mutateWorkTagTaxonomy).mockResolvedValue({
+      ok: false,
+      code: "CONFLICT",
+      error: "This tag changed elsewhere. Refresh before changing it.",
+    });
+    const response = await PATCH(patchRequest({
+      tagId: "tag-1",
+      operation: "ARCHIVE",
+      expectedUpdatedAt: "2026-07-30T12:00:00.000Z",
+    }));
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ ok: false, code: "CONFLICT" });
+  });
+
+  it("rejects an incomplete rename before calling the taxonomy service", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "person@example.test" },
+    } as any);
+    const response = await PATCH(patchRequest({
+      tagId: "tag-1",
+      operation: "RENAME",
+      label: "",
+      expectedUpdatedAt: "2026-07-30T12:00:00.000Z",
+    }));
+    expect(response.status).toBe(400);
+    expect(getPrismaClient).not.toHaveBeenCalled();
+    expect(mutateWorkTagTaxonomy).not.toHaveBeenCalled();
   });
 
   it("returns the audited service receipt without implying external work", async () => {

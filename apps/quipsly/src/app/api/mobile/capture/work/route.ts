@@ -177,6 +177,23 @@ export async function GET(request: Request) {
         slug: true,
         label: true,
         isActive: true,
+        archivedAt: true,
+        updatedAt: true,
+        mergedInto: {
+          select: {
+            id: true,
+            label: true,
+            slug: true,
+          },
+        },
+        aliases: {
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          select: {
+            id: true,
+            label: true,
+            slug: true,
+          },
+        },
       },
     }),
   ]);
@@ -288,6 +305,10 @@ export async function GET(request: Request) {
     slug: tag.slug,
     label: tag.label,
     isActive: tag.isActive,
+    archivedAt: tag.archivedAt?.toISOString() ?? null,
+    updatedAt: tag.updatedAt.toISOString(),
+    mergedInto: tag.mergedInto,
+    aliases: tag.aliases,
     usageCount: usageCounts.get(tag.id) ?? 0,
   }));
 
@@ -305,6 +326,7 @@ export async function GET(request: Request) {
       protectedOfflineSnapshotSupported: true,
       canonicalProjectRecords: true,
       canonicalProjectTags: true,
+      onlineVocabularyManagement: project.canWrite,
       unreviewedTranscriptCandidatesExcluded: true,
       mutationsUseExistingProtectedOutboxes: true,
       sourceMutated: false,

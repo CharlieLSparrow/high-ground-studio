@@ -136,8 +136,28 @@ describe("mobile Capture Work contract", () => {
         tagLinks: [{ tagId: "tag-1" }],
       }]) },
       studioTag: { findMany: jest.fn().mockResolvedValue([
-        { id: "tag-1", projectId: "project-1", slug: "episode-4", label: "Episode 4", isActive: true },
-        { id: "tag-old", projectId: "project-1", slug: "old", label: "Old", isActive: false },
+        {
+          id: "tag-1",
+          projectId: "project-1",
+          slug: "episode-4",
+          label: "Episode 4",
+          isActive: true,
+          archivedAt: null,
+          updatedAt,
+          mergedInto: null,
+          aliases: [{ id: "alias-1", label: "Fourth episode", slug: "fourth-episode" }],
+        },
+        {
+          id: "tag-old",
+          projectId: "project-1",
+          slug: "old",
+          label: "Old",
+          isActive: false,
+          archivedAt: new Date("2026-07-20T18:00:00.000Z"),
+          updatedAt,
+          mergedInto: { id: "tag-1", label: "Episode 4", slug: "episode-4" },
+          aliases: [],
+        },
       ]) },
     };
     jest.mocked(getPrismaClient).mockReturnValue(prisma as never);
@@ -176,14 +196,29 @@ describe("mobile Capture Work contract", () => {
           webPath: "/create?project=high-ground&document=note-1",
         }],
         tags: [
-          { id: "tag-1", usageCount: 3, isActive: true },
-          { id: "tag-old", usageCount: 0, isActive: false },
+          {
+            id: "tag-1",
+            usageCount: 3,
+            isActive: true,
+            archivedAt: null,
+            updatedAt: "2026-07-24T18:00:00.000Z",
+            mergedInto: null,
+            aliases: [{ id: "alias-1", label: "Fourth episode", slug: "fourth-episode" }],
+          },
+          {
+            id: "tag-old",
+            usageCount: 0,
+            isActive: false,
+            archivedAt: "2026-07-20T18:00:00.000Z",
+            mergedInto: { id: "tag-1", label: "Episode 4", slug: "episode-4" },
+          },
         ],
       },
       boundaries: {
         actorScoped: true,
         explicitProjectGrantRequired: true,
         protectedOfflineSnapshotSupported: true,
+        onlineVocabularyManagement: true,
         externalSideEffects: false,
       },
     });

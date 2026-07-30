@@ -297,6 +297,7 @@ private struct CaptureWorkView: View {
     @State private var searchText = ""
     @State private var selectedTagID: String?
     @State private var showsCompletedTasks = false
+    @State private var showsTagVocabulary = false
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var showsNewProject = false
     @State private var taskToEdit: MobileCaptureTodayTask?
@@ -491,6 +492,17 @@ private struct CaptureWorkView: View {
             NewCaptureProjectSheet(client: client)
                 .presentationDetents([.large])
         }
+        .sheet(isPresented: $showsTagVocabulary) {
+            if let workspace {
+                CaptureTagVocabularySheet(
+                    client: client,
+                    project: workspace.project,
+                    tags: workspace.tags,
+                    readOnly: decisionsDisabled || !workspace.project.canWrite
+                )
+                .presentationDetents([.large])
+            }
+        }
         .sheet(item: $taskToEdit) { task in
             CaptureTaskEditSheet(
                 client: model.todayClient,
@@ -663,6 +675,7 @@ private struct CaptureWorkView: View {
                         Button {
                             selectedTagID = nil
                             searchText = ""
+                            client.tagVocabularyMessage = nil
                             if model.usesPreviewData {
                                 selectedProjectID = project.id
                                 client.loadPreview(projectID: project.id)
@@ -799,6 +812,12 @@ private struct CaptureWorkView: View {
                         Button("Clear filter") { selectedTagID = nil }
                             .font(.caption.weight(.bold))
                     }
+                    Button("Manage") {
+                        showsTagVocabulary = true
+                    }
+                    .font(.caption.weight(.bold))
+                    .accessibilityLabel("Manage shared tag vocabulary")
+                    .accessibilityIdentifier("CaptureWorkManageTags")
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
@@ -2342,6 +2361,274 @@ struct TodayFollowThroughCard: View {
             return "Time needs review · \(focus.timezone)"
         }
         return "\(start.formatted(date: .abbreviated, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened)) · \(focus.timezone)"
+    }
+}
+
+private struct CaptureTagVocabularySheet: View {
+    @ObservedObject var client: CaptureWorkClient
+    let project: MobileCaptureWorkProject
+    let tags: [MobileCaptureWorkTag]
+    let readOnly: Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText = ""
+    @State private var showsRetired = false
+    @State private var renameTagID: String?
+    @State private var renameLabel = ""
+    @State private var archiveCandidate: MobileCaptureWorkTag?
+    @State private var showsArchiveConfirmation = false
+    @FocusState private var renameFieldIsFocused: Bool
+
+    private var visibleTags: [MobileCaptureWorkTag] {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        return tags
+            .filter { $0.isActive != showsRetired }
+            .filter { tag in
+                guard !query.isEmpty else { return true }
+                return tag.label.localizedCaseInsensitiveContains(query)
+                    || tag.slug.localizedCaseInsensitiveContains(query)
+                    || (tag.aliases ?? []).contains {
+                        $0.label.localizedCaseInsensitiveContains(query)
+                            || $0.slug.localizedCaseInsensitiveContains(query)
+                    }
+            }
+            .sorted {
+                $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+            }
+    }
+
+    private var mutationsDisabled: Bool {
+        readOnly || client.isMutatingTagVocabulary
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text("Tags are one shared vocabulary for \(project.name). Rename keeps the old name as an alias. Archive removes a tag from new choices while preserving every existing assignment.")
+                        .font(.subheadline)
+                    Label(
+                        readOnly
+                            ? "Read-only here. Reconnect to Nest with editor access to make changes."
+                            : "Vocabulary changes are verified live and never queued offline.",
+                        systemImage: readOnly ? "lock.fill" : "checkmark.shield.fill"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(readOnly ? .orange : .secondary)
+                }
+
+                if let message = client.tagVocabularyMessage {
+                    Section {
+                        Text(message)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureTagVocabularyStatus")
+                    }
+                }
+
+                Section {
+                    Picker("Vocabulary", selection: $showsRetired) {
+                        Text("Active").tag(false)
+                        Text("Retired").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .accessibilityIdentifier("CaptureTagVocabularyScope")
+                }
+
+                Section(showsRetired ? "Retired and redirects" : "Active tags") {
+                    if visibleTags.isEmpty {
+                        ContentUnavailableView(
+                            showsRetired ? "No retired tags" : "No matching tags",
+                            systemImage: "tag",
+                            description: Text(
+                                showsRetired
+                                    ? "Archived names and merge redirects will remain visible here."
+                                    : "Create and assign a reusable tag from any task, goal, or note."
+                            )
+                        )
+                    } else {
+                        ForEach(visibleTags) { tag in
+                            tagRow(tag)
+                        }
+                    }
+                }
+
+                Section("Higher-impact cleanup") {
+                    Text("Merging tags rewrites multiple assignments and keeps a rollback receipt. Use Nest’s vocabulary manager for merge review and history.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let url = nestVocabularyURL {
+                        Link(destination: url) {
+                            Label("Open vocabulary manager in Nest", systemImage: "arrow.up.right.square")
+                        }
+                        .accessibilityIdentifier("CaptureTagVocabularyOpenNestDetails")
+                    }
+                }
+            }
+            .searchable(text: $searchText, prompt: "Name, alias, or slug")
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle("Tag vocabulary")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    if let url = nestVocabularyURL {
+                        Link(destination: url) {
+                            Image(systemName: "arrow.up.right.square")
+                        }
+                        .accessibilityLabel("Open Nest merge and tag history")
+                        .accessibilityIdentifier("CaptureTagVocabularyOpenNest")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Done") { dismiss() }
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        renameFieldIsFocused = false
+                    }
+                    .accessibilityIdentifier("CaptureTagVocabularyKeyboardDone")
+                }
+            }
+            .confirmationDialog(
+                "Archive this tag?",
+                isPresented: $showsArchiveConfirmation,
+                presenting: archiveCandidate
+            ) { tag in
+                Button("Archive #\(tag.label)", role: .destructive) {
+                    Task {
+                        _ = await client.changeTagVocabulary(tag: tag, operation: "ARCHIVE")
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { tag in
+                Text("It will disappear from new choices. Its \(tag.usageCount) existing assignment\(tag.usageCount == 1 ? "" : "s") and history stay intact.")
+            }
+        }
+        .accessibilityIdentifier("CaptureTagVocabularySheet")
+    }
+
+    @ViewBuilder
+    private func tagRow(_ tag: MobileCaptureWorkTag) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("#\(tag.label)")
+                        .font(.body.weight(.semibold))
+                    Text("\(tag.usageCount) assignment\(tag.usageCount == 1 ? "" : "s") · \(tag.slug)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                if let redirect = tag.mergedInto {
+                    Text("→ #\(redirect.label)")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                } else if tag.isActive {
+                    Menu {
+                        Button {
+                            renameTagID = tag.id
+                            renameLabel = tag.label
+                            Task {
+                                await Task.yield()
+                                renameFieldIsFocused = true
+                            }
+                        } label: {
+                            Label("Rename", systemImage: "pencil")
+                        }
+                        Button(role: .destructive) {
+                            archiveCandidate = tag
+                            showsArchiveConfirmation = true
+                        } label: {
+                            Label("Archive", systemImage: "archivebox")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .disabled(mutationsDisabled)
+                    .accessibilityLabel("Manage #\(tag.label)")
+                    .accessibilityIdentifier("CaptureTagVocabularyManage_\(tag.id)")
+                } else {
+                    Button("Restore") {
+                        Task {
+                            _ = await client.changeTagVocabulary(tag: tag, operation: "RESTORE")
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(mutationsDisabled)
+                    .accessibilityIdentifier("CaptureTagVocabularyRestore_\(tag.id)")
+                }
+            }
+
+            if let aliases = tag.aliases, !aliases.isEmpty {
+                Text("Also matches " + aliases.map { "#\($0.label)" }.joined(separator: ", "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureTagVocabularyAliases_\(tag.id)")
+            }
+
+            if renameTagID == tag.id {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Canonical tag name", text: $renameLabel)
+                        .textInputAutocapitalization(.sentences)
+                        .autocorrectionDisabled(false)
+                        .focused($renameFieldIsFocused)
+                        .accessibilityIdentifier("CaptureTagVocabularyRenameField")
+                    HStack {
+                        Button("Cancel") {
+                            renameFieldIsFocused = false
+                            renameTagID = nil
+                            renameLabel = ""
+                        }
+                        Spacer()
+                        Button("Keep old name and rename") {
+                            let requestedLabel = renameLabel
+                            renameFieldIsFocused = false
+                            renameTagID = nil
+                            renameLabel = ""
+                            Task {
+                                _ = await client.changeTagVocabulary(
+                                    tag: tag,
+                                    operation: "RENAME",
+                                    label: requestedLabel
+                                )
+                            }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(
+                            mutationsDisabled
+                                || renameLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || renameLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    .localizedCaseInsensitiveCompare(tag.label) == .orderedSame
+                        )
+                        .accessibilityIdentifier("CaptureTagVocabularyRenameSave")
+                    }
+                    Text("The old name remains searchable as an alias; no assignment IDs change.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(10)
+                .background(CapturePalette.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+            }
+        }
+        .padding(.vertical, 4)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CaptureTagVocabularyTag_\(tag.id)")
+    }
+
+    private var nestVocabularyURL: URL? {
+        let baseURL = normalizedNestBaseURL(
+            Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+                ?? "https://nest.quipsly.com"
+        )
+        guard var components = URLComponents(string: baseURL) else { return nil }
+        components.path = "/work"
+        components.queryItems = [
+            URLQueryItem(name: "project", value: project.id),
+            URLQueryItem(name: "manage", value: "tags"),
+        ]
+        return components.url
     }
 }
 

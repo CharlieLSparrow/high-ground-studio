@@ -1,6 +1,6 @@
 # iPhone Work Workspace
 
-Last verified: 2026-07-29
+Last verified: 2026-07-30
 
 ## Product job
 
@@ -56,7 +56,8 @@ The endpoint:
 - uses the same actor-scoped Task and owned-Goal predicates as the Nest project workspace;
 - excludes unreviewed transcript candidates;
 - reads everyday Notes from `StudioDocument` records labeled `document-kind:note`;
-- returns canonical `StudioTag` identities and aggregate use counts;
+- returns canonical `StudioTag` identities, aggregate use counts, update
+  revisions, aliases, archive state, and merge redirects;
 - makes Owner/Editor versus Viewer write capability explicit;
 - has no external side effects.
 
@@ -106,6 +107,17 @@ The Work surface does not create a second mobile record model.
 - The phone journals the complete request before network sync.
 - Retry retains the same UUID and project identity.
 - Tags are selected from that Nest's canonical active vocabulary; new names use the existing protected tag intent.
+- The tag lens opens a native shared-vocabulary manager. Owners and Editors can
+  rename, archive, and restore a tag against its exact live `updatedAt`
+  revision. Rename retains the former label as a searchable alias; archive
+  removes a tag from new choices but preserves every existing assignment.
+- Shared-vocabulary administration is deliberately online-only. A stale
+  revision returns a visible conflict and reloads canonical state; Capture
+  never queues or replays taxonomy changes whose meaning may have changed.
+- Merge remains in Nest's full vocabulary manager because it rewrites multiple
+  assignments and requires side-by-side impact, history, and rollback review.
+  Capture shows merge redirects read-only and links directly to that same
+  project-scoped manager.
 - Existing Tasks and Goals expose the same complete tag-set editor directly in Work. It searches the selected Nest's active vocabulary and keeps one persistent `Save changes` action reachable above long lists and the software keyboard.
 - A Task or Goal tag change enters the actor-partitioned protected work-tag outbox before sync, retains one request UUID across retry, uses optimistic revision evidence, and replaces only that record's canonical tag links.
 - Pending and held tag decisions render beside the affected Work record. A held decision can be discarded explicitly; a pending decision is reconciled through the same Today/Nest mutation client instead of inventing a Work-only write route.
@@ -126,6 +138,10 @@ The envelope contains:
 - the exact canonical response.
 
 Restore requires the same owner and a snapshot no older than 30 days. Sign-out deletes the Work cache. An offline snapshot is visibly labeled. Completion and Goal-progress changes remain disabled until Nest verifies current revisions, while an explicit complete tag-set choice can enter the protected work-tag outbox and reconcile after reconnect. Protected quick-capture and tag-decision outboxes are the only offline write paths.
+
+Rename, archive, restore, and merge are not tag decisions on one record; they
+change the meaning of shared vocabulary. They therefore require a live
+canonical read and never enter an outbox.
 
 ## Verification
 
@@ -176,6 +192,18 @@ The 2026-07-29 project-creation checkpoint additionally proved:
 
 Production deployment and a signed physical-iPhone creation/readback remain
 release gates; this checkpoint does not claim them.
+
+The 2026-07-30 shared-vocabulary checkpoint additionally proves:
+
+- one server taxonomy service powers native and web rename/archive/restore;
+- the native response exposes aliases, archive timestamps, merge redirects,
+  usage impact, and optimistic revision evidence;
+- API tests cover signed-out denial, incomplete input, successful alias-
+  preserving rename, stale-revision conflict, and exact mobile projection;
+- preview mode exposes the complete vocabulary UX while keeping every mutating
+  control disabled;
+- higher-impact merge remains routed to Nest's project-scoped manager with its
+  audited rollback semantics.
 
 ## Open release gates
 

@@ -1335,6 +1335,44 @@ struct MobileCaptureWorkTag: Codable, Identifiable, Hashable {
     let label: String
     let isActive: Bool
     let usageCount: Int
+    let archivedAt: String?
+    let updatedAt: String?
+    let mergedInto: MobileCaptureWorkTagRedirect?
+    let aliases: [MobileCaptureWorkTagAlias]?
+}
+
+struct MobileCaptureWorkTagAlias: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let slug: String
+}
+
+struct MobileCaptureWorkTagRedirect: Codable, Identifiable, Hashable {
+    let id: String
+    let label: String
+    let slug: String
+}
+
+struct MobileCaptureWorkTagTaxonomyResponse: Codable {
+    struct Tag: Codable {
+        let id: String
+        let label: String
+        let slug: String
+        let isActive: Bool
+        let archivedAt: String?
+        let updatedAt: String
+        let aliases: [MobileCaptureWorkTagAlias]
+    }
+
+    let ok: Bool
+    let code: String?
+    let error: String?
+    let operation: String?
+    let projectId: String?
+    let tag: Tag?
+    let aliases: [MobileCaptureWorkTagAlias]?
+    let revision: Int?
+    let receiptId: String?
 }
 
 struct MobileCaptureWorkWorkspace: Codable, Hashable {
@@ -1352,6 +1390,7 @@ struct MobileCaptureWorkBoundaries: Codable, Hashable {
     let protectedOfflineSnapshotSupported: Bool?
     let canonicalProjectRecords: Bool?
     let canonicalProjectTags: Bool?
+    let onlineVocabularyManagement: Bool?
     let unreviewedTranscriptCandidatesExcluded: Bool?
     let mutationsUseExistingProtectedOutboxes: Bool?
     let sourceMutated: Bool?
@@ -4091,9 +4130,11 @@ final class CaptureWorkClient: ObservableObject {
     @Published private(set) var isCreatingProject = false
     @Published private(set) var isUsingProtectedCache = false
     @Published private(set) var isSyncingDocumentNoteEdits = false
+    @Published private(set) var isMutatingTagVocabulary = false
     @Published private(set) var pendingDocumentNoteEditCount = 0
     @Published private(set) var heldDocumentNoteEditCount = 0
     @Published var documentNoteEditMessage: String?
+    @Published var tagVocabularyMessage: String?
     @Published var errorMessage: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
@@ -4251,6 +4292,95 @@ final class CaptureWorkClient: ObservableObject {
         }
     }
 
+    @discardableResult
+    func changeTagVocabulary(
+        tag: MobileCaptureWorkTag,
+        operation: String,
+        label: String? = nil
+    ) async -> Bool {
+        let canonicalOperation = operation.uppercased()
+        guard !isMutatingTagVocabulary else { return false }
+        guard !tag.id.hasPrefix("preview-") else {
+            tagVocabularyMessage = "Preview only — no canonical tag or assignment was changed."
+            return false
+        }
+        guard !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed,
+              workspace?.project.canWrite == true,
+              brief?.boundaries?.onlineVocabularyManagement == true else {
+            tagVocabularyMessage = "Reconnect to Nest before changing shared vocabulary. These changes require a live revision and are never queued offline."
+            return false
+        }
+        guard tag.mergedInto == nil else {
+            tagVocabularyMessage = "This historical name redirects to #\(tag.mergedInto?.label ?? "another tag") and cannot be changed."
+            return false
+        }
+        guard let expectedUpdatedAt = tag.updatedAt, !expectedUpdatedAt.isEmpty else {
+            tagVocabularyMessage = "Refresh this project before changing its shared vocabulary."
+            return false
+        }
+        let normalizedLabel = label?
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ") ?? ""
+        guard ["RENAME", "ARCHIVE", "RESTORE"].contains(canonicalOperation),
+              canonicalOperation != "RENAME" || !normalizedLabel.isEmpty,
+              let url = URL(string: "\(baseURL)/api/work/tags") else {
+            tagVocabularyMessage = "Choose a valid vocabulary change and name."
+            return false
+        }
+
+        isMutatingTagVocabulary = true
+        defer { isMutatingTagVocabulary = false }
+        errorMessage = nil
+        tagVocabularyMessage = nil
+
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "PATCH"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            var body: [String: Any] = [
+                "tagId": tag.id,
+                "operation": canonicalOperation,
+                "expectedUpdatedAt": expectedUpdatedAt,
+            ]
+            if canonicalOperation == "RENAME" {
+                body["label"] = normalizedLabel
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: body)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureWorkTagTaxonomyResponse.self, from: data)
+            guard response.statusCode < 400,
+                  payload.ok,
+                  payload.operation == canonicalOperation,
+                  payload.projectId == workspace?.project.id,
+                  let savedTag = payload.tag,
+                  savedTag.id == tag.id,
+                  let receiptID = payload.receiptId,
+                  !receiptID.isEmpty else {
+                tagVocabularyMessage = payload.error
+                    ?? "Nest did not acknowledge this vocabulary change. Refresh before trying again."
+                if response.statusCode == 409 {
+                    await load(projectID: selectedProjectID)
+                }
+                return false
+            }
+
+            switch canonicalOperation {
+            case "RENAME":
+                tagVocabularyMessage = "Renamed to #\(savedTag.label). #\(tag.label) remains an alias, so existing links and older language still resolve."
+            case "ARCHIVE":
+                tagVocabularyMessage = "Archived #\(savedTag.label). Existing assignments remain preserved for history."
+            default:
+                tagVocabularyMessage = "Restored #\(savedTag.label) to this project's active vocabulary."
+            }
+            await load(projectID: payload.projectId)
+            return true
+        } catch {
+            tagVocabularyMessage = "Nest could not verify this shared vocabulary change. Nothing is queued offline; refresh and try again."
+            return false
+        }
+    }
+
     func loadPreview(projectID: String? = nil) {
         let now = ISO8601DateFormatter().string(from: Date())
         let projects = [
@@ -4370,9 +4500,48 @@ final class CaptureWorkClient: ObservableObject {
                     ),
                 ],
                 tags: [
-                    MobileCaptureWorkTag(id: "preview-episode-4", projectId: selected.id, slug: "episode-4", label: "Episode 4", isActive: true, usageCount: 4),
-                    MobileCaptureWorkTag(id: "preview-proof-listen", projectId: selected.id, slug: "proof-listen", label: "Proof listen", isActive: true, usageCount: 1),
-                    MobileCaptureWorkTag(id: "preview-retired", projectId: selected.id, slug: "retired", label: "Retired tag", isActive: false, usageCount: 0),
+                    MobileCaptureWorkTag(
+                        id: "preview-episode-4",
+                        projectId: selected.id,
+                        slug: "episode-4",
+                        label: "Episode 4",
+                        isActive: true,
+                        usageCount: 4,
+                        archivedAt: nil,
+                        updatedAt: now,
+                        mergedInto: nil,
+                        aliases: [
+                            MobileCaptureWorkTagAlias(
+                                id: "preview-alias-episode-four",
+                                label: "Episode four",
+                                slug: "episode-four"
+                            ),
+                        ]
+                    ),
+                    MobileCaptureWorkTag(
+                        id: "preview-proof-listen",
+                        projectId: selected.id,
+                        slug: "proof-listen",
+                        label: "Proof listen",
+                        isActive: true,
+                        usageCount: 1,
+                        archivedAt: nil,
+                        updatedAt: now,
+                        mergedInto: nil,
+                        aliases: []
+                    ),
+                    MobileCaptureWorkTag(
+                        id: "preview-retired",
+                        projectId: selected.id,
+                        slug: "retired",
+                        label: "Retired tag",
+                        isActive: false,
+                        usageCount: 0,
+                        archivedAt: now,
+                        updatedAt: now,
+                        mergedInto: nil,
+                        aliases: []
+                    ),
                 ]
             ),
             boundaries: MobileCaptureWorkBoundaries(
@@ -4382,6 +4551,7 @@ final class CaptureWorkClient: ObservableObject {
                 protectedOfflineSnapshotSupported: true,
                 canonicalProjectRecords: true,
                 canonicalProjectTags: true,
+                onlineVocabularyManagement: true,
                 unreviewedTranscriptCandidatesExcluded: true,
                 mutationsUseExistingProtectedOutboxes: true,
                 sourceMutated: false,

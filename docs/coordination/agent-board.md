@@ -106,7 +106,7 @@ Verified during the Codex application handoff prep on 2026-05-26.
     advancing coherent iPhone/Nest slices over canonical tasks, goals, notes,
     tags, annotations, sources, recording, and follow-through
 - current status:
-  - Quipsly Capture 1.0 (14), exact source `a2d8835353`, is live through the
+  - Quipsly Capture 1.0 (15), exact source `c3e02a6ea3`, is live through the
     open public TestFlight link; physical install and rehearsal readback remain
     open
   - production Nest is `studio-00445-rij` at 100% traffic from the same exact

@@ -2,7 +2,13 @@ import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { createAndAssignWorkEntityTag, replaceWorkEntityTags, type WorkTagEntityKind } from "@/lib/server/work-tags";
+import {
+  createAndAssignWorkEntityTag,
+  mutateWorkTagTaxonomy,
+  replaceWorkEntityTags,
+  type WorkTagEntityKind,
+  type WorkTagTaxonomyOperation,
+} from "@/lib/server/work-tags";
 
 export const dynamic = "force-dynamic";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -94,5 +100,97 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[work-tags] authenticated mutation failed", error);
     return NextResponse.json({ ok: false, code: "UNAVAILABLE", error: "Quipsly could not save these tags. No external action was taken." }, { status: 503 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  const session = await getQuipslySessionFromRequest(request);
+  const actorEmail = text(
+    session?.user?.primaryEmail || session?.user?.email,
+    320,
+  ).toLowerCase();
+  if (!session?.user?.id || !actorEmail) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "AUTH_REQUIRED",
+        error: "Sign in before managing a Nest vocabulary.",
+      },
+      { status: 401 },
+    );
+  }
+
+  let body: Record<string, unknown> = {};
+  try {
+    body = record(await request.json());
+  } catch {
+    // Validation below returns the stable public error.
+  }
+  const tagId = text(body.tagId);
+  const operation = text(body.operation, 20).toUpperCase() as WorkTagTaxonomyOperation;
+  const label = text(body.label, 120);
+  const expectedUpdatedAt = new Date(text(body.expectedUpdatedAt, 80));
+  if (
+    !tagId
+    || !["RENAME", "ARCHIVE", "RESTORE"].includes(operation)
+    || (operation === "RENAME" && !label)
+    || !Number.isFinite(expectedUpdatedAt.getTime())
+  ) {
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "INVALID_INPUT",
+        error: "The vocabulary change is incomplete or invalid.",
+      },
+      { status: 400 },
+    );
+  }
+
+  try {
+    const result = await mutateWorkTagTaxonomy({
+      prisma: getPrismaClient(),
+      actorUserId: session.user.id,
+      actorEmail,
+      tagId,
+      operation,
+      label: operation === "RENAME" ? label : undefined,
+      expectedUpdatedAt,
+    });
+    if (!result.ok) {
+      const status = result.code === "NOT_FOUND"
+        ? 404
+        : ["CONFLICT", "SLUG_CONFLICT", "ALREADY_ACTIVE", "ALREADY_ARCHIVED", "MERGED"].includes(result.code)
+          ? 409
+          : result.code === "INVALID_INPUT"
+            ? 400
+            : 403;
+      return NextResponse.json(result, { status });
+    }
+    return NextResponse.json({
+      ...result,
+      tag: {
+        ...result.tag,
+        archivedAt: result.tag.archivedAt?.toISOString() ?? null,
+        updatedAt: result.tag.updatedAt.toISOString(),
+        aliases: result.aliases,
+      },
+      boundaries: {
+        projectScoped: true,
+        aliasesPreserved: operation === "RENAME",
+        existingAssignmentsPreserved: true,
+        offlineQueueingAllowed: false,
+        externalSideEffects: false,
+      },
+    });
+  } catch (error) {
+    console.error("[work-tags] authenticated taxonomy mutation failed", error);
+    return NextResponse.json(
+      {
+        ok: false,
+        code: "UNAVAILABLE",
+        error: "Quipsly could not change this vocabulary. No tag or assignment was changed.",
+      },
+      { status: 503 },
+    );
   }
 }

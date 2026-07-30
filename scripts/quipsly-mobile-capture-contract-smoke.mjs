@@ -856,9 +856,21 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("availableTags: workTagCatalog")
       && workRouteText.includes("canEditTags: project.canWrite")
       && workRouteText.includes("const tags = note.tagLinks.flatMap")
-      && capturePhoneShellText.includes("workTagDecisionStatus"),
+      && capturePhoneShellText.includes("workTagDecisionStatus")
+      && workRouteText.includes("onlineVocabularyManagement: project.canWrite")
+      && workRouteText.includes("mergedInto:")
+      && workRouteText.includes("aliases:")
+      && workTagsRouteText.includes("export async function PATCH")
+      && workTagsRouteText.includes("mutateWorkTagTaxonomy")
+      && workTagsRouteText.includes("offlineQueueingAllowed: false")
+      && bridgeText.includes("func changeTagVocabulary(")
+      && bridgeText.includes("These changes require a live revision and are never queued offline.")
+      && capturePhoneShellText.includes("CaptureTagVocabularySheet")
+      && capturePhoneShellText.includes("CaptureWorkManageTags")
+      && capturePhoneShellText.includes("CaptureTagVocabularyAliases_")
+      && capturePhoneShellText.includes("Use Nest’s vocabulary manager for merge review and history."),
     "nativeCanonicalProjectWorkWorkspace",
-    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, and atomically creates or reuses project vocabulary while reconciling the complete Task, Goal, or document-level Note tag set through one canonical phone outbox decision.",
+    "iPhone Work reads actor-scoped canonical project tasks, goals, document notes, and tags, protects the last owner-partitioned snapshot offline, pre-binds protected quick capture, reconciles complete per-record tag decisions through one protected outbox, and manages shared rename/archive/restore vocabulary only against a live canonical revision while routing merge impact and rollback review to Nest.",
   );
 }
 

@@ -4672,3 +4672,25 @@ This is an active-goal checkpoint, not a completion claim.
   explicit two-person consent, front/rear capture, upload/relaunch recovery,
   current-pass Watch materialization, human sync approval, and Studio
   proof-listen/watch remain human-present gates for next week's rehearsal.
+## 2026-07-30 shared tag vocabulary and Build 16 candidate
+
+Capture and Nest now use the same canonical project vocabulary beyond
+assignment:
+
+- the iPhone reads tag revisions, aliases, archive state, merge redirects, and
+  assignment counts from Nest;
+- Owners and Editors can rename, archive, and restore tags directly in Work;
+- rename preserves the former label as an alias, and archive preserves every
+  existing assignment;
+- shared taxonomy changes require a live optimistic revision and are never
+  queued offline;
+- merge remains in Nest's impact/history/rollback manager, linked from the
+  native sheet, rather than becoming an unsafe one-tap phone rewrite.
+
+Verification includes 25/25 focused API and real-PostgreSQL tests, a successful
+rename/alias/archive/restore/reuse lifecycle against local state, TypeScript 7
+route generation and typecheck, 76/76 mobile source contracts, 947/947 App
+Store static checks, a production-target simulator build, and the complete
+Work XCUITest journey. The native project version is now 16; Build 15 remains
+the machine-readable external release until Build 16 is qualified, uploaded,
+approved, and independently read back.

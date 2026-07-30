@@ -290,6 +290,24 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectSummary"].exists)
         XCTAssertTrue(app.staticTexts["High Ground Odyssey"].exists)
 
+        let manageVocabulary = app.buttons["CaptureWorkManageTags"]
+        reveal(manageVocabulary)
+        XCTAssertTrue(manageVocabulary.isHittable, "Shared vocabulary management must be directly reachable from the tag lens.")
+        manageVocabulary.tap()
+        XCTAssertTrue(app.navigationBars["Tag vocabulary"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.descendants(matching: .any)["CaptureTagVocabularyAliases_preview-episode-4"].exists)
+        let previewManageTag = app.buttons["CaptureTagVocabularyManage_preview-episode-4"]
+        XCTAssertTrue(previewManageTag.exists)
+        XCTAssertFalse(previewManageTag.isEnabled, "Preview must explain shared taxonomy without pretending to rename or archive it.")
+        app.buttons["Retired"].tap()
+        let previewRestoreTag = app.buttons["CaptureTagVocabularyRestore_preview-retired"]
+        XCTAssertTrue(previewRestoreTag.waitForExistence(timeout: 3))
+        XCTAssertFalse(previewRestoreTag.isEnabled, "Preview must preserve retired-tag history without faking a restore.")
+        let openNestVocabulary = app.buttons["CaptureTagVocabularyOpenNest"]
+        XCTAssertTrue(openNestVocabulary.isHittable, "Higher-impact merge and rollback work must remain reachable in Nest.")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Tag vocabulary"].waitForNonExistence(timeout: 5))
+
         let episodeTag = app.buttons["CaptureWorkTag_preview-episode-4"]
         for _ in 0..<8 where !episodeTag.isHittable { workScroll.swipeUp() }
         XCTAssertTrue(episodeTag.isHittable, "The Work tag lens must be visible and directly reachable in the project workspace.")
