@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-slim AS base
+FROM node:22-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS base
 
 ARG PNPM_VERSION=10.30.3
 ENV PNPM_HOME="/pnpm"
@@ -28,16 +28,18 @@ RUN pnpm --filter quipsly-transcript-worker build \
   && pnpm --config.inject-workspace-packages=true \
     --filter quipsly-transcript-worker deploy --prod /worker
 
-FROM node:22-slim AS runner
+FROM node:22-slim@sha256:f32b81066cde10a75dbac96646099533316d94bac4150c55da1636e1f0ffdc46 AS runner
 
 ENV NODE_ENV=production
 WORKDIR /worker
 
-RUN apt-get update -y \
-  && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/* \
-  && groupadd --system --gid 1001 nodejs \
-  && useradd --system --uid 1001 --gid nodejs worker
+RUN groupadd --system --gid 1001 nodejs \
+  && useradd \
+    --uid 1001 \
+    --gid nodejs \
+    --no-create-home \
+    --shell /usr/sbin/nologin \
+    worker
 
 COPY --from=builder --chown=worker:nodejs /worker ./
 

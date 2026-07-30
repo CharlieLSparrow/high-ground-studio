@@ -21,7 +21,7 @@ steps:
         docker push "$${image}"
 
   - id: read-back-transcript-worker-digest
-    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable@sha256:4af68065702e115b79d7084195850ad05bdfe0694247029421fff1c3b9013fa5
     entrypoint: bash
     args:
       - -euo

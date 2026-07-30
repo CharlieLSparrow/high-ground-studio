@@ -49,3 +49,11 @@ updates:
     open-pull-requests-limit: 3
     commit-message:
       prefix: deps(nest)
+
+  - package-ecosystem: docker
+    directory: /apps/quipsly-transcript-worker
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: deps(transcript-worker)
