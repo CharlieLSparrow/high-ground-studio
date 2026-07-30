@@ -11,6 +11,7 @@ import {
   parseExternalBetaArguments,
   resolveExternalBetaTargets,
 } from "./quipsly-app-store-connect-external-beta.mjs";
+import { QUIPSLY_CAPTURE_RELEASE_TARGET } from "./quipsly-capture-release-target.mjs";
 
 const options = {
   appId: "6780995957",
@@ -31,19 +32,21 @@ const options = {
 };
 
 const buildDocument = {
-  data: [{
-    type: "builds",
-    id: "build-7",
-    attributes: { version: "7", processingState: "VALID" },
-    relationships: {
-      preReleaseVersion: {
-        data: { type: "preReleaseVersions", id: "version-1" },
-      },
-      buildBetaDetail: {
-        data: { type: "buildBetaDetails", id: "detail-7" },
+  data: [
+    {
+      type: "builds",
+      id: "build-7",
+      attributes: { version: "7", processingState: "VALID" },
+      relationships: {
+        preReleaseVersion: {
+          data: { type: "preReleaseVersions", id: "version-1" },
+        },
+        buildBetaDetail: {
+          data: { type: "buildBetaDetails", id: "detail-7" },
+        },
       },
     },
-  }],
+  ],
   included: [
     {
       type: "preReleaseVersions",
@@ -70,10 +73,16 @@ test("requires apply before a beta-review submission", () => {
 
 test("defaults read-only planning to the canonical current external release", () => {
   const parsed = parseExternalBetaArguments(["--public-link-only"]);
-  assert.equal(parsed.appId, "6780995957");
-  assert.equal(parsed.marketingVersion, "1.0");
-  assert.equal(parsed.buildNumber, "12");
-  assert.equal(parsed.groupName, "Quipsly Capture Rehearsal");
+  assert.equal(parsed.appId, QUIPSLY_CAPTURE_RELEASE_TARGET.appId);
+  assert.equal(
+    parsed.marketingVersion,
+    QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
+  );
+  assert.equal(parsed.buildNumber, QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber);
+  assert.equal(
+    parsed.groupName,
+    QUIPSLY_CAPTURE_RELEASE_TARGET.externalGroupName,
+  );
 });
 
 test("makes public-link-only distribution explicit and mutually exclusive with tester email", () => {
@@ -82,11 +91,12 @@ test("makes public-link-only distribution explicit and mutually exclusive with t
     true,
   );
   assert.throws(
-    () => parseExternalBetaArguments([
-      "--public-link-only",
-      "--tester-email",
-      "homer@example.test",
-    ]),
+    () =>
+      parseExternalBetaArguments([
+        "--public-link-only",
+        "--tester-email",
+        "homer@example.test",
+      ]),
     /cannot be combined/,
   );
 });
@@ -106,17 +116,18 @@ test("requires a separate explicit authorization before creating an external gro
     true,
   );
   assert.throws(
-    () => assertExternalGroupMutationAuthorized(
-      {
-        groupName: "Quipsly Capture Rehearsal",
-        allowCreateExternalGroup: false,
-      },
-      { createExternalGroup: true },
-    ),
+    () =>
+      assertExternalGroupMutationAuthorized(
+        {
+          groupName: "Quipsly Capture Rehearsal",
+          allowCreateExternalGroup: false,
+        },
+        { createExternalGroup: true },
+      ),
     /empty provider read can be transient/,
   );
-  assert.doesNotThrow(
-    () => assertExternalGroupMutationAuthorized(
+  assert.doesNotThrow(() =>
+    assertExternalGroupMutationAuthorized(
       {
         groupName: "Brand New Group",
         allowCreateExternalGroup: true,
@@ -128,13 +139,14 @@ test("requires a separate explicit authorization before creating an external gro
 
 test("refuses every beta mutation until Apple publishes buildBetaDetail", () => {
   assert.throws(
-    () => assertBuildBetaMutationReady({
-      targets: { buildBetaDetailId: "" },
-    }),
+    () =>
+      assertBuildBetaMutationReady({
+        targets: { buildBetaDetailId: "" },
+      }),
     /No beta metadata, group, tester, notification, or review mutation was attempted/,
   );
-  assert.doesNotThrow(
-    () => assertBuildBetaMutationReady({
+  assert.doesNotThrow(() =>
+    assertBuildBetaMutationReady({
       targets: { buildBetaDetailId: "detail-10" },
     }),
   );
@@ -146,32 +158,27 @@ test("requires a verified existing public link before public-link-only mutation"
     publicLinkOnly: true,
   };
   assert.throws(
-    () => assertPublicLinkDistributionReady(
-      publicOptions,
-      { targets: { group: null } },
-    ),
+    () =>
+      assertPublicLinkDistributionReady(publicOptions, {
+        targets: { group: null },
+      }),
     /requires the existing external group/,
   );
   assert.throws(
-    () => assertPublicLinkDistributionReady(
-      publicOptions,
-      {
+    () =>
+      assertPublicLinkDistributionReady(publicOptions, {
         targets: {
           group: { attributes: { publicLinkEnabled: false } },
         },
-      },
-    ),
+      }),
     /does not have its public link enabled/,
   );
-  assert.doesNotThrow(
-    () => assertPublicLinkDistributionReady(
-      publicOptions,
-      {
-        targets: {
-          group: { attributes: { publicLinkEnabled: true } },
-        },
+  assert.doesNotThrow(() =>
+    assertPublicLinkDistributionReady(publicOptions, {
+      targets: {
+        group: { attributes: { publicLinkEnabled: true } },
       },
-    ),
+    }),
   );
 });
 
@@ -180,25 +187,29 @@ test("resolves the exact external group, build, and tester idempotently", () => 
     options,
     buildDocument,
     groupDocument: {
-      data: [{
-        type: "betaGroups",
-        id: "external-group",
-        attributes: {
-          name: options.groupName,
-          isInternalGroup: false,
+      data: [
+        {
+          type: "betaGroups",
+          id: "external-group",
+          attributes: {
+            name: options.groupName,
+            isInternalGroup: false,
+          },
+          relationships: {
+            builds: { data: [{ type: "builds", id: "build-7" }] },
+            betaTesters: { data: [{ type: "betaTesters", id: "homer" }] },
+          },
         },
-        relationships: {
-          builds: { data: [{ type: "builds", id: "build-7" }] },
-          betaTesters: { data: [{ type: "betaTesters", id: "homer" }] },
-        },
-      }],
+      ],
     },
     testerDocument: {
-      data: [{
-        type: "betaTesters",
-        id: "homer",
-        attributes: { email: options.testerEmail },
-      }],
+      data: [
+        {
+          type: "betaTesters",
+          id: "homer",
+          attributes: { email: options.testerEmail },
+        },
+      ],
     },
   });
 
@@ -288,19 +299,21 @@ test("public-link-only plan never creates or assigns a named tester", () => {
     options: publicOptions,
     buildDocument,
     groupDocument: {
-      data: [{
-        type: "betaGroups",
-        id: "external-group",
-        attributes: {
-          name: options.groupName,
-          isInternalGroup: false,
-          publicLinkEnabled: true,
+      data: [
+        {
+          type: "betaGroups",
+          id: "external-group",
+          attributes: {
+            name: options.groupName,
+            isInternalGroup: false,
+            publicLinkEnabled: true,
+          },
+          relationships: {
+            builds: { data: [] },
+            betaTesters: { data: [] },
+          },
         },
-        relationships: {
-          builds: { data: [] },
-          betaTesters: { data: [] },
-        },
-      }],
+      ],
     },
     testerDocument: { data: [] },
   });

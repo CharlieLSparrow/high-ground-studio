@@ -219,7 +219,33 @@ The verifier fails when Apple returns its generic closed page with HTTP 200 and
 passes only when the exact Quipsly title, beta heading, and `itms-beta`
 TestFlight handoff are all present. The optional receipt is mode 0600.
 
+Apple's API also resolves the same exact tester into both **Quipsly Capture
+Internal** and the approved **Quipsly Capture Rehearsal** external group.
+Auto-notify is enabled and no assignment operation is missing. When that tester
+remains `INVITED` but Apple does not deliver the message, inspect the exact
+relationship first and resend only through the explicit recovery command:
+
+```bash
+pnpm quipsly:capture:testflight-resend-invitation -- \
+  --tester-email shomers@icloud.com
+
+pnpm quipsly:capture:testflight-resend-invitation -- \
+  --tester-email shomers@icloud.com \
+  --apply \
+  --output /private/tmp/quipsly-testflight-resend-current.json
+```
+
+The first command is read-only. The second requires `--apply`, verifies the
+tester belongs to this app through a TestFlight group, refuses accepted or
+installed testers, sends exactly one Apple invitation, and writes a mode-0600
+receipt containing only an email digest. A successful Apple HTTP 201 proves
+that the provider accepted the resend; it does not prove mailbox delivery or
+physical installation. On July 29, that exact resend returned HTTP 201 after
+Apple had failed to deliver the original message.
+
 - [Apple: Invite external testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers)
+- [Apple: View and reinvite testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/view-and-manage-tester-information)
+- [Apple: Beta tester invitations API](https://developer.apple.com/documentation/appstoreconnectapi/beta-tester-invitations)
 - [Apple: TestFlight overview](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testflight-overview)
 
 ## Message to send Homer

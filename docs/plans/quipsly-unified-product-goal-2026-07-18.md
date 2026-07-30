@@ -3684,3 +3684,29 @@ This is an active-goal checkpoint, not a completion claim.
   canonical no-email/no-code installation path. Physical installation, Google
   attachment as `shomers@gmail.com`, consent, device routes, recording,
   Shared Watch, upload, timeline, and proof-listen/watch remain required.
+
+### 2026-07-29 TestFlight invitation-recovery checkpoint
+
+- App Store Connect independently confirms that the exact tester behind
+  `shomers@icloud.com` belongs to both **Quipsly Capture Internal** and the
+  approved external **Quipsly Capture Rehearsal** group. Build 13 is assigned,
+  auto-notify is enabled, the tester's invite type is email, and no missing
+  group, build, metadata, review, or tester operation explains the absent
+  message.
+- Apple's documented `betaTesterInvitations` endpoint accepted one explicit
+  resend with HTTP 201 and returned a provider invitation receipt. That proves
+  Apple accepted the recovery request, not that an email reached Scott or that
+  the app is installed. The open public link remains the canonical immediate
+  installation route.
+- The successful recovery is now a supported repository command rather than a
+  one-off API call. It is read-only unless `--apply` is supplied, resolves the
+  tester from the app-scoped collection instead of trusting collection order,
+  combines collection and detail reads to handle Apple's missing direct
+  `state` field, and fails closed unless the exact tester is explicitly
+  `INVITED`, belongs to this app, and has at least one TestFlight group.
+- The command writes an optional mode-0600 receipt containing only the tester
+  email digest. Five unit tests pass for dry-run/apply parsing, exact
+  app-and-tester request binding, app-assignment denial, accepted/installed
+  denial, and missing-state denial. A real read-only plan then resolved the
+  Quipsly app, exact tester, `INVITED` state, `EMAIL` invite type, and both
+  assigned groups without performing a second resend.
