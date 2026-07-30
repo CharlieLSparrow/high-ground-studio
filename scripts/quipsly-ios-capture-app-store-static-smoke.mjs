@@ -44,6 +44,7 @@ const files = {
   captureExperienceModel: path.join(sourceRoot, "CaptureExperienceModel.swift"),
   mobileQuickEntryOutbox: path.join(sourceRoot, "MobileQuickEntryOutbox.swift"),
   sourceInboxFiling: path.join(sourceRoot, "CaptureSourceInbox.swift"),
+  sourceAnnotationDraftOutbox: path.join(sourceRoot, "SourceAnnotationDraftOutbox.swift"),
   sessionNoteEditOutbox: path.join(sourceRoot, "SessionNoteEditOutbox.swift"),
   captureReceiptStore: path.join(sourceRoot, "CaptureRoomReceiptStore.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
@@ -170,6 +171,7 @@ const providerRoomText = read(files.providerRoomController);
 const captureExperienceText = read(files.captureExperienceModel);
 const mobileQuickEntryOutboxText = read(files.mobileQuickEntryOutbox);
 const sourceInboxFilingText = read(files.sourceInboxFiling);
+const sourceAnnotationDraftOutboxText = read(files.sourceAnnotationDraftOutbox);
 const sessionNoteEditOutboxText = read(files.sessionNoteEditOutbox);
 const captureReceiptStoreText = read(files.captureReceiptStore);
 const capturePhoneShellText = read(files.capturePhoneShell);
@@ -860,6 +862,47 @@ for (const needle of [
   "abortArmedCaptureBeforeRecording()",
 ]) {
   requireIncludes(captureExperienceText, needle, "local-first capture coordinator");
+}
+for (const needle of [
+  "struct PendingSourceAnnotationDraftDecision",
+  "let ownerAccountID: String",
+  "let annotationID: String",
+  "let projectSlug: String",
+  "let expectedAnnotationUpdatedAt: String",
+  "completeFileProtectionUntilFirstUserAuthentication",
+  "func releaseForRetry(",
+]) {
+  requireIncludes(sourceAnnotationDraftOutboxText, needle, "protected source-to-writing decision outbox");
+}
+for (const needle of [
+  'if (action === "source-annotation-draft")',
+  "createWritingDraftFromSourceAnnotation",
+  'action: "write"',
+  "writingDraftPrivate: true",
+  "writingDraftSourceMutated: false",
+  "writingDraftExternalSideEffects: false",
+]) {
+  requireIncludes(mobileTodayRouteText, needle, "authenticated private source-to-writing handoff");
+}
+for (const needle of [
+  "func startWritingDraft(",
+  "syncWritingDraftDecision",
+  'payload.action == "source-annotation-draft"',
+  'code: "ACKNOWLEDGEMENT_MISMATCH"',
+  "payload.boundaries?.writingDraftPrivate == true",
+  "payload.boundaries?.writingDraftSourceMutated == false",
+  "payload.boundaries?.writingDraftExternalSideEffects == false",
+]) {
+  requireIncludes(bridgeText, needle, "exact native source-to-writing acknowledgement");
+}
+for (const needle of [
+  "CaptureTodayAnnotationDraftStart_",
+  "CaptureTodayAnnotationDraftPending_",
+  "CaptureTodayAnnotationDraftRetry_",
+  "Start private draft",
+  "durable citation",
+]) {
+  requireIncludes(capturePhoneShellText, needle, "accessible private source-to-writing UX");
 }
 for (const needle of [
   "struct MobileQuickEntryRecurrence: Codable, Equatable",

@@ -26,6 +26,7 @@ Usage:
   scripts/dev/quipsly-generated-mobile-dogfood.sh goal-edit
   scripts/dev/quipsly-generated-mobile-dogfood.sh note-edit
   scripts/dev/quipsly-generated-mobile-dogfood.sh annotation-review
+  scripts/dev/quipsly-generated-mobile-dogfood.sh annotation-writing
   scripts/dev/quipsly-generated-mobile-dogfood.sh source-inbox-filing
 
 Runs the current local Nest source with a disposable real Firebase identity and
@@ -93,7 +94,7 @@ if [[ "${mode}" == "--help" || "${mode}" == "-h" ]]; then
   usage
   exit 0
 fi
-if [[ "${mode}" != "task-edit" && "${mode}" != "goal-edit" && "${mode}" != "note-edit" && "${mode}" != "annotation-review" && "${mode}" != "source-inbox-filing" ]]; then
+if [[ "${mode}" != "task-edit" && "${mode}" != "goal-edit" && "${mode}" != "note-edit" && "${mode}" != "annotation-review" && "${mode}" != "annotation-writing" && "${mode}" != "source-inbox-filing" ]]; then
   usage >&2
   fail "Unsupported generated mobile dogfood mode: ${mode}"
 fi

@@ -1296,6 +1296,52 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.staticTexts[annotationBody].exists)
     }
 
+    func testCanonicalSourceAnnotationStartsOnePrivateWritingDraft() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let annotationID = credentials.annotationID, !annotationID.isEmpty,
+              let annotationBody = credentials.annotationBody, !annotationBody.isEmpty else {
+            throw XCTSkip("The annotation-writing journey requires one exact accessible annotation ID and body.")
+        }
+
+        let app = try launchSignedInCaptureApp()
+        let card = app.descendants(matching: .any)["CaptureTodayAnnotation_\(annotationID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(card, in: app, timeout: 30, swipeAttempts: 16),
+            "Today should render the exact canonical source annotation before writing."
+        )
+        XCTAssertTrue(app.staticTexts[annotationBody].exists)
+        let start = app.buttons["CaptureTodayAnnotationDraftStart_\(annotationID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(start, in: app, timeout: 12, swipeAttempts: 8),
+            "A writable source annotation should expose one explicit private-draft decision."
+        )
+        XCTAssertTrue(start.isEnabled)
+        start.tap()
+
+        let open = app.descendants(matching: .any)["CaptureTodayAnnotationDraftOpen_\(annotationID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(open, in: app, timeout: 30, swipeAttempts: 16),
+            "The exact Nest acknowledgement should replace Start with the durable private draft link."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTodayAnnotationDraftPending_\(annotationID)"].exists,
+            "An acknowledged handoff must leave no pending phone decision."
+        )
+        XCTAssertFalse(start.exists, "The same annotation should not offer a second accidental one-tap draft.")
+
+        app.terminate()
+        let relaunched = try launchSignedInCaptureApp()
+        let persisted = relaunched.descendants(matching: .any)["CaptureTodayAnnotationDraftOpen_\(annotationID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(persisted, in: relaunched, timeout: 30, swipeAttempts: 16),
+            "Relaunch should project the same persisted citation-backed draft from Nest."
+        )
+        XCTAssertFalse(
+            relaunched.buttons["CaptureTodayAnnotationDraftStart_\(annotationID)"].exists,
+            "Canonical readback must keep the handoff idempotent after relaunch."
+        )
+    }
+
     func testPrivateSourceInboxFilesIntoCanonicalResearch() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let captureID = credentials.sourceInboxCaptureID, !captureID.isEmpty,

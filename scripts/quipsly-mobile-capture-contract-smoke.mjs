@@ -927,6 +927,8 @@ function checkTranscriptCorrectionContractSources() {
   const personalSourceFilingText = sourceText("apps/quipsly/src/lib/server/personal-source-filing.ts");
   const mobileSourceInboxRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/inbox/route.ts");
   const sourceInboxFilingText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureSourceInbox.swift");
+  const sourceAnnotationServiceText = sourceText("apps/quipsly/src/lib/server/source-annotations.ts");
+  const sourceAnnotationDraftOutboxText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/SourceAnnotationDraftOutbox.swift");
   const personalSourceFilingActionText = sourceText("apps/quipsly/src/app/(app)/collections/actions.ts");
   const researchPageText = sourceText("apps/quipsly/src/app/(app)/research/page.tsx");
   const personalSourceCaptureMigrationText = sourceText("prisma/migrations/20260719130000_add_personal_source_capture_receipts/migration.sql");
@@ -1234,6 +1236,27 @@ function checkTranscriptCorrectionContractSources() {
       && shellText.includes("Nest remains canonical. A successful edit appends one revision"),
     "protectedIPhoneSessionNoteEditing",
     "iPhone Session-note edits journal complete actor-partitioned intent before sync, use optimistic and idempotent server transactions, atomically replace canonical tags, hold conflicts for explicit review, and append exactly one revision without delivery or publication.",
+  );
+  expect(
+    sourceAnnotationServiceText.includes("That writing handoff identity already belongs to a different source decision.")
+      && sourceAnnotationServiceText.includes('kind: "quipsly-source-annotation-use-v1"')
+      && sourceAnnotationServiceText.includes("sourceMutated: false")
+      && todayRouteText.includes('if (action === "source-annotation-draft")')
+      && todayRouteText.includes("createWritingDraftFromSourceAnnotation")
+      && todayRouteText.includes("resolveStudioProjectAccess")
+      && todayRouteText.includes("writingDraftPrivate: true")
+      && todayRouteText.includes("writingDraftSourceMutated: false")
+      && todayRouteText.includes("writingDraftExternalSideEffects: false")
+      && sourceAnnotationDraftOutboxText.includes("completeFileProtectionUntilFirstUserAuthentication")
+      && sourceAnnotationDraftOutboxText.includes("ownerAccountID")
+      && sourceAnnotationDraftOutboxText.includes("expectedAnnotationUpdatedAt")
+      && bridgeText.includes("syncWritingDraftDecision")
+      && bridgeText.includes("ACKNOWLEDGEMENT_MISMATCH")
+      && shellText.includes("CaptureTodayAnnotationDraftStart_")
+      && shellText.includes("Start private draft")
+      && shellText.includes("durable citation"),
+    "protectedSourceAnnotationWritingHandoff",
+    "iPhone protects one exact annotation-to-writing decision before network use, Nest authorizes its writable project and creates one private citation-backed canonical draft, exact acknowledgements close the outbox, and sources plus external systems remain unchanged.",
   );
   expect(
     schemaText.includes("model StudioPersonalSourceFiling")

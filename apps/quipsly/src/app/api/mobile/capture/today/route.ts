@@ -10,7 +10,11 @@ import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit
 import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { setSourceAnnotationStatus } from "@/lib/server/source-annotations";
+import {
+  createWritingDraftFromSourceAnnotation,
+  setSourceAnnotationStatus,
+} from "@/lib/server/source-annotations";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { setTaskReminderInTransaction } from "@/lib/server/task-reminders";
 import {
   editTaskRecurrenceOccurrenceInTransaction,
@@ -103,6 +107,10 @@ function responseBoundaries(taskReminderIntentProjectionComplete = false) {
     tagMutationExternalSideEffects: false,
     annotationResolveReopenAvailable: true,
     annotationReviewMutatesSource: false,
+    annotationWritingDraftAvailable: true,
+    writingDraftPrivate: true,
+    writingDraftSourceMutated: false,
+    writingDraftExternalSideEffects: false,
   };
 }
 
@@ -161,10 +169,20 @@ export async function GET(request: Request) {
         SELECT annotation."id", annotation."projectId", annotation."kind", annotation."body", annotation."exactText",
                annotation."status", annotation."visibility", annotation."createdByUserId", annotation."updatedAt",
                source."title" AS "sourceTitle", project."name" AS "projectName", project."slug" AS "projectSlug",
+               writing_use."documentId" AS "writingDraftDocumentId",
                COALESCE(array_agg(tag."label" ORDER BY tag."label") FILTER (WHERE tag."id" IS NOT NULL), ARRAY[]::text[]) AS "tagLabels"
         FROM "StudioSourceAnnotation" annotation
         JOIN "StudioSourceUnit" source ON source."id" = annotation."sourceUnitId"
         JOIN "StudioProject" project ON project."id" = annotation."projectId"
+        LEFT JOIN LATERAL (
+          SELECT annotation_use."documentId"
+          FROM "StudioSourceAnnotationUse" annotation_use
+          WHERE annotation_use."annotationId" = annotation."id"
+            AND annotation_use."createdByUserId" = ${userId}
+            AND annotation_use."archivedAt" IS NULL
+          ORDER BY annotation_use."createdAt" DESC, annotation_use."id" DESC
+          LIMIT 1
+        ) writing_use ON TRUE
         LEFT JOIN "StudioSourceAnnotationTag" annotation_tag ON annotation_tag."annotationId" = annotation."id"
         LEFT JOIN "StudioTag" tag ON tag."id" = annotation_tag."tagId"
         WHERE annotation."projectId" IN (${Prisma.join(visibleProjectIds)})
@@ -176,7 +194,7 @@ export async function GET(request: Request) {
             )
           )
           AND (annotation."visibility" = 'project' OR annotation."createdByUserId" = ${userId})
-        GROUP BY annotation."id", source."title", project."name", project."slug"
+        GROUP BY annotation."id", source."title", project."name", project."slug", writing_use."documentId"
         ORDER BY
           CASE WHEN annotation."status" = 'active' THEN 0 ELSE 1 END,
           annotation."updatedAt" DESC
@@ -358,9 +376,13 @@ export async function GET(request: Request) {
         canChangeStatus:
           annotation.createdByUserId === userId
           && ["OWNER", "EDITOR"].includes(projectRoleById.get(annotation.projectId)),
+        canStartWriting: ["OWNER", "EDITOR"].includes(projectRoleById.get(annotation.projectId)),
         sourceTitle: annotation.sourceTitle,
         projectName: annotation.projectName,
         projectSlug: annotation.projectSlug,
+        writingDraftHref: annotation.writingDraftDocumentId
+          ? `/create?project=${encodeURIComponent(annotation.projectSlug)}&document=${encodeURIComponent(annotation.writingDraftDocumentId)}`
+          : null,
         tagLabels: annotation.tagLabels,
         updatedAt: annotation.updatedAt.toISOString(),
       })),
@@ -912,6 +934,55 @@ export async function POST(request: Request) {
       if (result.kind === "not-found") return NextResponse.json({ ok: false, error: "Only the focus-block owner can change this plan." }, { status: 404 });
       if (result.kind === "conflict" || !result.record) return NextResponse.json({ ok: false, error: "This focus block changed elsewhere. Refresh Today before deciding again.", code: "CONFLICT" }, { status: 409 });
       return NextResponse.json({ ok: true, action, id, status: result.record.status, updatedAt: result.record.updatedAt.toISOString(), receiptId, boundaries: responseBoundaries() });
+    }
+    if (action === "source-annotation-draft") {
+      const actorEmail = text(session.user.primaryEmail || session.user.email, 320).toLowerCase();
+      const projectSlug = text(input.projectSlug, 200);
+      const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
+      if (!actorEmail || !projectSlug || !UUID_PATTERN.test(clientRequestId)) {
+        return NextResponse.json({
+          ok: false,
+          error: "Review the Research Nest and stable phone writing request.",
+        }, { status: 400 });
+      }
+      const access = await resolveStudioProjectAccess({
+        projectSlug,
+        email: actorEmail,
+        action: "write",
+        prisma,
+      });
+      if (!access.allowed || !access.projectId) {
+        return NextResponse.json({
+          ok: false,
+          error: "This annotation is not inside a writable Nest for this account.",
+        }, { status: 404 });
+      }
+      const result = await createWritingDraftFromSourceAnnotation(prisma, {
+        annotationId: id,
+        projectId: access.projectId,
+        projectSlug,
+        actorUserId: userId,
+        actorEmail,
+        clientRequestId,
+        expectedUpdatedAt: expected,
+      });
+      if (!result.ok) {
+        const status = result.code === "CONFLICT" ? 409 : result.code === "INVALID" ? 400 : 404;
+        return NextResponse.json({ ok: false, error: result.message, code: result.code }, { status });
+      }
+      return NextResponse.json({
+        ok: true,
+        action,
+        id,
+        clientRequestId,
+        documentId: result.documentId,
+        documentStableId: result.documentStableId,
+        blockId: result.blockId,
+        blockStableId: result.blockStableId,
+        href: result.href,
+        reused: result.reused,
+        boundaries: responseBoundaries(),
+      });
     }
     if (action === "source-annotation-status") {
       const nextStatus = text(input.nextStatus, 20).toLowerCase();

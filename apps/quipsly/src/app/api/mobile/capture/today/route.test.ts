@@ -2,8 +2,12 @@
 
 import { getPrismaClient } from "@/lib/prisma";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
-import { setSourceAnnotationStatus } from "@/lib/server/source-annotations";
+import {
+  createWritingDraftFromSourceAnnotation,
+  setSourceAnnotationStatus,
+} from "@/lib/server/source-annotations";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
+import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { readTranscriptCorrectionDesk } from "@/lib/server/transcript-corrections";
 
 import { GET, POST } from "./route";
@@ -11,7 +15,11 @@ import { GET, POST } from "./route";
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 jest.mock("@/lib/server/home-nest", () => ({ listProjectsVisibleToEmail: jest.fn() }));
-jest.mock("@/lib/server/source-annotations", () => ({ setSourceAnnotationStatus: jest.fn() }));
+jest.mock("@/lib/server/source-annotations", () => ({
+  createWritingDraftFromSourceAnnotation: jest.fn(),
+  setSourceAnnotationStatus: jest.fn(),
+}));
+jest.mock("@/lib/server/studio-project-access", () => ({ resolveStudioProjectAccess: jest.fn() }));
 jest.mock("@/lib/server/transcript-corrections", () => ({ readTranscriptCorrectionDesk: jest.fn() }));
 
 const expected = new Date("2026-07-18T18:00:00.000Z");
@@ -27,6 +35,13 @@ describe("mobile Capture Today contract", () => {
     jest.setSystemTime(expected);
     jest.clearAllMocks();
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([] as any);
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: false,
+      role: null,
+      source: "none",
+      projectId: null,
+      projectSlug: "",
+    });
     jest.mocked(readTranscriptCorrectionDesk).mockResolvedValue({
       ok: true,
       roomId: "room-1",
@@ -101,6 +116,7 @@ describe("mobile Capture Today contract", () => {
           sourceTitle: "Production philosophy",
           projectName: "High Ground",
           projectSlug: "high-ground",
+          writingDraftDocumentId: "document-existing",
           tagLabels: ["Episode seed"],
         },
         {
@@ -116,6 +132,7 @@ describe("mobile Capture Today contract", () => {
           sourceTitle: "Production philosophy",
           projectName: "High Ground",
           projectSlug: "high-ground",
+          writingDraftDocumentId: null,
           tagLabels: ["Decision"],
         },
         {
@@ -131,6 +148,7 @@ describe("mobile Capture Today contract", () => {
           sourceTitle: "Access boundary",
           projectName: "Read-only Nest",
           projectSlug: "read-only",
+          writingDraftDocumentId: null,
           tagLabels: [],
         },
       ]),
@@ -146,7 +164,105 @@ describe("mobile Capture Today contract", () => {
     expect(payload.focusBlocks).toEqual(expect.arrayContaining([expect.objectContaining({ id: "block-1", targetId: "task-1" })]));
     expect(payload.goals[0]).toMatchObject({ id: "goal-1", roomId: "room-1", sessionTitle: "Episode review", canEditTags: true, tagIds: ["tag-2"], tagLabels: ["Episode"], sourceAnchor: { schema: "quipsly-transcript-derived-goal-v1", segmentId: "segment-1", startSeconds: 3.66, recordingAssetId: "asset-1" } });
     expect(payload.goals[1]).toMatchObject({ id: "goal-mismatch", roomId: "room-1", sourceAnchor: null });
-    expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", status: "active", sourceTitle: "Production philosophy", createdByMe: true, canChangeStatus: true, tagLabels: ["Episode seed"] }, { id: "annotation-resolved", status: "resolved", createdByMe: true, canChangeStatus: true, tagLabels: ["Decision"] }, { id: "annotation-viewer-owned", createdByMe: true, canChangeStatus: false }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], tagCatalog: [{ id: "tag-2", projectId: "project-1", label: "Episode", isActive: true }, { id: "tag-archived", projectId: "project-1", label: "Legacy review", isActive: false }, { id: "tag-1", projectId: "project-1", label: "Proof listen", isActive: true }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false } });
+    expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", status: "active", sourceTitle: "Production philosophy", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: "/create?project=high-ground&document=document-existing", tagLabels: ["Episode seed"] }, { id: "annotation-resolved", status: "resolved", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: null, tagLabels: ["Decision"] }, { id: "annotation-viewer-owned", createdByMe: true, canChangeStatus: false, canStartWriting: false, writingDraftHref: null }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], tagCatalog: [{ id: "tag-2", projectId: "project-1", label: "Episode", isActive: true }, { id: "tag-archived", projectId: "project-1", label: "Legacy review", isActive: false }, { id: "tag-1", projectId: "project-1", label: "Proof listen", isActive: true }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false } });
+  });
+
+  it("creates one private citation-backed writing draft from an exact protected phone decision", async () => {
+    signedIn();
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      role: "EDITOR",
+      source: "grant",
+      projectId: "project-1",
+      projectSlug: "high-ground",
+    });
+    jest.mocked(createWritingDraftFromSourceAnnotation).mockResolvedValue({
+      ok: true,
+      documentId: "document-1",
+      documentStableId: "document-stable-1",
+      blockId: "block-1",
+      blockStableId: "block-stable-1",
+      href: "/create?project=high-ground&document=document-1",
+      reused: false,
+    });
+    jest.mocked(getPrismaClient).mockReturnValue({} as any);
+    const clientRequestId = "08c149c8-1608-4bed-8776-0638eaf98e98";
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "source-annotation-draft",
+        id: "annotation-1",
+        projectSlug: "high-ground",
+        clientRequestId,
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      action: "source-annotation-draft",
+      id: "annotation-1",
+      clientRequestId,
+      documentId: "document-1",
+      documentStableId: "document-stable-1",
+      blockId: "block-1",
+      blockStableId: "block-stable-1",
+      href: "/create?project=high-ground&document=document-1",
+      reused: false,
+      boundaries: {
+        writingDraftPrivate: true,
+        writingDraftSourceMutated: false,
+        writingDraftExternalSideEffects: false,
+      },
+    });
+    expect(resolveStudioProjectAccess).toHaveBeenCalledWith(expect.objectContaining({
+      projectSlug: "high-ground",
+      email: "person@example.com",
+      action: "write",
+    }));
+    expect(createWritingDraftFromSourceAnnotation).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        annotationId: "annotation-1",
+        projectId: "project-1",
+        projectSlug: "high-ground",
+        actorUserId: "user-1",
+        actorEmail: "person@example.com",
+        clientRequestId,
+        expectedUpdatedAt: expected,
+      },
+    );
+  });
+
+  it("does not hand source evidence into writing through a read-only Nest", async () => {
+    signedIn();
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: false,
+      role: "VIEWER",
+      source: "grant",
+      projectId: "project-1",
+      projectSlug: "read-only",
+    });
+    jest.mocked(getPrismaClient).mockReturnValue({} as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "source-annotation-draft",
+        id: "annotation-1",
+        projectSlug: "read-only",
+        clientRequestId: "08c149c8-1608-4bed-8776-0638eaf98e98",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+
+    expect(response.status).toBe(404);
+    expect(createWritingDraftFromSourceAnnotation).not.toHaveBeenCalled();
   });
 
   it("reopens the same accessible author-owned source annotation without mutating its source", async () => {

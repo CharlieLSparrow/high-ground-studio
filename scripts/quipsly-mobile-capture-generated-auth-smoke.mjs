@@ -1802,6 +1802,188 @@ async function assertGeneratedSourceAnnotationRestored(
   }
 }
 
+async function assertGeneratedSourceWritingDraft(
+  env,
+  baseUrl,
+  idToken,
+  annotationProof,
+  projectWorkProof,
+) {
+  const authorization = `Bearer ${idToken}`;
+  const today = await requestJson(`${baseUrl}/api/mobile/capture/today`, {
+    headers: { authorization },
+  });
+  const projected = Array.isArray(today.body?.sourceAnnotations)
+    ? today.body.sourceAnnotations.find((entry) => entry.id === annotationProof.annotationId)
+    : null;
+  assert(
+    today.response.status === 200
+      && today.body?.ok === true
+      && today.body?.boundaries?.annotationWritingDraftAvailable === true
+      && today.body?.boundaries?.writingDraftPrivate === true
+      && today.body?.boundaries?.writingDraftSourceMutated === false
+      && today.body?.boundaries?.writingDraftExternalSideEffects === false
+      && projected?.canStartWriting === true
+      && typeof projected?.writingDraftHref === "string"
+      && projected.writingDraftHref.includes(`project=${encodeURIComponent(projectWorkProof.projectSlug)}`),
+    "The operated iPhone source-to-writing journey did not project its private canonical draft through Today.",
+    {
+      status: today.response.status,
+      projected: projected
+        ? {
+          id: projected.id,
+          canStartWriting: projected.canStartWriting,
+          writingDraftHrefPresent: Boolean(projected.writingDraftHref),
+        }
+        : null,
+    },
+  );
+
+  const prisma = createPrisma(env);
+  try {
+    const annotation = await prisma.studioSourceAnnotation.findUnique({
+      where: { id: annotationProof.annotationId },
+      select: {
+        id: true,
+        body: true,
+        exactText: true,
+        sourceFingerprint: true,
+        updatedAt: true,
+        sourceUnit: {
+          select: { id: true, immutableText: true },
+        },
+        uses: {
+          where: { archivedAt: null },
+          orderBy: { createdAt: "asc" },
+          select: {
+            annotationId: true,
+            projectId: true,
+            documentId: true,
+            blockId: true,
+            createdByUserId: true,
+            clientRequestId: true,
+            useKind: true,
+            citationKey: true,
+            quoteSnapshot: true,
+            sourceJson: true,
+            document: {
+              select: { id: true, stableId: true, title: true, isPrivate: true },
+            },
+            block: {
+              select: {
+                id: true,
+                stableId: true,
+                body: true,
+                externalId: true,
+                isPrivate: true,
+              },
+            },
+          },
+        },
+      },
+    });
+    const use = annotation?.uses[0];
+    const operations = use
+      ? await prisma.studioDocumentOperation.findMany({
+        where: {
+          documentId: use.documentId,
+          operationType: "create-draft-from-source-annotation",
+        },
+        orderBy: { createdAt: "asc" },
+        select: {
+          origin: true,
+          status: true,
+          reversible: true,
+          payloadJson: true,
+        },
+      })
+      : [];
+    const currentFingerprint = crypto
+      .createHash("sha256")
+      .update(annotation?.sourceUnit?.immutableText || "", "utf8")
+      .digest("hex");
+    assert(
+      annotation?.id === annotationProof.annotationId
+        && annotation.body === annotationProof.body
+        && annotation.exactText === annotationProof.exactText
+        && annotation.sourceUnit?.id === annotationProof.sourceId
+        && annotation.sourceUnit?.immutableText === annotationProof.immutableText
+        && annotation.sourceFingerprint === annotationProof.sourceFingerprint
+        && currentFingerprint === annotationProof.sourceFingerprint
+        && annotation.updatedAt.toISOString() === annotationProof.initialUpdatedAt
+        && annotation.uses.length === 1
+        && use?.annotationId === annotationProof.annotationId
+        && use.projectId === projectWorkProof.projectId
+        && /^[0-9a-f-]{36}$/i.test(use.clientRequestId || "")
+        && use.useKind === "evidence"
+        && use.quoteSnapshot === annotationProof.exactText
+        && use.sourceJson?.kind === "quipsly-source-annotation-use-v1"
+        && use.sourceJson?.annotationRevision === annotationProof.initialUpdatedAt
+        && use.sourceJson?.sourceMutated === false
+        && use.document.isPrivate === true
+        && use.block.isPrivate === true
+        && use.block.externalId === `annotation:${annotationProof.annotationId}`
+        && use.block.body.includes(annotationProof.body)
+        && use.block.body.includes(`> ${annotationProof.exactText}`)
+        && use.block.body.includes(use.citationKey)
+        && operations.length === 1
+        && operations[0]?.origin === "human"
+        && operations[0]?.status === "applied"
+        && operations[0]?.reversible === true
+        && operations[0]?.payloadJson?.annotationId === annotationProof.annotationId
+        && operations[0]?.payloadJson?.sourceMutated === false,
+      "The canonical database did not retain one private citation-backed draft while preserving the exact immutable source and annotation revision.",
+      {
+        annotationId: annotation?.id,
+        useCount: annotation?.uses.length || 0,
+        operationCount: operations.length,
+        documentPrivate: use?.document.isPrivate,
+        blockPrivate: use?.block.isPrivate,
+      },
+    );
+
+    const replay = await requestJson(`${baseUrl}/api/mobile/capture/today`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization,
+      },
+      body: JSON.stringify({
+        action: "source-annotation-draft",
+        id: annotationProof.annotationId,
+        projectSlug: projectWorkProof.projectSlug,
+        clientRequestId: use.clientRequestId,
+        expectedUpdatedAt: annotationProof.initialUpdatedAt,
+      }),
+    });
+    assert(
+      replay.response.status === 200
+        && replay.body?.ok === true
+        && replay.body?.reused === true
+        && replay.body?.documentId === use.documentId
+        && replay.body?.blockId === use.blockId
+        && replay.body?.clientRequestId === use.clientRequestId,
+      "Replaying the phone's exact protected writing identity did not return the same canonical document and citation block.",
+      { status: replay.response.status, body: replay.body },
+    );
+
+    return {
+      oneCanonicalUse: true,
+      privateDocument: true,
+      privateBlock: true,
+      exactCitationSnapshot: true,
+      immutableSourceHashPreserved: true,
+      annotationRevisionPreserved: true,
+      reversibleHumanOperation: true,
+      exactReplayReused: true,
+      sourceMutated: false,
+      externalSideEffects: false,
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
 function runCaptureRuntimeUISmoke(
   env,
   baseUrl,
@@ -1904,7 +2086,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_RUNTIME_UI_MODE
       || "surface",
   ).trim();
-  if (!["surface", "task-edit", "goal-edit", "note-edit", "annotation-review", "source-inbox-filing"].includes(runtimeUISmokeMode)) {
+  if (!["surface", "task-edit", "goal-edit", "note-edit", "annotation-review", "annotation-writing", "source-inbox-filing"].includes(runtimeUISmokeMode)) {
     throw new Error(
       `Generated mobile Capture runtime UI mode is not supported: ${runtimeUISmokeMode}`,
     );
@@ -1914,7 +2096,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_WORKFLOW
       || "full",
   ).trim();
-  if (!["full", "task-edit", "goal-edit", "note-edit", "annotation-review", "source-inbox-filing"].includes(workflow)) {
+  if (!["full", "task-edit", "goal-edit", "note-edit", "annotation-review", "annotation-writing", "source-inbox-filing"].includes(workflow)) {
     throw new Error(`Generated mobile Capture workflow is not supported: ${workflow}`);
   }
   if (workflow !== "full" && runtimeUISmokeMode !== workflow) {
@@ -1936,6 +2118,7 @@ async function main() {
   let noteEditRestoration = null;
   let annotationProof = null;
   let annotationReviewRestoration = null;
+  let annotationWritingDraft = null;
   let sourceInboxProof = null;
   let sourceInboxFilingRestoration = null;
 
@@ -1980,7 +2163,7 @@ async function main() {
       suffix,
       { seedGoalTarget: workflow === "goal-edit" },
     );
-    if (workflow === "annotation-review") {
+    if (workflow === "annotation-review" || workflow === "annotation-writing") {
       annotationProof = await createGeneratedSourceAnnotation(
         env,
         email,
@@ -2056,6 +2239,15 @@ async function main() {
           annotationProof,
         );
       }
+      if (workflow === "annotation-writing") {
+        annotationWritingDraft = await assertGeneratedSourceWritingDraft(
+          env,
+          baseUrl,
+          firebaseBody.idToken,
+          annotationProof,
+          projectWorkProof,
+        );
+      }
       if (workflow === "source-inbox-filing") {
         sourceInboxFilingRestoration = await assertGeneratedSourceInboxFiled(
           env,
@@ -2102,6 +2294,7 @@ async function main() {
         }
         : null,
       annotationReviewRestoration,
+      annotationWritingDraft,
       sourceInboxFiling: sourceInboxProof
         ? {
           captureIdPresent: Boolean(sourceInboxProof.captureId),

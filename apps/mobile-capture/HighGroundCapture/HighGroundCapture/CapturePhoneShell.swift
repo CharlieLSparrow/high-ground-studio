@@ -2013,7 +2013,7 @@ struct TodayFollowThroughCard: View {
                     .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
             }
 
-            Text("Task and goal tag selections, source-filing choices, and one-time reminder changes are protected on this iPhone before Nest sync. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion never completes its task or goal. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
+            Text("Task and goal tag selections, source-filing choices, source-to-writing handoffs, and one-time reminder changes are protected on this iPhone before Nest sync. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. A writing handoff creates a private draft with a durable citation and never changes the source. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion never completes its task or goal. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureTodayFollowThroughBoundary")
@@ -2200,6 +2200,66 @@ struct TodayFollowThroughCard: View {
                             : "Resolves only this source-linked annotation. Its preserved source is not changed."
                     )
                 }
+            }
+            if let pending = client.pendingWritingDraftDecision(for: annotation.id) {
+                Label(
+                    pending.disposition == .held
+                        ? "Writing handoff needs review"
+                        : "Private draft queued for Nest",
+                    systemImage: pending.disposition == .held
+                        ? "exclamationmark.triangle.fill"
+                        : "lock.doc.fill"
+                )
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(pending.disposition == .held ? Color.orange : Color.indigo)
+                .accessibilityIdentifier("CaptureTodayAnnotationDraftPending_\(annotation.id)")
+                .accessibilityValue(pending.disposition == .held ? "Held" : "Queued")
+
+                if pending.disposition == .held {
+                    HStack(spacing: 8) {
+                        Button("Retry draft") {
+                            Task {
+                                _ = await client.retryWritingDraft(for: annotation.id)
+                            }
+                        }
+                        .font(.caption.weight(.bold))
+                        .buttonStyle(.borderedProminent)
+                        .disabled(previewOnly || client.isMutating)
+                        .accessibilityIdentifier("CaptureTodayAnnotationDraftRetry_\(annotation.id)")
+
+                        Button("Discard", role: .destructive) {
+                            Task {
+                                await client.discardHeldWritingDraft(for: annotation.id)
+                            }
+                        }
+                        .font(.caption.weight(.bold))
+                        .buttonStyle(.bordered)
+                        .disabled(previewOnly || client.isMutating)
+                        .accessibilityIdentifier("CaptureTodayAnnotationDraftDiscard_\(annotation.id)")
+                    }
+                }
+            } else if let draftURL = client.writingDraftURL(for: annotation), !previewOnly {
+                Link(destination: draftURL) {
+                    Label("Open private draft", systemImage: "square.and.pencil")
+                        .font(.caption.weight(.bold))
+                        .frame(minHeight: 44)
+                }
+                .accessibilityIdentifier("CaptureTodayAnnotationDraftOpen_\(annotation.id)")
+                .accessibilityHint("Opens your private canonical draft with its source citation intact.")
+            } else if annotation.canStartWriting == true {
+                Button {
+                    Task {
+                        _ = await client.startWritingDraft(from: annotation)
+                    }
+                } label: {
+                    Label("Start private draft", systemImage: "square.and.pencil")
+                        .font(.caption.weight(.bold))
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(previewOnly || client.isMutating)
+                .accessibilityIdentifier("CaptureTodayAnnotationDraftStart_\(annotation.id)")
+                .accessibilityHint("Protects this exact writing decision on the iPhone, then creates a private Nest draft with a durable citation.")
             }
         }
         .padding(10)

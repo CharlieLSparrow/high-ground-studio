@@ -113,6 +113,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  annotation-writing)
+    TEST_CASE="testCanonicalSourceAnnotationStartsOnePrivateWritingDraft"
+    if [[ -z "$TEST_ANNOTATION_ID" || -z "$TEST_ANNOTATION_BODY" ]]; then
+      echo "Annotation-writing mode requires one exact accessible annotation ID and body." >&2
+      exit 2
+    fi
+    ;;
   source-inbox-filing)
     TEST_CASE="testPrivateSourceInboxFilesIntoCanonicalResearch"
     if [[ -z "$TEST_SOURCE_INBOX_CAPTURE_ID" || -z "$TEST_SOURCE_INBOX_TITLE" || -z "$TEST_SOURCE_INBOX_ANNOTATION_BODY" || -z "$TEST_SOURCE_INBOX_TAG_LABEL" || -z "$TEST_PROJECT_NAME" ]]; then
@@ -184,7 +191,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
     exit 2
     ;;
 esac

@@ -67,6 +67,7 @@
     "quipsly:capture:rehearsal-preflight:test": "node --test scripts/quipsly-hgo-rehearsal-preflight.test.mjs",
     "quipsly:capture:nest-evidence:test": "bash apps/mobile-capture/HighGroundCapture/scripts/test-nest-source-evidence-contract.sh",
     "quipsly:capture:document-note-edits:test": "bash scripts/test-capture-document-note-edits.sh",
+    "quipsly:capture:source-annotation-drafts:test": "bash scripts/test-capture-source-annotation-drafts.sh",
     "quipsly:local:up": "bash scripts/dev/quipsly-local-up.sh",
     "quipsly:local:down": "bash scripts/dev/quipsly-local-down.sh",
     "quipsly:local:doctor": "bash scripts/dev/quipsly-local-doctor.sh",

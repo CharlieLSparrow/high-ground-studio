@@ -970,9 +970,11 @@ struct MobileCaptureTodaySourceAnnotation: Codable, Identifiable, Hashable {
     let visibility: String
     let createdByMe: Bool
     let canChangeStatus: Bool?
+    let canStartWriting: Bool?
     let sourceTitle: String
     let projectName: String
     let projectSlug: String
+    let writingDraftHref: String?
     let tagLabels: [String]
     let updatedAt: String
 }
@@ -1017,6 +1019,10 @@ struct MobileCaptureTodayBoundaries: Codable, Hashable {
     let tagMutationExternalSideEffects: Bool?
     let annotationResolveReopenAvailable: Bool?
     let annotationReviewMutatesSource: Bool?
+    let annotationWritingDraftAvailable: Bool?
+    let writingDraftPrivate: Bool?
+    let writingDraftSourceMutated: Bool?
+    let writingDraftExternalSideEffects: Bool?
 }
 
 struct MobileCaptureTodayTag: Codable, Identifiable, Hashable {
@@ -1085,6 +1091,14 @@ struct MobileCaptureTodayMutationResponse: Codable {
     let nextOccurrenceTaskId: String?
     let materializedCount: Int?
     let reminder: MobileCaptureTodayReminderIntent?
+    let clientRequestId: String?
+    let documentId: String?
+    let documentStableId: String?
+    let blockId: String?
+    let blockStableId: String?
+    let href: String?
+    let reused: Bool?
+    let boundaries: MobileCaptureTodayBoundaries?
 }
 
 struct MobileCaptureWorkProject: Codable, Identifiable, Hashable {
@@ -2814,13 +2828,18 @@ final class CaptureTodayClient: ObservableObject {
     @Published private(set) var heldReminderDecisionCount = 0
     @Published private(set) var pendingWorkTagDecisionCount = 0
     @Published private(set) var heldWorkTagDecisionCount = 0
+    @Published private(set) var pendingWritingDraftDecisionCount = 0
+    @Published private(set) var heldWritingDraftDecisionCount = 0
     @Published var errorMessage: String?
 
     private let baseURL = normalizedNestBaseURL(Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String ?? "https://nest.quipsly.com")
     private let reminderDecisionOutbox = TaskReminderDecisionOutbox.shared
     private let workTagDecisionOutbox = WorkTagDecisionOutbox.shared
+    private let writingDraftOutbox = SourceAnnotationDraftOutbox.shared
     private var isFlushingReminderDecisions = false
     private var isFlushingWorkTagDecisions = false
+    private var isFlushingWritingDraftDecisions = false
+    private var latestWritingDraftURLs: [String: URL] = [:]
 
     private struct ProtectedCache: Codable {
         let schemaVersion: Int
@@ -2838,6 +2857,24 @@ final class CaptureTodayClient: ObservableObject {
 
     func pendingReminderDecision(for taskID: String) -> PendingTaskReminderDecision? {
         reminderDecisionOutbox.decision(forTaskID: taskID)
+    }
+
+    func pendingWritingDraftDecision(
+        for annotationID: String
+    ) -> PendingSourceAnnotationDraftDecision? {
+        writingDraftOutbox.decision(for: annotationID)
+    }
+
+    func writingDraftURL(for annotation: MobileCaptureTodaySourceAnnotation) -> URL? {
+        if let latest = latestWritingDraftURLs[annotation.id] {
+            return latest
+        }
+        guard let href = annotation.writingDraftHref else { return nil }
+        return safeWritingDraftURL(
+            href: href,
+            expectedProjectSlug: annotation.projectSlug,
+            expectedDocumentID: nil
+        )
     }
 
     func tags(for projectID: String) -> [MobileCaptureTodayTag] {
@@ -2893,6 +2930,7 @@ final class CaptureTodayClient: ObservableObject {
     func loadPreview() {
         publishReminderDecisionCounts()
         publishWorkTagDecisionCounts()
+        publishWritingDraftDecisionCounts()
         let now = Date()
         let start = ISO8601DateFormatter().string(from: now.addingTimeInterval(1_800))
         let end = ISO8601DateFormatter().string(from: now.addingTimeInterval(4_800))
@@ -2950,8 +2988,8 @@ final class CaptureTodayClient: ObservableObject {
             focusBlocks: [MobileCaptureTodayFocusBlock(id: "preview-block", targetType: "task", targetId: "preview-task", title: "Proof-listen the coaching recap", targetStatus: "OPEN", startsAt: start, endsAt: end, timezone: TimeZone.current.identifier, status: "PLANNED", completedAt: nil, updatedAt: ISO8601DateFormatter().string(from: now))],
             transcriptReviews: [MobileCaptureTodayTranscriptReview(id: "preview-transcript-proposal", roomId: "room-preview-coaching-ready", sessionTitle: "Demo coaching session", segmentId: "preview-segment", startSeconds: 3.66, endSeconds: 4.84, providerText: "Welcome, everybody.", providerSpeakerLabel: "Speaker", proposedText: nil, proposedSpeakerLabel: "Host", reason: "The isolated host track suggests this speaker label.", recordingAssetId: "preview-recording-asset", playbackAvailable: true, updatedAt: ISO8601DateFormatter().string(from: now))],
             sourceAnnotations: [
-                MobileCaptureTodaySourceAnnotation(id: "preview-annotation", kind: "question", body: "Does this distinction give us the episode's opening tension?", exactText: "Keep the source intact and let decisions live around it.", status: "active", visibility: "private", createdByMe: true, canChangeStatus: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", tagLabels: ["Episode seed"], updatedAt: ISO8601DateFormatter().string(from: now)),
-                MobileCaptureTodaySourceAnnotation(id: "preview-resolved-annotation", kind: "note", body: "The production boundary is settled, but the same annotation remains reopenable.", exactText: "let decisions live around it", status: "resolved", visibility: "project", createdByMe: true, canChangeStatus: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", tagLabels: ["Decision"], updatedAt: ISO8601DateFormatter().string(from: now.addingTimeInterval(-3_600))),
+                MobileCaptureTodaySourceAnnotation(id: "preview-annotation", kind: "question", body: "Does this distinction give us the episode's opening tension?", exactText: "Keep the source intact and let decisions live around it.", status: "active", visibility: "private", createdByMe: true, canChangeStatus: true, canStartWriting: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", writingDraftHref: nil, tagLabels: ["Episode seed"], updatedAt: ISO8601DateFormatter().string(from: now)),
+                MobileCaptureTodaySourceAnnotation(id: "preview-resolved-annotation", kind: "note", body: "The production boundary is settled, but the same annotation remains reopenable.", exactText: "let decisions live around it", status: "resolved", visibility: "project", createdByMe: true, canChangeStatus: true, canStartWriting: true, sourceTitle: "Preview production philosophy", projectName: "High Ground Odyssey", projectSlug: "preview-high-ground", writingDraftHref: "/create?project=preview-high-ground&document=preview-evidence-draft", tagLabels: ["Decision"], updatedAt: ISO8601DateFormatter().string(from: now.addingTimeInterval(-3_600))),
             ],
             weeklyPlan: MobileCaptureTodayWeeklyPlan(id: "preview-week", weekStartsAt: ISO8601DateFormatter().string(from: now), commitments: ["Proof-listen one real session", "Send one source-linked follow-up"], supportNeeded: "A second listener for the final recap", progressNotes: nil, clientReviewedAt: nil, updatedAt: ISO8601DateFormatter().string(from: now)),
             taskReminderIntents: [],
@@ -2961,7 +2999,7 @@ final class CaptureTodayClient: ObservableObject {
                 MobileCaptureTodayTag(id: "preview-coaching", projectId: "preview-high-ground", slug: "coaching", label: "Coaching", isActive: true),
                 MobileCaptureTodayTag(id: "preview-follow-through", projectId: "preview-high-ground", slug: "follow-through", label: "Follow-through", isActive: true),
             ],
-            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false)
+            boundaries: MobileCaptureTodayBoundaries(appOwnedRecords: true, transcriptCandidatesExcluded: true, externalCalendarMutated: false, providerMutated: false, recordingMutated: false, sourceMutated: false, immutableSourceAnchors: true, completingFocusBlockMutatesTarget: false, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, transcriptReviewRequiresReleasedPlayback: true, goalCheckInMutatesStatus: false, recurrenceAppOwned: true, recurrenceNotificationsScheduled: false, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false)
         )
         isUsingProtectedCache = false
         errorMessage = nil
@@ -2971,6 +3009,7 @@ final class CaptureTodayClient: ObservableObject {
         guard !isLoading, let url = URL(string: "\(baseURL)/api/mobile/capture/today") else { return }
         publishReminderDecisionCounts()
         publishWorkTagDecisionCounts()
+        publishWritingDraftDecisionCounts()
         if brief == nil {
             _ = restoreProtectedCache()
         }
@@ -3000,7 +3039,8 @@ final class CaptureTodayClient: ObservableObject {
             }
             let synchronizedReminders = await flushReminderDecisions()
             let synchronizedTags = await flushWorkTagDecisions()
-            if synchronizedReminders || synchronizedTags {
+            let synchronizedWritingDrafts = await flushWritingDraftDecisions()
+            if synchronizedReminders || synchronizedTags || synchronizedWritingDrafts {
                 Task { [weak self] in
                     await self?.load()
                 }
@@ -3008,7 +3048,7 @@ final class CaptureTodayClient: ObservableObject {
         } catch {
             if brief == nil { _ = restoreProtectedCache() }
             errorMessage = isUsingProtectedCache
-                ? "Nest is unavailable. Showing a protected Today snapshot; tag choices can be queued safely, while other online work decisions stay disabled."
+                ? "Nest is unavailable. Showing a protected Today snapshot; tags and source-to-writing handoffs can be queued safely, while other online work decisions stay disabled."
                 : error.localizedDescription
         }
     }
@@ -3384,6 +3424,73 @@ final class CaptureTodayClient: ObservableObject {
         await mutate(action: "source-annotation-status", id: annotation.id, nextStatus: status, expectedUpdatedAt: annotation.updatedAt)
     }
 
+    func startWritingDraft(
+        from annotation: MobileCaptureTodaySourceAnnotation
+    ) async -> URL? {
+        if let existing = writingDraftURL(for: annotation) {
+            return existing
+        }
+        guard annotation.canStartWriting == true,
+              brief?.boundaries?.annotationWritingDraftAvailable == true else {
+            errorMessage = "This source note is not inside a writable Research Nest."
+            return nil
+        }
+        do {
+            let decision = try writingDraftOutbox.enqueue(
+                annotationID: annotation.id,
+                projectSlug: annotation.projectSlug,
+                sourceTitle: annotation.sourceTitle,
+                expectedAnnotationUpdatedAt: annotation.updatedAt
+            )
+            publishWritingDraftDecisionCounts()
+            guard AuthManager.shared.networkActionsAllowed else {
+                errorMessage = "Private writing handoff protected on this iPhone and queued for Nest."
+                return nil
+            }
+            isMutating = true
+            defer { isMutating = false }
+            let url = await syncWritingDraftDecision(decision)
+            if url != nil {
+                errorMessage = nil
+                await load()
+            }
+            return url
+        } catch {
+            errorMessage = error.localizedDescription
+            return nil
+        }
+    }
+
+    func retryWritingDraft(
+        for annotationID: String
+    ) async -> URL? {
+        guard let decision = writingDraftOutbox.decision(for: annotationID),
+              decision.disposition == .held else { return nil }
+        writingDraftOutbox.releaseForRetry(decision.id)
+        publishWritingDraftDecisionCounts()
+        guard AuthManager.shared.networkActionsAllowed else {
+            errorMessage = "Writing handoff remains protected for retry when Nest reconnects."
+            return nil
+        }
+        isMutating = true
+        defer { isMutating = false }
+        let retried = writingDraftOutbox.decision(for: annotationID) ?? decision
+        let url = await syncWritingDraftDecision(retried)
+        if url != nil {
+            errorMessage = nil
+            await load()
+        }
+        return url
+    }
+
+    func discardHeldWritingDraft(for annotationID: String) async {
+        guard let decision = writingDraftOutbox.decision(for: annotationID),
+              decision.disposition == .held else { return }
+        writingDraftOutbox.markAcknowledged(decision.id)
+        publishWritingDraftDecisionCounts()
+        errorMessage = nil
+    }
+
     func recordGoalProgress(_ goal: MobileCaptureTodayGoal, progressPercent: Int, note: String) async -> Bool {
         await mutate(
             action: "goal-progress",
@@ -3430,6 +3537,137 @@ final class CaptureTodayClient: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    @discardableResult
+    private func flushWritingDraftDecisions() async -> Bool {
+        guard !isFlushingWritingDraftDecisions,
+              AuthManager.shared.networkActionsAllowed else {
+            publishWritingDraftDecisionCounts()
+            return false
+        }
+        isFlushingWritingDraftDecisions = true
+        defer {
+            isFlushingWritingDraftDecisions = false
+            publishWritingDraftDecisionCounts()
+        }
+        var synchronizedAny = false
+        for decision in writingDraftOutbox.entries where decision.disposition == .pending {
+            if await syncWritingDraftDecision(decision) != nil {
+                synchronizedAny = true
+            }
+        }
+        return synchronizedAny
+    }
+
+    private func syncWritingDraftDecision(
+        _ decision: PendingSourceAnnotationDraftDecision
+    ) async -> URL? {
+        guard let url = URL(string: "\(baseURL)/api/mobile/capture/today") else {
+            return nil
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "action": "source-annotation-draft",
+                "id": decision.annotationID,
+                "projectSlug": decision.projectSlug,
+                "clientRequestId": decision.clientRequestID,
+                "expectedUpdatedAt": decision.expectedAnnotationUpdatedAt,
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(
+                MobileCaptureTodayMutationResponse.self,
+                from: data
+            )
+            guard response.statusCode < 400, payload.ok else {
+                let message = payload.error ?? "Nest could not create this private writing draft."
+                if response.statusCode == 408 || response.statusCode == 429 || response.statusCode >= 500 {
+                    writingDraftOutbox.markRetryable(decision.id, message: message)
+                } else {
+                    writingDraftOutbox.markHeld(
+                        decision.id,
+                        code: payload.code,
+                        message: message
+                    )
+                }
+                errorMessage = message
+                publishWritingDraftDecisionCounts()
+                return nil
+            }
+            guard payload.action == "source-annotation-draft",
+                  payload.id == decision.annotationID,
+                  payload.clientRequestId == decision.clientRequestID,
+                  let documentID = payload.documentId,
+                  !documentID.isEmpty,
+                  payload.documentStableId?.isEmpty == false,
+                  payload.blockId?.isEmpty == false,
+                  payload.blockStableId?.isEmpty == false,
+                  payload.reused != nil,
+                  payload.boundaries?.writingDraftPrivate == true,
+                  payload.boundaries?.writingDraftSourceMutated == false,
+                  payload.boundaries?.writingDraftExternalSideEffects == false,
+                  let href = payload.href,
+                  let draftURL = safeWritingDraftURL(
+                    href: href,
+                    expectedProjectSlug: decision.projectSlug,
+                    expectedDocumentID: documentID
+                  ) else {
+                let message = "Nest returned a different draft identity or safety boundary. The protected phone decision is held for review."
+                writingDraftOutbox.markHeld(
+                    decision.id,
+                    code: "ACKNOWLEDGEMENT_MISMATCH",
+                    message: message
+                )
+                errorMessage = message
+                publishWritingDraftDecisionCounts()
+                return nil
+            }
+            latestWritingDraftURLs[decision.annotationID] = draftURL
+            writingDraftOutbox.markAcknowledged(decision.id)
+            publishWritingDraftDecisionCounts()
+            return draftURL
+        } catch {
+            writingDraftOutbox.markRetryable(decision.id, message: error.localizedDescription)
+            errorMessage = "Writing handoff remains protected for retry: \(error.localizedDescription)"
+            publishWritingDraftDecisionCounts()
+            return nil
+        }
+    }
+
+    private func safeWritingDraftURL(
+        href: String,
+        expectedProjectSlug: String,
+        expectedDocumentID: String?
+    ) -> URL? {
+        guard let components = URLComponents(string: href),
+              components.scheme == nil,
+              components.host == nil,
+              components.path == "/create",
+              let queryItems = components.queryItems,
+              queryItems.count == 2 else { return nil }
+        var query: [String: String] = [:]
+        for item in queryItems {
+            guard let value = item.value, query[item.name] == nil else { return nil }
+            query[item.name] = value
+        }
+        guard query.count == 2,
+              query["project"] == expectedProjectSlug,
+              let documentID = query["document"],
+              !documentID.isEmpty,
+              expectedDocumentID == nil || documentID == expectedDocumentID,
+              let nestURL = URL(string: baseURL),
+              let absolute = URL(string: href, relativeTo: nestURL)?.absoluteURL,
+              absolute.scheme == nestURL.scheme,
+              absolute.host == nestURL.host else { return nil }
+        return absolute
+    }
+
+    private func publishWritingDraftDecisionCounts() {
+        pendingWritingDraftDecisionCount = writingDraftOutbox.pendingCount
+        heldWritingDraftDecisionCount = writingDraftOutbox.heldCount
     }
 
     @discardableResult
