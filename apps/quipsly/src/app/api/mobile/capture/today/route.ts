@@ -5,6 +5,7 @@ import { readTranscriptDerivedGoalSource, readTranscriptDerivedTaskSource } from
 
 import { getPrismaClient } from "@/lib/prisma";
 import { updateCanonicalTaskStatusInTransaction } from "@/lib/server/canonical-task-status";
+import { editCanonicalTaskInTransaction } from "@/lib/server/canonical-task-edit";
 import { isUnreviewedTranscriptActionItem } from "@/lib/server/coaching-packets";
 import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
@@ -30,8 +31,12 @@ function text(value: unknown, max = 200) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+function normalizedText(value: unknown) {
+  return typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+}
+
 function cleanText(value: unknown, max: number) {
-  return typeof value === "string" ? value.replace(/\s+/g, " ").trim().slice(0, max) : "";
+  return normalizedText(value).slice(0, max);
 }
 
 function revision(value: unknown) {
@@ -380,6 +385,101 @@ export async function POST(request: Request) {
   const now = new Date();
   const receiptId = randomUUID();
   try {
+    if (action === "task-edit") {
+      const title = normalizedText(input.title);
+      const normalizedDetail = normalizedText(input.detail);
+      const detail = normalizedDetail || null;
+      const timezone = typeof input.timezone === "string" ? input.timezone.trim() : "";
+      const hasDueDecision = Object.prototype.hasOwnProperty.call(input, "dueLocal");
+      const dueDecisionHasValidType = input.dueLocal === null || typeof input.dueLocal === "string";
+      const dueLocal = typeof input.dueLocal === "string" ? input.dueLocal.trim() : "";
+      const parsedDue = dueLocal ? parseRecurrenceStart(dueLocal, timezone) : null;
+      const dueAt = parsedDue?.dueAt ?? null;
+      if (!title
+          || title.length > 500
+          || normalizedDetail.length > 5_000
+          || !hasDueDecision
+          || !dueDecisionHasValidType
+          || timezone.length > 100
+          || dueLocal.length > 32
+          || !isIanaTimeZone(timezone)
+          || (dueLocal && !parsedDue)) {
+        return NextResponse.json({
+          ok: false,
+          error: "Use a title under 500 characters, detail under 5,000 characters, and a valid local due date.",
+        }, { status: 400 });
+      }
+      if (dueAt && Math.abs(dueAt.getTime() - now.getTime()) > 10 * 365 * 86_400_000) {
+        return NextResponse.json({
+          ok: false,
+          error: "Choose a due date within ten years.",
+        }, { status: 400 });
+      }
+
+      const result = await prisma.$transaction(
+        (tx: any) => editCanonicalTaskInTransaction({
+          tx,
+          taskId: id,
+          actorUserId: userId,
+          expectedUpdatedAt: expected,
+          title,
+          detail,
+          dueAt,
+          dueIntent: parsedDue ? {
+            requestedLocalDateTime: parsedDue.requestedLocalDateTime,
+            resolvedLocalDateTime: parsedDue.resolvedLocalDateTime,
+            dstResolution: parsedDue.dstResolution,
+            timezone: parsedDue.timezone,
+          } : null,
+          surface: "ios-capture-today",
+          now,
+          receiptId,
+        }),
+        { isolationLevel: "Serializable" },
+      );
+      if (result.kind === "not-found") {
+        return NextResponse.json({
+          ok: false,
+          error: "Only the assigned task owner can edit this task.",
+        }, { status: 404 });
+      }
+      if (result.kind === "closed") {
+        return NextResponse.json({
+          ok: false,
+          error: "Reopen this task before editing its contents or due date.",
+        }, { status: 400 });
+      }
+      if (result.kind === "recurring") {
+        return NextResponse.json({
+          ok: false,
+          error: "Use the repeating-task editor so Quipsly can preserve the series history.",
+        }, { status: 400 });
+      }
+      if (result.kind === "immutable-history") {
+        return NextResponse.json({
+          ok: false,
+          error: "A superseded historical task cannot be rewritten. Use its replacement task instead.",
+        }, { status: 400 });
+      }
+      if (result.kind === "conflict") {
+        return NextResponse.json({
+          ok: false,
+          code: "CONFLICT",
+          error: "This task changed elsewhere. Refresh before editing again.",
+        }, { status: 409 });
+      }
+      return NextResponse.json({
+        ok: true,
+        action,
+        id,
+        title: result.record.title,
+        detail: result.record.detail,
+        dueAt: result.record.dueAt?.toISOString() ?? null,
+        updatedAt: result.record.updatedAt.toISOString(),
+        receiptId: result.receiptId,
+        boundaries: responseBoundaries(),
+      });
+    }
     if (action === "task-reminder") {
       const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
       const timezone = text(input.timezone, 100);
@@ -717,6 +817,16 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ ok: false, error: "This Today action is not supported." }, { status: 400 });
   } catch (error) {
+    const code = error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+    if (code === "P2034") {
+      return NextResponse.json({
+        ok: false,
+        code: "CONFLICT",
+        error: "This Today work changed elsewhere. Refresh before saving again.",
+      }, { status: 409 });
+    }
     console.error("[mobile-today] failed to save actor decision", error);
     return NextResponse.json({ ok: false, error: "Quipsly could not save this Today decision. No external action was taken." }, { status: 503 });
   }

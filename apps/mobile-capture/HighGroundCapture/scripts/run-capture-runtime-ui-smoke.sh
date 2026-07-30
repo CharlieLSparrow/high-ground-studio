@@ -13,6 +13,8 @@ TEST_PASSWORD="${QUIPSLY_CAPTURE_UI_TEST_PASSWORD:-}"
 TEST_SESSION_ID="${QUIPSLY_CAPTURE_UI_TEST_SESSION_ID:-}"
 TEST_SESSION_TITLE="${QUIPSLY_CAPTURE_UI_TEST_SESSION_TITLE:-}"
 TEST_TASK_ID="${QUIPSLY_CAPTURE_UI_TEST_TASK_ID:-}"
+TEST_TASK_EDIT_SOURCE_TITLE="${QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_SOURCE_TITLE:-}"
+TEST_TASK_EDIT_UPDATED_TITLE="${QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_UPDATED_TITLE:-}"
 TEST_RECURRENCE_SERIES_ID="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_SERIES_ID:-}"
 TEST_RECURRENCE_LOCAL_DATE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_LOCAL_DATE:-}"
 TEST_RECURRENCE_AUTHORING_TITLE="${QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_AUTHORING_TITLE:-}"
@@ -65,6 +67,13 @@ case "$TEST_MODE" in
     TEST_CASE="testOneTimeTaskReminderCancelsAndReactivatesThroughNest"
     if [[ -z "$TEST_TASK_ID" ]]; then
       echo "Reminder mode requires one exact non-recurring open task ID." >&2
+      exit 2
+    fi
+    ;;
+  task-edit)
+    TEST_CASE="testOneTimeTaskEditRoundTripsAndRestoresThroughNest"
+    if [[ -z "$TEST_TASK_ID" || -z "$TEST_TASK_EDIT_SOURCE_TITLE" || -z "$TEST_TASK_EDIT_UPDATED_TITLE" ]]; then
+      echo "Task-edit mode requires one exact non-recurring open task ID plus source and temporary titles." >&2
       exit 2
     fi
     ;;
@@ -132,7 +141,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, room-join, capture-recovery, reminder, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, room-join, capture-recovery, reminder, task-edit, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
     exit 2
     ;;
 esac
@@ -206,11 +215,11 @@ if [[ "$REQUIRES_PASSWORD_CREDENTIALS" == true ]]; then
     exit 3
   fi
   umask 077
-  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" <<'PY'
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_TASK_EDIT_SOURCE_TITLE" "$TEST_TASK_EDIT_UPDATED_TITLE" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" <<'PY'
 import json
 import sys
 
-path, base_url, email, password, session_id, session_title, task_id, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label = sys.argv[1:20]
+path, base_url, email, password, session_id, session_title, task_id, task_edit_source_title, task_edit_updated_title, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label = sys.argv[1:22]
 with open(path, "w", encoding="utf-8") as handle:
     json.dump(
         {
@@ -220,6 +229,8 @@ with open(path, "w", encoding="utf-8") as handle:
             "sessionID": session_id or None,
             "sessionTitle": session_title or None,
             "taskID": task_id or None,
+            "taskEditSourceTitle": task_edit_source_title or None,
+            "taskEditUpdatedTitle": task_edit_updated_title or None,
             "recurrenceSeriesID": recurrence_series_id or None,
             "recurrenceScheduledLocalDate": recurrence_local_date or None,
             "recurrenceAuthoringTitle": recurrence_authoring_title or None,

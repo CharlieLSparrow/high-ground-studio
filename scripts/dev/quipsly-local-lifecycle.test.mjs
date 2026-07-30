@@ -14,11 +14,18 @@ const downPath = fileURLToPath(
 const doctorPath = fileURLToPath(
   new URL("./quipsly-local-doctor.sh", import.meta.url),
 );
+const generatedMobileDogfoodPath = fileURLToPath(
+  new URL("./quipsly-generated-mobile-dogfood.sh", import.meta.url),
+);
 
 const stateHelper = readFileSync(stateHelperPath, "utf8");
 const up = readFileSync(upPath, "utf8");
 const down = readFileSync(downPath, "utf8");
 const doctor = readFileSync(doctorPath, "utf8");
+const generatedMobileDogfood = readFileSync(
+  generatedMobileDogfoodPath,
+  "utf8",
+);
 
 test("machine-wide services use machine-wide ownership state", () => {
   assert.match(stateHelper, /getconf DARWIN_USER_CACHE_DIR/);
@@ -120,4 +127,35 @@ test("replacement and shutdown remain confined to Quipsly app jobs", () => {
     down,
     /docker compose --project-name high-ground-studio stop postgres/,
   );
+});
+
+test("generated mobile dogfood is disposable, secret-safe, and current-source", () => {
+  assert.match(generatedMobileDogfood, /set -euo pipefail/);
+  assert.match(generatedMobileDogfood, /umask 077/);
+  assert.match(
+    generatedMobileDogfood,
+    /mktemp -d "\$\{TMPDIR:-\/private\/tmp\}\/quipsly-generated-mobile-dogfood\./,
+  );
+  assert.match(generatedMobileDogfood, /trap cleanup EXIT/);
+  assert.match(generatedMobileDogfood, /kill "\$\{nest_pid\}"/);
+  assert.match(generatedMobileDogfood, /kill "\$\{proxy_pid\}"/);
+  assert.match(
+    generatedMobileDogfood,
+    /"\$\{TMPDIR:-\/private\/tmp\}"\/quipsly-generated-mobile-dogfood\.\*/,
+  );
+  assert.match(generatedMobileDogfood, /gcloud secrets versions access latest/);
+  assert.match(generatedMobileDogfood, /node node_modules\/next\/dist\/bin\/next dev/);
+  assert.match(
+    generatedMobileDogfood,
+    /quipsly-mobile-capture-generated-auth-smoke\.mjs/,
+  );
+  assert.match(generatedMobileDogfood, /--workflow=task-edit/);
+  assert.match(generatedMobileDogfood, /--runtime-ui-mode=task-edit/);
+  assert.match(
+    generatedMobileDogfood,
+    /Secrets are held only in process environment or a mode-0700/,
+  );
+  assert.doesNotMatch(generatedMobileDogfood, /set -x/);
+  assert.doesNotMatch(generatedMobileDogfood, /echo .*database_url/);
+  assert.doesNotMatch(generatedMobileDogfood, /echo .*firebase_api_key/);
 });

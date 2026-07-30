@@ -323,6 +323,7 @@ requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testConsentedCapturePlayba
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence"', "runtime UI smoke can select the signed-in recurrence-authoring proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'TEST_CASE="testIPhoneRecurrenceOutboxSurvivesOfflineRelaunchAndConverges"', "runtime UI smoke can select the offline/relaunch recurrence-authoring proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'recurrence-edit)', "runtime UI smoke can select the immutable-history recurrence-edit proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'task-edit)', "runtime UI smoke can operate and restore a canonical one-time task edit");
 requireIncludes(runtimeUISmokeRunnerText, 'recurrence-missed)', "runtime UI smoke can select the explicit missed-occurrence proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'session-note-edit)', "runtime UI smoke can select the protected Session-note edit and relaunch proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
@@ -330,6 +331,7 @@ requireIncludes(runtimeUISmokeTestsText, "func testConsentedCapturePlaybackAndCr
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence", "runtime UI smoke authors recurrence through signed-in iPhone controls and reads it back from Today");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneRecurrenceOutboxSurvivesOfflineRelaunchAndConverges", "runtime UI smoke proves recurrence survives an unreachable Nest plus process relaunch before canonical convergence");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneVersionsThisAndFutureRecurrenceWithoutRewritingHistory", "runtime UI smoke versions this-and-future recurrence through the signed-in iPhone controls");
+requireIncludes(runtimeUISmokeTestsText, "func testOneTimeTaskEditRoundTripsAndRestoresThroughNest", "runtime UI smoke edits and restores one exact canonical task through signed-in iPhone controls");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneExplicitlySkipsMissedOccurrenceAndContinuesSeries", "runtime UI smoke explicitly preserves one missed occurrence and proves the canonical series continues");
 requireIncludes(runtimeUISmokeTestsText, "func testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox", "runtime UI smoke creates, edits, and relaunches one exact canonical Session note");
 requireIncludes(runtimeUISmokeTestsText, "func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials", "runtime UI smoke opens Apple's protected Google handoff without typing a credential");
@@ -794,6 +796,25 @@ for (const needle of [
   requireIncludes(capturePhoneShellText, needle, "immutable-history native recurrence editing UX");
 }
 for (const needle of [
+  'accessibilityIdentifier("CaptureWorkTaskEdit_\\(task.id)")',
+  'accessibilityIdentifier("CaptureTodayTaskEdit_\\(task.id)")',
+  'accessibilityIdentifier("CaptureTaskEditSave")',
+  'accessibilityIdentifier("CaptureTaskEditBoundary")',
+  "This edits only the open one-time task in Quipsly.",
+  'status: task.status == "OPEN" ? "DONE" : "OPEN"',
+]) {
+  requireIncludes(capturePhoneShellText, needle, "native one-time task editing and canonical completion UX");
+}
+for (const needle of [
+  "func editTask(",
+  '"action": "task-edit"',
+  'payload.action == "task-edit"',
+  "acknowledgedDueLocal == requestedDueLocal",
+  "Reconnect to Nest before editing this task. The protected snapshot was not modified.",
+]) {
+  requireIncludes(bridgeText, needle, "fail-closed native task-edit acknowledgement");
+}
+for (const needle of [
   "mobileCaptureQuickEntrySeriesId(input.clientRequestId)",
   "initialOccurrencePlan(input.recurrence)",
   'recurrenceRoomId: room.id',
@@ -818,6 +839,15 @@ for (const needle of [
   "mobile-task-series-revision-${clientRequestId}",
 ]) {
   requireIncludes(mobileTodayRouteText, needle, "authenticated mobile recurrence-edit route and deterministic revision identity");
+}
+for (const needle of [
+  'if (action === "task-edit")',
+  "editCanonicalTaskInTransaction",
+  'surface: "ios-capture-today"',
+  "hasDueDecision",
+  'code: "CONFLICT"',
+]) {
+  requireIncludes(mobileTodayRouteText, needle, "authenticated mobile one-time task editing route and concurrency boundary");
 }
 for (const needle of [
   "recurrence-revision-request:",

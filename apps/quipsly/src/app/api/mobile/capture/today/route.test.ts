@@ -112,6 +112,160 @@ describe("mobile Capture Today contract", () => {
     expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", sourceTitle: "Production philosophy", createdByMe: true, tagLabels: ["Episode seed"] }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], tagCatalog: [{ id: "tag-2", projectId: "project-1", label: "Episode", isActive: true }, { id: "tag-archived", projectId: "project-1", label: "Legacy review", isActive: false }, { id: "tag-1", projectId: "project-1", label: "Proof listen", isActive: true }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false } });
   });
 
+  it("edits an owner-scoped one-time task from the iPhone with a DST-safe receipt and no external effects", async () => {
+    signedIn();
+    const tx = {
+      actionItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "task-1",
+          roomId: "room-1",
+          status: "OPEN",
+          title: "Rough task wording",
+          detail: null,
+          dueAt: null,
+          sourceJson: {
+            source: "quipsly-work-manual-v1",
+            immutableSourceAnchor: { segmentId: "segment-1" },
+          },
+          updatedAt: expected,
+          recurrenceOccurrence: null,
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({
+          id: "task-1",
+          roomId: "room-1",
+          title: "Prepare the episode clip",
+          detail: "Confirm the shared playback cue.",
+          dueAt: new Date("2026-07-24T15:15:00.000Z"),
+          updatedAt: persisted,
+        }),
+      },
+    };
+    const transaction = jest.fn(async (callback: (client: typeof tx) => unknown) => callback(tx));
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "task-edit",
+        id: "task-1",
+        title: "Prepare the episode clip",
+        detail: "Confirm the shared playback cue.",
+        dueLocal: "2026-07-24T09:15",
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+    const payload = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(payload).toMatchObject({
+      ok: true,
+      action: "task-edit",
+      id: "task-1",
+      title: "Prepare the episode clip",
+      detail: "Confirm the shared playback cue.",
+      dueAt: "2026-07-24T15:15:00.000Z",
+      updatedAt: persisted.toISOString(),
+      receiptId: expect.any(String),
+      boundaries: {
+        externalCalendarMutated: false,
+        providerMutated: false,
+        sourceMutated: false,
+      },
+    });
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(tx.actionItem.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: "task-1",
+        assignedUserId: "user-1",
+        status: "OPEN",
+        updatedAt: expected,
+      },
+      data: {
+        title: "Prepare the episode clip",
+        detail: "Confirm the shared playback cue.",
+        dueAt: new Date("2026-07-24T15:15:00.000Z"),
+        sourceJson: expect.objectContaining({
+          immutableSourceAnchor: { segmentId: "segment-1" },
+          editReceipts: [expect.objectContaining({
+            kind: "quipsly-work-item-edit-v1",
+            surface: "ios-capture-today",
+            dueIntent: {
+              requestedLocalDateTime: "2026-07-24T09:15",
+              resolvedLocalDateTime: "2026-07-24T09:15",
+              dstResolution: "exact",
+              timezone: "America/Denver",
+            },
+            reminderChanged: false,
+            recurrenceChanged: false,
+            statusChanged: false,
+            tagsChanged: false,
+            goalLinksChanged: false,
+            providerCalendarEventChanged: false,
+            externalSideEffects: false,
+          })],
+        }),
+      },
+    });
+  });
+
+  it("requires an explicit due-date decision before an iPhone task edit", async () => {
+    signedIn();
+    const transaction = jest.fn();
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+    const response = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "task-edit",
+        id: "task-1",
+        title: "Prepare the episode clip",
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+    expect(response.status).toBe(400);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized task text and malformed due decisions instead of silently truncating them", async () => {
+    signedIn();
+    const transaction = jest.fn();
+    jest.mocked(getPrismaClient).mockReturnValue({ $transaction: transaction } as any);
+
+    const oversized = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "task-edit",
+        id: "task-1",
+        title: "x".repeat(501),
+        detail: "y".repeat(5_001),
+        dueLocal: null,
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+    const malformedDue = await POST(new Request("http://localhost/api/mobile/capture/today", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        action: "task-edit",
+        id: "task-1",
+        title: "Prepare the episode clip",
+        dueLocal: { clear: true },
+        timezone: "America/Denver",
+        expectedUpdatedAt: expected.toISOString(),
+      }),
+    }));
+
+    expect(oversized.status).toBe(400);
+    expect(malformedDue.status).toBe(400);
+    expect(transaction).not.toHaveBeenCalled();
+  });
+
   it("creates a DST-safe canonical reminder from the iPhone wall clock without claiming delivery", async () => {
     signedIn();
     const tx = {

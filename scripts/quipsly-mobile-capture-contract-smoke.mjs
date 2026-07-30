@@ -654,6 +654,7 @@ function checkTranscriptPacketContractSources() {
 function checkReviewDigestContractSources() {
   const digestRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/review-digest/route.ts");
   const workRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/work/route.ts");
+  const todayRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/today/route.ts");
   const bridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift");
   const componentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
   const iPhoneText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/IPhoneQuipslySessionView.swift");
@@ -791,6 +792,16 @@ function checkReviewDigestContractSources() {
       && capturePhoneShellText.includes("initialProject: captureDestination")
       && capturePhoneShellText.includes("CaptureQuickEntrySyncCard(model: model)")
       && capturePhoneShellText.includes("CaptureWorkTaskTagsEdit_")
+      && capturePhoneShellText.includes("CaptureWorkTaskEdit_")
+      && capturePhoneShellText.includes("CaptureTodayTaskEdit_")
+      && capturePhoneShellText.includes("CaptureTaskEditSave")
+      && capturePhoneShellText.includes("CaptureTaskEditBoundary")
+      && capturePhoneShellText.includes('status: task.status == "OPEN" ? "DONE" : "OPEN"')
+      && bridgeText.includes("func editTask(")
+      && bridgeText.includes('"action": "task-edit"')
+      && bridgeText.includes('payload.action == "task-edit"')
+      && todayRouteText.includes('if (action === "task-edit")')
+      && todayRouteText.includes('surface: "ios-capture-today"')
       && capturePhoneShellText.includes("CaptureWorkGoalTagsEdit_")
       && capturePhoneShellText.includes("CaptureWorkNoteTagsEdit_")
       && capturePhoneShellText.includes("expectedTagRevision: note.tagRevision")

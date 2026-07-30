@@ -81,12 +81,21 @@ Pinned local entry points:
 ```bash
 apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh verify
 apps/mobile-capture/HighGroundCapture/scripts/run-fastlane.sh ui_test
+pnpm quipsly:mobile:dogfood-task-edit
 scripts/release/quipsly-capture-release-from-commit.sh candidate --revision <commit-sha>
 scripts/release/quipsly-capture-screenshots-from-commit.sh --revision <commit-sha>
 scripts/deploy-testflight.sh
 ```
 
-The first four commands never upload. The candidate command resolves one
+The first five commands never upload. The task-edit dogfood command is a
+current-source acceptance lane, not a release lane: it starts local Nest,
+creates a disposable real Firebase identity and canonical database records,
+drives the compiled iPhone Simulator through task edit and restoration, proves
+database and Firebase cleanup, and owns its local server and Cloud SQL proxy.
+It requires authorized Google Cloud access and intentionally performs
+short-lived writes against the configured canonical database.
+
+The candidate command resolves one
 exact commit into a disposable detached worktree, runs the deterministic UI
 suite, then signs and verifies the archive and IPA. The lower-level `release`
 lane is archive-only diagnosis and is not a fully qualified candidate. The

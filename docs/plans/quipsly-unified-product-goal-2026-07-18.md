@@ -3710,3 +3710,41 @@ This is an active-goal checkpoint, not a completion claim.
   denial, and missing-state denial. A real read-only plan then resolved the
   Quipsly app, exact tester, `INVITED` state, `EMAIL` invite type, and both
   assigned groups without performing a second resend.
+
+### 2026-07-30 canonical iPhone task-edit checkpoint
+
+- Capture Work and Today now edit the same open one-time ActionItem rather than
+  creating a mobile copy. The sheet exposes title, detail, and an explicit
+  due-date decision with IANA timezone and DST-safe conversion. It shows
+  overdue/due context and routes recurring work to the existing
+  history-preserving occurrence editor instead of flattening a series.
+- The mutation rechecks owner access, open state, one-time recurrence,
+  reviewed-source status, supersession history, and optimistic revision inside
+  a serializable transaction. Its bounded receipt preserves prior recurrence,
+  reminder, tag, status, project, provider, and source-anchor truth. Editing
+  cannot complete work, alter a calendar, send a message, change media, or
+  mutate transcript evidence.
+- Native acknowledgement fails closed unless the server returns the exact
+  normalized title, detail, due wall clock, revision, and receipt. Protected
+  offline Today remains readable but cannot mutate. Work completion now sends
+  the canonical `DONE` status accepted by the server instead of the previously
+  mismatched `COMPLETED` value.
+- The operated dogfood lane starts current local Nest source, obtains public
+  Firebase client configuration, reaches the canonical Cloud SQL database
+  through an owned random-port proxy, and uses a disposable real Firebase
+  identity. The compiled iPhone Simulator created a Home Nest plus canonical
+  project, task, note, goal, and three reusable tags; opened the exact task,
+  changed its title, read it back, reopened it, and restored the original
+  title. The focused native journey passed.
+- The harness then deleted its project, Home Nest, access grant, membership,
+  database user, and Firebase user. Independent residue reads proved both
+  canonical database artifacts and the Firebase identity absent. Its local
+  Nest process, proxy, secret-only temporary directory, and credential packet
+  were also removed.
+- Verification includes 20 focused server tests, Quipsly TypeScript, a generic
+  simulator app build, UI-test build, 768 App Store static-contract checks,
+  7 local lifecycle checks, mobile contract checks, and the real generated
+  iPhone journey. This source is not in distributed Build 13 and has not been
+  operated on a physical iPhone. Exact committed-source qualification, a new
+  TestFlight build, Scott/Charlie physical operation, same-ID production Nest
+  readback, and the broader real episode/coaching workflows remain open.

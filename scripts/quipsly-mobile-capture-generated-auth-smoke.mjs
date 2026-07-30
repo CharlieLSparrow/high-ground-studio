@@ -281,10 +281,15 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
     deletedFirebaseUser: false,
     deletedFirebaseUserViaRest: false,
     firebaseUserMissing: false,
+    databaseArtifactsAbsentAfterCleanup: false,
+    firebaseUserAbsentAfterCleanup: false,
   };
 
   const prisma = createPrisma(env);
   const homeSlug = `home-${slugifyEmailForHomeNest(email)}`;
+  const deletedRoomIds = [];
+  const deletedProjectIds = [];
+  let generatedUserId = null;
 
   try {
     const user = await prisma.user.findFirst({
@@ -296,6 +301,7 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
       },
       select: { id: true },
     });
+    generatedUserId = user?.id || null;
 
     if (user?.id) {
       const callRooms = await prisma.callRoom.findMany({
@@ -310,6 +316,7 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
 
       for (const room of callRooms) {
         await prisma.callRoom.delete({ where: { id: room.id } });
+        deletedRoomIds.push(room.id);
         cleanup.deletedCallRooms += 1;
       }
     }
@@ -337,6 +344,7 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
     });
     for (const project of createdProjects) {
       await prisma.studioProject.delete({ where: { id: project.id } });
+      deletedProjectIds.push(project.id);
       cleanup.deletedCreatedProjects += 1;
     }
 
@@ -352,6 +360,7 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
 
     for (const project of homeProjects) {
       await prisma.studioProject.delete({ where: { id: project.id } });
+      deletedProjectIds.push(project.id);
       cleanup.deletedHomeProjects += 1;
     }
 
@@ -360,6 +369,49 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
     }
 
     cleanup.deletedUsers = (await prisma.user.deleteMany({ where: { primaryEmail: email } })).count;
+
+    const [
+      remainingInvites,
+      remainingGrants,
+      remainingRooms,
+      remainingProjects,
+      remainingMemberships,
+      remainingUsers,
+    ] = await prisma.$transaction([
+      prisma.studioNestInvite.count({ where: { email } }),
+      prisma.studioProjectAccessGrant.count({ where: { email } }),
+      prisma.callRoom.count({
+        where: deletedRoomIds.length ? { id: { in: deletedRoomIds } } : { id: "__none__" },
+      }),
+      prisma.studioProject.count({
+        where: deletedProjectIds.length ? { id: { in: deletedProjectIds } } : { id: "__none__" },
+      }),
+      prisma.membership.count({
+        where: generatedUserId ? { userId: generatedUserId } : { userId: "__none__" },
+      }),
+      prisma.user.count({
+        where: {
+          OR: [
+            { primaryEmail: email },
+            { aliases: { some: { email } } },
+          ],
+        },
+      }),
+    ]);
+    const residue = {
+      invites: remainingInvites,
+      grants: remainingGrants,
+      rooms: remainingRooms,
+      projects: remainingProjects,
+      memberships: remainingMemberships,
+      users: remainingUsers,
+    };
+    assert(
+      Object.values(residue).every((count) => count === 0),
+      "Generated mobile cleanup left canonical database artifacts behind.",
+      { residue },
+    );
+    cleanup.databaseArtifactsAbsentAfterCleanup = true;
   } finally {
     await prisma.$disconnect();
   }
@@ -380,6 +432,14 @@ async function cleanupGeneratedMobileArtifacts(env, baseUrl, email, firebaseDele
       cleanup.deletedFirebaseUserViaRest = await deleteFirebaseUserWithRest(env, baseUrl, firebaseDeleteIdToken);
       if (!cleanup.deletedFirebaseUserViaRest) throw error;
     }
+  }
+
+  try {
+    await getAuth().getUserByEmail(email);
+    throw new Error("Generated mobile cleanup left the Firebase user behind.");
+  } catch (error) {
+    if (error?.code !== "auth/user-not-found") throw error;
+    cleanup.firebaseUserAbsentAfterCleanup = true;
   }
 
   return cleanup;
@@ -704,6 +764,8 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix) {
   );
 
   return {
+    taskId: task.body.entry.id,
+    taskTitle: taskRequest.title,
     projectIdPresent: true,
     ownerRole: created.body.project.role,
     projectRetrySafe: replay.body.idempotentReplay === true,
@@ -903,7 +965,18 @@ function runMobileCaptureContractSmoke(env, baseUrl, idToken) {
   return payload;
 }
 
-function runCaptureRuntimeUISmoke(env, baseUrl, email, password) {
+function runCaptureRuntimeUISmoke(
+  env,
+  baseUrl,
+  email,
+  password,
+  {
+    mode = "surface",
+    taskId = "",
+    taskEditSourceTitle = "",
+    taskEditUpdatedTitle = "",
+  } = {},
+) {
   const scriptPath = path.join(
     repoRoot,
     "apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh",
@@ -919,6 +992,10 @@ function runCaptureRuntimeUISmoke(env, baseUrl, email, password) {
       QUIPSLY_CAPTURE_UI_TEST_BASE_URL: baseUrl,
       QUIPSLY_CAPTURE_UI_TEST_EMAIL: email,
       QUIPSLY_CAPTURE_UI_TEST_PASSWORD: password,
+      QUIPSLY_CAPTURE_UI_TEST_MODE: mode,
+      QUIPSLY_CAPTURE_UI_TEST_TASK_ID: taskId,
+      QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_SOURCE_TITLE: taskEditSourceTitle,
+      QUIPSLY_CAPTURE_UI_TEST_TASK_EDIT_UPDATED_TITLE: taskEditUpdatedTitle,
     },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -936,6 +1013,7 @@ function runCaptureRuntimeUISmoke(env, baseUrl, email, password) {
   return {
     requested: true,
     passed: true,
+    mode,
     runner: path.relative(repoRoot, scriptPath),
     note: "Runtime UI smoke used generated credentials through native Firebase login; password and tokens were not printed.",
   };
@@ -949,6 +1027,27 @@ async function main() {
   const shouldRunRuntimeUISmoke =
     args.get("run-runtime-ui-smoke") === "1" ||
     env.QUIPSLY_MOBILE_CAPTURE_RUN_RUNTIME_UI_SMOKE === "1";
+  const runtimeUISmokeMode = String(
+    args.get("runtime-ui-mode")
+      || env.QUIPSLY_MOBILE_CAPTURE_RUNTIME_UI_MODE
+      || "surface",
+  ).trim();
+  if (!["surface", "task-edit"].includes(runtimeUISmokeMode)) {
+    throw new Error(
+      `Generated mobile Capture runtime UI mode is not supported: ${runtimeUISmokeMode}`,
+    );
+  }
+  const workflow = String(
+    args.get("workflow")
+      || env.QUIPSLY_MOBILE_CAPTURE_WORKFLOW
+      || "full",
+  ).trim();
+  if (!["full", "task-edit"].includes(workflow)) {
+    throw new Error(`Generated mobile Capture workflow is not supported: ${workflow}`);
+  }
+  if (workflow === "task-edit" && runtimeUISmokeMode !== "task-edit") {
+    throw new Error("The task-edit workflow requires --runtime-ui-mode=task-edit.");
+  }
   const suffix = crypto.randomBytes(4).toString("hex");
   const email = `codex-mobile-capture-${suffix}@dev.test`;
   const password = `Qp-${crypto.randomBytes(18).toString("base64url")}!26`;
@@ -1003,12 +1102,25 @@ async function main() {
       firebaseBody.idToken,
       suffix,
     );
-    const generatedRoom = await createGeneratedCaptureSession(env, email, sessionBody);
-    roomJoinProof = await assertGeneratedRoomJoin(baseUrl, firebaseBody.idToken, generatedRoom);
-    sessionContextProof = await assertGeneratedSessionContext(baseUrl, firebaseBody.idToken, generatedRoom);
-    contractReport = runMobileCaptureContractSmoke(env, baseUrl, firebaseBody.idToken);
+    if (workflow === "full") {
+      const generatedRoom = await createGeneratedCaptureSession(env, email, sessionBody);
+      roomJoinProof = await assertGeneratedRoomJoin(baseUrl, firebaseBody.idToken, generatedRoom);
+      sessionContextProof = await assertGeneratedSessionContext(baseUrl, firebaseBody.idToken, generatedRoom);
+      contractReport = runMobileCaptureContractSmoke(env, baseUrl, firebaseBody.idToken);
+    }
     if (shouldRunRuntimeUISmoke) {
-      runtimeUISmoke = runCaptureRuntimeUISmoke(env, baseUrl, email, password);
+      runtimeUISmoke = runCaptureRuntimeUISmoke(
+        env,
+        baseUrl,
+        email,
+        password,
+        {
+          mode: runtimeUISmokeMode,
+          taskId: projectWorkProof.taskId,
+          taskEditSourceTitle: projectWorkProof.taskTitle,
+          taskEditUpdatedTitle: `${projectWorkProof.taskTitle} — edited on iPhone`,
+        },
+      );
     }
     smokeSucceeded = true;
   } finally {
@@ -1026,6 +1138,7 @@ async function main() {
       ok: smokeSucceeded,
       baseUrl,
       generatedEmail: redactGeneratedEmail(email),
+      workflow,
       session: sessionBody
         ? {
           homeNestSlugPresent: Boolean(sessionBody.homeNest?.slug),

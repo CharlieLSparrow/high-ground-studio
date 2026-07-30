@@ -295,6 +295,8 @@ private struct CaptureWorkView: View {
     @State private var showsCompletedTasks = false
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var showsNewProject = false
+    @State private var taskToEdit: MobileCaptureTodayTask?
+    @State private var recurrenceToEdit: MobileCaptureTodayTask?
     @State private var taskTagsToEdit: MobileCaptureTodayTask?
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var noteTagsToEdit: MobileCaptureWorkNote?
@@ -477,6 +479,20 @@ private struct CaptureWorkView: View {
         .sheet(isPresented: $showsNewProject) {
             NewCaptureProjectSheet(client: client)
                 .presentationDetents([.large])
+        }
+        .sheet(item: $taskToEdit) { task in
+            CaptureTaskEditSheet(
+                client: model.todayClient,
+                task: task,
+                onSaved: reloadSelectedWork
+            )
+        }
+        .sheet(item: $recurrenceToEdit) { task in
+            CaptureRecurrenceEditSheet(
+                client: model.todayClient,
+                task: task,
+                onSaved: reloadSelectedWork
+            )
         }
         .sheet(item: $taskTagsToEdit) { task in
             if let project = task.project {
@@ -817,7 +833,7 @@ private struct CaptureWorkView: View {
                 Task {
                     if await model.todayClient.setTaskStatus(
                         task,
-                        status: task.status == "OPEN" ? "COMPLETED" : "OPEN"
+                        status: task.status == "OPEN" ? "DONE" : "OPEN"
                     ) {
                         await client.load(projectID: selectedProject?.id)
                     }
@@ -838,8 +854,33 @@ private struct CaptureWorkView: View {
                 if let detail = task.detail, !detail.isEmpty {
                     Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(3)
                 }
+                if let dueLabel = captureTaskDueLabel(task) {
+                    Label(dueLabel, systemImage: task.isOverdue == true ? "exclamationmark.circle.fill" : "calendar")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(task.isOverdue == true ? Color.orange : Color.secondary)
+                        .accessibilityIdentifier("CaptureWorkTaskDue_\(task.id)")
+                }
                 workTagLabels(effectiveTagLabels(kind: .task, entityID: task.id, tagIDs: visibleTagIDs))
                 workTagDecisionStatus(kind: .task, entityID: task.id)
+                if task.status == "OPEN" {
+                    Button {
+                        if task.recurrence == nil {
+                            taskToEdit = task
+                        } else {
+                            recurrenceToEdit = task
+                        }
+                    } label: {
+                        Label(task.recurrence == nil ? "Edit task" : "Edit repeat", systemImage: "pencil")
+                            .frame(minHeight: 44)
+                    }
+                    .font(.caption.weight(.bold))
+                    .buttonStyle(.bordered)
+                    .disabled(decisionsDisabled)
+                    .accessibilityIdentifier("CaptureWorkTaskEdit_\(task.id)")
+                    .accessibilityHint(task.recurrence == nil
+                        ? "Edits the canonical title, detail, and due date without changing tags, reminders, status, or external systems."
+                        : "Opens the history-preserving repeating-task editor.")
+                }
                 if task.canEditTags == true {
                     Button {
                         taskTagsToEdit = task
@@ -1076,6 +1117,7 @@ struct TodayFollowThroughCard: View {
     @State private var missedOccurrenceToSkip: MobileCaptureTodayTask?
     @State private var reminderToEdit: MobileCaptureTodayTask?
     @State private var reminderToCancel: MobileCaptureTodayTask?
+    @State private var taskToEdit: MobileCaptureTodayTask?
     @State private var taskTagsToEdit: MobileCaptureTodayTask?
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
     @State private var showsAllCommittedTasks = false
@@ -1168,6 +1210,12 @@ struct TodayFollowThroughCard: View {
                                     if let sessionTitle = task.sessionTitle {
                                         Text(sessionTitle).font(.caption).foregroundStyle(.secondary)
                                     }
+                                    if let dueLabel = captureTaskDueLabel(task) {
+                                        Label(dueLabel, systemImage: task.isOverdue == true ? "exclamationmark.circle.fill" : "calendar")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(task.isOverdue == true ? Color.orange : Color.secondary)
+                                            .accessibilityIdentifier("CaptureTodayTaskDue_\(task.id)")
+                                    }
                                     if let project = task.project {
                                         TodayProjectTagLine(
                                             project: project,
@@ -1223,6 +1271,19 @@ struct TodayFollowThroughCard: View {
                                             .padding(.horizontal, 8)
                                             .padding(.vertical, 4)
                                             .background(Color.blue.opacity(0.08), in: Capsule())
+                                    }
+                                    if task.recurrence == nil, task.status == "OPEN" {
+                                        Button {
+                                            taskToEdit = task
+                                        } label: {
+                                            Label("Edit task", systemImage: "pencil")
+                                                .frame(minHeight: 44)
+                                        }
+                                        .font(.caption.weight(.bold))
+                                        .buttonStyle(.bordered)
+                                        .disabled(decisionsDisabled)
+                                        .accessibilityIdentifier("CaptureTodayTaskEdit_\(task.id)")
+                                        .accessibilityHint("Edits the canonical title, detail, and due date without changing tags, reminders, status, or external systems.")
                                     }
                                     if let reminder = task.reminder,
                                        reminder.status == "ACTIVE" {
@@ -1706,6 +1767,9 @@ struct TodayFollowThroughCard: View {
         .sheet(item: $recurrenceToEdit) { task in
             CaptureRecurrenceEditSheet(client: client, task: task)
         }
+        .sheet(item: $taskToEdit) { task in
+            CaptureTaskEditSheet(client: client, task: task)
+        }
         .sheet(item: $reminderToEdit) { task in
             TodayTaskReminderSheet(client: client, task: task)
         }
@@ -2141,9 +2205,158 @@ private struct TodayWorkTagSheet: View {
     }
 }
 
+private func captureTaskDate(_ value: String?) -> Date? {
+    guard let value else { return nil }
+    let fractional = ISO8601DateFormatter()
+    fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+}
+
+private func captureTaskDueLabel(_ task: MobileCaptureTodayTask) -> String? {
+    guard let date = captureTaskDate(task.dueAt) else { return nil }
+    let prefix = task.isOverdue == true ? "Overdue" : "Due"
+    return "\(prefix) \(date.formatted(date: .abbreviated, time: .shortened))"
+}
+
+private struct CaptureTaskEditSheet: View {
+    @ObservedObject var client: CaptureTodayClient
+    let task: MobileCaptureTodayTask
+    var onSaved: (() -> Void)? = nil
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var title: String
+    @State private var detail: String
+    @State private var includesDueDate: Bool
+    @State private var dueAt: Date
+    @State private var timezoneID: String
+
+    init(
+        client: CaptureTodayClient,
+        task: MobileCaptureTodayTask,
+        onSaved: (() -> Void)? = nil
+    ) {
+        self.client = client
+        self.task = task
+        self.onSaved = onSaved
+        let existingDue = captureTaskDate(task.dueAt)
+        let phoneTimezone = TimeZone.autoupdatingCurrent
+        let defaultDue = Calendar.current.date(
+            bySettingHour: 9,
+            minute: 0,
+            second: 0,
+            of: Date().addingTimeInterval(86_400)
+        ) ?? Date().addingTimeInterval(86_400)
+        _title = State(initialValue: task.title)
+        _detail = State(initialValue: task.detail ?? "")
+        _includesDueDate = State(initialValue: existingDue != nil)
+        _dueAt = State(initialValue: existingDue ?? defaultDue)
+        _timezoneID = State(initialValue: phoneTimezone.identifier)
+    }
+
+    private var chosenTimeZone: TimeZone? {
+        TimeZone(identifier: timezoneID.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var canSave: Bool {
+        task.recurrence == nil
+            && !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && chosenTimeZone != nil
+            && !client.isMutating
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Task") {
+                    TextField("Task title", text: $title, axis: .vertical)
+                        .lineLimit(1...4)
+                        .accessibilityIdentifier("CaptureTaskEditTitle")
+                    TextField("Optional detail", text: $detail, axis: .vertical)
+                        .lineLimit(2...8)
+                        .accessibilityIdentifier("CaptureTaskEditDetail")
+                }
+
+                Section("Due date") {
+                    Toggle("Set a due date", isOn: $includesDueDate)
+                        .accessibilityIdentifier("CaptureTaskEditDueToggle")
+                    if includesDueDate {
+                        DatePicker(
+                            "Due",
+                            selection: $dueAt,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .environment(\.timeZone, chosenTimeZone ?? .autoupdatingCurrent)
+                        .accessibilityIdentifier("CaptureTaskEditDueDate")
+                    }
+
+                    TextField("IANA timezone", text: $timezoneID)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("CaptureTaskEditTimezone")
+                    Button("Use this iPhone’s timezone") {
+                        timezoneID = TimeZone.autoupdatingCurrent.identifier
+                    }
+                    .accessibilityIdentifier("CaptureTaskEditUsePhoneTimezone")
+                    Label(
+                        chosenTimeZone == nil
+                            ? "Enter a valid IANA timezone, such as America/Denver."
+                            : "The due time will stay at this wall-clock time in \(chosenTimeZone?.identifier ?? timezoneID).",
+                        systemImage: chosenTimeZone == nil ? "exclamationmark.triangle" : "globe.americas"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(chosenTimeZone == nil ? Color.orange : Color.secondary)
+                }
+
+                Section("Boundary") {
+                    Text("This edits only the open one-time task in Quipsly. It does not change its tags, reminder, status, project, source anchor, goal links, provider calendar, messages, delivery, or publishing.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("CaptureTaskEditBoundary")
+                    Text("Task editing requires Nest. Protected offline snapshots remain unchanged until you reconnect.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if let error = client.errorMessage {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+            .navigationTitle("Edit task")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(client.isMutating ? "Saving…" : "Save") {
+                        Task {
+                            let saved = await client.editTask(
+                                task,
+                                title: title,
+                                detail: detail,
+                                dueAt: includesDueDate ? dueAt : nil,
+                                timezone: timezoneID.trimmingCharacters(in: .whitespacesAndNewlines)
+                            )
+                            if saved {
+                                dismiss()
+                                onSaved?()
+                            }
+                        }
+                    }
+                    .disabled(!canSave)
+                    .accessibilityIdentifier("CaptureTaskEditSave")
+                }
+            }
+        }
+        .accessibilityIdentifier("CaptureTaskEditSheet")
+    }
+}
+
 private struct CaptureRecurrenceEditSheet: View {
     @ObservedObject var client: CaptureTodayClient
     let task: MobileCaptureTodayTask
+    var onSaved: (() -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
 
     @State private var scope = "THIS_OCCURRENCE"
@@ -2156,9 +2369,14 @@ private struct CaptureRecurrenceEditSheet: View {
     @State private var firstDueAt: Date
     @State private var clientRequestID = UUID()
 
-    init(client: CaptureTodayClient, task: MobileCaptureTodayTask) {
+    init(
+        client: CaptureTodayClient,
+        task: MobileCaptureTodayTask,
+        onSaved: (() -> Void)? = nil
+    ) {
         self.client = client
         self.task = task
+        self.onSaved = onSaved
         let recurrence = task.recurrence
         _title = State(initialValue: task.title)
         _detail = State(initialValue: task.detail ?? "")
@@ -2300,7 +2518,10 @@ private struct CaptureRecurrenceEditSheet: View {
                                 recurrence: recurrenceDraft,
                                 clientRequestID: clientRequestID
                             )
-                            if saved { dismiss() }
+                            if saved {
+                                dismiss()
+                                onSaved?()
+                            }
                         }
                     }
                     .disabled(!canSave)

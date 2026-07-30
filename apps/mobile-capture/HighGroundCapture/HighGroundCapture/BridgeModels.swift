@@ -1074,6 +1074,9 @@ struct MobileCaptureTodayMutationResponse: Codable {
     let status: String?
     let updatedAt: String?
     let receiptId: String?
+    let title: String?
+    let detail: String?
+    let dueAt: String?
     let nextOccurrenceTaskId: String?
     let materializedCount: Int?
     let reminder: MobileCaptureTodayReminderIntent?
@@ -3081,6 +3084,87 @@ final class CaptureTodayClient: ObservableObject {
         )
     }
 
+    func editTask(
+        _ task: MobileCaptureTodayTask,
+        title: String,
+        detail: String,
+        dueAt: Date?,
+        timezone: String
+    ) async -> Bool {
+        guard task.recurrence == nil else {
+            errorMessage = "Use the repeating-task editor so Quipsly can preserve the series history."
+            return false
+        }
+        let normalizedTitle = Self.normalizedTaskText(title)
+        let normalizedDetail = Self.normalizedTaskText(detail)
+        guard !normalizedTitle.isEmpty,
+              normalizedTitle.count <= 500,
+              normalizedDetail.count <= 5_000,
+              TimeZone(identifier: timezone) != nil else {
+            errorMessage = "Add a task title under 500 characters, keep detail under 5,000 characters, and choose a valid timezone."
+            return false
+        }
+        guard !isUsingProtectedCache,
+              AuthManager.shared.networkActionsAllowed,
+              !isMutating,
+              let url = URL(string: "\(baseURL)/api/mobile/capture/today") else {
+            errorMessage = "Reconnect to Nest before editing this task. The protected snapshot was not modified."
+            return false
+        }
+
+        isMutating = true
+        defer { isMutating = false }
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            var requestBody: [String: Any] = [
+                "action": "task-edit",
+                "id": task.id,
+                "expectedUpdatedAt": task.updatedAt,
+                "title": normalizedTitle,
+                "detail": normalizedDetail,
+                "timezone": timezone,
+            ]
+            let requestedDueLocal = dueAt.map {
+                Self.localTaskDateString($0, timezone: timezone)
+            }
+            requestBody["dueLocal"] = requestedDueLocal ?? NSNull()
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureTodayMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureToday",
+                    code: response.statusCode,
+                    userInfo: [NSLocalizedDescriptionKey: payload.error ?? "This task could not be edited."]
+                )
+            }
+            let acknowledgedDueLocal = payload.dueAt
+                .flatMap(Self.isoDate)
+                .map { Self.localTaskDateString($0, timezone: timezone) }
+            guard payload.action == "task-edit",
+                  payload.id == task.id,
+                  payload.title == normalizedTitle,
+                  payload.detail == (normalizedDetail.isEmpty ? nil : normalizedDetail),
+                  acknowledgedDueLocal == requestedDueLocal,
+                  payload.updatedAt != nil,
+                  payload.receiptId != nil else {
+                throw NSError(
+                    domain: "CaptureToday",
+                    code: 409,
+                    userInfo: [NSLocalizedDescriptionKey: "Nest returned a different task edit acknowledgement. Refresh before trying again."]
+                )
+            }
+            await load()
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
     func setRecurrenceStatus(_ recurrence: MobileCaptureTodayRecurrence, status: String) async -> Bool {
         await mutate(action: "recurrence-status", id: recurrence.seriesId, nextStatus: status, expectedUpdatedAt: recurrence.updatedAt)
     }
@@ -3362,13 +3446,29 @@ final class CaptureTodayClient: ObservableObject {
         heldWorkTagDecisionCount = workTagDecisionOutbox.heldCount
     }
 
-    nonisolated private static func localReminderString(_ date: Date, timezone: String) -> String {
+    nonisolated private static func localTaskDateString(_ date: Date, timezone: String) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = TimeZone(identifier: timezone)
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm"
         return formatter.string(from: date)
+    }
+
+    nonisolated private static func normalizedTaskText(_ value: String) -> String {
+        value
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
+    nonisolated private static func isoDate(_ value: String) -> Date? {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return fractional.date(from: value) ?? ISO8601DateFormatter().date(from: value)
+    }
+
+    nonisolated private static func localReminderString(_ date: Date, timezone: String) -> String {
+        localTaskDateString(date, timezone: timezone)
     }
 
     static func clearProtectedCache() {

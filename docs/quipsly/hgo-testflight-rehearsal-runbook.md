@@ -141,6 +141,14 @@ is no longer an unuploaded candidate:
 - the exact public page is open and exposes the Quipsly title, beta heading,
   and `itms-beta` TestFlight handoff.
 
+The product worktree now contains a later, operated one-time task-edit slice,
+but that source is **not** part of Build 13. During this rehearsal, expect
+Build 13's project creation, task creation/completion, goals, tags, notes, and
+recurring-task controls; do not treat the absence of the newer title/detail/due
+editor as an installation failure. A later build must repeat exact-source
+qualification and TestFlight readback before that editor becomes a distributed
+claim.
+
 Fastlane's first upload handoff split the external-volume path at
 `My Passport` and exited before transferring any bytes. App Store Connect
 readback confirmed Build 13 was absent. The qualified IPA was then copied to a
