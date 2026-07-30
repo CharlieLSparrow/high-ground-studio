@@ -204,5 +204,110 @@ describe("EpisodeRoomClient shared writing", () => {
     )).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Play for everyone" })).toBeDisabled();
     expect(screen.getByRole("slider", { name: "Shared clip position" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Switch to rehearsal clock" })).toBeEnabled();
+  });
+
+  it("shows an exact current-pass sync as complete and starts a distinct next pass", () => {
+    jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    render(<EpisodeRoomClient initialPayload={{
+      ...initialPayload,
+      room: {
+        ...initialPayload.room,
+        revision: 5,
+        status: "paused",
+        selectedClipId: "watch-clip-1",
+        durationSeconds: 30,
+        clips: [{
+          assetId: "watch-clip-1",
+          sourceId: "watch-source-1",
+          title: "Reference clip",
+          kind: "video",
+          playbackUrl: "/api/ingest/media/watch-source-1",
+          durationSeconds: 30,
+          importRole: "reference-clip",
+          addedAt: "2026-07-27T19:00:00.000Z",
+          addedBy: "Episode Host",
+        }],
+        session: {
+          id: "rehearsal-pass-1",
+          startedAt: "2026-07-27T19:00:00.000Z",
+          startedBy: "Episode Host",
+        },
+        segments: [{
+          id: "watch-segment-1",
+          sessionId: "rehearsal-pass-1",
+          clipId: "watch-clip-1",
+          startedAt: "2026-07-27T19:00:05.000Z",
+          endedAt: "2026-07-27T19:00:10.000Z",
+          sourceStartSeconds: 2,
+          sourceEndSeconds: 7,
+          episodeStartSeconds: 5,
+          episodeEndSeconds: 10,
+          startReceiptId: "receipt-play-1",
+          endReceiptId: "receipt-pause-1",
+        }],
+        timelineSync: {
+          syncedAt: "2026-07-27T19:00:11.000Z",
+          syncedBy: "Episode Host",
+          sourceRevision: 5,
+          segmentCount: 1,
+          timelineClipCount: 1,
+          sourceSegmentIds: ["watch-segment-1"],
+        },
+      },
+      timelineClipCount: 1,
+    }} />);
+
+    expect(screen.getByRole("button", { name: "Timeline up to date" })).toBeDisabled();
+    expect(screen.getByText(/Timeline current · last synced by Episode Host/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start new rehearsal pass" })).toBeEnabled();
+  });
+
+  it("offers an explicit clear when a new empty pass replaces old Watch derivatives", () => {
+    render(<EpisodeRoomClient initialPayload={{
+      ...initialPayload,
+      room: {
+        ...initialPayload.room,
+        revision: 6,
+        session: {
+          id: "rehearsal-pass-2",
+          startedAt: "2026-07-27T19:10:00.000Z",
+          startedBy: "Episode Host",
+        },
+        segments: [{
+          id: "watch-segment-old",
+          sessionId: "rehearsal-pass-1",
+          clipId: "watch-clip-old",
+          startedAt: "2026-07-27T19:00:05.000Z",
+          endedAt: "2026-07-27T19:00:10.000Z",
+          sourceStartSeconds: 2,
+          sourceEndSeconds: 7,
+          episodeStartSeconds: 5,
+          episodeEndSeconds: 10,
+          startReceiptId: "receipt-play-old",
+          endReceiptId: "receipt-pause-old",
+        }],
+        timelineSync: {
+          syncedAt: "2026-07-27T19:00:11.000Z",
+          syncedBy: "Episode Host",
+          sourceRevision: 5,
+          segmentCount: 1,
+          timelineClipCount: 1,
+          sourceSegmentIds: ["watch-segment-old"],
+        },
+      },
+      timelineClipCount: 1,
+    }} />);
+
+    expect(screen.getByRole("button", { name: "Clear previous watch pass" })).toBeEnabled();
+    expect(screen.getByText(/Timeline needs review/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Start new rehearsal pass" })).toBeEnabled();
+  });
+
+  it("keeps the first rehearsal action unambiguous before any clock exists", () => {
+    render(<EpisodeRoomClient initialPayload={initialPayload} />);
+
+    expect(screen.getByRole("button", { name: "Start rehearsal clock" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Watch a clip to build timeline" })).toBeDisabled();
   });
 });

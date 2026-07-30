@@ -4438,3 +4438,38 @@ This is an active-goal checkpoint, not a completion claim.
   distributed while Scott and Charlie’s Build 14 rehearsal remains active.
   Physical multi-source capture, production handoff, exact group readback,
   human sync approval, and proof-listen/watch remain required.
+
+### 2026-07-30 exact current-pass Watch materialization checkpoint
+
+- Operated the real local `quipsly-local-dogfood / current-episode` Episode
+  Room with the imported `Ted Lasso Be Curious.mp4` source and its existing
+  receipt-backed watched span. The room read back revision 5, one current-pass
+  span, one Watch derivative, **Timeline current**, disabled **Timeline up to
+  date**, and **Start new rehearsal pass**. The shared editor independently
+  read back `1 synced` and honestly held the span outside its one-second
+  protected baseline for alignment review.
+- Closed a cross-surface ownership defect in timeline freshness. Nest and
+  Capture now derive materializable spans only from the active Episode Room
+  session, persist the exact sorted watch-segment IDs in `timelineSync`, count
+  only `quipsly-episode-room-watch.v1` derivatives, and treat unrelated room
+  revisions as irrelevant. The server verifies exact persisted derivative and
+  watch-segment identities before returning an idempotent no-write response.
+  A new empty pass exposes an explicit **Clear previous watch pass** action
+  while retaining historical receipts.
+- The room now distinguishes **Start rehearsal clock**, **Start new rehearsal
+  pass**, and **Switch to rehearsal clock**. A stale Capture clock retains its
+  recovery action even if its last shared state says playing; active playback
+  cannot be silently replaced by a new pass.
+- Real browser operation also exposed a server/client hydration defect in the
+  episode clock. The first render now seeds its clock from the canonical room
+  snapshot and begins using wall time only after hydration. A database outage
+  during recheck was traced to a stopped local Docker/PostgreSQL runtime;
+  after the existing container returned, the same persisted room loaded with
+  no Next.js issue overlay and without recreating its clip or receipts.
+- Focused Episode Room contract/component coverage passes 17/17, the native
+  Watch boundary passes 39/39, strict TypeScript 7 passes, and the complete
+  mobile preflight passes including the generic arm64/x86_64 Simulator build
+  with LiveKit linked. Build 14 remains the live TestFlight rehearsal artifact
+  and was not replaced, deployed, or submitted. Physical two-person operation,
+  production Watch materialization on recorded media, human sync approval,
+  and proof-listen/watch remain required.

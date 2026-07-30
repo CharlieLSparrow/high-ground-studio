@@ -26,6 +26,7 @@ struct MobileEpisodeWatchSession: Codable, Hashable {
 
 struct MobileEpisodeWatchSegment: Codable, Hashable, Identifiable {
     let id: String
+    let sessionId: String?
     let clipId: String
     let sourceStartSeconds: TimeInterval
     let sourceEndSeconds: TimeInterval
@@ -39,6 +40,7 @@ struct MobileEpisodeWatchTimelineSync: Codable, Hashable {
     let sourceRevision: Int
     let segmentCount: Int
     let timelineClipCount: Int
+    let sourceSegmentIds: [String]?
 }
 
 struct MobileEpisodeWatchRoom: Codable, Hashable {
@@ -57,13 +59,32 @@ struct MobileEpisodeWatchRoom: Codable, Hashable {
         clips.first { $0.assetId == selectedClipId }
     }
 
-    var watchedSegmentCount: Int { segments?.count ?? 0 }
+    var watchedSegments: [MobileEpisodeWatchSegment] {
+        guard let sessionID = session?.id else { return [] }
+        return segments?.filter { $0.sessionId == sessionID } ?? []
+    }
+
+    var watchedSegmentIDs: [String] {
+        watchedSegments.map(\.id).sorted()
+    }
+
+    var watchedSegmentCount: Int { watchedSegments.count }
+
+    var hasTimelineWork: Bool {
+        watchedSegmentCount > 0 || (timelineSync?.timelineClipCount ?? 0) > 0
+    }
 
     var timelineIsCurrent: Bool {
-        guard watchedSegmentCount > 0, let timelineSync else { return false }
-        return timelineSync.sourceRevision == revision
-            && timelineSync.segmentCount == watchedSegmentCount
-            && timelineSync.timelineClipCount == watchedSegmentCount
+        guard let timelineSync,
+              timelineSync.segmentCount == watchedSegmentCount,
+              timelineSync.timelineClipCount == watchedSegmentCount else {
+            return false
+        }
+        if let sourceSegmentIDs = timelineSync.sourceSegmentIds {
+            return sourceSegmentIDs.sorted() == watchedSegmentIDs
+        }
+        return watchedSegmentCount > 0
+            && timelineSync.sourceRevision == revision
     }
 
     func projectedPosition(at date: Date = Date()) -> TimeInterval {
@@ -512,7 +533,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             errorMessage = "Wait for shared Watch to reconnect before sending spans to the editor."
             return
         }
-        guard let room, room.watchedSegmentCount > 0 else {
+        guard let room, room.hasTimelineWork else {
             errorMessage = "Watch and pause part of a clip before sending spans to the editor."
             return
         }
@@ -521,8 +542,9 @@ final class MobileEpisodeWatchClient: ObservableObject {
             return
         }
         if room.timelineIsCurrent {
-            statusMessage =
-                "\(room.watchedSegmentCount) watched \(room.watchedSegmentCount == 1 ? "span is" : "spans are") already in the editor."
+            statusMessage = room.watchedSegmentCount > 0
+                ? "\(room.watchedSegmentCount) watched \(room.watchedSegmentCount == 1 ? "span is" : "spans are") already in the editor."
+                : "The previous Watch pass is already cleared from the editor."
             errorMessage = nil
             return
         }
@@ -1243,7 +1265,9 @@ final class MobileEpisodeWatchClient: ObservableObject {
             return "Shared Watch completed and preserved its timeline segment."
         case "SYNC_TIMELINE":
             let count = room?.watchedSegmentCount ?? 0
-            return "\(count) watched \(count == 1 ? "span" : "spans") sent to the non-destructive editor lane."
+            return count > 0
+                ? "\(count) watched \(count == 1 ? "span" : "spans") sent to the non-destructive editor lane."
+                : "The previous Watch pass was cleared from the editor. Its receipts remain in history."
         case "SELECT_CLIP":
             return selectedClip.map {
                 "\($0.title) selected for everyone at the beginning."
@@ -1456,7 +1480,7 @@ struct MobileEpisodeWatchCard: View {
                         "CaptureEpisodeWatchRemoveDownloadButton"
                     )
 
-                    if (client.room?.watchedSegmentCount ?? 0) > 0 {
+                    if client.room?.hasTimelineWork == true {
                         Button {
                             Task {
                                 await client.syncWatchedSpans(session: session)
@@ -1647,9 +1671,13 @@ struct MobileEpisodeWatchCard: View {
     private var timelineButtonLabel: String {
         let count = client.room?.watchedSegmentCount ?? 0
         if client.room?.timelineIsCurrent == true {
-            return "\(count) watched \(count == 1 ? "span" : "spans") in editor"
+            return count > 0
+                ? "\(count) watched \(count == 1 ? "span" : "spans") in editor"
+                : "Previous watch pass cleared"
         }
-        return "Send \(count) watched \(count == 1 ? "span" : "spans") to editor"
+        return count > 0
+            ? "Send \(count) watched \(count == 1 ? "span" : "spans") to editor"
+            : "Clear previous watch pass"
     }
 
     private var editorURL: URL? {

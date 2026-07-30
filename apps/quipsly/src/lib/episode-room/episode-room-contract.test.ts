@@ -3,6 +3,9 @@ import {
   EpisodeRoomRevisionConflict,
   applyEpisodeRoomCommand,
   createEmptyEpisodeRoomState,
+  episodeRoomCurrentPassSegmentIds,
+  episodeRoomTimelineIsCurrent,
+  episodeRoomTimelineMaterializationIsCurrent,
   episodeRoomTimelineClips,
   projectedEpisodeRoomPosition,
   type EpisodeRoomActor,
@@ -43,6 +46,33 @@ function apply(
     sessionId: `session-${suffix}`,
     segmentId: `segment-${suffix}`,
   });
+}
+
+function completedWatchState() {
+  let state = createEmptyEpisodeRoomState("2026-07-26T12:00:00.000Z");
+  state = apply(state, {
+    type: "ADD_CLIP",
+    clip,
+    clientRequestId: "add-completed-watch",
+    expectedRevision: 0,
+  }, "2026-07-26T12:00:01.000Z", "add-completed-watch");
+  state = apply(state, {
+    type: "START_SESSION",
+    clientRequestId: "start-completed-watch",
+    expectedRevision: 1,
+  }, "2026-07-26T12:01:00.000Z", "completed-watch");
+  state = apply(state, {
+    type: "PLAY",
+    positionSeconds: 10,
+    clientRequestId: "play-completed-watch",
+    expectedRevision: 2,
+  }, "2026-07-26T12:01:05.000Z", "completed-watch");
+  return apply(state, {
+    type: "PAUSE",
+    positionSeconds: 15,
+    clientRequestId: "pause-completed-watch",
+    expectedRevision: 3,
+  }, "2026-07-26T12:01:10.000Z", "completed-watch");
 }
 
 describe("Episode Room contract", () => {
@@ -305,6 +335,119 @@ describe("Episode Room contract", () => {
       effectiveAt: "2026-07-26T12:00:00.000Z",
       durationSeconds: 12,
     }, "2026-07-26T12:00:10.000Z")).toBe(12);
+  });
+
+  test("tracks timeline freshness by exact current-pass segment identity", () => {
+    const watched = completedWatchState();
+    const sourceSegmentIds = episodeRoomCurrentPassSegmentIds(watched);
+    const synced = {
+      ...watched,
+      timelineSync: {
+        syncedAt: "2026-07-26T12:01:11.000Z",
+        syncedBy: "Charlie",
+        sourceRevision: watched.revision,
+        segmentCount: 1,
+        timelineClipCount: 1,
+        sourceSegmentIds,
+      },
+    };
+
+    expect(sourceSegmentIds).toEqual(["segment-completed-watch"]);
+    expect(episodeRoomTimelineIsCurrent(synced)).toBe(true);
+    expect(episodeRoomTimelineIsCurrent({
+      ...synced,
+      revision: synced.revision + 1,
+    })).toBe(true);
+    expect(episodeRoomTimelineIsCurrent({
+      ...synced,
+      timelineSync: {
+        ...synced.timelineSync,
+        sourceSegmentIds: ["a-different-segment"],
+      },
+    })).toBe(false);
+    expect(episodeRoomTimelineIsCurrent({
+      ...synced,
+      session: {
+        id: "new-rehearsal-pass",
+        startedAt: "2026-07-26T12:02:00.000Z",
+        startedBy: "Charlie",
+      },
+    })).toBe(false);
+  });
+
+  test("keeps legacy revision freshness compatible while exact IDs roll forward", () => {
+    const watched = completedWatchState();
+    const legacy = {
+      ...watched,
+      timelineSync: {
+        syncedAt: "2026-07-26T12:01:11.000Z",
+        syncedBy: "Charlie",
+        sourceRevision: watched.revision,
+        segmentCount: 1,
+        timelineClipCount: 1,
+      },
+    };
+
+    expect(episodeRoomTimelineIsCurrent(legacy)).toBe(true);
+    expect(episodeRoomTimelineIsCurrent({
+      ...legacy,
+      revision: legacy.revision + 1,
+    })).toBe(false);
+    expect(episodeRoomTimelineIsCurrent({
+      ...legacy,
+      session: {
+        id: "empty-pass",
+        startedAt: "2026-07-26T12:02:00.000Z",
+        startedBy: "Charlie",
+      },
+      timelineSync: {
+        ...legacy.timelineSync,
+        sourceRevision: legacy.revision + 1,
+        segmentCount: 0,
+        timelineClipCount: 0,
+        sourceSegmentIds: [],
+      },
+    })).toBe(true);
+  });
+
+  test("requires exact persisted Watch derivatives before treating sync as idempotent", () => {
+    const watched = completedWatchState();
+    const timeline = episodeRoomTimelineClips(watched);
+    const synced = {
+      ...watched,
+      timelineSync: {
+        syncedAt: "2026-07-26T12:01:11.000Z",
+        syncedBy: "Charlie",
+        sourceRevision: watched.revision,
+        segmentCount: timeline.length,
+        timelineClipCount: timeline.length,
+        sourceSegmentIds: episodeRoomCurrentPassSegmentIds(watched),
+      },
+    };
+
+    expect(episodeRoomTimelineMaterializationIsCurrent(synced, [
+      { id: "unrelated-editor-clip", generatedFrom: "manual" },
+      ...timeline,
+    ])).toBe(true);
+    expect(episodeRoomTimelineMaterializationIsCurrent(synced, [{
+      ...timeline[0],
+      id: "wrong-derivative-id",
+    }])).toBe(false);
+    expect(episodeRoomTimelineMaterializationIsCurrent(synced, [{
+      ...timeline[0],
+      recordingSync: {
+        ...timeline[0]?.recordingSync,
+        watchSegmentId: "wrong-watch-segment",
+      },
+    }])).toBe(false);
+    expect(episodeRoomTimelineMaterializationIsCurrent(synced, [
+      ...timeline,
+      {
+        id: "malformed-extra-watch-row",
+        generatedFrom: EPISODE_ROOM_TIMELINE_SOURCE,
+      },
+    ])).toBe(false);
+    expect(episodeRoomTimelineMaterializationIsCurrent(synced, [])).toBe(false);
   });
 
   test("requires playback to be paused before timeline materialization", () => {

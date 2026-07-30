@@ -82,6 +82,7 @@ export type EpisodeRoomState = {
     sourceRevision: number;
     segmentCount: number;
     timelineClipCount: number;
+    sourceSegmentIds?: string[];
   };
 };
 
@@ -166,6 +167,11 @@ function optionalFiniteNumber(value: unknown) {
 
 function text(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function uniqueSortedText(value: unknown) {
+  if (!Array.isArray(value)) return undefined;
+  return [...new Set(value.map(text).filter(Boolean))].sort();
 }
 
 function nonNegative(value: unknown, fallback = 0) {
@@ -308,6 +314,7 @@ export function normalizeEpisodeRoomState(value: unknown, now = new Date().toISO
     : "idle";
   const activeSegment = status === "playing" ? normalizeActiveSegment(row.activeSegment, session) : undefined;
   const timelineSync = record(row.timelineSync);
+  const timelineSourceSegmentIds = uniqueSortedText(timelineSync.sourceSegmentIds);
   const normalizedTimelineSync = text(timelineSync.syncedAt)
     ? {
         syncedAt: isoOr(timelineSync.syncedAt, now),
@@ -315,6 +322,9 @@ export function normalizeEpisodeRoomState(value: unknown, now = new Date().toISO
         sourceRevision: Math.max(0, Math.trunc(finiteNumber(timelineSync.sourceRevision))),
         segmentCount: Math.max(0, Math.trunc(finiteNumber(timelineSync.segmentCount))),
         timelineClipCount: Math.max(0, Math.trunc(finiteNumber(timelineSync.timelineClipCount))),
+        ...(timelineSourceSegmentIds === undefined
+          ? {}
+          : { sourceSegmentIds: timelineSourceSegmentIds }),
       }
     : undefined;
 
@@ -669,4 +679,63 @@ export function episodeRoomTimelineClips(state: EpisodeRoomState): EpisodeRoomTi
         },
       }];
     });
+}
+
+export function episodeRoomCurrentPassSegmentIds(state: EpisodeRoomState) {
+  return episodeRoomTimelineClips(state)
+    .map((clip) => clip.recordingSync.watchSegmentId)
+    .sort();
+}
+
+export function episodeRoomTimelineIsCurrent(state: EpisodeRoomState) {
+  const sync = state.timelineSync;
+  if (!sync) return false;
+  const expectedSegmentIds = episodeRoomCurrentPassSegmentIds(state);
+  if (
+    sync.segmentCount !== expectedSegmentIds.length
+    || sync.timelineClipCount !== expectedSegmentIds.length
+  ) {
+    return false;
+  }
+  if (sync.sourceSegmentIds) {
+    return sync.sourceSegmentIds.length === expectedSegmentIds.length
+      && sync.sourceSegmentIds.every(
+        (segmentId, index) => segmentId === expectedSegmentIds[index],
+      );
+  }
+  return expectedSegmentIds.length > 0 && sync.sourceRevision === state.revision;
+}
+
+export function episodeRoomTimelineMaterializationIsCurrent(
+  state: EpisodeRoomState,
+  persistedTimelineRows: unknown,
+) {
+  if (!episodeRoomTimelineIsCurrent(state)) return false;
+  const rows = Array.isArray(persistedTimelineRows)
+    ? persistedTimelineRows
+    : [];
+  const watchRows = rows.filter(
+    (value) => record(value).generatedFrom === EPISODE_ROOM_TIMELINE_SOURCE,
+  );
+  const materialized = watchRows
+    .flatMap((value) => {
+      const row = record(value);
+      const id = text(row.id);
+      const watchSegmentId = text(record(row.recordingSync).watchSegmentId);
+      return id && watchSegmentId ? [{ id, watchSegmentId }] : [];
+    })
+    .sort((left, right) => left.watchSegmentId.localeCompare(right.watchSegmentId));
+  const expected = episodeRoomTimelineClips(state)
+    .map((clip) => ({
+      id: clip.id,
+      watchSegmentId: clip.recordingSync.watchSegmentId,
+    }))
+    .sort((left, right) => left.watchSegmentId.localeCompare(right.watchSegmentId));
+  return watchRows.length === expected.length
+    && materialized.length === expected.length
+    && materialized.every(
+      (clip, index) =>
+        clip.id === expected[index]?.id
+        && clip.watchSegmentId === expected[index]?.watchSegmentId,
+    );
 }

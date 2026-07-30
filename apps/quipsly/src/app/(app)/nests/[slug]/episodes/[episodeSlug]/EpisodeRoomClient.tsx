@@ -34,6 +34,8 @@ import {
 
 import LocalDateTime from "@/components/LocalDateTime";
 import {
+  episodeRoomTimelineClips,
+  episodeRoomTimelineIsCurrent,
   projectedEpisodeRoomPosition,
   type EpisodeRoomClip,
   type EpisodeRoomState,
@@ -157,6 +159,9 @@ export default function EpisodeRoomClient({
   const [sourceTitle, setSourceTitle] = useState("");
   const [episodeTextDraft, setEpisodeTextDraft] = useState("");
   const [displayPosition, setDisplayPosition] = useState(initialPayload.room.positionSeconds);
+  const [clockNowMilliseconds, setClockNowMilliseconds] = useState(
+    () => Date.parse(initialPayload.room.effectiveAt),
+  );
   const [localDuration, setLocalDuration] = useState(initialPayload.room.durationSeconds ?? 0);
   const [localPlaybackBlocked, setLocalPlaybackBlocked] = useState(false);
   const [dragPosition, setDragPosition] = useState<number | null>(null);
@@ -306,6 +311,7 @@ export default function EpisodeRoomClient({
   useEffect(() => {
     const interval = window.setInterval(() => {
       const media = mediaRef.current;
+      setClockNowMilliseconds(Date.now());
       setDisplayPosition(media && !media.paused
         ? media.currentTime
         : sharedClockIsLive
@@ -469,7 +475,7 @@ export default function EpisodeRoomClient({
   const episodeClockSeconds = sharedClockIsLive && room.session
     ? Math.max(
       0,
-      (Date.now() - Date.parse(
+      (clockNowMilliseconds - Date.parse(
         room.session.recordingStartedAt || room.session.startedAt,
       )) / 1_000,
     )
@@ -477,6 +483,22 @@ export default function EpisodeRoomClient({
   const currentPassSegmentCount = room.session
     ? room.segments.filter((segment) => segment.sessionId === room.session?.id).length
     : 0;
+  const currentPassTimelineClipCount = episodeRoomTimelineClips(room).length;
+  const timelineUpToDate = episodeRoomTimelineIsCurrent(room)
+    && timelineClipCount === currentPassTimelineClipCount;
+  const hasTimelineWork = currentPassTimelineClipCount > 0 || timelineClipCount > 0;
+  const timelineActionLabel = timelineUpToDate
+    ? "Timeline up to date"
+    : currentPassTimelineClipCount > 0
+      ? `Sync ${currentPassTimelineClipCount} watched ${currentPassTimelineClipCount === 1 ? "span" : "spans"}`
+      : timelineClipCount > 0
+        ? "Clear previous watch pass"
+        : "Watch a clip to build timeline";
+  const rehearsalActionLabel = !room.session
+    ? "Start rehearsal clock"
+    : room.session.recordingRoomId
+      ? "Switch to rehearsal clock"
+      : "Start new rehearsal pass";
 
   return (
     <main className="min-h-screen bg-[#07110d] px-3 py-4 text-[#f4eedf] sm:px-5 md:px-7 md:py-7">
@@ -620,11 +642,15 @@ export default function EpisodeRoomClient({
               </div>
               <button
                 type="button"
-                disabled={!canEdit || status === "saving"}
+                disabled={
+                  !canEdit
+                  || status === "saving"
+                  || (room.status === "playing" && sharedClockIsLive)
+                }
                 onClick={() => void sendCommand({ type: "START_SESSION" }, { success: "A rehearsal clock is running. It is not recording evidence." })}
                 className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#d8ad56]/60 bg-[#d8ad56]/10 px-4 text-xs font-black text-[#f6d68f] hover:bg-[#d8ad56]/20 disabled:opacity-40"
               >
-                <Clock3 size={16} /> Start rehearsal clock
+                <Clock3 size={16} /> {rehearsalActionLabel}
               </button>
             </header>
 
@@ -980,15 +1006,26 @@ export default function EpisodeRoomClient({
                   <p className="mt-1 text-xs font-semibold leading-5 text-[#d7c69d]">
                     {currentPassSegmentCount} receipt-backed {currentPassSegmentCount === 1 ? "span" : "spans"} in this pass · {room.segments.length} total in history · {timelineClipCount} episode timeline {timelineClipCount === 1 ? "derivative" : "derivatives"} stored.
                   </p>
-                  {room.timelineSync ? <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#d8ad56]">Last synced by {room.timelineSync.syncedBy} · {room.timelineSync.timelineClipCount} watch {room.timelineSync.timelineClipCount === 1 ? "clip" : "clips"}</p> : null}
+                  {room.timelineSync ? (
+                    <p className={`mt-1 text-[10px] font-bold uppercase tracking-wide ${timelineUpToDate ? "text-emerald-200" : "text-[#d8ad56]"}`}>
+                      {timelineUpToDate ? "Timeline current" : "Timeline needs review"} · last synced by {room.timelineSync.syncedBy} · {room.timelineSync.timelineClipCount} watch {room.timelineSync.timelineClipCount === 1 ? "clip" : "clips"}
+                    </p>
+                  ) : null}
                 </div>
                 <button
                   type="button"
-                  disabled={!canEdit || room.status === "playing" || room.segments.length === 0}
-                  onClick={() => void sendCommand({ type: "SYNC_TIMELINE" }, { success: "Watched spans are aligned on the episode timeline." })}
+                  disabled={!canEdit || room.status === "playing" || !hasTimelineWork || timelineUpToDate}
+                  onClick={() => void sendCommand(
+                    { type: "SYNC_TIMELINE" },
+                    {
+                      success: currentPassTimelineClipCount > 0
+                        ? "Watched spans are aligned on the episode timeline."
+                        : "The previous Watch pass was removed from the episode timeline. Its receipts remain in history.",
+                    },
+                  )}
                   className="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#d8ad56] px-4 text-xs font-black text-[#172018] disabled:cursor-not-allowed disabled:opacity-40"
                 >
-                  <CheckCircle2 size={16} /> Sync watched spans
+                  <CheckCircle2 size={16} /> {timelineActionLabel}
                 </button>
               </div>
             </div>

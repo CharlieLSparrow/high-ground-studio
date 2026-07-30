@@ -166,10 +166,13 @@ The native transport follows these production boundaries:
   before playback can continue.
 - Once one or more receipt-backed spans have closed, the paused iPhone surface
   exposes **Send watched spans to editor**. It invokes the same explicit,
-  revisioned `SYNC_TIMELINE` command as Nest, shows when the current revision
-  is already materialized, and cannot run while playback is active. The action
-  replaces only prior `quipsly-episode-room-watch.v1` derivatives and never
-  modifies source media or unrelated timeline clips.
+  revisioned `SYNC_TIMELINE` command as Nest, names the exact current-pass
+  watch-segment IDs, and cannot run while playback is active. Unrelated room
+  commands no longer make an exact sync appear stale. A newly started empty
+  pass can explicitly clear the previous pass's derivatives while retaining
+  every receipt in history. The action replaces only prior
+  `quipsly-episode-room-watch.v1` derivatives and never modifies source media
+  or unrelated timeline clips.
 - A successful current sync exposes **Open assembled episode in Nest**, linked
   to the exact project and episode editor rather than a generic dashboard.
 
@@ -257,7 +260,13 @@ only prior `quipsly-episode-room-watch.v1` derivatives, and leaves every other
 timeline clip untouched. Historical passes remain preserved in the Episode
 Room receipt history instead of being stacked into the current editorial
 timeline. Video derivatives use track `V9`; audio derivatives use `A9`. The
-operation is deterministic and safe to repeat.
+sync receipt stores the sorted source watch-segment IDs. Freshness compares
+those identities and the Watch-only derivative count, not the room revision or
+the total episode timeline row count. Before accepting a redundant sync, the
+store verifies the exact generated derivative IDs and receipt-bound segment
+IDs already persisted; an exact repeat returns without writing a revision or
+receipt. Legacy revision-only sync receipts remain readable until a current
+client rematerializes them.
 
 The shared episode editor reads those derivatives as a dedicated **Shared
 Watch derivatives** lane below the protected decision timeline. Every rendered

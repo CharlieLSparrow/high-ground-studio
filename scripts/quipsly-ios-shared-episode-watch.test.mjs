@@ -197,16 +197,27 @@ check(
   watch.includes("CaptureEpisodeWatchSyncTimelineButton")
     && watch.includes("func syncWatchedSpans(")
     && watch.includes('sendCommand(type: "SYNC_TIMELINE"')
-    && watch.includes("room.watchedSegmentCount > 0")
+    && watch.includes("room.hasTimelineWork")
     && watch.includes('room.status != "playing"')
     && watch.includes("non-destructive editor lane"),
 );
 check(
-  "a current timeline sync is visible and cannot be repeated accidentally",
+  "timeline freshness follows exact current-pass identity and cannot repeat accidentally",
   watch.includes("var timelineIsCurrent: Bool")
-    && watch.includes("timelineSync.sourceRevision == revision")
+    && watch.includes("let sessionID = session?.id")
+    && watch.includes("$0.sessionId == sessionID")
+    && watch.includes("timelineSync.sourceSegmentIds")
+    && watch.includes("sourceSegmentIDs.sorted() == watchedSegmentIDs")
     && watch.includes("timelineSync.segmentCount == watchedSegmentCount")
+    && watch.includes("timelineSync.sourceRevision == revision")
     && watch.includes("client.room?.timelineIsCurrent == true"),
+);
+check(
+  "a new empty pass can explicitly clear prior Watch derivatives without deleting receipts",
+  watch.includes("var hasTimelineWork: Bool")
+    && watch.includes("timelineSync?.timelineClipCount")
+    && watch.includes("Clear previous watch pass")
+    && watch.includes("Its receipts remain in history."),
 );
 check(
   "a current sync links to the exact non-destructive Nest episode editor",

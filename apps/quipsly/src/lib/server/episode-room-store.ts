@@ -13,6 +13,7 @@ import {
   EpisodeRoomCommandError,
   EpisodeRoomRevisionConflict,
   applyEpisodeRoomCommand,
+  episodeRoomTimelineMaterializationIsCurrent,
   episodeRoomTimelineClips,
   normalizeEpisodeRoomState,
   type EpisodeRoomActor,
@@ -343,6 +344,12 @@ function timelineRows(productionJson: unknown) {
   return Array.isArray(rows) ? rows : [];
 }
 
+function episodeRoomWatchTimelineRows(productionJson: unknown) {
+  return timelineRows(productionJson).filter(
+    (clip) => record(clip).generatedFrom === EPISODE_ROOM_TIMELINE_SOURCE,
+  );
+}
+
 function transcriptSegments(timelineJson: unknown): EpisodeRoomTranscriptSegment[] {
   const rows = record(timelineJson).transcriptSegments;
   if (!Array.isArray(rows)) return [];
@@ -656,7 +663,7 @@ export async function loadEpisodeRoomDesk(
       actor,
       room.session?.recordingRoomId,
     ),
-    timelineClipCount: timelineRows(production.productionJson).length,
+    timelineClipCount: episodeRoomWatchTimelineRows(production.productionJson).length,
     canEdit,
   };
 }
@@ -717,7 +724,7 @@ export async function loadEpisodeRoomRuntime(
       actor,
       room.session?.recordingRoomId,
     ),
-    timelineClipCount: timelineRows(production.productionJson).length,
+    timelineClipCount: episodeRoomWatchTimelineRows(production.productionJson).length,
     updatedAt: production.updatedAt.toISOString(),
   };
 }
@@ -872,7 +879,34 @@ export async function applyEpisodeRoomStoreCommand({
           return {
             room: currentRoom,
             updatedAt: production.updatedAt.toISOString(),
-            timelineClipCount: timelineRows(currentProductionJson).length,
+            timelineClipCount: episodeRoomWatchTimelineRows(currentProductionJson).length,
+            importedCandidates: importedCandidatesFor(
+              currentProductionJson,
+              production.timelineJson,
+              currentRoom,
+              acceptedAt,
+            ),
+            recordingSessions: await recordingSessionsFor(
+              tx,
+              production.projectId,
+              production.slug,
+              actor,
+              currentRoom.session?.recordingRoomId,
+            ),
+          };
+        }
+        if (
+          input.type === "SYNC_TIMELINE"
+          && input.expectedRevision === currentRoom.revision
+          && episodeRoomTimelineMaterializationIsCurrent(
+            currentRoom,
+            timelineRows(currentProductionJson),
+          )
+        ) {
+          return {
+            room: currentRoom,
+            updatedAt: production.updatedAt.toISOString(),
+            timelineClipCount: episodeRoomWatchTimelineRows(currentProductionJson).length,
             importedCandidates: importedCandidatesFor(
               currentProductionJson,
               production.timelineJson,
@@ -991,6 +1025,9 @@ export async function applyEpisodeRoomStoreCommand({
               sourceRevision: nextRoom.revision,
               segmentCount: watchedTimeline.length,
               timelineClipCount: watchedTimeline.length,
+              sourceSegmentIds: watchedTimeline
+                .map((clip) => clip.recordingSync.watchSegmentId)
+                .sort(),
             },
           };
         }
@@ -1011,7 +1048,9 @@ export async function applyEpisodeRoomStoreCommand({
         return {
           room: nextRoom,
           updatedAt: updated.updatedAt.toISOString(),
-          timelineClipCount: nextTimeline.length,
+          timelineClipCount: nextTimeline.filter(
+            (clip) => record(clip).generatedFrom === EPISODE_ROOM_TIMELINE_SOURCE,
+          ).length,
           importedCandidates: importedCandidatesFor(
             nextProductionJson,
             production.timelineJson,
