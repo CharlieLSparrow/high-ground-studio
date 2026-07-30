@@ -3581,3 +3581,64 @@ This is an active-goal checkpoint, not a completion claim.
   now uses the standard navigation-link picker, the task form has a stable
   identity, and qualification must read back the committed selection before
   accepting the first-due controls.
+
+### 2026-07-29 production native-auth and rehearsal-infrastructure checkpoint
+
+- Production is now 100% on ready Cloud Run revision `studio-00441-woz`,
+  built from exact pushed source
+  `e4492ab7468c32b3f16f62f8bdc2af673a2d5ca3`. Cloud Build
+  `bfae77e8-8946-4afb-92eb-5ed5eb58382d` passed the image-owned route check
+  and produced manifest-list digest
+  `sha256:87b7e97dc7fb5b661ef70e61b1a1b6f64a1bbefd2e13c5cb12b4e9d68bcb6fe0`;
+  Cloud Run resolved image digest
+  `sha256:a1f591ed05be334d85b6bd136c4a3160c7b7c9c883c8d29bb34a06b2793519cb`.
+- The Firebase custom-token issuer is now an explicit
+  `quipsly-reef` service account. The High Ground runtime account has only the
+  required token-signing authority on that identity, and preflight/readback
+  proves the deployed revision carries the signer, preview channel, and exact
+  source SHA. The signed Mac app uses its Team-scoped Keychain access group;
+  its local semantic route cannot receive credentials, expose tokens, or clear
+  the session.
+- A real browser-to-Nest-to-Firebase-to-Mac Google handoff exposed and closed
+  two production defects. Cloud Run's internal listener origin could leak into
+  the unsigned login redirect; the route now accepts only Quipsly domains,
+  local development hosts, or tagged hosts for this exact Cloud Run service,
+  with an untrusted-forwarded-host denial test. Firebase's documented custom
+  token response does not contain `localId`; the native decoder no longer
+  rejects that valid 200 response and reports only sanitized provider error
+  codes on failure.
+- The actual signed canonical Mac app completed Google handoff as
+  `charlie@highgroundodyssey.com`, resolved the existing Home Nest and nine
+  authorized projects, saved only the refresh token, refreshed it, survived a
+  process termination and cold relaunch, and re-verified the same identity and
+  project set. The app was then restored from the preview origin to
+  `https://nest.quipsly.com` and repeated saved-session verification against
+  the promoted production revision. The editor stayed mounted throughout the
+  callback and relaunch checks.
+- Promotion used a generated `@dev.test` reviewer behind an authenticated
+  Cloud SQL tunnel. Public health/schema/output/art routes, signed-out
+  boundaries, Firebase login, cookie session, native bearer session, Home
+  Nest, writing, editor, recorder, canonical Session workspace, research,
+  publishing, logout/cookie clearing, both public hosts, and the signed
+  revision-bound readiness receipt all passed. Cleanup deleted the temporary
+  grants, Home Nest, membership, database user, and Firebase user before the
+  release command returned. Post-promotion recovery again passed all 104
+  production Capture contract checks.
+- The current live HGO rehearsal preflight reports every infrastructure check
+  true. Quipsly Capture Build 13 is `IN_BETA_TESTING`; the public TestFlight
+  link is open; the exact two-participant LiveKit rehearsal Room is present;
+  Charlie and Scott remain independently `REQUESTED` for recording consent;
+  the guest's first verified Google sign-in can attach
+  `shomers@gmail.com` without a verification email; the 34-block manuscript
+  and three protected media objects match; Shared Watch is paused at zero with
+  `Ted Lasso Be Curious.mp4` selected; and the canonical Mac Capture launcher
+  passes.
+- This is infrastructure and Charlie-Mac proof, not a physical rehearsal or
+  completion of the active goal. Apple's named tester relationship still says
+  `INVITED`, which does not block the public-link enrollment path and does not
+  prove installation. The next loop must record Scott's Build 13 physical
+  install, attach his verified Google identity, collect both participants'
+  explicit consent decisions, prove the iPhone camera/microphone and Mac
+  MV7i/EOS routes, listen and watch a disposable take, operate the
+  two-participant Room and Shared Watch pause control, then compare the same
+  capture/source IDs through upload, Nest timeline, and Studio proof-watch.
