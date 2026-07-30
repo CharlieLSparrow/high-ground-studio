@@ -14,6 +14,30 @@ const segment = {
   providerText: "Welcome, everybody.",
   providerTextSha256: "a".repeat(64),
   confidence: 0.8,
+  words: [
+    {
+      id: "word-1",
+      providerWordIndex: 0,
+      startSeconds: 3.66,
+      endSeconds: 4.02,
+      word: "welcome",
+      punctuatedWord: "Welcome,",
+      confidence: 0.9,
+      speakerLabel: "Speaker",
+      channel: 0,
+    },
+    {
+      id: "word-2",
+      providerWordIndex: 1,
+      startSeconds: 4.08,
+      endSeconds: 4.84,
+      word: "everybody",
+      punctuatedWord: "everybody.",
+      confidence: 0.8,
+      speakerLabel: "Speaker",
+      channel: 0,
+    },
+  ],
   acceptedCorrection: null,
   proposals: [],
   correctionHistory: [],
@@ -24,6 +48,17 @@ function desk(playback: boolean) {
     ok: true,
     roomId: "room-1",
     transcriptJobId: "job-1",
+    transcriptStatus: "COMPLETED",
+    processing: {
+      status: "COMPLETED",
+      message: null,
+      wordCount: 2,
+      sourceBound: true,
+      executionRequestedAt: "2026-07-30T18:30:00.000Z",
+      resultReceived: true,
+      providerReceiptReceived: true,
+      workerBuildId: "build-1",
+    },
     gate: { allowed: true },
     playback: playback ? {
       sourceId: "source-1",
@@ -87,6 +122,18 @@ describe("TranscriptCorrectionDesk", () => {
     const button = await screen.findByRole("button", { name: /correct against playback/i });
     expect(button).toBeDisabled();
     expect(screen.getByText(/prevents “I listened” from becoming a paperwork checkbox/i)).toBeInTheDocument();
+  });
+
+  it("opens precise word anchors and seeks protected playback to the selected word", async () => {
+    global.fetch = jest.fn(async () => ({ ok: true, json: async () => desk(true) })) as unknown as typeof fetch;
+    render(<TranscriptCorrectionDesk roomId="room-1" />);
+    await screen.findByText("Welcome, everybody.");
+    fireEvent.click(screen.getByText(/precise word timing/i));
+    const wordButton = screen.getByRole("button", { name: /play everybody.*00:04/i });
+    fireEvent.click(wordButton);
+    const media = screen.getByLabelText("Protected session recording") as HTMLMediaElement;
+    expect(media.currentTime).toBe(4.08);
+    expect(HTMLMediaElement.prototype.play).toHaveBeenCalled();
   });
 
   it("creates an explicit self-owned task with the exact provider segment identity", async () => {

@@ -292,6 +292,14 @@ export function captureSourceSummaries(
               status: transcriptJob.status,
               provider: transcriptJob.provider,
               segmentCount: transcriptJob._count?.segments ?? 0,
+              wordCount: transcriptJob._count?.words ?? 0,
+              providerReceiptReady: Boolean(
+                transcriptJob.providerRequestId
+                && transcriptJob.providerResponseObject,
+              ),
+              handoffUrl: transcriptJob.status === "COMPLETED"
+                ? `/api/mobile/capture/transcripts/handoff?callRoomId=${encodeURIComponent(room.id)}&transcriptJobId=${encodeURIComponent(transcriptJob.id)}`
+                : null,
               updatedAt: iso(transcriptJob.updatedAt),
             }
           : null,

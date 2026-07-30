@@ -30,6 +30,17 @@ type Segment = {
   providerText: string;
   providerTextSha256: string;
   confidence: number | null;
+  words: Array<{
+    id: string;
+    providerWordIndex: number;
+    startSeconds: number;
+    endSeconds: number;
+    word: string;
+    punctuatedWord: string;
+    confidence: number | null;
+    speakerLabel: string | null;
+    channel: number | null;
+  }>;
   acceptedCorrection: Correction | null;
   proposals: Correction[];
   correctionHistory: Correction[];
@@ -40,6 +51,17 @@ type Desk = {
   error?: string;
   roomId: string;
   transcriptJobId: string | null;
+  transcriptStatus: string | null;
+  processing: null | {
+    status: string;
+    message: string | null;
+    wordCount: number;
+    sourceBound: boolean;
+    executionRequestedAt: string | null;
+    resultReceived: boolean;
+    providerReceiptReceived: boolean;
+    workerBuildId: string | null;
+  };
   gate: { allowed: boolean; error?: string };
   playback: null | {
     sourceId: string;
@@ -138,6 +160,7 @@ function CorrectionEditor({
   currentPlaybackPosition,
   busy,
   onPlay,
+  onPlayAt,
   onSaved,
 }: {
   roomId: string;
@@ -146,6 +169,7 @@ function CorrectionEditor({
   currentPlaybackPosition: () => number | null;
   busy: boolean;
   onPlay: () => Promise<void>;
+  onPlayAt: (seconds: number) => Promise<void>;
   onSaved: (message: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -291,6 +315,31 @@ function CorrectionEditor({
             {timestampForSeconds(segment.startSeconds)}–{timestampForSeconds(segment.endSeconds)} · {segment.speakerLabel || "Unlabelled speaker"}
           </p>
           <p className="mt-2 text-sm font-semibold leading-relaxed text-[#5f4d37]">{segment.text}</p>
+          {segment.words.length > 0 && (
+            <details className="mt-3 rounded-xl border border-sky-100 bg-sky-50/60 p-3">
+              <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-sky-900">
+                Precise word timing · {segment.words.length} anchors
+              </summary>
+              <p className="mt-2 text-xs font-semibold leading-relaxed text-sky-800">
+                Choose a provider word to play its exact immutable timestamp. Reviewed corrections above never move these anchors.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-1.5" role="group" aria-label={`Timed words from ${timestampForSeconds(segment.startSeconds)}`}>
+                {segment.words.map((word) => (
+                  <button
+                    key={word.id}
+                    type="button"
+                    onClick={() => void onPlayAt(word.startSeconds)}
+                    disabled={!playbackReady || busy}
+                    className="rounded-lg border border-sky-200 bg-white px-2 py-1 text-sm font-semibold text-sky-950 transition hover:border-sky-400 hover:bg-sky-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-600 disabled:opacity-50"
+                    aria-label={`Play ${word.punctuatedWord} at ${timestampForSeconds(word.startSeconds)}`}
+                    title={`${timestampForSeconds(word.startSeconds)}–${timestampForSeconds(word.endSeconds)}`}
+                  >
+                    {word.punctuatedWord}
+                  </button>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
         <button type="button" onClick={() => void onPlay()} disabled={!playbackReady || busy} className="inline-flex items-center gap-2 rounded-full border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-black uppercase tracking-wide text-sky-900 disabled:cursor-not-allowed disabled:opacity-50" aria-label={`Play transcript segment from ${timestampForSeconds(segment.startSeconds)}`}>
           <Play size={14} fill="currentColor" aria-hidden="true" /> Play from here
@@ -387,22 +436,28 @@ export function TranscriptCorrectionDesk({ roomId }: { roomId: string }) {
   const [message, setMessage] = useState<string | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const response = await fetch(`/api/mobile/capture/transcripts/corrections?callRoomId=${encodeURIComponent(roomId)}`, { cache: "no-store" });
       const payload = await response.json() as Desk;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "The correction desk could not load.");
       setDesk(payload);
     } catch (error) {
-      setDesk(null);
+      if (!silent) setDesk(null);
       setMessage(error instanceof Error ? error.message : "The correction desk could not load.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [roomId]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(false); }, [load]);
+
+  useEffect(() => {
+    if (!["QUEUED", "RUNNING"].includes(desk?.transcriptStatus || "")) return;
+    const interval = window.setInterval(() => void load(true), 5_000);
+    return () => window.clearInterval(interval);
+  }, [desk?.transcriptStatus, load]);
 
   useEffect(() => {
     if (!desk || typeof window === "undefined" || !window.location.hash.startsWith("#transcript-segment-")) return;
@@ -416,16 +471,20 @@ export function TranscriptCorrectionDesk({ roomId }: { roomId: string }) {
     return () => window.cancelAnimationFrame(frame);
   }, [desk]);
 
-  async function playFrom(segment: Segment) {
+  async function playFromTime(seconds: number) {
     const media = mediaRef.current;
     if (!media) return;
-    media.currentTime = segment.startSeconds;
+    media.currentTime = seconds;
     try {
       await media.play();
-      setMessage(`Playing source evidence from ${timestampForSeconds(segment.startSeconds)}.`);
+      setMessage(`Playing source evidence from ${timestampForSeconds(seconds)}.`);
     } catch {
       setMessage("Playback needs your direct interaction. Press play in the recording controls, then try this timestamp again.");
     }
+  }
+
+  async function playFrom(segment: Segment) {
+    return playFromTime(segment.startSeconds);
   }
 
   async function saved(nextMessage: string) {
@@ -447,9 +506,32 @@ export function TranscriptCorrectionDesk({ roomId }: { roomId: string }) {
             <h2 id="transcript-correction-heading" className="mt-2 font-serif text-3xl font-black text-[#3d3122]">Listen, correct, preserve the source</h2>
             <p className="mt-2 max-w-3xl text-sm font-semibold leading-relaxed text-[#765f40]">Corrections sit above provider output as reviewable revisions. Media timing never moves, and AI proposals never become transcript truth without a person listening here.</p>
           </div>
-          <button type="button" onClick={() => void load()} disabled={loading || busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh truth</button>
+          <button type="button" onClick={() => void load(false)} disabled={loading || busy} className="inline-flex items-center gap-2 rounded-full border border-[#d9c7a5] bg-white px-4 py-2 text-xs font-black uppercase tracking-wide text-[#5b472f] disabled:opacity-50"><RefreshCw size={15} aria-hidden="true" />Refresh truth</button>
         </div>
         {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-bold text-sky-900">{message}</p>}
+        {desk.processing && (
+          <div className="mt-5 grid gap-3 rounded-xl border border-[#e5d5b7] bg-[#fffaf1] p-4 sm:grid-cols-[1fr_auto] sm:items-center">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[0.16em] text-[#987443]">
+                {desk.transcriptStatus === "COMPLETED"
+                  ? `${desk.processing.wordCount} timed words ready`
+                  : desk.transcriptStatus === "RUNNING"
+                    ? "Transcribing safely in the background"
+                    : `Transcript ${humanize(desk.transcriptStatus || "not started")}`}
+              </p>
+              <p className="mt-1 text-sm font-semibold leading-relaxed text-[#5f4d37]">
+                {desk.processing.message
+                  || (desk.transcriptStatus === "RUNNING"
+                    ? "You can leave this page. Quipsly keeps the exact recording generation, retries transient provider failures, and will refresh this desk when word evidence lands."
+                    : "The provider response, source binding, and worker receipt stay attached to this transcript version.")}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-[0.68rem] font-black uppercase tracking-wide">
+              <span className={`rounded-full px-3 py-1.5 ${desk.processing.sourceBound ? "bg-emerald-100 text-emerald-900" : "bg-amber-100 text-amber-900"}`}>source bound</span>
+              <span className={`rounded-full px-3 py-1.5 ${desk.processing.providerReceiptReceived ? "bg-emerald-100 text-emerald-900" : "bg-stone-200 text-stone-700"}`}>provider receipt</span>
+            </div>
+          </div>
+        )}
         {!desk.gate.allowed ? (
           <p className="mt-5 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-900">{desk.gate.error || "Transcript evidence remains held by consent and release policy."}</p>
         ) : desk.playback ? (
@@ -475,6 +557,7 @@ export function TranscriptCorrectionDesk({ roomId }: { roomId: string }) {
               currentPlaybackPosition={() => mediaRef.current?.currentTime ?? null}
               busy={busy}
               onPlay={() => playFrom(segment)}
+              onPlayAt={playFromTime}
               onSaved={saved}
             />
           ))}

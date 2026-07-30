@@ -1,0 +1,42 @@
+substitutions:
+  _REGION: us-central1
+  _ARTIFACT_REPOSITORY: high-ground-studio
+  _IMAGE_NAME: quipsly-transcript-worker
+  _IMAGE_TAG: manual
+
+steps:
+  - id: build-and-push-transcript-worker
+    name: gcr.io/cloud-builders/docker@sha256:680b2a8d18a794c165cf97a3f9476784d5d962e945d424cb40b3e086cde0c284
+    entrypoint: bash
+    args:
+      - -euo
+      - pipefail
+      - -c
+      - |
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        docker build \
+          --file apps/quipsly-transcript-worker/Dockerfile \
+          --tag "$${image}" \
+          .
+        docker push "$${image}"
+
+  - id: read-back-transcript-worker-digest
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:stable
+    entrypoint: bash
+    args:
+      - -euo
+      - pipefail
+      - -c
+      - |
+        image="${_REGION}-docker.pkg.dev/$PROJECT_ID/${_ARTIFACT_REPOSITORY}/${_IMAGE_NAME}:${_IMAGE_TAG}"
+        digest="$$(gcloud artifacts docker images describe "$${image}" \
+          --format='value(image_summary.digest)')"
+        if [[ ! "$${digest}" =~ ^sha256:[0-9a-f]{64}$$ ]]; then
+          echo "Transcript worker image has no immutable digest: $${image}" >&2
+          exit 1
+        fi
+        printf '%s\n' "$${digest}" \
+          | tee /workspace/quipsly-transcript-worker-digest.txt
+
+options:
+  machineType: E2_HIGHCPU_8

@@ -58,6 +58,25 @@ test("media processor changes stay manual and shared contracts also validate Nes
   assert.deepEqual(contract.deployTargets, ["studio"]);
 });
 
+test("transcript worker changes stay manual and shared contracts validate every owner", () => {
+  const worker = planChangedSurfaces([
+    "apps/quipsly-transcript-worker/src/worker.ts",
+  ]);
+  assert.equal(worker.transcriptWorker, true);
+  assert.equal(worker.web, false);
+  assert.equal(worker.studio, false);
+  assert.deepEqual(worker.deployTargets, []);
+  assert.deepEqual(worker.changedSurfaces, ["transcript-worker"]);
+
+  const contract = planChangedSurfaces([
+    "packages/quipsly-media-processing/src/transcription.ts",
+  ]);
+  assert.equal(contract.transcriptWorker, true);
+  assert.equal(contract.mediaProcessor, true);
+  assert.equal(contract.studio, true);
+  assert.deepEqual(contract.deployTargets, ["studio"]);
+});
+
 test("Capture listing changes validate Capture without deploying web apps", () => {
   const plan = planChangedSurfaces([
     "release/app-store/quipsly-capture/en-US.json",

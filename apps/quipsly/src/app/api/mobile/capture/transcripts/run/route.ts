@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { runCaptureTranscriptJob, transcriptRetryDisposition } from "@/lib/server/capture-transcripts";
+import { transcriptRetryDisposition } from "@/lib/server/capture-transcripts";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import {
+  CaptureTranscriptOutboxError,
+  ensureCaptureTranscriptProcessingQueued,
+} from "@/lib/server/capture-transcript-processing";
+import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -74,7 +79,11 @@ export async function POST(request: Request) {
         transcriptJobs: {
           orderBy: { createdAt: "desc" },
           take: 1,
-          include: { _count: { select: { segments: true } } },
+          include: {
+            _count: {
+              select: { segments: true, words: true },
+            },
+          },
         },
       },
     });
@@ -111,7 +120,11 @@ export async function POST(request: Request) {
 
     const existingJob = asset.transcriptJobs?.[0] || null;
     if (existingJob) {
-      const retryDisposition = transcriptRetryDisposition({ status: existingJob.status, segmentCount: existingJob._count?.segments || 0 });
+      const retryDisposition = transcriptRetryDisposition({
+        status: existingJob.status,
+        segmentCount: existingJob._count?.segments || 0,
+        wordCount: existingJob._count?.words || 0,
+      });
       const updatedJob = retryDisposition === "CREATE_VERSION"
         ? await prisma.transcriptJob.create({
             data: {
@@ -124,6 +137,7 @@ export async function POST(request: Request) {
                 source: "mobile-capture-transcript-run",
                 versionedFromTranscriptJobId: existingJob.id,
                 immutablePriorSegmentCount: existingJob._count?.segments || 0,
+                immutablePriorWordCount: existingJob._count?.words || 0,
                 requestedByUserId: userId,
                 createdAt: new Date().toISOString(),
               },
@@ -188,12 +202,78 @@ export async function POST(request: Request) {
     );
   }
 
-  const result = await runCaptureTranscriptJob({
+  const reconciled = await reconcileCaptureTranscriptJob({
     prisma,
     transcriptJobId: job.id,
-    requestedByUserId: userId,
   });
-  const status = result.ok ? 200 : "status" in result && typeof result.status === "number" ? result.status : 500;
+  if (reconciled.status === "completed") {
+    return NextResponse.json({
+      ok: true,
+      transcriptJobId: job.id,
+      status: "COMPLETED",
+      segmentCount: reconciled.segmentCount,
+      wordCount: reconciled.wordCount,
+      alreadyCompleted: reconciled.alreadyCompleted,
+      ensuredFromRecording,
+    });
+  }
+  if (reconciled.status === "held") {
+    return NextResponse.json({
+      ok: false,
+      transcriptJobId: job.id,
+      status: "HELD",
+      error: reconciled.message,
+      explicitReleaseRequired: true,
+      ensuredFromRecording,
+    }, { status: 409 });
+  }
 
-  return NextResponse.json({ ...result, ensuredFromRecording }, { status });
+  try {
+    const queued = await ensureCaptureTranscriptProcessingQueued({
+      prisma,
+      transcriptJobId: job.id,
+      actorUserId: userId,
+      actorEmail,
+    });
+    if (queued.status === "held") {
+      return NextResponse.json({
+        ok: false,
+        transcriptJobId: job.id,
+        status: "HELD",
+        error: "Transcript processing is held until every required consent and release is present.",
+        explicitReleaseRequired: true,
+        ensuredFromRecording,
+      }, { status: 409 });
+    }
+    if (queued.status === "configuration-required") {
+      return NextResponse.json({
+        ok: false,
+        transcriptJobId: job.id,
+        status: "QUEUED",
+        error: "Durable transcription is preserved in the queue, but the transcript worker is not configured.",
+        errorCode: "TRANSCRIPT_WORKER_CONFIGURATION_REQUIRED",
+        retryable: true,
+        ensuredFromRecording,
+      }, { status: 503 });
+    }
+    return NextResponse.json({
+      ok: true,
+      transcriptJobId: job.id,
+      status: queued.status === "completed" ? "COMPLETED" : "RUNNING",
+      processingStatus: queued.status,
+      executionRequested: queued.executionRequested,
+      ensuredFromRecording,
+    }, { status: queued.status === "completed" ? 200 : 202 });
+  } catch (error) {
+    if (error instanceof CaptureTranscriptOutboxError) {
+      return NextResponse.json({
+        ok: false,
+        transcriptJobId: job.id,
+        error: error.message,
+        errorCode: error.code,
+        ensuredFromRecording,
+      }, { status: error.code === "TRANSCRIPT_JOB_NOT_FOUND" ? 404 : 409 });
+    }
+    throw error;
+  }
 }

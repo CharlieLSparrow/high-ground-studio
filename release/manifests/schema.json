@@ -25,14 +25,14 @@
       "const": 1
     },
     "id": {
-      "enum": ["capture", "nest", "hgo-web", "quipsly-studio", "quipsly-media-verifier", "quipsly-media-processor"]
+      "enum": ["capture", "nest", "hgo-web", "quipsly-studio", "quipsly-media-verifier", "quipsly-media-processor", "quipsly-transcript-worker"]
     },
     "displayName": {
       "type": "string",
       "minLength": 1
     },
     "ownerSurface": {
-      "enum": ["capture", "nest", "hgo-web", "quipsly-studio", "quipsly-media-verifier", "quipsly-media-processor"]
+      "enum": ["capture", "nest", "hgo-web", "quipsly-studio", "quipsly-media-verifier", "quipsly-media-processor", "quipsly-transcript-worker"]
     },
     "status": {
       "enum": ["active", "operator-only"]

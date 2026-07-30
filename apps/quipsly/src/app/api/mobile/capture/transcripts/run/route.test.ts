@@ -1,32 +1,60 @@
 /** @jest-environment node */
 
 import { getPrismaClient } from "@/lib/prisma";
-import { runCaptureTranscriptJob } from "@/lib/server/capture-transcripts";
 import { mobileCaptureTranscriptProcessingGate } from "@/lib/server/mobile-capture-processing-gates";
+import { ensureCaptureTranscriptProcessingQueued } from "@/lib/server/capture-transcript-processing";
+import { reconcileCaptureTranscriptJob } from "@/lib/server/capture-transcript-reconciliation";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { POST } from "./route";
 
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
 jest.mock("@/lib/server/capture-transcripts", () => ({
-  runCaptureTranscriptJob: jest.fn(),
   transcriptRetryDisposition: jest.requireActual("@/lib/server/capture-transcripts").transcriptRetryDisposition,
+}));
+jest.mock("@/lib/server/capture-transcript-processing", () => ({
+  CaptureTranscriptOutboxError: class CaptureTranscriptOutboxError extends Error {
+    code: string;
+
+    constructor(code: string, message: string) {
+      super(message);
+      this.code = code;
+    }
+  },
+  ensureCaptureTranscriptProcessingQueued: jest.fn(),
+}));
+jest.mock("@/lib/server/capture-transcript-reconciliation", () => ({
+  reconcileCaptureTranscriptJob: jest.fn(),
 }));
 jest.mock("@/lib/server/mobile-capture-processing-gates", () => ({ mobileCaptureTranscriptProcessingGate: jest.fn() }));
 jest.mock("@/lib/server/quipsly-session", () => ({ getQuipslySessionFromRequest: jest.fn() }));
 
 describe("mobile transcript run versioning", () => {
-  beforeEach(() => jest.clearAllMocks());
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.mocked(reconcileCaptureTranscriptJob).mockResolvedValue({
+      status: "pending",
+      transcriptJobId: "job-v2",
+      message: null,
+    });
+    jest.mocked(ensureCaptureTranscriptProcessingQueued).mockResolvedValue({
+      status: "queued",
+      transcriptJobId: "job-v2",
+      queueObjectName: "queue",
+      manifestObjectName: "manifest",
+      resultObjectName: "result",
+      executionRequested: true,
+    });
+  });
 
   it("creates a new transcript job instead of requeueing a segment-bearing version", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: { id: "user-1", primaryEmail: " Producer@Example.com ", isStaff: false },
     } as any);
     jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
-    jest.mocked(runCaptureTranscriptJob).mockResolvedValue({ ok: true, transcriptJobId: "job-v2", status: "COMPLETED", provider: "deepgram", segmentCount: 2 } as any);
     const create = jest.fn().mockResolvedValue({ id: "job-v2" });
     const update = jest.fn();
-    const recordingFindFirst = jest.fn().mockResolvedValue({ id: "asset-1", roomId: "room-1", kind: "LOCAL_AUDIO", localManifestJson: {}, transcriptJobs: [{ id: "job-v1", status: "FAILED", _count: { segments: 2 } }] });
+    const recordingFindFirst = jest.fn().mockResolvedValue({ id: "asset-1", roomId: "room-1", kind: "LOCAL_AUDIO", localManifestJson: {}, transcriptJobs: [{ id: "job-v1", status: "FAILED", _count: { segments: 2, words: 8 } }] });
     const transcriptFindFirst = jest.fn().mockResolvedValue({ id: "job-v2" });
     jest.mocked(getPrismaClient).mockReturnValue({
       recordingAsset: { findFirst: recordingFindFirst },
@@ -35,11 +63,15 @@ describe("mobile transcript run versioning", () => {
 
     const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recordingAssetId: "asset-1" }) }));
     const payload = await response.json();
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
     expect(payload).toMatchObject({ ok: true, transcriptJobId: "job-v2", ensuredFromRecording: true });
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ roomId: "room-1", assetId: "asset-1", resultJson: expect.objectContaining({ versionedFromTranscriptJobId: "job-v1", immutablePriorSegmentCount: 2 }) }) }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ roomId: "room-1", assetId: "asset-1", resultJson: expect.objectContaining({ versionedFromTranscriptJobId: "job-v1", immutablePriorSegmentCount: 2, immutablePriorWordCount: 8 }) }) }));
     expect(update).not.toHaveBeenCalled();
-    expect(runCaptureTranscriptJob).toHaveBeenCalledWith(expect.objectContaining({ transcriptJobId: "job-v2" }));
+    expect(ensureCaptureTranscriptProcessingQueued).toHaveBeenCalledWith(expect.objectContaining({
+      transcriptJobId: "job-v2",
+      actorUserId: "user-1",
+      actorEmail: "producer@example.com",
+    }));
     const projectGrantRoom = {
       project: {
         accessGrants: {
@@ -65,15 +97,27 @@ describe("mobile transcript run versioning", () => {
   it("requeues a failed job only while it has no provider segments", async () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({ user: { id: "user-1", isStaff: false } } as any);
     jest.mocked(mobileCaptureTranscriptProcessingGate).mockResolvedValue({ allowed: true } as any);
-    jest.mocked(runCaptureTranscriptJob).mockResolvedValue({ ok: true, transcriptJobId: "job-v1", status: "COMPLETED", segmentCount: 2 } as any);
+    jest.mocked(reconcileCaptureTranscriptJob).mockResolvedValue({
+      status: "pending",
+      transcriptJobId: "job-v1",
+      message: null,
+    });
+    jest.mocked(ensureCaptureTranscriptProcessingQueued).mockResolvedValue({
+      status: "queued",
+      transcriptJobId: "job-v1",
+      queueObjectName: "queue",
+      manifestObjectName: "manifest",
+      resultObjectName: "result",
+      executionRequested: true,
+    });
     const update = jest.fn().mockResolvedValue({ id: "job-v1" });
     const create = jest.fn();
     jest.mocked(getPrismaClient).mockReturnValue({
-      recordingAsset: { findFirst: jest.fn().mockResolvedValue({ id: "asset-1", roomId: "room-1", kind: "LOCAL_AUDIO", localManifestJson: {}, transcriptJobs: [{ id: "job-v1", status: "FAILED", _count: { segments: 0 } }] }) },
+      recordingAsset: { findFirst: jest.fn().mockResolvedValue({ id: "asset-1", roomId: "room-1", kind: "LOCAL_AUDIO", localManifestJson: {}, transcriptJobs: [{ id: "job-v1", status: "FAILED", _count: { segments: 0, words: 0 } }] }) },
       transcriptJob: { create, update, findFirst: jest.fn().mockResolvedValue({ id: "job-v1" }) },
     } as any);
     const response = await POST(new Request("http://localhost/api/mobile/capture/transcripts/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ recordingAssetId: "asset-1" }) }));
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(202);
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "job-v1" }, data: expect.objectContaining({ status: "QUEUED" }) }));
     expect(create).not.toHaveBeenCalled();
   });

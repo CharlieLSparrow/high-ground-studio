@@ -15,6 +15,9 @@ const config: Config = {
   testMatch: ['**/?(*.)+(test).[jt]s?(x)'],
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
+    // NodeNext source uses runtime .js specifiers while Jest executes the
+    // corresponding TypeScript sources directly.
+    '^(\\.{1,2}/.*)\\.js$': '$1',
     // pnpm keeps each app's runtime peer graph isolated. Jest and Testing
     // Library must share one React dispatcher from the workspace root or a
     // filtered install can resolve the component and renderer to different

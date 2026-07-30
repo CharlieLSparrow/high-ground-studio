@@ -7,13 +7,13 @@ requested_release="${1:-all}"
 
 case "${requested_release}" in
   all)
-    release_ids=(nest hgo-web quipsly-media-verifier quipsly-media-processor)
+    release_ids=(nest hgo-web quipsly-media-verifier quipsly-media-processor quipsly-transcript-worker)
     ;;
-  nest|hgo-web|quipsly-media-verifier|quipsly-media-processor)
+  nest|hgo-web|quipsly-media-verifier|quipsly-media-processor|quipsly-transcript-worker)
     release_ids=("${requested_release}")
     ;;
   *)
-    echo "Expected release id nest, hgo-web, quipsly-media-verifier, quipsly-media-processor, or all." >&2
+    echo "Expected release id nest, hgo-web, quipsly-media-verifier, quipsly-media-processor, quipsly-transcript-worker, or all." >&2
     exit 2
     ;;
 esac
@@ -189,6 +189,13 @@ NODE
     quipsly-media-processor)
       [[ -f "${context}/apps/quipsly-media-processor/Dockerfile" ]]
       [[ -f "${context}/packages/quipsly-media-processing/src/index.ts" ]]
+      [[ -f "${context}/release/manifests/schema.json" ]]
+      [[ ! -e "${context}/apps/quipsly" ]]
+      [[ ! -e "${context}/prisma" ]]
+      ;;
+    quipsly-transcript-worker)
+      [[ -f "${context}/apps/quipsly-transcript-worker/Dockerfile" ]]
+      [[ -f "${context}/packages/quipsly-media-processing/src/transcription.ts" ]]
       [[ -f "${context}/release/manifests/schema.json" ]]
       [[ ! -e "${context}/apps/quipsly" ]]
       [[ ! -e "${context}/prisma" ]]

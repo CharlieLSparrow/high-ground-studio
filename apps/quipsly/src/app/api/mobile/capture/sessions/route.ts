@@ -83,7 +83,7 @@ const MOBILE_CAPTURE_ROOM_INCLUDE = {
       transcriptJobs: {
         orderBy: { createdAt: "desc" },
         take: 3,
-        include: { _count: { select: { segments: true } } },
+        include: { _count: { select: { segments: true, words: true } } },
       },
     },
   },
@@ -92,7 +92,7 @@ const MOBILE_CAPTURE_ROOM_INCLUDE = {
     take: 5,
     include: {
       asset: { select: { id: true, fileName: true, status: true, kind: true, localManifestJson: true } },
-      _count: { select: { segments: true } },
+      _count: { select: { segments: true, words: true } },
     },
   },
   notes: {

@@ -343,6 +343,124 @@ final class ProjectStoreTests: XCTestCase {
         )
     }
 
+    func testCanonicalTranscriptImportPreservesExternalWordIdentityAndRefusesSilentReplacement() throws {
+        let store = ProjectStore(
+            project: VideoProject(
+                title: "Episode",
+                sequences: [MediaSequence(title: "Main")]
+            )
+        )
+        let segment = TranscriptSegment(
+            sourceExternalID: "segment-server-1",
+            sourceTranscriptJobID: "transcript-job-1",
+            speaker: "Charlie",
+            startTime: 1.2,
+            endTime: 2.4,
+            text: "This is reviewed.",
+            providerText: "This is reviewd.",
+            words: [
+                TranscriptWordTiming(
+                    sourceExternalID: "word-server-1",
+                    providerWordIndex: 0,
+                    word: "This",
+                    startTime: 1.2,
+                    endTime: 1.5,
+                    confidence: 0.99,
+                    source: "deepgram-word-anchor"
+                ),
+            ],
+            reviewStatus: "human-reviewed"
+        )
+
+        XCTAssertFalse(
+            try store.applyCanonicalTranscriptHandoff(
+                transcriptJobID: "transcript-job-1",
+                provider: "deepgram",
+                sourcePath: "https://nest.example/handoff",
+                segments: [segment]
+            )
+        )
+        XCTAssertEqual(
+            store.activeSequence?.transcriptSegments.first?
+                .sourceExternalID,
+            "segment-server-1"
+        )
+        XCTAssertEqual(
+            store.activeSequence?.transcriptSegments.first?
+                .words.first?.providerWordIndex,
+            0
+        )
+        XCTAssertEqual(
+            store.activeSequence?.transcriptJobs.first?
+                .sourceExternalID,
+            "transcript-job-1"
+        )
+        XCTAssertTrue(
+            try store.applyCanonicalTranscriptHandoff(
+                transcriptJobID: "transcript-job-1",
+                provider: "deepgram",
+                sourcePath: "https://nest.example/handoff",
+                segments: [segment]
+            )
+        )
+
+        XCTAssertThrowsError(
+            try store.applyCanonicalTranscriptHandoff(
+                transcriptJobID: "transcript-job-2",
+                provider: "deepgram",
+                sourcePath: "https://nest.example/other",
+                segments: [
+                    TranscriptSegment(
+                        sourceExternalID: "segment-server-2",
+                        sourceTranscriptJobID:
+                            "transcript-job-2",
+                        startTime: 3,
+                        endTime: 4,
+                        text: "Different version"
+                    ),
+                ]
+            )
+        )
+        XCTAssertEqual(
+            store.activeSequence?.transcriptSegments.first?
+                .sourceTranscriptJobID,
+            "transcript-job-1"
+        )
+
+        XCTAssertThrowsError(
+            try store.applyCanonicalTranscriptHandoff(
+                transcriptJobID: "transcript-job-3",
+                provider: "deepgram",
+                sourcePath: "https://nest.example/invalid",
+                segments: [
+                    TranscriptSegment(
+                        sourceExternalID: "segment-server-3",
+                        sourceTranscriptJobID:
+                            "transcript-job-3",
+                        startTime: 0,
+                        endTime: 1,
+                        text: "Broken anchors",
+                        words: [
+                            TranscriptWordTiming(
+                                sourceExternalID:
+                                    "word-server-3",
+                                providerWordIndex: 7,
+                                word: "Broken",
+                                startTime: 0,
+                                endTime: 0.4
+                            ),
+                        ]
+                    ),
+                ]
+            )
+        ) { error in
+            XCTAssertEqual(
+                error as? CanonicalTranscriptImportError,
+                .invalidHandoff
+            )
+        }
+    }
+
     func testAttachmentEvidenceFailsClosedOnInvalidAlignmentClaims() {
         let source = VerifiedCaptureSourceAttachment(
             sourceAssetID: "source-1",

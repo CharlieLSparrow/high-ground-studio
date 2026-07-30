@@ -603,10 +603,13 @@ public struct EditPassContext: Codable, Equatable, Sendable {
 public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
     public var sourceAssetId: UUID?
+    public var sourceExternalID: String?
+    public var sourceTranscriptJobID: String?
     public var speaker: String
     public var startTime: Double
     public var endTime: Double
     public var text: String
+    public var providerText: String?
     public var words: [TranscriptWordTiming]
     public var confidence: Double?
     public var reviewStatus: String
@@ -616,10 +619,13 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     public init(
         id: UUID = UUID(),
         sourceAssetId: UUID? = nil,
+        sourceExternalID: String? = nil,
+        sourceTranscriptJobID: String? = nil,
         speaker: String = "Speaker",
         startTime: Double,
         endTime: Double,
         text: String,
+        providerText: String? = nil,
         words: [TranscriptWordTiming] = [],
         confidence: Double? = nil,
         reviewStatus: String = "draft",
@@ -628,10 +634,13 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     ) {
         self.id = id
         self.sourceAssetId = sourceAssetId
+        self.sourceExternalID = sourceExternalID
+        self.sourceTranscriptJobID = sourceTranscriptJobID
         self.speaker = speaker
         self.startTime = max(0, startTime)
         self.endTime = max(max(0, startTime), endTime)
         self.text = text
+        self.providerText = providerText
         self.words = words
         self.confidence = confidence
         self.reviewStatus = reviewStatus
@@ -642,10 +651,13 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case id
         case sourceAssetId
+        case sourceExternalID
+        case sourceTranscriptJobID
         case speaker
         case startTime
         case endTime
         case text
+        case providerText
         case words
         case confidence
         case reviewStatus
@@ -657,12 +669,15 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         sourceAssetId = try container.decodeIfPresent(UUID.self, forKey: .sourceAssetId)
+        sourceExternalID = try container.decodeIfPresent(String.self, forKey: .sourceExternalID)
+        sourceTranscriptJobID = try container.decodeIfPresent(String.self, forKey: .sourceTranscriptJobID)
         speaker = try container.decodeIfPresent(String.self, forKey: .speaker) ?? "Speaker"
         let decodedStart = try container.decodeIfPresent(Double.self, forKey: .startTime) ?? 0
         let decodedEnd = try container.decodeIfPresent(Double.self, forKey: .endTime) ?? decodedStart
         startTime = max(0, decodedStart)
         endTime = max(startTime, decodedEnd)
         text = try container.decodeIfPresent(String.self, forKey: .text) ?? ""
+        providerText = try container.decodeIfPresent(String.self, forKey: .providerText)
         words = try container.decodeIfPresent([TranscriptWordTiming].self, forKey: .words) ?? []
         confidence = try container.decodeIfPresent(Double.self, forKey: .confidence)
         reviewStatus = try container.decodeIfPresent(String.self, forKey: .reviewStatus) ?? "draft"
@@ -673,6 +688,8 @@ public struct TranscriptSegment: Identifiable, Codable, Equatable, Sendable {
 
 public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
+    public var sourceExternalID: String?
+    public var providerWordIndex: Int?
     public var word: String
     public var startTime: Double
     public var endTime: Double
@@ -681,6 +698,8 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
 
     public init(
         id: UUID = UUID(),
+        sourceExternalID: String? = nil,
+        providerWordIndex: Int? = nil,
         word: String,
         startTime: Double,
         endTime: Double,
@@ -688,6 +707,8 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
         source: String = "estimated"
     ) {
         self.id = id
+        self.sourceExternalID = sourceExternalID
+        self.providerWordIndex = providerWordIndex
         self.word = word
         self.startTime = max(0, startTime)
         self.endTime = max(max(0, startTime), endTime)
@@ -697,6 +718,8 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case sourceExternalID
+        case providerWordIndex
         case word
         case startTime
         case endTime
@@ -709,6 +732,8 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
         let decodedStart = try container.decodeIfPresent(Double.self, forKey: .startTime) ?? 0
         self.init(
             id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            sourceExternalID: try container.decodeIfPresent(String.self, forKey: .sourceExternalID),
+            providerWordIndex: try container.decodeIfPresent(Int.self, forKey: .providerWordIndex),
             word: try container.decodeIfPresent(String.self, forKey: .word) ?? "",
             startTime: decodedStart,
             endTime: try container.decodeIfPresent(Double.self, forKey: .endTime) ?? decodedStart,
@@ -720,6 +745,7 @@ public struct TranscriptWordTiming: Identifiable, Codable, Equatable, Sendable {
 
 public struct TranscriptJobRecord: Identifiable, Codable, Equatable, Sendable {
     public let id: UUID
+    public var sourceExternalID: String?
     public var sourceLaneId: UUID?
     public var sourceLaneName: String
     public var sourcePath: String
@@ -733,6 +759,7 @@ public struct TranscriptJobRecord: Identifiable, Codable, Equatable, Sendable {
 
     public init(
         id: UUID = UUID(),
+        sourceExternalID: String? = nil,
         sourceLaneId: UUID? = nil,
         sourceLaneName: String = "",
         sourcePath: String = "",
@@ -745,6 +772,7 @@ public struct TranscriptJobRecord: Identifiable, Codable, Equatable, Sendable {
         segmentCount: Int = 0
     ) {
         self.id = id
+        self.sourceExternalID = sourceExternalID
         self.sourceLaneId = sourceLaneId
         self.sourceLaneName = sourceLaneName
         self.sourcePath = sourcePath
@@ -759,6 +787,7 @@ public struct TranscriptJobRecord: Identifiable, Codable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case sourceExternalID
         case sourceLaneId
         case sourceLaneName
         case sourcePath
@@ -775,6 +804,7 @@ public struct TranscriptJobRecord: Identifiable, Codable, Equatable, Sendable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             id: try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID(),
+            sourceExternalID: try container.decodeIfPresent(String.self, forKey: .sourceExternalID),
             sourceLaneId: try container.decodeIfPresent(UUID.self, forKey: .sourceLaneId),
             sourceLaneName: try container.decodeIfPresent(String.self, forKey: .sourceLaneName) ?? "",
             sourcePath: try container.decodeIfPresent(String.self, forKey: .sourcePath) ?? "",

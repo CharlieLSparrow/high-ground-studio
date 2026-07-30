@@ -1290,3 +1290,8 @@ It is not a human proof-listen/watch or reviewed synchronization decision. The
 audio was intentionally quiet, the camera was the built-in MacBook camera
 rather than the R8, and no Episode Room, Nest boundary, upload, transcription,
 delivery, or publication was involved.
+
+The production transcription continuation is specified in
+[capture-transcript-worker.md](./capture-transcript-worker.md). It preserves
+the same immutable recording identity through background processing, Nest
+correction, stable word anchors, and a fail-closed QuipslyStudio import.

@@ -68,7 +68,7 @@ jobs:
             --github-output "${GITHUB_OUTPUT}"
 
       - name: Install dependencies
-        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true' || steps.changes.outputs.media_verifier == 'true' || steps.changes.outputs.media_processor == 'true'
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true' || steps.changes.outputs.media_verifier == 'true' || steps.changes.outputs.media_processor == 'true' || steps.changes.outputs.transcript_worker == 'true'
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck High Ground web with pinned TypeScript 7
@@ -97,6 +97,13 @@ jobs:
           pnpm quipsly:media-processor:build
           pnpm quipsly:media-processor:test
 
+      - name: Build and fault-test Quipsly transcript worker
+        if: steps.changes.outputs.transcript_worker == 'true'
+        run: |
+          pnpm --filter @high-ground/quipsly-media-processing typecheck
+          pnpm quipsly:transcript-worker:build
+          pnpm quipsly:transcript-worker:test
+
       - name: Run committed Quipsly contract suite
         if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.web == 'true'
         run: pnpm quipsly:contracts:test
@@ -106,7 +113,7 @@ jobs:
         run: pnpm quipsly:release:local
 
       - name: Validate release scripts and workflows
-        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.media_verifier == 'true' || steps.changes.outputs.media_processor == 'true'
+        if: steps.changes.outputs.quipsly == 'true' || steps.changes.outputs.media_verifier == 'true' || steps.changes.outputs.media_processor == 'true' || steps.changes.outputs.transcript_worker == 'true'
         run: |
           ruby -e 'require "yaml"; YAML.load_file(".github/workflows/deploy-cloud-run.yml"); YAML.load_file(".github/workflows/pr-tests.yml"); puts "YAML OK"'
           node --test scripts/ci/audit-binary-assets.test.mjs
@@ -124,6 +131,9 @@ jobs:
           bash -n scripts/release/quipsly-media-processor-access.sh
           bash -n scripts/release/quipsly-media-processor-context.test.sh
           bash -n scripts/release/quipsly-media-processor-deploy.sh
+          bash -n scripts/release/quipsly-transcript-worker-access.sh
+          bash -n scripts/release/quipsly-transcript-worker-context.test.sh
+          bash -n scripts/release/quipsly-transcript-worker-deploy.sh
           bash -n scripts/release/quipsly-release-preflight.sh
           bash -n scripts/release/quipsly-smoke-preview.sh
           bash -n scripts/release/quipsly-production-status.sh
@@ -146,6 +156,10 @@ jobs:
       - name: Validate committed media-processor release context
         if: steps.changes.outputs.media_processor == 'true'
         run: bash scripts/release/quipsly-media-processor-context.test.sh
+
+      - name: Validate committed transcript-worker release context
+        if: steps.changes.outputs.transcript_worker == 'true'
+        run: bash scripts/release/quipsly-transcript-worker-context.test.sh
 
       - name: Validate committed Quipsly release context
         if: steps.changes.outputs.quipsly == 'true'

@@ -1,6 +1,30 @@
 import Foundation
 import Combine
 
+public enum CanonicalTranscriptImportError:
+    Error,
+    Equatable,
+    LocalizedError
+{
+    case noActiveSequence
+    case emptyHandoff
+    case invalidHandoff
+    case existingTranscriptHasDifferentIdentity
+
+    public var errorDescription: String? {
+        switch self {
+        case .noActiveSequence:
+            return "Open an editor sequence before importing the canonical transcript."
+        case .emptyHandoff:
+            return "The canonical transcript handoff contains no timed segments."
+        case .invalidHandoff:
+            return "The canonical transcript handoff has incomplete or inconsistent external identities and timing."
+        case .existingTranscriptHasDifferentIdentity:
+            return "This sequence already has a different transcript spine. Create or choose a branch before replacing it."
+        }
+    }
+}
+
 public class ProjectStore: ObservableObject {
     public let objectWillChange = ObservableObjectPublisher()
     public var project: VideoProject
@@ -165,6 +189,99 @@ public class ProjectStore: ObservableObject {
 
     public func publishChanges() {
         objectWillChange.send()
+    }
+
+    /// Installs one Nest-owned transcript spine without discarding another
+    /// transcript version. Re-importing the same canonical job is idempotent;
+    /// importing a different job requires an explicit branch or clear action.
+    @discardableResult
+    public func applyCanonicalTranscriptHandoff(
+        transcriptJobID: String,
+        provider: String,
+        sourcePath: String,
+        segments: [TranscriptSegment]
+    ) throws -> Bool {
+        guard var sequence = activeSequence else {
+            throw CanonicalTranscriptImportError.noActiveSequence
+        }
+        guard !segments.isEmpty else {
+            throw CanonicalTranscriptImportError.emptyHandoff
+        }
+        let segmentExternalIDs = segments.compactMap(
+            \.sourceExternalID
+        )
+        let words = segments.flatMap(\.words)
+        let wordExternalIDs = words.compactMap(\.sourceExternalID)
+        let wordIndexes = words.compactMap(\.providerWordIndex)
+        guard !transcriptJobID.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).isEmpty,
+        segmentExternalIDs.count == segments.count,
+        Set(segmentExternalIDs).count == segments.count,
+        !words.isEmpty,
+        wordExternalIDs.count == words.count,
+        Set(wordExternalIDs).count == words.count,
+        wordIndexes == Array(0 ..< words.count),
+        segments.allSatisfy({ segment in
+            segment.sourceTranscriptJobID == transcriptJobID
+                && segment.startTime.isFinite
+                && segment.endTime.isFinite
+                && segment.startTime >= 0
+                && segment.endTime >= segment.startTime
+                && !segment.words.isEmpty
+                && segment.words.allSatisfy { word in
+                    word.startTime.isFinite
+                        && word.endTime.isFinite
+                        && word.startTime >= segment.startTime
+                        && word.endTime <= segment.endTime
+                        && word.endTime >= word.startTime
+                }
+        }) else {
+            throw CanonicalTranscriptImportError.invalidHandoff
+        }
+        let existingJobIDs = Set(
+            sequence.transcriptSegments.compactMap(
+                \.sourceTranscriptJobID
+            )
+        )
+        if !sequence.transcriptSegments.isEmpty,
+           existingJobIDs != Set([transcriptJobID]) {
+            throw CanonicalTranscriptImportError
+                .existingTranscriptHasDifferentIdentity
+        }
+        let unchanged =
+            sequence.transcriptSegments == segments
+            && sequence.transcriptJobs.contains {
+                $0.sourceExternalID == transcriptJobID
+                    && $0.status == "completed"
+            }
+        if unchanged {
+            return true
+        }
+
+        sequence.transcriptSegments = segments
+        let job = TranscriptJobRecord(
+            sourceExternalID: transcriptJobID,
+            sourceLaneName: "Nest canonical transcript",
+            sourcePath: sourcePath,
+            provider: provider,
+            status: "completed",
+            completedAt: Date(),
+            segmentCount: segments.count
+        )
+        if let index = sequence.transcriptJobs.firstIndex(where: {
+            $0.sourceExternalID == transcriptJobID
+        }) {
+            sequence.transcriptJobs[index] = job
+        } else {
+            sequence.transcriptJobs.append(job)
+        }
+        updateSequence(
+            sequence,
+            undoManager: nil,
+            actionName: "Import Canonical Transcript"
+        )
+        return false
     }
 
     @discardableResult

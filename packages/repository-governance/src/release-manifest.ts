@@ -13,6 +13,7 @@ export const RELEASE_MANIFEST_IDS = [
   "quipsly-studio",
   "quipsly-media-verifier",
   "quipsly-media-processor",
+  "quipsly-transcript-worker",
 ] as const;
 
 export type ReleaseManifestId = (typeof RELEASE_MANIFEST_IDS)[number];
@@ -95,6 +96,7 @@ export interface ChangedSurfacePlan {
   readonly nativeStudio: boolean;
   readonly mediaVerifier: boolean;
   readonly mediaProcessor: boolean;
+  readonly transcriptWorker: boolean;
   readonly quipsly: boolean;
   readonly deployTargets: readonly ("web" | "studio")[];
   readonly changedSurfaces: readonly (
@@ -104,6 +106,7 @@ export interface ChangedSurfacePlan {
     | "native-studio"
     | "media-verifier"
     | "media-processor"
+    | "transcript-worker"
   )[];
   readonly changedPathCount: number;
   readonly paths: readonly string[];
@@ -608,6 +611,10 @@ export function planChangedSurfaces(
     manifests,
     "quipsly-media-processor",
   );
+  const transcriptWorkerManifest = manifestById(
+    manifests,
+    "quipsly-transcript-worker",
+  );
 
   const web = anyPathMatches(deployPaths, webManifest.changeDetection.deploy);
   const studio = anyPathMatches(deployPaths, nestManifest.changeDetection.deploy);
@@ -632,6 +639,15 @@ export function planChangedSurfaces(
       paths,
       mediaProcessorManifest.changeDetection.validation,
     );
+  const transcriptWorker =
+    anyPathMatches(
+      deployPaths,
+      transcriptWorkerManifest.changeDetection.deploy,
+    )
+    || anyPathMatches(
+      paths,
+      transcriptWorkerManifest.changeDetection.validation,
+    );
   const quipsly = studio || anyPathMatches(paths, nestManifest.changeDetection.validation);
 
   const deployTargets: ("web" | "studio")[] = [
@@ -645,12 +661,14 @@ export function planChangedSurfaces(
     | "native-studio"
     | "media-verifier"
     | "media-processor"
+    | "transcript-worker"
   )[] = [
     ...deployTargets,
     ...(capture ? ["capture" as const] : []),
     ...(nativeStudio ? ["native-studio" as const] : []),
     ...(mediaVerifier ? ["media-verifier" as const] : []),
     ...(mediaProcessor ? ["media-processor" as const] : []),
+    ...(transcriptWorker ? ["transcript-worker" as const] : []),
   ];
   const matchedManifestIds = [
     ...(capture ? ["capture" as const] : []),
@@ -659,6 +677,7 @@ export function planChangedSurfaces(
     ...(nativeStudio ? ["quipsly-studio" as const] : []),
     ...(mediaVerifier ? ["quipsly-media-verifier" as const] : []),
     ...(mediaProcessor ? ["quipsly-media-processor" as const] : []),
+    ...(transcriptWorker ? ["quipsly-transcript-worker" as const] : []),
   ];
 
   return {
@@ -669,6 +688,7 @@ export function planChangedSurfaces(
     nativeStudio,
     mediaVerifier,
     mediaProcessor,
+    transcriptWorker,
     quipsly,
     deployTargets,
     changedSurfaces,
@@ -677,12 +697,14 @@ export function planChangedSurfaces(
     matchedManifestIds,
     summary: deployTargets.length
       ? `Auto deploy planned for ${deployTargets.join(" and ")} from validated release manifests.`
-      : mediaVerifier && mediaProcessor
-        ? "Manual Quipsly media-verifier and media-processor release validation is required."
+      : [mediaVerifier, mediaProcessor, transcriptWorker].filter(Boolean).length > 1
+        ? "Manual Quipsly worker release validation is required for every changed worker surface."
         : mediaVerifier
           ? "Manual Quipsly media-verifier release validation is required."
           : mediaProcessor
             ? "Manual Quipsly media-processor release validation is required."
+            : transcriptWorker
+              ? "Manual Quipsly transcript-worker release validation is required."
             : "No deployable app changes detected.",
   };
 }

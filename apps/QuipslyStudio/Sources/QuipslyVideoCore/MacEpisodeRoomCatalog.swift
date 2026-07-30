@@ -21,7 +21,66 @@ public struct MacEpisodeRoomCaptureSourceTranscript:
     public let status: String?
     public let provider: String?
     public let segmentCount: Int?
+    public let wordCount: Int?
+    public let providerReceiptReady: Bool?
+    public let handoffUrl: String?
     public let updatedAt: String?
+}
+
+public struct MacCanonicalTranscriptWord:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let id: String
+    public let providerWordIndex: Int
+    public let word: String
+    public let rawWord: String?
+    public let startTime: Double
+    public let endTime: Double
+    public let confidence: Double?
+    public let speaker: String?
+    public let channel: Int?
+    public let source: String
+}
+
+public struct MacCanonicalTranscriptSegment:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public let id: String
+    public let speaker: String?
+    public let providerSpeaker: String?
+    public let startTime: Double
+    public let endTime: Double
+    public let text: String
+    public let providerText: String
+    public let confidence: Double?
+    public let reviewStatus: String
+    public let acceptedCorrectionId: String?
+    public let words: [MacCanonicalTranscriptWord]
+}
+
+public struct MacCanonicalTranscriptHandoffResponse:
+    Codable,
+    Equatable,
+    Sendable
+{
+    public struct Source: Codable, Equatable, Sendable {
+        public let recordingAssetId: String?
+        public let playbackUrl: String?
+        public let immutableProviderWords: Bool
+        public let reviewedCorrectionsAreOverlays: Bool
+    }
+
+    public let ok: Bool
+    public let error: String?
+    public let schema: String?
+    public let roomId: String?
+    public let transcriptJobId: String?
+    public let source: Source?
+    public let segments: [MacCanonicalTranscriptSegment]?
 }
 
 public struct MacEpisodeRoomCaptureSourceAlignment:

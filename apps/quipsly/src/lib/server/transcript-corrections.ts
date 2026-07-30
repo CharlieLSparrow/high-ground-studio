@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 
 import { mobileCaptureProcessingGateFromEvidence } from "./mobile-capture-processing-policy.js";
+import { reconcileCaptureTranscriptJob } from "./capture-transcript-reconciliation.js";
 
 export const TRANSCRIPT_CORRECTION_SCHEMA = "quipsly-transcript-correction-v1";
 
@@ -193,6 +194,16 @@ async function loadAccessibleRoom(prisma: any, roomId: string, actor: Transcript
         select: {
           id: true,
           status: true,
+          errorMessage: true,
+          processingManifestObject: true,
+          processingResultObject: true,
+          sourceGeneration: true,
+          sourceSha256: true,
+          providerRequestId: true,
+          providerResponseObject: true,
+          workerBuildId: true,
+          resultJson: true,
+          _count: { select: { words: true } },
           asset: {
             select: {
               id: true,
@@ -218,6 +229,20 @@ async function loadAccessibleRoom(prisma: any, roomId: string, actor: Transcript
               endSeconds: true,
               text: true,
               confidence: true,
+              words: {
+                orderBy: { providerWordIndex: "asc" },
+                select: {
+                  id: true,
+                  providerWordIndex: true,
+                  startSeconds: true,
+                  endSeconds: true,
+                  word: true,
+                  punctuatedWord: true,
+                  confidence: true,
+                  speakerLabel: true,
+                  channel: true,
+                },
+              },
               corrections: {
                 orderBy: { updatedAt: "desc" },
                 select: {
@@ -252,14 +277,29 @@ export async function readTranscriptCorrectionDesk(input: {
   roomId: string;
   actor: TranscriptCorrectionActor;
 }) {
-  const room = await loadAccessibleRoom(input.prisma, input.roomId, input.actor);
-  const job = room.transcriptJobs[0] ?? null;
+  let room = await loadAccessibleRoom(input.prisma, input.roomId, input.actor);
+  let job = room.transcriptJobs[0] ?? null;
+  if (
+    job?.status === "RUNNING"
+    && job.processingManifestObject
+  ) {
+    const reconciliation = await reconcileCaptureTranscriptJob({
+      prisma: input.prisma,
+      transcriptJobId: job.id,
+    });
+    if (reconciliation.status !== "pending") {
+      room = await loadAccessibleRoom(input.prisma, input.roomId, input.actor);
+      job = room.transcriptJobs[0] ?? null;
+    }
+  }
   if (!job?.asset) {
     return {
       ok: true,
       roomId: room.id,
       projectId: room.projectId ?? null,
       transcriptJobId: job?.id ?? null,
+      transcriptStatus: job?.status ?? null,
+      processing: transcriptProcessingSummary(job),
       gate: { allowed: false, error: "No recording-backed transcript is available." },
       playback: null,
       segments: [],
@@ -274,6 +314,8 @@ export async function readTranscriptCorrectionDesk(input: {
       roomId: room.id,
       projectId: room.projectId ?? null,
       transcriptJobId: job.id,
+      transcriptStatus: job.status,
+      processing: transcriptProcessingSummary(job),
       gate,
       playback: null,
       segments: [],
@@ -286,6 +328,8 @@ export async function readTranscriptCorrectionDesk(input: {
     roomId: room.id,
     projectId: room.projectId ?? null,
     transcriptJobId: job.id,
+    transcriptStatus: job.status,
+    processing: transcriptProcessingSummary(job),
     gate,
     playback: playbackFromAsset(job.asset),
     segments: job.segments.map((segment: any) => {
@@ -301,6 +345,17 @@ export async function readTranscriptCorrectionDesk(input: {
         providerText: segment.text,
         providerTextSha256: sha256(segment.text),
         confidence: segment.confidence ?? null,
+        words: segment.words.map((word: any) => ({
+          id: word.id,
+          providerWordIndex: word.providerWordIndex,
+          startSeconds: word.startSeconds,
+          endSeconds: word.endSeconds,
+          word: word.word,
+          punctuatedWord: word.punctuatedWord,
+          confidence: word.confidence ?? null,
+          speakerLabel: word.speakerLabel ?? null,
+          channel: word.channel ?? null,
+        })),
         acceptedCorrection: accepted ? publicCorrection(accepted) : null,
         proposals: proposals.map(publicCorrection),
         correctionHistory: segment.corrections.map(publicCorrection),
@@ -317,9 +372,33 @@ export function transcriptCorrectionBoundaries() {
     acceptedHumanCorrectionRequiresPlaybackConfirmation: true,
     aiOutputRequiresHumanReview: true,
     mediaTimeAnchorsPreserved: true,
+    providerWordTimeAnchorsImmutable: true,
     noTaskCreated: true,
     noExternalDelivery: true,
     noPublication: true,
+  };
+}
+
+function transcriptProcessingSummary(job: any) {
+  if (!job) return null;
+  const result = object(job.resultJson);
+  const control = object(result.processingControl);
+  return {
+    status: job.status,
+    message: job.errorMessage ?? null,
+    wordCount: job._count?.words ?? 0,
+    sourceBound: Boolean(
+      job.processingManifestObject
+      && job.sourceGeneration
+      && job.sourceSha256,
+    ),
+    executionRequestedAt: text(control.executionRequestedAt) || null,
+    resultReceived: Boolean(job.processingResultObject),
+    providerReceiptReceived: Boolean(
+      job.providerRequestId
+      && job.providerResponseObject,
+    ),
+    workerBuildId: job.workerBuildId ?? null,
   };
 }
 

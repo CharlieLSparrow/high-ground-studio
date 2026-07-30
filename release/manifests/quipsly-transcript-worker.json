@@ -1,0 +1,89 @@
+{
+  "$schema": "./schema.json",
+  "schemaVersion": 1,
+  "id": "quipsly-transcript-worker",
+  "displayName": "Quipsly Capture Transcript Worker",
+  "ownerSurface": "quipsly-transcript-worker",
+  "status": "active",
+  "applicationRoot": "apps/quipsly-transcript-worker",
+  "changeDetection": {
+    "deploy": {
+      "prefixes": [
+        "apps/quipsly-transcript-worker/",
+        "packages/quipsly-media-processing/"
+      ],
+      "files": [
+        ".dockerignore",
+        ".gcloudignore",
+        ".npmrc",
+        "cloudbuild.quipsly-transcript-worker.yaml",
+        "package.json",
+        "pnpm-lock.yaml",
+        "pnpm-workspace.yaml",
+        "release/manifests/quipsly-transcript-worker.json"
+      ]
+    },
+    "validation": {
+      "prefixes": [
+        "scripts/quipsly-capture-transcript",
+        "scripts/release/quipsly-transcript-worker"
+      ],
+      "files": [
+        "docs/quipsly/capture-transcript-worker.md"
+      ]
+    },
+    "schema": {
+      "prefixes": [],
+      "files": []
+    }
+  },
+  "artifact": {
+    "kind": "cloud-run-job-image",
+    "identifier": "us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/quipsly-transcript-worker",
+    "sourceRevision": "git-commit-sha",
+    "materializer": "scripts/release/materialize-release-context.sh",
+    "provenanceReceipt": "quipsly-transcript-worker-source.json"
+  },
+  "proofs": {
+    "source": [
+      "scripts/release/quipsly-transcript-worker-context.test.sh"
+    ],
+    "deterministic": [
+      "pnpm --filter quipsly-transcript-worker build",
+      "pnpm quipsly:transcript-worker:test"
+    ],
+    "localRuntime": [
+      "Run the provider fault, crash recovery, immutable source drift, and stable word-anchor contract tests."
+    ],
+    "credentialedRuntime": [
+      "Run one isolated GCS fixture through the exact deployed job and reconcile its immutable provider receipt into an isolated database.",
+      "Revoke transcription consent after provider completion and prove that no text rows are projected.",
+      "Apply and read back managed-folder IAM, Secret Manager access, and no-override Cloud Run Jobs execution authority."
+    ],
+    "deliveryReadback": [
+      "Read back the immutable job image digest, dedicated service account, secret reference, bucket, resources, timeout, retries, environment, IAM, execution logs, and exact transcript evidence."
+    ]
+  },
+  "delivery": {
+    "channel": "cloud-run-job",
+    "target": "high-ground-odyssey/us-central1/quipsly-transcript-worker",
+    "promotion": "manual"
+  },
+  "releaseContext": {
+    "maxMiB": 25,
+    "requiredPaths": [
+      ".dockerignore",
+      ".gcloudignore",
+      ".npmrc",
+      "apps/quipsly-transcript-worker",
+      "cloudbuild.quipsly-transcript-worker.yaml",
+      "package.json",
+      "packages/quipsly-media-processing",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+      "release/manifests/quipsly-transcript-worker.json",
+      "release/manifests/schema.json"
+    ],
+    "optionalPaths": []
+  }
+}

@@ -1474,23 +1474,31 @@ model UploadChunk {
 }
 
 model TranscriptJob {
-  id           String              @id @default(cuid())
-  roomId       String?
-  assetId      String?
-  status       TranscriptJobStatus @default(QUEUED)
-  provider     String              @default("pending")
-  language     String?
-  requestedBy  String?
-  startedAt    DateTime?
-  completedAt  DateTime?
-  errorMessage String?
-  resultJson   Json                @default("{}")
-  createdAt    DateTime            @default(now())
-  updatedAt    DateTime            @updatedAt
+  id                       String              @id @default(cuid())
+  roomId                   String?
+  assetId                  String?
+  status                   TranscriptJobStatus @default(QUEUED)
+  provider                 String              @default("pending")
+  language                 String?
+  requestedBy              String?
+  startedAt                DateTime?
+  completedAt              DateTime?
+  errorMessage             String?
+  processingManifestObject String?
+  processingResultObject   String?
+  sourceGeneration         String?
+  sourceSha256             String?
+  providerRequestId        String?
+  providerResponseObject   String?
+  workerBuildId            String?
+  resultJson               Json                @default("{}")
+  createdAt                DateTime            @default(now())
+  updatedAt                DateTime            @updatedAt
 
   room     CallRoom?           @relation(fields: [roomId], references: [id], onDelete: Cascade)
   asset    RecordingAsset?     @relation(fields: [assetId], references: [id], onDelete: SetNull)
   segments TranscriptSegment[]
+  words    TranscriptWord[]
 
   @@index([roomId, status, createdAt])
   @@index([assetId, status, createdAt])
@@ -1511,9 +1519,36 @@ model TranscriptSegment {
 
   transcriptJob TranscriptJob          @relation(fields: [transcriptJobId], references: [id], onDelete: Cascade)
   corrections   TranscriptCorrection[]
+  words         TranscriptWord[]
 
   @@index([transcriptJobId, startSeconds])
   @@index([speakerLabel])
+}
+
+// Provider words are immutable, generation-bound timing evidence. Editor
+// selections and corrections anchor to these rows instead of mutable text
+// offsets; human-reviewed corrections remain overlays on TranscriptSegment.
+model TranscriptWord {
+  id                String   @id @default(cuid())
+  transcriptJobId   String
+  segmentId         String
+  providerWordIndex Int
+  startSeconds      Float
+  endSeconds        Float
+  word              String
+  punctuatedWord    String
+  confidence        Float?
+  speakerLabel      String?
+  channel           Int?
+  metadataJson      Json     @default("{}")
+  createdAt         DateTime @default(now())
+
+  transcriptJob TranscriptJob     @relation(fields: [transcriptJobId], references: [id], onDelete: Cascade)
+  segment       TranscriptSegment @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+
+  @@unique([transcriptJobId, providerWordIndex])
+  @@index([transcriptJobId, startSeconds])
+  @@index([segmentId, providerWordIndex])
 }
 
 // Provider transcript segments remain immutable evidence. Corrections are

@@ -88,6 +88,10 @@ final class EpisodeCaptureSetupModel: ObservableObject {
     @Published private(set) var isPersistingEditorSession = false
     @Published private(set) var editorSessionError: String?
     @Published private(set) var agentCommandStatus = "idle"
+    @Published private(set) var isImportingCanonicalTranscript = false
+    @Published private(set) var transcriptImportMessage =
+        "Completed Nest transcripts can become the active Studio transcript spine."
+    @Published private(set) var transcriptImportError: String?
 
     let captureRoot = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Movies/QuipslyCaptures", isDirectory: true)
@@ -1130,6 +1134,163 @@ final class EpisodeCaptureSetupModel: ObservableObject {
             episodeRoomError = error.localizedDescription
             episodeRoomMessage =
                 "Episode Room refresh needs attention. Existing local sources were not changed."
+        }
+    }
+
+    func importCanonicalTranscript(
+        _ source: MacEpisodeRoomCaptureSource,
+        room: MacEpisodeRoomSummary
+    ) async {
+        guard !isImportingCanonicalTranscript else { return }
+        guard let transcript = source.transcript,
+              transcript.status?.uppercased() == "COMPLETED",
+              let handoffPath = transcript.handoffUrl,
+              !handoffPath.isEmpty else {
+            transcriptImportError =
+                "This capture source has no completed canonical transcript handoff."
+            return
+        }
+        guard nativeAccountStore.hasSavedSession,
+              let baseURL = nativeAccountStore.normalizedBaseURL,
+              let handoffURL = URL(
+                string: handoffPath,
+                relativeTo: baseURL
+              )?.absoluteURL else {
+            transcriptImportError =
+                "Connect the native account before importing a Nest transcript."
+            return
+        }
+
+        isImportingCanonicalTranscript = true
+        transcriptImportError = nil
+        transcriptImportMessage =
+            "Loading the exact Nest transcript version and word anchors…"
+        defer { isImportingCanonicalTranscript = false }
+
+        do {
+            let request = URLRequest(url: handoffURL)
+            let (data, response) =
+                try await nativeAccountStore.authenticatedData(
+                    for: request
+                )
+            let handoff = try JSONDecoder().decode(
+                MacCanonicalTranscriptHandoffResponse.self,
+                from: data
+            )
+            guard (200 ..< 300).contains(response.statusCode),
+                  handoff.ok,
+                  handoff.schema
+                    == "quipsly-canonical-transcript-handoff-v1",
+                  let transcriptJobID = handoff.transcriptJobId,
+                  transcriptJobID == transcript.id,
+                  handoff.source?.recordingAssetId
+                    == source.recordingAssetId,
+                  handoff.source?.immutableProviderWords
+                    == true,
+                  handoff.source?.reviewedCorrectionsAreOverlays
+                    == true,
+                  let remoteSegments = handoff.segments,
+                  !remoteSegments.isEmpty,
+                  remoteSegments.allSatisfy({ segment in
+                      !segment.id.isEmpty
+                          && segment.startTime.isFinite
+                          && segment.endTime.isFinite
+                          && segment.startTime >= 0
+                          && segment.endTime >= segment.startTime
+                          && !segment.words.isEmpty
+                          && segment.words.allSatisfy { word in
+                              !word.id.isEmpty
+                                  && word.startTime.isFinite
+                                  && word.endTime.isFinite
+                                  && word.startTime >= segment.startTime
+                                  && word.endTime <= segment.endTime
+                                  && word.endTime >= word.startTime
+                          }
+                  }),
+                  remoteSegments.flatMap(\.words)
+                    .map(\.providerWordIndex)
+                    == Array(
+                        0 ..< remoteSegments
+                            .flatMap(\.words).count
+                    ) else {
+                throw NSError(
+                    domain: "QuipslyCanonicalTranscript",
+                    code: response.statusCode,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            handoff.error
+                                ?? "Nest returned an incomplete canonical transcript handoff.",
+                    ]
+                )
+            }
+            let segments = remoteSegments.map { segment in
+                TranscriptSegment(
+                    sourceExternalID: segment.id,
+                    sourceTranscriptJobID: transcriptJobID,
+                    speaker:
+                        segment.speaker
+                        ?? segment.providerSpeaker
+                        ?? "Speaker",
+                    startTime: segment.startTime,
+                    endTime: segment.endTime,
+                    text: segment.text,
+                    providerText: segment.providerText,
+                    words: segment.words.map { word in
+                        TranscriptWordTiming(
+                            sourceExternalID: word.id,
+                            providerWordIndex:
+                                word.providerWordIndex,
+                            word: word.word,
+                            startTime: word.startTime,
+                            endTime: word.endTime,
+                            confidence: word.confidence,
+                            source: word.source
+                        )
+                    },
+                    confidence: segment.confidence,
+                    reviewStatus: segment.reviewStatus
+                )
+            }
+            let replay = try projectStore
+                .applyCanonicalTranscriptHandoff(
+                    transcriptJobID: transcriptJobID,
+                    provider: transcript.provider ?? "deepgram",
+                    sourcePath: handoffURL.absoluteString,
+                    segments: segments
+                )
+            let sessionName =
+                "Nest Transcript \(room.canonicalEpisodeSpaceID)"
+            let savedURL = try await projectStore.saveNativeSession(
+                named: sessionName,
+                intent: .explicitCheckpoint
+            )
+            let readback = try await projectStore.readNativeSession(
+                named: sessionName
+            )
+            let imported = readback.session.project.sequences
+                .flatMap(\.transcriptSegments)
+                .filter {
+                    $0.sourceTranscriptJobID == transcriptJobID
+                }
+            guard imported.count == segments.count,
+                  imported.flatMap(\.words).count
+                    == segments.flatMap(\.words).count else {
+                throw NSError(
+                    domain: "QuipslyCanonicalTranscript",
+                    code: 409,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            "The saved Studio session did not read back the complete canonical transcript.",
+                    ]
+                )
+            }
+            transcriptImportMessage = replay
+                ? "Canonical transcript already matched Studio. Durable readback passed."
+                : "Imported \(segments.count) segments and \(segments.flatMap(\.words).count) exact word anchors. Saved and read back \(savedURL.lastPathComponent)."
+        } catch {
+            transcriptImportError = error.localizedDescription
+            transcriptImportMessage =
+                "The existing Studio transcript and source media were left unchanged."
         }
     }
 
@@ -3494,7 +3655,51 @@ struct EpisodeCaptureSetupView: View {
                             Text(source.recordingStatus.uppercased())
                                 .font(.caption2.weight(.black))
                                 .foregroundStyle(.secondary)
+                            if source.transcript?.status?
+                                .uppercased() == "COMPLETED",
+                               source.transcript?.handoffUrl != nil {
+                                Button {
+                                    Task {
+                                        await model
+                                            .importCanonicalTranscript(
+                                                source,
+                                                room: room
+                                            )
+                                    }
+                                } label: {
+                                    Label(
+                                        "Import timed transcript",
+                                        systemImage:
+                                            "text.word.spacing"
+                                    )
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(
+                                    model
+                                        .isImportingCanonicalTranscript
+                                )
+                                .help(
+                                    "Import the exact Nest transcript job and provider word anchors into the active Studio sequence. A different existing transcript is never overwritten."
+                                )
+                            }
                         }
+                    }
+                    Text(model.transcriptImportMessage)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(
+                            horizontal: false,
+                            vertical: true
+                        )
+                    if let error = model.transcriptImportError {
+                        Text(error)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.red)
+                            .fixedSize(
+                                horizontal: false,
+                                vertical: true
+                            )
                     }
                 }
                 .padding(10)

@@ -3,6 +3,77 @@ import XCTest
 
 #if os(macOS)
 final class MacEpisodeRoomCatalogTests: XCTestCase {
+    func testCanonicalTranscriptHandoffDecodesStableProviderAnchors() throws {
+        let data = Data(
+            """
+            {
+              "ok": true,
+              "schema": "quipsly-canonical-transcript-handoff-v1",
+              "roomId": "room-1",
+              "transcriptJobId": "job-1",
+              "source": {
+                "recordingAssetId": "asset-1",
+                "playbackUrl": "/api/playback/asset-1",
+                "immutableProviderWords": true,
+                "reviewedCorrectionsAreOverlays": true
+              },
+              "segments": [{
+                "id": "segment-1",
+                "speaker": "Charlie",
+                "providerSpeaker": "speaker_0",
+                "startTime": 1.25,
+                "endTime": 2.75,
+                "text": "Reviewed sentence.",
+                "providerText": "Reviewd sentence.",
+                "confidence": 0.96,
+                "reviewStatus": "human-reviewed",
+                "acceptedCorrectionId": "correction-1",
+                "words": [{
+                  "id": "word-1",
+                  "providerWordIndex": 0,
+                  "word": "Reviewed",
+                  "rawWord": "reviewed",
+                  "startTime": 1.25,
+                  "endTime": 1.7,
+                  "confidence": 0.97,
+                  "speaker": "speaker_0",
+                  "channel": 0,
+                  "source": "deepgram-word-anchor"
+                }]
+              }]
+            }
+            """.utf8
+        )
+
+        let handoff = try JSONDecoder().decode(
+            MacCanonicalTranscriptHandoffResponse.self,
+            from: data
+        )
+
+        XCTAssertEqual(
+            handoff.schema,
+            "quipsly-canonical-transcript-handoff-v1"
+        )
+        XCTAssertEqual(handoff.transcriptJobId, "job-1")
+        XCTAssertEqual(
+            handoff.segments?.first?.reviewStatus,
+            "human-reviewed"
+        )
+        XCTAssertEqual(
+            handoff.segments?.first?.words.first?
+                .providerWordIndex,
+            0
+        )
+        XCTAssertEqual(
+            handoff.segments?.first?.words.first?.source,
+            "deepgram-word-anchor"
+        )
+        XCTAssertEqual(
+            handoff.source?.immutableProviderWords,
+            true
+        )
+    }
+
     func testSelectionPreservesExistingAuthorizedRoom() {
         let held = room(
             id: "held",
