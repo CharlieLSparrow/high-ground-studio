@@ -11,6 +11,8 @@ const { PrismaClient } = requireFromQuipsly("@prisma/client");
 const { PrismaPg } = requireFromQuipsly("@prisma/adapter-pg");
 const { initializeApp, getApps } = requireFromQuipsly("firebase-admin/app");
 const { getAuth } = requireFromQuipsly("firebase-admin/auth");
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const args = new Map(
   process.argv
@@ -875,6 +877,7 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
     episodeTagId: episodeTag.id,
     episodeTagLabel: episodeTag.label,
     projectId,
+    projectSlug: created.body.project.slug,
     projectName: name,
     projectIdPresent: true,
     ownerRole: created.body.project.role,
@@ -886,6 +889,291 @@ async function assertGeneratedProjectWork(baseUrl, idToken, suffix, { seedGoalTa
     goalPersisted: true,
     canonicalTagCount: tags.length,
     tagUsageCountsProven: true,
+    externalSideEffects: false,
+  };
+}
+
+async function createGeneratedSourceInboxCapture(
+  env,
+  baseUrl,
+  idToken,
+  email,
+  suffix,
+  projectWorkProof,
+) {
+  const prisma = createPrisma(env);
+  const title = `Generated private source ${suffix}`;
+  const immutableText = [
+    "A trustworthy creative system keeps the original passage unchanged.",
+    "Filing is a deliberate human decision that creates shared Research evidence.",
+  ].join(" ");
+  const sourceUrl = `https://example.com/quipsly-source-${suffix}`;
+  const sourceFingerprint = crypto
+    .createHash("sha256")
+    .update(`${sourceUrl}\n${immutableText}`, "utf8")
+    .digest("hex");
+  const capturedAt = new Date(Date.now() - 1_000);
+
+  try {
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { primaryEmail: email },
+          { aliases: { some: { email } } },
+        ],
+      },
+      select: { id: true },
+    });
+    assert(user?.id, "Generated source Inbox seeding could not resolve the canonical actor.");
+
+    const snippet = await prisma.snippet.create({
+      data: {
+        userId: user.id,
+        collectionId: null,
+        sourceUrl,
+        sourceTitle: title,
+        highlightedText: immutableText,
+        note: "Private Inbox context must remain private after Research filing.",
+        metadataJson: {
+          source: "quipsly-mobile-capture-generated-auth-smoke",
+          capturedAt: capturedAt.toISOString(),
+          disposable: true,
+          privateInbox: true,
+        },
+        captureFingerprint: sourceFingerprint,
+      },
+      select: {
+        id: true,
+        userId: true,
+        sourceTitle: true,
+        sourceUrl: true,
+        highlightedText: true,
+        note: true,
+        updatedAt: true,
+      },
+    });
+
+    await prisma.studioPersonalSourceCaptureReceipt.createMany({
+      data: [0, 1].map((index) => ({
+        createdByUserId: user.id,
+        createdByEmailSnapshot: email,
+        clientRequestId: crypto.randomUUID(),
+        captureType: "SNIPPET",
+        snippetId: snippet.id,
+        sourceFingerprint,
+        capturedAt: new Date(capturedAt.getTime() + index),
+        captureSnapshotJson: {
+          kind: "quipsly-personal-source-capture-v1",
+          sourceTitle: title,
+          sourceUrl,
+          immutableTextSha256: crypto
+            .createHash("sha256")
+            .update(immutableText, "utf8")
+            .digest("hex"),
+          privateInbox: true,
+          externalSideEffects: false,
+        },
+      })),
+    });
+
+    const inbox = await requestJson(`${baseUrl}/api/mobile/capture/inbox`, {
+      headers: { authorization: `Bearer ${idToken}` },
+    });
+    const projected = Array.isArray(inbox.body?.sources)
+      ? inbox.body.sources.find((source) => source.id === snippet.id)
+      : null;
+    const destination = Array.isArray(inbox.body?.destinations)
+      ? inbox.body.destinations.find(
+        (candidate) => candidate.id === projectWorkProof.projectId,
+      )
+      : null;
+    assert(
+      inbox.response.status === 200
+        && inbox.body?.ok === true
+        && inbox.body?.inboxKind === "quipsly-mobile-source-inbox-v1"
+        && inbox.body?.boundaries?.actorOwnedPrivateInbox === true
+        && inbox.body?.boundaries?.writableResearchDestinationsOnly === true
+        && projected?.captureType === "SNIPPET"
+        && projected?.title === title
+        && projected?.excerpt === immutableText
+        && projected?.sourceUrl === sourceUrl
+        && projected?.captureCount === 2
+        && projected?.updatedAt === snippet.updatedAt.toISOString()
+        && destination?.role === "OWNER",
+      "The real authenticated private source Inbox did not project the exact actor-owned capture and writable Research destination.",
+      {
+        status: inbox.response.status,
+        sourceCount: Array.isArray(inbox.body?.sources) ? inbox.body.sources.length : null,
+        destinationCount: Array.isArray(inbox.body?.destinations)
+          ? inbox.body.destinations.length
+          : null,
+        projected: projected
+          ? {
+            id: projected.id,
+            captureType: projected.captureType,
+            captureCount: projected.captureCount,
+            updatedAt: projected.updatedAt,
+          }
+          : null,
+      },
+    );
+
+    return {
+      captureId: snippet.id,
+      captureType: "SNIPPET",
+      title,
+      immutableText,
+      immutableTextSha256: crypto
+        .createHash("sha256")
+        .update(immutableText, "utf8")
+        .digest("hex"),
+      sourceUrl,
+      note: snippet.note,
+      initialUpdatedAt: snippet.updatedAt.toISOString(),
+      projectId: projectWorkProof.projectId,
+      projectSlug: projectWorkProof.projectSlug,
+      projectName: projectWorkProof.projectName,
+    };
+  } finally {
+    await prisma.$disconnect();
+  }
+}
+
+async function assertGeneratedSourceInboxFiled(
+  env,
+  baseUrl,
+  idToken,
+  sourceInboxProof,
+) {
+  const authorization = `Bearer ${idToken}`;
+  const inbox = await requestJson(`${baseUrl}/api/mobile/capture/inbox`, {
+    headers: { authorization },
+  });
+  assert(
+    inbox.response.status === 200
+      && inbox.body?.ok === true
+      && Array.isArray(inbox.body?.sources)
+      && !inbox.body.sources.some(
+        (source) => source.id === sourceInboxProof.captureId,
+      ),
+    "The acknowledged filing remained in the unfiled private Inbox projection.",
+    { status: inbox.response.status, body: inbox.body },
+  );
+
+  const prisma = createPrisma(env);
+  let filing;
+  try {
+    const filings = await prisma.studioPersonalSourceFiling.findMany({
+      where: {
+        projectId: sourceInboxProof.projectId,
+        snippetId: sourceInboxProof.captureId,
+      },
+      include: {
+        sourceUnit: true,
+        snippet: true,
+      },
+    });
+    assert(
+      filings.length === 1,
+      "The operated iPhone filing must create exactly one canonical receipt and source.",
+      { filingCount: filings.length },
+    );
+    filing = filings[0];
+    const sourceHash = crypto
+      .createHash("sha256")
+      .update(filing.sourceUnit.immutableText || "", "utf8")
+      .digest("hex");
+    assert(
+      filing.captureType === sourceInboxProof.captureType
+        && filing.projectId === sourceInboxProof.projectId
+        && filing.snippetId === sourceInboxProof.captureId
+        && UUID_PATTERN.test(filing.clientRequestId)
+        && filing.sourceUnit.projectId === sourceInboxProof.projectId
+        && filing.sourceUnit.immutableText === sourceInboxProof.immutableText
+        && filing.sourceUnit.sourceUrl === sourceInboxProof.sourceUrl
+        && sourceHash === sourceInboxProof.immutableTextSha256
+        && filing.snippet?.sourceTitle === sourceInboxProof.title
+        && filing.snippet?.highlightedText === sourceInboxProof.immutableText
+        && filing.snippet?.sourceUrl === sourceInboxProof.sourceUrl
+        && filing.snippet?.note === sourceInboxProof.note
+        && filing.snippet?.updatedAt.toISOString()
+          === sourceInboxProof.initialUpdatedAt
+        && filing.captureSnapshotJson?.privateCaptureMutated === false
+        && filing.captureSnapshotJson?.externalSideEffects === false
+        && filing.captureSnapshotJson?.immutableTextSha256
+          === sourceInboxProof.immutableTextSha256
+        && filing.sourceUnit.metadataJson?.privateCaptureMutated === false
+        && filing.sourceUnit.metadataJson?.externalSideEffects === false,
+      "The canonical filing did not preserve exact identity, immutable text, private capture state, and no-side-effect provenance.",
+      {
+        captureType: filing.captureType,
+        sourceHash,
+        privateCaptureUpdatedAt: filing.snippet?.updatedAt.toISOString(),
+        initialUpdatedAt: sourceInboxProof.initialUpdatedAt,
+      },
+    );
+  } finally {
+    await prisma.$disconnect();
+  }
+
+  const replay = await requestJson(`${baseUrl}/api/mobile/capture/inbox`, {
+    method: "POST",
+    headers: {
+      authorization,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      action: "file-source",
+      captureId: sourceInboxProof.captureId,
+      captureType: sourceInboxProof.captureType,
+      projectId: sourceInboxProof.projectId,
+      clientRequestId: filing.clientRequestId,
+      expectedCaptureUpdatedAt: sourceInboxProof.initialUpdatedAt,
+    }),
+  });
+  assert(
+    replay.response.status === 200
+      && replay.body?.ok === true
+      && replay.body?.reused === true
+      && replay.body?.filingId === filing.id
+      && replay.body?.sourceUnitId === filing.sourceUnitId,
+    "Retrying the exact protected iPhone filing identity did not return the same canonical receipt and source.",
+    { status: replay.response.status, body: replay.body },
+  );
+
+  const exported = await requestJson(
+    `${baseUrl}/api/research/export?project=${encodeURIComponent(sourceInboxProof.projectSlug)}`,
+    { headers: { authorization } },
+  );
+  const exportedSource = Array.isArray(exported.body?.sources)
+    ? exported.body.sources.find((source) => source.id === filing.sourceUnitId)
+    : null;
+  assert(
+    exported.response.status === 200
+      && exported.body?.schemaVersion
+      && exported.body?.boundaries?.actorScoped === true
+      && exported.body?.boundaries?.immutableSourceTextIncluded === true
+      && exported.body?.boundaries?.sourceMutated === false
+      && exported.body?.boundaries?.providerMutated === false
+      && exportedSource?.immutableText === sourceInboxProof.immutableText
+      && exportedSource?.immutableTextSha256
+        === sourceInboxProof.immutableTextSha256,
+    "Nest's canonical Research export did not return the exact iPhone-filed immutable source and safety boundary.",
+    {
+      status: exported.response.status,
+      sourcePresent: Boolean(exportedSource),
+      exportedSourceHash: exportedSource?.immutableTextSha256 || null,
+    },
+  );
+
+  return {
+    captureRemovedFromUnfiledInbox: true,
+    privateCapturePreserved: true,
+    sameFilingIdentityOnRetry: true,
+    oneCanonicalSourceCreated: true,
+    immutableSourceHashPreserved: true,
+    researchExportReadback: true,
+    sourceMutated: false,
     externalSideEffects: false,
   };
 }
@@ -1426,6 +1714,8 @@ function runCaptureRuntimeUISmoke(
     projectName = "",
     annotationId = "",
     annotationBody = "",
+    sourceInboxCaptureId = "",
+    sourceInboxTitle = "",
   } = {},
 ) {
   const scriptPath = path.join(
@@ -1459,6 +1749,8 @@ function runCaptureRuntimeUISmoke(
       QUIPSLY_CAPTURE_UI_TEST_PROJECT_NAME: projectName,
       QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_ID: annotationId,
       QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_BODY: annotationBody,
+      QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_CAPTURE_ID: sourceInboxCaptureId,
+      QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_TITLE: sourceInboxTitle,
     },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -1498,7 +1790,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_RUNTIME_UI_MODE
       || "surface",
   ).trim();
-  if (!["surface", "task-edit", "goal-edit", "note-edit", "annotation-review"].includes(runtimeUISmokeMode)) {
+  if (!["surface", "task-edit", "goal-edit", "note-edit", "annotation-review", "source-inbox-filing"].includes(runtimeUISmokeMode)) {
     throw new Error(
       `Generated mobile Capture runtime UI mode is not supported: ${runtimeUISmokeMode}`,
     );
@@ -1508,7 +1800,7 @@ async function main() {
       || env.QUIPSLY_MOBILE_CAPTURE_WORKFLOW
       || "full",
   ).trim();
-  if (!["full", "task-edit", "goal-edit", "note-edit", "annotation-review"].includes(workflow)) {
+  if (!["full", "task-edit", "goal-edit", "note-edit", "annotation-review", "source-inbox-filing"].includes(workflow)) {
     throw new Error(`Generated mobile Capture workflow is not supported: ${workflow}`);
   }
   if (workflow !== "full" && runtimeUISmokeMode !== workflow) {
@@ -1530,6 +1822,8 @@ async function main() {
   let noteEditRestoration = null;
   let annotationProof = null;
   let annotationReviewRestoration = null;
+  let sourceInboxProof = null;
+  let sourceInboxFilingRestoration = null;
 
   try {
     await assertServerFirebaseAdminPreflight(baseUrl);
@@ -1579,11 +1873,29 @@ async function main() {
         projectWorkProof,
       );
     }
+    if (workflow === "source-inbox-filing") {
+      sourceInboxProof = await createGeneratedSourceInboxCapture(
+        env,
+        baseUrl,
+        firebaseBody.idToken,
+        email,
+        suffix,
+        projectWorkProof,
+      );
+    }
     if (workflow === "full") {
       const generatedRoom = await createGeneratedCaptureSession(env, email, sessionBody);
       roomJoinProof = await assertGeneratedRoomJoin(baseUrl, firebaseBody.idToken, generatedRoom);
       sessionContextProof = await assertGeneratedSessionContext(baseUrl, firebaseBody.idToken, generatedRoom);
       contractReport = runMobileCaptureContractSmoke(env, baseUrl, firebaseBody.idToken);
+    }
+    if (workflow === "source-inbox-filing") {
+      await createGeneratedCaptureSession(env, email, sessionBody);
+      contractReport = runMobileCaptureContractSmoke(
+        env,
+        baseUrl,
+        firebaseBody.idToken,
+      );
     }
     if (shouldRunRuntimeUISmoke) {
       runtimeUISmoke = runCaptureRuntimeUISmoke(
@@ -1608,6 +1920,8 @@ async function main() {
           projectName: projectWorkProof.projectName,
           annotationId: annotationProof?.annotationId || "",
           annotationBody: annotationProof?.body || "",
+          sourceInboxCaptureId: sourceInboxProof?.captureId || "",
+          sourceInboxTitle: sourceInboxProof?.title || "",
         },
       );
       if (workflow === "note-edit") {
@@ -1624,6 +1938,14 @@ async function main() {
           baseUrl,
           firebaseBody.idToken,
           annotationProof,
+        );
+      }
+      if (workflow === "source-inbox-filing") {
+        sourceInboxFilingRestoration = await assertGeneratedSourceInboxFiled(
+          env,
+          baseUrl,
+          firebaseBody.idToken,
+          sourceInboxProof,
         );
       }
     }
@@ -1664,6 +1986,15 @@ async function main() {
         }
         : null,
       annotationReviewRestoration,
+      sourceInboxFiling: sourceInboxProof
+        ? {
+          captureIdPresent: Boolean(sourceInboxProof.captureId),
+          projectIdPresent: Boolean(sourceInboxProof.projectId),
+          immutableTextSha256Present:
+            /^[0-9a-f]{64}$/.test(sourceInboxProof.immutableTextSha256),
+        }
+        : null,
+      sourceInboxFilingRestoration,
       mobileCaptureContract: contractReport
         ? {
           authenticated: contractReport.authenticated === true,

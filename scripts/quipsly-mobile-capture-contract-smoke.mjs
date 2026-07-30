@@ -925,6 +925,8 @@ function checkTranscriptCorrectionContractSources() {
   const collectionsModelText = sourceText("apps/quipsly/src/app/(app)/collections/collections-model.ts");
   const collectionsClientText = sourceText("apps/quipsly/src/app/(app)/collections/collections-client.tsx");
   const personalSourceFilingText = sourceText("apps/quipsly/src/lib/server/personal-source-filing.ts");
+  const mobileSourceInboxRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/inbox/route.ts");
+  const sourceInboxFilingText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CaptureSourceInbox.swift");
   const personalSourceFilingActionText = sourceText("apps/quipsly/src/app/(app)/collections/actions.ts");
   const researchPageText = sourceText("apps/quipsly/src/app/(app)/research/page.tsx");
   const personalSourceCaptureMigrationText = sourceText("prisma/migrations/20260719130000_add_personal_source_capture_receipts/migration.sql");
@@ -1246,7 +1248,15 @@ function checkTranscriptCorrectionContractSources() {
       && collectionsClientText.includes("Your private capture stays unchanged")
       && researchPageText.includes("personalSourceFiling")
       && inboxText.includes("researchFilings: { none: {} }")
-      && inboxText.includes("until an explicit Research filing receipt commits"),
+      && inboxText.includes("until an explicit Research filing receipt commits")
+      && mobileSourceInboxRouteText.includes("actorOwnedPrivateInbox: true")
+      && mobileSourceInboxRouteText.includes("writableResearchDestinationsOnly: true")
+      && mobileSourceInboxRouteText.includes("expectedCaptureUpdatedAt")
+      && mobileSourceInboxRouteText.includes("filePersonalSourceIntoResearch")
+      && sourceInboxFilingText.includes("completeFileProtectionUntilFirstUserAuthentication")
+      && sourceInboxFilingText.includes("ownerAccountID")
+      && sourceInboxFilingText.includes("expectedCaptureUpdatedAt")
+      && sourceInboxFilingText.includes("ACKNOWLEDGEMENT_MISMATCH"),
     "personalSourceResearchFiling",
     "A person explicitly files an actor-owned Inbox capture into one writable Nest as a canonical immutable Research source plus receipt; retries are idempotent, the private capture remains unchanged, and Inbox removal follows the committed receipt.",
   );
@@ -1571,6 +1581,8 @@ async function checkProtectedRoutes() {
     { name: "reviewDigest", method: "GET", path: "/api/mobile/capture/review-digest" },
     { name: "todayRead", method: "GET", path: "/api/mobile/capture/today" },
     { name: "workRead", method: "GET", path: "/api/mobile/capture/work" },
+    { name: "sourceInboxRead", method: "GET", path: "/api/mobile/capture/inbox" },
+    { name: "sourceInboxMutation", method: "POST", path: "/api/mobile/capture/inbox", body: {} },
     { name: "todayMutation", method: "POST", path: "/api/mobile/capture/today", body: {} },
     { name: "consent", method: "POST", path: "/api/mobile/capture/consent", body: {} },
     { name: "roomJoin", method: "POST", path: "/api/mobile/capture/rooms/join", body: {} },

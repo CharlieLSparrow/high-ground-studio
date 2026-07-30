@@ -127,7 +127,11 @@ private struct ProtectedOfflineLibraryShell: View {
                 }
 
                 Section("Follow-through offline") {
-                    TodayFollowThroughCard(client: captureModel.todayClient, previewOnly: false)
+                    TodayFollowThroughCard(
+                        client: captureModel.todayClient,
+                        inboxClient: captureModel.sourceInboxClient,
+                        previewOnly: false
+                    )
                 }
 
                 Section("Local Library") {

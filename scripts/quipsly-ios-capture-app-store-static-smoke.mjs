@@ -43,6 +43,7 @@ const files = {
   providerRoomController: path.join(sourceRoot, "ProviderRoomController.swift"),
   captureExperienceModel: path.join(sourceRoot, "CaptureExperienceModel.swift"),
   mobileQuickEntryOutbox: path.join(sourceRoot, "MobileQuickEntryOutbox.swift"),
+  sourceInboxFiling: path.join(sourceRoot, "CaptureSourceInbox.swift"),
   sessionNoteEditOutbox: path.join(sourceRoot, "SessionNoteEditOutbox.swift"),
   captureReceiptStore: path.join(sourceRoot, "CaptureRoomReceiptStore.swift"),
   capturePhoneShell: path.join(sourceRoot, "CapturePhoneShell.swift"),
@@ -55,6 +56,8 @@ const files = {
   mobileCaptureReadinessRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/readiness/route.ts"),
   mobileQuickEntryRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts"),
   mobileTodayRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/today/route.ts"),
+  mobileSourceInboxRoute: path.join(root, "apps/quipsly/src/app/api/mobile/capture/inbox/route.ts"),
+  personalSourceFiling: path.join(root, "apps/quipsly/src/lib/server/personal-source-filing.ts"),
   mobileQuickEntryHelper: path.join(root, "apps/quipsly/src/lib/server/mobile-capture-quick-entry.ts"),
   taskRecurrenceServer: path.join(root, "apps/quipsly/src/lib/server/task-recurrence.ts"),
   canonicalTaskStatus: path.join(root, "apps/quipsly/src/lib/server/canonical-task-status.ts"),
@@ -166,6 +169,7 @@ const uploadLedgerText = read(files.uploadLedgerStore);
 const providerRoomText = read(files.providerRoomController);
 const captureExperienceText = read(files.captureExperienceModel);
 const mobileQuickEntryOutboxText = read(files.mobileQuickEntryOutbox);
+const sourceInboxFilingText = read(files.sourceInboxFiling);
 const sessionNoteEditOutboxText = read(files.sessionNoteEditOutbox);
 const captureReceiptStoreText = read(files.captureReceiptStore);
 const capturePhoneShellText = read(files.capturePhoneShell);
@@ -178,6 +182,8 @@ const iPadText = read(files.iPadSession);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
 const mobileQuickEntryRouteText = read(files.mobileQuickEntryRoute);
 const mobileTodayRouteText = read(files.mobileTodayRoute);
+const mobileSourceInboxRouteText = read(files.mobileSourceInboxRoute);
+const personalSourceFilingText = read(files.personalSourceFiling);
 const mobileQuickEntryHelperText = read(files.mobileQuickEntryHelper);
 const taskRecurrenceServerText = read(files.taskRecurrenceServer);
 const canonicalTaskStatusText = read(files.canonicalTaskStatus);
@@ -329,6 +335,7 @@ requireIncludes(runtimeUISmokeRunnerText, 'task-edit)', "runtime UI smoke can op
 requireIncludes(runtimeUISmokeRunnerText, 'goal-edit)', "runtime UI smoke can operate and restore a canonical goal edit");
 requireIncludes(runtimeUISmokeRunnerText, 'recurrence-missed)', "runtime UI smoke can select the explicit missed-occurrence proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'session-note-edit)', "runtime UI smoke can select the protected Session-note edit and relaunch proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'source-inbox-filing)', "runtime UI smoke can select the private-source-to-Research filing proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
 requireIncludes(runtimeUISmokeTestsText, "func testConsentedCapturePlaybackAndCrashRecovery", "runtime UI smoke implements real consented capture, playback, and crash recovery");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence", "runtime UI smoke authors recurrence through signed-in iPhone controls and reads it back from Today");
@@ -338,6 +345,7 @@ requireIncludes(runtimeUISmokeTestsText, "func testOneTimeTaskEditRoundTripsAndR
 requireIncludes(runtimeUISmokeTestsText, "func testCanonicalGoalEditRoundTripsAndRestoresThroughNest", "runtime UI smoke edits and restores one exact canonical goal through signed-in iPhone controls");
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneExplicitlySkipsMissedOccurrenceAndContinuesSeries", "runtime UI smoke explicitly preserves one missed occurrence and proves the canonical series continues");
 requireIncludes(runtimeUISmokeTestsText, "func testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox", "runtime UI smoke creates, edits, and relaunches one exact canonical Session note");
+requireIncludes(runtimeUISmokeTestsText, "func testPrivateSourceInboxFilesIntoCanonicalResearch", "runtime UI smoke files one exact private iPhone source into canonical Nest Research");
 requireIncludes(runtimeUISmokeTestsText, "func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials", "runtime UI smoke opens Apple's protected Google handoff without typing a credential");
 requireIncludes(runtimeUISmokeTestsText, '"google.com"', "Google handoff proof asserts the exact external provider before leaving Quipsly");
 requireIncludes(runtimeUISmokeTestsText, "hold duplicate auth attempts", "Google handoff proof keeps duplicate identity attempts disabled");
@@ -356,6 +364,73 @@ requireIncludes(generatedMobileCaptureAuthSmokeText, "run-runtime-ui-smoke", "ge
 requireIncludes(generatedMobileCaptureAuthSmokeText, "run-capture-runtime-ui-smoke.sh", "generated auth smoke reuses the native runtime UI runner");
 requireIncludes(generatedMobileCaptureAuthSmokeText, "Runtime UI smoke used generated credentials through native Firebase login", "generated auth smoke documents real native login");
 requireIncludes(generatedMobileCaptureAuthSmokeText, "password and tokens were not printed", "generated auth smoke must not expose runtime UI secrets");
+for (const needle of [
+  "createGeneratedSourceInboxCapture",
+  "assertGeneratedSourceInboxFiled",
+  "sameFilingIdentityOnRetry: true",
+  "privateCapturePreserved: true",
+  "researchExportReadback: true",
+]) {
+  requireIncludes(
+    generatedMobileCaptureAuthSmokeText,
+    needle,
+    "generated auth smoke independently proves private source filing through Nest",
+  );
+}
+for (const needle of [
+  "completeFileProtectionUntilFirstUserAuthentication",
+  "ownerAccountID",
+  "expectedCaptureUpdatedAt",
+  "var clientRequestID: String { id.uuidString.lowercased() }",
+  "source-inbox-filings-v1.last-known-good.json",
+  "ACKNOWLEDGEMENT_MISMATCH",
+  "/api/mobile/capture/inbox",
+]) {
+  requireIncludes(
+    sourceInboxFilingText,
+    needle,
+    "private source filing uses an actor-partitioned protected iPhone outbox and exact Nest acknowledgement",
+  );
+}
+for (const needle of [
+  'accessibilityIdentifier("CaptureSourceInbox")',
+  '"CaptureSourceInboxFile_\\(source.id)"',
+  'accessibilityIdentifier("CaptureSourceFilingConfirm")',
+  "Keeps the private Inbox capture unchanged",
+  "No task, calendar event, message, delivery, provider request, or publication is created.",
+]) {
+  requireIncludes(
+    capturePhoneShellText,
+    needle,
+    "Today exposes an explicit private-source Research destination decision and safety boundary",
+  );
+}
+for (const needle of [
+  "actorOwnedPrivateInbox: true",
+  "writableResearchDestinationsOnly: true",
+  "stableFilingIdentityRequired: true",
+  "researchFilings: { none: {} }",
+  "expectedCaptureUpdatedAt",
+  "filePersonalSourceIntoResearch",
+]) {
+  requireIncludes(
+    mobileSourceInboxRouteText,
+    needle,
+    "mobile source Inbox route is actor scoped, revision guarded, and uses the canonical filing service",
+  );
+}
+for (const needle of [
+  "input.expectedCaptureUpdatedAt",
+  "captureUpdatedAt?.getTime() !== input.expectedCaptureUpdatedAt.getTime()",
+  "privateCaptureMutated: false",
+  "TransactionIsolationLevel.Serializable",
+]) {
+  requireIncludes(
+    personalSourceFilingText,
+    needle,
+    "canonical personal-source filing preserves reviewed revision and immutable provenance",
+  );
+}
 requireIncludes(mobileCapturePreflightText, "validate-livekit-provider-room.sh", "mobile capture preflight uses the bounded LiveKit provider-room validator");
 requireIncludes(mobileCapturePreflightText, "--build-simulator", "mobile capture preflight runs the bounded simulator build proof");
 requireIncludes(mobileCapturePreflightText, "quipsly-ios-shared-episode-watch.test.mjs", "mobile capture preflight preserves shared Episode Watch boundaries");

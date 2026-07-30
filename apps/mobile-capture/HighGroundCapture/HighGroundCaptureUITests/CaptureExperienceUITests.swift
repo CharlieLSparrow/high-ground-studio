@@ -842,6 +842,63 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(skipMissed.label.contains("Skip missed occurrence"))
     }
 
+    func testTodayReviewsPrivateSourceInboxWithoutInventingResearchFiling() {
+        let inbox = app.descendants(matching: .any)["CaptureSourceInbox"]
+        reveal(inbox)
+        XCTAssertTrue(
+            inbox.waitForExistence(timeout: 5),
+            "Today should surface private passages and links that still need deliberate Research filing."
+        )
+        XCTAssertTrue(app.staticTexts["Private source Inbox"].exists)
+        XCTAssertTrue(app.staticTexts["Be curious"].exists)
+        XCTAssertTrue(
+            app.staticTexts["A preserved passage waiting for deliberate Research filing."].exists
+        )
+
+        let file = app.buttons["CaptureSourceInboxFile_preview-source"]
+        reveal(file)
+        XCTAssertTrue(
+            file.isHittable,
+            "Preview should allow safe inspection of the real destination decision."
+        )
+        file.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSourceFilingSheet"]
+                .waitForExistence(timeout: 5)
+        )
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSourceFilingDestination"].exists
+        )
+        let previewBoundary = app.descendants(matching: .any)[
+            "CaptureSourceFilingPreviewBoundary"
+        ].firstMatch
+        reveal(previewBoundary)
+        XCTAssertTrue(previewBoundary.exists)
+        let confirm = app.buttons["CaptureSourceFilingConfirm"]
+        XCTAssertTrue(confirm.exists)
+        XCTAssertFalse(
+            confirm.isEnabled,
+            "Preview must never create a Research source or clear a private Inbox item."
+        )
+        let noSideEffects = app.staticTexts.matching(
+            NSPredicate(
+                format: "label CONTAINS %@",
+                "No task, calendar event, message, delivery, provider request, or publication"
+            )
+        ).firstMatch
+        reveal(noSideEffects)
+        XCTAssertTrue(noSideEffects.exists)
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSourceInboxItem_preview-source"].exists
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureSourceInboxPending_preview-source"].exists,
+            "Inspecting preview UX must not invent a protected filing decision."
+        )
+    }
+
     func testTranscriptReviewKeepsPreviewAndAIBehindTruthBoundaries() throws {
         app.tabBars.buttons["Library"].tap()
         XCTAssertTrue(app.scrollViews["CaptureLibraryView"].waitForExistence(timeout: 5))

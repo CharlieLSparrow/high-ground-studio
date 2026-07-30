@@ -84,6 +84,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let noteEditUpdatedBody: String?
         let annotationID: String?
         let annotationBody: String?
+        let sourceInboxCaptureID: String?
+        let sourceInboxTitle: String?
         let recurrenceSeriesID: String?
         let recurrenceScheduledLocalDate: String?
         let recurrenceAuthoringTitle: String?
@@ -125,6 +127,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 noteEditUpdatedBody: environment["QUIPSLY_CAPTURE_UI_TEST_NOTE_EDIT_UPDATED_BODY"],
                 annotationID: environment["QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_ID"],
                 annotationBody: environment["QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_BODY"],
+                sourceInboxCaptureID: environment["QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_CAPTURE_ID"],
+                sourceInboxTitle: environment["QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_TITLE"],
                 recurrenceSeriesID: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_SERIES_ID"],
                 recurrenceScheduledLocalDate: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_LOCAL_DATE"],
                 recurrenceAuthoringTitle: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_AUTHORING_TITLE"],
@@ -179,6 +183,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             noteEditUpdatedBody: payload["noteEditUpdatedBody"] as? String,
             annotationID: payload["annotationID"] as? String,
             annotationBody: payload["annotationBody"] as? String,
+            sourceInboxCaptureID: payload["sourceInboxCaptureID"] as? String,
+            sourceInboxTitle: payload["sourceInboxTitle"] as? String,
             recurrenceSeriesID: payload["recurrenceSeriesID"] as? String,
             recurrenceScheduledLocalDate: payload["recurrenceScheduledLocalDate"] as? String,
             recurrenceAuthoringTitle: payload["recurrenceAuthoringTitle"] as? String,
@@ -1282,6 +1288,82 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The same annotation control should acknowledge its active state after reopening."
         )
         XCTAssertTrue(app.staticTexts[annotationBody].exists)
+    }
+
+    func testPrivateSourceInboxFilesIntoCanonicalResearch() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let captureID = credentials.sourceInboxCaptureID, !captureID.isEmpty,
+              let sourceTitle = credentials.sourceInboxTitle, !sourceTitle.isEmpty,
+              let projectName = credentials.projectName, !projectName.isEmpty else {
+            throw XCTSkip("The source-inbox-filing journey requires one exact private capture ID/title and writable Nest name.")
+        }
+
+        let app = try launchSignedInCaptureApp()
+        let item = app.descendants(matching: .any)[
+            "CaptureSourceInboxItem_\(captureID)"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(item, in: app, timeout: 30, swipeAttempts: 18),
+            "Today should expose the exact actor-owned private source before any Research filing exists."
+        )
+        XCTAssertTrue(app.staticTexts[sourceTitle].exists)
+
+        let choose = app.buttons["CaptureSourceInboxFile_\(captureID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(choose, in: app, timeout: 10, swipeAttempts: 6)
+        )
+        XCTAssertTrue(choose.isEnabled)
+        choose.tap()
+
+        let sheet = app.descendants(matching: .any)["CaptureSourceFilingSheet"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 8))
+        let destination = app.descendants(matching: .any)[
+            "CaptureSourceFilingDestination"
+        ].firstMatch
+        XCTAssertTrue(destination.waitForExistence(timeout: 5))
+        if !destination.label.contains(projectName) {
+            destination.tap()
+            let destinationOption = app.buttons[projectName].firstMatch
+            if destinationOption.waitForExistence(timeout: 4) {
+                destinationOption.tap()
+            } else {
+                let destinationText = app.staticTexts[projectName].firstMatch
+                XCTAssertTrue(destinationText.waitForExistence(timeout: 4))
+                destinationText.tap()
+            }
+        }
+
+        let confirm = app.buttons["CaptureSourceFilingConfirm"].firstMatch
+        XCTAssertTrue(confirm.waitForExistence(timeout: 5))
+        XCTAssertTrue(confirm.isEnabled)
+        confirm.tap()
+        XCTAssertTrue(
+            sheet.waitForNonExistence(timeout: 30),
+            "Nest acknowledgement should close the filing decision sheet."
+        )
+        XCTAssertTrue(
+            item.waitForNonExistence(timeout: 30),
+            "The acknowledged source should leave the unfiled Inbox projection without deleting its private capture."
+        )
+
+        let status = app.staticTexts["CaptureSourceInboxStatus"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(status, in: app, timeout: 20, swipeAttempts: 12)
+        )
+        XCTAssertTrue(status.label.contains("Filed into \(projectName)"))
+        let filedLink = app.descendants(matching: .any)[
+            "CaptureSourceInboxFiledLink"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(filedLink, in: app, timeout: 10, swipeAttempts: 6),
+            "The same iPhone decision should retain a deliberate route to the canonical Research evidence in Nest."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)[
+                "CaptureSourceInboxPending_\(captureID)"
+            ].exists,
+            "An exact Nest acknowledgement must close the protected outbox entry."
+        )
     }
 
     func testCanonicalDocumentNoteEditRoundTripsAndRestoresThroughNest() throws {

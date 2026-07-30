@@ -180,6 +180,7 @@ final class CaptureExperienceModel: ObservableObject {
     let sessionClient = CaptureSessionClient()
     let todayClient = CaptureTodayClient()
     let workClient = CaptureWorkClient()
+    let sourceInboxClient = CaptureSourceInboxClient()
     let providerRoom = ProviderRoomController()
     let readinessClient = CaptureReadinessClient()
     let uploadManager = UploadManager.shared
@@ -218,6 +219,9 @@ final class CaptureExperienceModel: ObservableObject {
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         workClient.objectWillChange
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+        sourceInboxClient.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
         providerRoom.objectWillChange
@@ -367,6 +371,7 @@ final class CaptureExperienceModel: ObservableObject {
             ]
             todayClient.loadPreview()
             workClient.loadPreview()
+            sourceInboxClient.loadPreview()
             sessionClient.status = "Preview ready"
             selectedSessionID = selectedSessionID ?? sessionClient.sessions.first?.id
             return
@@ -387,8 +392,9 @@ final class CaptureExperienceModel: ObservableObject {
         async let sessionLoad = sessionClient.load()
         async let todayLoad: Void = todayClient.load()
         async let workLoad: Void = workClient.load(projectID: workClient.selectedProjectID)
+        async let sourceInboxLoad: Void = sourceInboxClient.load()
         async let readinessLoad: Void = readinessClient.load()
-        _ = await (sessionLoad, todayLoad, workLoad, readinessLoad)
+        _ = await (sessionLoad, todayLoad, workLoad, sourceInboxLoad, readinessLoad)
         await taskReminderScheduler.reconcile(
             drafts: quickEntryOutbox.entries.compactMap(\.taskReminderDraft)
         )
@@ -504,6 +510,7 @@ final class CaptureExperienceModel: ObservableObject {
         if acknowledged > 0 {
             await todayClient.load()
             await workClient.load(projectID: workClient.selectedProjectID)
+            await sourceInboxClient.load()
             // A single retry already carries the most useful server-authored
             // acknowledgement (for example, the exact Home Nest note
             // destination). Preserve that message so reconnect does not turn a
@@ -553,6 +560,9 @@ final class CaptureExperienceModel: ObservableObject {
             if refreshToday {
                 await todayClient.load()
                 await workClient.load(projectID: entry.destinationProjectID ?? workClient.selectedProjectID)
+                if entry.kind == .source {
+                    await sourceInboxClient.load()
+                }
             }
         case let .retryable(message):
             quickEntryOutbox.markRetryable(entry.id, message: message)

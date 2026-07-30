@@ -29,6 +29,7 @@ type FilingInput = {
   captureId: string;
   captureType: string;
   clientRequestId: string;
+  expectedCaptureUpdatedAt?: Date;
 };
 
 function text(value: unknown, max: number) {
@@ -180,6 +181,7 @@ export async function filePersonalSourceIntoResearch(input: FilingInput): Promis
               highlightedText: true,
               metadataJson: true,
               createdAt: true,
+              updatedAt: true,
               _count: { select: { captureReceipts: true } },
               captureReceipts: { orderBy: { capturedAt: "asc" }, take: 1, select: { capturedAt: true } },
             },
@@ -194,6 +196,7 @@ export async function filePersonalSourceIntoResearch(input: FilingInput): Promis
               url: true,
               metadataJson: true,
               createdAt: true,
+              updatedAt: true,
               _count: { select: { captureReceipts: true } },
               captureReceipts: { orderBy: { capturedAt: "asc" }, take: 1, select: { capturedAt: true } },
             },
@@ -201,6 +204,15 @@ export async function filePersonalSourceIntoResearch(input: FilingInput): Promis
         : null;
       if (!snippet && !bookmark) {
         return { ok: false as const, code: "NOT_FOUND" as const, message: "That personal source is unavailable to the signed-in account." };
+      }
+      const captureUpdatedAt = snippet?.updatedAt ?? bookmark?.updatedAt;
+      if (input.expectedCaptureUpdatedAt
+          && captureUpdatedAt?.getTime() !== input.expectedCaptureUpdatedAt.getTime()) {
+        return {
+          ok: false as const,
+          code: "CONFLICT" as const,
+          message: "This private source changed after the phone review. Refresh before filing it into Research.",
+        };
       }
 
       const immutableText = snippet?.highlightedText ?? bookmark?.url ?? "";

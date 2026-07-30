@@ -184,7 +184,11 @@ private struct CaptureTodayView: View {
                     .disabled(model.isSessionContextLocked)
                 }
 
-                TodayFollowThroughCard(client: model.todayClient, previewOnly: model.usesPreviewData)
+                TodayFollowThroughCard(
+                    client: model.todayClient,
+                    inboxClient: model.sourceInboxClient,
+                    previewOnly: model.usesPreviewData
+                )
 
                 if model.uploadManager.recoverableUploadCount > 0 {
                     CaptureAttentionCard(
@@ -1231,6 +1235,7 @@ struct TodayFollowThroughCard: View {
     }
 
     @ObservedObject var client: CaptureTodayClient
+    @ObservedObject var inboxClient: CaptureSourceInboxClient
     let previewOnly: Bool
     @StateObject private var library = LocalRecordingLibrary.shared
     @State private var recurrenceToEnd: MobileCaptureTodayRecurrence?
@@ -1242,6 +1247,7 @@ struct TodayFollowThroughCard: View {
     @State private var goalToEdit: MobileCaptureTodayGoal?
     @State private var taskTagsToEdit: MobileCaptureTodayTask?
     @State private var goalTagsToEdit: MobileCaptureTodayGoal?
+    @State private var sourceToFile: MobileSourceInboxSource?
     @State private var showsAllCommittedTasks = false
 
     private var nextFocus: MobileCaptureTodayFocusBlock? {
@@ -1800,6 +1806,184 @@ struct TodayFollowThroughCard: View {
                 .accessibilityIdentifier("CaptureTodayResearchCues")
             }
 
+            if !inboxClient.sources.isEmpty
+                || inboxClient.pendingCount > 0
+                || inboxClient.heldCount > 0
+                || inboxClient.statusMessage != nil {
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Label("Private source Inbox", systemImage: "tray.full")
+                            .font(.caption.weight(.bold))
+                            .foregroundStyle(.cyan)
+                        Spacer()
+                        if inboxClient.isLoading || inboxClient.isSyncing {
+                            ProgressView().controlSize(.small)
+                        }
+                    }
+                    Text("Review captured passages and links, then deliberately preserve one in a writable Research Nest.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+
+                    if inboxClient.isUsingProtectedCache {
+                        Label(
+                            "Protected offline snapshot · filing choices can queue safely",
+                            systemImage: "lock.iphone"
+                        )
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("CaptureSourceInboxProtectedSnapshot")
+                    }
+
+                    ForEach(inboxClient.sources.prefix(3)) { source in
+                        let pending = inboxClient.pendingDecision(for: source.id)
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack(alignment: .top, spacing: 9) {
+                                Image(
+                                    systemName: source.captureType == .snippet
+                                        ? "quote.opening"
+                                        : "link"
+                                )
+                                .foregroundStyle(.cyan)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text(source.title)
+                                        .font(.subheadline.weight(.semibold))
+                                    Text(source.excerpt)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(4)
+                                    if source.captureCount > 1 {
+                                        Text("Captured \(source.captureCount) times · one private identity")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer(minLength: 0)
+                            }
+
+                            if let pending {
+                                Label(
+                                    pending.disposition == .held
+                                        ? "Phone filing needs review"
+                                        : "Protected filing queued for \(pending.projectName)",
+                                    systemImage: pending.disposition == .held
+                                        ? "exclamationmark.triangle.fill"
+                                        : "arrow.triangle.2.circlepath"
+                                )
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(
+                                    pending.disposition == .held ? Color.orange : Color.blue
+                                )
+                                .accessibilityIdentifier(
+                                    "CaptureSourceInboxPending_\(source.id)"
+                                )
+                                .accessibilityValue(
+                                    pending.disposition == .held ? "Held" : "Queued"
+                                )
+                                if pending.disposition == .held {
+                                    Button("Discard phone filing") {
+                                        Task {
+                                            await inboxClient.discardHeldFiling(
+                                                for: source.id
+                                            )
+                                        }
+                                    }
+                                    .font(.caption.weight(.bold))
+                                    .buttonStyle(.bordered)
+                                    .accessibilityIdentifier(
+                                        "CaptureSourceInboxDiscard_\(source.id)"
+                                    )
+                                }
+                            } else {
+                                Button {
+                                    sourceToFile = source
+                                } label: {
+                                    Label(
+                                        previewOnly ? "Explore filing" : "Choose Research Nest",
+                                        systemImage: "folder.badge.plus"
+                                    )
+                                    .frame(minHeight: 44)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(
+                                    inboxClient.destinations.isEmpty
+                                        || inboxClient.isSyncing
+                                )
+                                .accessibilityIdentifier(
+                                    "CaptureSourceInboxFile_\(source.id)"
+                                )
+                                .accessibilityHint(
+                                    "Protects this decision on the iPhone before creating an immutable Research source. The private capture stays unchanged."
+                                )
+                            }
+                        }
+                        .padding(12)
+                        .background(
+                            Color.cyan.opacity(0.07),
+                            in: RoundedRectangle(cornerRadius: 14)
+                        )
+                        .accessibilityElement(children: .contain)
+                        .accessibilityIdentifier("CaptureSourceInboxItem_\(source.id)")
+                    }
+
+                    if inboxClient.destinations.isEmpty, !inboxClient.sources.isEmpty {
+                        Text("Editor access to a Nest is required before filing private evidence into Research.")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    if inboxClient.heldCount > 0 {
+                        Button {
+                            Task { await inboxClient.retryHeldFilings() }
+                        } label: {
+                            Label("Retry held filings", systemImage: "arrow.clockwise")
+                                .frame(minHeight: 44)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(
+                            previewOnly
+                                || !AuthManager.shared.networkActionsAllowed
+                                || inboxClient.isSyncing
+                        )
+                        .accessibilityIdentifier("CaptureSourceInboxRetryHeld")
+                    }
+                    if let message = inboxClient.statusMessage {
+                        Label(message, systemImage: "checkmark.shield")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityIdentifier("CaptureSourceInboxStatus")
+                    }
+                    if let url = inboxClient.lastFiledURL {
+                        Link(destination: url) {
+                            Label("Open filed evidence in Nest", systemImage: "arrow.up.right.square")
+                                .font(.caption.weight(.bold))
+                                .frame(minHeight: 44)
+                        }
+                        .accessibilityIdentifier("CaptureSourceInboxFiledLink")
+                    } else if let url = sourceInboxURL(),
+                              inboxClient.sources.count > 3 {
+                        Link(destination: url) {
+                            Label("Review all private sources in Nest", systemImage: "arrow.up.right.square")
+                                .font(.caption.weight(.bold))
+                                .frame(minHeight: 44)
+                        }
+                    }
+                    if let error = inboxClient.errorMessage {
+                        Label(
+                            error,
+                            systemImage: inboxClient.isUsingProtectedCache
+                                ? "lock.shield"
+                                : "exclamationmark.triangle"
+                        )
+                        .font(.caption2)
+                        .foregroundStyle(
+                            inboxClient.isUsingProtectedCache ? Color.secondary : Color.orange
+                        )
+                    }
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel("Private source Inbox")
+                .accessibilityIdentifier("CaptureSourceInbox")
+            }
+
             if let weekly = client.weeklyPlan {
                 VStack(alignment: .leading, spacing: 7) {
                     Label("This week", systemImage: "calendar.badge.checkmark")
@@ -1817,7 +2001,7 @@ struct TodayFollowThroughCard: View {
                 }
             }
 
-            if client.tasks.isEmpty, client.goals.isEmpty, client.focusBlocks.isEmpty, client.transcriptReviews.isEmpty, client.sourceAnnotations.isEmpty, client.weeklyPlan == nil, !client.isLoading {
+            if client.tasks.isEmpty, client.goals.isEmpty, client.focusBlocks.isEmpty, client.transcriptReviews.isEmpty, client.sourceAnnotations.isEmpty, inboxClient.sources.isEmpty, client.weeklyPlan == nil, !client.isLoading, !inboxClient.isLoading {
                 Text("No committed follow-through is available yet. Add a task, goal, focus block, weekly plan, or source annotation in Nest; Today will use the same canonical record.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -1829,12 +2013,20 @@ struct TodayFollowThroughCard: View {
                     .foregroundStyle(client.isUsingProtectedCache ? Color.secondary : Color.orange)
             }
 
-            Text("Task and goal tag selections and one-time reminder changes are protected on this iPhone before Nest sync. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion never completes its task or goal. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
+            Text("Task and goal tag selections, source-filing choices, and one-time reminder changes are protected on this iPhone before Nest sync. Filing creates immutable Research evidence while leaving the private Inbox capture unchanged. Tags stay inside their Nest; iOS controls reminder delivery and Quipsly never claims it in advance. Goal check-ins record progress without changing goal status. Recurring-task completion, an explicit missed-occurrence skip, and series controls change only canonical Quipsly work; they preserve history and do not schedule reminders or provider events. Focus completion never completes its task or goal. Annotation review never changes preserved source text. Transcript proposals stay non-authoritative until exact-source playback review. Today does not change calendars, providers, or recording state.")
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .accessibilityIdentifier("CaptureTodayFollowThroughBoundary")
         }
         .captureCard()
+        .sheet(item: $sourceToFile) { source in
+            CaptureSourceFilingSheet(
+                client: inboxClient,
+                source: source,
+                previewOnly: previewOnly
+            )
+            .presentationDetents([.medium, .large])
+        }
         .navigationDestination(for: TranscriptSourceDestination.self) { destination in
             CaptureTranscriptReviewView(
                 roomID: destination.roomID,
@@ -2034,6 +2226,14 @@ struct TodayFollowThroughCard: View {
         return components.url
     }
 
+    private func sourceInboxURL() -> URL? {
+        let baseURL = normalizedNestBaseURL(
+            Bundle.main.object(forInfoDictionaryKey: "QUIPSLY_API_BASE_URL") as? String
+                ?? "https://nest.quipsly.com"
+        )
+        return URL(string: "\(baseURL)/inbox")
+    }
+
     private func recurrenceSummary(_ recurrence: MobileCaptureTodayRecurrence) -> String {
         let unit: String = switch recurrence.frequency {
         case "DAILY": "day"
@@ -2079,6 +2279,145 @@ struct TodayFollowThroughCard: View {
             return "Time needs review · \(focus.timezone)"
         }
         return "\(start.formatted(date: .abbreviated, time: .shortened))–\(end.formatted(date: .omitted, time: .shortened)) · \(focus.timezone)"
+    }
+}
+
+private struct CaptureSourceFilingSheet: View {
+    @ObservedObject var client: CaptureSourceInboxClient
+    let source: MobileSourceInboxSource
+    let previewOnly: Bool
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var selectedDestinationID: String
+    @State private var localMessage: String?
+
+    init(
+        client: CaptureSourceInboxClient,
+        source: MobileSourceInboxSource,
+        previewOnly: Bool
+    ) {
+        self.client = client
+        self.source = source
+        self.previewOnly = previewOnly
+        _selectedDestinationID = State(
+            initialValue: client.destinations.first?.id ?? ""
+        )
+    }
+
+    private var selectedDestination: MobileSourceInboxDestination? {
+        client.destinations.first { $0.id == selectedDestinationID }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Private source") {
+                    LabeledContent(
+                        "Type",
+                        value: source.captureType == .snippet ? "Passage" : "Link"
+                    )
+                    Text(source.title)
+                        .font(.headline)
+                    Text(source.excerpt)
+                        .font(source.captureType == .snippet ? .body : .caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                    if source.captureCount > 1 {
+                        LabeledContent(
+                            "Capture history",
+                            value: "\(source.captureCount) captures · one identity"
+                        )
+                    }
+                }
+
+                Section("Research Nest") {
+                    if client.destinations.isEmpty {
+                        Text("Editor access to a Nest is required before this source can become shared Research evidence.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Destination", selection: $selectedDestinationID) {
+                            ForEach(client.destinations) { destination in
+                                Text(destination.name).tag(destination.id)
+                            }
+                        }
+                        .accessibilityIdentifier("CaptureSourceFilingDestination")
+                    }
+                }
+
+                Section("What this does") {
+                    Label(
+                        "Creates one immutable, source-linked Research record",
+                        systemImage: "checkmark.shield"
+                    )
+                    Label(
+                        "Keeps the private Inbox capture unchanged",
+                        systemImage: "lock"
+                    )
+                    Label(
+                        source.captureType == .bookmark
+                            ? "Saves the link as evidence; it does not claim the page was imported"
+                            : "Preserves the captured passage and its source URL",
+                        systemImage: "doc.text.magnifyingglass"
+                    )
+                    Text("No task, calendar event, message, delivery, provider request, or publication is created.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                if previewOnly {
+                    Section {
+                        Label(
+                            "Preview only · no filing decision will be saved",
+                            systemImage: "hammer.fill"
+                        )
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("CaptureSourceFilingPreviewBoundary")
+                    }
+                }
+
+                if let localMessage {
+                    Section {
+                        Text(localMessage)
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("CaptureSourceFilingMessage")
+                    }
+                }
+            }
+            .navigationTitle("File into Research")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(client.isSyncing ? "Filing…" : "File") {
+                        guard let destination = selectedDestination else { return }
+                        Task {
+                            let accepted = await client.file(
+                                source,
+                                into: destination
+                            )
+                            if accepted {
+                                dismiss()
+                            } else {
+                                localMessage = client.errorMessage
+                                    ?? "The protected filing decision needs review."
+                            }
+                        }
+                    }
+                    .disabled(
+                        previewOnly
+                            || selectedDestination == nil
+                            || client.isSyncing
+                            || client.pendingDecision(for: source.id) != nil
+                    )
+                    .accessibilityIdentifier("CaptureSourceFilingConfirm")
+                }
+            }
+            .interactiveDismissDisabled(client.isSyncing)
+        }
+        .accessibilityIdentifier("CaptureSourceFilingSheet")
     }
 }
 

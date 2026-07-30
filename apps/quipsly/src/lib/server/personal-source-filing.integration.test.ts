@@ -27,6 +27,7 @@ runLocalDatabaseSmoke("personal Inbox source to canonical Research filing", () =
   let projectId = "";
   let viewerProjectId = "";
   let snippetId = "";
+  let staleSnippetId = "";
   let bookmarkId = "";
 
   beforeAll(async () => {
@@ -48,12 +49,14 @@ runLocalDatabaseSmoke("personal Inbox source to canonical Research filing", () =
       prisma.studioProjectAccessGrant.create({ data: { projectId, email: actorEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail } }),
       prisma.studioProjectAccessGrant.create({ data: { projectId: viewerProjectId, email: actorEmail, role: "VIEWER", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail } }),
     ]);
-    const [snippet, bookmark] = await Promise.all([
+    const [snippet, staleSnippet, bookmark] = await Promise.all([
       prisma.snippet.create({ data: { userId: actorUserId, sourceTitle: "Coaching insight", sourceUrl: "https://example.com/coaching", highlightedText: "Ask what changed before prescribing the next step.", note: "Private note must not become shared source text." } }),
+      prisma.snippet.create({ data: { userId: actorUserId, sourceTitle: "Revision guarded insight", sourceUrl: "https://example.com/revision", highlightedText: "File only the exact passage a person reviewed." } }),
       prisma.bookmark.create({ data: { userId: actorUserId, title: "Leadership interview", url: "https://example.com/leadership" } }),
       prisma.bookmark.create({ data: { userId: otherUserId, title: "Other actor source", url: "https://example.com/private-other" } }),
     ]);
     snippetId = snippet.id;
+    staleSnippetId = staleSnippet.id;
     bookmarkId = bookmark.id;
     await prisma.studioPersonalSourceCaptureReceipt.createMany({ data: [
       {
@@ -128,8 +131,10 @@ runLocalDatabaseSmoke("personal Inbox source to canonical Research filing", () =
     expect(snippet).toMatchObject({ collectionId: null, note: "Private note must not become shared source text." });
     expect({ sourceCount, filingCount }).toEqual({ sourceCount: 1, filingCount: 1 });
     const inbox = await loadInbox(actorUserId, actorEmail, false);
-    expect(inbox.counts.sources).toBe(1);
-    expect(inbox.ready.filter((item) => item.kind === "SOURCE").map((item) => item.id)).toEqual([bookmarkId]);
+    expect(inbox.counts.sources).toBe(2);
+    expect(
+      inbox.ready.filter((item) => item.kind === "SOURCE").map((item) => item.id),
+    ).toEqual(expect.arrayContaining([bookmarkId, staleSnippetId]));
   });
 
   it("files a URL as link evidence without claiming page import", async () => {
@@ -152,5 +157,42 @@ runLocalDatabaseSmoke("personal Inbox source to canonical Research filing", () =
     expect(otherActorSource).toMatchObject({ ok: false, code: "NOT_FOUND" });
     expect(viewer).toMatchObject({ ok: false, code: "FORBIDDEN" });
     await expect(prisma.studioPersonalSourceFiling.count()).resolves.toBe(before);
+  });
+
+  it("holds a stale phone review without creating a receipt or immutable source", async () => {
+    const reviewed = await prisma.snippet.findUniqueOrThrow({
+      where: { id: staleSnippetId },
+      select: { updatedAt: true },
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await prisma.snippet.update({
+      where: { id: staleSnippetId },
+      data: { note: "The private source changed after the phone snapshot." },
+    });
+    const [filingsBefore, sourcesBefore] = await Promise.all([
+      prisma.studioPersonalSourceFiling.count({ where: { projectId, snippetId: staleSnippetId } }),
+      prisma.studioSourceUnit.count({ where: { projectId, slug: { contains: staleSnippetId.toLowerCase() } } }),
+    ]);
+
+    const result = await filePersonalSourceIntoResearch({
+      prisma,
+      actorUserId,
+      actorEmail,
+      projectId,
+      captureId: staleSnippetId,
+      captureType: "SNIPPET",
+      clientRequestId: randomUUID(),
+      expectedCaptureUpdatedAt: reviewed.updatedAt,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      message: expect.stringContaining("changed after the phone review"),
+    });
+    await expect(Promise.all([
+      prisma.studioPersonalSourceFiling.count({ where: { projectId, snippetId: staleSnippetId } }),
+      prisma.studioSourceUnit.count({ where: { projectId, slug: { contains: staleSnippetId.toLowerCase() } } }),
+    ])).resolves.toEqual([filingsBefore, sourcesBefore]);
   });
 });
