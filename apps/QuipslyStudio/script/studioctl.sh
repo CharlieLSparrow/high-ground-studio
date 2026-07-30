@@ -110,10 +110,26 @@ legacy_pids() {
   '
 }
 
+noncanonical_pids() {
+  ps -axo pid=,command= | awk -v canonical="$APP_EXECUTABLE" '
+    {
+      pid = $1
+      commandLine = $0
+      sub(/^[[:space:]]*[0-9]+[[:space:]]+/, "", commandLine)
+      isCanonical = commandLine == canonical || index(commandLine, canonical " ") == 1
+      isQuipslyExecutable = substr(commandLine, 1, 1) == "/" && index(commandLine, ".app/Contents/MacOS/QuipslyMac") > 0
+      if (!isCanonical && isQuipslyExecutable) {
+        print pid
+      }
+    }
+  '
+}
+
 warn_duplicates() {
-  local canonical legacy
+  local canonical legacy noncanonical
   canonical="$(canonical_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
   legacy="$(legacy_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  noncanonical="$(noncanonical_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
 
   if [[ -n "$canonical" ]]; then
     echo "canonicalPids=$canonical"
@@ -127,6 +143,14 @@ warn_duplicates() {
     echo "legacyPath=/Users/wall-e/Dev/high-ground-studio/apps/quipsly-mac/dist/QuipslyMac.app"
   else
     echo "legacyPids="
+  fi
+
+  if [[ -n "$noncanonical" ]]; then
+    echo "warning=duplicate_quipsly_bundle_running"
+    echo "noncanonicalPids=$noncanonical"
+    echo "hint=Close the noncanonical Quipsly Studio process before trusting UI or agent-control evidence."
+  else
+    echo "noncanonicalPids="
   fi
 }
 

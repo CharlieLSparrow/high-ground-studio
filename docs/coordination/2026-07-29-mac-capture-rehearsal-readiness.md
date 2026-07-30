@@ -1,8 +1,9 @@
 # Mac Capture rehearsal-readiness checkpoint
 
 **Date:** 2026-07-29  
-**Status:** signed app launch, current hardware enumeration, and focused capture
-contracts pass; native Quipsly sign-in, app-owned live-signal confirmation,
+**Status:** signed app launch, current hardware enumeration, focused capture
+contracts, exact-bundle enforcement, and the redacted native-account control
+boundary pass; native Quipsly sign-in, app-owned live-signal confirmation,
 physical short take, room join, upload, and cross-device sync remain open
 
 ## Rehearsal decision
@@ -64,6 +65,43 @@ existing Google account.
 
 Episode Capture Setup is reachable from the application menu or
 `Command-Shift-R`.
+
+## Exact app and native-account control boundary
+
+The canonical build presents **Continue with Google** as the primary account
+action. Its password field remains behind an explicit recovery disclosure; it
+is not part of the normal existing-user path.
+
+The local semantic control surface now exposes only:
+
+```text
+GET /native_account?action=status|google|check_saved
+```
+
+`status` and `check_saved` inspect redacted state. `google` starts the same
+state-bound browser handoff used by the human button. The route does not accept
+a password, Firebase token, browser handoff code, PKCE verifier, or refresh
+token. It has no sign-out, clear, delete, or other destructive account action.
+A direct `action=clear` request returns HTTP 400, and `agentctl` rejects the
+same action locally with exit 2.
+
+Live smoke:
+
+```bash
+apps/QuipslyStudio/script/smoke_native_account_control.sh
+```
+
+The smoke passed all seven checks: service health, advertised route, status
+acknowledgement, redacted state, absence of secret values, unsafe HTTP denial,
+and unsafe CLI denial.
+
+An obsolete installed copy at
+`/Users/wall-e/Applications/Quipsly Studio.app` can otherwise be launched by
+display name and present stale account UI. `studioctl.sh warn-duplicates` now
+compares full executable paths. Runtime proof deliberately launched that copy,
+reported its exact noncanonical PID while retaining the canonical PID, and
+returned clean after the test copy was stopped. Rehearsal evidence is invalid
+whenever `warning=duplicate_quipsly_bundle_running` is present.
 
 ## Focused capture-contract result
 

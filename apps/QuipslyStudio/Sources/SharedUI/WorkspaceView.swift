@@ -41079,6 +41079,15 @@ struct WorkspaceView: View {
                 self.lastMediaAction = "Native account Firebase config check completed. Re-read nativeAccount for redacted proof."
                 self.updateAgentState()
             }
+        case "google", "browser", "browser_sign_in", "continue_with_google":
+            nativeAccountStore.password = ""
+            lastMediaAction = "Native Google sign-in handoff queued."
+            updateAgentState()
+            Task { @MainActor in
+                _ = await nativeAccountStore.beginBrowserSignIn()
+                self.lastMediaAction = "Native Google sign-in handoff opened. Complete the account choice in the browser, then re-read nativeAccount."
+                self.updateAgentState()
+            }
         case "check", "check_saved", "saved", "verify_saved":
             lastMediaAction = "Native account saved-session check queued."
             updateAgentState()

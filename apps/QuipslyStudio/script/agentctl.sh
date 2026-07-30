@@ -405,6 +405,7 @@ Usage:
   script/agentctl.sh focus-monitors
   script/agentctl.sh focus-timeline
   script/agentctl.sh left-workbench os|nest|shorts|transcript|publish|inspector|agent|closed
+  script/agentctl.sh native-account status|google|check-saved
   script/agentctl.sh nest-seed-context
   script/agentctl.sh nest-ensure-writing-document
   script/agentctl.sh nest-writing-queue
@@ -12914,6 +12915,25 @@ else:
   left-workbench)
     mode="${2:-shorts}"
     get "/left_workbench?mode=$(urlencode "$mode")"
+    ;;
+  native-account)
+    action="${2:-status}"
+    case "$action" in
+      status)
+        action="status"
+        ;;
+      google|browser|continue-with-google)
+        action="google"
+        ;;
+      check-saved|check_saved|saved)
+        action="check_saved"
+        ;;
+      *)
+        echo "native-account accepts only status, google, or check-saved" >&2
+        exit 2
+        ;;
+    esac
+    get "/native_account?action=$(urlencode "$action")"
     ;;
   quipsly-os-operator-board|production-os-operator-board|operator-board|runway-operator-board)
     python3 "$ROOT_DIR/script/build_quipsly_os_operator_board.py"

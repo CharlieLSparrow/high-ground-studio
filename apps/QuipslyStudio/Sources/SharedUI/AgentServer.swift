@@ -388,6 +388,31 @@ public class AgentServer: ObservableObject {
                         "mode": mode
                     ])
                 }
+            case "/native_account":
+                let action = (request.query["action"] ?? "status")
+                    .lowercased()
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let allowedActions = Set([
+                    "status",
+                    "google",
+                    "check_saved",
+                ])
+                guard allowedActions.contains(action) else {
+                    self?.sendJSON(connection, object: [
+                        "error": "native_account_action_not_allowed",
+                        "allowedActions": allowedActions.sorted(),
+                        "truth": "The local control boundary never accepts passwords and does not expose destructive account actions.",
+                    ], statusCode: 400, reason: "Bad Request")
+                    return
+                }
+                Task { @MainActor in
+                    self?.enqueueCommand("native_account", values: ["action": action])
+                    self?.sendJSON(connection, object: [
+                        "status": "native_account_commanded",
+                        "action": action,
+                        "truth": "The command exposes no password, Firebase token, browser handoff code, or refresh token.",
+                    ])
+                }
             case "/quipsly_os_operator_board":
                 Task { @MainActor in
                     if let board = self?.lastStatus?["quipslyOSOperatorBoard"] as? [String: Any] {
@@ -3961,6 +3986,7 @@ public class AgentServer: ObservableObject {
                 "GET /focus_monitors",
                 "GET /focus_timeline",
                 "GET /left_workbench?mode=os|nest|inspector|shorts|transcript|publish|agent|closed",
+                "GET /native_account?action=status|google|check_saved",
                 "GET /quipsly_os_operator_board",
                 "GET /nest_seed_context",
                 "GET /nest_writing_queue",

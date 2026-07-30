@@ -3472,3 +3472,26 @@ This is an active-goal checkpoint, not a completion claim.
   changing the committed build number does not prove an archive, upload,
   App Store Connect processing, tester assignment, installation, or physical
   operation.
+
+### 2026-07-29 canonical Mac account-control checkpoint
+
+- The exact safe-worktree Quipsly Studio build now exposes its production
+  Google-to-Nest-to-Mac session handoff through both the human Account surface
+  and one narrow local semantic command. The default UI is Google-first;
+  password entry remains an explicit recovery path.
+- The local route accepts only `status`, `google`, and `check_saved`. It never
+  receives a password, Firebase token, browser handoff code, PKCE verifier, or
+  refresh token and exposes no destructive account command. Live denial proof
+  returns HTTP 400 for an unsafe action, while the CLI fails before issuing the
+  request. A repeatable smoke validates the redacted boundary against the
+  running app.
+- Exact executable-path detection now distinguishes the canonical
+  safe-worktree build from an obsolete installed app with the same display
+  name. Positive runtime proof deliberately launched the obsolete copy,
+  reported it as noncanonical, and returned clean after stopping only that
+  test process.
+- This closes neither Charlie's account handoff nor the physical Mac capture
+  gate. Completing Google sign-in persists a device-local refresh token and
+  remains an explicit human authorization step. The rehearsal must still
+  prove the MV7i/EOS route, local WAV/MOV, listen/watch, two-person room,
+  verified upload, and same-ID Nest/Studio readback.
