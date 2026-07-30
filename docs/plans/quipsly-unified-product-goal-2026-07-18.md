@@ -4694,3 +4694,11 @@ Store static checks, a production-target simulator build, and the complete
 Work XCUITest journey. The native project version is now 16; Build 15 remains
 the machine-readable external release until Build 16 is qualified, uploaded,
 approved, and independently read back.
+
+The first isolated Build 16 preflight correctly stopped on a stale lifecycle
+scanner that still required Deepgram work inside the Nest request route. The
+gate now enforces the production architecture instead: generation-bound GCS
+outbox and manifests, a separate transcript worker, immutable result receipts,
+and a fresh consent check immediately before transactional transcript
+projection. No inline provider call or obsolete route-owned transcript writer
+was restored.
