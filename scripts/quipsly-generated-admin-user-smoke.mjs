@@ -69,8 +69,13 @@ function mergedEnv() {
 function assertConfigured(env) {
   const missing = [];
   if (!env.DATABASE_URL) missing.push("DATABASE_URL");
-  if (!env.NEXT_PUBLIC_FIREBASE_API_KEY && !env.QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY) {
-    missing.push("NEXT_PUBLIC_FIREBASE_API_KEY or QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY");
+  if (
+    !env.NEXT_PUBLIC_FIREBASE_API_KEY &&
+    !env.QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY
+  ) {
+    missing.push(
+      "NEXT_PUBLIC_FIREBASE_API_KEY or QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY",
+    );
   }
   if (missing.length > 0) {
     throw new Error(`Generated admin smoke is missing ${missing.join(", ")}.`);
@@ -83,18 +88,24 @@ function createPrisma(env) {
       connectionString: env.DATABASE_URL,
       max: Number.parseInt(env.PRISMA_PG_POOL_MAX || "2", 10) || 2,
       idleTimeoutMillis: 10_000,
-      connectionTimeoutMillis: Number.parseInt(env.PRISMA_PG_CONNECTION_TIMEOUT_MS || "30000", 10) || 30_000,
+      connectionTimeoutMillis:
+        Number.parseInt(env.PRISMA_PG_CONNECTION_TIMEOUT_MS || "30000", 10) ||
+        30_000,
     }),
     log: ["error"],
   });
 }
 
 function isGeneratedAdminEmail(email) {
-  return /^codex-admin-[a-f0-9]{8}@dev\.test$/i.test(String(email || "").trim());
+  return /^codex-admin-[a-f0-9]{8}@dev\.test$/i.test(
+    String(email || "").trim(),
+  );
 }
 
 function isGeneratedAliasEmail(email) {
-  return /^codex-alias-[a-f0-9]{8}@dev\.test$/i.test(String(email || "").trim());
+  return /^codex-alias-[a-f0-9]{8}@dev\.test$/i.test(
+    String(email || "").trim(),
+  );
 }
 
 function slugifyEmailForHomeNest(email) {
@@ -108,7 +119,11 @@ function slugifyEmailForHomeNest(email) {
 }
 
 function firebaseProjectId(env) {
-  return env.FIREBASE_PROJECT_ID || env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "quipsly-reef";
+  return (
+    env.FIREBASE_PROJECT_ID ||
+    env.NEXT_PUBLIC_FIREBASE_PROJECT_ID ||
+    "quipsly-reef"
+  );
 }
 
 function ensureFirebaseAdmin(env) {
@@ -119,12 +134,16 @@ function ensureFirebaseAdmin(env) {
 }
 
 function runAuthSmoke(env) {
-  const result = spawnSync(process.execPath, ["scripts/quipsly-firebase-auth-smoke.mjs"], {
-    cwd: repoRoot,
-    env,
-    encoding: "utf8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const result = spawnSync(
+    process.execPath,
+    ["scripts/quipsly-firebase-auth-smoke.mjs"],
+    {
+      cwd: repoRoot,
+      env,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    },
+  );
 
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
@@ -134,14 +153,18 @@ function runAuthSmoke(env) {
 }
 
 function runPreviewPromotion(env) {
-  const result = spawnSync("bash", ["scripts/release/quipsly-promote-preview.sh"], {
-    cwd: repoRoot,
-    env: {
-      ...env,
-      QUIPSLY_RELEASE_SMOKE_EXPECT_ADMIN: "1",
+  const result = spawnSync(
+    "bash",
+    ["scripts/release/quipsly-promote-preview.sh"],
+    {
+      cwd: repoRoot,
+      env: {
+        ...env,
+        QUIPSLY_RELEASE_SMOKE_EXPECT_ADMIN: "1",
+      },
+      stdio: "inherit",
     },
-    stdio: "inherit",
-  });
+  );
 
   if (result.error) {
     throw result.error;
@@ -154,21 +177,29 @@ function runPreviewPromotion(env) {
 function parseMode(argv) {
   const args = argv.slice(2);
   if (args.length === 0) return "auth-smoke";
-  if (args.length === 1 && args[0] === "--promote-preview") return "promote-preview";
-  if (args.length === 1 && args[0] === "--alias-access-smoke") return "alias-access-smoke";
+  if (args.length === 1 && args[0] === "--promote-preview")
+    return "promote-preview";
+  if (args.length === 1 && args[0] === "--alias-access-smoke")
+    return "alias-access-smoke";
   throw new Error(
-    "Usage: node scripts/quipsly-generated-admin-user-smoke.mjs "
-      + "[--promote-preview|--alias-access-smoke]",
+    "Usage: node scripts/quipsly-generated-admin-user-smoke.mjs " +
+      "[--promote-preview|--alias-access-smoke]",
   );
 }
 
-async function cleanupGeneratedAdminArtifacts(env, email, additionalEmails = []) {
+async function cleanupGeneratedAdminArtifacts(
+  env,
+  email,
+  additionalEmails = [],
+) {
   if (env.QUIPSLY_ADMIN_SMOKE_KEEP_ARTIFACTS === "1") {
     return { skipped: "QUIPSLY_ADMIN_SMOKE_KEEP_ARTIFACTS=1" };
   }
 
   if (!isGeneratedAdminEmail(email)) {
-    throw new Error(`Refusing to clean up non-generated admin smoke email: ${email}`);
+    throw new Error(
+      `Refusing to clean up non-generated admin smoke email: ${email}`,
+    );
   }
   if (additionalEmails.some((candidate) => !isGeneratedAliasEmail(candidate))) {
     throw new Error("Refusing to clean up a non-generated alias smoke email.");
@@ -183,28 +214,33 @@ async function cleanupGeneratedAdminArtifacts(env, email, additionalEmails = [])
     deletedUsers: 0,
     deletedFirebaseUser: false,
     firebaseUserMissing: false,
+    verifiedDatabaseClean: false,
+    verifiedFirebaseClean: false,
   };
 
   const prisma = createPrisma(env);
   const homeSlug = `home-${slugifyEmailForHomeNest(email)}`;
+  let userId = null;
 
   try {
     const user = await prisma.user.findFirst({
       where: {
-        OR: [
-          { primaryEmail: email },
-          { aliases: { some: { email } } },
-        ],
+        OR: [{ primaryEmail: email }, { aliases: { some: { email } } }],
       },
       select: { id: true },
     });
+    userId = user?.id || null;
 
-    cleanup.deletedInvites = (await prisma.studioNestInvite.deleteMany({
-      where: { email: { in: generatedEmails } },
-    })).count;
-    cleanup.deletedGrants = (await prisma.studioProjectAccessGrant.deleteMany({
-      where: { email: { in: generatedEmails } },
-    })).count;
+    cleanup.deletedInvites = (
+      await prisma.studioNestInvite.deleteMany({
+        where: { email: { in: generatedEmails } },
+      })
+    ).count;
+    cleanup.deletedGrants = (
+      await prisma.studioProjectAccessGrant.deleteMany({
+        where: { email: { in: generatedEmails } },
+      })
+    ).count;
 
     const homeProjects = await prisma.studioProject.findMany({
       where: {
@@ -220,10 +256,58 @@ async function cleanupGeneratedAdminArtifacts(env, email, additionalEmails = [])
     }
 
     if (user?.id) {
-      cleanup.deletedMemberships = (await prisma.membership.deleteMany({ where: { userId: user.id } })).count;
+      cleanup.deletedMemberships = (
+        await prisma.membership.deleteMany({ where: { userId: user.id } })
+      ).count;
     }
 
-    cleanup.deletedUsers = (await prisma.user.deleteMany({ where: { primaryEmail: email } })).count;
+    cleanup.deletedUsers = (
+      await prisma.user.deleteMany({ where: { primaryEmail: email } })
+    ).count;
+
+    const [
+      remainingInvites,
+      remainingGrants,
+      remainingHomeProjects,
+      remainingUsers,
+      remainingMemberships,
+    ] = await Promise.all([
+      prisma.studioNestInvite.count({
+        where: { email: { in: generatedEmails } },
+      }),
+      prisma.studioProjectAccessGrant.count({
+        where: { email: { in: generatedEmails } },
+      }),
+      prisma.studioProject.count({
+        where: {
+          slug: homeSlug,
+          sourceLabel: "nest-kind:home",
+        },
+      }),
+      prisma.user.count({
+        where: {
+          OR: [
+            { primaryEmail: email },
+            { aliases: { some: { email: { in: generatedEmails } } } },
+          ],
+        },
+      }),
+      userId
+        ? prisma.membership.count({ where: { userId } })
+        : Promise.resolve(0),
+    ]);
+    cleanup.verifiedDatabaseClean = [
+      remainingInvites,
+      remainingGrants,
+      remainingHomeProjects,
+      remainingUsers,
+      remainingMemberships,
+    ].every((count) => count === 0);
+    if (!cleanup.verifiedDatabaseClean) {
+      throw new Error(
+        "Generated admin database artifacts remain after cleanup.",
+      );
+    }
   } finally {
     await prisma.$disconnect();
   }
@@ -240,11 +324,26 @@ async function cleanupGeneratedAdminArtifacts(env, email, additionalEmails = [])
       throw error;
     }
   }
+  try {
+    await auth.getUserByEmail(email);
+    throw new Error("Generated admin Firebase user remains after cleanup.");
+  } catch (error) {
+    if (error?.code === "auth/user-not-found") {
+      cleanup.verifiedFirebaseClean = true;
+    } else {
+      throw error;
+    }
+  }
 
   return cleanup;
 }
 
-async function createGeneratedAdminUser(env, email, password, roles = ["OWNER"]) {
+async function createGeneratedAdminUser(
+  env,
+  email,
+  password,
+  roles = ["OWNER"],
+) {
   const auth = ensureFirebaseAdmin(env);
   const firebaseUser = await auth.createUser({
     email,
@@ -262,9 +361,10 @@ async function createGeneratedAdminUser(env, email, password, roles = ["OWNER"])
         name: "Codex Generated Admin Smoke",
         firebaseUid: firebaseUser.uid,
         emailVerified: new Date(),
-        roles: roles.length > 0
-          ? { create: roles.map((role) => ({ role })) }
-          : undefined,
+        roles:
+          roles.length > 0
+            ? { create: roles.map((role) => ({ role })) }
+            : undefined,
       },
       select: { id: true },
     });
@@ -275,7 +375,12 @@ async function createGeneratedAdminUser(env, email, password, roles = ["OWNER"])
   return firebaseUser;
 }
 
-async function createGeneratedAliasAccessFixture(env, email, aliasEmail, projectSlug) {
+async function createGeneratedAliasAccessFixture(
+  env,
+  email,
+  aliasEmail,
+  projectSlug,
+) {
   const prisma = createPrisma(env);
   try {
     const [user, project] = await Promise.all([
@@ -289,7 +394,8 @@ async function createGeneratedAliasAccessFixture(env, email, aliasEmail, project
       }),
     ]);
     if (!user) throw new Error("Generated alias smoke user was not persisted.");
-    if (!project) throw new Error(`Alias smoke project does not exist: ${projectSlug}`);
+    if (!project)
+      throw new Error(`Alias smoke project does not exist: ${projectSlug}`);
 
     await prisma.$transaction([
       prisma.userEmail.create({
@@ -339,6 +445,7 @@ async function main() {
   const additionalEmails = mode === "alias-access-smoke" ? [aliasEmail] : [];
 
   let smokeSucceeded = false;
+  let operationError = null;
   try {
     await createGeneratedAdminUser(
       env,
@@ -351,10 +458,13 @@ async function main() {
       QUIPSLY_AUTH_SMOKE_EMAIL: email,
       QUIPSLY_AUTH_SMOKE_PASSWORD: password,
       QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY:
-        env.QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY
-        || env.NEXT_PUBLIC_FIREBASE_API_KEY,
+        env.QUIPSLY_AUTH_SMOKE_FIREBASE_API_KEY ||
+        env.NEXT_PUBLIC_FIREBASE_API_KEY,
       QUIPSLY_AUTH_SMOKE_EXPECT_ADMIN: "1",
-      QUIPSLY_AUTH_SMOKE_BASE_URL: env.QUIPSLY_ADMIN_SMOKE_BASE_URL || env.QUIPSLY_AUTH_SMOKE_BASE_URL || "http://127.0.0.1:3025",
+      QUIPSLY_AUTH_SMOKE_BASE_URL:
+        env.QUIPSLY_ADMIN_SMOKE_BASE_URL ||
+        env.QUIPSLY_AUTH_SMOKE_BASE_URL ||
+        "http://127.0.0.1:3025",
     };
 
     if (mode === "alias-access-smoke") {
@@ -375,27 +485,56 @@ async function main() {
       runAuthSmoke(generatedAdminEnv);
     }
     smokeSucceeded = true;
-  } finally {
-    const cleanup = await cleanupGeneratedAdminArtifacts(
-      env,
-      email,
-      additionalEmails,
-    ).catch((error) => ({
+  } catch (error) {
+    operationError = error;
+  }
+
+  let cleanupError = null;
+  const cleanup = await cleanupGeneratedAdminArtifacts(
+    env,
+    email,
+    additionalEmails,
+  ).catch((error) => {
+    cleanupError = error;
+    return {
       warning: error instanceof Error ? error.message : String(error),
-    }));
-    console.log(JSON.stringify({
-      ok: smokeSucceeded,
-      mode,
-      cleanup: {
-        generatedAdminSmokeArtifacts: cleanup,
-        afterSuccessfulSmoke: smokeSucceeded,
+      verifiedDatabaseClean: false,
+      verifiedFirebaseClean: false,
+    };
+  });
+  console.log(
+    JSON.stringify(
+      {
+        ok: smokeSucceeded && !cleanupError,
+        mode,
+        cleanup: {
+          generatedAdminSmokeArtifacts: cleanup,
+          afterSuccessfulSmoke: smokeSucceeded,
+        },
+        note: "Generated password, Firebase token, session cookie, release receipt, and database URL were not printed or persisted.",
       },
-      note: "Generated password, Firebase token, session cookie, release receipt, and database URL were not printed or persisted.",
-    }, null, 2));
+      null,
+      2,
+    ),
+  );
+
+  if (cleanupError) {
+    const message =
+      cleanupError instanceof Error
+        ? cleanupError.message
+        : String(cleanupError);
+    throw new Error(`Generated admin cleanup failed: ${message}`, {
+      cause: operationError || cleanupError,
+    });
+  }
+  if (operationError) {
+    throw operationError;
   }
 }
 
 main().catch((error) => {
-  console.error(`QUIPSLY_GENERATED_ADMIN_SMOKE_FAIL ${error instanceof Error ? error.message : String(error)}`);
+  console.error(
+    `QUIPSLY_GENERATED_ADMIN_SMOKE_FAIL ${error instanceof Error ? error.message : String(error)}`,
+  );
   process.exit(1);
 });

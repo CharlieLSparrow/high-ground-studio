@@ -3642,3 +3642,45 @@ This is an active-goal checkpoint, not a completion claim.
   MV7i/EOS routes, listen and watch a disposable take, operate the
   two-participant Room and Shared Watch pause control, then compare the same
   capture/source IDs through upload, Nest timeline, and Studio proof-watch.
+
+### 2026-07-29 generated-reviewer release-pipeline checkpoint
+
+- The production reviewer journey no longer requires an operator to manually
+  assemble a database secret, public Firebase key, and Cloud SQL proxy. One
+  supported command now has two explicit modes:
+  `quipsly:cloudrun:smoke-generated-reviewer` exercises production without a
+  traffic mutation, while `quipsly:cloudrun:promote-generated-reviewer`
+  resolves a zero-traffic tagged revision before delegating the canonical
+  immutable source, smoke, receipt, promotion, readback, and rollback path.
+- The wrapper uses a mode-077 process boundary, never prints the database URL,
+  Firebase key, generated password, token, cookie, or release receipt, and
+  constrains reviewer credentials to clean Quipsly origins, the configured
+  Cloud Run service, or loopback development. It discovers or accepts the
+  authenticated Cloud SQL proxy, selects an ephemeral loopback port, waits for
+  readiness, and owns exact temporary-directory and proxy cleanup. Its source
+  contains no traffic-update command; smoke-only and promotion behavior are
+  structurally separate.
+- The generated reviewer itself now fails closed when cleanup fails and reads
+  both providers back after deletion. It does not infer cleanup from delete
+  counts: all generated invites, grants, Home Nests, memberships, users, and
+  aliases must be absent from PostgreSQL, and Firebase must return
+  `auth/user-not-found`, before the command reports success.
+- Static and mode-behavioral release tests pass 12/12. A real non-promoting
+  production run then passed Firebase login, cookie and native bearer
+  sessions, database-backed Home Nest and Session workspace, projects, account
+  switching, admin, writing, editor, recorder, research, publishing, logout,
+  and cookie clearing. Cleanup deleted two generated grants, one Home Nest, one
+  membership, one database user, and one Firebase user; independent database
+  and Firebase residue checks both returned true.
+- Cloud Run readback after the smoke still reports
+  `studio-00441-woz` at 100% traffic. The new wrapper left no temporary
+  directory or proxy. The process audit also found and safely stopped one
+  clientless Cloud SQL proxy left by the July 28 manual workflow, demonstrating
+  the lifecycle leak this command replaces.
+- This professionalizes the production release proof but does not replace the
+  human TestFlight gate. Apple's current relationship still identifies
+  `shomers@icloud.com` as `INVITED`; the public
+  `https://testflight.apple.com/join/XwRRcYUm` handoff remains open and is the
+  canonical no-email/no-code installation path. Physical installation, Google
+  attachment as `shomers@gmail.com`, consent, device routes, recording,
+  Shared Watch, upload, timeline, and proof-listen/watch remain required.

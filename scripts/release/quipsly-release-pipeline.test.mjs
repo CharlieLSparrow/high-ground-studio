@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 
 const preflight = fs.readFileSync(
@@ -34,6 +36,12 @@ const cloudRunWorkflow = fs.readFileSync(
   new URL("../../.github/workflows/deploy-cloud-run.yml", import.meta.url),
   "utf8",
 );
+const generatedReviewerUrl = new URL(
+  "./quipsly-generated-reviewer.sh",
+  import.meta.url,
+);
+const generatedReviewerPath = fileURLToPath(generatedReviewerUrl);
+const generatedReviewer = fs.readFileSync(generatedReviewerUrl, "utf8");
 
 test("standalone preflight materializes the committed Nest release context", () => {
   assert.match(preflight, /quipsly-build-context\.sh/);
@@ -43,9 +51,15 @@ test("standalone preflight materializes the committed Nest release context", () 
 });
 
 test("preflight compiles the exact committed production bundle before Cloud Build", () => {
-  assert.match(preflight, /QUIPSLY_PREFLIGHT_BUILD="\$\{QUIPSLY_PREFLIGHT_BUILD:-1\}"/);
+  assert.match(
+    preflight,
+    /QUIPSLY_PREFLIGHT_BUILD="\$\{QUIPSLY_PREFLIGHT_BUILD:-1\}"/,
+  );
   assert.match(preflight, /quipsly-verify-release-build\.sh/);
-  assert.match(preflight, /Strict Nest production build succeeded from the materialized commit/);
+  assert.match(
+    preflight,
+    /Strict Nest production build succeeded from the materialized commit/,
+  );
   assert.doesNotMatch(deploy, /QUIPSLY_PREFLIGHT_BUILD=0/);
 });
 
@@ -60,11 +74,17 @@ test("preflight proves scoped Nest access to the uniform-IAM media vault", () =>
     preflight,
     /else\s+fail "Nest mobile-capture media IAM is incomplete/s,
   );
-  assert.match(nestMediaAccess, /iamConfiguration\.uniformBucketLevelAccess\.enabled/);
+  assert.match(
+    nestMediaAccess,
+    /iamConfiguration\.uniformBucketLevelAccess\.enabled/,
+  );
   assert.match(nestMediaAccess, /media-vault\/recordings\//);
   assert.match(nestMediaAccess, /roles\/storage\.objectCreator/);
   assert.match(nestMediaAccess, /roles\/storage\.objectViewer/);
-  assert.match(nestMediaAccess, /media-vault\/control\/mobile-capture-resumable\//);
+  assert.match(
+    nestMediaAccess,
+    /media-vault\/control\/mobile-capture-resumable\//,
+  );
   assert.match(nestMediaAccess, /roles\/storage\.objectUser/);
   assert.doesNotMatch(nestMediaAccess, /roles\/storage\.objectAdmin/);
 });
@@ -120,7 +140,106 @@ test("authenticated smoke persists and verifies recorder access before claiming 
 test("promotion requires a database-backed Session workspace instead of route-only success", () => {
   assert.match(previewSmoke, /QUIPSLY_AUTH_SMOKE_REQUIRE_SESSION_WORKSPACE=1/);
   assert.match(previewSmoke, /"sessions\.workspace"/);
-  assert.match(authenticatedSmoke, /\/api\/mobile\/capture\/sessions:200:database/);
+  assert.match(
+    authenticatedSmoke,
+    /\/api\/mobile\/capture\/sessions:200:database/,
+  );
   assert.match(authenticatedSmoke, /Session review is unavailable/);
-  assert.match(authenticatedSmoke, /rendered the fail-closed unavailable state/);
+  assert.match(
+    authenticatedSmoke,
+    /rendered the fail-closed unavailable state/,
+  );
+});
+
+test("generated reviewer keeps smoke-only and immutable promotion modes explicit", () => {
+  assert.match(generatedReviewer, /MODE="\$\{1:-smoke\}"/);
+  assert.match(generatedReviewer, /smoke\|promote-preview/);
+  assert.match(
+    generatedReviewer,
+    /if \[\[ "\$\{MODE\}" == "promote-preview" \]\]; then\s+BASE_URL="\$\(resolve_preview_url\)"/,
+  );
+  assert.match(
+    generatedReviewer,
+    /node scripts\/quipsly-generated-admin-user-smoke\.mjs --promote-preview/,
+  );
+  assert.match(
+    generatedReviewer,
+    /else\s+node scripts\/quipsly-generated-admin-user-smoke\.mjs\s+fi/,
+  );
+  assert.doesNotMatch(generatedReviewer, /reviewer_args\[@\]/);
+  assert.match(
+    generatedReviewer,
+    /Mode: generated production reviewer smoke; traffic mutation is disabled/,
+  );
+  assert.doesNotMatch(
+    generatedReviewer,
+    /gcloud run services update-traffic|--to-revisions|--to-tags/,
+  );
+});
+
+test("generated reviewer rejects ambiguous modes before external access", () => {
+  const help = spawnSync("bash", [generatedReviewerPath, "--help"], {
+    encoding: "utf8",
+  });
+  assert.equal(help.status, 0, help.stderr);
+  assert.match(help.stdout, /smoke\s+Exercise production/);
+  assert.match(help.stdout, /promote-preview\s+Exercise and promote/);
+
+  const invalid = spawnSync("bash", [generatedReviewerPath, "anything-else"], {
+    encoding: "utf8",
+  });
+  assert.equal(invalid.status, 1);
+  assert.match(invalid.stderr, /Mode must be smoke or promote-preview/);
+  assert.doesNotMatch(
+    invalid.stdout + invalid.stderr,
+    /gcloud run|secrets versions/,
+  );
+
+  const untrustedTarget = spawnSync("bash", [generatedReviewerPath, "smoke"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      QUIPSLY_GENERATED_REVIEWER_BASE_URL: "http://untrusted.example",
+    },
+  });
+  assert.equal(untrustedTarget.status, 1);
+  assert.match(
+    untrustedTarget.stderr,
+    /target is outside the trusted runtime boundary/,
+  );
+  assert.doesNotMatch(
+    untrustedTarget.stdout + untrustedTarget.stderr,
+    /Running the generated reviewer|Could not read database secret/,
+  );
+});
+
+test("generated reviewer owns secret-safe proxy startup and bounded cleanup", () => {
+  assert.match(generatedReviewer, /umask 077/);
+  assert.match(generatedReviewer, /gcloud secrets versions access/);
+  assert.match(generatedReviewer, /\/api\/mac\/firebase-client-config/);
+  assert.match(generatedReviewer, /validate_base_url/);
+  assert.match(generatedReviewer, /hostname\.endsWith\("\.quipsly\.com"\)/);
+  assert.match(generatedReviewer, /isConfiguredCloudRunService/);
+  assert.match(generatedReviewer, /resolve_cloud_sql_proxy/);
+  assert.match(generatedReviewer, /cloud-sql-proxy\.log/);
+  assert.match(generatedReviewer, /trap cleanup EXIT/);
+  assert.match(
+    generatedReviewer,
+    /case "\$\{WORK_DIR\}" in\s+"\$\{TMPDIR:-\/private\/tmp\}"\/quipsly-generated-reviewer\.\*\)/,
+  );
+  assert.match(generatedReviewer, /kill "\$\{PROXY_PID\}"/);
+  assert.match(generatedReviewer, /rm -rf -- "\$\{WORK_DIR\}"/);
+  assert.match(
+    generatedReviewer,
+    /QUIPSLY_AUTH_SMOKE_REQUIRE_SESSION_WORKSPACE=1/,
+  );
+  assert.match(
+    generatedReviewer,
+    /node scripts\/quipsly-generated-admin-user-smoke\.mjs/,
+  );
+  assert.doesNotMatch(generatedReviewer, /set -x/);
+  assert.doesNotMatch(
+    generatedReviewer,
+    /echo "\$\{database_url\}"|echo "\$\{firebase_api_key\}"/,
+  );
 });

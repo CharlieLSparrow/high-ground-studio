@@ -35,6 +35,23 @@ Prisma migrations, and run the targeted additive syncs. The older
 `db push --accept-data-loss`; it is fail-closed, is not part of the workflow,
 and must not be enabled merely to make a deploy proceed.
 
+Generated reviewer entry points:
+
+```bash
+pnpm quipsly:cloudrun:smoke-generated-reviewer
+pnpm quipsly:cloudrun:promote-generated-reviewer
+```
+
+The first command creates a tightly named temporary owner, exercises the real
+production auth, Home Nest, Session, writing, editor, recorder, research, and
+publishing contracts, and removes its Firebase and database artifacts without
+changing traffic. The second resolves the exact zero-traffic preview and then
+delegates immutable source binding, the same signed-in journey, revision-bound
+receipt, promotion, production readback, and automatic rollback to the
+canonical promotion script. Both commands read secrets without printing them,
+own the authenticated Cloud SQL proxy lifecycle, and fail closed when cleanup,
+preview identity, or runtime proof is incomplete.
+
 ## Capture
 
 - Architecture:

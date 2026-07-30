@@ -18,7 +18,22 @@ assert.match(
   /Generated password, Firebase token, session cookie, release receipt, and database URL were not printed or persisted/,
   "the generated identity smoke must preserve its no-secret receipt contract",
 );
+assert.match(
+  source,
+  /verifiedDatabaseClean/,
+  "the generated identity smoke must read back database cleanup",
+);
+assert.match(
+  source,
+  /verifiedFirebaseClean/,
+  "the generated identity smoke must read back Firebase cleanup",
+);
+assert.match(
+  source,
+  /throw new Error\(`Generated admin cleanup failed:/,
+  "cleanup failure must fail the generated identity command",
+);
 
 console.log(
-  "PASS: Generated admin smoke forwards Firebase configuration without printing credential material.",
+  "PASS: Generated admin smoke protects credentials and fails closed on unverified cleanup.",
 );

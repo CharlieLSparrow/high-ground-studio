@@ -47,6 +47,8 @@
     "repo:health:strict": "node --experimental-strip-types packages/repository-governance/src/worktree-health-cli.ts --strict",
     "release:manifests:audit": "node --experimental-strip-types packages/repository-governance/src/release-manifest-cli.ts audit",
     "quipsly:cloudrun:deploy-preview": "bash scripts/release/quipsly-deploy-preview.sh",
+    "quipsly:cloudrun:smoke-generated-reviewer": "bash scripts/release/quipsly-generated-reviewer.sh smoke",
+    "quipsly:cloudrun:promote-generated-reviewer": "bash scripts/release/quipsly-generated-reviewer.sh promote-preview",
     "quipsly:web:deploy": "bash scripts/quipsly-web-deploy.sh",
     "quipsly:web:stage": "STAGE_ONLY=1 bash scripts/quipsly-web-deploy.sh",
     "quipsly:cloudrun:promote-preview": "bash scripts/release/quipsly-promote-preview.sh",
