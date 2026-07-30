@@ -521,6 +521,9 @@ function checkTranscriptPacketContractSources() {
     sourceText("apps/quipsly/src/app/api/mobile/capture/transcripts/packet/route-implementation.ts"),
   ].join("\n");
   const transcriptRunnerText = sourceText("apps/quipsly/src/lib/server/capture-transcripts.ts");
+  const transcriptProcessingText = sourceText("apps/quipsly/src/lib/server/capture-transcript-processing.ts");
+  const transcriptReconciliationText = sourceText("apps/quipsly/src/lib/server/capture-transcript-reconciliation.ts");
+  const transcriptContractText = sourceText("packages/quipsly-media-processing/src/transcription.ts");
   const packetBuilderText = sourceText("apps/quipsly/src/lib/server/coaching-packets.ts");
   const coachingPacketDomainText = sourceText("packages/quipsly-domain/src/coaching-packet.ts");
   const lifecycleSmokeText = sourceText("scripts/quipsly-coaching-local-lifecycle-db-smoke.mjs");
@@ -547,36 +550,43 @@ function checkTranscriptPacketContractSources() {
   );
   expect(
     transcriptRunRouteText.includes("Provider recording receipt slots are not media. Attach verified provider recording media before transcription.")
-      && transcriptRunnerText.includes("Provider recording receipt slots are not transcript media.")
+      && transcriptProcessingText.includes("Provider recording receipt slots are not transcript media.")
       && transcriptRunRouteText.includes("provider-recording-receipt-slot")
-      && transcriptRunnerText.includes("provider-recording-receipt-slot"),
+      && transcriptProcessingText.includes("provider-recording-receipt-slot")
+      && transcriptProcessingText.includes("TRANSCRIPT_SOURCE_IS_RECEIPT_SLOT"),
     "transcriptRejectsProviderReceiptSlots",
     "Transcript creation and execution reject provider receipt slots because receipt evidence is not playable/transcribable media.",
   );
   expect(
-    transcriptRunnerText.includes("Recording asset is not uploaded or verified yet.")
-      && transcriptRunnerText.includes("Recording asset does not have a durable storage object path.")
-      && transcriptRunnerText.includes("readMobileCaptureObjectBytes")
-      && transcriptRunnerText.includes("Recording asset is too large for the route runner. Use a background worker.")
-      && transcriptRunnerText.includes("DEEPGRAM_API_KEY is not configured.")
-      && transcriptRunnerText.includes("diarize")
-      && transcriptRunnerText.includes("utterances")
-      && !transcriptRunnerText.includes("transcriptSegment.deleteMany")
-      && transcriptRunnerText.includes("transcriptSegment.createMany")
-      && transcriptRunnerText.includes("source: \"capture-transcript-runner\""),
+    transcriptProcessingText.includes("Recording asset is not uploaded or verified yet.")
+      && transcriptProcessingText.includes("Recording asset does not have a durable storage object path.")
+      && transcriptProcessingText.includes("getMobileCaptureObjectEvidence")
+      && transcriptProcessingText.includes("newCaptureTranscriptManifest")
+      && transcriptProcessingText.includes("diarize: true")
+      && transcriptProcessingText.includes("utterances: true")
+      && transcriptProcessingText.includes("source: \"capture-transcript-background-worker\"")
+      && transcriptContractText.includes("CAPTURE_TRANSCRIPT_RAW_PREFIX")
+      && transcriptContractText.includes("CAPTURE_TRANSCRIPT_RESULT_PREFIX")
+      && transcriptContractText.includes("rawProviderResponse")
+      && !transcriptReconciliationText.includes("transcriptSegment.deleteMany")
+      && transcriptReconciliationText.includes("transcriptSegment.create(")
+      && transcriptReconciliationText.includes("transcriptWord.createMany"),
     "transcriptRunnerEvidenceBoundary",
-    "Transcript runner only runs on verified/uploaded durable recordings, reads through the capture-storage boundary, diarizes provider output, and appends speaker/time segments as evidence.",
+    "Transcript processing binds a verified durable recording to a generation-scoped background worker, stores raw provider evidence once, and appends speaker/time segments and words during reconciliation.",
   );
   expect(
     transcriptRunnerText.includes("transcriptRetryDisposition")
-      && transcriptRunnerText.includes("TRANSCRIPT_VERSION_IMMUTABLE")
-      && transcriptRunnerText.includes("job.segments.length > 0")
-      && transcriptRunnerText.includes("derived work may reference")
+      && transcriptRunnerText.includes("segmentCount")
+      && transcriptRunnerText.includes("wordCount")
+      && transcriptRunnerText.includes("\"CREATE_VERSION\"")
+      && transcriptProcessingText.includes("TRANSCRIPT_VERSION_IMMUTABLE")
+      && transcriptProcessingText.includes("job.segments.length > 0 || job.words.length > 0")
       && transcriptRunRouteText.includes("CREATE_VERSION")
       && transcriptRunRouteText.includes("versionedFromTranscriptJobId")
-      && transcriptRunRouteText.includes("immutablePriorSegmentCount"),
+      && transcriptRunRouteText.includes("immutablePriorSegmentCount")
+      && transcriptRunRouteText.includes("immutablePriorWordCount"),
     "transcriptRerunVersionsImmutableEvidence",
-    "A transcript rerun creates a new job whenever provider segments already exist, preserving segment IDs held by tasks, corrections, Schedule, Today, and Studio evidence.",
+    "A transcript rerun creates a new job whenever provider segments or words already exist, preserving identities held by tasks, corrections, Schedule, Today, and Studio evidence.",
   );
   expect(
     packetRouteText.includes("Sign in before reading a coaching packet.")

@@ -121,4 +121,51 @@ describe("mobile transcript run versioning", () => {
     expect(update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: "job-v1" }, data: expect.objectContaining({ status: "QUEUED" }) }));
     expect(create).not.toHaveBeenCalled();
   });
+
+  it("rejects a provider receipt slot before creating or executing transcript work", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "user-1", primaryEmail: "producer@example.com", isStaff: false },
+    } as any);
+    const create = jest.fn();
+    const update = jest.fn();
+    jest.mocked(getPrismaClient).mockReturnValue({
+      recordingAsset: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "receipt-slot-1",
+          roomId: "room-1",
+          kind: "SERVER_MIX",
+          localManifestJson: {
+            source: "provider-recording-receipt-slot",
+          },
+          transcriptJobs: [],
+        }),
+      },
+      transcriptJob: {
+        create,
+        update,
+        findFirst: jest.fn(),
+      },
+    } as any);
+
+    const response = await POST(new Request(
+      "http://localhost/api/mobile/capture/transcripts/run",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ recordingAssetId: "receipt-slot-1" }),
+      },
+    ));
+    const payload = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(payload).toEqual({
+      ok: false,
+      error: "Provider recording receipt slots are not media. Attach verified provider recording media before transcription.",
+    });
+    expect(create).not.toHaveBeenCalled();
+    expect(update).not.toHaveBeenCalled();
+    expect(mobileCaptureTranscriptProcessingGate).not.toHaveBeenCalled();
+    expect(reconcileCaptureTranscriptJob).not.toHaveBeenCalled();
+    expect(ensureCaptureTranscriptProcessingQueued).not.toHaveBeenCalled();
+  });
 });

@@ -95,6 +95,12 @@ export async function ensureCaptureTranscriptProcessingQueued(input: {
       "Transcript job has no room-bound recording asset.",
     );
   }
+  if (isProviderRecordingReceiptSlot(job.asset)) {
+    throw new CaptureTranscriptOutboxError(
+      "TRANSCRIPT_SOURCE_IS_RECEIPT_SLOT",
+      "Provider recording receipt slots are not transcript media.",
+    );
+  }
 
   const gate = await mobileCaptureTranscriptProcessingGate({
     prisma: input.prisma,
@@ -494,6 +500,12 @@ function executionRequestIsRecent(value: unknown) {
 function normalizedLanguage(value: unknown) {
   const normalized = text(value);
   return normalized || null;
+}
+
+function isProviderRecordingReceiptSlot(asset: any) {
+  const manifest = jsonObject(asset?.localManifestJson);
+  return asset?.kind === "SERVER_MIX"
+    && manifest.source === "provider-recording-receipt-slot";
 }
 
 function bigintAsPositiveNumber(value: unknown) {

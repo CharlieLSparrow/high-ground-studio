@@ -98,6 +98,25 @@ test("no-traffic preview can repair drift without weakening candidate checks", (
   assert.match(preflight, /QUIPSLY_PREFLIGHT_PURPOSE.*audit\|preview/s);
 });
 
+test("preview deploy mounts internal proxy credentials from Secret Manager", () => {
+  assert.match(
+    deploy,
+    /IMAGE_PROXY_TOKEN_SECRET_NAME="\$\{IMAGE_PROXY_TOKEN_SECRET_NAME:-reefball-image-proxy-token\}"/,
+  );
+  assert.match(
+    deploy,
+    /gcloud secrets versions describe "\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}".*--secret="\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}"/s,
+  );
+  assert.match(
+    deploy,
+    /REEFBALL_IMAGE_PROXY_TOKEN_SECRET=\$\{IMAGE_PROXY_TOKEN_SECRET_NAME\}:\$\{IMAGE_PROXY_TOKEN_SECRET_VERSION\}/,
+  );
+  assert.doesNotMatch(
+    deploy,
+    /--update-env-vars="[^"]*REEFBALL_IMAGE_PROXY_TOKEN_SECRET=/,
+  );
+});
+
 test("manual Studio workflow installs pinned tooling and preserves the exact-source preview boundary", () => {
   assert.match(
     cloudRunWorkflow,
