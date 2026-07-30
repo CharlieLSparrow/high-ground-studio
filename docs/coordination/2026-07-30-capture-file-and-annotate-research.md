@@ -1,7 +1,7 @@
 # Capture File-and-Annotate Research Checkpoint
 
-Date: 2026-07-30  
-Branch: `codex/quipsly-product-20260724`  
+Date: 2026-07-30
+Branch: `codex/quipsly-product-20260724`
 Feature commit: `bb8d6a57`
 
 ## Outcome
@@ -107,4 +107,3 @@ from exact source `a2d8835353`. Commit `bb8d6a57` is not deployed,
 distributed, or physically proven. A later coordinated release still requires
 an exact-commit Nest preview, authenticated smoke, immutable readback, a new
 qualified Capture build, and physical-iPhone same-ID operation.
-
