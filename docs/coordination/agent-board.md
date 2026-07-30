@@ -90,7 +90,7 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
 - latest coherent feature commit:
-  `804e42e2 feat(capture): hand research evidence into private writing`
+  `356f6d82 test(transcripts): enforce durable worker architecture`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
   - `apps/quipsly/src/app/api/mobile/capture/today`
@@ -102,15 +102,22 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - `scripts/release/quipsly-capture-*`
   - Capture release, App Store readiness, and unified-product blueprint docs
 - current goal:
-  - keep Build 14 stable for Scott and Charlie's physical rehearsal while
-    advancing coherent iPhone/Nest slices over canonical tasks, goals, notes,
-    tags, annotations, sources, recording, and follow-through
+  - advance coherent production iPhone/Nest slices over canonical tasks,
+    goals, notes, tags, annotations, sources, recording, and follow-through,
+    while preserving exact-source release and physical-boundary evidence
 - current status:
-  - Quipsly Capture 1.0 (15), exact source `c3e02a6ea3`, is live through the
+  - Quipsly Capture 1.0 (16), exact source `356f6d821e`, is live through the
     open public TestFlight link; physical install and rehearsal readback remain
     open
-  - production Nest is `studio-00445-rij` at 100% traffic from the same exact
-    source
+  - production Nest is `studio-00458-xac` at 100% traffic from the same exact
+    source; generated-reviewer acceptance and the 108-check mobile contract
+    passed before promotion
+  - `3f55a5b1` adds canonical project-vocabulary rename, archive, and restore
+    to iPhone Work with aliases, assignment impact, optimistic revisions, and
+    a deliberate Nest handoff for higher-impact merge
+  - Build 16 passed 45/45 operated UI journeys, signed artifact verification,
+    App Store processing, external beta approval, group assignment, automatic
+    notification, and uncached public-link readback
   - `b2313033` adds permission-correct annotation Resolve/Reopen on iPhone,
     canonical tags, exact Nest Research links, and real-Firebase/local-Postgres
     operated proof with complete cleanup
@@ -126,21 +133,17 @@ Verified during the Codex application handoff prep on 2026-05-26.
     writing document and citation block through a protected actor-partitioned
     iPhone outbox, exact acknowledgement, serializable idempotent transaction,
     and reversible human operation without changing the source
-  - current checks: focused server/API 28/28, Quipsly typecheck, protected
-    writing-outbox harness including corrupt-ledger recovery, mobile source
-    contract, App Store/static 873/873, iPhone 17 Pro Simulator build, and the
-    real generated annotation-writing journey all pass
-  - deploy status: `804e42e2`, `bb8d6a57`, `ff48c69c`, and `b2313033` are not
-    deployed or distributed; next delivery is a zero-traffic Nest preview
-    followed by exact-source qualification for a later Capture build
-  - rollback: production remains on `studio-00445-rij`; revert `804e42e2` to
-    remove unpublished source-to-writing handoff, revert `bb8d6a57` to remove
-    compound file-and-annotate, revert `ff48c69c` to remove unpublished source
-    filing, and revert `b2313033` to remove unpublished annotation review
+  - current checks: tag route and real PostgreSQL lifecycle 25/25, pinned
+    TypeScript 7, mobile source contract 76/76, App Store static 947/947,
+    45/45 serialized UI journeys, signed IPA inspection, authenticated
+    production acceptance, and TestFlight readback all pass
+  - deploy status: exact source `356f6d82` is deployed and distributed
+  - rollback: previous proven Nest revision is `studio-00454-kom`; Build 15
+    remains documented and available historically in App Store Connect
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
   - no private HGO or coaching material in screenshots
-  - do not replace the known-good Build 14 rehearsal target during active human
+  - do not replace the known-good Build 16 rehearsal target during active human
     testing without a coordinated handoff
   - do not save legal, rating, DSA, pricing, territory, privacy, deletion, or
     reviewer-credential answers without account-holder approval

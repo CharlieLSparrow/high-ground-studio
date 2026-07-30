@@ -4702,3 +4702,38 @@ outbox and manifests, a separate transcript worker, immutable result receipts,
 and a fresh consent check immediately before transactional transcript
 projection. No inline provider call or obsolete route-owned transcript writer
 was restored.
+
+### 2026-07-30 shared tag production and Capture Build 16 release
+
+- Exact source `356f6d821eafac018c5116cb4d888425c442cf42`
+  built as immutable Nest image digest
+  `sha256:5126998e2c6f490a1b0e76fd4c172dcf4afced2139216ae9f93b664629a2a66a`,
+  deployed as zero-traffic `studio-00458-xac`, and passed the generated
+  verified-reviewer journey before promotion. The operation covered private
+  Home Nest, Sessions, writing, editor, recorder, research, publishing, admin
+  boundary, logout, public hosts, and all 108 mobile contract checks.
+- Production traffic now points 100% to `studio-00458-xac`. The generated
+  reviewer's grants, Home Nest, membership, database user, and Firebase user
+  were independently verified absent after acceptance. The transcript
+  provider remains held: no provider environment is mounted, no transcript
+  worker Job exists, and no Deepgram secret exists.
+- The exact detached Capture source passed 45/45 serialized iPhone and Share
+  Extension journeys, including canonical Work vocabulary management,
+  source-tag assignment, Studio handoff, explicit consent separation,
+  recurrence/reminder boundaries, video-source disclosure, relaunch recovery,
+  accessibility, Google-first login, and signed-in Safari sharing.
+- Signed app and extension `1.0 (16)` passed nested signature, App Store
+  provisioning, distribution-entitlement, privacy-manifest, packaged purpose
+  string, background-mode, and encryption-metadata inspection. The IPA is
+  20,866,985 bytes at SHA-256
+  `237cb1e8e286d06b23744d42a4d7193fec3f04b0edd4699fd2df47a6e00cf7ca`.
+- App Store Connect build `0c67b80d-0df3-4c48-9844-ba963202515d` processed
+  `VALID`, entered `IN_BETA_TESTING`, and received beta review `APPROVED`.
+  It is in the existing external **Quipsly Capture Rehearsal** group with
+  automatic notification and complete beta/reviewer metadata. Independent
+  public-link readback passed the exact Quipsly title, open-beta heading, and
+  `itms-beta` handoff.
+- This closes deployed production parity and external TestFlight delivery for
+  the canonical vocabulary slice. It does not claim a physical TestFlight
+  installation, real two-person consent/capture, or completion of the required
+  real HGO and coaching workflows.
