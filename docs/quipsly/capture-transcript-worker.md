@@ -105,13 +105,13 @@ bash scripts/release/quipsly-transcript-worker-context.test.sh
 ```
 
 Before any production migration, exercise the entire committed migration
-history twice in a unique isolated PostgreSQL schema and verify the transcript
+history twice in a unique isolated PostgreSQL database and verify the transcript
 columns, cascading foreign keys, and stable provider-word index:
 
 ```bash
 MODE=fixture \
 SOURCE_REF=COMMITTED_SHA \
-PRESERVE_FIXTURE_SCHEMA=0 \
+PRESERVE_FIXTURE_DATABASE=0 \
 bash scripts/release/quipsly-schema-job.sh
 ```
 

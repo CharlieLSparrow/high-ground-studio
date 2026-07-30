@@ -63,7 +63,7 @@ grep -Fq "Refusing to repair the foundation schema" "${output_file}"
 
 set +e
 MODE=fixture \
-  FIXTURE_SCHEMA=public \
+  FIXTURE_DATABASE=public \
   PROJECT_ID=quipsly-schema-job-test \
   bash "${repo_root}/scripts/release/quipsly-schema-job.sh" \
   >"${output_file}" 2>&1
@@ -72,15 +72,15 @@ set -e
 
 if [[ "${status}" -ne 2 ]]; then
   cat "${output_file}" >&2
-  echo "Expected an unsafe fixture schema to exit 2; received ${status}." >&2
+  echo "Expected an unsafe fixture database to exit 2; received ${status}." >&2
   exit 1
 fi
 
-grep -Fq "Unsafe fixture schema 'public'." "${output_file}"
+grep -Fq "Unsafe fixture database 'public'." "${output_file}"
 
 if grep -Eq "gcloud builds submit|gcloud run jobs" "${output_file}"; then
   cat "${output_file}" >&2
-  echo "Fixture job started external work before validating its schema." >&2
+  echo "Fixture job started external work before validating its database." >&2
   exit 1
 fi
 

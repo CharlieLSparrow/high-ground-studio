@@ -13,8 +13,9 @@ SOURCE_REF="${SOURCE_REF:-HEAD}"
 
 repo_root="$(git rev-parse --show-toplevel)"
 source_sha="$(git -C "${repo_root}" rev-parse --verify "${SOURCE_REF}^{commit}")"
-fixture_schema="${FIXTURE_SCHEMA:-quipsly_fixture_${source_sha:0:12}}"
-preserve_fixture="${PRESERVE_FIXTURE_SCHEMA:-0}"
+fixture_database="${FIXTURE_DATABASE:-quipsly_fixture_${source_sha:0:12}}"
+preserve_fixture="${PRESERVE_FIXTURE_DATABASE:-0}"
+reuse_fixture="${REUSE_FIXTURE_DATABASE:-0}"
 IMAGE_TAG="${IMAGE_TAG:-schema-${source_sha:0:12}}"
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
 
@@ -38,12 +39,16 @@ case "${MODE}" in
     job_command="pnpm prisma migrate deploy"
     ;;
   fixture)
-    if [[ ! "${fixture_schema}" =~ ^quipsly_fixture_[a-z0-9_]{8,40}$ ]]; then
-      echo "Unsafe fixture schema '${fixture_schema}'." >&2
+    if [[ ! "${fixture_database}" =~ ^quipsly_fixture_[a-z0-9_]{8,40}$ ]]; then
+      echo "Unsafe fixture database '${fixture_database}'." >&2
       exit 2
     fi
     if [[ "${preserve_fixture}" != "0" && "${preserve_fixture}" != "1" ]]; then
-      echo "PRESERVE_FIXTURE_SCHEMA must be 0 or 1." >&2
+      echo "PRESERVE_FIXTURE_DATABASE must be 0 or 1." >&2
+      exit 2
+    fi
+    if [[ "${reuse_fixture}" != "0" && "${reuse_fixture}" != "1" ]]; then
+      echo "REUSE_FIXTURE_DATABASE must be 0 or 1." >&2
       exit 2
     fi
     job_command="node scripts/quipsly-schema-fixture.mjs"
@@ -105,6 +110,29 @@ else
   echo "Using existing schema image ${IMAGE_URI}."
 fi
 
+sql_instance_name="${SQL_INSTANCE##*:}"
+if [[ ! "${sql_instance_name}" =~ ^[a-z][a-z0-9-]{0,97}[a-z0-9]$ ]]; then
+  echo "Unsafe Cloud SQL instance name '${sql_instance_name}'." >&2
+  exit 2
+fi
+if [[ "${MODE}" == "fixture" ]]; then
+  if gcloud sql databases describe "${fixture_database}" \
+    --project="${PROJECT_ID}" \
+    --instance="${sql_instance_name}" >/dev/null 2>&1; then
+    if [[ "${reuse_fixture}" != "1" ]]; then
+      echo "Fixture database ${fixture_database} already exists; refusing to reuse it." >&2
+      exit 1
+    fi
+  else
+    gcloud sql databases create "${fixture_database}" \
+      --project="${PROJECT_ID}" \
+      --instance="${sql_instance_name}" \
+      --charset=UTF8 \
+      --collation=en_US.UTF8 \
+      --quiet
+  fi
+fi
+
 job_suffix="${MODE//[^a-zA-Z0-9-]/-}"
 job_name="quipsly-schema-${job_suffix}"
 
@@ -116,7 +144,7 @@ gcloud run jobs deploy "${job_name}" \
   --service-account="${SERVICE_ACCOUNT}" \
   --set-cloudsql-instances="${SQL_INSTANCE}" \
   --set-secrets="DATABASE_URL=${DATABASE_SECRET}" \
-  --set-env-vars="QUIPSLY_SCHEMA_SOURCE_SHA=${source_sha},QUIPSLY_SCHEMA_MODE=${MODE},QUIPSLY_SCHEMA_FIXTURE_SCHEMA=${fixture_schema},PRESERVE_FIXTURE_SCHEMA=${preserve_fixture}" \
+  --set-env-vars="QUIPSLY_SCHEMA_SOURCE_SHA=${source_sha},QUIPSLY_SCHEMA_MODE=${MODE},QUIPSLY_SCHEMA_FIXTURE_DATABASE=${fixture_database}" \
   --command=bash \
   --args="-lc,${job_command}" \
   --tasks=1 \
@@ -124,7 +152,25 @@ gcloud run jobs deploy "${job_name}" \
   --quiet
 
 echo "Executing ${job_name}."
+set +e
 gcloud run jobs execute "${job_name}" \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \
   --wait
+execute_status=$?
+set -e
+
+if [[ "${execute_status}" -ne 0 ]]; then
+  if [[ "${MODE}" == "fixture" ]]; then
+    echo "Fixture database ${fixture_database} was preserved for failure analysis." >&2
+  fi
+  exit "${execute_status}"
+fi
+
+if [[ "${MODE}" == "fixture" && "${preserve_fixture}" != "1" ]]; then
+  gcloud sql databases delete "${fixture_database}" \
+    --project="${PROJECT_ID}" \
+    --instance="${sql_instance_name}" \
+    --quiet
+  echo "Deleted verified fixture database ${fixture_database}."
+fi
