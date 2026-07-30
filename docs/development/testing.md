@@ -53,6 +53,25 @@ For visible product behavior, use the signed-in dogfood sequence in
 [Nest local development](../runbooks/quipsly-nest-local.md): create records,
 link them, find them across Home Nest, Work, Today, and Search, then reload.
 
+Credentialed actor-private writing proof has a dedicated deployed-preview
+harness:
+
+```bash
+QUIPSLY_PERSONAL_WRITING_PRIVACY_EXPECTED_SOURCE_SHA=<exact-40-character-sha> \
+  pnpm quipsly:cloudrun:privacy-preview
+```
+
+The command refuses a non-HTTPS target, a runtime not marked `preview`, or a
+health readback whose source/image tag differs from the explicit SHA. It creates
+two disposable verified Firebase accounts, makes them Owner and Editor of the
+same temporary Nest, creates the Owner's source-backed private draft through the
+deployed Capture API, and attempts collaborator reads and mutations across
+Today, Research export, Library, the Nest dashboard, a guessed writing URL,
+annotation actions, canonical note editing, and document tags. A pass also
+requires byte-stable canonical readback and independently verified database and
+Firebase cleanup. Receipts redact generated email addresses and never retain
+tokens, cookies, passwords, or database credentials.
+
 ## Capture
 
 CI runs the deterministic Capture suite on the pinned iOS simulator. Release

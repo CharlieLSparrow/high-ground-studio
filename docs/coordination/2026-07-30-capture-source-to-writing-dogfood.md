@@ -274,3 +274,15 @@ A later coordinated release must still:
 5. repeat offline/interruption recovery, same-ID production readback, portable
    export/restore, and source/response editing before describing this slice as
    distributed or physically proven.
+
+The deployed denial is now encoded as the reusable
+`pnpm quipsly:cloudrun:privacy-preview` boundary harness. Its deterministic
+helper coverage passes **4/4**, focused privacy coverage passes **12** tests
+with 9 environment-gated integration cases skipped, and Quipsly TypeScript
+passes. The first credentialed invocation stopped before reading the database
+secret or creating any fixture because both the selected gcloud user credential
+and ADC required interactive reauthentication. Loop back with
+`gcloud auth login --update-adc --brief`, then run the harness with
+`QUIPSLY_PERSONAL_WRITING_PRIVACY_EXPECTED_SOURCE_SHA` set to the exact preview
+source above. Do not close item 1 until its redacted receipt reports both
+database and Firebase residue absent.

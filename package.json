@@ -54,6 +54,8 @@
     "quipsly:cloudrun:promote-preview": "bash scripts/release/quipsly-promote-preview.sh",
     "quipsly:cloudrun:rollback": "bash scripts/release/quipsly-rollback.sh",
     "quipsly:cloudrun:smoke-preview": "bash scripts/release/quipsly-smoke-preview.sh",
+    "quipsly:cloudrun:privacy-preview": "bash scripts/quipsly-live-personal-writing-privacy-smoke.sh",
+    "quipsly:cloudrun:privacy-preview:test": "node --test scripts/quipsly-generated-personal-writing-privacy-smoke.test.mjs",
     "quipsly:cloudrun:traffic": "bash scripts/release/quipsly-traffic.sh",
     "quipsly:cloudrun:logs": "bash scripts/release/quipsly-logs.sh studio",
     "quipsly:production:status": "bash scripts/release/quipsly-production-status.sh",
