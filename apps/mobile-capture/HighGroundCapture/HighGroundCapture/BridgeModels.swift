@@ -1096,6 +1096,8 @@ struct MobileCaptureTodayMutationResponse: Codable {
     let documentStableId: String?
     let blockId: String?
     let blockStableId: String?
+    let responseBlockId: String?
+    let responseBlockStableId: String?
     let href: String?
     let reused: Bool?
     let boundaries: MobileCaptureTodayBoundaries?
@@ -3605,6 +3607,9 @@ final class CaptureTodayClient: ObservableObject {
                   payload.documentStableId?.isEmpty == false,
                   payload.blockId?.isEmpty == false,
                   payload.blockStableId?.isEmpty == false,
+                  let responseBlockID = payload.responseBlockId,
+                  !responseBlockID.isEmpty,
+                  payload.responseBlockStableId?.isEmpty == false,
                   payload.reused != nil,
                   payload.boundaries?.writingDraftPrivate == true,
                   payload.boundaries?.writingDraftSourceMutated == false,
@@ -3613,7 +3618,8 @@ final class CaptureTodayClient: ObservableObject {
                   let draftURL = safeWritingDraftURL(
                     href: href,
                     expectedProjectSlug: decision.projectSlug,
-                    expectedDocumentID: documentID
+                    expectedDocumentID: documentID,
+                    expectedResponseBlockID: responseBlockID
                   ) else {
                 let message = "Nest returned a different draft identity or safety boundary. The protected phone decision is held for review."
                 writingDraftOutbox.markHeld(
@@ -3640,24 +3646,27 @@ final class CaptureTodayClient: ObservableObject {
     private func safeWritingDraftURL(
         href: String,
         expectedProjectSlug: String,
-        expectedDocumentID: String?
+        expectedDocumentID: String?,
+        expectedResponseBlockID: String? = nil
     ) -> URL? {
         guard let components = URLComponents(string: href),
               components.scheme == nil,
               components.host == nil,
               components.path == "/create",
               let queryItems = components.queryItems,
-              queryItems.count == 2 else { return nil }
+              (queryItems.count == 2 || queryItems.count == 3) else { return nil }
         var query: [String: String] = [:]
         for item in queryItems {
             guard let value = item.value, query[item.name] == nil else { return nil }
             query[item.name] = value
         }
-        guard query.count == 2,
+        guard query.count == queryItems.count,
               query["project"] == expectedProjectSlug,
               let documentID = query["document"],
               !documentID.isEmpty,
               expectedDocumentID == nil || documentID == expectedDocumentID,
+              expectedResponseBlockID == nil || query["block"] == expectedResponseBlockID,
+              query.keys.allSatisfy({ ["project", "document", "block"].contains($0) }),
               let nestURL = URL(string: baseURL),
               let absolute = URL(string: href, relativeTo: nestURL)?.absoluteURL,
               absolute.scheme == nestURL.scheme,

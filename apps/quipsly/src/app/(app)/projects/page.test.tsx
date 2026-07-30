@@ -173,4 +173,24 @@ describe("Nest registry degraded-state UX", () => {
     expect(screen.getByText(/You have not created any Nests yet/i)).toBeInTheDocument();
     expect(screen.getByText(/No shared Nests yet/i)).toBeInTheDocument();
   });
+
+  it("distinguishes an unavailable private document from a missing Nest", async () => {
+    render(
+      await ProjectsHub({
+        searchParams: Promise.resolve({
+          fallback: "true",
+          documentUnavailable: "1",
+          nest: "shared-writing-nest",
+        }),
+      }),
+    );
+
+    expect(
+      screen.getByText(/That document is not available to this account/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/access to the "shared-writing-nest" Nest is unchanged/i),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/could not find a Nest/i)).not.toBeInTheDocument();
+  });
 });

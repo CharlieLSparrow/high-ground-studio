@@ -8,6 +8,7 @@ import {
   SESSION_NOTE_VISIBLE_KINDS,
   workspaceNoteVisibilityWhere,
 } from "@/lib/server/session-note-access";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 import { createDocumentAction } from "../nests/[slug]/actions";
 import { StudioAccessShell } from "../studio-access-shell";
@@ -132,7 +133,10 @@ export async function loadLibrary(userId: string, actorEmail: string, isStaff: b
       },
     }) : Promise.resolve([]),
     projectIds.length ? prisma.studioDocument.findMany({
-      where: { projectId: { in: projectIds } },
+      where: {
+        projectId: { in: projectIds },
+        ...personalWritingDocumentVisibilityWhere(userId),
+      },
       orderBy: { updatedAt: "desc" },
       take: 200,
       select: {

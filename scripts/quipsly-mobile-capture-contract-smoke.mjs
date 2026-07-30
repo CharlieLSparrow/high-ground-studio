@@ -1052,7 +1052,7 @@ function checkTranscriptCorrectionContractSources() {
       && webText.includes("Creates one private Nest writing page with an immutable transcript-evidence block and a separate editable draft block")
       && immutableSourceText.includes('IMMUTABLE_TRANSCRIPT_SOURCE_PREFIX = "transcript:"')
       && writingActionsText.includes("assertMutableWritingBlock(existingBlock.externalId)")
-      && writingActionsText.includes("Transcript source evidence stays pinned in its canonical position")
+      && writingActionsText.includes("Source evidence stays pinned in its canonical position")
       && writingBlockText.includes("Pinned transcript evidence")
       && writingBlockText.includes("readOnly={isImmutableSource}"),
     "transcriptDerivedDraftExplicitSourceBoundary",

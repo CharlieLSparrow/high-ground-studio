@@ -43,7 +43,11 @@ function errorHasCode(error: unknown, code: string): boolean {
 }
 
 function isDatabaseUnavailable(error: unknown) {
-  return errorHasCode(error, "ECONNREFUSED") || errorHasCode(error, "ETIMEDOUT");
+  return (
+    errorHasCode(error, "ECONNREFUSED")
+    || errorHasCode(error, "ETIMEDOUT")
+    || errorHasCode(error, "P2028")
+  );
 }
 
 function isDatabaseSchemaUnavailable(error: unknown) {

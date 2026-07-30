@@ -46,6 +46,7 @@ import {
   nestKindFromSourceLabel,
   type StudioNestKind,
 } from "@/lib/studio/project-registry";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 import { CreateDocumentButton } from "./CreateDocumentButton";
 import { NestQuickCapture } from "./NestQuickCapture";
@@ -182,7 +183,10 @@ export default async function NestDashboardPage({ params, searchParams }: NestDa
 
   const [documents, grants, assets, mediaBins, projectFollowThrough, tags, rooms, episodeProductions] = await Promise.all([
     prisma.studioDocument.findMany({
-      where: { projectId: project.id },
+      where: {
+        projectId: project.id,
+        ...personalWritingDocumentVisibilityWhere(actorUserId),
+      },
       select: {
         id: true,
         stableId: true,

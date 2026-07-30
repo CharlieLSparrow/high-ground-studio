@@ -52,7 +52,7 @@ function prismaMocks() {
 
   return {
     prisma: {
-      studioDocument: { findUnique: jest.fn() },
+      studioDocument: { findFirst: jest.fn() },
       quipslyNote: { findFirst: jest.fn() },
       $transaction: transaction,
     },
@@ -97,7 +97,7 @@ describe("POST /api/v1/notes/parse", () => {
 
   it("rejects a document without the authenticated user's Home Nest owner grant", async () => {
     const { prisma, tx } = prismaMocks();
-    prisma.studioDocument.findUnique.mockResolvedValue(
+    prisma.studioDocument.findFirst.mockResolvedValue(
       ownedDocument({ hasOwnerGrant: false }),
     );
     jest.mocked(getPrismaClient).mockReturnValue(prisma as never);
@@ -120,7 +120,7 @@ describe("POST /api/v1/notes/parse", () => {
 
   it("rejects an owned Home Nest document without an owned source note", async () => {
     const { prisma, tx } = prismaMocks();
-    prisma.studioDocument.findUnique.mockResolvedValue(ownedDocument());
+    prisma.studioDocument.findFirst.mockResolvedValue(ownedDocument());
     prisma.quipslyNote.findFirst.mockResolvedValue(null);
     jest.mocked(getPrismaClient).mockReturnValue(prisma as never);
     jest
@@ -142,7 +142,7 @@ describe("POST /api/v1/notes/parse", () => {
 
   it("rebuilds only an authenticated owner's note document", async () => {
     const { prisma, tx } = prismaMocks();
-    prisma.studioDocument.findUnique.mockResolvedValue(ownedDocument());
+    prisma.studioDocument.findFirst.mockResolvedValue(ownedDocument());
     prisma.quipslyNote.findFirst.mockResolvedValue({ id: NOTE_ID });
     tx.studioDocumentBlock.deleteMany.mockResolvedValue({ count: 2 });
     tx.studioDocumentBlock.createMany.mockResolvedValue({ count: 2 });
@@ -184,7 +184,7 @@ describe("POST /api/v1/notes/parse", () => {
 
   it("returns a failure instead of claiming success when the transaction fails", async () => {
     const { prisma } = prismaMocks();
-    prisma.studioDocument.findUnique.mockResolvedValue(ownedDocument());
+    prisma.studioDocument.findFirst.mockResolvedValue(ownedDocument());
     prisma.quipslyNote.findFirst.mockResolvedValue({ id: NOTE_ID });
     prisma.$transaction.mockRejectedValue(new Error("database offline"));
     jest.mocked(getPrismaClient).mockReturnValue(prisma as never);

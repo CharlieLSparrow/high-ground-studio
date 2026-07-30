@@ -92,7 +92,7 @@ export async function POST(request: Request) {
 
       const replay = await tx.studioDocument.findUnique({
         where: { stableId: documentStableId },
-        select: { id: true, projectId: true, title: true, sourcePath: true, blocks: { orderBy: { order: "asc" }, select: { id: true, order: true } } },
+        select: { id: true, projectId: true, personalOwnerUserId: true, title: true, sourcePath: true, blocks: { orderBy: { order: "asc" }, select: { id: true, order: true } } },
       });
       if (replay) {
         const operation = await tx.studioDocumentOperation.findFirst({
@@ -101,6 +101,7 @@ export async function POST(request: Request) {
         });
         const payload = record(operation?.payloadJson);
         if (replay.projectId !== desk.projectId
+            || replay.personalOwnerUserId !== actor.id
             || replay.sourcePath !== exactSourcePath
             || payload.clientRequestId !== clientRequestId
             || payload.roomId !== roomId
@@ -124,6 +125,7 @@ export async function POST(request: Request) {
       const document = await tx.studioDocument.create({
         data: {
           projectId: desk.projectId,
+          personalOwnerUserId: actor.id,
           stableId: documentStableId,
           title,
           sourceLabel: `Session transcript · ${timestamp}`,

@@ -99,6 +99,11 @@ function BlockItemComponent({
   const sourceAnnotationId = block.sourceEvidence && !block.sourceEvidence.annotationId.startsWith("transcript:")
     ? block.sourceEvidence.annotationId
     : null;
+  const sourceEvidenceLabel = isImmutableSource
+    ? sourceAnnotationId
+      ? "Pinned source evidence"
+      : "Pinned transcript evidence"
+    : "Source-linked draft";
   const sourcePathHref = block.sourceEvidence?.sourcePath
     && (block.sourceEvidence.sourcePath.startsWith("/") || block.sourceEvidence.sourcePath.startsWith("http"))
     ? block.sourceEvidence.sourcePath
@@ -221,7 +226,7 @@ function BlockItemComponent({
         <div className="mb-3 rounded-xl border border-cyan-200 bg-cyan-50 px-3 py-2.5 text-xs leading-5 text-cyan-950" aria-label="Source evidence provenance">
           <div className="flex flex-wrap items-center gap-2">
             <BookOpenCheck size={15} aria-hidden="true" />
-            <span className="font-black uppercase tracking-[0.1em]">{isImmutableSource ? "Pinned transcript evidence" : "Source-linked draft"}</span>
+            <span className="font-black uppercase tracking-[0.1em]">{sourceEvidenceLabel}</span>
             <span className="text-cyan-800">{isImmutableSource ? "Read-only source snapshot" : "Immutable source unchanged"}</span>
           </div>
           <p className="mt-1.5 font-semibold">{block.sourceEvidence.citationLabel}</p>

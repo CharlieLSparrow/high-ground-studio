@@ -1825,7 +1825,8 @@ async function assertGeneratedSourceWritingDraft(
       && today.body?.boundaries?.writingDraftExternalSideEffects === false
       && projected?.canStartWriting === true
       && typeof projected?.writingDraftHref === "string"
-      && projected.writingDraftHref.includes(`project=${encodeURIComponent(projectWorkProof.projectSlug)}`),
+      && projected.writingDraftHref.includes(`project=${encodeURIComponent(projectWorkProof.projectSlug)}`)
+      && projected.writingDraftHref.includes("&block="),
     "The operated iPhone source-to-writing journey did not project its private canonical draft through Today.",
     {
       status: today.response.status,
@@ -1867,7 +1868,13 @@ async function assertGeneratedSourceWritingDraft(
             quoteSnapshot: true,
             sourceJson: true,
             document: {
-              select: { id: true, stableId: true, title: true, isPrivate: true },
+              select: {
+                id: true,
+                stableId: true,
+                title: true,
+                isPrivate: true,
+                personalOwnerUserId: true,
+              },
             },
             block: {
               select: {
@@ -1883,6 +1890,22 @@ async function assertGeneratedSourceWritingDraft(
       },
     });
     const use = annotation?.uses[0];
+    const responseBlockId = typeof use?.sourceJson?.responseBlockId === "string"
+      ? use.sourceJson.responseBlockId
+      : "";
+    const responseBlock = responseBlockId
+      ? await prisma.studioDocumentBlock.findUnique({
+        where: { id: responseBlockId },
+        select: {
+          id: true,
+          documentId: true,
+          stableId: true,
+          body: true,
+          externalId: true,
+          isPrivate: true,
+        },
+      })
+      : null;
     const operations = use
       ? await prisma.studioDocumentOperation.findMany({
         where: {
@@ -1919,13 +1942,22 @@ async function assertGeneratedSourceWritingDraft(
         && use.quoteSnapshot === annotationProof.exactText
         && use.sourceJson?.kind === "quipsly-source-annotation-use-v1"
         && use.sourceJson?.annotationRevision === annotationProof.initialUpdatedAt
+        && use.sourceJson?.personalOwnerUserId === use.createdByUserId
+        && use.sourceJson?.evidenceBlockId === use.blockId
+        && use.sourceJson?.evidenceBlockStableId === use.block.stableId
+        && use.sourceJson?.responseBlockId === responseBlock?.id
+        && use.sourceJson?.responseBlockStableId === responseBlock?.stableId
         && use.sourceJson?.sourceMutated === false
         && use.document.isPrivate === true
+        && use.document.personalOwnerUserId === use.createdByUserId
         && use.block.isPrivate === true
-        && use.block.externalId === `annotation:${annotationProof.annotationId}`
-        && use.block.body.includes(annotationProof.body)
+        && use.block.externalId === `annotation-evidence:${annotationProof.annotationId}`
         && use.block.body.includes(`> ${annotationProof.exactText}`)
         && use.block.body.includes(use.citationKey)
+        && responseBlock?.documentId === use.documentId
+        && responseBlock.isPrivate === true
+        && responseBlock.externalId === `annotation-response:${annotationProof.annotationId}`
+        && responseBlock.body.includes(annotationProof.body)
         && operations.length === 1
         && operations[0]?.origin === "human"
         && operations[0]?.status === "applied"
@@ -1962,15 +1994,21 @@ async function assertGeneratedSourceWritingDraft(
         && replay.body?.reused === true
         && replay.body?.documentId === use.documentId
         && replay.body?.blockId === use.blockId
+        && replay.body?.responseBlockId === responseBlock.id
+        && replay.body?.responseBlockStableId === responseBlock.stableId
+        && replay.body?.href?.includes(`block=${encodeURIComponent(responseBlock.id)}`)
         && replay.body?.clientRequestId === use.clientRequestId,
-      "Replaying the phone's exact protected writing identity did not return the same canonical document and citation block.",
+      "Replaying the phone's exact protected writing identity did not return the same canonical document, evidence block, and editable response block.",
       { status: replay.response.status, body: replay.body },
     );
 
     return {
       oneCanonicalUse: true,
       privateDocument: true,
-      privateBlock: true,
+      actorOwnedDocument: true,
+      immutableEvidenceBlock: true,
+      editableResponseBlock: true,
+      responseFocusedHandoff: true,
       exactCitationSnapshot: true,
       immutableSourceHashPreserved: true,
       annotationRevisionPreserved: true,

@@ -5,6 +5,7 @@ import {
   SESSION_NOTE_VISIBLE_KINDS,
   workspaceNoteVisibilityWhere,
 } from "@/lib/server/session-note-access";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 const RESULT_LIMIT = 10;
 
@@ -169,7 +170,13 @@ export async function searchWorkspace(
       select: { id: true, title: true, kind: true, author: true, project: { select: { name: true, slug: true } } },
     }) : Promise.resolve([]),
     projectIds.length ? prisma.studioDocument.findMany({
-      where: { projectId: { in: projectIds }, OR: documentContentMatches },
+      where: {
+        AND: [
+          { projectId: { in: projectIds } },
+          personalWritingDocumentVisibilityWhere(input.actorUserId),
+          { OR: documentContentMatches },
+        ],
+      },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
       select: {
         id: true, title: true, sourceLabel: true, projectionStatus: true,

@@ -15,6 +15,23 @@ import { resolveInitialFocusBlockId } from "./block-focus";
 
 export const dynamic = "force-dynamic";
 
+function projectFallbackUrl({
+  projectSlug,
+  requestedDocumentId,
+}: {
+  projectSlug: string;
+  requestedDocumentId?: string;
+}) {
+  const query = new URLSearchParams({ fallback: "true" });
+  if (requestedDocumentId) {
+    query.set("documentUnavailable", "1");
+    query.set("nest", projectSlug);
+  } else {
+    query.set("missing", projectSlug);
+  }
+  return `/projects?${query.toString()}`;
+}
+
 function notebookSectionLabelFromSource(sourceLabel?: string | null, title?: string | null) {
   const normalizedSource = String(sourceLabel ?? "").toLowerCase();
   const normalizedTitle = String(title ?? "").toLowerCase();
@@ -43,6 +60,8 @@ export default async function CreatePage({
   }
 
   const projectSlug = params.project!;
+  const requestedDocumentId =
+    typeof params?.document === "string" ? params.document : undefined;
   const session = await auth();
   const actorEmail = session?.user?.primaryEmail || session?.user?.email;
   const isAdminActor = isUserManagementAdminEmail(actorEmail);
@@ -90,14 +109,19 @@ export default async function CreatePage({
         console.warn(`Could not seed ${projectSlug}: ${seedResult.error}`);
       }
     }
-    const documentId = typeof params?.document === "string" ? params.document : undefined;
-    state = await loadWorkbenchStateWithScope(projectSlug, scopeProjectSlugs, documentId);
+    state = await loadWorkbenchStateWithScope(
+      projectSlug,
+      scopeProjectSlugs,
+      requestedDocumentId,
+    );
   } catch (error) {
     console.warn(`Could not open Nest/project ${projectSlug}.`, error);
-    redirect(`/projects?fallback=true&missing=${encodeURIComponent(projectSlug)}`);
+    redirect(projectFallbackUrl({ projectSlug, requestedDocumentId }));
   }
 
-  if (!state) redirect(`/projects?fallback=true&missing=${encodeURIComponent(projectSlug)}`);
+  if (!state) {
+    redirect(projectFallbackUrl({ projectSlug, requestedDocumentId }));
+  }
 
   if (state.persistenceMode === "unavailable") {
     return (

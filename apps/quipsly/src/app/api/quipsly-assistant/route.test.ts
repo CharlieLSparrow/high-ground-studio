@@ -1,6 +1,7 @@
 /** @jest-environment node */
 
 import { GoogleGenAI } from "@google/genai";
+import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/server/access";
 import { POST } from "./route";
@@ -14,6 +15,7 @@ jest.mock("@google/genai", () => ({
   Type: {},
 }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/server/access", () => ({ requireProjectAccess: jest.fn() }));
 jest.mock("@high-ground/quipsly-domain/output-catalog", () => ({
   createOutputCapabilityPlan: jest.fn(),
@@ -61,6 +63,13 @@ describe("Quipsly assistant authorization and proposal persistence", () => {
     process.env.GEMINI_API_KEY = "test-key";
     delete process.env.QUIPSLY_DISABLE_AI_PROVIDER;
     jest.mocked(getPrismaClient).mockReturnValue(prisma as never);
+    jest.mocked(auth).mockResolvedValue({
+      user: {
+        id: "user-1",
+        email: "person@example.com",
+        primaryEmail: "person@example.com",
+      },
+    } as never);
     jest.mocked(requireProjectAccess).mockResolvedValue(undefined as never);
     prisma.studioProject.findFirst.mockResolvedValue({ id: "project-1", slug: "high-ground" });
     prisma.studioDocument.findMany.mockResolvedValue([

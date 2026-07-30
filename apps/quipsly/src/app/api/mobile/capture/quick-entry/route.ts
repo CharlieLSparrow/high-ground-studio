@@ -153,6 +153,7 @@ async function createEntry(tx: any, input: MobileCaptureQuickEntryInput, actorUs
       data: {
         id,
         projectId: room.projectId,
+        personalOwnerUserId: actorUserId,
         stableId,
         title,
         sourceLabel: "document-kind:note;origin:ios-capture",
@@ -487,6 +488,7 @@ function entryMatches(
     if (!input.callRoomId) {
       const operation = saved.row.documentOperations?.[0];
       return saved.model === "document-note"
+        && saved.row.personalOwnerUserId === actorUserId
         && saved.row.projectId === expectedProjectId
         && saved.row.title === (input.title || "Quick note")
         && saved.row.body === input.body

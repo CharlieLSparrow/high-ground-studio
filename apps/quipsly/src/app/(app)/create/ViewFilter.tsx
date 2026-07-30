@@ -927,8 +927,15 @@ export default function ViewFilter({
                       >
                         <span className="block truncate">{doc.title}</span>
                         <span className="mt-1 flex items-center justify-between gap-2">
-                          <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
-                            {documentKind(doc)}
+                          <span className="flex items-center gap-1">
+                            <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${documentKindClasses(documentKind(doc), activeDocumentId === doc.id)}`}>
+                              {documentKind(doc)}
+                            </span>
+                            {doc.personal ? (
+                              <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] ${activeDocumentId === doc.id ? "bg-white/15 text-white" : "bg-violet-100 text-violet-800"}`}>
+                                Only you
+                              </span>
+                            ) : null}
                           </span>
                           <span className={`truncate text-[9px] font-bold uppercase tracking-[0.12em] ${activeDocumentId === doc.id ? "text-white/65" : "text-[#a58a69]"}`}>
                             {formatNotebookUpdatedAt(doc.updatedAt)}

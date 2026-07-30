@@ -32,6 +32,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
   let otherTaskId = "";
   let sourceGoalId = "";
   let sourcePlanBlockId = "";
+  let sourcePersonalDraftId = "";
   const restoredTaskIds: string[] = [];
   const restoredGoalIds: string[] = [];
   const restoredPlanBlockIds: string[] = [];
@@ -178,6 +179,44 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       },
     });
 
+    const personalDraft = await prisma.studioDocument.create({
+      data: {
+        projectId: sourceProjectId,
+        personalOwnerUserId: actorUserId,
+        stableId: `portable-personal-evidence-${nonce}`,
+        title: "Private evidence response",
+        sourceLabel: "Quipsly evidence draft",
+        sourcePath: "docs/research/private-evidence.md",
+        projectionStatus: "private",
+        isPrivate: true,
+      },
+    });
+    sourcePersonalDraftId = personalDraft.id;
+    await prisma.studioDocumentBlock.createMany({
+      data: [
+        {
+          documentId: personalDraft.id,
+          stableId: `portable-personal-evidence-block-${nonce}`,
+          order: 1,
+          title: "Pinned source evidence",
+          body: "> Immutable source excerpt",
+          sourceLabel: "Quipsly evidence draft",
+          projectionStatus: "private",
+          isPrivate: true,
+        },
+        {
+          documentId: personalDraft.id,
+          stableId: `portable-personal-response-block-${nonce}`,
+          order: 2,
+          title: "Response",
+          body: "Actor-owned interpretation.",
+          sourceLabel: "Quipsly evidence draft",
+          projectionStatus: "private",
+          isPrivate: true,
+        },
+      ],
+    });
+
     const [task, otherTask, goal] = await Promise.all([
       prisma.actionItem.create({
         data: {
@@ -297,7 +336,6 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
         ]),
       })]));
     expect(exported).toMatchObject({
-      notes: [{ title: "Episode proof note", blocks: [{ spans: [{ selectedText: "Listen" }] }] }],
       tasks: [{ id: sourceTaskId, reminderSnapshot: { status: "ACTIVE" } }],
       goals: [{ id: sourceGoalId, progressReceipts: [{ progressPercent: 25 }] }],
       goalTaskLinks: [{ relationship: "CONTRIBUTES" }],
@@ -309,6 +347,24 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
         planBlocksRestoreAsCanceled: true,
       },
     });
+    expect(exported.notes).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        title: "Episode proof note",
+        blocks: [expect.objectContaining({
+          spans: [expect.objectContaining({ selectedText: "Listen" })],
+        })],
+      }),
+      expect.objectContaining({
+        id: sourcePersonalDraftId,
+        title: "Private evidence response",
+        sourceLabel: "Quipsly evidence draft",
+        personal: true,
+        blocks: [
+          expect.objectContaining({ title: "Pinned source evidence" }),
+          expect.objectContaining({ title: "Response" }),
+        ],
+      }),
+    ]));
     expect(exported.tasks.some((task) => task.id === otherTaskId)).toBe(false);
 
     const validation = validateNestBundle(exported);
@@ -323,7 +379,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       tagSlugCollisions: 1,
       aliasCreates: 1,
       aliasesDeferred: 1,
-      noteCreates: 1,
+      noteCreates: 2,
       documentTagLinkCreates: 1,
       taskCreates: 1,
       goalCreates: 1,
@@ -346,6 +402,36 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
     restoredTaskIds.push(...Object.values(first.restoredTaskIds));
     restoredGoalIds.push(...Object.values(first.restoredGoalIds));
     restoredPlanBlockIds.push(...Object.values(first.restoredPlanBlockIds));
+    await expect(
+      prisma.studioDocument.findUniqueOrThrow({
+        where: {
+          id: first.restoredNoteDocumentIds[sourcePersonalDraftId],
+        },
+        select: {
+          personalOwnerUserId: true,
+          sourceLabel: true,
+          sourcePath: true,
+          blocks: {
+            orderBy: { order: "asc" },
+            select: { title: true, body: true },
+          },
+        },
+      }),
+    ).resolves.toMatchObject({
+      personalOwnerUserId: actorUserId,
+      sourceLabel: expect.stringContaining("Quipsly evidence draft"),
+      sourcePath: "docs/research/private-evidence.md",
+      blocks: [
+        {
+          title: "Pinned source evidence",
+          body: "> Immutable source excerpt",
+        },
+        {
+          title: "Response",
+          body: "Actor-owned interpretation.",
+        },
+      ],
+    });
     await prisma.studioTag.update({
       where: { id: first.restoredTagIds[sourceTagId] },
       data: { label: "Destination owner edit" },
@@ -368,7 +454,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       aliasReuses: 1,
       aliasesDeferred: 1,
       noteCreates: 0,
-      noteReuses: 1,
+      noteReuses: 2,
       documentTagLinkCreates: 0,
       taskCreates: 0,
       taskReuses: 1,
@@ -387,6 +473,10 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
     const restoredTaskId = first.restoredTaskIds[sourceTaskId];
     const restoredGoalId = first.restoredGoalIds[sourceGoalId];
     const restoredPlanId = first.restoredPlanBlockIds[sourcePlanBlockId];
+    const exportedEpisodeNote = exported.notes.find(
+      (portableNote) => portableNote.title === "Episode proof note",
+    );
+    if (!exportedEpisodeNote) throw new Error("portable episode note missing");
     const [task, goal, planBlock, note, reminderCount, targetTags] = await Promise.all([
       prisma.actionItem.findUnique({
         where: { id: restoredTaskId },
@@ -402,7 +492,7 @@ runLocalDatabaseSmoke("portable Nest export and restore local database smoke", (
       }),
       prisma.workPlanBlock.findUnique({ where: { id: restoredPlanId } }),
       prisma.studioDocument.findUnique({
-        where: { id: first.restoredNoteDocumentIds[exported.notes[0].id] },
+        where: { id: first.restoredNoteDocumentIds[exportedEpisodeNote.id] },
         include: { tagLinks: { include: { tag: true } }, blocks: { include: { taggedSpans: true } } },
       }),
       prisma.taskReminder.count({ where: { actionItemId: restoredTaskId } }),

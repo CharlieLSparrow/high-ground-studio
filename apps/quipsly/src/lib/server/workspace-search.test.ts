@@ -61,6 +61,16 @@ describe("permission-filtered workspace search", () => {
     expect(JSON.stringify(noteFindMany.mock.calls[0][0].select)).toContain("project-1");
     expect(JSON.stringify(prisma.studioDocument.findMany.mock.calls[0][0].where)).toContain("blocks");
     expect(JSON.stringify(prisma.studioDocument.findMany.mock.calls[0][0].where)).toContain("taggedSpans");
+    expect(prisma.studioDocument.findMany.mock.calls[0][0].where.AND).toEqual(
+      expect.arrayContaining([
+        {
+          OR: [
+            { personalOwnerUserId: null },
+            { personalOwnerUserId: "user-1" },
+          ],
+        },
+      ]),
+    );
     expect(prisma.studioDocument.findMany.mock.calls[0][0].select.blocks).toMatchObject({
       where: { archivedAt: null },
       take: 1,

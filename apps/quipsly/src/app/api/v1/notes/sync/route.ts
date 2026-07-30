@@ -7,6 +7,7 @@ import {
   QUIPSLY_NATIVE_NOTE_SOURCE_LABEL,
 } from "@/lib/server/bi-directional-sync";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 export const runtime = "nodejs";
 
@@ -140,7 +141,10 @@ export async function POST(request: Request) {
       // route is not the only authorization boundary.
       const ownerEmail = session.user.primaryEmail.trim().toLowerCase();
       const projectedDocuments = await prisma.studioDocument.findMany({
-        where: { stableId: { in: noteIds } },
+        where: {
+          stableId: { in: noteIds },
+          ...personalWritingDocumentVisibilityWhere(userId),
+        },
         select: {
           stableId: true,
           sourceLabel: true,

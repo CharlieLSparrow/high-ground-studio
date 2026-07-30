@@ -54,6 +54,8 @@ export type SourceAnnotationDraftResult =
       documentStableId: string;
       blockId: string;
       blockStableId: string;
+      responseBlockId: string;
+      responseBlockStableId: string;
       href: string;
       reused: boolean;
     }
@@ -626,15 +628,22 @@ export async function createWritingDraftFromSourceAnnotation(
               documentStableId: string;
               blockId: string;
               blockStableId: string;
+              responseBlockId: string | null;
+              responseBlockStableId: string | null;
               sourceJson: unknown;
             }>
           >(Prisma.sql`
       SELECT annotation_use."annotationId", annotation_use."projectId", annotation_use."sourceJson",
              document."id" AS "documentId", document."stableId" AS "documentStableId",
-             block."id" AS "blockId", block."stableId" AS "blockStableId"
+             block."id" AS "blockId", block."stableId" AS "blockStableId",
+             response_block."id" AS "responseBlockId",
+             response_block."stableId" AS "responseBlockStableId"
       FROM "StudioSourceAnnotationUse" annotation_use
       JOIN "StudioDocument" document ON document."id" = annotation_use."documentId"
       JOIN "StudioDocumentBlock" block ON block."id" = annotation_use."blockId"
+      LEFT JOIN "StudioDocumentBlock" response_block
+        ON response_block."id" = annotation_use."sourceJson"->>'responseBlockId'
+       AND response_block."documentId" = document."id"
       WHERE annotation_use."createdByUserId" = ${input.actorUserId}
         AND annotation_use."clientRequestId" = ${clientRequestId}
       LIMIT 1
@@ -646,13 +655,26 @@ export async function createWritingDraftFromSourceAnnotation(
               !Array.isArray(existing.sourceJson)
                 ? (existing.sourceJson as Record<string, unknown>)
                 : {};
+            const responseBlockId = existing.responseBlockId;
+            const responseBlockStableId = existing.responseBlockStableId;
             const identityMatches =
+              Boolean(responseBlockId) &&
+              Boolean(responseBlockStableId) &&
               existing.annotationId === input.annotationId &&
               existing.projectId === input.projectId &&
               sourceJson.kind === "quipsly-source-annotation-use-v1" &&
               sourceJson.annotationRevision ===
-                input.expectedUpdatedAt.toISOString();
-            if (!identityMatches) {
+                input.expectedUpdatedAt.toISOString() &&
+              typeof sourceJson.responseBlockId === "string" &&
+              sourceJson.responseBlockId === responseBlockId &&
+              typeof sourceJson.responseBlockStableId === "string" &&
+              sourceJson.responseBlockStableId ===
+                responseBlockStableId;
+            if (
+              !identityMatches ||
+              !responseBlockId ||
+              !responseBlockStableId
+            ) {
               return {
                 ok: false as const,
                 code: "CONFLICT" as const,
@@ -666,7 +688,9 @@ export async function createWritingDraftFromSourceAnnotation(
               documentStableId: existing.documentStableId,
               blockId: existing.blockId,
               blockStableId: existing.blockStableId,
-              href: `/create?project=${encodeURIComponent(input.projectSlug)}&document=${encodeURIComponent(existing.documentId)}`,
+              responseBlockId,
+              responseBlockStableId,
+              href: `/create?project=${encodeURIComponent(input.projectSlug)}&document=${encodeURIComponent(existing.documentId)}&block=${encodeURIComponent(responseBlockId)}`,
               reused: true,
             };
           }
@@ -720,7 +744,8 @@ export async function createWritingDraftFromSourceAnnotation(
           }
 
           const documentStableId = `evidence-draft-${randomUUID()}`;
-          const blockStableId = `evidence-opening-${randomUUID()}`;
+          const blockStableId = `evidence-source-${randomUUID()}`;
+          const responseBlockStableId = `evidence-response-${randomUUID()}`;
           const citationKey = `qs-${annotation.id.replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`;
           const label = citationLabel({
             title: annotation.sourceTitle,
@@ -729,8 +754,7 @@ export async function createWritingDraftFromSourceAnnotation(
             sourcePath: annotation.sourcePath,
           });
           const workingNote = cleanText(annotation.body, 20_000);
-          const body = [
-            workingNote ? `Working note\n\n${workingNote}` : "Working note",
+          const evidenceBody = [
             `> ${annotation.exactText}`,
             `[^${citationKey}]: ${label}. Quipsly evidence ${annotation.id}.`,
           ].join("\n\n");
@@ -738,6 +762,7 @@ export async function createWritingDraftFromSourceAnnotation(
           const document = await tx.studioDocument.create({
             data: {
               projectId: input.projectId,
+              personalOwnerUserId: input.actorUserId,
               stableId: documentStableId,
               title: `Draft — ${annotation.sourceTitle}`.slice(0, 180),
               sourceLabel: "Quipsly evidence draft",
@@ -752,11 +777,26 @@ export async function createWritingDraftFromSourceAnnotation(
               documentId: document.id,
               stableId: blockStableId,
               order: 1,
-              title: "Opening from source evidence",
-              body,
+              title: "Pinned source evidence",
+              body: evidenceBody,
               sourceLabel: label,
               sourcePath: annotation.sourceUrl || annotation.sourcePath,
-              externalId: `annotation:${annotation.id}`,
+              externalId: `annotation-evidence:${annotation.id}`,
+              projectionStatus: "draft",
+              isPrivate: true,
+            },
+            select: { id: true },
+          });
+          const responseBlock = await tx.studioDocumentBlock.create({
+            data: {
+              documentId: document.id,
+              stableId: responseBlockStableId,
+              order: 2,
+              title: "Response",
+              body: workingNote,
+              sourceLabel: label,
+              sourcePath: annotation.sourceUrl || annotation.sourcePath,
+              externalId: `annotation-response:${annotation.id}`,
               projectionStatus: "draft",
               isPrivate: true,
             },
@@ -768,6 +808,11 @@ export async function createWritingDraftFromSourceAnnotation(
             sourceUnitId: annotation.sourceUnitId,
             sourceFingerprint: annotation.sourceFingerprint,
             annotationRevision: annotation.updatedAt.toISOString(),
+            personalOwnerUserId: input.actorUserId,
+            evidenceBlockId: block.id,
+            evidenceBlockStableId: blockStableId,
+            responseBlockId: responseBlock.id,
+            responseBlockStableId,
             sourceMutated: false,
             draftCreated: true,
           });
@@ -789,7 +834,14 @@ export async function createWritingDraftFromSourceAnnotation(
               origin: "human",
               operationType: "create-draft-from-source-annotation",
               status: "applied",
-              afterJson: { documentStableId, blockStableId, body },
+              afterJson: {
+                documentStableId,
+                personalOwnerUserId: input.actorUserId,
+                evidenceBlockStableId: blockStableId,
+                responseBlockStableId,
+                evidenceBody,
+                responseBody: workingNote,
+              },
               payloadJson: {
                 annotationId: annotation.id,
                 sourceUnitId: annotation.sourceUnitId,
@@ -806,7 +858,9 @@ export async function createWritingDraftFromSourceAnnotation(
             documentStableId,
             blockId: block.id,
             blockStableId,
-            href: `/create?project=${encodeURIComponent(input.projectSlug)}&document=${encodeURIComponent(document.id)}`,
+            responseBlockId: responseBlock.id,
+            responseBlockStableId,
+            href: `/create?project=${encodeURIComponent(input.projectSlug)}&document=${encodeURIComponent(document.id)}&block=${encodeURIComponent(responseBlock.id)}`,
             reused: false,
           };
         },

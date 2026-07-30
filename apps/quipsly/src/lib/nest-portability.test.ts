@@ -55,6 +55,7 @@ function payload(): PortableNestBundlePayload {
       sourcePath: null,
           projectionStatus: "private",
           isPrivate: true,
+          personal: true,
           tagIds: ["tag-1"],
           blocks: [{
         id: "block-1",
@@ -184,6 +185,20 @@ describe("portable Nest bundle validation", () => {
     expect(validateNestBundle(bundle)).toEqual({
       ok: false,
       error: "The Nest bundle manifest does not match its contents. Nothing was restored.",
+    });
+  });
+
+  it("fails legacy private notes closed to the importing actor", () => {
+    const legacyPayload = payload() as any;
+    delete legacyPayload.notes[0].personal;
+
+    expect(
+      validateNestBundle(createPortableNestBundle(legacyPayload)),
+    ).toMatchObject({
+      ok: true,
+      bundle: {
+        notes: [{ id: "note-1", personal: true }],
+      },
     });
   });
 

@@ -9,6 +9,7 @@ import {
   type PortableNestBundle,
   type PortableNestBundlePayload,
 } from "@/lib/nest-portability";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 function date(value: Date | null) {
   return value?.toISOString() ?? null;
@@ -77,7 +78,16 @@ export async function buildPortableNestExport(
     prisma.studioDocument.findMany({
       where: {
         projectId: project.id,
-        sourceLabel: { contains: "document-kind:note", mode: "insensitive" },
+        OR: [
+          {
+            sourceLabel: {
+              contains: "document-kind:note",
+              mode: "insensitive",
+            },
+          },
+          { personalOwnerUserId: input.actorUserId },
+        ],
+        ...personalWritingDocumentVisibilityWhere(input.actorUserId),
       },
       orderBy: [{ createdAt: "asc" }, { id: "asc" }],
       select: {
@@ -88,6 +98,7 @@ export async function buildPortableNestExport(
         sourcePath: true,
         projectionStatus: true,
         isPrivate: true,
+        personalOwnerUserId: true,
         createdAt: true,
         updatedAt: true,
         tagLinks: {
@@ -318,6 +329,7 @@ export async function buildPortableNestExport(
       sourcePath: note.sourcePath,
       projectionStatus: note.projectionStatus,
       isPrivate: note.isPrivate,
+      personal: note.personalOwnerUserId === input.actorUserId,
       tagIds: note.tagLinks.map((link) => link.tagId),
       blocks: note.blocks.map((block) => ({
         id: block.id,

@@ -7,6 +7,16 @@ import { Prisma } from "@prisma/client";
 // that the other correctly withholds.
 export function researchWritingUseVisibilitySql(actorUserId: string | null | undefined) {
   return actorUserId
-    ? Prisma.sql`(document."isPrivate" = false OR annotation_use."createdByUserId" = ${actorUserId})`
-    : Prisma.sql`document."isPrivate" = false`;
+    ? Prisma.sql`(
+        (document."personalOwnerUserId" IS NULL AND document."isPrivate" = false)
+        OR document."personalOwnerUserId" = ${actorUserId}
+        OR (
+          document."personalOwnerUserId" IS NULL
+          AND annotation_use."createdByUserId" = ${actorUserId}
+        )
+      )`
+    : Prisma.sql`(
+        document."personalOwnerUserId" IS NULL
+        AND document."isPrivate" = false
+      )`;
 }

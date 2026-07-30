@@ -87,6 +87,13 @@ function restoredBlockStableId(
   return portableId("portable-block", projectId, bundle, `${noteId}:${block.id}`, block);
 }
 
+function restoredSourceLabel(sourceLabel: string | null) {
+  return [sourceLabel, "origin:portable-nest-restore"]
+    .filter(Boolean)
+    .join(";")
+    .slice(0, 2_000);
+}
+
 function restoredTaskId(projectId: string, bundle: ValidatedNestBundle, task: ValidatedNestBundle["tasks"][number]) {
   return portableId("portable-task", projectId, bundle, task.id, task);
 }
@@ -463,24 +470,32 @@ export async function applyNestRestore(
       const stableId = restoredNoteStableId(input.projectId, input.bundle, note);
       let document = await tx.studioDocument.findUnique({
         where: { stableId },
-        select: { id: true, projectId: true },
+        select: { id: true, projectId: true, personalOwnerUserId: true },
       });
       if (document && document.projectId !== input.projectId) {
         throw new Error("A portable note identity belongs to another destination Nest.");
+      }
+      if (
+        document &&
+        document.personalOwnerUserId !==
+          (note.personal ? input.actorUserId : null)
+      ) {
+        throw new Error("A portable note identity has a different personal ownership boundary.");
       }
       if (!document) {
         document = await tx.studioDocument.create({
           data: {
             projectId: input.projectId,
+            personalOwnerUserId: note.personal ? input.actorUserId : null,
             stableId,
             title: note.title,
-            sourceLabel: "document-kind:note;origin:portable-nest-restore",
+            sourceLabel: restoredSourceLabel(note.sourceLabel),
             sourcePath: note.sourcePath,
             projectionStatus: "private",
             isPrivate: true,
             tagRevision: note.tagIds.length > 0 ? 1 : 0,
           },
-          select: { id: true, projectId: true },
+          select: { id: true, projectId: true, personalOwnerUserId: true },
         });
         if (note.tagIds.length) {
           await tx.studioDocumentTagLink.createMany({
@@ -513,7 +528,7 @@ export async function applyNestRestore(
               order: block.order,
               title: block.title,
               body: block.body,
-              sourceLabel: "document-kind:note;origin:portable-nest-restore",
+              sourceLabel: restoredSourceLabel(block.sourceLabel),
               sourcePath: block.sourcePath,
               externalId: block.externalId,
               projectionStatus: "private",

@@ -93,6 +93,25 @@ export async function embedAndStoreDocumentBlock(
   provider: EmbeddingProvider = new GeminiEmbeddingProvider()
 ): Promise<void> {
   const prisma = getPrismaClient();
+  const block = await prisma.studioDocumentBlock.findUnique({
+    where: { id: blockId },
+    select: {
+      document: { select: { personalOwnerUserId: true } },
+    },
+  });
+  if (!block) {
+    throw new Error("Writing block not found; no content was sent to the embedding provider.");
+  }
+  if (block.document.personalOwnerUserId) {
+    await prisma.retrievalEmbedding.deleteMany({
+      where: {
+        projectId,
+        sourceOrigin: "studio-document-block",
+        sourceId: blockId,
+      },
+    });
+    return;
+  }
   const embeddedContent = content.trim().slice(0, MAX_EMBEDDING_INPUT_CHARACTERS);
   const vector = requireValidVector(await provider.generateEmbedding(prepareRetrievalDocument(embeddedContent)));
   const vectorString = `[${vector.join(",")}]`;
@@ -112,7 +131,7 @@ export async function syncProjectEmbeddings(projectId: string, provider: Embeddi
   const prisma = getPrismaClient();
 
   const documents = await prisma.studioDocument.findMany({
-    where: { projectId },
+    where: { projectId, personalOwnerUserId: null },
     select: {
       title: true,
       blocks: {
@@ -199,7 +218,7 @@ export async function hybridSearchExamples(
   )).slice(0, 10);
   const keywordHits = queryTerms.length > 0 ? await prisma.studioDocumentBlock.findMany({
     where: {
-      document: { projectId },
+      document: { projectId, personalOwnerUserId: null },
       OR: queryTerms.map((term) => ({ body: { contains: term, mode: "insensitive" as const } })),
     },
     take: limit * 2,
@@ -222,11 +241,14 @@ export async function hybridSearchExamples(
     if (queryVector.length > 0) {
       const vectorString = `[${queryVector.join(",")}]`;
       vectorHits = await prisma.$queryRaw<Array<{ sourceId: string; distance: number }>>`
-        SELECT "sourceId", embedding <=> ${vectorString}::vector as distance
-        FROM "RetrievalEmbedding"
-        WHERE "projectId" = ${projectId}
-          AND "sourceOrigin" = 'studio-document-block'
-          AND embedding IS NOT NULL
+        SELECT embedding."sourceId", embedding.embedding <=> ${vectorString}::vector as distance
+        FROM "RetrievalEmbedding" embedding
+        JOIN "StudioDocumentBlock" block ON block."id" = embedding."sourceId"
+        JOIN "StudioDocument" document ON document."id" = block."documentId"
+        WHERE embedding."projectId" = ${projectId}
+          AND embedding."sourceOrigin" = 'studio-document-block'
+          AND embedding.embedding IS NOT NULL
+          AND document."personalOwnerUserId" IS NULL
         ORDER BY distance ASC
         LIMIT ${limit * 2};
       `;

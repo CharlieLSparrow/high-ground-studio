@@ -73,7 +73,7 @@ describe("source annotation anchors", () => {
 });
 
 describe("annotation to writing handoff", () => {
-  it("creates one private draft block plus a durable evidence-use receipt", async () => {
+  it("creates an actor-owned draft with pinned evidence, an editable response, and a durable use receipt", async () => {
     const updatedAt = new Date("2026-07-18T18:00:00.000Z");
     const tx = {
       $queryRaw: jest
@@ -100,7 +100,9 @@ describe("annotation to writing handoff", () => {
         create: jest.fn().mockResolvedValue({ id: "document-db-1" }),
       },
       studioDocumentBlock: {
-        create: jest.fn().mockResolvedValue({ id: "block-db-1" }),
+        create: jest.fn()
+          .mockResolvedValueOnce({ id: "evidence-block-db-1" })
+          .mockResolvedValueOnce({ id: "response-block-db-1" }),
       },
       $executeRaw: jest.fn().mockResolvedValue(1),
       studioDocumentOperation: {
@@ -126,22 +128,38 @@ describe("annotation to writing handoff", () => {
     expect(result).toMatchObject({
       ok: true,
       reused: false,
-      href: expect.stringContaining("/create?project=high-ground&document="),
+      blockId: "evidence-block-db-1",
+      responseBlockId: "response-block-db-1",
+      href: expect.stringMatching(
+        /^\/create\?project=high-ground&document=document-db-1&block=response-block-db-1$/,
+      ),
     });
     expect(tx.studioDocument.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           projectId: "project-1",
+          personalOwnerUserId: "user-1",
           projectionStatus: "draft",
           isPrivate: true,
         }),
       }),
     );
-    expect(tx.studioDocumentBlock.create).toHaveBeenCalledWith(
+    expect(tx.studioDocumentBlock.create).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({
         data: expect.objectContaining({
           body: expect.stringContaining("> Keep the source intact."),
-          externalId: "annotation:annotation-1",
+          externalId: "annotation-evidence:annotation-1",
+          isPrivate: true,
+        }),
+      }),
+    );
+    expect(tx.studioDocumentBlock.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        data: expect.objectContaining({
+          body: "This could frame the opening.",
+          externalId: "annotation-response:annotation-1",
           isPrivate: true,
         }),
       }),
@@ -168,9 +186,13 @@ describe("annotation to writing handoff", () => {
           documentStableId: "document-stable-1",
           blockId: "block-db-1",
           blockStableId: "block-stable-1",
+          responseBlockId: "response-block-db-1",
+          responseBlockStableId: "response-block-stable-1",
           sourceJson: {
             kind: "quipsly-source-annotation-use-v1",
             annotationRevision: updatedAt.toISOString(),
+            responseBlockId: "response-block-db-1",
+            responseBlockStableId: "response-block-stable-1",
           },
         },
       ]),
@@ -201,7 +223,9 @@ describe("annotation to writing handoff", () => {
       documentStableId: "document-stable-1",
       blockId: "block-db-1",
       blockStableId: "block-stable-1",
-      href: "/create?project=high-ground&document=document-db-1",
+      responseBlockId: "response-block-db-1",
+      responseBlockStableId: "response-block-stable-1",
+      href: "/create?project=high-ground&document=document-db-1&block=response-block-db-1",
       reused: true,
     });
     expect(tx.studioDocument.create).not.toHaveBeenCalled();
@@ -218,9 +242,13 @@ describe("annotation to writing handoff", () => {
           documentStableId: "document-stable-1",
           blockId: "block-db-1",
           blockStableId: "block-stable-1",
+          responseBlockId: "response-block-db-1",
+          responseBlockStableId: "response-block-stable-1",
           sourceJson: {
             kind: "quipsly-source-annotation-use-v1",
             annotationRevision: updatedAt.toISOString(),
+            responseBlockId: "response-block-db-1",
+            responseBlockStableId: "response-block-stable-1",
           },
         },
       ]),
@@ -274,9 +302,13 @@ describe("annotation to writing handoff", () => {
           documentStableId: "document-stable-1",
           blockId: "block-db-1",
           blockStableId: "block-stable-1",
+          responseBlockId: "response-block-db-1",
+          responseBlockStableId: "response-block-stable-1",
           sourceJson: {
             kind: "quipsly-source-annotation-use-v1",
             annotationRevision: "2026-07-18T17:00:00.000Z",
+            responseBlockId: "response-block-db-1",
+            responseBlockStableId: "response-block-stable-1",
           },
         },
       ]),

@@ -1,8 +1,29 @@
 "use server";
 
+import { auth } from "@/auth";
+import { getPrismaClient } from "@/lib/prisma";
 import { searchQuotes, searchExamples, buildContextPacket } from "../../lib/retrieval";
 import { ManuscriptResearchPacket } from "@high-ground/quipsly-domain/retrieval";
-import { requireProjectAccess } from "../../lib/studio-authz";
+import { requireProjectAccess } from "@/lib/server/access";
+
+async function requireResearchProjectActor(projectId: string) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    throw new Error("UNAUTHORIZED: Sign in before searching this Nest.");
+  }
+
+  const prisma = getPrismaClient();
+  const project = await prisma.studioProject.findUnique({
+    where: { id: projectId },
+    select: { slug: true },
+  });
+  if (!project) {
+    throw new Error("NOT_FOUND: Project access target was not found.");
+  }
+
+  await requireProjectAccess(project.slug, "read");
+  return session.user.id;
+}
 
 /**
  * Executes a read-only quote search against the retrieval runtime.
@@ -17,7 +38,7 @@ export async function executeQuoteSearchAction(
   projectId: string,
   librarySlug?: string
 ): Promise<ManuscriptResearchPacket> {
-  await requireProjectAccess(projectId, "read");
+  await requireResearchProjectActor(projectId);
 
   const packet = await searchQuotes(
     { query, library: librarySlug },
@@ -40,7 +61,7 @@ export async function executeExampleSearchAction(
   projectId: string,
   librarySlug?: string
 ): Promise<ManuscriptResearchPacket> {
-  await requireProjectAccess(projectId, "read");
+  await requireResearchProjectActor(projectId);
 
   const packet = await searchExamples(
     { query, library: librarySlug },
@@ -61,15 +82,14 @@ export async function executeContextSearchAction(
   additionalQuery?: string,
   librarySlug?: string
 ): Promise<ManuscriptResearchPacket> {
-  await requireProjectAccess(projectId, "read");
-
   if (!projectId || !documentId || !cursorNodeId) {
     throw new Error("projectId, documentId, and cursorNodeId are required to establish context.");
   }
 
+  const actorUserId = await requireResearchProjectActor(projectId);
   const packet = await buildContextPacket(
     { documentId, cursorNodeId, additionalQuery, library: librarySlug },
-    { activeProjectId: projectId }
+    { activeProjectId: projectId, actorUserId }
   );
 
   return packet;

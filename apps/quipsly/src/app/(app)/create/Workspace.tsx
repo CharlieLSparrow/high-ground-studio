@@ -217,7 +217,7 @@ export default function Workspace({
   documentUpdatedAt: string,
   documentTagRevision: number,
   notebookSectionLabel?: string,
-  projectDocuments?: { id: string; title: string; sourceLabel: string | null; updatedAt: string | Date }[],
+  projectDocuments?: { id: string; title: string; sourceLabel: string | null; updatedAt: string | Date; personal: boolean }[],
   persistenceMode?: "database" | "unavailable",
   linkedProjects?: WorkbenchScopeProjectSummary[],
   availableProjects?: { slug: string; name: string; nestKind?: string }[],
@@ -543,7 +543,13 @@ export default function Workspace({
                   ) : null}
                 </nav>
                 <div className="text-xs font-bold uppercase tracking-[0.22em] text-[#a36f2e] flex items-center gap-2">
-                  <span title="This workspace is private to your organization" className="flex items-center gap-1"><span className="text-[10px]">🔒</span> Private</span>
+                  <span
+                    title={activeProjectDocument?.personal ? "Only you can open this document" : "Visible to members with access to this Nest"}
+                    className="flex items-center gap-1"
+                  >
+                    <span className="text-[10px]">🔒</span>
+                    {activeProjectDocument?.personal ? "Only you" : "Nest members"}
+                  </span>
                   <span className="opacity-50">•</span>
                   <span>{projectName ?? "Quipsly Live"} / Living Document Nest</span>
                 </div>

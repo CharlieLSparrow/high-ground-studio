@@ -30,6 +30,7 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
   let documentId = "";
   let writingNoteDocumentId = "";
   let writingNoteBlockId = "";
+  let otherPersonalDocumentId = "";
   let promotedMediaId = "";
   let standaloneMediaId = "";
   let actorNoteId = "";
@@ -131,6 +132,7 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     const writingNote = await prisma.studioDocument.create({
       data: {
         projectId,
+        personalOwnerUserId: actorUserId,
         stableId: `writing-note-${nonce}`,
         title: "Production reflection",
         sourceLabel: "document-kind:note",
@@ -146,6 +148,23 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
       },
     });
     writingNoteBlockId = writingNoteBlock.id;
+    const otherPersonalDocument = await prisma.studioDocument.create({
+      data: {
+        projectId,
+        personalOwnerUserId: otherUserId,
+        stableId: `other-personal-document-${nonce}`,
+        title: "Other person's private writing draft",
+        sourceLabel: "document-kind:note",
+        blocks: {
+          create: {
+            stableId: `other-personal-document-block-${nonce}`,
+            order: 0,
+            body: "This same-Nest personal document must not appear.",
+          },
+        },
+      },
+    });
+    otherPersonalDocumentId = otherPersonalDocument.id;
 
     const collection = await prisma.collection.create({ data: { userId: actorUserId, slug: `saved-${nonce}`, name: "Actor saved material" } });
     await Promise.all([
@@ -209,6 +228,7 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
       href: `/create?project=library-${nonce}&document=${writingNoteDocumentId}&block=${writingNoteBlockId}`,
       stateLabel: "Writing note",
     });
+    expect(library.entries.some((entry) => entry.id === `document:${otherPersonalDocumentId}`)).toBe(false);
     expect(library.entries.find((entry) => entry.id === `media:${standaloneMediaId}`)).toMatchObject({ title: "reusable-cold-open.mov" });
     expect(library.entries.some((entry) => entry.id === `media:${promotedMediaId}`)).toBe(false);
     expect(library.counts).toMatchObject({ sessions: 2, notes: 2, sources: 1, documents: 1, media: 1, saved: 1 });
@@ -222,12 +242,15 @@ runLocalDatabaseSmoke("Library local database ownership and continuation smoke",
     expect(serialized).not.toContain("Other person's private interpretation");
     expect(serialized).not.toContain("Other private bookmark");
     expect(serialized).not.toContain("Other private note");
+    expect(serialized).not.toContain("Other person's private writing draft");
+    expect(serialized).not.toContain("This same-Nest personal document must not appear.");
   });
 
   it("leaves the other owner's records stored while keeping them out of the actor projection", async () => {
     await expect(prisma.callRoom.findUnique({ where: { id: otherRoomId }, select: { title: true } })).resolves.toEqual({ title: "Other person's private coaching" });
     await expect(prisma.studioSourceAnnotation.count({ where: { sourceUnitId: sourceId, createdByUserId: otherUserId } })).resolves.toBe(2);
     await expect(prisma.bookmark.count({ where: { userId: otherUserId } })).resolves.toBe(1);
+    await expect(prisma.studioDocument.count({ where: { id: otherPersonalDocumentId, personalOwnerUserId: otherUserId } })).resolves.toBe(1);
     await expect(prisma.coachingNote.count({ where: { id: otherNoteId, authorUserId: otherUserId } })).resolves.toBe(1);
   });
 

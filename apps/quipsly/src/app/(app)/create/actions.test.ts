@@ -210,7 +210,7 @@ describe("writing desk persistence truth", () => {
       ok: false,
       state: "rejected",
       code: "INVALID_REORDER",
-      error: "Transcript source evidence stays pinned in its canonical position.",
+      error: "Source evidence stays pinned in its canonical position.",
     });
     expect(updateBlock).not.toHaveBeenCalled();
   });

@@ -367,6 +367,13 @@ export async function executeAccountDeletion(input: {
       const homeProjectIds = inventory.homeNests.map((project) => project.id);
       const emails = inventory.subject.allEmails;
       await prisma.$transaction(async (tx) => {
+        // Personal writing documents inside shared Nests belong to the account
+        // subject and must be removed before the restrictive owner relation
+        // allows the person record to be deleted. Shared project documents are
+        // deliberately untouched.
+        await tx.studioDocument.deleteMany({
+          where: { personalOwnerUserId: inventory.subject.userId },
+        });
         await tx.actionItem.deleteMany({
           where: {
             OR: [

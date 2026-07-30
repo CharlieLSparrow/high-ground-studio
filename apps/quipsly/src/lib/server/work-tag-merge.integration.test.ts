@@ -423,4 +423,100 @@ runLocalDatabaseSmoke("lossless canonical tag merge local database smoke", () =>
       error: expect.stringContaining("older merge receipt"),
     });
   });
+
+  it("blocks tag merges that would expose or rewrite another actor's private writing", async () => {
+    const privateOwnerEmail = `private-tag-owner-${nonce}@example.test`;
+    const privateOwner = await prisma.user.create({
+      data: {
+        primaryEmail: privateOwnerEmail,
+        name: "Private tag owner",
+      },
+    });
+    const [privateSource, privateTarget] = await Promise.all([
+      prisma.studioTag.create({
+        data: {
+          projectId,
+          slug: `private-source-${nonce}`,
+          label: "Private source",
+        },
+      }),
+      prisma.studioTag.create({
+        data: {
+          projectId,
+          slug: `private-target-${nonce}`,
+          label: "Private target",
+        },
+      }),
+    ]);
+    const privateDocument = await prisma.studioDocument.create({
+      data: {
+        projectId,
+        stableId: `private-tag-document-${nonce}`,
+        title: "Private coaching reflection",
+        personalOwnerUserId: privateOwner.id,
+      },
+    });
+    await prisma.studioDocumentTagLink.create({
+      data: {
+        documentId: privateDocument.id,
+        tagId: privateSource.id,
+        createdByUserId: privateOwner.id,
+      },
+    });
+
+    try {
+      const previewResult = await previewWorkTagMerge({
+        prisma,
+        actorEmail,
+        sourceTagId: privateSource.id,
+        targetTagId: privateTarget.id,
+      });
+      expect(previewResult).toMatchObject({
+        ok: true,
+        preview: {
+          canMerge: false,
+          counts: { documents: 0, totalUses: 0 },
+          blockingConflicts: {
+            personalDocumentOwnershipConflict: true,
+          },
+        },
+      });
+      if (!previewResult.ok) throw new Error("private ownership preview failed");
+
+      await expect(
+        applyWorkTagMerge({
+          prisma,
+          actorUserId,
+          actorEmail,
+          sourceTagId: privateSource.id,
+          targetTagId: privateTarget.id,
+          expectedImpactHash: previewResult.preview.impactHash,
+          expectedSourceUpdatedAt: previewResult.preview.source.updatedAt,
+          expectedTargetUpdatedAt: previewResult.preview.target.updatedAt,
+        }),
+      ).resolves.toMatchObject({
+        ok: false,
+        code: "BLOCKED",
+        preview: {
+          blockingConflicts: {
+            personalDocumentOwnershipConflict: true,
+          },
+        },
+      });
+      await expect(
+        prisma.studioDocumentTagLink.count({
+          where: {
+            documentId: privateDocument.id,
+            tagId: privateSource.id,
+          },
+        }),
+      ).resolves.toBe(1);
+    } finally {
+      await prisma.studioDocument.delete({ where: { id: privateDocument.id } });
+      await prisma.studioTag.deleteMany({
+        where: { id: { in: [privateSource.id, privateTarget.id] } },
+      });
+      await prisma.user.delete({ where: { id: privateOwner.id } });
+    }
+  });
 });

@@ -20,6 +20,7 @@ import {
   resolveStudioProjectAccess,
 } from "@/lib/server/studio-project-access";
 import { isUserManagementAdminEmail } from "@/lib/server/user-management";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import {
   NEST_KIND_LABELS,
   nestKindFromSourceLabel,
@@ -195,8 +196,9 @@ export default async function NotebookNestPage({
   const projectSlug = decodeURIComponent(resolvedParams.projectSlug);
   const session = await auth();
   const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
+  const actorUserId = session?.user?.id;
 
-  if (!actorEmail) {
+  if (!actorEmail || !actorUserId) {
     redirect(`/login?callbackUrl=/notebooks/${encodeURIComponent(projectSlug)}`);
   }
 
@@ -239,7 +241,10 @@ export default async function NotebookNestPage({
   const nestKind = nestKindFromSourceLabel(project.sourceLabel);
   const workflow = workflowSystemForNestKind(nestKind);
   const documents = await prisma.studioDocument.findMany({
-    where: { projectId: project.id },
+    where: {
+      projectId: project.id,
+      ...personalWritingDocumentVisibilityWhere(actorUserId),
+    },
     select: {
       id: true,
       stableId: true,

@@ -10,6 +10,7 @@ import {
   type StudioActionResult,
 } from "@/lib/server/studio-data";
 import { requireProjectAccess } from "@/lib/server/access";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import { canAccessStudio } from "@/lib/studio-authz";
 
 type CreateTaggedSpanActionInput = {
@@ -45,8 +46,11 @@ export async function createStudioTaggedSpanAction(
   }
 
   const prisma = getPrismaClient();
-  const document = await prisma.studioDocument.findUnique({
-    where: { stableId: input.documentStableId },
+  const document = await prisma.studioDocument.findFirst({
+    where: {
+      stableId: input.documentStableId,
+      ...personalWritingDocumentVisibilityWhere(session.user.id),
+    },
     include: { project: true },
   });
 

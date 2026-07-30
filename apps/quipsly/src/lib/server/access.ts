@@ -8,6 +8,7 @@ import {
   resolveStudioProjectAccess,
   type StudioProjectAccessAction,
 } from "@/lib/server/studio-project-access";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 export type ProjectAccessResult = {
   user: any;
@@ -81,7 +82,10 @@ export async function requireProjectAccess(
 
   const [document, user] = await Promise.all([
     prisma.studioDocument.findFirst({
-      where: { projectId: project.id },
+      where: {
+        projectId: project.id,
+        ...personalWritingDocumentVisibilityWhere(session.user.id),
+      },
       orderBy: { updatedAt: "desc" },
     }),
     prisma.user.findFirst({

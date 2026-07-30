@@ -6,6 +6,9 @@ import { GoogleGenAI } from "@google/genai";
 import { Storage } from "@google-cloud/storage";
 import { createStudioProject } from "@/lib/studio/project-registry";
 import type { PublicPublishPacket } from "@high-ground/quipsly-domain/publishing";
+import { auth } from "@/auth";
+import { requireProjectAccess } from "@/lib/server/access";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 const storage = new Storage();
 const bucketName = process.env.STORYBOARD_GCS_BUCKET || process.env.GCS_BUCKET || "quipsly-storyboard-dev-assets";
@@ -379,6 +382,11 @@ function parseLinkedBlock(vfxNotes: string | null) {
 export async function importFramesFromLinkedDocument(storyboardId: string) {
   const prisma = getPrismaClient();
   try {
+    const session = await auth();
+    const actorUserId = session?.user?.id;
+    if (!actorUserId) {
+      return { success: false, error: "Sign in before importing writing into a storyboard." };
+    }
     const storyboard = await (prisma as any).studioStoryboard.findUnique({
       where: { id: storyboardId },
       include: {
@@ -397,9 +405,13 @@ export async function importFramesFromLinkedDocument(storyboardId: string) {
       return { success: false, error: "No document is linked to this storyboard. Please link a document first." };
     }
 
-    const document = await prisma.studioDocument.findUnique({
-      where: { id: docId },
+    const document = await prisma.studioDocument.findFirst({
+      where: {
+        id: docId,
+        ...personalWritingDocumentVisibilityWhere(actorUserId),
+      },
       include: {
+        project: { select: { slug: true } },
         blocks: {
           where: { archivedAt: null },
           orderBy: { order: "asc" }
@@ -410,6 +422,7 @@ export async function importFramesFromLinkedDocument(storyboardId: string) {
     if (!document) {
       return { success: false, error: "Linked document not found or has been deleted." };
     }
+    await requireProjectAccess(document.project.slug, "write");
 
     // Extract all block IDs currently linked to existing frames
     const linkedBlockIds = new Set<string>();
@@ -465,6 +478,11 @@ export async function importFramesFromLinkedDocument(storyboardId: string) {
 export async function reorderFramesToMatchLinkedDocument(storyboardId: string) {
   const prisma = getPrismaClient();
   try {
+    const session = await auth();
+    const actorUserId = session?.user?.id;
+    if (!actorUserId) {
+      return { success: false, error: "Sign in before reordering storyboard frames." };
+    }
     const storyboard = await (prisma as any).studioStoryboard.findUnique({
       where: { id: storyboardId },
       include: {
@@ -483,9 +501,13 @@ export async function reorderFramesToMatchLinkedDocument(storyboardId: string) {
       return { success: false, error: "No document is linked to this storyboard." };
     }
 
-    const document = await prisma.studioDocument.findUnique({
-      where: { id: docId },
+    const document = await prisma.studioDocument.findFirst({
+      where: {
+        id: docId,
+        ...personalWritingDocumentVisibilityWhere(actorUserId),
+      },
       include: {
+        project: { select: { slug: true } },
         blocks: {
           where: { archivedAt: null },
           orderBy: { order: "asc" }
@@ -496,6 +518,7 @@ export async function reorderFramesToMatchLinkedDocument(storyboardId: string) {
     if (!document) {
       return { success: false, error: "Linked document not found." };
     }
+    await requireProjectAccess(document.project.slug, "write");
 
     const blockIndexMap = new Map<string, number>();
     document.blocks.forEach((block, index) => {
@@ -659,5 +682,4 @@ export async function createFrameFromExcerpt(storyboardId: string, dialogue: str
     return { success: false, error: error.message };
   }
 }
-
 

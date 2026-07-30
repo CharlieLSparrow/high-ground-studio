@@ -477,6 +477,7 @@ model User {
   coachingNoteRevisionsAuthored CoachingNoteRevision[]               @relation("CoachingNoteRevisionActor")
   coachingNoteTagsCreated       CoachingNoteTagLink[]                @relation("CoachingNoteTagCreatedBy")
   documentTagsCreated           StudioDocumentTagLink[]              @relation("StudioDocumentTagCreatedBy")
+  personalWritingDocuments      StudioDocument[]                     @relation("StudioDocumentPersonalOwner")
   actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
   taskReminders                 TaskReminder[]                       @relation("TaskReminderOwner")
   taskReminderRevisionsAuthored TaskReminderRevision[]               @relation("TaskReminderRevisionActor")
@@ -2284,6 +2285,7 @@ model StudioProjectAccessGrant {
 model StudioDocument {
   id               String                 @id @default(cuid())
   projectId        String
+  personalOwnerUserId String?
   stableId         String                 @unique
   title            String
   sourceLabel      String?
@@ -2295,6 +2297,7 @@ model StudioDocument {
   updatedAt        DateTime               @updatedAt
 
   project              StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  personalOwner        User?                       @relation("StudioDocumentPersonalOwner", fields: [personalOwnerUserId], references: [id], onDelete: Restrict)
   tagLinks             StudioDocumentTagLink[]
   blocks               StudioDocumentBlock[]
   taggedSpans          StudioTaggedSpan[]
@@ -2309,6 +2312,7 @@ model StudioDocument {
 
   @@index([projectId, stableId])
   @@index([projectId, projectionStatus])
+  @@index([personalOwnerUserId, updatedAt])
 }
 
 model StudioEpisodeProduction {

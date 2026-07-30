@@ -117,6 +117,7 @@ describe("mobile Capture Today contract", () => {
           projectName: "High Ground",
           projectSlug: "high-ground",
           writingDraftDocumentId: "document-existing",
+          writingDraftResponseBlockId: "response-block-existing",
           tagLabels: ["Episode seed"],
         },
         {
@@ -164,7 +165,7 @@ describe("mobile Capture Today contract", () => {
     expect(payload.focusBlocks).toEqual(expect.arrayContaining([expect.objectContaining({ id: "block-1", targetId: "task-1" })]));
     expect(payload.goals[0]).toMatchObject({ id: "goal-1", roomId: "room-1", sessionTitle: "Episode review", canEditTags: true, tagIds: ["tag-2"], tagLabels: ["Episode"], sourceAnchor: { schema: "quipsly-transcript-derived-goal-v1", segmentId: "segment-1", startSeconds: 3.66, recordingAssetId: "asset-1" } });
     expect(payload.goals[1]).toMatchObject({ id: "goal-mismatch", roomId: "room-1", sourceAnchor: null });
-    expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", status: "active", sourceTitle: "Production philosophy", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: "/create?project=high-ground&document=document-existing", tagLabels: ["Episode seed"] }, { id: "annotation-resolved", status: "resolved", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: null, tagLabels: ["Decision"] }, { id: "annotation-viewer-owned", createdByMe: true, canChangeStatus: false, canStartWriting: false, writingDraftHref: null }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], tagCatalog: [{ id: "tag-2", projectId: "project-1", label: "Episode", isActive: true }, { id: "tag-archived", projectId: "project-1", label: "Legacy review", isActive: false }, { id: "tag-1", projectId: "project-1", label: "Proof listen", isActive: true }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false } });
+    expect(payload).toMatchObject({ ok: true, briefKind: "quipsly-mobile-today-v1", transcriptReviews: [{ id: "proposal-1", roomId: "room-1", segmentId: "segment-1", recordingAssetId: "asset-1", proposedSpeakerLabel: "Charlie" }], sourceAnnotations: [{ id: "annotation-1", status: "active", sourceTitle: "Production philosophy", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: "/create?project=high-ground&document=document-existing&block=response-block-existing", tagLabels: ["Episode seed"] }, { id: "annotation-resolved", status: "resolved", createdByMe: true, canChangeStatus: true, canStartWriting: true, writingDraftHref: null, tagLabels: ["Decision"] }, { id: "annotation-viewer-owned", createdByMe: true, canChangeStatus: false, canStartWriting: false, writingDraftHref: null }], taskReminderIntents: [{ id: "reminder-1", status: "ACTIVE" }, { id: "reminder-canceled", status: "CANCELED" }], tagCatalog: [{ id: "tag-2", projectId: "project-1", label: "Episode", isActive: true }, { id: "tag-archived", projectId: "project-1", label: "Legacy review", isActive: false }, { id: "tag-1", projectId: "project-1", label: "Proof listen", isActive: true }], boundaries: { transcriptCandidatesExcluded: true, externalCalendarMutated: false, sourceMutated: false, immutableSourceAnchors: true, aiOutputRequiresHumanReview: true, transcriptReviewMutatesWork: false, tasksRankedForToday: true, canonicalReminderIntents: true, taskReminderIntentProjectionComplete: true, deviceNotificationsReconciled: false, reminderDeliveryClaimed: false, canonicalProjectTags: true, tagMutationExternalSideEffects: false, annotationResolveReopenAvailable: true, annotationReviewMutatesSource: false, annotationWritingDraftAvailable: true, writingDraftPrivate: true, writingDraftSourceMutated: false, writingDraftExternalSideEffects: false } });
   });
 
   it("creates one private citation-backed writing draft from an exact protected phone decision", async () => {
@@ -182,7 +183,9 @@ describe("mobile Capture Today contract", () => {
       documentStableId: "document-stable-1",
       blockId: "block-1",
       blockStableId: "block-stable-1",
-      href: "/create?project=high-ground&document=document-1",
+      responseBlockId: "response-block-1",
+      responseBlockStableId: "response-block-stable-1",
+      href: "/create?project=high-ground&document=document-1&block=response-block-1",
       reused: false,
     });
     jest.mocked(getPrismaClient).mockReturnValue({} as any);
@@ -211,7 +214,9 @@ describe("mobile Capture Today contract", () => {
       documentStableId: "document-stable-1",
       blockId: "block-1",
       blockStableId: "block-stable-1",
-      href: "/create?project=high-ground&document=document-1",
+      responseBlockId: "response-block-1",
+      responseBlockStableId: "response-block-stable-1",
+      href: "/create?project=high-ground&document=document-1&block=response-block-1",
       reused: false,
       boundaries: {
         writingDraftPrivate: true,

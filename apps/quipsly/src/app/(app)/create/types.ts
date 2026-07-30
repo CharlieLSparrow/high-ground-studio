@@ -55,6 +55,7 @@ export type WorkbenchProjectDocumentSummary = {
   title: string;
   sourceLabel: string | null;
   updatedAt: string | Date;
+  personal: boolean;
 };
 
 export type WorkbenchTagPayload = {

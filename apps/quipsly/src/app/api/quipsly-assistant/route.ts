@@ -1,7 +1,9 @@
 import { GoogleGenAI, Schema, Type } from "@google/genai";
 import { NextResponse } from "next/server";
+import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
 import { requireProjectAccess } from "@/lib/server/access";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import {
   prepareRetrievalQuery,
   QUIPSLY_EMBEDDING_DIMENSIONS,
@@ -406,6 +408,11 @@ function anchorEntityProposalSources(
 
 export async function GET(request: Request) {
   try {
+    const actorSession = await auth();
+    const actorUserId = actorSession?.user?.id;
+    if (!actorUserId) {
+      return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
     const { searchParams } = new URL(request.url);
     const projectSlug = searchParams.get("projectSlug");
     const documentId = searchParams.get("documentId");
@@ -433,6 +440,20 @@ export async function GET(request: Request) {
     } catch (accessErr: any) {
       const message = accessErr.message || "Forbidden";
       return NextResponse.json({ ok: false, error: message }, { status: message.startsWith("UNAUTHORIZED") ? 401 : 403 });
+    }
+
+    if (documentId) {
+      const visibleDocument = await prisma.studioDocument.findFirst({
+        where: {
+          id: documentId,
+          projectId: project.id,
+          ...personalWritingDocumentVisibilityWhere(actorUserId),
+        },
+        select: { id: true },
+      });
+      if (!visibleDocument) {
+        return NextResponse.json({ ok: false, error: "Document not found" }, { status: 404 });
+      }
     }
 
     const session = await (prisma as any).studioAssistantSession.findFirst({
@@ -480,6 +501,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const actorSession = await auth();
+    const actorUserId = actorSession?.user?.id;
+    if (!actorUserId) {
+      return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
+    }
     const body = await request.json() as AssistantRequestBody;
     let context = {
       sessionId: body.sessionId,
@@ -521,14 +547,21 @@ export async function POST(request: Request) {
     }
 
     const projectDocuments = await prisma.studioDocument.findMany({
-      where: { projectId: project.id },
+      where: {
+        projectId: project.id,
+        ...personalWritingDocumentVisibilityWhere(actorUserId),
+      },
       select: { id: true, title: true, sourceLabel: true },
       orderBy: { updatedAt: "desc" },
       take: 50,
     });
     if (context.documentId) {
       const document = await prisma.studioDocument.findFirst({
-        where: { id: context.documentId, projectId: project.id },
+        where: {
+          id: context.documentId,
+          projectId: project.id,
+          ...personalWritingDocumentVisibilityWhere(actorUserId),
+        },
         select: {
           id: true,
           title: true,

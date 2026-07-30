@@ -6,6 +6,10 @@ const globalForStudioPrisma = globalThis as unknown as {
 };
 
 export function getPrismaClient(): PrismaClient {
+  if (globalForStudioPrisma.studioPrisma) {
+    return globalForStudioPrisma.studioPrisma;
+  }
+
   const connectionString = process.env.DATABASE_URL;
 
   if (!connectionString) {
@@ -20,13 +24,11 @@ export function getPrismaClient(): PrismaClient {
     connectionTimeoutMillis: 5_000,
   });
 
-  const prisma =
-    globalForStudioPrisma.studioPrisma ??
-    new PrismaClient({
-      adapter,
-      log:
-        process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
-    });
+  const prisma = new PrismaClient({
+    adapter,
+    log:
+      process.env.NODE_ENV === "development" ? ["warn", "error"] : ["error"],
+  });
 
   globalForStudioPrisma.studioPrisma = prisma;
 

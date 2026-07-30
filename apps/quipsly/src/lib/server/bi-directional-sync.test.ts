@@ -45,6 +45,7 @@ function document(projectId = HOME_NEST_ID) {
   return {
     id: DOCUMENT_ID,
     projectId,
+    personalOwnerUserId: USER_ID,
     stableId: NOTE_ID,
     title: "Earlier title",
     sourceLabel: "quipsly-native-note",
@@ -232,6 +233,7 @@ describe("parseQuipslyNoteToBlocks", () => {
     expect(prisma.studioDocument.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         projectId: HOME_NEST_ID,
+        personalOwnerUserId: USER_ID,
         stableId: NOTE_ID,
         sourceLabel: "quipsly-native-note",
         projectionStatus: "private",
@@ -275,8 +277,13 @@ describe("parseQuipslyNoteToBlocks", () => {
     await parseQuipslyNoteToBlocks(NOTE_ID, USER_ID);
 
     expect(prisma.studioDocument.updateMany).toHaveBeenCalledWith({
-      where: { id: DOCUMENT_ID, projectId: HOME_NEST_ID },
+      where: {
+        id: DOCUMENT_ID,
+        projectId: HOME_NEST_ID,
+        personalOwnerUserId: USER_ID,
+      },
       data: expect.objectContaining({
+        personalOwnerUserId: USER_ID,
         projectionStatus: "private",
         isPrivate: true,
       }),

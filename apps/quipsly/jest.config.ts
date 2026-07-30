@@ -32,6 +32,7 @@ const config: Config = {
     '^@high-ground/quipsly-domain/coaching-meeting-spine$': '<rootDir>/../../packages/quipsly-domain/src/coaching-meeting-spine.ts',
     '^@high-ground/quipsly-domain/coaching-packet$': '<rootDir>/../../packages/quipsly-domain/src/coaching-packet.ts',
     '^@high-ground/quipsly-domain/transcript-derived-task$': '<rootDir>/../../packages/quipsly-domain/src/transcript-derived-task.ts',
+    '^@high-ground/quipsly-domain/retrieval$': '<rootDir>/../../packages/quipsly-domain/src/retrieval.ts',
   },
   modulePathIgnorePatterns: [
     '<rootDir>/.next/standalone',

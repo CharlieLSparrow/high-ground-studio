@@ -20,6 +20,7 @@ import {
   normalizeAccessEmail,
 } from "@/lib/server/studio-project-access";
 import { isUserManagementAdminEmail } from "@/lib/server/user-management";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import {
   listStudioProjectOptions,
   NEST_KIND_LABELS,
@@ -286,8 +287,9 @@ export default async function NotebooksPage({
   const notAllowed = params?.notAllowed === "1";
   const session = await auth();
   const actorEmail = normalizeAccessEmail(session?.user?.primaryEmail || session?.user?.email);
+  const actorUserId = session?.user?.id;
 
-  if (!actorEmail) {
+  if (!actorEmail || !actorUserId) {
     redirect("/login?callbackUrl=/notebooks");
   }
 
@@ -354,7 +356,10 @@ export default async function NotebooksPage({
   const normalizedSearch = searchQuery.toLowerCase();
   const documents = writingNests.length > 0
     ? await prisma.studioDocument.findMany({
-        where: { projectId: { in: writingNests.map((nest) => nest.id) } },
+        where: {
+          projectId: { in: writingNests.map((nest) => nest.id) },
+          ...personalWritingDocumentVisibilityWhere(actorUserId),
+        },
         select: {
           id: true,
           stableId: true,
@@ -371,7 +376,10 @@ export default async function NotebooksPage({
     ? await prisma.studioDocumentBlock.findMany({
         where: {
           archivedAt: null,
-          document: { projectId: { in: writingNests.map((nest) => nest.id) } },
+          document: {
+            projectId: { in: writingNests.map((nest) => nest.id) },
+            ...personalWritingDocumentVisibilityWhere(actorUserId),
+          },
           OR: [
             { body: { contains: searchQuery, mode: "insensitive" } },
             { title: { contains: searchQuery, mode: "insensitive" } },

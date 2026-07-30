@@ -10,6 +10,7 @@ import { getPrismaClient } from "@/lib/prisma";
 import { resolveQuickEntryTags, type QuickEntryTag } from "@/lib/server/quick-entry-tags";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 import { normalizeWorkTagLabel } from "@/lib/server/work-tag-normalization";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import { auth } from "@/auth";
 
 type CreateNestDocumentKind = "draft" | "note" | "study-source";
@@ -301,6 +302,7 @@ export async function createNestQuickNoteAction(input: {
       const document = await tx.studioDocument.create({
         data: {
           projectId: access.projectId,
+          personalOwnerUserId: actorUserId,
           stableId,
           title,
           sourceLabel,
@@ -784,9 +786,10 @@ export async function createDocumentAction(projectSlug: string, kind: CreateNest
 
 export async function renameDocumentAction(projectSlug: string, documentId: string, nextTitle: string) {
   const session = await auth();
+  const actorUserId = session?.user?.id;
   const actorEmail = session?.user?.primaryEmail || session?.user?.email;
 
-  if (!actorEmail) {
+  if (!actorEmail || !actorUserId) {
     throw new Error("UNAUTHORIZED: Must be logged in to rename a document.");
   }
 
@@ -823,6 +826,7 @@ export async function renameDocumentAction(projectSlug: string, documentId: stri
     where: {
       id: documentId,
       projectId: project.id,
+      ...personalWritingDocumentVisibilityWhere(actorUserId),
     },
     select: {
       id: true,
@@ -851,9 +855,10 @@ export async function renameDocumentAction(projectSlug: string, documentId: stri
 
 export async function duplicateDocumentAsDraftAction(projectSlug: string, documentId: string) {
   const session = await auth();
+  const actorUserId = session?.user?.id;
   const actorEmail = session?.user?.primaryEmail || session?.user?.email;
 
-  if (!actorEmail) {
+  if (!actorEmail || !actorUserId) {
     throw new Error("UNAUTHORIZED: Must be logged in to duplicate a document.");
   }
 
@@ -881,6 +886,7 @@ export async function duplicateDocumentAsDraftAction(projectSlug: string, docume
     where: {
       id: documentId,
       projectId: project.id,
+      ...personalWritingDocumentVisibilityWhere(actorUserId),
     },
     include: {
       blocks: {
@@ -904,6 +910,7 @@ export async function duplicateDocumentAsDraftAction(projectSlug: string, docume
   const duplicate = await prisma.studioDocument.create({
     data: {
       projectId: project.id,
+      personalOwnerUserId: sourceDocument.personalOwnerUserId,
       stableId: stableDocumentId,
       title: `${sourceDocument.title} - Draft Copy`,
       sourceLabel,
@@ -931,9 +938,10 @@ export async function duplicateDocumentAsDraftAction(projectSlug: string, docume
 
 export async function promoteNoteToWritingPageAction(projectSlug: string, documentId: string) {
   const session = await auth();
+  const actorUserId = session?.user?.id;
   const actorEmail = session?.user?.primaryEmail || session?.user?.email;
 
-  if (!actorEmail) {
+  if (!actorEmail || !actorUserId) {
     throw new Error("UNAUTHORIZED: Must be logged in to promote a note.");
   }
 
@@ -961,6 +969,7 @@ export async function promoteNoteToWritingPageAction(projectSlug: string, docume
     where: {
       id: documentId,
       projectId: project.id,
+      ...personalWritingDocumentVisibilityWhere(actorUserId),
     },
     include: {
       blocks: {
@@ -992,6 +1001,7 @@ export async function promoteNoteToWritingPageAction(projectSlug: string, docume
   const promoted = await prisma.studioDocument.create({
     data: {
       projectId: project.id,
+      personalOwnerUserId: sourceDocument.personalOwnerUserId,
       stableId: stableDocumentId,
       title: title || `${sourceDocument.title} - Writing Draft`,
       sourceLabel,

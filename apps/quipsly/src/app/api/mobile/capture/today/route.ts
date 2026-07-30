@@ -170,12 +170,14 @@ export async function GET(request: Request) {
                annotation."status", annotation."visibility", annotation."createdByUserId", annotation."updatedAt",
                source."title" AS "sourceTitle", project."name" AS "projectName", project."slug" AS "projectSlug",
                writing_use."documentId" AS "writingDraftDocumentId",
+               writing_use."responseBlockId" AS "writingDraftResponseBlockId",
                COALESCE(array_agg(tag."label" ORDER BY tag."label") FILTER (WHERE tag."id" IS NOT NULL), ARRAY[]::text[]) AS "tagLabels"
         FROM "StudioSourceAnnotation" annotation
         JOIN "StudioSourceUnit" source ON source."id" = annotation."sourceUnitId"
         JOIN "StudioProject" project ON project."id" = annotation."projectId"
         LEFT JOIN LATERAL (
-          SELECT annotation_use."documentId"
+          SELECT annotation_use."documentId",
+                 annotation_use."sourceJson"->>'responseBlockId' AS "responseBlockId"
           FROM "StudioSourceAnnotationUse" annotation_use
           WHERE annotation_use."annotationId" = annotation."id"
             AND annotation_use."createdByUserId" = ${userId}
@@ -194,7 +196,8 @@ export async function GET(request: Request) {
             )
           )
           AND (annotation."visibility" = 'project' OR annotation."createdByUserId" = ${userId})
-        GROUP BY annotation."id", source."title", project."name", project."slug", writing_use."documentId"
+        GROUP BY annotation."id", source."title", project."name", project."slug",
+                 writing_use."documentId", writing_use."responseBlockId"
         ORDER BY
           CASE WHEN annotation."status" = 'active' THEN 0 ELSE 1 END,
           annotation."updatedAt" DESC
@@ -381,7 +384,7 @@ export async function GET(request: Request) {
         projectName: annotation.projectName,
         projectSlug: annotation.projectSlug,
         writingDraftHref: annotation.writingDraftDocumentId
-          ? `/create?project=${encodeURIComponent(annotation.projectSlug)}&document=${encodeURIComponent(annotation.writingDraftDocumentId)}`
+          ? `/create?project=${encodeURIComponent(annotation.projectSlug)}&document=${encodeURIComponent(annotation.writingDraftDocumentId)}${annotation.writingDraftResponseBlockId ? `&block=${encodeURIComponent(annotation.writingDraftResponseBlockId)}` : ""}`
           : null,
         tagLabels: annotation.tagLabels,
         updatedAt: annotation.updatedAt.toISOString(),
@@ -979,6 +982,8 @@ export async function POST(request: Request) {
         documentStableId: result.documentStableId,
         blockId: result.blockId,
         blockStableId: result.blockStableId,
+        responseBlockId: result.responseBlockId,
+        responseBlockStableId: result.responseBlockStableId,
         href: result.href,
         reused: result.reused,
         boundaries: responseBoundaries(),

@@ -215,7 +215,13 @@ function entityWhere(entityKind: WorkTagEntityKind, entityId: string, actorUserI
       : entityKind === "note"
         ? { id: entityId, authorUserId: actorUserId }
         : entityKind === "document"
-          ? { id: entityId }
+          ? {
+              id: entityId,
+              OR: [
+                { personalOwnerUserId: null },
+                { personalOwnerUserId: actorUserId },
+              ],
+            }
         : { id: entityId, createdByUserId: actorUserId };
 }
 
@@ -410,6 +416,10 @@ export async function createAndAssignWorkEntityTag(input: {
             id: entityId,
             projectId: entity.projectId,
             tagRevision: input.expectedTagRevision,
+            OR: [
+              { personalOwnerUserId: null },
+              { personalOwnerUserId: actorUserId },
+            ],
           },
           data: { tagRevision: { increment: 1 } },
         });
@@ -708,6 +718,10 @@ export async function replaceWorkEntityTags(input: {
             id: entityId,
             projectId: entity.projectId,
             tagRevision: input.expectedTagRevision,
+            OR: [
+              { personalOwnerUserId: null },
+              { personalOwnerUserId: actorUserId },
+            ],
           },
           data: { tagRevision: { increment: 1 } },
         });

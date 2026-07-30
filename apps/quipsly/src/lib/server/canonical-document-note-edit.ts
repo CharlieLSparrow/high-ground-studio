@@ -10,7 +10,7 @@ import {
 import type { Prisma, PrismaClient } from "@prisma/client";
 
 import { getPrismaClient } from "@/lib/prisma";
-import { isImmutableTranscriptSourceExternalId } from "@/lib/studio/immutable-source";
+import { isImmutableSourceEvidenceExternalId } from "@/lib/studio/immutable-source";
 import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 const UUID_PATTERN =
@@ -24,6 +24,7 @@ const MAX_TOTAL_LENGTH = 60_000;
 export const canonicalDocumentNoteSelect = {
   id: true,
   projectId: true,
+  personalOwnerUserId: true,
   stableId: true,
   title: true,
   sourceLabel: true,
@@ -253,10 +254,10 @@ function noteCanEdit(record: CanonicalDocumentNoteRecord) {
       boundary: "This structured note has too many blocks for the focused iPhone editor. Continue it in Nest.",
     };
   }
-  if (record.blocks.some((block) => isImmutableTranscriptSourceExternalId(block.externalId))) {
+  if (record.blocks.some((block) => isImmutableSourceEvidenceExternalId(block.externalId))) {
     return {
       allowed: false,
-      boundary: "Recording-backed transcript evidence is immutable. Create a correction or edit its linked draft in Nest.",
+      boundary: "Pinned source evidence is immutable. Create a correction or edit its linked response in Nest.",
     };
   }
   return {
@@ -550,6 +551,16 @@ export async function editCanonicalDocumentNoteInTransaction(
           error: "That canonical note is not available.",
         } as const;
       }
+      if (
+        note.personalOwnerUserId &&
+        note.personalOwnerUserId !== input.actorUserId
+      ) {
+        return {
+          ok: false,
+          code: "NOT_FOUND",
+          error: "That canonical note is not available.",
+        } as const;
+      }
 
       const access = await resolveStudioProjectAccess({
         projectSlug: note.project.slug,
@@ -600,7 +611,7 @@ export async function editCanonicalDocumentNoteInTransaction(
       if (!current.canEditContent) {
         return {
           ok: false,
-          code: note.blocks.some((block) => isImmutableTranscriptSourceExternalId(block.externalId))
+          code: note.blocks.some((block) => isImmutableSourceEvidenceExternalId(block.externalId))
             ? "IMMUTABLE_SOURCE"
             : "CONFLICT",
           error: current.contentEditBoundary,

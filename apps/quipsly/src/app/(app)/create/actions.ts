@@ -61,8 +61,13 @@ import {
 } from "@/lib/document-portability";
 import {
   assertMutableWritingBlock,
+  isImmutableSourceEvidenceExternalId,
   isImmutableTranscriptSourceExternalId,
 } from "@/lib/studio/immutable-source";
+import {
+  assertPersonalWritingDocumentAccess,
+  personalWritingDocumentVisibilityWhere,
+} from "@/lib/server/personal-writing-documents";
 
 const UNAVAILABLE_PROJECT_ID = "unavailable-quipsly";
 const UNAVAILABLE_DOCUMENT_ID = "unavailable-document";
@@ -209,6 +214,11 @@ async function getActorEmail() {
   return session?.user?.primaryEmail || session?.user?.email || null;
 }
 
+async function getActorUserId() {
+  const session = await auth();
+  return session?.user?.id || null;
+}
+
 function toPrismaJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value ?? {})) as Prisma.InputJsonValue;
 }
@@ -289,13 +299,21 @@ async function requireProjectAccessByDocumentId(
 ) {
   const document = await prisma.studioDocument.findUnique({
     where: { id: documentId },
-    select: { project: { select: { slug: true } } },
+    select: {
+      personalOwnerUserId: true,
+      project: { select: { slug: true } },
+    },
   });
 
   if (!document) {
     throw new Error("Document not found.");
   }
 
+  const actorUserId = await getActorUserId();
+  assertPersonalWritingDocumentAccess(
+    document.personalOwnerUserId,
+    actorUserId,
+  );
   await requireProjectAccessBySlug(prisma, document.project.slug, action);
 }
 
@@ -306,13 +324,25 @@ async function requireProjectAccessByBlockId(
 ) {
   const block = await prisma.studioDocumentBlock.findUnique({
     where: { id: blockId },
-    select: { document: { select: { project: { select: { slug: true } } } } },
+    select: {
+      document: {
+        select: {
+          personalOwnerUserId: true,
+          project: { select: { slug: true } },
+        },
+      },
+    },
   });
 
   if (!block) {
     throw new Error("Block not found.");
   }
 
+  const actorUserId = await getActorUserId();
+  assertPersonalWritingDocumentAccess(
+    block.document.personalOwnerUserId,
+    actorUserId,
+  );
   await requireProjectAccessBySlug(prisma, block.document.project.slug, action);
 }
 
@@ -323,13 +353,32 @@ async function requireProjectAccessByAssistantActionId(
 ) {
   const assistantAction = await prisma.studioAssistantAction.findUnique({
     where: { id: actionId },
-    select: { session: { select: { projectId: true } } },
+    select: {
+      session: {
+        select: {
+          projectId: true,
+          documentId: true,
+        },
+      },
+    },
   });
 
   if (!assistantAction) {
     throw new Error("Assistant action not found.");
   }
 
+  const actorUserId = await getActorUserId();
+  if (assistantAction.session.documentId) {
+    const document = await prisma.studioDocument.findUnique({
+      where: { id: assistantAction.session.documentId },
+      select: { personalOwnerUserId: true },
+    });
+    if (!document) throw new Error("Assistant action not found.");
+    assertPersonalWritingDocumentAccess(
+      document.personalOwnerUserId,
+      actorUserId,
+    );
+  }
   await requireProjectAccessByProjectId(prisma, assistantAction.session.projectId, action);
 }
 
@@ -765,6 +814,10 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
 
   const normalizedProjectSlug = projectConfig(projectSlug).slug;
   await requireProjectAccessBySlug(prisma, normalizedProjectSlug, "read");
+  const actorUserId = await getActorUserId();
+  const visibleDocumentsWhere = personalWritingDocumentVisibilityWhere(
+    actorUserId,
+  );
 
   // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
   // Try to load with viewDefinitions (schema-optional), fallback to without if not yet pushed
@@ -776,7 +829,12 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
         tags: true,
         viewDefinitions: true,
         documents: {
-          where: documentId ? { id: documentId } : undefined,
+          where: {
+            AND: [
+              visibleDocumentsWhere,
+              ...(documentId ? [{ id: documentId }] : []),
+            ],
+          },
           orderBy: { updatedAt: "desc" },
           include: {
             tagLinks: {
@@ -803,7 +861,12 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
       include: {
         tags: true,
         documents: {
-          where: documentId ? { id: documentId } : undefined,
+          where: {
+            AND: [
+              visibleDocumentsWhere,
+              ...(documentId ? [{ id: documentId }] : []),
+            ],
+          },
           orderBy: { updatedAt: "desc" },
           include: {
             tagLinks: {
@@ -827,16 +890,27 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
 
   if (!project) return null;
 
-  const projectDocuments = await prisma.studioDocument.findMany({
-    where: { projectId: project.id },
+  const projectDocumentRows = await prisma.studioDocument.findMany({
+    where: {
+      projectId: project.id,
+      ...visibleDocumentsWhere,
+    },
     select: {
       id: true,
       title: true,
       sourceLabel: true,
+      personalOwnerUserId: true,
       updatedAt: true,
     },
     orderBy: { updatedAt: "desc" },
   });
+  const projectDocuments = projectDocumentRows.map((projectDocument) => ({
+    id: projectDocument.id,
+    title: projectDocument.title,
+    sourceLabel: projectDocument.sourceLabel,
+    updatedAt: projectDocument.updatedAt,
+    personal: Boolean(projectDocument.personalOwnerUserId),
+  }));
 
   // Format into our UI shape
   const document = project.documents[0];
@@ -850,7 +924,17 @@ export async function loadWorkbenchState(projectSlug = DEFAULT_PROJECT_SLUG, doc
     id: b.id,
     text: b.body,
     tags: Array.from(new Set(b.taggedSpans.map((ts) => ts.tag.slug))),
-    ...(b.externalId?.startsWith("annotation:") ? { sourceEvidence: {
+    ...(b.externalId?.startsWith("annotation-evidence:") ? { sourceEvidence: {
+      annotationId: b.externalId!.slice("annotation-evidence:".length),
+      citationLabel: b.sourceLabel || "Quipsly source evidence",
+      sourcePath: b.sourcePath || undefined,
+      immutable: true,
+    } } : b.externalId?.startsWith("annotation-response:") ? { sourceEvidence: {
+      annotationId: b.externalId!.slice("annotation-response:".length),
+      citationLabel: b.sourceLabel || "Quipsly source evidence",
+      sourcePath: b.sourcePath || undefined,
+      immutable: false,
+    } } : b.externalId?.startsWith("annotation:") ? { sourceEvidence: {
       annotationId: b.externalId!.slice("annotation:".length),
       citationLabel: b.sourceLabel || "Quipsly source evidence",
       sourcePath: b.sourcePath || undefined,
@@ -949,6 +1033,7 @@ async function loadLinkedScopeSummary(projectSlug: string): Promise<WorkbenchSco
     }
 
     const prisma = getPrismaClient();
+    const actorUserId = await getActorUserId();
     const workspace = await ensureStudioWorkspace(prisma);
     const project = await prisma.studioProject.findUnique({
       where: {
@@ -959,6 +1044,7 @@ async function loadLinkedScopeSummary(projectSlug: string): Promise<WorkbenchSco
       },
       include: {
         documents: {
+          where: personalWritingDocumentVisibilityWhere(actorUserId),
           select: {
             id: true,
             title: true,
@@ -1407,8 +1493,8 @@ export async function pastePlainTextBlocksAction(
       });
       if (!block) throw new DocumentReorderError("DOCUMENT_NOT_FOUND", "Block not found.");
       await tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtextextended(${block.documentId}, 0))`;
-      if (isImmutableTranscriptSourceExternalId(block.externalId)) {
-        throw new DocumentSafetyError("IDENTITY_MISMATCH", "Transcript source evidence is immutable. Paste into the linked draft block instead.");
+      if (isImmutableSourceEvidenceExternalId(block.externalId)) {
+        throw new DocumentSafetyError("IDENTITY_MISMATCH", "Source evidence is immutable. Paste into the linked response block instead.");
       }
       if (block.taggedSpans.length > 0 || block.sourceAnnotationUses.length > 0 || block.externalId?.startsWith("annotation:")) {
         throw new DocumentSafetyError("IDENTITY_MISMATCH", "Source-linked or tagged writing stays in one block so its anchors remain trustworthy.");
@@ -1945,7 +2031,7 @@ export async function toggleBlockTag(
   }
 
   try {
-    await requireProjectAccessByProjectId(prisma, cleanProjectId, "write");
+    await requireProjectAccessByDocumentId(prisma, cleanDocumentId, "write");
   } catch (error) {
     console.error("Writing tag could not verify write access.", error);
     return {
@@ -2486,6 +2572,21 @@ export async function bulkNormalizeHeadings(documentId: string): Promise<Heading
     };
   }
 
+  try {
+    await requireProjectAccessByDocumentId(prisma, documentId, "write");
+  } catch {
+    return {
+      ok: false,
+      updatedCount: 0,
+      attemptedCount: 0,
+      skippedCount: 0,
+      source: "local",
+      updatedBlocks: [],
+      skippedBlockIds: [],
+      message: "Could not load document for cleanup."
+    };
+  }
+
   const document = await prisma.studioDocument.findUnique({
     where: { id: documentId },
     include: {
@@ -2514,8 +2615,6 @@ export async function bulkNormalizeHeadings(documentId: string): Promise<Heading
       message: "Could not load document for cleanup."
     };
   }
-
-  await requireProjectAccessByProjectId(prisma, document.projectId, "write");
 
   const candidates: BoundaryCandidate[] = [];
   const skippedTaggedBlocks = new Set<string>();
@@ -4480,10 +4579,10 @@ export async function reorderDocumentBlocksAction(
       }
 
       for (const [index, block] of activeBlocks.entries()) {
-        if (isImmutableTranscriptSourceExternalId(block.externalId) && requestedIds[index] !== block.id) {
+        if (isImmutableSourceEvidenceExternalId(block.externalId) && requestedIds[index] !== block.id) {
           throw new DocumentReorderError(
             "INVALID_REORDER",
-            "Transcript source evidence stays pinned in its canonical position.",
+            "Source evidence stays pinned in its canonical position.",
           );
         }
       }

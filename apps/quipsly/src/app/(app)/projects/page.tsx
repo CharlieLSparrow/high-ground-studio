@@ -206,11 +206,23 @@ async function bootstrapLiveWorkNests() {
 export default async function ProjectsHub({
   searchParams,
 }: {
-  searchParams?: Promise<{ fallback?: string; missing?: string; liveNests?: string; adminAccessDenied?: string; betaAccessDenied?: string }>;
+  searchParams?: Promise<{
+    fallback?: string;
+    missing?: string;
+    nest?: string;
+    documentUnavailable?: string;
+    liveNests?: string;
+    adminAccessDenied?: string;
+    betaAccessDenied?: string;
+  }>;
 }) {
   const params = searchParams ? await searchParams : {};
   const isFallback = params?.fallback === "true";
   const missingProjectSlug = typeof params?.missing === "string" ? params.missing : "";
+  const unavailableDocumentNest =
+    params?.documentUnavailable === "1" && typeof params?.nest === "string"
+      ? params.nest
+      : "";
   const liveNestsBootstrapped = typeof params?.liveNests === "string" ? params.liveNests : "";
   const adminAccessDenied = params?.adminAccessDenied === "1";
   const betaAccessDenied = params?.betaAccessDenied === "1";
@@ -392,7 +404,9 @@ export default async function ProjectsHub({
           <div className="mb-6 rounded-2xl border border-rose-200 bg-rose-50 p-4 shadow-sm">
             <h3 className="font-serif text-lg font-black text-rose-900">Wait, where is my document?</h3>
             <p className="mt-1 text-sm text-rose-800">
-              {missingProjectSlug
+              {unavailableDocumentNest
+                ? `That document is not available to this account. Your access to the "${unavailableDocumentNest}" Nest is unchanged; open another page below or ask the document owner to share the work intentionally.`
+                : missingProjectSlug
                 ? `Quipsly could not find a Nest named "${missingProjectSlug}". Choose an existing Nest below, or create a new private one.`
                 : "Quipsly no longer drops people into a shared default manuscript. Choose your Nest below, or create a new private one."}
             </p>

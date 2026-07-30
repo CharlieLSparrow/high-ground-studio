@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { PrismaClient } from "@prisma/client";
 
 import { listProjectsVisibleToEmail } from "./home-nest";
+import { resolvePersonalWritingActorUserId } from "./personal-writing-documents";
 
 const RELATION_LIMIT = 5_000;
 
@@ -27,6 +28,7 @@ export type WorkTagMergePreview = {
     anchoredSpanCollisions: number;
     aliasCollisions: Array<{ label: string; slug: string; conflictingLabel: string }>;
     relationLimitExceeded: boolean;
+    personalDocumentOwnershipConflict: boolean;
   };
   impactHash: string;
   canMerge: boolean;
@@ -78,6 +80,7 @@ function overlapCount<T>(source: T[], target: T[]) {
 async function buildMergePreview(prisma: any, input: {
   sourceTagId: string;
   targetTagId: string;
+  actorUserId: string | null;
 }): Promise<
   | { kind: "ready"; preview: WorkTagMergePreview; impact: any }
   | { kind: "not-found" }
@@ -101,14 +104,14 @@ async function buildMergePreview(prisma: any, input: {
 
   const whereEither = { tagId: { in: [source.id, target.id] } };
   const [
-    documentLinks,
+    documentLinksRaw,
     taskLinks,
     goalLinks,
     sessionLinks,
     coachingNoteLinks,
     annotationLinks,
-    taggedSpans,
-    knowledgeNodes,
+    taggedSpansRaw,
+    knowledgeNodesRaw,
     mediaClips,
   ] = await Promise.all([
     prisma.studioDocumentTagLink.findMany({ where: whereEither, orderBy: [{ documentId: "asc" }, { tagId: "asc" }], take: RELATION_LIMIT + 1 }),
@@ -137,7 +140,43 @@ async function buildMergePreview(prisma: any, input: {
     }),
   ]);
 
-  const relationLimitExceeded = [documentLinks, taskLinks, goalLinks, sessionLinks, coachingNoteLinks, annotationLinks, taggedSpans, knowledgeNodes, mediaClips]
+  const affectedDocumentIds = [
+    ...documentLinksRaw.map((row: any) => String(row.documentId)),
+    ...taggedSpansRaw.map((row: any) => String(row.documentId)),
+    ...knowledgeNodesRaw.map((row: any) => String(row.documentId)),
+  ];
+  const affectedDocumentOwners = affectedDocumentIds.length
+    ? await prisma.studioDocument.findMany({
+        where: { id: { in: [...new Set(affectedDocumentIds)] } },
+        select: { id: true, personalOwnerUserId: true },
+      })
+    : [];
+  const ownerByDocumentId = new Map<string, string | null>(
+    affectedDocumentOwners.map((document: any) => [
+      String(document.id),
+      document.personalOwnerUserId ? String(document.personalOwnerUserId) : null,
+    ]),
+  );
+  const actorCanSeeDocument = (documentId: unknown) => {
+    const ownerUserId = ownerByDocumentId.get(String(documentId)) ?? null;
+    return !ownerUserId || ownerUserId === input.actorUserId;
+  };
+  const personalDocumentOwnershipConflict = affectedDocumentOwners.some(
+    (document: any) =>
+      document.personalOwnerUserId
+      && document.personalOwnerUserId !== input.actorUserId,
+  );
+  const documentLinks = documentLinksRaw.filter((row: any) =>
+    actorCanSeeDocument(row.documentId),
+  );
+  const taggedSpans = taggedSpansRaw.filter((row: any) =>
+    actorCanSeeDocument(row.documentId),
+  );
+  const knowledgeNodes = knowledgeNodesRaw.filter((row: any) =>
+    actorCanSeeDocument(row.documentId),
+  );
+
+  const relationLimitExceeded = [documentLinksRaw, taskLinks, goalLinks, sessionLinks, coachingNoteLinks, annotationLinks, taggedSpansRaw, knowledgeNodesRaw, mediaClips]
     .some((rows) => rows.length > RELATION_LIMIT);
   const sourceRows = (rows: any[]) => rows.filter((row) => row.tagId === source.id);
   const targetRows = (rows: any[]) => rows.filter((row) => row.tagId === target.id);
@@ -251,9 +290,18 @@ async function buildMergePreview(prisma: any, input: {
     target: { id: target.id, label: target.label, slug: target.slug, updatedAt: target.updatedAt },
     counts,
     deduplicated,
-    blockingConflicts: { anchoredSpanCollisions, aliasCollisions, relationLimitExceeded },
+    blockingConflicts: {
+      anchoredSpanCollisions,
+      aliasCollisions,
+      relationLimitExceeded,
+      personalDocumentOwnershipConflict,
+    },
     impactHash,
-    canMerge: anchoredSpanCollisions === 0 && aliasCollisions.length === 0 && !relationLimitExceeded,
+    canMerge:
+      anchoredSpanCollisions === 0
+      && aliasCollisions.length === 0
+      && !relationLimitExceeded
+      && !personalDocumentOwnershipConflict,
     boundaries: {
       sourcePreservedAsRedirect: true,
       exactRollbackSnapshot: true,
@@ -276,7 +324,15 @@ export async function previewWorkTagMerge(input: {
   if (!actorEmail || !sourceTagId || !targetTagId || sourceTagId === targetTagId) {
     return { ok: false, code: "INVALID_INPUT", error: "Choose two different tags from the same Nest." };
   }
-  const built = await buildMergePreview(input.prisma as any, { sourceTagId, targetTagId });
+  const actorUserId = await resolvePersonalWritingActorUserId(
+    input.prisma,
+    actorEmail,
+  );
+  const built = await buildMergePreview(input.prisma as any, {
+    sourceTagId,
+    targetTagId,
+    actorUserId,
+  });
   if (built.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "One of those tags no longer exists." };
   if (built.kind === "conflict") return { ok: false, code: "CONFLICT", error: "Both tags must be active and belong to the same Nest." };
   if (built.kind === "merged") return { ok: false, code: "MERGED", error: "A tag that is already a merge redirect cannot be merged again." };
@@ -310,7 +366,11 @@ export async function applyWorkTagMerge(input: {
     return { ok: false, code: "INVALID_INPUT", error: "Preview this merge again before applying it." };
   }
 
-  const initial = await buildMergePreview(input.prisma as any, { sourceTagId, targetTagId });
+  const initial = await buildMergePreview(input.prisma as any, {
+    sourceTagId,
+    targetTagId,
+    actorUserId,
+  });
   if (initial.kind === "not-found") return { ok: false, code: "NOT_FOUND", error: "One of those tags no longer exists." };
   if (initial.kind === "conflict") return { ok: false, code: "CONFLICT", error: "Both tags must still be active in the same Nest." };
   if (initial.kind === "merged") return { ok: false, code: "MERGED", error: "A tag that is already a merge redirect cannot be merged again." };
@@ -332,7 +392,11 @@ export async function applyWorkTagMerge(input: {
       select: { id: true },
     });
     if (!grant) return { kind: "forbidden" as const };
-    const fresh = await buildMergePreview(tx, { sourceTagId, targetTagId });
+    const fresh = await buildMergePreview(tx, {
+      sourceTagId,
+      targetTagId,
+      actorUserId,
+    });
     if (fresh.kind !== "ready") return { kind: "conflict" as const };
     if (!fresh.preview.canMerge) return { kind: "blocked" as const, preview: fresh.preview };
     if (fresh.preview.impactHash !== expectedImpactHash

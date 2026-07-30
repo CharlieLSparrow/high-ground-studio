@@ -878,6 +878,8 @@ for (const needle of [
   'if (action === "source-annotation-draft")',
   "createWritingDraftFromSourceAnnotation",
   'action: "write"',
+  "responseBlockId: result.responseBlockId",
+  "responseBlockStableId: result.responseBlockStableId",
   "writingDraftPrivate: true",
   "writingDraftSourceMutated: false",
   "writingDraftExternalSideEffects: false",
@@ -892,6 +894,8 @@ for (const needle of [
   "payload.boundaries?.writingDraftPrivate == true",
   "payload.boundaries?.writingDraftSourceMutated == false",
   "payload.boundaries?.writingDraftExternalSideEffects == false",
+  "let responseBlockID = payload.responseBlockId",
+  "expectedResponseBlockID: responseBlockID",
 ]) {
   requireIncludes(bridgeText, needle, "exact native source-to-writing acknowledgement");
 }

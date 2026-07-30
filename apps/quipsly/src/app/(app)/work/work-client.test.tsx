@@ -473,7 +473,12 @@ describe("Work Queue interactions", () => {
         target: { id: "tag-edit", label: "Episode edit", slug: "episode-edit", updatedAt: "2026-07-18T18:01:00.000Z" },
         counts: { documents: 0, tasks: 2, goals: 1, sessions: 1, coachingNotes: 0, annotations: 1, taggedSpans: 1, knowledgeNodes: 1, mediaClips: 1, aliases: 1, totalUses: 8 },
         deduplicated: { documents: 0, tasks: 1, goals: 0, sessions: 0, coachingNotes: 0, annotations: 0, mediaClips: 0 },
-        blockingConflicts: { anchoredSpanCollisions: 0, aliasCollisions: [], relationLimitExceeded: false },
+        blockingConflicts: {
+          anchoredSpanCollisions: 0,
+          aliasCollisions: [],
+          relationLimitExceeded: false,
+          personalDocumentOwnershipConflict: false,
+        },
         impactHash: "a".repeat(64),
         canMerge: true,
         boundaries: { sourcePreservedAsRedirect: true, exactRollbackSnapshot: true, immutableSourceTextMutated: false, externalSideEffects: false },

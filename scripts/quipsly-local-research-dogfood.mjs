@@ -15,6 +15,7 @@ const APPLY = process.argv.includes("--apply");
 const ACTOR_EMAIL = "dev@quipsly.com";
 const WORKSPACE_SLUG = "quipsly-local-dogfood";
 const PROJECT_SLUG = "quipsly-local-dogfood";
+const DOGFOOD_CONTRACT_VERSION = "personal-writing-v2";
 const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
 
 function sha256(value) {
@@ -44,7 +45,7 @@ async function loadFixture(definition) {
     fingerprint,
     startOffset,
     endOffset: startOffset + definition.quote.length,
-    versionedSlug: `${definition.slug}-${fingerprint.slice(0, 12)}`,
+    versionedSlug: `${definition.slug}-${fingerprint.slice(0, 12)}-${DOGFOOD_CONTRACT_VERSION}`,
   };
 }
 
@@ -131,21 +132,21 @@ async function main() {
 
   const fixtures = await Promise.all([
     loadFixture({
-      slug: "homer-coaching-workflow-guide",
-      title: "Homer coaching workflow guide",
-      path: "docs/quipsly/homer-coaching-workflow-guide.md",
-      quote: "If one of those answers is unclear, that is product feedback, not Homer failure.",
-      annotationKind: "question",
-      annotationBody: "Turn every unclear runway state into a visible product repair and an owner, instead of asking Homer to remember a workaround.",
+      slug: "coaching-weekly-commitments",
+      title: "Coaching weekly commitments result",
+      path: "docs/sessions/coaching-weekly-commitments-result.md",
+      quote: "Added a Prisma-backed `WeeklyCommitment` record with one client owner,",
+      annotationKind: "action",
+      annotationBody: "Carry the client owner through the unified goal and task spine so weekly commitments remain private, attributable, and reviewable by the intended coach.",
       tag: { slug: "coaching-follow-up", label: "Coaching follow-up", category: "review" },
     }),
     loadFixture({
-      slug: "episode-4-audio-publication-goal",
-      title: "Episode 4 audio-first publication goal",
-      path: "docs/quipsly/episode-4-audio-publication-goal.md",
-      quote: "Machine checks can prove safety and surface risks; they cannot certify cadence, humor, warmth, or whether the episode feels human.",
-      annotationKind: "claim",
-      annotationBody: "Make the human listen decision a first-class Episode 4 gate with the exact proof window and current approval state beside it.",
+      slug: "episode-4-editing-hardening",
+      title: "Episode 4 editing hardening log",
+      path: "docs/coordination/quipsly-episode-4-editing-hardening-log.md",
+      quote: "Media sync can feel like a trap: if alignment looks wrong, the user needs a",
+      annotationKind: "question",
+      annotationBody: "Give the editor one reversible, plain-language next action whenever Episode 4 alignment looks wrong, with the current offset and undo state visible.",
       tag: { slug: "episode-production", label: "Episode production", category: "production_breakdown" },
     }),
     loadFixture({
@@ -158,12 +159,12 @@ async function main() {
       tag: { slug: "coaching-safety", label: "Coaching safety", category: "review" },
     }),
     loadFixture({
-      slug: "episode-4-charlie-transcript-sanity",
-      title: "Episode 4 Charlie transcript sanity check",
-      path: "apps/QuipslyStudio/reports/episode-4-charlie-transcript-sanity-summary.md",
-      quote: "`Charlie Ep4.wav` appears to be an edited Logic-style export rather than a raw continuous capture spine. That means transcript anchors are safer than envelope correlation, and some raw setup material may not appear in the spine at all.",
-      annotationKind: "correction",
-      annotationBody: "Carry the transcript-anchored v3 baseline into Studio as the current review truth and keep IMG_3746 held until raw-spine or manual evidence resolves it.",
+      slug: "hgo-testflight-human-gates",
+      title: "High Ground Odyssey TestFlight rehearsal",
+      path: "docs/quipsly/hgo-testflight-rehearsal-runbook.md",
+      quote: "Never edit that receipt to make a human or physical gate green.",
+      annotationKind: "claim",
+      annotationBody: "Keep physical installation, consent, playback, and same-ID timeline readback as human evidence gates instead of inferring them from infrastructure readiness.",
       tag: { slug: "episode-sync", label: "Episode sync", category: "production_breakdown" },
     }),
   ]);
@@ -246,7 +247,7 @@ async function main() {
         sourceUnitId: source.id,
         actorUserId: actor.id,
         actorEmail: ACTOR_EMAIL,
-        clientRequestId: `local-dogfood-annotation-${fixture.slug}-${fixture.fingerprint.slice(0, 16)}`,
+        clientRequestId: `local-dogfood-annotation-${DOGFOOD_CONTRACT_VERSION}-${fixture.slug}-${fixture.fingerprint.slice(0, 12)}`,
         kind: fixture.annotationKind,
         visibility: "project",
         body: fixture.annotationBody,
@@ -268,7 +269,7 @@ async function main() {
         projectSlug: project.slug,
         actorUserId: actor.id,
         actorEmail: ACTOR_EMAIL,
-        clientRequestId: `local-dogfood-draft-${fixture.slug}-${fixture.fingerprint.slice(0, 16)}`,
+        clientRequestId: `local-dogfood-draft-${DOGFOOD_CONTRACT_VERSION}-${fixture.slug}-${fixture.fingerprint.slice(0, 12)}`,
         expectedUpdatedAt: currentAnnotation.updatedAt,
       }), `create ${fixture.slug} writing draft`);
 
@@ -279,23 +280,64 @@ async function main() {
           revisions: { orderBy: { revision: "asc" } },
           uses: {
             include: {
-              document: { select: { id: true, title: true, isPrivate: true } },
-              block: { select: { externalId: true, body: true } },
+              document: {
+                select: {
+                  id: true,
+                  title: true,
+                  isPrivate: true,
+                  personalOwnerUserId: true,
+                },
+              },
+              block: {
+                select: {
+                  id: true,
+                  stableId: true,
+                  externalId: true,
+                  body: true,
+                },
+              },
             },
           },
           tags: true,
         },
       });
       const use = persisted.uses[0];
+      const responseBlockId = typeof use?.sourceJson?.responseBlockId === "string"
+        ? use.sourceJson.responseBlockId
+        : "";
+      const responseBlock = responseBlockId
+        ? await prisma.studioDocumentBlock.findUnique({
+          where: { id: responseBlockId },
+          select: {
+            id: true,
+            documentId: true,
+            stableId: true,
+            externalId: true,
+            body: true,
+          },
+        })
+        : null;
       const sourceFingerprint = sha256(persisted.sourceUnit.immutableText ?? "");
       const verified = Boolean(
         use
         && persisted.sourceUnit.immutableText?.slice(persisted.startOffset, persisted.endOffset) === persisted.exactText
         && sourceFingerprint === persisted.sourceFingerprint
         && use.quoteSnapshot === persisted.exactText
-        && use.block.externalId === `annotation:${persisted.id}`
+        && use.document.personalOwnerUserId === actor.id
+        && use.sourceJson?.personalOwnerUserId === actor.id
+        && use.sourceJson?.evidenceBlockId === use.block.id
+        && use.sourceJson?.evidenceBlockStableId === use.block.stableId
+        && use.block.externalId === `annotation-evidence:${persisted.id}`
         && use.block.body.includes(use.citationKey)
         && use.block.body.includes(use.quoteSnapshot)
+        && responseBlock?.documentId === use.document.id
+        && use.sourceJson?.responseBlockId === responseBlock?.id
+        && use.sourceJson?.responseBlockStableId === responseBlock?.stableId
+        && responseBlock?.externalId === `annotation-response:${persisted.id}`
+        && responseBlock?.body.includes(persisted.body)
+        && draft.responseBlockId === responseBlock?.id
+        && draft.responseBlockStableId === responseBlock?.stableId
+        && draft.href.includes(`block=${encodeURIComponent(responseBlock?.id ?? "")}`)
         && use.document.isPrivate
         && persisted.revisions.length >= 3
         && persisted.tags.some((item) => item.tagId === tag.id)
@@ -313,8 +355,12 @@ async function main() {
         revisionCount: persisted.revisions.length,
         lifecycleExercised,
         draftDocumentId: use.document.id,
+        evidenceBlockId: use.block.id,
+        responseBlockId: responseBlock?.id,
         draftHref: draft.href,
         draftPrivate: use.document.isPrivate,
+        personalOwnerUserId: use.document.personalOwnerUserId,
+        immutableEvidenceSeparatedFromEditableResponse: true,
         sourceMutated: false,
         persistedReadback: verified,
         reused: { annotation: annotation.reused, draft: draft.reused },

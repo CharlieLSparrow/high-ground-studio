@@ -110,6 +110,7 @@ export type PortableNestNote = {
   sourcePath: string | null;
   projectionStatus: string;
   isPrivate: boolean;
+  personal: boolean;
   tagIds: string[];
   blocks: PortableNestNoteBlock[];
   createdAt: string;
@@ -463,6 +464,12 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
     const sourceLabel = nullableString(raw.sourceLabel, 2_000);
     const sourcePath = nullableString(raw.sourcePath, 4_000);
     const projectionStatus = stringValue(raw.projectionStatus, 100);
+    // Bundles created before the explicit owner boundary had only isPrivate.
+    // Restore those legacy private notes to the importing actor instead of
+    // silently widening them to every collaborator in the destination Nest.
+    const personal =
+      raw.personal === true
+      || (raw.personal === undefined && raw.isPrivate === true);
     const documentTagIds = stringArray(raw.tagIds ?? [], MAX_TAGS);
     const createdAt = dateString(raw.createdAt);
     const updatedAt = dateString(raw.updatedAt);
@@ -561,6 +568,7 @@ export function validateNestBundle(input: unknown): NestBundleValidationResult {
       sourcePath,
       projectionStatus,
       isPrivate: raw.isPrivate,
+      personal,
       tagIds: documentTagIds,
       blocks,
       createdAt,

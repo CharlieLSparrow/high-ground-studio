@@ -69,7 +69,8 @@ export async function parseQuipslyNoteToBlocks(
   if (
     document &&
     (document.projectId !== homeNest.id ||
-      document.sourceLabel !== QUIPSLY_NATIVE_NOTE_SOURCE_LABEL)
+      document.sourceLabel !== QUIPSLY_NATIVE_NOTE_SOURCE_LABEL ||
+      document.personalOwnerUserId !== expectedUserId)
   ) {
     throw new Error("Note projection stableId belongs to another document or Nest.");
   }
@@ -79,6 +80,7 @@ export async function parseQuipslyNoteToBlocks(
     document = await prisma.studioDocument.create({
       data: {
         projectId: homeNest.id,
+        personalOwnerUserId: expectedUserId,
         stableId: noteId,
         title: documentTitle,
         sourceLabel: QUIPSLY_NATIVE_NOTE_SOURCE_LABEL,
@@ -88,8 +90,13 @@ export async function parseQuipslyNoteToBlocks(
     });
   } else {
     const updated = await prisma.studioDocument.updateMany({
-      where: { id: document.id, projectId: homeNest.id },
+      where: {
+        id: document.id,
+        projectId: homeNest.id,
+        personalOwnerUserId: expectedUserId,
+      },
       data: {
+        personalOwnerUserId: expectedUserId,
         title: documentTitle,
         sourceLabel: QUIPSLY_NATIVE_NOTE_SOURCE_LABEL,
         projectionStatus: "private",
@@ -312,6 +319,7 @@ export async function syncBlocksToQuipslyNote(documentId: string) {
   const expectedHomeNestSlug = homeNestSlugForEmail(ownerEmail);
   if (
     !expectedHomeNestSlug ||
+    document.personalOwnerUserId !== note.userId ||
     document.project.slug !== expectedHomeNestSlug ||
     document.project.sourceLabel !== sourceLabelForNestKind("home") ||
     document.project.workspace.slug !== STUDIO_WORKSPACE_SLUG

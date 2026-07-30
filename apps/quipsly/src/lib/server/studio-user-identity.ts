@@ -370,6 +370,9 @@ export async function ensureStudioUserFromFirebaseIdentity(input: {
       },
       include: userIdentityInclude,
     });
+  }, {
+    maxWait: 10_000,
+    timeout: 15_000,
   });
 
   return mapStudioUserIdentity(user);
@@ -445,6 +448,9 @@ export async function ensureStudioUserFromAuthIdentity(input: {
       },
       include: userIdentityInclude,
     });
+  }, {
+    maxWait: 10_000,
+    timeout: 15_000,
   });
 
   return mapStudioUserIdentity(user);

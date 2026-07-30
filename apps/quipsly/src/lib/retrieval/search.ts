@@ -11,6 +11,7 @@ import {
 } from "@high-ground/quipsly-domain/retrieval";
 import { resolveSourceLibrary } from "./resolveSourceLibrary";
 import { Prisma } from "@prisma/client";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 /**
  * Searches for quotes matching a natural-language query using Prisma `contains`.
@@ -37,6 +38,9 @@ export async function searchQuotes(
         projectId: backend.projectId,
         nodeType: "quote",
         sourceText: { contains: input.query, mode: "insensitive" },
+        // Project-wide retrieval is a shared Nest surface. Personal writing is
+        // intentionally absent until the index itself is actor-partitioned.
+        document: { personalOwnerUserId: null },
       };
 
       if (backend.nodeTypes && backend.nodeTypes.length > 0 && !backend.nodeTypes.includes("quote")) {
@@ -273,7 +277,10 @@ export async function searchExamples(
 
       const blockResults = await prisma.studioDocumentBlock.findMany({
         where: {
-          id: { in: blendedHits.map(h => h.sourceId) }
+          id: { in: blendedHits.map(h => h.sourceId) },
+          // Keep the read boundary explicit even if a stale or malformed
+          // embedding row points at a personal document.
+          document: { personalOwnerUserId: null },
         },
         include: {
           document: {
@@ -478,7 +485,7 @@ export async function buildContextPacket(
     readonly library?: string;
     readonly limit?: number;
   },
-  context: { activeProjectId: string }
+  context: { activeProjectId: string; actorUserId?: string | null }
 ): Promise<ManuscriptResearchPacket> {
   const startTime = Date.now();
   const prisma = getPrismaClient();
@@ -492,7 +499,10 @@ export async function buildContextPacket(
   const targetBlock = await prisma.studioDocumentBlock.findFirst({
     where: {
       documentId: input.documentId,
-      document: { projectId: context.activeProjectId },
+      document: {
+        projectId: context.activeProjectId,
+        ...personalWritingDocumentVisibilityWhere(context.actorUserId),
+      },
       stableId: input.cursorNodeId,
     },
   });
@@ -535,6 +545,10 @@ export async function buildContextPacket(
   // Prioritize if an additionalQuery is provided
   const whereClause: any = {
     documentId: input.documentId,
+    document: {
+      projectId: context.activeProjectId,
+      ...personalWritingDocumentVisibilityWhere(context.actorUserId),
+    },
   };
   
   if (input.additionalQuery) {

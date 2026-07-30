@@ -4,6 +4,7 @@ import { z } from "zod";
 import { getPrismaClient } from "@/lib/prisma";
 import { QUIPSLY_NATIVE_NOTE_SOURCE_LABEL } from "@/lib/server/bi-directional-sync";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 import { sourceLabelForNestKind } from "@/lib/studio/project-registry";
 
 export const runtime = "nodejs";
@@ -57,8 +58,11 @@ export async function POST(request: Request) {
 
   try {
     const ownerEmail = session.user.primaryEmail.trim().toLowerCase();
-    const document = await prisma.studioDocument.findUnique({
-      where: { id: payload.documentId },
+    const document = await prisma.studioDocument.findFirst({
+      where: {
+        id: payload.documentId,
+        ...personalWritingDocumentVisibilityWhere(session.user.id),
+      },
       select: {
         id: true,
         stableId: true,

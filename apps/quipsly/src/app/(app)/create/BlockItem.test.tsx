@@ -137,4 +137,26 @@ describe("applied writing tags", () => {
       "docs/quipsly/episode-4-audio-publication-goal.md",
     );
   });
+
+  it("labels immutable research evidence as source evidence rather than transcript evidence", () => {
+    renderBlock({
+      annotationId: "annotation-1",
+      citationLabel: "Episode 4 audio-first publication goal",
+      immutable: true,
+    });
+
+    expect(screen.getByText("Pinned source evidence")).toBeInTheDocument();
+    expect(screen.queryByText("Pinned transcript evidence")).not.toBeInTheDocument();
+  });
+
+  it("keeps the transcript-specific label for immutable transcript evidence", () => {
+    renderBlock({
+      annotationId: "transcript:job-1:segment-1",
+      citationLabel: "Recording-backed transcript evidence",
+      immutable: true,
+    });
+
+    expect(screen.getByText("Pinned transcript evidence")).toBeInTheDocument();
+    expect(screen.queryByText("Pinned source evidence")).not.toBeInTheDocument();
+  });
 });

@@ -11,6 +11,7 @@ import {
   canonicalDocumentNoteSelect,
   projectCanonicalDocumentNote,
 } from "@/lib/server/canonical-document-note-edit";
+import { personalWritingDocumentVisibilityWhere } from "@/lib/server/personal-writing-documents";
 
 export const dynamic = "force-dynamic";
 
@@ -160,6 +161,7 @@ export async function GET(request: Request) {
       where: {
         projectId: selectedProject.id,
         sourceLabel: { contains: "document-kind:note", mode: "insensitive" },
+        ...personalWritingDocumentVisibilityWhere(actorUserId),
       },
       orderBy: { updatedAt: "desc" },
       take: 60,

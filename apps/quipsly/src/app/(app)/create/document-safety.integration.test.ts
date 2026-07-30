@@ -9,10 +9,12 @@ import {
   createAndApplyPassageTag,
   createNamedDocumentCheckpointAction,
   exportPortableDocumentAction,
+  loadWorkbenchState,
   listNamedDocumentCheckpointsAction,
   pastePlainTextBlocksAction,
   restoreNamedDocumentCheckpointAction,
   restorePortableDocumentAction,
+  saveBlockContent,
   toggleBlockTag,
 } from "./actions";
 
@@ -56,6 +58,12 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
 
   beforeAll(async () => {
     signedInAs(writerEmail);
+    await prisma.user.createMany({
+      data: [
+        { id: writerEmail, primaryEmail: writerEmail, name: "Document writer" },
+        { id: outsiderEmail, primaryEmail: outsiderEmail, name: "Document collaborator" },
+      ],
+    });
     await prisma.studioWorkspace.create({ data: { id: workspaceId, slug: `document-${nonce}`, name: "Document safety smoke" } });
     await prisma.studioProject.create({
       data: {
@@ -63,13 +71,19 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
         workspaceId,
         slug: projectSlug,
         name: "Document safety Nest",
-        accessGrants: { create: { email: writerEmail, role: "EDITOR", status: "ACTIVE", createdByEmail: writerEmail } },
+        accessGrants: {
+          create: [
+            { email: writerEmail, role: "EDITOR", status: "ACTIVE", createdByEmail: writerEmail },
+            { email: outsiderEmail, role: "EDITOR", status: "ACTIVE", createdByEmail: writerEmail },
+          ],
+        },
       },
     });
     await prisma.studioDocument.create({
       data: {
         id: documentId,
         projectId,
+        personalOwnerUserId: writerEmail,
         stableId: `document-stable-${nonce}`,
         title: "Coaching evidence draft",
         sourceLabel: "document-kind:draft",
@@ -134,6 +148,7 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
 
   afterAll(async () => {
     await prisma.studioWorkspace.delete({ where: { id: workspaceId } }).catch(() => undefined);
+    await prisma.user.deleteMany({ where: { id: { in: [writerEmail, outsiderEmail] } } }).catch(() => undefined);
     await prisma.$disconnect();
   });
 
@@ -313,7 +328,7 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     expect(await prisma.studioTaggedSpan.findUnique({ where: { id: added.spanId } })).toBeNull();
   });
 
-  it("rejects tampered exports and every separate-account backup boundary without changing content", async () => {
+  it("rejects tampered exports and a same-Nest editor at every personal-document boundary without changing content", async () => {
     signedInAs(writerEmail);
     const exportResult = await exportPortableDocumentAction(documentId);
     if (!exportResult.ok || !exportResult.bundleJson) throw new Error("Export failed.");
@@ -327,6 +342,7 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
     expect(await prisma.studioDocumentBlock.findUnique({ where: { id: firstBlockId }, select: { body: true } })).toEqual(before);
 
     signedInAs(outsiderEmail);
+    await expect(loadWorkbenchState(projectSlug, documentId)).resolves.toBeNull();
     await Promise.all([
       expect(listNamedDocumentCheckpointsAction(documentId)).resolves.toMatchObject({
         ok: false,
@@ -344,6 +360,9 @@ runLocalDatabaseSmoke("writing checkpoint and portable restore disposable databa
         ok: false,
         code: "ACCESS_NOT_VERIFIED",
       }),
+      expect(saveBlockContent(firstBlockId, "Outsider overwrite")).rejects.toThrow(
+        "Document not found.",
+      ),
     ]);
     expect(await prisma.studioDocumentBlock.findUnique({ where: { id: firstBlockId }, select: { body: true } })).toEqual(before);
     expect(await prisma.studioDocumentOperation.count({
