@@ -16,8 +16,10 @@ const options = {
   marketingVersion: "1.0",
   buildNumber: "6",
   groupName: "Quipsly Capture Internal",
+  groupKind: "internal",
   testerEmail: "tester@example.com",
   expectedTesterStates: ["INVITED", "ACCEPTED"],
+  expectedPublicLinkStates: [],
 };
 
 test("creates a five-minute ES256 token with explicit read scopes", () => {
@@ -69,17 +71,23 @@ test("parses an explicit TestFlight acceptance contract", () => {
     "1.0",
     "--build",
     "6",
+    "--group-kind",
+    "external",
     "--tester-email",
     "tester@example.com",
     "--expect-tester-state",
+    "accepted,installed",
+    "--expect-public-link-state",
     "accepted,installed",
   ]);
 
   assert.equal(parsed.apiKeyPath, "/private/key.json");
   assert.equal(parsed.marketingVersion, "1.0");
   assert.equal(parsed.buildNumber, "6");
+  assert.equal(parsed.groupKind, "external");
   assert.equal(parsed.testerEmail, "tester@example.com");
   assert.deepEqual(parsed.expectedTesterStates, ["ACCEPTED", "INSTALLED"]);
+  assert.deepEqual(parsed.expectedPublicLinkStates, ["ACCEPTED", "INSTALLED"]);
 });
 
 test("defaults to the canonical current TestFlight release", () => {
@@ -93,6 +101,7 @@ test("defaults to the canonical current TestFlight release", () => {
     QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
   );
   assert.equal(parsed.buildNumber, QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber);
+  assert.equal(parsed.groupKind, "internal");
 });
 
 test("redacts the tester email and proves the exact internal build contract", () => {
@@ -173,6 +182,7 @@ test("redacts the tester email and proves the exact internal build contract", ()
           attributes: {
             email: options.testerEmail,
             state: "ACCEPTED",
+            inviteType: "EMAIL",
           },
           relationships: {
             betaGroups: {
@@ -188,6 +198,198 @@ test("redacts the tester email and proves the exact internal build contract", ()
   assert.equal(receipt.build.internalBuildState, "IN_BETA_TESTING");
   assert.equal(receipt.group.includesBuild, true);
   assert.equal(receipt.testers.expectedTester.state, "ACCEPTED");
+  assert.equal(receipt.testers.expectedTester.inviteType, "EMAIL");
   assert.equal(receipt.testers.expectedTester.email, undefined);
   assert.match(receipt.testers.expectedTester.emailSha256, /^[a-f0-9]{64}$/);
+});
+
+test("proves an external public-link group without exposing anonymous tester identity", () => {
+  const externalOptions = {
+    ...options,
+    groupName: "Quipsly Capture Rehearsal",
+    groupKind: "external",
+    testerEmail: "",
+    expectedTesterStates: [],
+    expectedPublicLinkStates: ["ACCEPTED", "INSTALLED"],
+  };
+  const receipt = summarizeReadback({
+    options: externalOptions,
+    auditedAt: "2026-07-30T13:40:00.000Z",
+    appDocument: {
+      data: {
+        type: "apps",
+        id: externalOptions.appId,
+        attributes: {
+          name: externalOptions.appName,
+          bundleId: externalOptions.bundleId,
+        },
+      },
+    },
+    buildDocument: {
+      data: [
+        {
+          type: "builds",
+          id: "build-6",
+          attributes: {
+            version: "6",
+            processingState: "VALID",
+            expired: false,
+            usesNonExemptEncryption: false,
+          },
+          relationships: {
+            preReleaseVersion: {
+              data: { type: "preReleaseVersions", id: "version-1" },
+            },
+            buildBetaDetail: {
+              data: { type: "buildBetaDetails", id: "build-6" },
+            },
+          },
+        },
+      ],
+      included: [
+        {
+          type: "preReleaseVersions",
+          id: "version-1",
+          attributes: { version: "1.0", platform: "IOS" },
+        },
+        {
+          type: "buildBetaDetails",
+          id: "build-6",
+          attributes: {
+            internalBuildState: "IN_BETA_TESTING",
+            externalBuildState: "IN_BETA_TESTING",
+          },
+        },
+      ],
+    },
+    groupDocument: {
+      data: [
+        {
+          type: "betaGroups",
+          id: "external-group",
+          attributes: {
+            name: externalOptions.groupName,
+            isInternalGroup: false,
+            feedbackEnabled: true,
+            publicLinkEnabled: true,
+            publicLinkLimitEnabled: true,
+            publicLinkLimit: 100,
+          },
+          relationships: {
+            builds: { data: [{ type: "builds", id: "build-6" }] },
+            betaTesters: {
+              data: [{ type: "betaTesters", id: "anonymous-tester" }],
+            },
+          },
+        },
+      ],
+    },
+    testerDocument: {
+      data: [
+        {
+          type: "betaTesters",
+          id: "anonymous-tester",
+          attributes: {
+            state: "INSTALLED",
+            inviteType: "PUBLIC_LINK",
+          },
+          relationships: {
+            betaGroups: {
+              data: [{ type: "betaGroups", id: "external-group" }],
+            },
+          },
+        },
+      ],
+    },
+  });
+
+  assert.equal(receipt.passed, true);
+  assert.equal(receipt.schema, "quipsly-app-store-connect-readback-v2");
+  assert.equal(receipt.group.isInternalGroup, false);
+  assert.equal(receipt.group.publicLinkEnabled, true);
+  assert.equal(receipt.testers.publicLinkInviteCount, 1);
+  assert.deepEqual(receipt.testers.publicLinkStates, ["INSTALLED"]);
+  assert.equal(receipt.testers.expectedTester.emailSha256, null);
+});
+
+test("fails a public-link acceptance contract until a public-link tester appears", () => {
+  const pendingExternalOptions = {
+    ...options,
+    groupName: "Quipsly Capture Rehearsal",
+    groupKind: "external",
+    testerEmail: "",
+    expectedTesterStates: [],
+    expectedPublicLinkStates: ["ACCEPTED", "INSTALLED"],
+  };
+  const receipt = summarizeReadback({
+    options: pendingExternalOptions,
+    appDocument: {
+      data: {
+        type: "apps",
+        id: pendingExternalOptions.appId,
+        attributes: {
+          name: pendingExternalOptions.appName,
+          bundleId: pendingExternalOptions.bundleId,
+        },
+      },
+    },
+    buildDocument: {
+      data: [
+        {
+          type: "builds",
+          id: "build-6",
+          attributes: {
+            version: "6",
+            processingState: "VALID",
+            expired: false,
+          },
+          relationships: {
+            preReleaseVersion: {
+              data: { type: "preReleaseVersions", id: "version-1" },
+            },
+            buildBetaDetail: {
+              data: { type: "buildBetaDetails", id: "build-6" },
+            },
+          },
+        },
+      ],
+      included: [
+        {
+          type: "preReleaseVersions",
+          id: "version-1",
+          attributes: { version: "1.0" },
+        },
+        {
+          type: "buildBetaDetails",
+          id: "build-6",
+          attributes: {
+            internalBuildState: "IN_BETA_TESTING",
+            externalBuildState: "IN_BETA_TESTING",
+          },
+        },
+      ],
+    },
+    groupDocument: {
+      data: [
+        {
+          type: "betaGroups",
+          id: "external-group",
+          attributes: {
+            name: pendingExternalOptions.groupName,
+            isInternalGroup: false,
+            publicLinkEnabled: true,
+          },
+          relationships: {
+            builds: { data: [{ type: "builds", id: "build-6" }] },
+            betaTesters: { data: [] },
+          },
+        },
+      ],
+    },
+    testerDocument: { data: [] },
+  });
+
+  assert.equal(receipt.testers.publicLinkInviteCount, 0);
+  assert.equal(receipt.checks.publicLinkTesterState, false);
+  assert.equal(receipt.passed, false);
 });

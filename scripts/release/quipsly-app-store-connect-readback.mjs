@@ -14,6 +14,7 @@ const DEFAULTS = Object.freeze({
   marketingVersion: QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
   buildNumber: QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
   groupName: "Quipsly Capture Internal",
+  groupKind: "internal",
 });
 
 function fail(message) {
@@ -29,8 +30,10 @@ export function parseArguments(argv) {
     marketingVersion: DEFAULTS.marketingVersion,
     buildNumber: DEFAULTS.buildNumber,
     groupName: DEFAULTS.groupName,
+    groupKind: DEFAULTS.groupKind,
     testerEmail: process.env.QUIPSLY_CAPTURE_TESTER_EMAIL || "",
     expectedTesterStates: [],
+    expectedPublicLinkStates: [],
     outputPath: "",
   };
 
@@ -75,12 +78,26 @@ export function parseArguments(argv) {
         options.groupName = takeValue(index, argument);
         index += 1;
         break;
+      case "--group-kind":
+        options.groupKind = takeValue(index, argument).trim().toLowerCase();
+        if (!["internal", "external"].includes(options.groupKind)) {
+          fail("--group-kind must be internal or external.");
+        }
+        index += 1;
+        break;
       case "--tester-email":
         options.testerEmail = takeValue(index, argument);
         index += 1;
         break;
       case "--expect-tester-state":
         options.expectedTesterStates = takeValue(index, argument)
+          .split(",")
+          .map((value) => value.trim().toUpperCase())
+          .filter(Boolean);
+        index += 1;
+        break;
+      case "--expect-public-link-state":
+        options.expectedPublicLinkStates = takeValue(index, argument)
           .split(",")
           .map((value) => value.trim().toUpperCase())
           .filter(Boolean);
@@ -114,9 +131,12 @@ Options:
   --bundle-id <id>               Expected bundle ID.
   --version <version>            Expected marketing version.
   --build <number>               Expected build number.
-  --group <name>                 Expected internal TestFlight group.
+  --group <name>                 Expected TestFlight group.
+  --group-kind <kind>            Expected group kind: internal or external.
   --tester-email <email>         Match one assigned tester without printing it.
   --expect-tester-state <states> Comma-separated accepted API states.
+  --expect-public-link-state <s> Require an anonymous public-link tester in
+                                  one of the comma-separated API states.
   --output <path>                Write the redacted JSON receipt with mode 0600.
 `;
 }
@@ -223,6 +243,7 @@ function includedResource(document, type, id) {
 }
 
 function emailDigest(email) {
+  if (typeof email !== "string" || !email.trim()) return null;
   return createHash("sha256").update(email.trim().toLowerCase()).digest("hex");
 }
 
@@ -304,6 +325,20 @@ export function summarizeReadback({
         .filter(Boolean),
     ),
   ].sort();
+  const testerInviteTypes = [
+    ...new Set(
+      assignedTesters
+        .map((tester) => tester.attributes?.inviteType)
+        .filter(Boolean),
+    ),
+  ].sort();
+  const publicLinkTesters = assignedTesters.filter(
+    (tester) => tester.attributes?.inviteType === "PUBLIC_LINK",
+  );
+  const emailTesters = assignedTesters.filter(
+    (tester) => tester.attributes?.inviteType === "EMAIL",
+  );
+  const expectedInternalGroup = options.groupKind === "internal";
 
   const checks = {
     appIdentity:
@@ -313,14 +348,15 @@ export function summarizeReadback({
     buildIsValid:
       matchingBuild.attributes?.processingState === "VALID"
       && matchingBuild.attributes?.expired === false,
-    buildIsInInternalTesting:
-      betaDetail?.attributes?.internalBuildState === "IN_BETA_TESTING",
-    internalGroup:
-      group.attributes?.isInternalGroup === true
-      && groupBuildIds.includes(matchingBuild.id),
+    buildIsInExpectedTesting:
+      expectedInternalGroup
+        ? betaDetail?.attributes?.internalBuildState === "IN_BETA_TESTING"
+        : betaDetail?.attributes?.externalBuildState === "IN_BETA_TESTING",
+    groupKind:
+      group.attributes?.isInternalGroup === expectedInternalGroup,
+    groupIncludesBuild: groupBuildIds.includes(matchingBuild.id),
     testerAssigned:
-      assignedTesters.length > 0
-      && (!options.testerEmail || Boolean(expectedTester)),
+      !options.testerEmail || Boolean(expectedTester),
     testerState:
       options.expectedTesterStates.length === 0
       || Boolean(
@@ -329,10 +365,14 @@ export function summarizeReadback({
           subjectTester.attributes?.state,
         ),
       ),
+    publicLinkTesterState:
+      options.expectedPublicLinkStates.length === 0
+      || publicLinkTesters.some((tester) =>
+        options.expectedPublicLinkStates.includes(tester.attributes?.state)),
   };
 
   return {
-    schema: "quipsly-app-store-connect-readback-v1",
+    schema: "quipsly-app-store-connect-readback-v2",
     auditedAt,
     app: {
       id: app.id,
@@ -356,16 +396,31 @@ export function summarizeReadback({
       name: group.attributes?.name,
       isInternalGroup: group.attributes?.isInternalGroup,
       feedbackEnabled: group.attributes?.feedbackEnabled,
+      publicLinkEnabled: group.attributes?.publicLinkEnabled ?? null,
+      publicLinkLimitEnabled:
+        group.attributes?.publicLinkLimitEnabled ?? null,
+      publicLinkLimit: group.attributes?.publicLinkLimit ?? null,
       includesBuild: groupBuildIds.includes(matchingBuild.id),
     },
     testers: {
       assignedCount: assignedTesters.length,
       states: testerStates,
+      inviteTypes: testerInviteTypes,
+      emailInviteCount: emailTesters.length,
+      publicLinkInviteCount: publicLinkTesters.length,
+      publicLinkStates: [
+        ...new Set(
+          publicLinkTesters
+            .map((tester) => tester.attributes?.state)
+            .filter(Boolean),
+        ),
+      ].sort(),
       expectedTester: subjectTester
         ? {
             id: subjectTester.id,
             emailSha256: emailDigest(subjectTester.attributes.email),
             state: subjectTester.attributes?.state,
+            inviteType: subjectTester.attributes?.inviteType ?? null,
           }
         : null,
     },

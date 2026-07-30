@@ -4188,3 +4188,12 @@ This is an active-goal checkpoint, not a completion claim.
   Switch Control, or physical-device proof. The static App Store gate now
   prevents the explicit reduced-motion guards from silently disappearing; a
   physical TestFlight pass with the system preference enabled remains required.
+- The App Store Connect readback now distinguishes internal and external group
+  contracts and can fail closed until an anonymous `PUBLIC_LINK` tester reaches
+  `ACCEPTED` or `INSTALLED`, while emitting only aggregate invite types/states.
+  Seven focused tests pass. Live external-group readback at
+  `2026-07-30T13:37:17.048Z` proved Build 14, the approved external group, its
+  enabled 100-person public link, and all beta metadata, but correctly remained
+  red because Apple still exposed zero public-link testers. The named email
+  tester remained `INVITED`; neither fact substitutes for Scott's physical
+  TestFlight and installed-app version/build readback.

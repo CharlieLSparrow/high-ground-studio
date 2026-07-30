@@ -251,6 +251,23 @@ that the provider accepted the resend; it does not prove mailbox delivery or
 physical installation. On July 29, that exact resend returned HTTP 201 after
 Apple had failed to deliver the original message.
 
+The public-link route is intentionally anonymous. Do not wait for the named
+email tester to change state before beginning the rehearsal. Instead, use the
+external-group readback after the tester taps **Start Testing**:
+
+```bash
+pnpm quipsly:capture:app-store-readback -- \
+  --group "Quipsly Capture Rehearsal" \
+  --group-kind external \
+  --expect-public-link-state ACCEPTED,INSTALLED
+```
+
+This command fails until Apple exposes at least one `PUBLIC_LINK` tester in
+`ACCEPTED` or `INSTALLED`, then reports only aggregate invite types and states.
+It never prints an anonymous tester's name or email. Apple may take time to
+publish install/session metrics, so the physical iPhone's TestFlight and
+installed-app version/build readback remains the immediate source of truth.
+
 - [Apple: Invite external testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/invite-external-testers)
 - [Apple: View and reinvite testers](https://developer.apple.com/help/app-store-connect/test-a-beta-version/view-and-manage-tester-information)
 - [Apple: Beta tester invitations API](https://developer.apple.com/documentation/appstoreconnectapi/beta-tester-invitations)
