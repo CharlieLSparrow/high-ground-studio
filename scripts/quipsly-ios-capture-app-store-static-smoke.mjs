@@ -1351,6 +1351,16 @@ requireIncludes(
   "Today follow-through expansion has a non-animated reduced-motion path",
 );
 requireIncludes(
+  capturePhoneShellText,
+  ".safeAreaInset(edge: .bottom, spacing: 0)",
+  "consent save action remains reachable outside the scrolling Form",
+);
+requireIncludes(
+  capturePhoneShellText,
+  "Saves only the recording and transcription choices shown above. Recording still starts separately.",
+  "sticky consent action preserves the explicit recording-start boundary",
+);
+requireIncludes(
   transcriptReviewText,
   "reduceMotion ? nil : .easeOut(duration: 0.3)",
   "transcript evidence return has a non-animated reduced-motion path",

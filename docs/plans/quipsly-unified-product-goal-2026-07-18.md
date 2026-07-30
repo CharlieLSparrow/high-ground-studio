@@ -4197,3 +4197,19 @@ This is an active-goal checkpoint, not a completion claim.
   red because Apple still exposed zero public-link testers. The named email
   tester remained `INVITED`; neither fact substitutes for Scott's physical
   TestFlight and installed-app version/build readback.
+- Operating the full consent journeys exposed a concrete rehearsal UX defect:
+  after the nearby-participant attestation, the final save action was
+  virtualized below a long Form and took repeated swipes to recover. Current
+  source moves **Save these choices** into a persistent bottom action bar while
+  retaining separate audio, video, transcription, nearby-person, stable-owner,
+  and visible-recording-start boundaries. The action is always discoverable but
+  remains disabled until a recording medium and the nearby-person attestation
+  are both selected.
+- Two compiled audio/video consent journeys now pass without searching for the
+  final action; the audio journey fell from 43.868 seconds to 27.390 seconds and
+  the video-only journey from 39.928 seconds to 26.452 seconds in the same
+  deterministic environment. A separate largest-accessibility-text run passed
+  reachability plus Apple's `hitRegion`, `sufficientElementDescription`, and
+  `textClipped` audit. Result:
+  `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_07-45-10--0600.xcresult`.
+  Build 14 remains unchanged and does not contain this post-rehearsal UX fix.

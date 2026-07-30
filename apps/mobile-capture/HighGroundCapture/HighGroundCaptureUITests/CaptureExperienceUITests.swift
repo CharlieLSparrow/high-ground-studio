@@ -1072,6 +1072,14 @@ final class CaptureExperienceUITests: XCTestCase {
         let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
         XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
 
+        let saveChoices = app.buttons["CaptureConsentSaveChoicesButton"]
+        XCTAssertTrue(saveChoices.exists)
+        XCTAssertTrue(
+            saveChoices.isHittable,
+            "The final consent action should remain reachable while the person reviews each choice."
+        )
+        XCTAssertFalse(saveChoices.isEnabled)
+
         let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
         let recordVideo = app.switches["CaptureConsentRecordVideoToggle"]
         let transcribe = app.switches["CaptureConsentTranscriptionToggle"]
@@ -1093,11 +1101,10 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(nearbyPeopleChoice.exists)
         turnOn(nearbyPeopleChoice)
 
-        // SwiftUI Form virtualizes rows after toggle updates on newer runtimes.
-        // Re-query and reveal the action instead of retaining a stale snapshot.
-        let saveChoices = app.buttons["CaptureConsentSaveChoicesButton"]
-        reveal(saveChoices)
+        // The action remains outside the scrolling Form so the person never
+        // has to hunt for the final consent decision after reviewing choices.
         XCTAssertTrue(saveChoices.exists)
+        XCTAssertTrue(saveChoices.isHittable)
         XCTAssertTrue(saveChoices.isEnabled)
         saveChoices.tap()
 
@@ -1114,6 +1121,42 @@ final class CaptureExperienceUITests: XCTestCase {
         waitForExpectations(timeout: 5)
         XCTAssertTrue(readyStart.isEnabled, "The local recorder should become available once explicit choices and nearby-person agreement are saved.")
         XCTAssertEqual(app.staticTexts["CaptureRecorderStateLabel"].label, "Consent ready · mic checks on tap")
+    }
+
+    func testConsentActionRemainsReachableAtLargestAccessibilityTextSize() throws {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=record",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launch()
+
+        XCTAssertTrue(app.navigationBars["Record"].waitForExistence(timeout: 12))
+        let chooser = app.buttons["CaptureSessionChooser"]
+        XCTAssertTrue(chooser.waitForExistence(timeout: 5))
+        chooser.tap()
+        let consentNeededSession = app.staticTexts["High Ground pre-show"]
+        XCTAssertTrue(consentNeededSession.waitForExistence(timeout: 5))
+        consentNeededSession.tap()
+        app.buttons["CaptureConfirmConsentButton"].tap()
+
+        let consentSheet = app.otherElements["CaptureConsentConfirmationSheet"]
+        XCTAssertTrue(consentSheet.waitForExistence(timeout: 5))
+        let saveChoices = app.buttons["CaptureConsentSaveChoicesButton"]
+        XCTAssertTrue(saveChoices.exists)
+        XCTAssertTrue(
+            saveChoices.isHittable,
+            "The final consent action must remain reachable without scrolling even at the largest accessibility text size."
+        )
+        XCTAssertFalse(saveChoices.isEnabled)
+
+        try app.performAccessibilityAudit(for: [
+            .hitRegion,
+            .sufficientElementDescription,
+            .textClipped,
+        ])
     }
 
     func testVideoModesExplainAndExposeTheExactLocalSourceBeforeCameraPermission() {
@@ -1173,6 +1216,10 @@ final class CaptureExperienceUITests: XCTestCase {
 
         let recordAudio = app.switches["CaptureConsentRecordAudioToggle"]
         let recordVideo = app.switches["CaptureConsentRecordVideoToggle"]
+        let saveChoices = app.buttons["CaptureConsentSaveChoicesButton"]
+        XCTAssertTrue(saveChoices.exists)
+        XCTAssertTrue(saveChoices.isHittable)
+        XCTAssertFalse(saveChoices.isEnabled)
         XCTAssertEqual(recordAudio.value as? String, "0")
         turnOn(recordVideo)
 
@@ -1180,8 +1227,7 @@ final class CaptureExperienceUITests: XCTestCase {
         reveal(nearbyPeople)
         turnOn(nearbyPeople)
 
-        let saveChoices = app.buttons["CaptureConsentSaveChoicesButton"]
-        reveal(saveChoices)
+        XCTAssertTrue(saveChoices.isHittable)
         XCTAssertTrue(saveChoices.isEnabled)
         saveChoices.tap()
         expectation(

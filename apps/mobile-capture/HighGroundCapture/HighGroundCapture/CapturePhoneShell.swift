@@ -6364,30 +6364,16 @@ struct CaptureConsentConfirmationSheet: View {
                 }
 
                 Section {
-                    Button {
-                        submitConsent()
-                    } label: {
-                        HStack {
-                            Spacer()
-                            if isSubmitting {
-                                ProgressView()
-                            } else {
-                                Text("Save these choices")
-                                    .fontWeight(.semibold)
-                            }
-                            Spacer()
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(
-                        (!canRecordAudio && !canRecordVideo)
-                            || !allAudibleParticipantsNotifiedAndAgreed
-                            || isSubmitting
-                    )
-                    .accessibilityIdentifier("CaptureConsentSaveChoicesButton")
-                } footer: {
                     Text(consentSummary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } header: {
+                    Text("Your choices")
                 }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                consentActionBar
             }
             .navigationTitle("Consent choices")
             .navigationBarTitleDisplayMode(.inline)
@@ -6401,6 +6387,42 @@ struct CaptureConsentConfirmationSheet: View {
         }
         .presentationDetents([.large])
         .accessibilityIdentifier("CaptureConsentConfirmationSheet")
+    }
+
+    private var consentActionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button {
+                submitConsent()
+            } label: {
+                HStack {
+                    Spacer()
+                    if isSubmitting {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        Text("Save these choices")
+                            .fontWeight(.semibold)
+                    }
+                    Spacer()
+                }
+                .frame(minHeight: 30)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.large)
+            .disabled(
+                (!canRecordAudio && !canRecordVideo)
+                    || !allAudibleParticipantsNotifiedAndAgreed
+                    || isSubmitting
+            )
+            .accessibilityHint(
+                "Saves only the recording and transcription choices shown above. Recording still starts separately."
+            )
+            .accessibilityIdentifier("CaptureConsentSaveChoicesButton")
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+        }
+        .background(.bar)
     }
 
     private func submitConsent() {
