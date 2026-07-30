@@ -1251,14 +1251,21 @@ function checkTranscriptCorrectionContractSources() {
       && inboxText.includes("until an explicit Research filing receipt commits")
       && mobileSourceInboxRouteText.includes("actorOwnedPrivateInbox: true")
       && mobileSourceInboxRouteText.includes("writableResearchDestinationsOnly: true")
+      && mobileSourceInboxRouteText.includes("optionalSourceAnnotation: true")
+      && mobileSourceInboxRouteText.includes("exactWholeCaptureAnchor: true")
+      && mobileSourceInboxRouteText.includes("canonicalProjectTagsOnly: true")
+      && mobileSourceInboxRouteText.includes("annotationMutatesSource: false")
       && mobileSourceInboxRouteText.includes("expectedCaptureUpdatedAt")
       && mobileSourceInboxRouteText.includes("filePersonalSourceIntoResearch")
       && sourceInboxFilingText.includes("completeFileProtectionUntilFirstUserAuthentication")
       && sourceInboxFilingText.includes("ownerAccountID")
       && sourceInboxFilingText.includes("expectedCaptureUpdatedAt")
+      && sourceInboxFilingText.includes("annotationRequestID")
+      && sourceInboxFilingText.includes("annotationTagIDs")
+      && sourceInboxFilingText.includes("annotationAcknowledgementMatches")
       && sourceInboxFilingText.includes("ACKNOWLEDGEMENT_MISMATCH"),
     "personalSourceResearchFiling",
-    "A person explicitly files an actor-owned Inbox capture into one writable Nest as a canonical immutable Research source plus receipt; retries are idempotent, the private capture remains unchanged, and Inbox removal follows the committed receipt.",
+    "A person explicitly files an actor-owned Inbox capture into one writable Nest as a canonical immutable Research source plus receipt and can atomically attach a whole-source annotation using existing Nest tags; retries preserve both identities, the private capture remains unchanged, and Inbox removal follows the committed receipt.",
   );
   expect(
     shareCaptureBridgeText.includes('appGroupIdentifier = "group.com.highgroundodyssey.HighGroundCapture"')

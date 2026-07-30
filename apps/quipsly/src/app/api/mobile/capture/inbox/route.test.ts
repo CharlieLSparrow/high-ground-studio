@@ -53,9 +53,16 @@ describe("mobile private source Inbox", () => {
       _count: { captureReceipts: 1 },
       captureReceipts: [{ capturedAt: new Date("2026-07-30T08:00:00.000Z") }],
     }]);
+    const tagFindMany = jest.fn().mockResolvedValue([{
+      id: "tag-1",
+      projectId: "project-edit",
+      slug: "episode-seed",
+      label: "Episode seed",
+    }]);
     jest.mocked(getPrismaClient).mockReturnValue({
       snippet: { findMany: snippetFindMany },
       bookmark: { findMany: bookmarkFindMany },
+      studioTag: { findMany: tagFindMany },
     } as any);
     jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([
       { id: "project-edit", slug: "episode", name: "Episode", role: "EDITOR", sourceLabel: "show" },
@@ -89,9 +96,13 @@ describe("mobile private source Inbox", () => {
         },
       ],
       destinations: [{ id: "project-edit", role: "EDITOR" }],
+      tagCatalog: [{ id: "tag-1", projectId: "project-edit", label: "Episode seed" }],
       boundaries: {
         actorOwnedPrivateInbox: true,
         writableResearchDestinationsOnly: true,
+        optionalSourceAnnotation: true,
+        canonicalProjectTagsOnly: true,
+        annotationMutatesSource: false,
         privateCaptureMutated: false,
         externalSideEffects: false,
       },
@@ -115,6 +126,45 @@ describe("mobile private source Inbox", () => {
     expect(filePersonalSourceIntoResearch).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      label: "an invalid annotation identity",
+      annotation: {
+        clientRequestId: "not-a-uuid",
+        kind: "note",
+        visibility: "private",
+        body: "Keep the exact evidence attached.",
+        tagIds: [],
+      },
+    },
+    {
+      label: "duplicate canonical tag identities",
+      annotation: {
+        clientRequestId: "7907165b-4582-411d-b4b8-e0cb0688b9a4",
+        kind: "note",
+        visibility: "private",
+        body: "Keep the exact evidence attached.",
+        tagIds: ["tag-1", "tag-1"],
+      },
+    },
+  ])("rejects $label before touching canonical persistence", async ({ annotation }) => {
+    const response = await POST(new Request("http://localhost/api/mobile/capture/inbox", {
+      method: "POST",
+      body: JSON.stringify({
+        action: "file-source",
+        captureId: "snippet-1",
+        captureType: "SNIPPET",
+        projectId: "project-1",
+        clientRequestId: "5f7a3e4d-33eb-4fc8-943f-5922d14922d4",
+        expectedCaptureUpdatedAt: "2026-07-30T09:00:00.000Z",
+        annotation,
+      }),
+    }));
+
+    expect(response.status).toBe(400);
+    expect(filePersonalSourceIntoResearch).not.toHaveBeenCalled();
+  });
+
   it("files the same private source through the canonical idempotent service", async () => {
     jest.mocked(getPrismaClient).mockReturnValue({} as any);
     jest.mocked(filePersonalSourceIntoResearch).mockResolvedValue({
@@ -128,8 +178,18 @@ describe("mobile private source Inbox", () => {
       captureType: "SNIPPET",
       reused: false,
       href: "/research?source=source-1",
+      annotation: {
+        id: "annotation-1",
+        clientRequestId: "7907165b-4582-411d-b4b8-e0cb0688b9a4",
+        kind: "question",
+        visibility: "project",
+        body: "Could this frame the episode opening?",
+        tagIds: ["tag-1"],
+        reused: false,
+      },
     });
     const requestId = "5f7a3e4d-33eb-4fc8-943f-5922d14922d4";
+    const annotationRequestId = "7907165b-4582-411d-b4b8-e0cb0688b9a4";
 
     const response = await POST(new Request("http://localhost/api/mobile/capture/inbox", {
       method: "POST",
@@ -140,6 +200,13 @@ describe("mobile private source Inbox", () => {
         projectId: "project-1",
         clientRequestId: requestId,
         expectedCaptureUpdatedAt: "2026-07-30T09:00:00.000Z",
+        annotation: {
+          clientRequestId: annotationRequestId,
+          kind: "question",
+          visibility: "project",
+          body: "Could this frame the episode opening?",
+          tagIds: ["tag-1"],
+        },
       }),
     }));
     const payload = await response.json();
@@ -153,14 +220,29 @@ describe("mobile private source Inbox", () => {
       projectId: "project-1",
       clientRequestId: requestId,
       expectedCaptureUpdatedAt: new Date("2026-07-30T09:00:00.000Z"),
+      annotation: {
+        clientRequestId: annotationRequestId,
+        kind: "question",
+        visibility: "project",
+        body: "Could this frame the episode opening?",
+        tagIds: ["tag-1"],
+      },
     }));
     expect(payload).toMatchObject({
       ok: true,
       action: "file-source",
       captureId: "snippet-1",
       sourceUnitId: "source-1",
+      annotation: {
+        id: "annotation-1",
+        clientRequestId: annotationRequestId,
+        tagIds: ["tag-1"],
+      },
       boundaries: {
         immutableResearchSourceCreated: true,
+        optionalSourceAnnotation: true,
+        exactWholeCaptureAnchor: true,
+        annotationMutatesSource: false,
         privateCaptureMutated: false,
         externalSideEffects: false,
       },

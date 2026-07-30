@@ -368,6 +368,10 @@ for (const needle of [
   "createGeneratedSourceInboxCapture",
   "assertGeneratedSourceInboxFiled",
   "sameFilingIdentityOnRetry: true",
+  "sameAnnotationIdentityOnRetry: true",
+  "exactAnnotationAnchorPreserved: true",
+  "canonicalTagPreserved: true",
+  "appendOnlyAnnotationRevisionPreserved: true",
   "privateCapturePreserved: true",
   "researchExportReadback: true",
 ]) {
@@ -381,6 +385,9 @@ for (const needle of [
   "completeFileProtectionUntilFirstUserAuthentication",
   "ownerAccountID",
   "expectedCaptureUpdatedAt",
+  "annotationRequestID",
+  "annotationTagIDs",
+  "annotationAcknowledgementMatches",
   "var clientRequestID: String { id.uuidString.lowercased() }",
   "source-inbox-filings-v1.last-known-good.json",
   "ACKNOWLEDGEMENT_MISMATCH",
@@ -396,6 +403,10 @@ for (const needle of [
   'accessibilityIdentifier("CaptureSourceInbox")',
   '"CaptureSourceInboxFile_\\(source.id)"',
   'accessibilityIdentifier("CaptureSourceFilingConfirm")',
+  'accessibilityIdentifier("CaptureSourceFilingAnnotationBody")',
+  'accessibilityIdentifier("CaptureSourceFilingAnnotationVisibility")',
+  '"File + annotate"',
+  "annotation is anchored to the complete preserved capture",
   "Keeps the private Inbox capture unchanged",
   "No task, calendar event, message, delivery, provider request, or publication is created.",
 ]) {
@@ -411,6 +422,10 @@ for (const needle of [
   "stableFilingIdentityRequired: true",
   "researchFilings: { none: {} }",
   "expectedCaptureUpdatedAt",
+  "optionalSourceAnnotation: true",
+  "exactWholeCaptureAnchor: true",
+  "canonicalProjectTagsOnly: true",
+  "annotationMutatesSource: false",
   "filePersonalSourceIntoResearch",
 ]) {
   requireIncludes(
@@ -423,6 +438,8 @@ for (const needle of [
   "input.expectedCaptureUpdatedAt",
   "captureUpdatedAt?.getTime() !== input.expectedCaptureUpdatedAt.getTime()",
   "privateCaptureMutated: false",
+  "createSourceAnnotationInTransaction",
+  'surface: "ios-capture"',
   "TransactionIsolationLevel.Serializable",
 ]) {
   requireIncludes(

@@ -51,6 +51,7 @@ describe("Collections Inbox continuation", () => {
       captureType: "BOOKMARK",
       reused: false,
       href: "/research?source=source-unit-1",
+      annotation: null,
     });
     render(<CollectionsClient snapshot={snapshot} initialCaptureId="mobile-source-1" />);
 

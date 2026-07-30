@@ -987,20 +987,31 @@ async function createGeneratedSourceInboxCapture(
         (candidate) => candidate.id === projectWorkProof.projectId,
       )
       : null;
+    const canonicalTag = Array.isArray(inbox.body?.tagCatalog)
+      ? inbox.body.tagCatalog.find(
+        (tag) => tag.id === projectWorkProof.episodeTagId,
+      )
+      : null;
     assert(
       inbox.response.status === 200
         && inbox.body?.ok === true
         && inbox.body?.inboxKind === "quipsly-mobile-source-inbox-v1"
         && inbox.body?.boundaries?.actorOwnedPrivateInbox === true
         && inbox.body?.boundaries?.writableResearchDestinationsOnly === true
+        && inbox.body?.boundaries?.optionalSourceAnnotation === true
+        && inbox.body?.boundaries?.exactWholeCaptureAnchor === true
+        && inbox.body?.boundaries?.canonicalProjectTagsOnly === true
+        && inbox.body?.boundaries?.annotationMutatesSource === false
         && projected?.captureType === "SNIPPET"
         && projected?.title === title
         && projected?.excerpt === immutableText
         && projected?.sourceUrl === sourceUrl
         && projected?.captureCount === 2
         && projected?.updatedAt === snippet.updatedAt.toISOString()
-        && destination?.role === "OWNER",
-      "The real authenticated private source Inbox did not project the exact actor-owned capture and writable Research destination.",
+        && destination?.role === "OWNER"
+        && canonicalTag?.projectId === projectWorkProof.projectId
+        && canonicalTag?.label === projectWorkProof.episodeTagLabel,
+      "The real authenticated private source Inbox did not project the exact actor-owned capture, writable Research destination, and canonical tag vocabulary.",
       {
         status: inbox.response.status,
         sourceCount: Array.isArray(inbox.body?.sources) ? inbox.body.sources.length : null,
@@ -1021,6 +1032,7 @@ async function createGeneratedSourceInboxCapture(
     return {
       captureId: snippet.id,
       captureType: "SNIPPET",
+      actorUserId: user.id,
       title,
       immutableText,
       immutableTextSha256: crypto
@@ -1033,6 +1045,11 @@ async function createGeneratedSourceInboxCapture(
       projectId: projectWorkProof.projectId,
       projectSlug: projectWorkProof.projectSlug,
       projectName: projectWorkProof.projectName,
+      annotationBody: "Use this source to frame the episode's opening question.",
+      annotationKind: "note",
+      annotationVisibility: "project",
+      annotationTagId: projectWorkProof.episodeTagId,
+      annotationTagLabel: projectWorkProof.episodeTagLabel,
     };
   } finally {
     await prisma.$disconnect();
@@ -1069,7 +1086,24 @@ async function assertGeneratedSourceInboxFiled(
         snippetId: sourceInboxProof.captureId,
       },
       include: {
-        sourceUnit: true,
+        sourceUnit: {
+          include: {
+            annotations: {
+              where: { createdByUserId: sourceInboxProof.actorUserId },
+              include: {
+                tags: { select: { tagId: true } },
+                revisions: {
+                  orderBy: { revision: "asc" },
+                  select: {
+                    revision: true,
+                    operation: true,
+                    snapshotJson: true,
+                  },
+                },
+              },
+            },
+          },
+        },
         snippet: true,
       },
     });
@@ -1079,6 +1113,7 @@ async function assertGeneratedSourceInboxFiled(
       { filingCount: filings.length },
     );
     filing = filings[0];
+    const annotation = filing.sourceUnit.annotations[0];
     const sourceHash = crypto
       .createHash("sha256")
       .update(filing.sourceUnit.immutableText || "", "utf8")
@@ -1103,13 +1138,42 @@ async function assertGeneratedSourceInboxFiled(
         && filing.captureSnapshotJson?.immutableTextSha256
           === sourceInboxProof.immutableTextSha256
         && filing.sourceUnit.metadataJson?.privateCaptureMutated === false
-        && filing.sourceUnit.metadataJson?.externalSideEffects === false,
-      "The canonical filing did not preserve exact identity, immutable text, private capture state, and no-side-effect provenance.",
+        && filing.sourceUnit.metadataJson?.externalSideEffects === false
+        && filing.sourceUnit.annotations.length === 1
+        && annotation?.projectId === sourceInboxProof.projectId
+        && annotation?.sourceUnitId === filing.sourceUnitId
+        && annotation?.clientRequestId
+        && UUID_PATTERN.test(annotation.clientRequestId)
+        && annotation?.kind === sourceInboxProof.annotationKind
+        && annotation?.visibility === sourceInboxProof.annotationVisibility
+        && annotation?.body === sourceInboxProof.annotationBody
+        && annotation?.status === "active"
+        && annotation?.selectorKind === "text-quote"
+        && annotation?.startOffset === 0
+        && annotation?.endOffset === sourceInboxProof.immutableText.length
+        && annotation?.exactText === sourceInboxProof.immutableText
+        && annotation?.sourceFingerprint === sourceInboxProof.immutableTextSha256
+        && annotation?.provenanceJson?.surface === "ios-capture"
+        && annotation?.provenanceJson?.humanAuthored === true
+        && annotation?.provenanceJson?.sourceMutated === false
+        && annotation?.tags.length === 1
+        && annotation?.tags[0]?.tagId === sourceInboxProof.annotationTagId
+        && annotation?.revisions.length === 1
+        && annotation?.revisions[0]?.revision === 1
+        && annotation?.revisions[0]?.operation === "created"
+        && annotation?.revisions[0]?.snapshotJson?.sourceFingerprint
+          === sourceInboxProof.immutableTextSha256
+        && JSON.stringify(annotation?.revisions[0]?.snapshotJson?.tagIds)
+          === JSON.stringify([sourceInboxProof.annotationTagId]),
+      "The canonical filing did not preserve exact identity, immutable text, annotation anchor, canonical tag, and no-side-effect provenance.",
       {
         captureType: filing.captureType,
         sourceHash,
         privateCaptureUpdatedAt: filing.snippet?.updatedAt.toISOString(),
         initialUpdatedAt: sourceInboxProof.initialUpdatedAt,
+        annotationId: annotation?.id || null,
+        annotationTagIds: annotation?.tags.map((tag) => tag.tagId) || [],
+        annotationRevisionCount: annotation?.revisions.length || 0,
       },
     );
   } finally {
@@ -1129,6 +1193,13 @@ async function assertGeneratedSourceInboxFiled(
       projectId: sourceInboxProof.projectId,
       clientRequestId: filing.clientRequestId,
       expectedCaptureUpdatedAt: sourceInboxProof.initialUpdatedAt,
+      annotation: {
+        clientRequestId: filing.sourceUnit.annotations[0].clientRequestId,
+        kind: sourceInboxProof.annotationKind,
+        visibility: sourceInboxProof.annotationVisibility,
+        body: sourceInboxProof.annotationBody,
+        tagIds: [sourceInboxProof.annotationTagId],
+      },
     }),
   });
   assert(
@@ -1136,8 +1207,14 @@ async function assertGeneratedSourceInboxFiled(
       && replay.body?.ok === true
       && replay.body?.reused === true
       && replay.body?.filingId === filing.id
-      && replay.body?.sourceUnitId === filing.sourceUnitId,
-    "Retrying the exact protected iPhone filing identity did not return the same canonical receipt and source.",
+      && replay.body?.sourceUnitId === filing.sourceUnitId
+      && replay.body?.annotation?.id === filing.sourceUnit.annotations[0].id
+      && replay.body?.annotation?.clientRequestId
+        === filing.sourceUnit.annotations[0].clientRequestId
+      && replay.body?.annotation?.reused === true
+      && JSON.stringify(replay.body?.annotation?.tagIds)
+        === JSON.stringify([sourceInboxProof.annotationTagId]),
+    "Retrying the exact protected iPhone filing identity did not return the same canonical receipt, source, annotation, and tag decision.",
     { status: replay.response.status, body: replay.body },
   );
 
@@ -1148,6 +1225,16 @@ async function assertGeneratedSourceInboxFiled(
   const exportedSource = Array.isArray(exported.body?.sources)
     ? exported.body.sources.find((source) => source.id === filing.sourceUnitId)
     : null;
+  const exportedAnnotation = Array.isArray(exported.body?.annotations)
+    ? exported.body.annotations.find(
+      (annotation) => annotation.id === filing.sourceUnit.annotations[0].id,
+    )
+    : null;
+  const exportedTag = Array.isArray(exported.body?.tags)
+    ? exported.body.tags.find(
+      (tag) => tag.id === sourceInboxProof.annotationTagId,
+    )
+    : null;
   assert(
     exported.response.status === 200
       && exported.body?.schemaVersion
@@ -1157,12 +1244,31 @@ async function assertGeneratedSourceInboxFiled(
       && exported.body?.boundaries?.providerMutated === false
       && exportedSource?.immutableText === sourceInboxProof.immutableText
       && exportedSource?.immutableTextSha256
-        === sourceInboxProof.immutableTextSha256,
-    "Nest's canonical Research export did not return the exact iPhone-filed immutable source and safety boundary.",
+        === sourceInboxProof.immutableTextSha256
+      && exportedAnnotation?.sourceUnitId === filing.sourceUnitId
+      && exportedAnnotation?.body === sourceInboxProof.annotationBody
+      && exportedAnnotation?.kind === sourceInboxProof.annotationKind
+      && exportedAnnotation?.visibility === sourceInboxProof.annotationVisibility
+      && exportedAnnotation?.startOffset === 0
+      && exportedAnnotation?.endOffset === sourceInboxProof.immutableText.length
+      && exportedAnnotation?.exactText === sourceInboxProof.immutableText
+      && exportedAnnotation?.sourceFingerprint
+        === sourceInboxProof.immutableTextSha256
+      && JSON.stringify(exportedAnnotation?.tagIds)
+        === JSON.stringify([sourceInboxProof.annotationTagId])
+      && exportedAnnotation?.revisions?.length === 1
+      && exportedAnnotation?.revisions[0]?.revision === 1
+      && exportedAnnotation?.revisions[0]?.operation === "created"
+      && exportedTag?.label === sourceInboxProof.annotationTagLabel
+      && exported.body?.integrity?.annotationCount >= 1,
+    "Nest's canonical Research export did not return the exact iPhone-filed source, annotation anchor, tag, revision, and safety boundary.",
     {
       status: exported.response.status,
       sourcePresent: Boolean(exportedSource),
       exportedSourceHash: exportedSource?.immutableTextSha256 || null,
+      annotationPresent: Boolean(exportedAnnotation),
+      tagPresent: Boolean(exportedTag),
+      annotationRevisionCount: exportedAnnotation?.revisions?.length || 0,
     },
   );
 
@@ -1172,6 +1278,10 @@ async function assertGeneratedSourceInboxFiled(
     sameFilingIdentityOnRetry: true,
     oneCanonicalSourceCreated: true,
     immutableSourceHashPreserved: true,
+    exactAnnotationAnchorPreserved: true,
+    canonicalTagPreserved: true,
+    appendOnlyAnnotationRevisionPreserved: true,
+    sameAnnotationIdentityOnRetry: true,
     researchExportReadback: true,
     sourceMutated: false,
     externalSideEffects: false,
@@ -1716,6 +1826,8 @@ function runCaptureRuntimeUISmoke(
     annotationBody = "",
     sourceInboxCaptureId = "",
     sourceInboxTitle = "",
+    sourceInboxAnnotationBody = "",
+    sourceInboxTagLabel = "",
   } = {},
 ) {
   const scriptPath = path.join(
@@ -1751,6 +1863,8 @@ function runCaptureRuntimeUISmoke(
       QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_BODY: annotationBody,
       QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_CAPTURE_ID: sourceInboxCaptureId,
       QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_TITLE: sourceInboxTitle,
+      QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_ANNOTATION_BODY: sourceInboxAnnotationBody,
+      QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_TAG_LABEL: sourceInboxTagLabel,
     },
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -1922,6 +2036,8 @@ async function main() {
           annotationBody: annotationProof?.body || "",
           sourceInboxCaptureId: sourceInboxProof?.captureId || "",
           sourceInboxTitle: sourceInboxProof?.title || "",
+          sourceInboxAnnotationBody: sourceInboxProof?.annotationBody || "",
+          sourceInboxTagLabel: sourceInboxProof?.annotationTagLabel || "",
         },
       );
       if (workflow === "note-edit") {
@@ -1990,6 +2106,8 @@ async function main() {
         ? {
           captureIdPresent: Boolean(sourceInboxProof.captureId),
           projectIdPresent: Boolean(sourceInboxProof.projectId),
+          annotationIntentPresent: Boolean(sourceInboxProof.annotationBody),
+          canonicalTagPresent: Boolean(sourceInboxProof.annotationTagId),
           immutableTextSha256Present:
             /^[0-9a-f]{64}$/.test(sourceInboxProof.immutableTextSha256),
         }

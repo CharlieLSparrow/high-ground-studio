@@ -870,6 +870,23 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(
             app.descendants(matching: .any)["CaptureSourceFilingDestination"].exists
         )
+        let annotationBody = app.descendants(matching: .any)[
+            "CaptureSourceFilingAnnotationBody"
+        ].firstMatch
+        reveal(annotationBody)
+        XCTAssertTrue(
+            annotationBody.exists,
+            "A source filing should offer one optional exact-source annotation without inventing a second research model."
+        )
+        annotationBody.tap()
+        annotationBody.typeText("Could this frame the episode opening?")
+        let canonicalTag = app.switches[
+            "CaptureSourceFilingTag_preview-tag-episode-seed"
+        ].firstMatch
+        reveal(canonicalTag)
+        XCTAssertTrue(canonicalTag.exists)
+        turnOn(canonicalTag)
+        XCTAssertEqual(canonicalTag.value as? String, "1")
         let previewBoundary = app.descendants(matching: .any)[
             "CaptureSourceFilingPreviewBoundary"
         ].firstMatch

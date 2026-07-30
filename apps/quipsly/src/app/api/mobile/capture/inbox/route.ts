@@ -24,6 +24,13 @@ function revision(value: unknown) {
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
+function stringArray(value: unknown, maxItems = 20, maxLength = 200) {
+  if (!Array.isArray(value) || value.length > maxItems) return null;
+  const items = value.map((item) => text(item, maxLength)).filter(Boolean);
+  if (items.length !== value.length || new Set(items).size !== items.length) return null;
+  return items;
+}
+
 async function body(request: Request) {
   try {
     return record(await request.json());
@@ -40,6 +47,10 @@ function boundaries() {
     immutableResearchSourceCreated: true,
     privateCaptureMutated: false,
     sourcePageImportedForBookmarks: false,
+    optionalSourceAnnotation: true,
+    exactWholeCaptureAnchor: true,
+    canonicalProjectTagsOnly: true,
+    annotationMutatesSource: false,
     externalSideEffects: false,
   };
 }
@@ -110,6 +121,17 @@ export async function GET(request: Request) {
         },
       }),
     ]);
+    const destinations = projects
+      .filter((project: any) => project.role === "OWNER" || project.role === "EDITOR");
+    const destinationIds = destinations.map((project: any) => project.id);
+    const tagCatalog = destinationIds.length > 0
+      ? await prisma.studioTag.findMany({
+          where: { projectId: { in: destinationIds }, isActive: true },
+          orderBy: [{ label: "asc" }, { id: "asc" }],
+          take: 500,
+          select: { id: true, projectId: true, slug: true, label: true },
+        })
+      : [];
 
     const sources = [
       ...snippets.map((snippet: any) => ({
@@ -143,14 +165,14 @@ export async function GET(request: Request) {
       inboxKind: "quipsly-mobile-source-inbox-v1",
       generatedAt: new Date().toISOString(),
       sources,
-      destinations: projects
-        .filter((project: any) => project.role === "OWNER" || project.role === "EDITOR")
+      destinations: destinations
         .map((project: any) => ({
           id: project.id,
           slug: project.slug,
           name: project.name,
           role: project.role,
         })),
+      tagCatalog,
       boundaries: boundaries(),
     });
   } catch (error) {
@@ -186,12 +208,30 @@ export async function POST(request: Request) {
   const projectId = text(input.projectId);
   const clientRequestId = text(input.clientRequestId, 80).toLowerCase();
   const expectedCaptureUpdatedAt = revision(input.expectedCaptureUpdatedAt);
+  const annotationRecord = input.annotation == null ? null : record(input.annotation);
+  const annotationTagIds = annotationRecord ? stringArray(annotationRecord.tagIds) : [];
+  const annotation = annotationRecord
+    ? {
+        clientRequestId: text(annotationRecord.clientRequestId, 80).toLowerCase(),
+        kind: text(annotationRecord.kind, 40).toLowerCase(),
+        visibility: text(annotationRecord.visibility, 20).toLowerCase(),
+        body: text(annotationRecord.body, 20_000),
+        tagIds: annotationTagIds ?? [],
+      }
+    : null;
   if (action !== "file-source"
       || !captureId
       || !["SNIPPET", "BOOKMARK"].includes(captureType)
       || !projectId
       || !UUID_PATTERN.test(clientRequestId)
-      || !expectedCaptureUpdatedAt) {
+      || !expectedCaptureUpdatedAt
+      || (annotation != null && (
+        !UUID_PATTERN.test(annotation.clientRequestId)
+        || !annotation.kind
+        || !annotation.visibility
+        || (!annotation.body && annotation.tagIds.length === 0)
+        || annotationTagIds == null
+      ))) {
     return NextResponse.json(
       { ok: false, error: "Choose one current private source and one writable Research Nest." },
       { status: 400 },
@@ -208,6 +248,7 @@ export async function POST(request: Request) {
       captureType,
       clientRequestId,
       expectedCaptureUpdatedAt,
+      annotation,
     });
     if (!result.ok) {
       const status = result.code === "INVALID"
@@ -235,6 +276,7 @@ export async function POST(request: Request) {
       sourceUnitId: result.sourceUnitId,
       reused: result.reused,
       href: result.href,
+      annotation: result.annotation,
       boundaries: boundaries(),
     });
   } catch (error) {

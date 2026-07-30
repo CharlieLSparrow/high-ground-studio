@@ -2289,6 +2289,10 @@ private struct CaptureSourceFilingSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var selectedDestinationID: String
+    @State private var annotationKind = "note"
+    @State private var annotationVisibility = "private"
+    @State private var annotationBody = ""
+    @State private var selectedTagIDs: Set<String> = []
     @State private var localMessage: String?
 
     init(
@@ -2306,6 +2310,28 @@ private struct CaptureSourceFilingSheet: View {
 
     private var selectedDestination: MobileSourceInboxDestination? {
         client.destinations.first { $0.id == selectedDestinationID }
+    }
+
+    private var availableTags: [MobileSourceInboxTag] {
+        client.tags(for: selectedDestinationID)
+    }
+
+    private var hasAnnotation: Bool {
+        !annotationBody.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !selectedTagIDs.isEmpty
+    }
+
+    private func tagBinding(_ id: String) -> Binding<Bool> {
+        Binding(
+            get: { selectedTagIDs.contains(id) },
+            set: { selected in
+                if selected {
+                    selectedTagIDs.insert(id)
+                } else {
+                    selectedTagIDs.remove(id)
+                }
+            }
+        )
     }
 
     var body: some View {
@@ -2344,6 +2370,57 @@ private struct CaptureSourceFilingSheet: View {
                     }
                 }
 
+                if client.supportsSourceAnnotation {
+                    Section("Optional source annotation") {
+                        Text("Add your thought and existing Nest tags now. The annotation is anchored to the complete preserved capture, not only this preview.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        Picker("Purpose", selection: $annotationKind) {
+                            Text("Note").tag("note")
+                            Text("Question").tag("question")
+                            Text("Quote").tag("quote")
+                            Text("Claim").tag("claim")
+                            Text("Idea").tag("idea")
+                            Text("Action").tag("action")
+                        }
+                        .accessibilityIdentifier("CaptureSourceFilingAnnotationKind")
+
+                        Picker("Who can see it", selection: $annotationVisibility) {
+                            Text("Only me").tag("private")
+                            Text("Nest collaborators").tag("project")
+                        }
+                        .accessibilityIdentifier("CaptureSourceFilingAnnotationVisibility")
+
+                        TextField(
+                            "Why this matters, what to verify, or how it could shape the work",
+                            text: $annotationBody,
+                            axis: .vertical
+                        )
+                        .lineLimit(3 ... 8)
+                        .accessibilityIdentifier("CaptureSourceFilingAnnotationBody")
+
+                        if availableTags.isEmpty {
+                            Text("This Nest has no active tags yet. File the source now, then create reusable vocabulary from Work or Nest.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(availableTags) { tag in
+                                Toggle(tag.label, isOn: tagBinding(tag.id))
+                                    .accessibilityIdentifier(
+                                        "CaptureSourceFilingTag_\(tag.id)"
+                                    )
+                            }
+                        }
+                    }
+                } else {
+                    Section("Annotation") {
+                        Text("This Nest version can file the source safely. Update Nest before attaching an iPhone annotation or canonical tags in the same protected decision.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
                 Section("What this does") {
                     Label(
                         "Creates one immutable, source-linked Research record",
@@ -2359,6 +2436,12 @@ private struct CaptureSourceFilingSheet: View {
                             : "Preserves the captured passage and its source URL",
                         systemImage: "doc.text.magnifyingglass"
                     )
+                    if hasAnnotation {
+                        Label(
+                            "Adds one exact-source annotation with canonical Nest tags",
+                            systemImage: "tag"
+                        )
+                    }
                     Text("No task, calendar event, message, delivery, provider request, or publication is created.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -2391,12 +2474,22 @@ private struct CaptureSourceFilingSheet: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(client.isSyncing ? "Filing…" : "File") {
+                    Button(
+                        client.isSyncing
+                            ? "Filing…"
+                            : hasAnnotation
+                                ? "File + annotate"
+                                : "File"
+                    ) {
                         guard let destination = selectedDestination else { return }
                         Task {
                             let accepted = await client.file(
                                 source,
-                                into: destination
+                                into: destination,
+                                annotationKind: annotationKind,
+                                annotationVisibility: annotationVisibility,
+                                annotationBody: annotationBody,
+                                annotationTagIDs: selectedTagIDs.sorted()
                             )
                             if accepted {
                                 dismiss()
@@ -2416,6 +2509,10 @@ private struct CaptureSourceFilingSheet: View {
                 }
             }
             .interactiveDismissDisabled(client.isSyncing)
+            .onChange(of: selectedDestinationID) { _, newValue in
+                let validTagIDs = Set(client.tags(for: newValue).map(\.id))
+                selectedTagIDs.formIntersection(validTagIDs)
+            }
         }
         .accessibilityIdentifier("CaptureSourceFilingSheet")
     }

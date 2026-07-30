@@ -45,6 +45,18 @@ export type SourceAnnotationDraftResult =
   | { ok: true; documentId: string; documentStableId: string; blockId: string; blockStableId: string; href: string; reused: boolean }
   | { ok: false; code: "INVALID" | "NOT_FOUND" | "CONFLICT"; message: string };
 
+type NormalizedSourceAnnotationInput = Omit<
+  CreateSourceAnnotationInput,
+  "kind" | "visibility" | "body" | "clientRequestId" | "actorEmail" | "tagIds"
+> & {
+  kind: SourceAnnotationKind;
+  visibility: SourceAnnotationVisibility;
+  body: string;
+  clientRequestId: string;
+  actorEmail: string;
+  tagIds: string[];
+};
+
 function isMember<T extends string>(values: readonly T[], value: string): value is T {
   return values.includes(value as T);
 }
@@ -109,10 +121,11 @@ function snapshot(input: {
   return input satisfies Prisma.InputJsonObject;
 }
 
-export async function createSourceAnnotation(
-  prisma: PrismaClient,
+function normalizeSourceAnnotationInput(
   input: CreateSourceAnnotationInput,
-): Promise<SourceAnnotationWriteResult> {
+):
+  | { ok: true; input: NormalizedSourceAnnotationInput }
+  | { ok: false; result: SourceAnnotationWriteResult } {
   const kind = cleanText(input.kind, 40).toLowerCase();
   const visibility = cleanText(input.visibility, 20).toLowerCase();
   const body = cleanText(input.body, 20_000);
@@ -121,112 +134,229 @@ export async function createSourceAnnotation(
   const tagIds = [...new Set((input.tagIds ?? []).map((value) => cleanText(value, 120)).filter(Boolean))].slice(0, 20);
 
   if (!isMember(SOURCE_ANNOTATION_KINDS, kind)) {
-    return { ok: false, code: "INVALID", message: "Choose a supported annotation kind." };
+    return {
+      ok: false,
+      result: { ok: false, code: "INVALID", message: "Choose a supported annotation kind." },
+    };
   }
   if (!isMember(SOURCE_ANNOTATION_VISIBILITIES, visibility)) {
-    return { ok: false, code: "INVALID", message: "Choose private or Nest-visible sharing." };
+    return {
+      ok: false,
+      result: { ok: false, code: "INVALID", message: "Choose private or Nest-visible sharing." },
+    };
   }
   if (!body && tagIds.length === 0) {
-    return { ok: false, code: "INVALID", message: "Add a note or at least one tag before saving." };
+    return {
+      ok: false,
+      result: { ok: false, code: "INVALID", message: "Add a note or at least one tag before saving." },
+    };
   }
   if (!clientRequestId) {
-    return { ok: false, code: "INVALID", message: "This annotation is missing its save identity." };
+    return {
+      ok: false,
+      result: { ok: false, code: "INVALID", message: "This annotation is missing its save identity." },
+    };
+  }
+  return {
+    ok: true,
+    input: {
+      ...input,
+      kind,
+      visibility,
+      body,
+      clientRequestId,
+      actorEmail,
+      tagIds,
+    },
+  };
+}
+
+type ExistingAnnotationIdentity = {
+  id: string;
+  projectId: string;
+  sourceUnitId: string;
+  kind: string;
+  visibility: string;
+  body: string;
+  selectorKind: string;
+  startOffset: number | null;
+  endOffset: number | null;
+  exactText: string | null;
+  prefixText: string | null;
+  suffixText: string | null;
+  sourceFingerprint: string | null;
+  updatedAt: Date;
+};
+
+type VerifiedTextSelector = {
+  selectorKind: "text-quote";
+  startOffset: number;
+  endOffset: number;
+  exactText: string;
+  prefixText: string;
+  suffixText: string;
+  sourceFingerprint: string;
+};
+
+function annotationIdentityMatches(
+  existing: ExistingAnnotationIdentity,
+  input: NormalizedSourceAnnotationInput,
+  selector: VerifiedTextSelector,
+  existingTagIds: string[],
+) {
+  return existing.projectId === input.projectId
+    && existing.sourceUnitId === input.sourceUnitId
+    && existing.kind === input.kind
+    && existing.visibility === input.visibility
+    && existing.body === input.body
+    && existing.selectorKind === selector.selectorKind
+    && existing.startOffset === selector.startOffset
+    && existing.endOffset === selector.endOffset
+    && existing.exactText === selector.exactText
+    && existing.prefixText === selector.prefixText
+    && existing.suffixText === selector.suffixText
+    && existing.sourceFingerprint === selector.sourceFingerprint
+    && JSON.stringify([...existingTagIds].sort()) === JSON.stringify([...input.tagIds].sort());
+}
+
+/**
+ * Create one exact-source annotation inside a caller-owned transaction.
+ *
+ * This is the shared atomic boundary for Nest Research and compound capture
+ * workflows. A replay identity is accepted only when every source, selector,
+ * body, visibility, purpose, and tag matches the original decision.
+ */
+export async function createSourceAnnotationInTransaction(
+  tx: Prisma.TransactionClient,
+  rawInput: CreateSourceAnnotationInput,
+): Promise<SourceAnnotationWriteResult> {
+  const normalized = normalizeSourceAnnotationInput(rawInput);
+  if (!normalized.ok) return normalized.result;
+  const input = normalized.input;
+
+  const [existing] = await tx.$queryRaw<Array<ExistingAnnotationIdentity>>(Prisma.sql`
+    SELECT "id", "projectId", "sourceUnitId", "kind", "visibility", "body",
+           "selectorKind", "startOffset", "endOffset", "exactText",
+           "prefixText", "suffixText", "sourceFingerprint", "updatedAt"
+    FROM "StudioSourceAnnotation"
+    WHERE "createdByUserId" = ${input.actorUserId}
+      AND "clientRequestId" = ${input.clientRequestId}
+    LIMIT 1
+  `);
+
+  const source = await tx.studioSourceUnit.findFirst({
+    where: { id: input.sourceUnitId, projectId: input.projectId },
+    select: { id: true, documentId: true, immutableText: true },
+  });
+  if (!source?.immutableText) {
+    return { ok: false, code: "NOT_FOUND", message: "The preserved text source is unavailable in this Nest." };
   }
 
-  return prisma.$transaction(async (tx) => {
-    const [existing] = await tx.$queryRaw<Array<{ id: string; projectId: string; updatedAt: Date }>>(Prisma.sql`
-      SELECT "id", "projectId", "updatedAt"
-      FROM "StudioSourceAnnotation"
-      WHERE "createdByUserId" = ${input.actorUserId} AND "clientRequestId" = ${clientRequestId}
-      LIMIT 1
-    `);
-    if (existing) {
-      if (existing.projectId !== input.projectId) {
-        return { ok: false as const, code: "CONFLICT" as const, message: "That save identity already belongs to another Nest." };
-      }
-      return { ok: true as const, id: existing.id, updatedAt: existing.updatedAt.toISOString(), reused: true };
-    }
-
-    const source = await tx.studioSourceUnit.findFirst({
-      where: { id: input.sourceUnitId, projectId: input.projectId },
-      select: { id: true, documentId: true, immutableText: true },
-    });
-    if (!source?.immutableText) {
-      return { ok: false as const, code: "NOT_FOUND" as const, message: "The preserved text source is unavailable in this Nest." };
-    }
-
-    const selectorResult = buildVerifiedTextSelector({
-      immutableText: source.immutableText,
-      startOffset: input.startOffset,
-      endOffset: input.endOffset,
-      exactText: input.exactText,
-    });
-    if (!selectorResult.ok) {
-      return { ok: false as const, code: "CONFLICT" as const, message: selectorResult.message };
-    }
-
-    const tags = tagIds.length > 0
-      ? await tx.studioTag.findMany({
-          where: { id: { in: tagIds }, projectId: input.projectId, isActive: true },
-          select: { id: true },
-        })
-      : [];
-    if (tags.length !== tagIds.length) {
-      return { ok: false as const, code: "INVALID" as const, message: "One or more tags do not belong to this Nest." };
-    }
-
-    const selector = selectorResult.selector;
-    const annotationId = randomUUID();
-    const revisionId = randomUUID();
-    const now = new Date();
-    const provenanceJson = JSON.stringify({
-      kind: "quipsly-source-annotation-v1",
-      surface: input.surface,
-      humanAuthored: true,
-      sourceMutated: false,
-      createdAt: now.toISOString(),
-    });
-    await tx.$executeRaw(Prisma.sql`
-      INSERT INTO "StudioSourceAnnotation" (
-        "id", "projectId", "sourceUnitId", "documentId", "createdByUserId", "createdByEmailSnapshot",
-        "kind", "status", "visibility", "body", "selectorKind", "startOffset", "endOffset",
-        "exactText", "prefixText", "suffixText", "sourceFingerprint", "clientRequestId",
-        "provenanceJson", "createdAt", "updatedAt"
-      ) VALUES (
-        ${annotationId}, ${input.projectId}, ${source.id}, ${source.documentId}, ${input.actorUserId}, ${actorEmail || null},
-        ${kind}, 'active', ${visibility}, ${body}, ${selector.selectorKind}, ${selector.startOffset}, ${selector.endOffset},
-        ${selector.exactText}, ${selector.prefixText}, ${selector.suffixText}, ${selector.sourceFingerprint}, ${clientRequestId},
-        ${provenanceJson}::jsonb, ${now}, ${now}
-      )
-    `);
-    for (const tag of tags) {
-      await tx.$executeRaw(Prisma.sql`
-        INSERT INTO "StudioSourceAnnotationTag" ("annotationId", "tagId", "createdAt")
-        VALUES (${annotationId}, ${tag.id}, ${now})
-      `);
-    }
-    const snapshotJson = JSON.stringify(snapshot({
-          kind,
-          status: "active",
-          visibility,
-          body,
-          selectorKind: selector.selectorKind,
-          startOffset: selector.startOffset,
-          endOffset: selector.endOffset,
-          exactText: selector.exactText,
-          prefixText: selector.prefixText,
-          suffixText: selector.suffixText,
-          sourceFingerprint: selector.sourceFingerprint,
-          tagIds: tags.map((tag) => tag.id),
-        }));
-    await tx.$executeRaw(Prisma.sql`
-      INSERT INTO "StudioSourceAnnotationRevision" (
-        "id", "annotationId", "revision", "operation", "actorUserId", "snapshotJson", "createdAt"
-      ) VALUES (${revisionId}, ${annotationId}, 1, 'created', ${input.actorUserId}, ${snapshotJson}::jsonb, ${now})
-    `);
-
-    return { ok: true as const, id: annotationId, updatedAt: now.toISOString(), reused: false };
+  const selectorResult = buildVerifiedTextSelector({
+    immutableText: source.immutableText,
+    startOffset: input.startOffset,
+    endOffset: input.endOffset,
+    exactText: input.exactText,
   });
+  if (!selectorResult.ok) {
+    return { ok: false, code: "CONFLICT", message: selectorResult.message };
+  }
+
+  const tags = input.tagIds.length > 0
+    ? await tx.studioTag.findMany({
+        where: { id: { in: input.tagIds }, projectId: input.projectId, isActive: true },
+        select: { id: true },
+      })
+    : [];
+  if (tags.length !== input.tagIds.length) {
+    return { ok: false, code: "INVALID", message: "One or more tags do not belong to this Nest." };
+  }
+
+  const selector = selectorResult.selector;
+  if (existing) {
+    const existingTags = await tx.$queryRaw<Array<{ tagId: string }>>(Prisma.sql`
+      SELECT "tagId"
+      FROM "StudioSourceAnnotationTag"
+      WHERE "annotationId" = ${existing.id}
+      ORDER BY "tagId"
+    `);
+    if (!annotationIdentityMatches(
+      existing,
+      input,
+      selector,
+      existingTags.map((tag) => tag.tagId),
+    )) {
+      return {
+        ok: false,
+        code: "CONFLICT",
+        message: "That annotation save identity already belongs to a different source decision.",
+      };
+    }
+    return {
+      ok: true,
+      id: existing.id,
+      updatedAt: existing.updatedAt.toISOString(),
+      reused: true,
+    };
+  }
+
+  const annotationId = randomUUID();
+  const revisionId = randomUUID();
+  const now = new Date();
+  const provenanceJson = JSON.stringify({
+    kind: "quipsly-source-annotation-v1",
+    surface: input.surface,
+    humanAuthored: true,
+    sourceMutated: false,
+    createdAt: now.toISOString(),
+  });
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "StudioSourceAnnotation" (
+      "id", "projectId", "sourceUnitId", "documentId", "createdByUserId", "createdByEmailSnapshot",
+      "kind", "status", "visibility", "body", "selectorKind", "startOffset", "endOffset",
+      "exactText", "prefixText", "suffixText", "sourceFingerprint", "clientRequestId",
+      "provenanceJson", "createdAt", "updatedAt"
+    ) VALUES (
+      ${annotationId}, ${input.projectId}, ${source.id}, ${source.documentId}, ${input.actorUserId}, ${input.actorEmail || null},
+      ${input.kind}, 'active', ${input.visibility}, ${input.body}, ${selector.selectorKind}, ${selector.startOffset}, ${selector.endOffset},
+      ${selector.exactText}, ${selector.prefixText}, ${selector.suffixText}, ${selector.sourceFingerprint}, ${input.clientRequestId},
+      ${provenanceJson}::jsonb, ${now}, ${now}
+    )
+  `);
+  for (const tag of tags) {
+    await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "StudioSourceAnnotationTag" ("annotationId", "tagId", "createdAt")
+      VALUES (${annotationId}, ${tag.id}, ${now})
+    `);
+  }
+  const snapshotJson = JSON.stringify(snapshot({
+    kind: input.kind,
+    status: "active",
+    visibility: input.visibility,
+    body: input.body,
+    selectorKind: selector.selectorKind,
+    startOffset: selector.startOffset,
+    endOffset: selector.endOffset,
+    exactText: selector.exactText,
+    prefixText: selector.prefixText,
+    suffixText: selector.suffixText,
+    sourceFingerprint: selector.sourceFingerprint,
+    tagIds: tags.map((tag) => tag.id),
+  }));
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "StudioSourceAnnotationRevision" (
+      "id", "annotationId", "revision", "operation", "actorUserId", "snapshotJson", "createdAt"
+    ) VALUES (${revisionId}, ${annotationId}, 1, 'created', ${input.actorUserId}, ${snapshotJson}::jsonb, ${now})
+  `);
+
+  return { ok: true, id: annotationId, updatedAt: now.toISOString(), reused: false };
+}
+
+export async function createSourceAnnotation(
+  prisma: PrismaClient,
+  input: CreateSourceAnnotationInput,
+): Promise<SourceAnnotationWriteResult> {
+  return prisma.$transaction((tx) => createSourceAnnotationInTransaction(tx, input));
 }
 
 export async function setSourceAnnotationStatus(

@@ -24,6 +24,13 @@ struct MobileSourceInboxDestination: Codable, Identifiable, Equatable {
     let role: String
 }
 
+struct MobileSourceInboxTag: Codable, Identifiable, Equatable {
+    let id: String
+    let projectId: String
+    let slug: String
+    let label: String
+}
+
 struct MobileSourceInboxBoundaries: Codable, Equatable {
     let actorOwnedPrivateInbox: Bool?
     let writableResearchDestinationsOnly: Bool?
@@ -31,6 +38,10 @@ struct MobileSourceInboxBoundaries: Codable, Equatable {
     let immutableResearchSourceCreated: Bool?
     let privateCaptureMutated: Bool?
     let sourcePageImportedForBookmarks: Bool?
+    let optionalSourceAnnotation: Bool?
+    let exactWholeCaptureAnchor: Bool?
+    let canonicalProjectTagsOnly: Bool?
+    let annotationMutatesSource: Bool?
     let externalSideEffects: Bool?
 
     var preservesSourceBoundary: Bool {
@@ -42,6 +53,13 @@ struct MobileSourceInboxBoundaries: Codable, Equatable {
             && sourcePageImportedForBookmarks == false
             && externalSideEffects == false
     }
+
+    var supportsSourceAnnotation: Bool {
+        optionalSourceAnnotation == true
+            && exactWholeCaptureAnchor == true
+            && canonicalProjectTagsOnly == true
+            && annotationMutatesSource == false
+    }
 }
 
 struct MobileSourceInboxResponse: Codable, Equatable {
@@ -51,7 +69,18 @@ struct MobileSourceInboxResponse: Codable, Equatable {
     let generatedAt: String?
     let sources: [MobileSourceInboxSource]?
     let destinations: [MobileSourceInboxDestination]?
+    let tagCatalog: [MobileSourceInboxTag]?
     let boundaries: MobileSourceInboxBoundaries?
+}
+
+struct MobileSourceInboxFilingAnnotationResponse: Codable, Equatable {
+    let id: String
+    let clientRequestId: String
+    let kind: String
+    let visibility: String
+    let body: String
+    let tagIds: [String]
+    let reused: Bool
 }
 
 struct MobileSourceInboxFilingResponse: Codable, Equatable {
@@ -68,6 +97,7 @@ struct MobileSourceInboxFilingResponse: Codable, Equatable {
     let sourceUnitId: String?
     let reused: Bool?
     let href: String?
+    let annotation: MobileSourceInboxFilingAnnotationResponse?
     let boundaries: MobileSourceInboxBoundaries?
 }
 
@@ -84,6 +114,11 @@ struct PendingSourceInboxFiling: Codable, Equatable, Identifiable {
     let projectID: String
     let projectName: String
     let expectedCaptureUpdatedAt: String
+    let annotationRequestID: UUID?
+    let annotationKind: String?
+    let annotationVisibility: String?
+    let annotationBody: String?
+    let annotationTagIDs: [String]?
     let capturedAt: Date
     var disposition: Disposition
     var attemptCount: Int
@@ -196,6 +231,10 @@ final class SourceInboxFilingOutbox: ObservableObject {
     func enqueue(
         source: MobileSourceInboxSource,
         destination: MobileSourceInboxDestination,
+        annotationKind: String = "note",
+        annotationVisibility: String = "private",
+        annotationBody: String = "",
+        annotationTagIDs: [String] = [],
         capturedAt: Date = Date()
     ) throws -> PendingSourceInboxFiling {
         guard ledgerIsWritable else { throw SourceInboxFilingStoreError.ledgerUnavailable }
@@ -206,10 +245,20 @@ final class SourceInboxFilingOutbox: ObservableObject {
         let captureID = Self.cleanID(source.id)
         let projectID = Self.cleanID(destination.id)
         let projectName = Self.cleanText(destination.name, max: 500)
+        let body = Self.cleanBody(annotationBody, max: 20_000)
+        let kind = Self.cleanID(annotationKind).lowercased()
+        let visibility = Self.cleanID(annotationVisibility).lowercased()
+        let tagIDs = Array(
+            Set(annotationTagIDs.map(Self.cleanID).filter { !$0.isEmpty })
+        ).sorted()
+        let hasAnnotation = !body.isEmpty || !tagIDs.isEmpty
         guard !captureID.isEmpty,
               !projectID.isEmpty,
               !projectName.isEmpty,
-              Self.validISODate(source.updatedAt) else {
+              Self.validISODate(source.updatedAt),
+              tagIDs.count <= 20,
+              !hasAnnotation || Self.annotationKinds.contains(kind),
+              !hasAnnotation || Self.annotationVisibilities.contains(visibility) else {
             throw SourceInboxFilingStoreError.invalidDecision
         }
         guard decision(for: captureID) == nil else {
@@ -224,6 +273,11 @@ final class SourceInboxFilingOutbox: ObservableObject {
             projectID: projectID,
             projectName: projectName,
             expectedCaptureUpdatedAt: source.updatedAt,
+            annotationRequestID: hasAnnotation ? UUID() : nil,
+            annotationKind: hasAnnotation ? kind : nil,
+            annotationVisibility: hasAnnotation ? visibility : nil,
+            annotationBody: hasAnnotation ? body : nil,
+            annotationTagIDs: hasAnnotation ? tagIDs : nil,
             capturedAt: capturedAt,
             disposition: .pending,
             attemptCount: 0,
@@ -375,6 +429,30 @@ final class SourceInboxFilingOutbox: ObservableObject {
         )
     }
 
+    nonisolated private static func cleanBody(_ value: String, max: Int) -> String {
+        String(
+            value
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .prefix(max)
+        )
+    }
+
+    nonisolated private static let annotationKinds = Set([
+        "highlight",
+        "note",
+        "question",
+        "quote",
+        "claim",
+        "idea",
+        "correction",
+        "action",
+    ])
+
+    nonisolated private static let annotationVisibilities = Set([
+        "private",
+        "project",
+    ])
+
     nonisolated private static func validISODate(_ value: String) -> Bool {
         let fractional = ISO8601DateFormatter()
         fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -417,6 +495,17 @@ final class CaptureSourceInboxClient: ObservableObject {
 
     var sources: [MobileSourceInboxSource] { response?.sources ?? [] }
     var destinations: [MobileSourceInboxDestination] { response?.destinations ?? [] }
+    var supportsSourceAnnotation: Bool {
+        response?.boundaries?.supportsSourceAnnotation == true
+    }
+
+    func tags(for projectID: String) -> [MobileSourceInboxTag] {
+        (response?.tagCatalog ?? [])
+            .filter { $0.projectId == projectID }
+            .sorted {
+                $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending
+            }
+    }
 
     func pendingDecision(for captureID: String) -> PendingSourceInboxFiling? {
         outbox.decision(for: captureID)
@@ -450,6 +539,20 @@ final class CaptureSourceInboxClient: ObservableObject {
                     role: "EDITOR"
                 ),
             ],
+            tagCatalog: [
+                MobileSourceInboxTag(
+                    id: "preview-tag-episode-seed",
+                    projectId: "preview-high-ground",
+                    slug: "episode-seed",
+                    label: "Episode seed"
+                ),
+                MobileSourceInboxTag(
+                    id: "preview-tag-curiosity",
+                    projectId: "preview-high-ground",
+                    slug: "curiosity",
+                    label: "Curiosity"
+                ),
+            ],
             boundaries: MobileSourceInboxBoundaries(
                 actorOwnedPrivateInbox: true,
                 writableResearchDestinationsOnly: true,
@@ -457,6 +560,10 @@ final class CaptureSourceInboxClient: ObservableObject {
                 immutableResearchSourceCreated: true,
                 privateCaptureMutated: false,
                 sourcePageImportedForBookmarks: false,
+                optionalSourceAnnotation: true,
+                exactWholeCaptureAnchor: true,
+                canonicalProjectTagsOnly: true,
+                annotationMutatesSource: false,
                 externalSideEffects: false
             )
         )
@@ -472,10 +579,25 @@ final class CaptureSourceInboxClient: ObservableObject {
     @discardableResult
     func file(
         _ source: MobileSourceInboxSource,
-        into destination: MobileSourceInboxDestination
+        into destination: MobileSourceInboxDestination,
+        annotationKind: String = "note",
+        annotationVisibility: String = "private",
+        annotationBody: String = "",
+        annotationTagIDs: [String] = []
     ) async -> Bool {
         do {
-            let decision = try outbox.enqueue(source: source, destination: destination)
+            let allowedTagIDs = Set(tags(for: destination.id).map(\.id))
+            guard annotationTagIDs.allSatisfy(allowedTagIDs.contains) else {
+                throw SourceInboxFilingStoreError.invalidDecision
+            }
+            let decision = try outbox.enqueue(
+                source: source,
+                destination: destination,
+                annotationKind: annotationKind,
+                annotationVisibility: annotationVisibility,
+                annotationBody: annotationBody,
+                annotationTagIDs: annotationTagIDs
+            )
             publishCounts()
             lastFiledURL = nil
             if !AuthManager.shared.networkActionsAllowed {
@@ -588,14 +710,26 @@ final class CaptureSourceInboxClient: ObservableObject {
             var request = URLRequest(url: url)
             request.httpMethod = "POST"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONSerialization.data(withJSONObject: [
+            var requestBody: [String: Any] = [
                 "action": "file-source",
                 "captureId": decision.captureID,
                 "captureType": decision.captureType.rawValue,
                 "projectId": decision.projectID,
                 "clientRequestId": decision.clientRequestID,
                 "expectedCaptureUpdatedAt": decision.expectedCaptureUpdatedAt,
-            ])
+            ]
+            if let annotationRequestID = decision.annotationRequestID,
+               let annotationKind = decision.annotationKind,
+               let annotationVisibility = decision.annotationVisibility {
+                requestBody["annotation"] = [
+                    "clientRequestId": annotationRequestID.uuidString.lowercased(),
+                    "kind": annotationKind,
+                    "visibility": annotationVisibility,
+                    "body": decision.annotationBody ?? "",
+                    "tagIds": decision.annotationTagIDs ?? [],
+                ]
+            }
+            request.httpBody = try JSONSerialization.data(withJSONObject: requestBody)
             let (data, urlResponse) = try await AuthManager.shared.authenticatedData(for: request)
             let payload = try JSONDecoder().decode(MobileSourceInboxFilingResponse.self, from: data)
             guard urlResponse.statusCode < 400, payload.ok else {
@@ -617,6 +751,7 @@ final class CaptureSourceInboxClient: ObservableObject {
                   payload.projectId == decision.projectID,
                   payload.filingId?.isEmpty == false,
                   payload.sourceUnitId?.isEmpty == false,
+                  annotationAcknowledgementMatches(payload.annotation, decision: decision),
                   payload.boundaries?.preservesSourceBoundary == true else {
                 let message = "Nest returned a different Research filing identity. The protected phone decision is held for review."
                 outbox.markHeld(
@@ -632,9 +767,15 @@ final class CaptureSourceInboxClient: ObservableObject {
             publishCounts()
             removeAcknowledgedSource(decision.captureID)
             lastFiledURL = payload.href.flatMap { URL(string: "\(baseURL)\($0)") }
-            statusMessage = payload.reused == true
-                ? "Nest already had this exact source in \(payload.projectName ?? decision.projectName); nothing was duplicated."
-                : "Filed into \(payload.projectName ?? decision.projectName). The private Inbox capture remains unchanged."
+            if payload.reused == true {
+                statusMessage = decision.annotationRequestID == nil
+                    ? "Nest already had this exact source in \(payload.projectName ?? decision.projectName); nothing was duplicated."
+                    : "Nest already had this exact source and annotation in \(payload.projectName ?? decision.projectName); nothing was duplicated."
+            } else {
+                statusMessage = decision.annotationRequestID == nil
+                    ? "Filed into \(payload.projectName ?? decision.projectName). The private Inbox capture remains unchanged."
+                    : "Filed and annotated in \(payload.projectName ?? decision.projectName). The exact source and private Inbox capture remain unchanged."
+            }
             errorMessage = nil
             return true
         } catch {
@@ -651,6 +792,22 @@ final class CaptureSourceInboxClient: ObservableObject {
         heldCount = outbox.heldCount
     }
 
+    private func annotationAcknowledgementMatches(
+        _ acknowledgement: MobileSourceInboxFilingAnnotationResponse?,
+        decision: PendingSourceInboxFiling
+    ) -> Bool {
+        guard let requestID = decision.annotationRequestID else {
+            return acknowledgement == nil
+        }
+        guard let acknowledgement else { return false }
+        return !acknowledgement.id.isEmpty
+            && acknowledgement.clientRequestId == requestID.uuidString.lowercased()
+            && acknowledgement.kind == decision.annotationKind
+            && acknowledgement.visibility == decision.annotationVisibility
+            && acknowledgement.body == (decision.annotationBody ?? "")
+            && acknowledgement.tagIds.sorted() == (decision.annotationTagIDs ?? []).sorted()
+    }
+
     private func removeAcknowledgedSource(_ captureID: String) {
         guard let current = response else { return }
         let updated = MobileSourceInboxResponse(
@@ -660,6 +817,7 @@ final class CaptureSourceInboxClient: ObservableObject {
             generatedAt: current.generatedAt,
             sources: (current.sources ?? []).filter { $0.id != captureID },
             destinations: current.destinations,
+            tagCatalog: current.tagCatalog,
             boundaries: current.boundaries
         )
         response = updated

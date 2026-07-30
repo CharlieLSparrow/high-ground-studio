@@ -26,6 +26,7 @@ runLocalDatabaseSmoke("personal Inbox source to canonical Research filing", () =
   let workspaceId = "";
   let projectId = "";
   let viewerProjectId = "";
+  let tagId = "";
   let snippetId = "";
   let staleSnippetId = "";
   let bookmarkId = "";
@@ -49,6 +50,14 @@ runLocalDatabaseSmoke("personal Inbox source to canonical Research filing", () =
       prisma.studioProjectAccessGrant.create({ data: { projectId, email: actorEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail } }),
       prisma.studioProjectAccessGrant.create({ data: { projectId: viewerProjectId, email: actorEmail, role: "VIEWER", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail } }),
     ]);
+    tagId = (await prisma.studioTag.create({
+      data: {
+        projectId,
+        slug: `episode-seed-${nonce}`,
+        label: "Episode seed",
+      },
+      select: { id: true },
+    })).id;
     const [snippet, staleSnippet, bookmark] = await Promise.all([
       prisma.snippet.create({ data: { userId: actorUserId, sourceTitle: "Coaching insight", sourceUrl: "https://example.com/coaching", highlightedText: "Ask what changed before prescribing the next step.", note: "Private note must not become shared source text." } }),
       prisma.snippet.create({ data: { userId: actorUserId, sourceTitle: "Revision guarded insight", sourceUrl: "https://example.com/revision", highlightedText: "File only the exact passage a person reviewed." } }),
@@ -82,7 +91,12 @@ runLocalDatabaseSmoke("personal Inbox source to canonical Research filing", () =
 
   afterAll(async () => {
     try {
-      if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
+      if (workspaceId) {
+        await prisma.studioSourceAnnotationTag.deleteMany({
+          where: { annotation: { project: { workspaceId } } },
+        });
+        await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
+      }
       if (actorUserId || otherUserId) await prisma.user.deleteMany({ where: { id: { in: [actorUserId, otherUserId].filter(Boolean) } } });
       const [users, workspaces, filings, sources] = await Promise.all([
         prisma.user.count({ where: { primaryEmail: { in: [actorEmail, otherEmail] } } }),
@@ -98,17 +112,77 @@ runLocalDatabaseSmoke("personal Inbox source to canonical Research filing", () =
 
   it("atomically creates one source and receipt, preserves the private capture, and reuses retries", async () => {
     const clientRequestId = randomUUID();
-    const first = await filePersonalSourceIntoResearch({ prisma, actorUserId, actorEmail, projectId, captureId: snippetId, captureType: "SNIPPET", clientRequestId });
-    const replay = await filePersonalSourceIntoResearch({ prisma, actorUserId, actorEmail, projectId, captureId: snippetId, captureType: "SNIPPET", clientRequestId });
-    expect(first).toMatchObject({ ok: true, captureId: snippetId, captureType: "SNIPPET", projectId, reused: false });
-    expect(replay).toMatchObject({ ok: true, sourceUnitId: first.ok ? first.sourceUnitId : "", filingId: first.ok ? first.filingId : "", reused: true });
+    const annotationRequestId = randomUUID();
+    const annotation = {
+      clientRequestId: annotationRequestId,
+      kind: "question",
+      visibility: "project",
+      body: "Could this become the opening coaching question?",
+      tagIds: [tagId],
+    };
+    const first = await filePersonalSourceIntoResearch({
+      prisma,
+      actorUserId,
+      actorEmail,
+      projectId,
+      captureId: snippetId,
+      captureType: "SNIPPET",
+      clientRequestId,
+      annotation,
+    });
+    const replay = await filePersonalSourceIntoResearch({
+      prisma,
+      actorUserId,
+      actorEmail,
+      projectId,
+      captureId: snippetId,
+      captureType: "SNIPPET",
+      clientRequestId,
+      annotation,
+    });
+    expect(first).toMatchObject({
+      ok: true,
+      captureId: snippetId,
+      captureType: "SNIPPET",
+      projectId,
+      reused: false,
+      annotation: {
+        clientRequestId: annotationRequestId,
+        kind: "question",
+        visibility: "project",
+        body: "Could this become the opening coaching question?",
+        tagIds: [tagId],
+        reused: false,
+      },
+    });
+    expect(replay).toMatchObject({
+      ok: true,
+      sourceUnitId: first.ok ? first.sourceUnitId : "",
+      filingId: first.ok ? first.filingId : "",
+      reused: true,
+      annotation: {
+        id: first.ok ? first.annotation?.id : "",
+        clientRequestId: annotationRequestId,
+        reused: true,
+      },
+    });
 
-    const [source, filing, snippet, sourceCount, filingCount] = await Promise.all([
+    const [source, filing, snippet, savedAnnotation, sourceCount, filingCount, annotationCount] = await Promise.all([
       prisma.studioSourceUnit.findUnique({ where: { id: first.ok ? first.sourceUnitId : "" } }),
       prisma.studioPersonalSourceFiling.findUnique({ where: { id: first.ok ? first.filingId : "" } }),
       prisma.snippet.findUnique({ where: { id: snippetId } }),
+      prisma.studioSourceAnnotation.findUnique({
+        where: { id: first.ok ? first.annotation?.id ?? "" : "" },
+        include: {
+          tags: { select: { tagId: true } },
+          revisions: { orderBy: { revision: "asc" } },
+        },
+      }),
       prisma.studioSourceUnit.count({ where: { projectId, slug: { contains: snippetId.toLowerCase() } } }),
       prisma.studioPersonalSourceFiling.count({ where: { projectId, snippetId } }),
+      prisma.studioSourceAnnotation.count({
+        where: { createdByUserId: actorUserId, clientRequestId: annotationRequestId },
+      }),
     ]);
     expect(source).toMatchObject({
       projectId,
@@ -129,12 +203,74 @@ runLocalDatabaseSmoke("personal Inbox source to canonical Research filing", () =
     });
     expect(JSON.stringify(filing?.captureSnapshotJson)).not.toContain("Private note must not become shared source text");
     expect(snippet).toMatchObject({ collectionId: null, note: "Private note must not become shared source text." });
-    expect({ sourceCount, filingCount }).toEqual({ sourceCount: 1, filingCount: 1 });
+    expect(savedAnnotation).toMatchObject({
+      sourceUnitId: first.ok ? first.sourceUnitId : "",
+      projectId,
+      kind: "question",
+      status: "active",
+      visibility: "project",
+      body: "Could this become the opening coaching question?",
+      selectorKind: "text-quote",
+      startOffset: 0,
+      endOffset: "Ask what changed before prescribing the next step.".length,
+      exactText: "Ask what changed before prescribing the next step.",
+      sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+      tags: [{ tagId }],
+      revisions: [expect.objectContaining({
+        revision: 1,
+        operation: "created",
+        snapshotJson: expect.objectContaining({
+          tagIds: [tagId],
+          sourceFingerprint: expect.stringMatching(/^[a-f0-9]{64}$/),
+        }),
+      })],
+    });
+    expect({ sourceCount, filingCount, annotationCount }).toEqual({
+      sourceCount: 1,
+      filingCount: 1,
+      annotationCount: 1,
+    });
     const inbox = await loadInbox(actorUserId, actorEmail, false);
     expect(inbox.counts.sources).toBe(2);
     expect(
       inbox.ready.filter((item) => item.kind === "SOURCE").map((item) => item.id),
     ).toEqual(expect.arrayContaining([bookmarkId, staleSnippetId]));
+  });
+
+  it("rejects reuse of an annotation identity for different evidence without duplicating records", async () => {
+    const existing = await prisma.studioSourceAnnotation.findFirstOrThrow({
+      where: { createdByUserId: actorUserId, sourceUnit: { personalSourceFiling: { snippetId } } },
+      select: { clientRequestId: true },
+    });
+    const before = await prisma.studioSourceAnnotation.count({
+      where: { createdByUserId: actorUserId },
+    });
+
+    const conflict = await filePersonalSourceIntoResearch({
+      prisma,
+      actorUserId,
+      actorEmail,
+      projectId,
+      captureId: snippetId,
+      captureType: "SNIPPET",
+      clientRequestId: randomUUID(),
+      annotation: {
+        clientRequestId: existing.clientRequestId ?? "",
+        kind: "claim",
+        visibility: "private",
+        body: "A different annotation must not reuse the same save identity.",
+        tagIds: [],
+      },
+    });
+
+    expect(conflict).toMatchObject({
+      ok: false,
+      code: "CONFLICT",
+      message: expect.stringContaining("different source decision"),
+    });
+    await expect(prisma.studioSourceAnnotation.count({
+      where: { createdByUserId: actorUserId },
+    })).resolves.toBe(before);
   });
 
   it("files a URL as link evidence without claiming page import", async () => {

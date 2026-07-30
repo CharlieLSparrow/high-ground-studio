@@ -3,8 +3,31 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import { Prisma, type PrismaClient } from "@prisma/client";
 
+import {
+  createSourceAnnotationInTransaction,
+  type SourceAnnotationWriteResult,
+} from "./source-annotations";
+
 export const PERSONAL_SOURCE_CAPTURE_TYPES = ["SNIPPET", "BOOKMARK"] as const;
 export type PersonalSourceCaptureType = (typeof PERSONAL_SOURCE_CAPTURE_TYPES)[number];
+
+export type PersonalSourceFilingAnnotationInput = {
+  clientRequestId: string;
+  kind: string;
+  visibility: string;
+  body: string;
+  tagIds: string[];
+};
+
+export type PersonalSourceFilingAnnotationResult = {
+  id: string;
+  clientRequestId: string;
+  kind: string;
+  visibility: string;
+  body: string;
+  tagIds: string[];
+  reused: boolean;
+};
 
 export type PersonalSourceFilingResult =
   | {
@@ -18,6 +41,7 @@ export type PersonalSourceFilingResult =
       captureType: PersonalSourceCaptureType;
       reused: boolean;
       href: string;
+      annotation: PersonalSourceFilingAnnotationResult | null;
     }
   | { ok: false; code: "INVALID" | "NOT_FOUND" | "FORBIDDEN" | "CONFLICT"; message: string };
 
@@ -30,7 +54,25 @@ type FilingInput = {
   captureType: string;
   clientRequestId: string;
   expectedCaptureUpdatedAt?: Date;
+  annotation?: PersonalSourceFilingAnnotationInput | null;
+  uniqueConflictReplay?: boolean;
 };
+
+type FilingRecord = {
+  id: string;
+  sourceUnitId: string;
+  projectId: string;
+  snippetId: string | null;
+  bookmarkId: string | null;
+  captureType: string;
+  project: { slug: string; name: string };
+};
+
+class PersonalSourceFilingTransactionAbort extends Error {
+  constructor(readonly result: Extract<PersonalSourceFilingResult, { ok: false }>) {
+    super(result.message);
+  }
+}
 
 function text(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -57,15 +99,11 @@ function isCaptureType(value: string): value is PersonalSourceCaptureType {
   return PERSONAL_SOURCE_CAPTURE_TYPES.includes(value as PersonalSourceCaptureType);
 }
 
-function resultFromFiling(filing: {
-  id: string;
-  sourceUnitId: string;
-  projectId: string;
-  snippetId: string | null;
-  bookmarkId: string | null;
-  captureType: string;
-  project: { slug: string; name: string };
-}, reused: boolean): PersonalSourceFilingResult {
+function resultFromFiling(
+  filing: FilingRecord,
+  reused: boolean,
+  annotation: PersonalSourceFilingAnnotationResult | null = null,
+): PersonalSourceFilingResult {
   if (!isCaptureType(filing.captureType)) {
     return { ok: false, code: "CONFLICT", message: "The existing filing receipt has an unsupported capture type." };
   }
@@ -84,6 +122,63 @@ function resultFromFiling(filing: {
     captureType: filing.captureType,
     reused,
     href: `/research?source=${encodeURIComponent(filing.sourceUnitId)}`,
+    annotation,
+  };
+}
+
+function annotationFailure(
+  result: Extract<SourceAnnotationWriteResult, { ok: false }>,
+): Extract<PersonalSourceFilingResult, { ok: false }> {
+  return {
+    ok: false,
+    code: result.code,
+    message: result.message,
+  };
+}
+
+async function annotateFiledSource(
+  tx: Prisma.TransactionClient,
+  input: {
+    actorUserId: string;
+    actorEmail: string;
+    projectId: string;
+    sourceUnitId: string;
+    immutableText: string;
+    annotation?: PersonalSourceFilingAnnotationInput | null;
+  },
+):
+  Promise<
+    | { ok: true; annotation: PersonalSourceFilingAnnotationResult | null }
+    | { ok: false; result: Extract<PersonalSourceFilingResult, { ok: false }> }
+  > {
+  if (!input.annotation) return { ok: true, annotation: null };
+  const result = await createSourceAnnotationInTransaction(tx, {
+    projectId: input.projectId,
+    sourceUnitId: input.sourceUnitId,
+    actorUserId: input.actorUserId,
+    actorEmail: input.actorEmail,
+    clientRequestId: input.annotation.clientRequestId,
+    kind: input.annotation.kind,
+    visibility: input.annotation.visibility,
+    body: input.annotation.body,
+    startOffset: 0,
+    endOffset: input.immutableText.length,
+    exactText: input.immutableText,
+    tagIds: input.annotation.tagIds,
+    surface: "ios-capture",
+  });
+  if (!result.ok) return { ok: false, result: annotationFailure(result) };
+  return {
+    ok: true,
+    annotation: {
+      id: result.id,
+      clientRequestId: input.annotation.clientRequestId,
+      kind: input.annotation.kind,
+      visibility: input.annotation.visibility,
+      body: input.annotation.body,
+      tagIds: [...new Set(input.annotation.tagIds)].sort(),
+      reused: result.reused,
+    },
   };
 }
 
@@ -158,7 +253,23 @@ export async function filePersonalSourceIntoResearch(input: FilingInput): Promis
         if (existingRequest.projectId !== projectId || !sameCapture) {
           return { ok: false as const, code: "CONFLICT" as const, message: "That filing identity already belongs to another source or Nest." };
         }
-        return resultFromFiling(existingRequest, true);
+        const source = await tx.studioSourceUnit.findUnique({
+          where: { id: existingRequest.sourceUnitId },
+          select: { immutableText: true },
+        });
+        if (!source?.immutableText) {
+          return { ok: false as const, code: "CONFLICT" as const, message: "The existing Research source is unavailable." };
+        }
+        const annotation = await annotateFiledSource(tx, {
+          actorUserId,
+          actorEmail,
+          projectId,
+          sourceUnitId: existingRequest.sourceUnitId,
+          immutableText: source.immutableText,
+          annotation: input.annotation,
+        });
+        if (!annotation.ok) return annotation.result;
+        return resultFromFiling(existingRequest, true, annotation.annotation);
       }
 
       const existingCapture = await tx.studioPersonalSourceFiling.findFirst({
@@ -169,7 +280,25 @@ export async function filePersonalSourceIntoResearch(input: FilingInput): Promis
         },
         include: { project: { select: { slug: true, name: true } } },
       });
-      if (existingCapture) return resultFromFiling(existingCapture, true);
+      if (existingCapture) {
+        const source = await tx.studioSourceUnit.findUnique({
+          where: { id: existingCapture.sourceUnitId },
+          select: { immutableText: true },
+        });
+        if (!source?.immutableText) {
+          return { ok: false as const, code: "CONFLICT" as const, message: "The existing Research source is unavailable." };
+        }
+        const annotation = await annotateFiledSource(tx, {
+          actorUserId,
+          actorEmail,
+          projectId,
+          sourceUnitId: existingCapture.sourceUnitId,
+          immutableText: source.immutableText,
+          annotation: input.annotation,
+        });
+        if (!annotation.ok) return annotation.result;
+        return resultFromFiling(existingCapture, true, annotation.annotation);
+      }
 
       const snippet = captureType === "SNIPPET"
         ? await tx.snippet.findFirst({
@@ -294,12 +423,37 @@ export async function filePersonalSourceIntoResearch(input: FilingInput): Promis
         },
         include: { project: { select: { slug: true, name: true } } },
       });
-      return resultFromFiling(filing, false);
+      const annotation = await annotateFiledSource(tx, {
+        actorUserId,
+        actorEmail,
+        projectId,
+        sourceUnitId,
+        immutableText,
+        annotation: input.annotation,
+      });
+      if (!annotation.ok) {
+        throw new PersonalSourceFilingTransactionAbort(annotation.result);
+      }
+      return resultFromFiling(filing, false, annotation.annotation);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
+    if (error instanceof PersonalSourceFilingTransactionAbort) return error.result;
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
       const existing = await findExistingCaptureFiling(input.prisma, { actorUserId, projectId, captureId, captureType });
-      if (existing) return resultFromFiling(existing, true);
+      if (existing) {
+        if (input.uniqueConflictReplay) {
+          return {
+            ok: false,
+            code: "CONFLICT",
+            message: "This source or annotation was saved elsewhere at the same moment. Refresh before retrying.",
+          };
+        }
+        return filePersonalSourceIntoResearch({
+          ...input,
+          clientRequestId,
+          uniqueConflictReplay: true,
+        });
+      }
       return { ok: false, code: "CONFLICT", message: "This source was filed elsewhere at the same moment. Refresh before deciding again." };
     }
     throw error;

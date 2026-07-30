@@ -77,6 +77,10 @@ private struct SourceInboxFilingOutboxHarness {
         let decision = try outbox.enqueue(
             source: source,
             destination: destination,
+            annotationKind: "question",
+            annotationVisibility: "project",
+            annotationBody: "Could this frame the episode opening?",
+            annotationTagIDs: ["tag-curiosity", "tag-episode"],
             capturedAt: capturedAt
         )
 
@@ -98,6 +102,14 @@ private struct SourceInboxFilingOutboxHarness {
             UUID(uuidString: decision.clientRequestID) != nil,
             "Every filing retry must retain one valid UUID identity."
         )
+        require(
+            decision.annotationRequestID != nil
+                && decision.annotationKind == "question"
+                && decision.annotationVisibility == "project"
+                && decision.annotationBody == "Could this frame the episode opening?"
+                && decision.annotationTagIDs == ["tag-curiosity", "tag-episode"],
+            "The protected filing decision must retain the complete annotation and canonical tag intent."
+        )
 
         do {
             _ = try outbox.enqueue(
@@ -118,8 +130,12 @@ private struct SourceInboxFilingOutboxHarness {
         )
         require(
             relaunched.pendingCount == 1
-                && relaunched.entries.first?.id == decision.id,
-            "Relaunch must recover the exact unresolved filing identity."
+                && relaunched.entries.first?.id == decision.id
+                && relaunched.entries.first?.annotationRequestID
+                    == decision.annotationRequestID
+                && relaunched.entries.first?.annotationTagIDs
+                    == decision.annotationTagIDs,
+            "Relaunch must recover the exact unresolved filing and annotation identity."
         )
 
         relaunched.markHeld(

@@ -86,6 +86,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let annotationBody: String?
         let sourceInboxCaptureID: String?
         let sourceInboxTitle: String?
+        let sourceInboxAnnotationBody: String?
+        let sourceInboxTagLabel: String?
         let recurrenceSeriesID: String?
         let recurrenceScheduledLocalDate: String?
         let recurrenceAuthoringTitle: String?
@@ -129,6 +131,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 annotationBody: environment["QUIPSLY_CAPTURE_UI_TEST_ANNOTATION_BODY"],
                 sourceInboxCaptureID: environment["QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_CAPTURE_ID"],
                 sourceInboxTitle: environment["QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_TITLE"],
+                sourceInboxAnnotationBody: environment["QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_ANNOTATION_BODY"],
+                sourceInboxTagLabel: environment["QUIPSLY_CAPTURE_UI_TEST_SOURCE_INBOX_TAG_LABEL"],
                 recurrenceSeriesID: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_SERIES_ID"],
                 recurrenceScheduledLocalDate: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_LOCAL_DATE"],
                 recurrenceAuthoringTitle: environment["QUIPSLY_CAPTURE_UI_TEST_RECURRENCE_AUTHORING_TITLE"],
@@ -185,6 +189,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             annotationBody: payload["annotationBody"] as? String,
             sourceInboxCaptureID: payload["sourceInboxCaptureID"] as? String,
             sourceInboxTitle: payload["sourceInboxTitle"] as? String,
+            sourceInboxAnnotationBody: payload["sourceInboxAnnotationBody"] as? String,
+            sourceInboxTagLabel: payload["sourceInboxTagLabel"] as? String,
             recurrenceSeriesID: payload["recurrenceSeriesID"] as? String,
             recurrenceScheduledLocalDate: payload["recurrenceScheduledLocalDate"] as? String,
             recurrenceAuthoringTitle: payload["recurrenceAuthoringTitle"] as? String,
@@ -1294,8 +1300,12 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let credentials = try runtimeSmokeCredentials()
         guard let captureID = credentials.sourceInboxCaptureID, !captureID.isEmpty,
               let sourceTitle = credentials.sourceInboxTitle, !sourceTitle.isEmpty,
+              let annotationBody = credentials.sourceInboxAnnotationBody,
+              !annotationBody.isEmpty,
+              let tagLabel = credentials.sourceInboxTagLabel,
+              !tagLabel.isEmpty,
               let projectName = credentials.projectName, !projectName.isEmpty else {
-            throw XCTSkip("The source-inbox-filing journey requires one exact private capture ID/title and writable Nest name.")
+            throw XCTSkip("The source-inbox-filing journey requires one exact private capture ID/title, annotation body, canonical tag, and writable Nest name.")
         }
 
         let app = try launchSignedInCaptureApp()
@@ -1333,6 +1343,39 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             }
         }
 
+        let note = app.descendants(matching: .any)[
+            "CaptureSourceFilingAnnotationBody"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(note, in: app, timeout: 8, swipeAttempts: 8),
+            "The iPhone should offer one protected exact-source annotation in the same deliberate filing flow."
+        )
+        note.tap()
+        note.typeText(annotationBody)
+
+        let visibility = app.descendants(matching: .any)[
+            "CaptureSourceFilingAnnotationVisibility"
+        ].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(visibility, in: app, timeout: 8, swipeAttempts: 8)
+        )
+        visibility.tap()
+        let collaboratorOption = app.buttons["Nest collaborators"].firstMatch
+        if collaboratorOption.waitForExistence(timeout: 4) {
+            collaboratorOption.tap()
+        } else {
+            let collaboratorText = app.staticTexts["Nest collaborators"].firstMatch
+            XCTAssertTrue(collaboratorText.waitForExistence(timeout: 4))
+            collaboratorText.tap()
+        }
+
+        let canonicalTag = app.switches[tagLabel].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(canonicalTag, in: app, timeout: 8, swipeAttempts: 8),
+            "The filing flow should reuse the chosen Nest's canonical tag vocabulary."
+        )
+        turnOn(canonicalTag, in: app)
+
         let confirm = app.buttons["CaptureSourceFilingConfirm"].firstMatch
         XCTAssertTrue(confirm.waitForExistence(timeout: 5))
         XCTAssertTrue(confirm.isEnabled)
@@ -1350,7 +1393,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(
             waitForRuntimeElement(status, in: app, timeout: 20, swipeAttempts: 12)
         )
-        XCTAssertTrue(status.label.contains("Filed into \(projectName)"))
+        XCTAssertTrue(status.label.contains("Filed and annotated in \(projectName)"))
         let filedLink = app.descendants(matching: .any)[
             "CaptureSourceInboxFiledLink"
         ].firstMatch
