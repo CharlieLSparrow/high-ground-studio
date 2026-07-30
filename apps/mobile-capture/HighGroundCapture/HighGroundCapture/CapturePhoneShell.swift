@@ -7550,29 +7550,47 @@ private struct StudioHandoffCard: View {
 
                 Spacer()
 
-                Button {
-                    Task { await model.promoteSelectedRecordingToStudio() }
-                } label: {
-                    if model.isPromotingRecordingToStudio {
-                        ProgressView()
-                            .accessibilityLabel("Attaching capture group to Studio")
-                    } else {
+                if session.recordingPromotedToStudioMedia,
+                   let studioReviewURL {
+                    Link(destination: studioReviewURL) {
                         Label(
-                            studioHandoffActionLabel,
-                            systemImage: session.recordingPromotedToStudioMedia ? "checkmark" : "arrow.right"
+                            studioReviewActionLabel,
+                            systemImage: "waveform.path.ecg.rectangle"
                         )
                     }
+                    .buttonStyle(.borderedProminent)
+                    .tint(.green)
+                    .accessibilityHint(
+                        "Opens this exact capture group in the episode sync-review wizard. No media moves until you review waveform, drift, and placement."
+                    )
+                    .accessibilityIdentifier(
+                        "CaptureOpenStudioReviewLink_\(session.id)"
+                    )
+                } else {
+                    Button {
+                        Task { await model.promoteSelectedRecordingToStudio() }
+                    } label: {
+                        if model.isPromotingRecordingToStudio {
+                            ProgressView()
+                                .accessibilityLabel("Attaching capture group to Studio")
+                        } else {
+                            Label(
+                                studioHandoffActionLabel,
+                                systemImage: session.recordingPromotedToStudioMedia ? "checkmark" : "arrow.right"
+                            )
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(session.recordingPromotedToStudioMedia ? .green : CapturePalette.accent)
+                    .disabled(
+                        captureIsActive
+                            || model.isChangingCapture
+                            || model.isPromotingRecordingToStudio
+                            || !session.canPromoteRecordingToStudioMedia
+                    )
+                    .accessibilityHint(studioHandoffHint)
+                    .accessibilityIdentifier("CaptureAttachToStudioButton_\(session.id)")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(session.recordingPromotedToStudioMedia ? .green : CapturePalette.accent)
-                .disabled(
-                    captureIsActive
-                        || model.isChangingCapture
-                        || model.isPromotingRecordingToStudio
-                        || !session.canPromoteRecordingToStudioMedia
-                )
-                .accessibilityHint(studioHandoffHint)
-                .accessibilityIdentifier("CaptureAttachToStudioButton_\(session.id)")
             }
         }
         .captureCard()
@@ -7599,6 +7617,20 @@ private struct StudioHandoffCard: View {
             return sourceCount > 1 ? "Group in Studio" : "Attached to Studio"
         }
         return sourceCount > 1 ? "Attach group" : "Attach to Studio"
+    }
+
+    private var studioReviewActionLabel: String {
+        session.studioHandoffSources.count > 1
+            ? "Review group sync"
+            : "Review in Studio"
+    }
+
+    private var studioReviewURL: URL? {
+        session.studioCaptureReviewURL(
+            baseURLString: Bundle.main.object(
+                forInfoDictionaryKey: "QUIPSLY_API_BASE_URL"
+            ) as? String ?? "https://nest.quipsly.com"
+        )
     }
 }
 

@@ -901,6 +901,7 @@ function checkTranscriptCorrectionContractSources() {
   const recordingPromotionRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/recordings/promote/route.ts");
   const episodeInventoryText = sourceText("apps/quipsly/src/app/api/media-vault/episode-inventory/route.ts");
   const editorText = sourceText("apps/quipsly/src/app/(app)/editor/page.tsx");
+  const captureGroupEditorFocusText = sourceText("apps/quipsly/src/app/(app)/editor/captureGroupEditorFocus.ts");
   const quickEntryText = sourceText("apps/quipsly/src/lib/server/mobile-capture-quick-entry.ts");
   const quickEntryRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/quick-entry/route.ts");
   const sessionNoteContractText = sourceText("apps/quipsly/src/lib/session-note-contract.ts");
@@ -1389,15 +1390,22 @@ function checkTranscriptCorrectionContractSources() {
       && bridgeText.includes("MobileCaptureSourceSummary")
       && bridgeText.includes('requestBody["captureGroupId"] = captureGroupID')
       && bridgeText.includes('requestBody["expectedRecordingAssetIds"]')
+      && bridgeText.includes("studioCaptureReviewURL")
+      && bridgeText.includes('URLQueryItem(name: "captureGroup"')
       && captureExperienceText.includes("complete capture group")
       && shellText.includes('"Attach group"')
-      && shellText.includes('"Group in Studio"')
+      && shellText.includes('"Review group sync"')
+      && shellText.includes("CaptureOpenStudioReviewLink_")
+      && editorText.includes("captureGroupEditorFocusPlan")
+      && editorText.includes('data-testid="capture-group-editor-focus"')
+      && captureGroupEditorFocusText.includes("No placement or episode-spine decision has been made.")
+      && captureGroupEditorFocusText.includes("captureGroupEditorFocusPlan")
       && captureUITestText.includes("testStudioHandoffKeepsTheWholeCaptureGroupVisibleAcrossReadyRetryAndCompleteStates")
       && captureUITestText.includes('expectedStatus: "2 sources ready"')
       && captureUITestText.includes('expectedStatus: "1 of 2 in Studio"')
       && captureUITestText.includes('expectedStatus: "2 sources in Studio"'),
     "completeCaptureGroupStudioHandoff",
-    "iPhone and Nest attach the newest verified podcast take as one exact source-set snapshot, preserve every source original, expose partial retry truth, and keep clock alignment as a human-reviewed proposal.",
+    "iPhone and Nest attach the newest verified podcast take as one exact source-set snapshot, preserve every source original, expose partial retry truth, and open the same capture group in the existing waveform, drift, and human-approval editor without applying sync.",
   );
   expect(
     packetRouteText.includes("buildPacketGoalCandidates")

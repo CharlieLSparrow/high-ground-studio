@@ -4405,3 +4405,36 @@ This is an active-goal checkpoint, not a completion claim.
   slice is newer than that distributed binary, and Simulator operation does
   not prove a real multi-file upload, authenticated production promotion,
   physical-iPhone recovery, sync approval, or Studio proof-watch/listen.
+
+### 2026-07-30 exact capture-group sync-review continuation checkpoint
+
+- Closed the dead end after a complete iPhone Studio handoff. Instead of a
+  disabled **Group in Studio** control, the Session card now exposes enabled
+  **Review group sync** and constructs one URL from the canonical project,
+  episode, and exact `captureGroupId`. It opens the existing Nest guided sync
+  wizard rather than inventing a second mobile editor.
+- The editor validates the bounded group identity, resolves only imported media
+  carrying that group evidence, chooses the group’s proposed baseline only
+  when it is audio, otherwise focuses its first audio and first camera, and
+  reports a missing group as an explicit handoff-refresh state. The deep link
+  changes only the initial review selection. It does not persist an episode
+  spine, place a clip, copy a device-clock proposal, approve alignment, or
+  claim sample accuracy.
+- Operated local Nest at the real editor route with an authenticated
+  collaborator account. The mature waveform/drift/human-approval wizard
+  rendered, and an absent requested group visibly produced **Capture handoff
+  needs refresh** rather than silently reviewing unrelated media. Focused
+  helper tests prove the matched three-source case excludes an older take and
+  selects the exact microphone master plus first camera.
+- Verification passes the 4/4 editor helper suite, Quipsly TypeScript, 76/76
+  mobile source contracts, the 947-check App Store static gate, a generic
+  arm64/x86_64 iOS Simulator build, and the focused iPhone 17 Pro / iOS 26.3.1
+  handoff journey. The native journey read back ready, partial, and complete
+  states and found enabled **Review group sync** at completion. Result:
+  `/Users/wall-e/Library/Developer/Xcode/DerivedData/HighGroundCapture-hdptnccsjtratddsvysdcgbqoxgf/Logs/Test/Test-HighGroundCapture-2026.07.30_10-43-41--0600.xcresult`.
+- The broad unauthenticated network smoke also confirmed deployment drift:
+  production Nest still returns HTML 404 for the newer source-inbox read and
+  mutation routes. This source slice is intentionally not deployed or
+  distributed while Scott and Charlie’s Build 14 rehearsal remains active.
+  Physical multi-source capture, production handoff, exact group readback,
+  human sync approval, and proof-listen/watch remain required.

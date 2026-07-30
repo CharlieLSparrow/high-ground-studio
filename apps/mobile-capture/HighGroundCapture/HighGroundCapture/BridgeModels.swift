@@ -821,6 +821,32 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
         }
     }
 
+    func studioCaptureReviewURL(baseURLString: String) -> URL? {
+        guard let projectSlug = projectSlug?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !projectSlug.isEmpty,
+              let episodeSlug = episodeSlug?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+              !episodeSlug.isEmpty,
+              let captureGroupID = studioHandoffCaptureGroupID,
+              !captureGroupID.isEmpty,
+              let baseURL = URL(
+                string: normalizedNestBaseURL(baseURLString)
+              ),
+              var components = URLComponents(
+                url: baseURL,
+                resolvingAgainstBaseURL: false
+              ) else { return nil }
+        components.path = "/editor"
+        components.queryItems = [
+            URLQueryItem(name: "project", value: projectSlug),
+            URLQueryItem(name: "episode", value: episodeSlug),
+            URLQueryItem(name: "captureGroup", value: captureGroupID),
+        ]
+        components.fragment = "guided-sync-wizard"
+        return components.url
+    }
+
     var recordingPromotedToStudioMedia: Bool {
         let sources = studioHandoffSources
         if !sources.isEmpty {

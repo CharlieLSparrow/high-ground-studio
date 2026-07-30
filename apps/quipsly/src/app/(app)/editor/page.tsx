@@ -31,6 +31,10 @@ import type { TimelineClip, TimelineState, TranscriptBlock } from "./useTimeline
 import { DEFAULT_PROJECT_SLUG as DEFAULT_EDITOR_PROJECT_SLUG } from "@/lib/studio/project-registry";
 import { episodeRoomCaptureAlignment } from "@/lib/episode-room/episode-room-source-alignment";
 import { reviewedSourceAlignment } from "@/lib/episode-production/reviewed-source-alignment";
+import {
+  captureGroupEditorFocusPlan,
+  normalizeCaptureGroupFocusId,
+} from "./captureGroupEditorFocus";
 
 const EPISODE_ARTIFACT_PAYLOAD_VERSION = EPISODE_ARTIFACT_CURRENT_VERSION;
 const EDITOR_LEGACY_VERSION = 0;
@@ -2893,11 +2897,15 @@ function CloudEditorContent() {
   const timelineAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const timelineSavedFingerprintRef = useRef("");
   const timelineRouteRef = useRef("");
+  const captureGroupFocusAppliedRef = useRef("");
   const syncPreviewSpineRef = useRef<HTMLAudioElement | null>(null);
   const syncPreviewTargetRef = useRef<HTMLMediaElement | null>(null);
   const searchParams = useSearchParams();
   const projectId = searchParams.get("project") ?? searchParams.get("projectId");
   const episodeSlug = searchParams.get("episode") ?? searchParams.get("boundary") ?? "current-episode";
+  const requestedCaptureGroupId = normalizeCaptureGroupFocusId(
+    searchParams.get("captureGroup"),
+  );
   const resolvedProjectSlug = projectId ?? DEFAULT_EDITOR_PROJECT_SLUG;
   const episodeLabel = humanizeSlug(episodeSlug);
   const [realEditingMode, setRealEditingMode] = useState(false);
@@ -3413,6 +3421,13 @@ function CloudEditorContent() {
     const parsed = normalizeImportedMediaAssets(productionState?.productionJson);
     return parsed.length > 0 ? parsed : STARTER_KIT_ASSETS;
   }, [productionState?.productionJson]);
+  const captureGroupFocus = useMemo(
+    () => captureGroupEditorFocusPlan(
+      importedMediaAssets,
+      requestedCaptureGroupId,
+    ),
+    [importedMediaAssets, requestedCaptureGroupId],
+  );
   const [episodeMediaTruth, setEpisodeMediaTruth] = useState<EpisodeMediaTruth | null>(null);
   const [episodeMediaTruthStatus, setEpisodeMediaTruthStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [episodeMediaTruthError, setEpisodeMediaTruthError] = useState<string | null>(null);
@@ -3606,8 +3621,13 @@ function CloudEditorContent() {
     && Number.isFinite(parsedSyncReviewResidualMilliseconds);
 
   const syncWizardTargetOptions = useMemo(() => {
-    return importedMediaAssets.filter((asset) => asset.id !== syncWizardSpineAsset?.id);
-  }, [importedMediaAssets, syncWizardSpineAsset]);
+    const focusedIds = new Set(captureGroupFocus?.assetIds ?? []);
+    return importedMediaAssets
+      .filter((asset) => asset.id !== syncWizardSpineAsset?.id)
+      .sort((left, right) => (
+        Number(focusedIds.has(right.id)) - Number(focusedIds.has(left.id))
+      ));
+  }, [captureGroupFocus?.assetIds, importedMediaAssets, syncWizardSpineAsset]);
 
   const mediaHealthProbeItems = useMemo(() => {
     const items = new Map<string, MediaHealthProbeItem>();
@@ -3716,6 +3736,27 @@ function CloudEditorContent() {
   const mediaHealthStats = useMemo(() => mediaHealthSummary(mediaHealthResults), [mediaHealthResults]);
 
   useEffect(() => {
+    if (!captureGroupFocus?.matched) return;
+    const signature = [
+      routeToken,
+      captureGroupFocus.requestedCaptureGroupId,
+      captureGroupFocus.spineAssetId ?? "",
+      captureGroupFocus.targetAssetId ?? "",
+      ...captureGroupFocus.assetIds,
+    ].join("::");
+    if (captureGroupFocusAppliedRef.current === signature) return;
+    captureGroupFocusAppliedRef.current = signature;
+    if (captureGroupFocus.spineAssetId) {
+      setSyncWizardSpineAssetId(captureGroupFocus.spineAssetId);
+    }
+    if (captureGroupFocus.targetAssetId) {
+      setSyncWizardTargetAssetId(captureGroupFocus.targetAssetId);
+    }
+    setMediaImportStatus(captureGroupFocus.message);
+  }, [captureGroupFocus, routeToken]);
+
+  useEffect(() => {
+    if (captureGroupFocus?.matched) return;
     if (persistedSpineAudio?.assetId && syncWizardSpineAssetId !== persistedSpineAudio.assetId) {
       setSyncWizardSpineAssetId(persistedSpineAudio.assetId);
       return;
@@ -3723,14 +3764,25 @@ function CloudEditorContent() {
     if (!syncWizardSpineAssetId && importedAudioAssets[0]) {
       setSyncWizardSpineAssetId(importedAudioAssets[0].id);
     }
-  }, [importedAudioAssets, persistedSpineAudio?.assetId, syncWizardSpineAssetId]);
+  }, [
+    captureGroupFocus?.matched,
+    importedAudioAssets,
+    persistedSpineAudio?.assetId,
+    syncWizardSpineAssetId,
+  ]);
 
   useEffect(() => {
+    if (captureGroupFocus?.matched) return;
     if (!syncWizardTargetAssetId && importedMediaAssets.length > 0) {
       const firstTarget = importedMediaAssets.find((asset) => asset.kind === "video") ?? importedMediaAssets.find((asset) => asset.id !== syncWizardSpineAssetId) ?? importedMediaAssets[0];
       if (firstTarget) setSyncWizardTargetAssetId(firstTarget.id);
     }
-  }, [importedMediaAssets, syncWizardSpineAssetId, syncWizardTargetAssetId]);
+  }, [
+    captureGroupFocus?.matched,
+    importedMediaAssets,
+    syncWizardSpineAssetId,
+    syncWizardTargetAssetId,
+  ]);
 
   useEffect(() => {
     setSyncReviewWaveformConfirmed(false);
@@ -7137,6 +7189,42 @@ function CloudEditorContent() {
                   </button>
                 </div>
               </div>
+
+              {captureGroupFocus && (
+                <div
+                  className={`mt-3 rounded-xl border p-3 ${
+                    captureGroupFocus.matched
+                      ? "border-sky-200 bg-sky-50 text-sky-950"
+                      : "border-amber-300 bg-amber-50 text-amber-950"
+                  }`}
+                  data-testid="capture-group-editor-focus"
+                  aria-live="polite"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-black">
+                        {captureGroupFocus.matched
+                          ? "Opened from Capture — exact take focused"
+                          : "Capture handoff needs refresh"}
+                      </div>
+                      <p className="mt-1 text-[11px] font-bold leading-5">
+                        {captureGroupFocus.message}
+                      </p>
+                    </div>
+                    <span className="max-w-full break-all rounded-full border border-current bg-white/70 px-2 py-1 font-mono text-[10px] uppercase tracking-[0.12em]">
+                      {captureGroupFocus.requestedCaptureGroupId}
+                    </span>
+                  </div>
+                  {captureGroupFocus.matched && (
+                    <p className="mt-2 text-[11px] font-bold leading-5">
+                      Quipsly selected this group&apos;s microphone master and
+                      first camera source only as the starting view. It did not
+                      change the episode spine, place clips, approve clock
+                      offsets, or claim sample accuracy.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <SyncStatusGuide compact />
 

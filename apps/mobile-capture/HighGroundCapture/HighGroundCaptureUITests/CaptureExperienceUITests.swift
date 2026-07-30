@@ -1529,8 +1529,9 @@ final class CaptureExperienceUITests: XCTestCase {
         func assertHandoff(
             sessionID: String,
             expectedStatus: String,
-            expectedButtonLabel: String,
-            expectedButtonEnabled: Bool,
+            expectedActionIdentifier: String,
+            expectedActionLabel: String,
+            expectedActionEnabled: Bool,
             expectedDetail: String
         ) {
             let card = app.descendants(matching: .any)["CaptureStudioHandoffCard_\(sessionID)"]
@@ -1540,9 +1541,12 @@ final class CaptureExperienceUITests: XCTestCase {
             let status = app.descendants(matching: .any)["CaptureStudioPromotionStatus_\(sessionID)"]
             XCTAssertEqual(status.label, expectedStatus)
 
-            let button = app.buttons["CaptureAttachToStudioButton_\(sessionID)"]
-            XCTAssertEqual(button.label, expectedButtonLabel)
-            XCTAssertEqual(button.isEnabled, expectedButtonEnabled)
+            let action = app.descendants(matching: .any)[
+                expectedActionIdentifier
+            ]
+            XCTAssertTrue(action.exists)
+            XCTAssertEqual(action.label, expectedActionLabel)
+            XCTAssertEqual(action.isEnabled, expectedActionEnabled)
             XCTAssertTrue(app.staticTexts[expectedDetail].exists)
         }
 
@@ -1550,8 +1554,10 @@ final class CaptureExperienceUITests: XCTestCase {
         assertHandoff(
             sessionID: "preview-studio-group-ready",
             expectedStatus: "2 sources ready",
-            expectedButtonLabel: "Attach group",
-            expectedButtonEnabled: true,
+            expectedActionIdentifier:
+                "CaptureAttachToStudioButton_preview-studio-group-ready",
+            expectedActionLabel: "Attach group",
+            expectedActionEnabled: true,
             expectedDetail: "All 2 sources in this capture group passed exact-byte verification and can move to Studio together."
         )
         app.buttons["CaptureAttachToStudioButton_preview-studio-group-ready"].tap()
@@ -1561,8 +1567,10 @@ final class CaptureExperienceUITests: XCTestCase {
         assertHandoff(
             sessionID: "preview-studio-group-partial",
             expectedStatus: "1 of 2 in Studio",
-            expectedButtonLabel: "Attach group",
-            expectedButtonEnabled: true,
+            expectedActionIdentifier:
+                "CaptureAttachToStudioButton_preview-studio-group-partial",
+            expectedActionLabel: "Attach group",
+            expectedActionEnabled: true,
             expectedDetail: "1 of 2 capture-group sources reached Studio. Retry safely to continue the exact same handoff."
         )
 
@@ -1570,8 +1578,10 @@ final class CaptureExperienceUITests: XCTestCase {
         assertHandoff(
             sessionID: "preview-studio-group-complete",
             expectedStatus: "2 sources in Studio",
-            expectedButtonLabel: "Group in Studio",
-            expectedButtonEnabled: false,
+            expectedActionIdentifier:
+                "CaptureOpenStudioReviewLink_preview-studio-group-complete",
+            expectedActionLabel: "Review group sync",
+            expectedActionEnabled: true,
             expectedDetail: "The complete 2-source capture group is attached to Studio. Every original remains immutable capture evidence."
         )
     }
