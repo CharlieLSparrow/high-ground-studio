@@ -3993,3 +3993,50 @@ This is an active-goal checkpoint, not a completion claim.
   qualification, zero-traffic Nest preview, physical-iPhone operation,
   interruption/offline recovery, and same-ID production Research readback
   before this slice can be described as distributed or physically proven.
+
+### 2026-07-30 atomic source annotation and canonical tagging checkpoint
+
+- Capture's deliberate **File into Research** flow can now include one
+  human-authored annotation and the selected destination Nest's existing
+  canonical tags. The iPhone presents purpose, visibility, a multi-line note,
+  reusable tag choices, exact-source anchoring, and explicit no-side-effect
+  copy in one decision sheet.
+- Nest commits a new immutable source, filing receipt, whole-source annotation,
+  canonical tag links, and first append-only revision atomically. An invalid
+  annotation rolls the new filing back instead of manufacturing partial
+  success. Existing filings can safely receive or reuse the same exact
+  annotation without rewriting private or immutable source data.
+- Annotation replay identity now compares the complete decision rather than
+  only project and UUID: source, purpose, visibility, body, selector context,
+  fingerprint, and exact tag set must all match. A reused request UUID with
+  different intent is held as a conflict.
+- The protected, actor-partitioned iPhone outbox retains the complete
+  annotation intent across relaunch. It removes a pending decision only after
+  Nest acknowledges the same annotation UUID, purpose, visibility, body, and
+  canonical tag set.
+- Compiled UI testing found a section-level accessibility identifier masking
+  the actual annotation field and tag controls. The container override was
+  removed and both preview and runtime journeys now operate the child controls
+  through their accessible identities and verify the selected switch state.
+- The operated acceptance lane used current local Nest source, a disposable
+  real Firebase account, loopback PostgreSQL, and the compiled iPhone app. It
+  selected the exact writable Nest, entered a project-visible annotation,
+  reused the existing `Episode workflow` tag, filed the source, and received
+  the exact acknowledgement.
+- Independent database, API, replay, and Research-export reads proved one
+  immutable source, one filing, one whole-source annotation, one canonical tag
+  link, one `created` revision, the same identities on retry, unchanged private
+  capture state, matching SHA-256 source evidence, and no source mutation or
+  external side effect.
+- Cleanup deleted the generated annotation, projects, room, grants,
+  membership, database user, and Firebase user, then independently proved
+  database and Firebase absence.
+- Verification passes Quipsly TypeScript 7, 11 focused unit/route tests, 5
+  real-PostgreSQL integration tests, the protected native outbox harness,
+  74/74 source-contract checks, 148/148 generated mobile checks including 23
+  authenticated checks, 848/848 App Store/static checks, the compiled preview
+  UX, and the real generated native journey.
+- Feature commit `bb8d6a57` is not deployed or distributed. Build 14 and
+  production `studio-00445-rij` remain untouched for the Scott/Charlie
+  rehearsal. The coordinated preview, qualification, later Capture build, and
+  physical-iPhone same-ID proof remain open.

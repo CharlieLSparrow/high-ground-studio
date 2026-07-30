@@ -90,7 +90,7 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
 - latest coherent feature commit:
-  `ff48c69c feat(capture): file private sources into Nest research`
+  `bb8d6a57 feat(capture): annotate filed sources with canonical tags`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
   - `apps/quipsly/src/app/api/mobile/capture/today`
@@ -117,16 +117,20 @@ Verified during the Codex application handoff prep on 2026-05-26.
     actor-owned private Snippets and Bookmarks, exact source revisions, a
     protected account-partitioned outbox, canonical immutable Research sources,
     and idempotent receipt readback without mutating the private capture
-  - current checks: source-filing harness, route 5/5, real-PostgreSQL 4/4,
-    Quipsly typecheck, 10/10 Nest source-evidence, 831/831 App Store/static,
-    focused preview UI, and the real generated filing journey with 148/148
-    mobile contract checks all pass
-  - deploy status: `ff48c69c` and `b2313033` are not deployed or distributed;
-    next delivery is a zero-traffic Nest preview followed by exact-source
-    qualification for a later Capture build
-  - rollback: production remains on `studio-00445-rij`; revert `b2313033` if
-    the unpublished annotation slice must be removed and revert `ff48c69c` if
-    the unpublished source-filing slice must be removed
+  - `bb8d6a57` makes filing and a whole-source annotation one protected,
+    atomic decision using only the destination Nest's existing canonical tags;
+    full replay identity now includes the source, selector, body, visibility,
+    purpose, fingerprint, and tag set
+  - current checks: source-filing harness, focused route/unit 11/11,
+    real-PostgreSQL 5/5, Quipsly typecheck, source contract 74/74, App
+    Store/static 848/848, compiled preview UI, and the real generated filing
+    and annotation journey with 148/148 mobile checks all pass
+  - deploy status: `bb8d6a57`, `ff48c69c`, and `b2313033` are not deployed or
+    distributed; next delivery is a zero-traffic Nest preview followed by
+    exact-source qualification for a later Capture build
+  - rollback: production remains on `studio-00445-rij`; revert `bb8d6a57` to
+    remove compound file-and-annotate, revert `ff48c69c` to remove unpublished
+    source filing, and revert `b2313033` to remove unpublished annotation review
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
   - no private HGO or coaching material in screenshots

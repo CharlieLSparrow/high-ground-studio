@@ -1608,3 +1608,26 @@ checks, blockers, and next handoff.
   untouched for the Scott/Charlie rehearsal. `ff48c69c` is committed source
   for a later coordinated preview and Capture release, not deployed,
   distributed, or physically proven.
+
+### 2026-07-30 - One protected filing can attach exact-source notes and tags
+
+- Commit `bb8d6a57` extends the private-source filing decision with an optional
+  whole-source annotation and the destination Nest's existing canonical tags.
+  Source, filing, annotation, tag links, and first append-only revision commit
+  atomically; private capture and immutable source text remain unchanged.
+- Annotation idempotency now compares the complete original intent. A UUID
+  reused for another source, selector, body, visibility, purpose, fingerprint,
+  or tag set conflicts instead of silently reusing unrelated evidence.
+- Compiled UI verification found and fixed an accessibility container masking
+  the annotation field and tag controls. Preview and live journeys now operate
+  the child controls directly and confirm the tag's accessible selected state.
+- A disposable real Firebase/local-PostgreSQL run operated the compiled iPhone
+  app through file plus annotation, then proved exact API/database/export
+  readback, same-ID retry, no side effects, and complete cleanup.
+- Verification: Quipsly TypeScript 7, focused route/unit 11/11,
+  real-PostgreSQL 5/5, protected Swift harness, source contract 74/74,
+  generated mobile 148/148 including 23 authenticated, App Store/static
+  848/848, compiled preview UI, and real native dogfood all pass.
+- Delivery boundary: Build 14 and production `studio-00445-rij` remain
+  untouched. `bb8d6a57` is committed local source for a later coordinated
+  preview and Capture build, not deployed, distributed, or physically proven.
