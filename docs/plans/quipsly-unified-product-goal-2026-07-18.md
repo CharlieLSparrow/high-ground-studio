@@ -5108,3 +5108,36 @@ was restored.
   real-database mobile projection, and 963/963 native/App Store invariants
   pass. This is not yet a production schema deploy, TestFlight build,
   physical-device client acknowledgement, or real coaching-session handoff.
+
+### 2026-07-31 reusable retained-QA identity and rendered regression checkpoint
+
+- The user explicitly authorized durable synthetic QA users and test artifacts
+  for longitudinal product operation. Retained accounts remain visibly scoped
+  to `.test` identities and are kept separate from disposable generated users
+  and all real customer or collaborator identities.
+- Added fail-closed macOS Keychain credential reuse for the retained coaching
+  coach, client, outsider, and media-production operator. Passwords are
+  generated once, stored as `AfterFirstUnlockThisDeviceOnly`, passed through
+  standard input rather than command arguments, and never written to receipts.
+  Only exact local Firebase-emulator and PostgreSQL targets are accepted.
+- Operated the real rendered login and coaching follow-up for all three roles.
+  Desktop coach and phone-width client projections exposed the intended
+  released output, while the phone-width outsider received the concealed 404
+  boundary. Every journey cleared its Nest session and raised no browser
+  exception or horizontal-overflow failure.
+- Reconciled the retained media-production account from its canonical database
+  UID and active Nest grant without mutating product rows. Two consecutive runs
+  reused the same Keychain item and Firebase-emulator user. The rendered
+  journey then traversed the retained Nest, canonical `#rehearsal` focus,
+  project and global Work projections, exact task-goal relationship and 25%
+  progress, and phone-width Today over the same durable IDs.
+- Rendered operation exposed a real login race: a fast submit before Firebase
+  client hydration could fall through to native form navigation and appear to
+  do nothing. The server-rendered form now disables submission with explicit
+  `Loading secure sign-in…` copy until the client handler is ready.
+- Keychain tests pass 7/7, Swift Security-framework typechecking passes,
+  Quipsly TypeScript passes, remote-target negative checks pass, and the full
+  cross-surface Quipsly contract remains 168/168. This checkpoint proves
+  reusable local identity and rendered regression operation, not production
+  account persistence, physical TestFlight execution, or a real episode or
+  coaching session.
