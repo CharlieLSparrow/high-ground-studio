@@ -1756,22 +1756,33 @@ final class CaptureExperienceUITests: XCTestCase {
         // against XCUIApplication can then land on the desktop behind the app.
         // Anchor scrolling to the app's actual vertical ScrollView so the same
         // reachability assertion exercises both full-screen iPhone and
-        // windowed iPad layouts.
+        // windowed iPad layouts. Bounded drags avoid oscillating above and
+        // below a short control when a full-page swipe overshoots it.
         let namedForm = app.descendants(matching: .any)["CaptureQuickEntryForm"].firstMatch
         let scrollSurface = namedForm.exists ? namedForm : app.scrollViews.firstMatch
-        for _ in 0..<8 {
-            if element.exists, element.frame.maxY <= app.frame.minY + 72 {
-                if scrollSurface.exists {
-                    scrollSurface.swipeDown()
-                } else {
-                    app.swipeDown()
-                }
+        for _ in 0..<16 {
+            let shouldMoveContentDown =
+                element.exists && element.frame.maxY <= app.frame.minY + 72
+            if scrollSurface.exists {
+                let startY = shouldMoveContentDown ? 0.34 : 0.72
+                let endY = shouldMoveContentDown ? 0.64 : 0.42
+                scrollSurface
+                    .coordinate(
+                        withNormalizedOffset: CGVector(dx: 0.5, dy: startY)
+                    )
+                    .press(
+                        forDuration: 0.05,
+                        thenDragTo: scrollSurface.coordinate(
+                            withNormalizedOffset: CGVector(dx: 0.5, dy: endY)
+                        )
+                    )
+                RunLoop.current.run(
+                    until: Date().addingTimeInterval(0.15)
+                )
+            } else if shouldMoveContentDown {
+                app.swipeDown()
             } else {
-                if scrollSurface.exists {
-                    scrollSurface.swipeUp()
-                } else {
-                    app.swipeUp()
-                }
+                app.swipeUp()
             }
             if element.exists,
                element.isHittable,
