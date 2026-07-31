@@ -90,7 +90,7 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
 - latest coherent feature commit:
-  `0930f0ca feat(quipsly): focus canonical tags by identity`
+  `c8f9b711 feat(quipsly): secure media tag focus`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
   - `apps/quipsly/src/app/api/mobile/capture/today`
@@ -135,6 +135,17 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - the app and Share Capture extension are approved as Build 18; exact-source
     qualification, Nest preview, production promotion, upload, approval, group
     assignment, and public-link readback all passed
+  - `c8f9b711` closes the Media Vault raw-ID authorization gap across direct
+    asset loading, clip mutations, bin/project attachment, canonical tags, and
+    Studio Cut export; direct project, media-bin project, and explicit
+    attachment scopes now share one parent-asset access boundary
+  - exact canonical tag focus now projects authorized media clips, excludes a
+    deliberately malformed cross-Nest clip link, and returns to the exact
+    highlighted logger row; standalone Nest vocabulary creation no longer
+    requires a placeholder Task, Goal, Note, document, Session, or clip
+  - operated local QA intentionally retains a dedicated test actor, Home Nest,
+    canonical tag, dummy asset, and 4.00s–12.00s clip as a long-term regression
+    fixture
   - `b2313033` adds permission-correct annotation Resolve/Reopen on iPhone,
     canonical tags, exact Nest Research links, and real-Firebase/local-Postgres
     operated proof with complete cleanup
@@ -150,11 +161,12 @@ Verified during the Codex application handoff prep on 2026-05-26.
     writing document and citation block through a protected actor-partitioned
     iPhone outbox, exact acknowledgement, serializable idempotent transaction,
     and reversible human operation without changing the source
-  - current checks: focused tag projection 68/68, real PostgreSQL tag coverage
-    13/13, full Jest 922 active tests, pinned TypeScript 7, focused Work
-    XCUITest, App Store static 947/947, Build 18's 45/45 serialized UI journeys,
-    signed IPA inspection, authenticated production acceptance, and TestFlight
-    readback all pass
+  - current checks: focused media/action/access tests 47/47, real PostgreSQL
+    tag and media coverage 16/16, full Jest 937 active tests, release contracts
+    168/168, Capture-to-Nest evidence 10/10, pinned TypeScript 7, optimized
+    150-route Nest build, focused Work XCUITest, App Store static 947/947,
+    Build 18's 45/45 serialized UI journeys, signed IPA inspection,
+    authenticated production acceptance, and TestFlight readback all pass
   - deploy status: Nest source `041461d9` is deployed; Capture source
     `5a047986` is distributed
   - rollback: previous proven Nest revision is `studio-00460-tix`; Build 17
@@ -167,6 +179,9 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - do not save legal, rating, DSA, pricing, territory, privacy, deletion, or
     reviewer-credential answers without account-holder approval
   - no physical-device or provider claim without readback from that boundary
+  - `c8f9b711` is a committed local Nest candidate; do not claim production
+    parity until its zero-traffic preview, authenticated smoke, immutable
+    source readback, promotion, and production status all pass
 
 ### 2026-05-25 Sub-Agent Fanout
 

@@ -4859,6 +4859,9 @@ was restored.
 
 ### 2026-07-30 media authorization and exact clip-focus checkpoint
 
+- Exact local feature source is commit
+  `c8f9b711eba7f42f891e592a20ac058debd19176`; production parity is not claimed
+  until that committed source passes the guarded preview train.
 - Auditing the next canonical-tag destination exposed a real ownership defect:
   the Media Vault list was permission-filtered, but direct asset loading,
   clip mutations, media-bin/project attachment, canonical tagging, and Studio
