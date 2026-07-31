@@ -98,6 +98,11 @@ export function LoginClient({
   const [isGoogleSigningIn, setIsGoogleSigningIn] = useState(false);
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
   const [officialGoogleButtonReady, setOfficialGoogleButtonReady] = useState(false);
+  const [clientAuthReady, setClientAuthReady] = useState(false);
+
+  useEffect(() => {
+    setClientAuthReady(true);
+  }, []);
 
   useEffect(() => {
     const markReady = () => setOfficialGoogleButtonReady(true);
@@ -366,10 +371,12 @@ export function LoginClient({
           </label>
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || !clientAuthReady}
             className="rounded-xl bg-[#315d4e] px-5 py-3.5 text-sm font-black text-white transition hover:bg-[#214236] disabled:cursor-wait disabled:opacity-60"
           >
-            {isPasswordSigningIn
+            {!clientAuthReady
+              ? "Loading secure sign-in…"
+              : isPasswordSigningIn
               ? passwordMode === "create" ? "Creating account..." : "Signing in..."
               : passwordMode === "create" ? "Create account" : "Sign in with email"}
           </button>

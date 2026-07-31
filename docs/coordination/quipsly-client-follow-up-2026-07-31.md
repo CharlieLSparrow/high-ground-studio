@@ -104,6 +104,13 @@ effect was reported. A separate real-boundary smoke then proved:
 The repeatable command and credential boundary are documented in
 `docs/runbooks/quipsly-retained-dogfood.md`.
 
+The first rendered automation pass also found a real login race: a very fast
+email submit could occur before React attached the Firebase handler, allowing
+the native form to post back to `/login` without useful progress. The
+server-rendered submit is now disabled and labelled `Loading secure sign-in…`
+until client auth hydration completes. The retained browser journey waits for
+that explicit readiness state instead of sleeping or retrying a failed login.
+
 The second retained released snapshot is:
 
 - output:
@@ -151,6 +158,7 @@ same content SHA-256 as revision 2.
 - two-run Keychain credential reuse and stable-corpus proof: pass
 - real coach/client/outsider Firebase-to-Nest Keychain smoke: 3/3
 - rendered login, Session navigation, responsive follow-up, and sign-out: 3/3
+- pre-hydration login guard component tests: 5/5
 - repository-wide Quipsly contract sweep after stale-contract repair: 168/168
 - full iPhone simulator compile with LiveKit linked: pass
 - serialized Capture, login, and Share extension UI journeys: 46/46

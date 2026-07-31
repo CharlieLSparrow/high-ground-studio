@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import {
   GoogleAuthProvider,
   signInWithEmailAndPassword,
@@ -29,6 +30,13 @@ describe("Quipsly direct login", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     (signInWithEmailAndPassword as jest.Mock).mockImplementation(() => new Promise(() => undefined));
+  });
+
+  it("keeps the native form inert until the Firebase client handler is hydrated", () => {
+    const markup = renderToString(<LoginClient callbackUrl="/projects" />);
+
+    expect(markup).toContain("Loading secure sign-in…");
+    expect(markup).toMatch(/<button[^>]+type="submit"[^>]+disabled=""/);
   });
 
   it("submits actual autofilled form values even when React received no change events", async () => {

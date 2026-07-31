@@ -94,13 +94,13 @@ async function signInThroughRenderedLogin(page, baseURL, identity, password) {
     { waitUntil: "domcontentloaded" },
   );
   await page.waitForLoadState("load");
-  // The form has a safe server fallback, so wait for the client handler to
-  // hydrate before exercising the Firebase sign-in journey.
-  await page.waitForTimeout(500);
   await page.getByRole("heading", { name: "Welcome back" }).waitFor();
+  const submit = page.getByRole("button", { name: "Sign in with email" });
+  await submit.waitFor({ timeout: 20_000 });
+  assert(await submit.isEnabled(), `${identity.role} secure sign-in handler never became ready.`);
   await page.getByLabel("Email").fill(identity.email);
   await page.getByLabel("Password").fill(password);
-  await page.getByRole("button", { name: "Sign in with email" }).click();
+  await submit.click();
   try {
     await page.waitForURL((url) => url.pathname === callbackPath, { timeout: 20_000 });
   } catch {
