@@ -2,6 +2,35 @@
 
 Date: 2026-07-31
 
+## Capture Build 21 internal checkpoint
+
+- Quipsly Capture 1.0 (21) was built and uploaded from exact detached source
+  `0c88e037d48c39797d8c532f3d635dce0b4b5877`.
+- Two independent exact-source candidate runs each passed all 46 serialized
+  iPhone and Share Extension journeys with zero failures, then passed source,
+  privacy, entitlement, provisioning, nested-signature, and exported-IPA
+  inspection.
+- The upload-bound IPA is 21,141,478 bytes at SHA-256
+  `c6531d42e8f22b1a72a1010d556190fb8d2532461abebfd0879d0fe9ff3baf00`.
+- Independent App Store Connect readback identifies build
+  `9bb30af2-423e-4164-a878-fcb8df00c78c` as `VALID`, internally
+  `IN_BETA_TESTING`, included in **Quipsly Capture Internal**, and using no
+  non-exempt encryption.
+- Build 21 remains externally `READY_FOR_BETA_SUBMISSION` and is not in the
+  **Quipsly Capture Rehearsal** public-link group. The read-only external plan
+  is ready to update beta notes, enable automatic notification, assign the
+  build, and submit it for review only after the matching Nest schema and
+  backend pass zero-traffic production acceptance.
+- Build 20 remains the approved external/public rehearsal target. Physical
+  installation and real-device capture remain separate proof boundaries.
+- The complete Build 21 release evidence is preserved outside Git at
+  `/Volumes/My Passport/Quipsly Release Evidence/2026-07-31-build21`.
+- Retained QA users and artifacts now follow
+  `docs/runbooks/quipsly-retained-dogfood.md`, committed at `50c8a9e3`, so
+  longitudinal product data is intentionally labeled, isolated, provenance
+  bearing, and preserved without leaking credentials or implying external
+  effects.
+
 ## Episode collaboration release
 
 - Capture now exposes the canonical Episode Room conversation beside Manuscript
