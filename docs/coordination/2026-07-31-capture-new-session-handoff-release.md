@@ -51,7 +51,7 @@ tests before Xcode stalled while finalizing the failed result bundle:
 - retained partial result:
   `/tmp/quipsly-capture-ui-tests/12c97cbdfe8b/20260731T203959Z-8184/HighGroundCapture.xcresult`
 
-After the two corrections, the focused immutable simulator lane passed:
+After the two corrections, the focused simulator lane passed:
 
 - 2 passed, 0 failed, 0 skipped
 - duration: 36.684 seconds
@@ -61,9 +61,27 @@ After the two corrections, the focused immutable simulator lane passed:
 - reviewer runway static contract: passed
 - patch hygiene: passed
 
-The corrected source still requires a fresh full exact-commit candidate run,
-archive, export, and receipt readback. No IPA from the failed qualification was
-uploaded.
+The corrections were committed and pushed as exact source
+`34f9e0543c3c7863758f3c9e26ac976ba3b4205c`. A fresh detached-worktree
+candidate then passed:
+
+- complete deterministic iPhone UI lane: 47 passed, 0 failed, 0 skipped
+- signed archive: succeeded
+- App Store export: succeeded
+- strict app and Share Extension signature inspection: passed
+- App Store provisioning and distribution-safe entitlement inspection: passed
+- version/build: Quipsly Capture 1.0 (22)
+- IPA bytes: `21,287,411`
+- IPA SHA-256:
+  `8cf90821866ee2a5ca6bf2e6f945b2283c66291727225a7254fc4847d1b70f6d`
+- receipt: `candidateQualified: true`, `uploadAttempted: false`,
+  `uploadPerformed: false`
+- durable evidence:
+  `/Volumes/My Passport/Quipsly Release Evidence/2026-07-31-build22-34f9e054-qualified`
+
+The copied IPA hash matches the qualified receipt. Independent result-bundle
+readback reports `Passed`, 47 tests, zero failures, and zero skips. No IPA from
+either candidate attempt has been uploaded yet.
 
 ## Retained QA and cleanup policy
 
@@ -83,8 +101,6 @@ retained product QA data were preserved. APFS readback afterward reported
 
 ## Open acceptance gates
 
-- corrected full exact-commit candidate qualification
-- signed archive and exported IPA receipt
 - App Store Connect upload/readback for the corrected build
 - physical iPhone TestFlight install
 - physical audio/video capture, interruption recovery, upload, playback, and
