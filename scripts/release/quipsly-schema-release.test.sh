@@ -143,4 +143,17 @@ const receipt = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
 if (receipt.mode !== "PLAN" || receipt.outcome !== "PLANNED") process.exit(1);
 ' "${plan_receipt}"
 
+preflight_release_commands="$(
+  sed -n '/^print_step "Next release commands"/,$p' \
+    "${source_root}/scripts/release/quipsly-release-preflight.sh"
+)"
+if ! grep -Fq 'quipsly-schema-release.sh' <<<"${preflight_release_commands}"; then
+  echo "Release preflight does not advertise the guarded schema lane." >&2
+  exit 1
+fi
+if grep -Fq 'quipsly-schema-sync.sh' <<<"${preflight_release_commands}"; then
+  echo "Release preflight still advertises the legacy schema bridge." >&2
+  exit 1
+fi
+
 echo "PASS schema release enforces fixture, digest, backup, migrate, status, and zero-diff order."

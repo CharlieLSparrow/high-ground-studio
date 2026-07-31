@@ -1,6 +1,6 @@
 # Quipsly local-first deploy workflow
 
-Last updated: 2026-06-10
+Last updated: 2026-07-31
 
 ## Why this exists
 
@@ -72,24 +72,36 @@ Commands:
 pnpm quipsly:cloudrun:promote-preview
 ```
 
-## Lane 4: Database Schema Sync (Production)
+## Lane 4: guarded production schema release
 
-Use this when you have added new tables or columns to `schema.prisma` (like Auth models or `pgvector`) and need them deployed to the live Cloud SQL database.
+Use this only when the exact release commit adds committed Prisma migrations.
+Production schema work is not a hotfix shortcut: it must be replayable from
+baseline, recoverable from a verified backup, and bound to one source SHA.
 
-**Crucial Context:** You cannot run `prisma db push` directly from your local machine to production because the production database requires the Google Cloud SQL Auth Proxy. Furthermore, standard Prisma migrations might fail if they conflict with the raw additive SQL files in `ops/`.
-
-To safely sync the production database:
-1. Make your changes to `schema.prisma`.
-2. Do **NOT** run `prisma migrate dev` if it crashes on shadow DB constraints.
-3. Run the schema sync Cloud Run Job, which automatically connects to the live database using the Secret Manager connection string:
+1. Create and review a migration under `prisma/migrations/`.
+2. Run the guarded command without `--apply`; review its mode-0600 plan receipt.
+3. Re-run from the same clean commit with `--apply` and the exact target
+   confirmation.
+4. Preserve the receipt with the release evidence.
 
 ```bash
-# Deploys the new schema.prisma to a Cloud Run Job and executes prisma db push --accept-data-loss
-bash scripts/release/quipsly-schema-sync.sh
+release_sha=$(git rev-parse HEAD)
+bash scripts/release/quipsly-schema-release.sh \
+  --revision "$release_sha" \
+  --confirm-target high-ground-odyssey/studio-postgres
 
-# If the Docker image is already built and you just need to re-run the push:
-SKIP_BUILD=1 IMAGE_TAG=<existing-tag> bash scripts/release/quipsly-schema-sync.sh
+bash scripts/release/quipsly-schema-release.sh \
+  --revision "$release_sha" \
+  --apply \
+  --confirm-target high-ground-odyssey/studio-postgres
 ```
+
+The apply lane proves the complete migration chain and zero schema diff in a
+disposable database, pins an immutable schema-image digest, creates and reads
+back an on-demand Cloud SQL backup, runs `prisma migrate deploy`, then requires
+both a current migration ledger and zero production diff. The legacy
+`quipsly-schema-sync.sh` bridge and targeted additive jobs are recovery tools,
+not release stages.
 
 ## Escalation rule
 

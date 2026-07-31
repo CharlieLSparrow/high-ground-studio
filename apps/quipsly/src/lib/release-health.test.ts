@@ -126,6 +126,14 @@ describe("beta readiness evidence contract", () => {
     expect(readiness.checks.find((check) => check.id === "auth-configuration")?.status).toBe("configured");
     expect(readiness.evidence.runtimeVerification.accepted).toBe(false);
     expect(readiness.evidence.publicReachability.claimed).toBe(false);
+    const schemaAction = readiness.operatorPlan.nextActions.find((action) => action.id === "release-schema");
+    expect(schemaAction).toMatchObject({
+      label: "Run guarded schema release",
+      required: true,
+    });
+    expect(schemaAction?.command).toContain("quipsly-schema-release.sh");
+    expect(schemaAction?.command).toContain("--confirm-target high-ground-odyssey/studio-postgres");
+    expect(JSON.stringify(readiness.operatorPlan)).not.toContain("quipsly-schema-sync.sh");
   });
 
   it("rejects stale release-smoke evidence instead of creating false runtime verification", () => {

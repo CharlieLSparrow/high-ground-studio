@@ -152,7 +152,8 @@ else
 fi
 
 for script in \
-  scripts/release/quipsly-schema-sync.sh \
+  scripts/release/quipsly-schema-release.sh \
+  scripts/release/quipsly-schema-job.sh \
   scripts/release/quipsly-deploy-preview.sh \
   scripts/release/quipsly-smoke-preview.sh \
   scripts/release/quipsly-promote-preview.sh \
@@ -356,7 +357,7 @@ fi
 print_step "Next release commands"
 
 cat <<EOF
-REGION=${REGION} PROJECT_ID=${PROJECT_ID:-<project>} bash scripts/release/quipsly-schema-sync.sh
+bash scripts/release/quipsly-schema-release.sh --revision ${SOURCE_REF:-HEAD} --apply --confirm-target ${PROJECT_ID:-<project>}/studio-postgres
 REGION=${REGION} PROJECT_ID=${PROJECT_ID:-<project>} bash scripts/release/quipsly-deploy-preview.sh
 PREVIEW_URL=<preview-url> HOST_HEADER=${HOST_HEADER} bash scripts/release/quipsly-smoke-preview.sh
 REGION=${REGION} PROJECT_ID=${PROJECT_ID:-<project>} bash scripts/release/quipsly-promote-preview.sh

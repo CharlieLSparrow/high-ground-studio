@@ -1,5 +1,11 @@
 # Quipsly Release Handoff - 2026-06-07
 
+> Historical snapshot only. Its schema-sync and direct operator commands were
+> superseded on 2026-07-31 by `docs/runbooks/release-index.md`,
+> `docs/coordination/deploy-captain-runbook.md`, and the guarded
+> `scripts/release/quipsly-schema-release.sh` lane. Do not execute release
+> commands from this handoff.
+
 Status timestamp: 2026-06-07 17:07 MDT
 
 ## Current release branch

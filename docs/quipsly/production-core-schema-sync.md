@@ -1,8 +1,11 @@
-# Quipsly Production Core Schema Sync
+# Quipsly Production Core Schema History
 
-Date: 2026-06-07
+Originally recorded: 2026-06-07
+Superseded: 2026-07-31
 
-This document covers the targeted database sync for the production-core models introduced in `production-core-implementation-pass-1.md`.
+This document records the production-core models introduced in
+`production-core-implementation-pass-1.md`. Its original targeted SQL job is
+retained for incident archaeology only. It is not a supported release path.
 
 ## Why this exists
 
@@ -21,7 +24,12 @@ Quipsly is moving from route-local prototype JSON into first-class production co
 - published artifacts
 - workflow jobs
 
-The repo still does not operate as a committed Prisma-migrations-first project. Broad `prisma db push` has repeatedly been too risky for live work because it can collide with unrelated drift. The safer current path is a targeted additive SQL sync.
+The repository now has a replayable, committed Prisma migration history.
+Production schema changes use `scripts/release/quipsly-schema-release.sh`,
+which proves the complete migration chain in a disposable database, pins one
+immutable schema image, verifies an on-demand Cloud SQL backup, applies
+`prisma migrate deploy`, and requires a current ledger plus zero live schema
+diff. See `docs/runbooks/prisma-migration-baseline.md`.
 
 ## Files
 
@@ -30,35 +38,30 @@ The repo still does not operate as a committed Prisma-migrations-first project. 
 - Schema job image: `ops/prisma-migrate.Dockerfile`
 - Runtime readiness endpoint: `/api/production-core/readiness`
 
-## Apply pattern
+## Supported apply pattern
 
-Build the schema image:
-
-```bash
-TAG="quipsly-production-core-schema-$(date +%Y%m%d-%H%M%S)"
-gcloud builds submit \
-  --config cloudbuild.prisma-migrate.yaml \
-  --substitutions _IMAGE_TAG="$TAG" .
-```
-
-Deploy and execute the job:
+Plan from the exact clean release commit:
 
 ```bash
-IMAGE="us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-migrate:$TAG"
-gcloud run jobs deploy quipsly-production-core-schema-sync \
-  --image="$IMAGE" \
-  --region=us-central1 \
-  --service-account=studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com \
-  --set-cloudsql-instances=high-ground-odyssey:us-central1:studio-postgres \
-  --set-secrets=DATABASE_URL=studio-database-url:latest \
-  --command=node \
-  --args=scripts/quipsly-production-core-schema-sync.mjs \
-  --tasks=1 \
-  --max-retries=0 \
-  --quiet
-
-gcloud run jobs execute quipsly-production-core-schema-sync --region=us-central1 --wait
+release_sha=$(git rev-parse HEAD)
+bash scripts/release/quipsly-schema-release.sh \
+  --revision "$release_sha" \
+  --confirm-target high-ground-odyssey/studio-postgres
 ```
+
+After reviewing the plan receipt, apply from the unchanged commit:
+
+```bash
+bash scripts/release/quipsly-schema-release.sh \
+  --revision "$release_sha" \
+  --apply \
+  --confirm-target high-ground-odyssey/studio-postgres
+```
+
+The historical `ops/quipsly-production-core-additive.sql` and
+`scripts/quipsly-production-core-schema-sync.mjs` are recovery references, not
+commands to run when readiness reports drift. A drift report blocks release
+until it is represented by a reviewed forward migration.
 
 ## Verify
 
@@ -77,7 +80,8 @@ Expected:
 }
 ```
 
-If it reports `needs-schema-sync`, run the schema job before using features that touch the new models.
+If it reports `needs-schema-sync`, stop promotion. Diagnose the difference,
+add or repair a committed forward migration, and use the guarded release lane.
 
 ## Product impact
 

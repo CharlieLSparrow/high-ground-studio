@@ -123,7 +123,7 @@ export function createReleaseOperatorPlan(options: {
       ? "QUIPSLY_RELEASE_SMOKE_SECRET is missing or invalid; a preview cannot produce the signed promotion receipt."
       : null,
     schemaNeedsSync
-      ? `Production-core schema is ${schemaStatus}; run the schema sync job before promoting a new revision.`
+      ? `Production-core schema is ${schemaStatus}; run the guarded migration release before promoting a new revision.`
       : null,
   ].filter((entry): entry is string => Boolean(entry));
 
@@ -157,10 +157,10 @@ export function createReleaseOperatorPlan(options: {
         required: true,
       },
       {
-        id: "sync-schema",
-        label: "Apply targeted schema sync",
-        command: "REGION=us-central1 PROJECT_ID=high-ground-odyssey bash scripts/release/quipsly-schema-sync.sh",
-        detail: "Runs Prisma migrations plus Quipsly additive Nest Chat and production-core schema syncs.",
+        id: "release-schema",
+        label: "Run guarded schema release",
+        command: "bash scripts/release/quipsly-schema-release.sh --revision <exact-commit-sha> --apply --confirm-target high-ground-odyssey/studio-postgres",
+        detail: "From a clean exact commit, proves the full migration chain and zero diff in a disposable database, pins one image digest, creates and reads back an on-demand Cloud SQL backup, applies committed migrations, then requires a current migration ledger and zero production schema diff.",
         required: true,
       },
       {

@@ -1,6 +1,6 @@
 # Deploy Captain runbook
 
-Last updated: 2026-06-07
+Last updated: 2026-07-31
 
 Status: active operating pattern
 
@@ -8,7 +8,9 @@ Status: active operating pattern
 
 Deploy Captain owns release mechanics so Codex can keep building product during long waits.
 
-This lane should run builds, schema syncs, Cloud Run deploys, and smoke checks. It should not make product changes unless specifically assigned.
+This lane runs exact-source builds, guarded schema releases, zero-traffic Cloud
+Run previews, signed smokes, promotion, and rollback readback. It does not make
+product changes unless specifically assigned.
 
 ## Current production surfaces
 
@@ -34,13 +36,20 @@ See `docs/quipsly/runtime-lanes-and-deploy.md` for the product/runtime boundary.
 ## Hard rules
 
 - Never print secret values.
-- Do not use `prisma db push --accept-data-loss` without explicit Codex/user approval.
-- If broad Prisma db-push reports unrelated enum or unique-constraint drift, stop and ask for a narrow migration/sync plan.
+- Production releases use committed Prisma migrations through
+  `scripts/release/quipsly-schema-release.sh`; never use `db push` or a
+  targeted additive job as a release stage.
+- The legacy `quipsly-schema-sync.sh` bridge and targeted schema jobs are
+  recovery tools only. They require a reviewed incident plan and may not be
+  enabled merely to make a deploy proceed.
 - Product code changes belong to feature lanes. Deploy Captain reports failures with exact command, build id, error, and proposed fix.
-- Cloud Build deploy steps currently may fail if the Cloud Build compute service account lacks Cloud Run permissions. Local authenticated `gcloud run deploy` is acceptable until IAM is fixed.
+- A failed Cloud Build or deploy identity is an IAM/release blocker, not
+  permission to bypass exact-source preview and traffic gates with a direct
+  local deploy.
 - Treat `gcloud run services update --set-secrets` as a full secret environment rewrite. Include every required mounted secret, not only the new one being added.
 - Preserve existing Cloud Run env vars, secrets, Cloud SQL bindings, service account, and custom-domain assumptions when deploying a new image. Do not "simplify" a deploy command by dropping runtime config.
-- Prefer preview/no-traffic deploy plus smoke before promotion unless Codex/user explicitly asks for a direct live rollout.
+- Always use preview/no-traffic deploy, revision-bound smoke, and explicit
+  promotion for normal releases.
 
 ## 2026-06-07 pain update
 
@@ -52,16 +61,20 @@ Tonight's release failures were mostly release-mechanics failures, not product f
    - Use `gcloud run services describe studio --region=us-central1 --format=yaml` to inspect current env/secrets before changing them.
    - Never print secret values. It is safe to print secret names such as `studio-gemini-api-key`.
 
-2. Do not use broad Prisma push as the default beta fix.
-   - Broad `prisma db push` can collide with unrelated enum drift, unique constraints, or partially deployed additive work.
-   - Broad push is acceptable only when Codex/user explicitly approves it and the diff is understood.
-   - If the app needs one missing table/column, use the targeted schema sync pattern below.
+2. Broad Prisma push is not a production release mechanism.
+   - `prisma db push` can hide an incomplete migration history and collide with
+     enum drift, unique constraints, or partially deployed work.
+   - Model every release change as a committed migration and prove the full
+     chain from baseline before touching production.
 
-3. Use targeted schema sync for live drift.
-   - Add SQL or a narrow Node script that only creates/patches the specific additive shape needed.
-   - Run it as a Cloud Run Job using the live service account, Cloud SQL binding, and `DATABASE_URL` secret.
-   - Prefer `CREATE TABLE IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, and `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`.
-   - After execution, smoke the exact live route that failed. Do not assume the schema job fixed the app.
+3. Production schema releases are backup- and receipt-gated.
+   - Use one clean source SHA and one immutable schema-image digest.
+   - Create and independently read back a successful on-demand Cloud SQL
+     backup before migration.
+   - Require `prisma migrate status` and zero production schema diff after
+     `prisma migrate deploy`.
+   - Preserve the mode-0600 receipt; do not infer success from a Cloud Run Job
+     exit code alone.
 
 4. Google OAuth redirect must match the live app host.
    - For Nest auth, Google OAuth must include the `nest.quipsly.com` callback URL used by the app.
@@ -85,173 +98,102 @@ Tonight's release failures were mostly release-mechanics failures, not product f
    - After ignoring local build products and non-deploy workspaces, upload estimate is `942` files / `113.5 MiB`.
    - If deploys become slow again, measure context size before blaming Cloud Build itself.
 
-## Standard app image build
+## Canonical exact-source preview and promotion
 
-Preferred path: use the Quipsly web deploy script. It stages a complete web-only context and deploys the new image without rewriting Cloud Run env/secrets.
-
-Before spending time on Cloud Build, run the local release preflight:
+Run the preflight before spending time on Cloud Build:
 
 ```bash
-REGION=us-central1 PROJECT_ID=high-ground-odyssey scripts/release/quipsly-release-preflight.sh
+REGION=us-central1 \
+PROJECT_ID=high-ground-odyssey \
+  scripts/release/quipsly-release-preflight.sh
 ```
 
-This catches expired `gcloud` auth, missing Cloud Run access, dirty working trees, release script syntax errors, and missing service visibility before a long deploy starts.
+The deploy identity must pass the preflight's access-token, project, Cloud Run,
+Firebase, media-vault, and recovery checks. Do not substitute the
+`local-engine-uploader` service account; it does not own this lane.
 
-Do not use `local-engine-uploader@high-ground-odyssey.iam.gserviceaccount.com` as the deploy account. It can authenticate to the project for local/media workflows, but it does not have Cloud Run or Cloud Build deploy visibility. A real deploy captain account must at minimum pass `scripts/release/quipsly-release-preflight.sh`, including `run.services.get` on the `studio` Cloud Run service and Cloud Build access.
+Resolve and preserve the exact clean commit, then deploy it at zero traffic:
 
 ```bash
-TAG="quipsly-live-$(date +%Y%m%d-%H%M%S)"
-IMAGE_TAG="$TAG" scripts/quipsly-web-deploy.sh
+release_revision=$(git rev-parse HEAD)
+test -z "$(git status --porcelain=v1)"
+
+SOURCE_REF="$release_revision" \
+IMAGE_TAG="preview-${release_revision:0:12}-$(date -u +%Y%m%dT%H%M%SZ)" \
+PREVIEW_TAG=quipsly-preview \
+PROJECT_ID=high-ground-odyssey \
+REGION=us-central1 \
+  bash scripts/release/quipsly-deploy-preview.sh
 ```
 
-For build-only/manual image workflows, use the Quipsly-named image-only Cloud Build config:
+`quipsly-deploy-preview.sh` materializes the committed release manifest, runs
+the beta blocker scan and strict production build, builds that exact context,
+and deploys a tagged `--no-traffic` revision. Do not replace this with a direct
+`gcloud run deploy` command that silently moves traffic or rewrites runtime
+configuration.
+
+Smoke the tagged URL with the revision-bound release receipt and a real
+separate-account journey. Keep secret values out of command history. After the
+same preview passes every required check, promote through the guarded script:
 
 ```bash
-TAG="quipsly-live-$(date +%Y%m%d-%H%M%S)"
-gcloud builds submit \
-  --config cloudbuild.quipsly-web.yaml \
-  --substitutions _IMAGE_TAG="$TAG",_NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app .
+PREVIEW_URL=<tagged-preview-url> \
+HOST_HEADER=nest.quipsly.com \
+  bash scripts/release/quipsly-smoke-preview.sh
+
+PROJECT_ID=high-ground-odyssey \
+REGION=us-central1 \
+  bash scripts/release/quipsly-promote-preview.sh
 ```
 
-Expected output:
+Read back the serving revision, image digest, source SHA, and traffic split
+after promotion. Retain the previous revision and
+`scripts/release/quipsly-rollback.sh` path until the production smoke passes.
 
-- Cloud Build status `SUCCESS`
-- Image exists at `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:$TAG`
-- Build route list includes the feature route being shipped when applicable.
 
-## Standard local authenticated deploy
+## Guarded production schema release
+
+Schema changes are released before a dependent app revision receives traffic.
+The lane accepts only committed Prisma migrations from the exact clean source
+SHA being released.
+
+Plan first:
 
 ```bash
-IMAGE="us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio:$TAG"
-gcloud run deploy studio \
-  --image="$IMAGE" \
-  --region=us-central1 \
-  --add-cloudsql-instances=high-ground-odyssey:us-central1:studio-postgres \
-  --update-env-vars=NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app,STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app \
-  --quiet
+schema_revision=$(git rev-parse HEAD)
+bash scripts/release/quipsly-schema-release.sh \
+  --revision "$schema_revision" \
+  --confirm-target high-ground-odyssey/studio-postgres
 ```
 
-Expected output:
-
-- New `studio-*` revision deployed.
-- 100 percent traffic routed to the new revision.
-
-## Required studio runtime secrets
-
-When updating secret mounts, include the full set:
+Review the printed mode-0600 receipt, then apply from the unchanged checkout:
 
 ```bash
---set-secrets=AUTH_SECRET=studio-auth-secret:latest,GOOGLE_CLIENT_SECRET=studio-google-client-secret:latest,STUDIO_ALLOWED_EMAILS=studio-allowed-emails:latest,DATABASE_URL=studio-database-url:latest,GEMINI_API_KEY=studio-gemini-api-key:latest,PATREON_CLIENT_ID=studio-patreon-client-id:latest,PATREON_CLIENT_SECRET=studio-patreon-client-secret:latest,NEXTAUTH_SECRET=studio-nextauth-secret:latest,PATREON_WEBHOOK_SECRET=studio-patreon-webhook-secret:latest,PATREON_RECONCILE_SECRET=studio-patreon-reconcile-secret:latest
+bash scripts/release/quipsly-schema-release.sh \
+  --revision "$schema_revision" \
+  --apply \
+  --confirm-target high-ground-odyssey/studio-postgres
 ```
 
-Runtime env should also include:
+The guarded lane must prove:
 
-```bash
-AUTH_URL=https://nest.quipsly.com
-AUTH_TRUST_HOST=true
-STUDIO_AUTH_MODE=allowlist
-GOOGLE_CLIENT_ID=659427658635-h633re67ab05kmgnpkcnq5rdhhb4umqn.apps.googleusercontent.com
-NEXT_PUBLIC_STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app
-STUDIO_COLLAB_URL=wss://studio-collab-hm2odnvjga-uc.a.run.app
-```
+1. the full migration chain replays twice in a disposable database;
+2. the disposable database has zero diff from committed Prisma schema;
+3. one immutable schema-image digest is used for all jobs;
+4. a successful on-demand Cloud SQL backup is created and independently read
+   back for the exact target instance;
+5. `prisma migrate deploy` succeeds;
+6. the migration ledger is current; and
+7. production has zero diff from committed schema.
 
-## Narrow schema sync pattern
+Preserve the receipt with release evidence. A successful job exit without the
+backup, ledger, and zero-diff readbacks is not a successful schema release.
 
-Use this when one additive feature needs tables and broad Prisma db-push is unsafe due unrelated drift.
+`/api/production-core/readiness` remains a useful runtime query, but it is not a
+substitute for the migration receipt. The legacy `quipsly-schema-sync.sh`
+bridge and targeted additive jobs are incident-recovery tools only; they are
+not listed in normal release commands.
 
-1. Add a narrow script under `scripts/`.
-2. Copy it into `ops/prisma-migrate.Dockerfile`.
-3. Build a schema image:
-
-```bash
-TAG="quipsly-schema-$(date +%Y%m%d-%H%M%S)"
-gcloud builds submit \
-  --config cloudbuild.prisma-migrate.yaml \
-  --substitutions _IMAGE_TAG="$TAG" .
-```
-
-4. Deploy and execute a Cloud Run Job:
-
-```bash
-IMAGE="us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-migrate:$TAG"
-gcloud run jobs deploy quipsly-schema-sync \
-  --image="$IMAGE" \
-  --region=us-central1 \
-  --service-account=studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com \
-  --set-cloudsql-instances=high-ground-odyssey:us-central1:studio-postgres \
-  --set-secrets=DATABASE_URL=studio-database-url:latest \
-  --command=node \
-  --args=scripts/<script-name>.mjs \
-  --tasks=1 \
-  --max-retries=0 \
-  --quiet
-
-gcloud run jobs execute quipsly-schema-sync --region=us-central1 --wait
-```
-
-After a schema job:
-
-```bash
-gcloud run jobs executions list --job=quipsly-schema-sync --region=us-central1 --limit=3
-gcloud logging read 'resource.type="cloud_run_job" AND resource.labels.job_name="quipsly-schema-sync"' --limit=50 --format='value(textPayload)'
-```
-
-Expected:
-
-- Job execution succeeds.
-- Logs do not print secrets.
-- The previously failing live route no longer reports missing table/column errors.
-
-## Quipsly production-core schema sync
-
-The production-core pass added first-class tables for Nest invites, asset attachments, source units, document operations, production rooms, timeline versions, output packets, publish attempts, published artifacts, workflow jobs, and native Mac auth/session handoff. A green readiness response is therefore also the preflight check for `/api/mac/session-exchange`, `/api/mac/session-refresh`, and `/api/mac/session-check`.
-
-Do not deploy app code that depends on these tables until the live database passes:
-
-```bash
-curl -sS https://nest.quipsly.com/api/production-core/readiness
-```
-
-Expected ready response:
-
-```json
-{
-  "ok": true,
-  "status": "ready"
-}
-```
-
-If the response says `needs-schema-sync`, run the targeted schema job:
-
-```bash
-TAG="quipsly-production-core-schema-$(date +%Y%m%d-%H%M%S)"
-gcloud builds submit \
-  --config cloudbuild.prisma-migrate.yaml \
-  --substitutions _IMAGE_TAG="$TAG" .
-
-IMAGE="us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-migrate:$TAG"
-gcloud run jobs deploy quipsly-production-core-schema-sync \
-  --image="$IMAGE" \
-  --region=us-central1 \
-  --service-account=studio-cloud-run@high-ground-odyssey.iam.gserviceaccount.com \
-  --set-cloudsql-instances=high-ground-odyssey:us-central1:studio-postgres \
-  --set-secrets=DATABASE_URL=studio-database-url:latest \
-  --command=node \
-  --args=scripts/quipsly-production-core-schema-sync.mjs \
-  --tasks=1 \
-  --max-retries=0 \
-  --quiet
-
-gcloud run jobs execute quipsly-production-core-schema-sync --region=us-central1 --wait
-```
-
-Then verify:
-
-```bash
-curl -sS https://nest.quipsly.com/api/production-core/readiness
-```
-
-The schema script applies only `ops/quipsly-production-core-additive.sql`. It does not run broad `prisma db push`, does not drop tables, and does not print secret values.
 
 ## Smoke checklist
 
@@ -311,9 +253,11 @@ PY
 
 ## Pipeline improvement backlog
 
-- Keep full-repo Cloud Build context near the current `113.5 MiB` measured upload estimate; investigate if it grows materially.
-- Prefer `scripts/quipsly-web-deploy.sh` for Nest Web releases so Mac/local-engine artifacts cannot enter the release context.
-- Do not use assetless/partial public deploy contexts. If public assets make deploys too slow, move them to GCS/CDN first.
-- Fix Cloud Build service account IAM for Cloud Run deploy or remove the broken deploy step from `cloudbuild.studio.deploy.yaml`.
-- Split schema jobs into smaller docker contexts so additive DB syncs do not pay the full app build tax.
-- Add a release report template under `docs/coordination/antigravity-reports/AG-Deploy-Captain.md`.
+- Keep the manifest-built Nest release context near the current `112 MiB`
+  measured size and investigate material growth.
+- Make every CI and local deploy identity pass the same preflight instead of
+  maintaining bypass commands.
+- Keep the schema image source-scoped, digest-pinned, and independently
+  replayable.
+- Preserve signed smoke, schema, promotion, and rollback receipts under one
+  exact source SHA.

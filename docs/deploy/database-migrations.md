@@ -1,13 +1,15 @@
 # Database Migrations
 
 ## Current Repo Reality
-This repo uses Prisma 7 and generates the Prisma client directly from `prisma/schema.prisma`.
+This repo uses Prisma 7, generates the Prisma client directly from
+`prisma/schema.prisma`, and maintains a replayable migration history under
+`prisma/migrations/`.
 
 Current root scripts:
 
 ```bash
 pnpm db:generate   # prisma generate
-pnpm db:push       # prisma db push
+pnpm db:push       # disposable local experiments only
 pnpm db:migrate    # prisma migrate dev
 ```
 
@@ -20,19 +22,19 @@ pnpm db:migrate    # prisma migrate dev
   - root `postinstall`
   - `pnpm db:generate`
 
-### What does not exist today
-- No checked-in `prisma/migrations/` history exists in the repo at this time.
-- That means the repo is **not currently operating as a committed-migrations-first Prisma project**.
-
 ## What This Means Operationally
-For schema changes like the coaching request intake work, the safe current workflow is:
+For every shared or production schema change:
 
 1. update `prisma/schema.prisma`
-2. generate Prisma client locally
-3. validate the app build
-4. apply the schema change to the target database explicitly
+2. create and commit a forward migration under `prisma/migrations/`
+3. replay the complete migration history against an empty disposable database
+4. require zero diff from `prisma/schema.prisma`
+5. validate the application build and affected runtime journey
+6. release through `scripts/release/quipsly-schema-release.sh`
 
-Because there is no checked-in migration history, do **not** assume production will pick up schema changes just because app code was deployed.
+Do not assume production will pick up schema changes merely because app code
+was deployed. Schema release precedes traffic promotion for a dependent app
+revision.
 
 ## Coaching Request Change
 The coaching request intake feature added:
@@ -46,7 +48,7 @@ App code now expects the database to contain the new `CoachingRequest` table and
 
 If production does not have the schema update, the new `/coaching` form submit path and `/team/coaching-requests` queue can fail at runtime when Prisma touches the missing table.
 
-## Local Development Flow
+## Disposable Local Development Flow
 From repo root:
 
 ```bash
@@ -55,10 +57,13 @@ pnpm db:push
 pnpm --filter web build
 ```
 
-Use this when your local database needs to match the current schema.
+Use `db:push` only when an intentionally disposable local database needs to
+match the current schema. Shared, retained-QA, preview, staging, and production
+databases use migrations.
 
-## If You Decide To Start Using Real Prisma Migrations Later
-This repo has a `db:migrate` script:
+## Create And Prove A Migration
+
+This repo's `db:migrate` script maps to Prisma `migrate dev`:
 
 ```bash
 pnpm db:migrate
@@ -70,30 +75,31 @@ That currently maps to:
 prisma migrate dev
 ```
 
-Use that only if you are intentionally switching the repo toward committed Prisma migrations and are prepared to add `prisma/migrations/...` to version control.
+Commit the generated migration directory. Before review, follow
+`docs/runbooks/prisma-migration-baseline.md` to replay the full chain and prove
+zero diff.
 
-For the coaching request rollout documented here, no migration file was created because the repo does not currently maintain checked-in migration history.
+## Production Apply Strategy
 
-## Production Apply Strategy For The CoachingRequest Change
-### Recommended current command
-Run this against the production database before or during deployment of the coaching request feature:
-
-```bash
-pnpm db:push
-```
-
-That command requires `DATABASE_URL` to point at the production database.
-
-### Example operator pattern
-From a shell or deployment environment with the correct production `DATABASE_URL`:
+Plan the exact clean commit first:
 
 ```bash
-pnpm db:generate
-pnpm db:push
-pnpm --filter web build
+release_sha=$(git rev-parse HEAD)
+bash scripts/release/quipsly-schema-release.sh \
+  --revision "$release_sha" \
+  --confirm-target high-ground-odyssey/studio-postgres
 ```
 
-If the deployment environment already runs install hooks, Prisma client generation may already happen via `postinstall`, but running `pnpm db:generate` explicitly is still the cleanest manual verification step.
+Apply only after reviewing the receipt and confirming the exact target:
+
+```bash
+bash scripts/release/quipsly-schema-release.sh \
+  --revision "$release_sha" \
+  --apply \
+  --confirm-target high-ground-odyssey/studio-postgres
+```
+
+Never export a production `DATABASE_URL` merely to run a local `db:push`.
 
 ## How To Verify The CoachingRequest Table Exists
 Any one of these is acceptable.
@@ -126,7 +132,8 @@ where typname in ('ContactPreference', 'CoachingRequestStatus');
 ```
 
 ## Production Rollback Caution
-Because this repo does not currently carry checked-in migration history, rollback is not a tidy “run the down migration” story.
+Migrations are forward-only. Rollback is normally an application rollback plus
+a compatible additive schema, not an improvised down migration.
 
 That means:
 - do not casually apply schema changes to production without knowing which app version is live
