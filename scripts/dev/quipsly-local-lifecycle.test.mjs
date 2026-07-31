@@ -26,6 +26,10 @@ const generatedMobileDogfood = readFileSync(
   generatedMobileDogfoodPath,
   "utf8",
 );
+const quipslyPackageJson = readFileSync(
+  fileURLToPath(new URL("../../apps/quipsly/package.json", import.meta.url)),
+  "utf8",
+);
 
 test("machine-wide services use machine-wide ownership state", () => {
   assert.match(stateHelper, /getconf DARWIN_USER_CACHE_DIR/);
@@ -45,11 +49,13 @@ test("machine-wide services use machine-wide ownership state", () => {
     /compose --project-name "\$\{compose_project\}" up -d postgres/,
   );
   assert.match(
-    readFileSync(
-      fileURLToPath(new URL("../../apps/quipsly/package.json", import.meta.url)),
-      "utf8",
-    ),
+    quipslyPackageJson,
     /"dev": "next dev --webpack"/,
+  );
+  assert.match(
+    quipslyPackageJson,
+    /"build": "next build --webpack"/,
+    "Quipsly production builds must pin the same supported Next 16 bundler as local development and the release image.",
   );
   assert.match(up, /"--env-file=\$\{QUIPSLY_LOCAL_ENV_FILE\}"/);
   assert.doesNotMatch(up, /source "\$\{local_env_file\}"/);

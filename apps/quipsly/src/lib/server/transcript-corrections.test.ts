@@ -49,6 +49,17 @@ function segment(corrections: any[] = []) {
     startSeconds: 12,
     endSeconds: 18,
     confidence: 0.71,
+    words: [{
+      id: "word-1",
+      providerWordIndex: 0,
+      startSeconds: 12,
+      endSeconds: 12.35,
+      word: "We",
+      punctuatedWord: "We",
+      confidence: 0.99,
+      speakerLabel: providerSpeakerLabel,
+      channel: 0,
+    }],
     corrections,
   };
 }
@@ -144,6 +155,17 @@ describe("transcript correction desk", () => {
       startSeconds: 12,
       endSeconds: 18,
       providerTextSha256: sha256(providerText),
+      words: [{
+        id: "word-1",
+        providerWordIndex: 0,
+        startSeconds: 12,
+        endSeconds: 12.35,
+        word: "We",
+        punctuatedWord: "We",
+        confidence: 0.99,
+        speakerLabel: providerSpeakerLabel,
+        channel: 0,
+      }],
     });
     expect(result.boundaries).toMatchObject({ providerSegmentsImmutable: true, mediaTimeAnchorsPreserved: true });
   });
