@@ -8,6 +8,7 @@ import {
   importEpisodeRoomText,
   loadEpisodeRoomDesk,
   loadEpisodeRoomRuntime,
+  loadEpisodeRoomVault,
   loadEpisodeRoomWritingRuntime,
   loadEpisodeRoomWatchRuntime,
 } from "@/lib/server/episode-room-store";
@@ -50,6 +51,10 @@ function parseCommand(body: Record<string, unknown>): EpisodeRoomCommandInput | 
     };
   }
   if (type === "ADD_CLIP") {
+    const assetId = text(body.assetId);
+    return assetId ? { type, assetId, clientRequestId, expectedRevision: revision } : null;
+  }
+  if (type === "IMPORT_VAULT_ASSET") {
     const assetId = text(body.assetId);
     return assetId ? { type, assetId, clientRequestId, expectedRevision: revision } : null;
   }
@@ -121,6 +126,20 @@ export async function GET(
       code: readAccess.code,
       error: readAccess.error,
     }, { status: readAccess.status });
+  }
+  if (request.nextUrl.searchParams.get("vault") === "1") {
+    const vaultCandidates = await loadEpisodeRoomVault(slug, episodeSlug);
+    if (!vaultCandidates) {
+      return NextResponse.json({ ok: false, error: "Episode production not found." }, { status: 404 });
+    }
+    const canEdit = readAccess.access.role
+      ? roleAllowsAction(readAccess.access.role, "write")
+      : false;
+    return NextResponse.json({
+      ok: true,
+      vaultCandidates,
+      canEdit,
+    });
   }
   if (request.nextUrl.searchParams.get("watch") === "1") {
     const runtime = await loadEpisodeRoomWatchRuntime(slug, episodeSlug);

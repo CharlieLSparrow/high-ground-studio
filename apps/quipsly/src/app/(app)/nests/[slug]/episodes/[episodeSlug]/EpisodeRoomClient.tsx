@@ -17,6 +17,7 @@ import {
   RefreshCw,
   RotateCcw,
   RotateCw,
+  Search,
   Scissors,
   ShieldCheck,
   Trash2,
@@ -44,6 +45,7 @@ import type {
   EpisodeRoomDeskPayload,
   EpisodeRoomImportedCandidate,
   EpisodeRoomRecordingSession,
+  EpisodeRoomVaultCandidate,
   EpisodeRoomWritingState,
 } from "@/lib/server/episode-room-store";
 
@@ -58,6 +60,7 @@ type RoomResponse = {
   room?: EpisodeRoomState;
   writing?: EpisodeRoomWritingState;
   importedCandidates?: EpisodeRoomImportedCandidate[];
+  vaultCandidates?: EpisodeRoomVaultCandidate[];
   recordingSessions?: EpisodeRoomRecordingSession[];
   timelineClipCount?: number;
   updatedAt?: string;
@@ -67,6 +70,7 @@ type CommandDraft = {
   type:
     | "START_SESSION"
     | "ADD_CLIP"
+    | "IMPORT_VAULT_ASSET"
     | "REMOVE_CLIP"
     | "SELECT_CLIP"
     | "PLAY"
@@ -144,6 +148,9 @@ export default function EpisodeRoomClient({
   const [textBlocks, setTextBlocks] = useState(initialPayload.textBlocks);
   const [writingNotice, setWritingNotice] = useState("");
   const [candidates, setCandidates] = useState(initialPayload.importedCandidates);
+  const [vaultCandidates, setVaultCandidates] = useState(initialPayload.vaultCandidates);
+  const [vaultQuery, setVaultQuery] = useState("");
+  const [vaultLoading, setVaultLoading] = useState(false);
   const [recordingSessions, setRecordingSessions] = useState(initialPayload.recordingSessions);
   const [selectedRecordingRoomId, setSelectedRecordingRoomId] = useState(
     initialPayload.room.session?.recordingRoomId
@@ -285,6 +292,47 @@ export default function EpisodeRoomClient({
     }
     return null;
   }, [canEdit, endpoint, episodeSlug, refresh]);
+
+  const refreshVault = useCallback(async (quiet = false) => {
+    setVaultLoading(true);
+    try {
+      const params = new URLSearchParams({
+        episode: episodeSlug,
+        vault: "1",
+      });
+      const response = await fetch(`${endpoint}?${params}`, {
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => ({})) as RoomResponse;
+      if (!response.ok || !payload.ok || !payload.vaultCandidates) {
+        throw new Error(payload.error || "The Media Vault could not refresh.");
+      }
+      setVaultCandidates(payload.vaultCandidates);
+      if (!quiet) {
+        setError("");
+        setNotice("Media Vault refreshed.");
+      }
+    } catch (nextError) {
+      if (!quiet) {
+        setError(nextError instanceof Error
+          ? nextError.message
+          : "The Media Vault could not refresh.");
+        setStatus("error");
+      }
+    } finally {
+      setVaultLoading(false);
+    }
+  }, [endpoint, episodeSlug]);
+
+  async function useVaultAsset(candidate: EpisodeRoomVaultCandidate) {
+    const nextRoom = await sendCommand({
+      type: "IMPORT_VAULT_ASSET",
+      assetId: candidate.assetId,
+    }, {
+      success: `${candidate.title} is attached to the episode and ready in Watch.`,
+    });
+    if (nextRoom) await refreshVault(true);
+  }
 
   useEffect(() => {
     const interval = window.setInterval(() => void refresh(true), 750);
@@ -465,6 +513,14 @@ export default function EpisodeRoomClient({
   const duration = Math.max(0, localDuration || clip?.durationSeconds || room.durationSeconds || 0);
   const sliderPosition = Math.min(duration || Number.MAX_SAFE_INTEGER, dragPosition ?? displayPosition);
   const unattachedCandidates = candidates.filter((candidate) => !candidate.attached);
+  const normalizedVaultQuery = vaultQuery.trim().toLowerCase();
+  const visibleVaultCandidates = vaultCandidates.filter((candidate) => (
+    !normalizedVaultQuery
+    || candidate.title.toLowerCase().includes(normalizedVaultQuery)
+    || candidate.savedClipTitles.some((title) => (
+      title.toLowerCase().includes(normalizedVaultQuery)
+    ))
+  ));
   const alignmentCandidates = candidates.filter(
     (candidate) => candidate.captureAlignment,
   );
@@ -943,6 +999,87 @@ export default function EpisodeRoomClient({
                   </div>
                 </div>
               ) : null}
+
+              <div className="mt-5 rounded-3xl border border-[#d8ad56]/35 bg-[#17251e] p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#d8ad56]">Reuse the source of truth</p>
+                    <h3 className="mt-1 font-serif text-2xl font-black">Add from this Nest’s Media Vault</h3>
+                    <p className="mt-2 max-w-2xl text-xs font-semibold leading-5 text-[#aab9af]">
+                      Attach an existing source without another upload. Quipsly preserves the original, records the episode reference, and makes it available to iPhone Watch.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={vaultLoading}
+                    onClick={() => void refreshVault()}
+                    className="inline-flex min-h-10 shrink-0 items-center justify-center gap-2 rounded-full border border-[#40584c] px-3 text-[10px] font-black uppercase tracking-wide text-[#d7e0da] disabled:opacity-40"
+                  >
+                    <RefreshCw size={13} className={vaultLoading ? "animate-spin" : ""} />
+                    Refresh
+                  </button>
+                </div>
+                <label className="mt-4 flex min-h-11 items-center gap-2 rounded-2xl border border-[#40584c] bg-[#07110d] px-3 focus-within:border-[#d8ad56]">
+                  <Search size={15} className="shrink-0 text-[#91a298]" />
+                  <span className="sr-only">Search Media Vault</span>
+                  <input
+                    value={vaultQuery}
+                    onChange={(event) => setVaultQuery(event.target.value)}
+                    placeholder="Search source files or saved clip names"
+                    className="min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:text-[#72847a]"
+                  />
+                </label>
+                {visibleVaultCandidates.length ? (
+                  <ul className="mt-3 grid gap-2 lg:grid-cols-2">
+                    {visibleVaultCandidates.slice(0, 24).map((candidate) => (
+                      <li key={candidate.assetId} className="flex min-w-0 flex-col items-stretch gap-3 rounded-2xl border border-[#30483d] bg-[#07110d] p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="break-words text-sm font-black sm:truncate">{candidate.title}</p>
+                          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#91a298]">
+                            {candidate.kind} · {candidate.readinessLabel}
+                          </p>
+                          {candidate.savedClipCount ? (
+                            <p className="mt-1 break-words text-[10px] font-semibold text-[#d7c69d] sm:truncate">
+                              {candidate.savedClipCount} saved {candidate.savedClipCount === 1 ? "clip" : "clips"}
+                              {candidate.savedClipTitles.length
+                                ? ` · ${candidate.savedClipTitles.join(" · ")}`
+                                : ""}
+                            </p>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={!canEdit || !candidate.canAddToWatch || status === "saving"}
+                          onClick={() => void useVaultAsset(candidate)}
+                          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#d8ad56] px-3 text-[10px] font-black uppercase tracking-wide text-[#172018] disabled:opacity-40"
+                        >
+                          {candidate.attached ? (
+                            <><CheckCircle2 size={13} /> In Watch</>
+                          ) : (
+                            <><Plus size={13} /> Use in Watch</>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="mt-3 rounded-2xl border border-dashed border-[#40584c] px-4 py-5 text-center">
+                    <p className="text-sm font-black">
+                      {vaultCandidates.length
+                        ? "No vault sources match that search."
+                        : "No reusable audio or video is filed in this Nest yet."}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-[#91a298]">
+                      Upload below once; future episodes can reuse the preserved source.
+                    </p>
+                  </div>
+                )}
+                {vaultCandidates.some((candidate) => candidate.savedClipCount > 0) ? (
+                  <p className="mt-3 text-[10px] font-semibold leading-4 text-[#91a298]">
+                    Saved ranges stay preserved in the Media Vault. Watch uses the whole source for now; open the editor when you need an exact saved range.
+                  </p>
+                ) : null}
+              </div>
 
               <div className="mt-5 grid gap-3 md:grid-cols-2">
                 <div className="rounded-3xl border border-[#30483d] bg-[#17251e] p-4">

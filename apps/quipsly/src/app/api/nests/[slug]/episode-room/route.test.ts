@@ -7,10 +7,12 @@ import {
   EpisodeRoomRevisionConflict,
   applyEpisodeRoomStoreCommand,
   loadEpisodeRoomRuntime,
+  loadEpisodeRoomVault,
   loadEpisodeRoomWritingRuntime,
   loadEpisodeRoomWatchRuntime,
 } from "@/lib/server/episode-room-store";
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
+import { roleAllowsAction } from "@/lib/server/studio-project-access";
 
 import { GET, POST } from "./route";
 
@@ -38,6 +40,7 @@ jest.mock("@/lib/server/episode-room-store", () => {
     importEpisodeRoomText: jest.fn(),
     loadEpisodeRoomDesk: jest.fn(),
     loadEpisodeRoomRuntime: jest.fn(),
+    loadEpisodeRoomVault: jest.fn(),
     loadEpisodeRoomWritingRuntime: jest.fn(),
     loadEpisodeRoomWatchRuntime: jest.fn(),
   };
@@ -62,6 +65,7 @@ describe("Episode Room command route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(getPrismaClient).mockReturnValue({} as never);
+    jest.mocked(roleAllowsAction).mockReturnValue(true);
   });
 
   it("rejects malformed commands before authorization or persistence", async () => {
@@ -145,6 +149,49 @@ describe("Episode Room command route", () => {
         isStaff: false,
       },
     });
+  });
+
+  it("imports one same-Nest Media Vault source through the authoritative store", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: true,
+      actor: {
+        id: "user-1",
+        email: "editor@example.test",
+        name: "Episode Editor",
+        isStaff: false,
+        source: "embedded-cookie",
+      },
+      access: {
+        allowed: true,
+        projectId: "project-1",
+        role: "EDITOR",
+      },
+    } as never);
+    jest.mocked(applyEpisodeRoomStoreCommand).mockResolvedValue({
+      room: { revision: 3 },
+      updatedAt: "2026-07-30T21:51:14.772Z",
+      timelineClipCount: 0,
+      importedCandidates: [],
+      recordingSessions: [],
+    } as never);
+
+    const response = await POST(request({
+      episodeSlug: "episode-4-part-2",
+      type: "IMPORT_VAULT_ASSET",
+      assetId: "asset-in-this-nest",
+      clientRequestId: "vault:request-1",
+      expectedRevision: 2,
+    }), params);
+
+    expect(response.status).toBe(200);
+    expect(applyEpisodeRoomStoreCommand).toHaveBeenCalledWith(expect.objectContaining({
+      input: {
+        type: "IMPORT_VAULT_ASSET",
+        assetId: "asset-in-this-nest",
+        clientRequestId: "vault:request-1",
+        expectedRevision: 2,
+      },
+    }));
   });
 
   it("returns the authoritative revision on a write conflict", async () => {
@@ -232,6 +279,7 @@ describe("Episode Room runtime route", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.mocked(getPrismaClient).mockReturnValue({} as never);
+    jest.mocked(roleAllowsAction).mockReturnValue(true);
   });
 
   it("passes the caller's opaque writing version to the shared snapshot loader", async () => {
@@ -325,6 +373,59 @@ describe("Episode Room runtime route", () => {
       canEdit: true,
       room: { revision: 8, status: "paused" },
       serverNow: expect.any(String),
+    });
+  });
+
+  it("loads Media Vault candidates only on the explicit vault projection", async () => {
+    jest.mocked(roleAllowsAction).mockReturnValue(false);
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: true,
+      actor: {
+        id: "user-1",
+        email: "viewer@example.test",
+        name: "Episode Viewer",
+        isStaff: false,
+        source: "embedded-cookie",
+      },
+      access: {
+        allowed: true,
+        projectId: "project-1",
+        role: "VIEWER",
+      },
+    } as never);
+    jest.mocked(loadEpisodeRoomVault).mockResolvedValue([{
+      assetId: "asset-1",
+      title: "Be Curious.mp4",
+      kind: "video",
+      mimeType: "video/mp4",
+      playbackUrl: "/api/ingest/media/source-1",
+      thumbnailUrl: null,
+      updatedAt: "2026-07-30T10:00:00.000Z",
+      savedClipCount: 1,
+      savedClipTitles: ["Opening exchange"],
+      imported: false,
+      attached: false,
+      canAddToWatch: true,
+      readinessLabel: "playback ready",
+    }]);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nests/high-ground-odyssey/episode-room?episode=episode-4-part-2&vault=1",
+    ), params);
+
+    expect(response.status).toBe(200);
+    expect(loadEpisodeRoomVault).toHaveBeenCalledWith(
+      "high-ground-odyssey",
+      "episode-4-part-2",
+    );
+    expect(loadEpisodeRoomRuntime).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      canEdit: false,
+      vaultCandidates: [{
+        assetId: "asset-1",
+        savedClipTitles: ["Opening exchange"],
+      }],
     });
   });
 

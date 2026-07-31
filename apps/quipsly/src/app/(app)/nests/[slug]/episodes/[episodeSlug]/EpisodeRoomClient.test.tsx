@@ -52,6 +52,7 @@ const initialPayload: EpisodeRoomDeskPayload = {
   }],
   transcriptSegments: [],
   importedCandidates: [],
+  vaultCandidates: [],
   recordingSessions: [],
   timelineClipCount: 0,
   canEdit: true,
@@ -118,6 +119,65 @@ describe("EpisodeRoomClient shared writing", () => {
     expect(screen.getByText(
       "Latest episode writing loaded from the shared manuscript.",
     )).toBeInTheDocument();
+  });
+
+  it("shows reusable same-Nest Media Vault sources and preserves saved clip context", () => {
+    render(<EpisodeRoomClient initialPayload={{
+      ...initialPayload,
+      vaultCandidates: [{
+        assetId: "asset-be-curious",
+        title: "Be Curious.mp4",
+        kind: "video",
+        mimeType: "video/mp4",
+        playbackUrl: "/api/ingest/media/source-be-curious",
+        durationSeconds: 74,
+        thumbnailUrl: null,
+        updatedAt: "2026-07-30T10:00:00.000Z",
+        savedClipCount: 1,
+        savedClipTitles: ["Curiosity opening"],
+        imported: false,
+        attached: false,
+        canAddToWatch: true,
+        readinessLabel: "playback ready",
+      }],
+    }} />);
+
+    expect(screen.getByRole("heading", {
+      name: "Add from this Nest’s Media Vault",
+    })).toBeInTheDocument();
+    expect(screen.getByText("Be Curious.mp4")).toBeInTheDocument();
+    expect(screen.getByText(/1 saved clip · Curiosity opening/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use in Watch" })).toBeEnabled();
+    expect(screen.getByText(
+      /Watch uses the whole source for now; open the editor when you need an exact saved range/i,
+    )).toBeInTheDocument();
+  });
+
+  it("lets viewers inspect Media Vault provenance without changing shared Watch", () => {
+    render(<EpisodeRoomClient initialPayload={{
+      ...initialPayload,
+      canEdit: false,
+      vaultCandidates: [{
+        assetId: "asset-be-curious",
+        title: "Be Curious.mp4",
+        kind: "video",
+        mimeType: "video/mp4",
+        playbackUrl: "/api/ingest/media/source-be-curious",
+        durationSeconds: 74,
+        thumbnailUrl: null,
+        updatedAt: "2026-07-30T10:00:00.000Z",
+        savedClipCount: 1,
+        savedClipTitles: ["Curiosity opening"],
+        imported: false,
+        attached: false,
+        canAddToWatch: true,
+        readinessLabel: "playback ready",
+      }],
+    }} />);
+
+    expect(screen.getByText("Be Curious.mp4")).toBeInTheDocument();
+    expect(screen.getByText(/1 saved clip · Curiosity opening/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use in Watch" })).toBeDisabled();
   });
 
   it("shows a bound recording clock without leaking raw Capture-room access", () => {

@@ -73,6 +73,23 @@ export type EpisodeRoomImportedCandidate = EpisodeRoomClip & {
   captureGroupId?: string;
 };
 
+export type EpisodeRoomVaultCandidate = {
+  assetId: string;
+  title: string;
+  kind: "audio" | "video";
+  mimeType: string | null;
+  playbackUrl: string;
+  durationSeconds?: number;
+  thumbnailUrl: string | null;
+  updatedAt: string;
+  savedClipCount: number;
+  savedClipTitles: string[];
+  imported: boolean;
+  attached: boolean;
+  canAddToWatch: boolean;
+  readinessLabel: string;
+};
+
 export type EpisodeRoomRecordingSession = {
   id: string;
   title: string;
@@ -107,6 +124,7 @@ export type EpisodeRoomDeskPayload = {
   textBlocks: EpisodeRoomTextBlock[];
   transcriptSegments: EpisodeRoomTranscriptSegment[];
   importedCandidates: EpisodeRoomImportedCandidate[];
+  vaultCandidates: EpisodeRoomVaultCandidate[];
   recordingSessions: EpisodeRoomRecordingSession[];
   timelineClipCount: number;
   canEdit: boolean;
@@ -147,6 +165,12 @@ export type EpisodeRoomCommandInput =
       expectedRevision: number;
     }
   | {
+      type: "IMPORT_VAULT_ASSET";
+      assetId: string;
+      clientRequestId: string;
+      expectedRevision: number;
+    }
+  | {
       type: "START_SESSION";
       recordingRoomId?: string;
       clientRequestId: string;
@@ -167,6 +191,12 @@ function text(value: unknown) {
 function optionalNumber(value: unknown) {
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function safeByteCount(value: unknown) {
+  const parsed = optionalNumber(value);
+  if (parsed === undefined) return 0;
+  return Math.min(Number.MAX_SAFE_INTEGER, Math.max(0, Math.trunc(parsed)));
 }
 
 function json(value: unknown): Prisma.InputJsonValue {
@@ -337,6 +367,235 @@ function importedCandidatesFor(
         : [];
     })
     .sort((left, right) => right.addedAt.localeCompare(left.addedAt));
+}
+
+function mediaKind(mimeType: unknown, filename: unknown): "audio" | "video" | null {
+  const mime = text(mimeType).toLowerCase();
+  const name = text(filename).toLowerCase();
+  if (mime.startsWith("audio/") || /\.(wav|mp3|m4a|aac|ogg|flac)(?:$|[?#])/.test(name)) {
+    return "audio";
+  }
+  if (mime.startsWith("video/") || /\.(mp4|mov|m4v|webm|mkv)(?:$|[?#])/.test(name)) {
+    return "video";
+  }
+  return null;
+}
+
+function preferredVaultPlayback(asset: any, proxies: any[]) {
+  const proxyVariant = (asset.variants ?? []).find((variant: any) => (
+    text(variant.kind).toLowerCase().includes("proxy")
+    && Boolean(text(variant.url))
+  ));
+  const proxyAsset = proxies.find((candidate: any) => Boolean(text(candidate.url)));
+  return {
+    playbackUrl:
+      text(proxyVariant?.url)
+      || text(proxyAsset?.url)
+      || text(asset.url),
+    hasProxy: Boolean(proxyVariant || proxyAsset),
+  };
+}
+
+function vaultAssetScopeWhere(projectId: string) {
+  return {
+    OR: [
+      { projects: { some: { id: projectId } } },
+      { mediaBin: { projectId } },
+      { assetAttachments: { some: { projectId } } },
+    ],
+  };
+}
+
+async function vaultAssetsForProject(
+  prisma: any,
+  projectId: string,
+  assetId?: string,
+) {
+  const assets = await prisma.studioMediaAsset.findMany({
+    where: {
+      isProxy: false,
+      ...(assetId ? { id: assetId } : {}),
+      ...vaultAssetScopeWhere(projectId),
+    },
+    select: {
+      id: true,
+      filename: true,
+      url: true,
+      mimeType: true,
+      sizeBytes: true,
+      duration: true,
+      thumbnailUrl: true,
+      updatedAt: true,
+      variants: {
+        orderBy: { updatedAt: "desc" },
+        select: {
+          kind: true,
+          url: true,
+          duration: true,
+          mimeType: true,
+        },
+      },
+      clips: {
+        orderBy: { updatedAt: "desc" },
+        take: 8,
+        select: {
+          id: true,
+          title: true,
+          inTimecode: true,
+          outTimecode: true,
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: assetId ? 1 : 80,
+  });
+  if (!assets.length) return [];
+  const proxies = await prisma.studioMediaAsset.findMany({
+    where: {
+      isProxy: true,
+      rawAssetId: { in: assets.map((asset: any) => asset.id) },
+      ...vaultAssetScopeWhere(projectId),
+    },
+    select: {
+      id: true,
+      rawAssetId: true,
+      url: true,
+      updatedAt: true,
+    },
+    orderBy: { updatedAt: "desc" },
+    take: assetId ? 12 : 160,
+  });
+  const proxiesByRawId = new Map<string, any[]>();
+  for (const proxy of proxies) {
+    const rawAssetId = text(proxy.rawAssetId);
+    if (!rawAssetId) continue;
+    proxiesByRawId.set(rawAssetId, [
+      ...(proxiesByRawId.get(rawAssetId) ?? []),
+      proxy,
+    ]);
+  }
+  return assets.map((asset: any) => ({
+    asset,
+    proxies: proxiesByRawId.get(asset.id) ?? [],
+    ...preferredVaultPlayback(asset, proxiesByRawId.get(asset.id) ?? []),
+  }));
+}
+
+async function vaultCandidatesFor(
+  prisma: any,
+  projectId: string,
+  productionJson: unknown,
+  legacyTimelineJson: unknown,
+  room: EpisodeRoomState,
+): Promise<EpisodeRoomVaultCandidate[]> {
+  const importedIds = new Set(
+    importedMedia(productionJson, legacyTimelineJson)
+      .map((asset) => asset.id),
+  );
+  const attachedIds = new Set(room.clips.map((clip) => clip.assetId));
+  const rows = await vaultAssetsForProject(prisma, projectId);
+  return rows.flatMap(({ asset, playbackUrl, hasProxy }: any) => {
+    const kind = mediaKind(asset.mimeType, asset.filename);
+    if (!kind || !playbackUrl) return [];
+    const imported = importedIds.has(asset.id);
+    const attached = attachedIds.has(asset.id);
+    const durationSeconds = optionalNumber(asset.duration)
+      ?? optionalNumber(asset.variants?.find((variant: any) => (
+        optionalNumber(variant.duration) !== undefined
+      ))?.duration);
+    return [{
+      assetId: asset.id,
+      title: text(asset.filename) || "Untitled media",
+      kind,
+      mimeType: text(asset.mimeType) || null,
+      playbackUrl,
+      ...(durationSeconds === undefined ? {} : { durationSeconds }),
+      thumbnailUrl: text(asset.thumbnailUrl) || null,
+      updatedAt: asset.updatedAt.toISOString(),
+      savedClipCount: asset.clips.length,
+      savedClipTitles: asset.clips
+        .map((clip: any) => text(clip.title))
+        .filter(Boolean)
+        .slice(0, 3),
+      imported,
+      attached,
+      canAddToWatch: !attached,
+      readinessLabel: attached
+        ? "in Watch"
+        : imported
+          ? "already in episode"
+          : kind === "video" && !hasProxy
+            ? "source playback · proxy recommended for editing"
+            : hasProxy
+              ? "proxy ready"
+              : "playback ready",
+    }];
+  });
+}
+
+function importedAssetFromVault(
+  row: any,
+  projectSlug: string,
+  episodeSlug: string,
+  actorLabel: string,
+  importedAt: string,
+): EpisodeImportedMediaAsset {
+  const { asset, playbackUrl, hasProxy } = row;
+  const kind = mediaKind(asset.mimeType, asset.filename);
+  if (!kind || !playbackUrl) {
+    throw new EpisodeRoomCommandError(
+      "This Media Vault item is not playable audio or video.",
+    );
+  }
+  const durationSeconds = optionalNumber(asset.duration)
+    ?? optionalNumber(asset.variants?.find((variant: any) => (
+      optionalNumber(variant.duration) !== undefined
+    ))?.duration);
+  return {
+    id: asset.id,
+    sourceId: `media-vault-asset:${asset.id}`,
+    projectSlug,
+    episodeSlug,
+    originalName: text(asset.filename) || "Untitled media",
+    contentType: text(asset.mimeType) || `${kind}/unknown`,
+    size: safeByteCount(asset.sizeBytes),
+    kind,
+    bucketName: "",
+    objectName: "",
+    gcsUri: playbackUrl,
+    playbackUrl,
+    importedAt,
+    source: "media-vault-existing",
+    importRole: "reference-clip",
+    metadata: {
+      mediaVault: {
+        schema: "quipsly-episode-vault-reference-v1",
+        assetId: asset.id,
+        referencedBy: actorLabel,
+        referencedAt: importedAt,
+        originalPreserved: true,
+      },
+    },
+    sync: {
+      status: "ready-to-sync",
+      suggestedRole: "reference-clip",
+      note: "Existing Media Vault source attached without duplicating or mutating the original.",
+      ...(durationSeconds === undefined
+        ? {}
+        : { recordingSync: { durationSeconds } }),
+    },
+    proxy: {
+      status: kind === "audio"
+        ? "not-required"
+        : hasProxy
+          ? "ready"
+          : "external-preview",
+      proxyUrl: playbackUrl,
+      note: hasProxy
+        ? "Media Vault proxy selected for collaborative Watch."
+        : "The existing source is available for Watch; create a proxy before final editing when needed.",
+    },
+  };
 }
 
 function timelineRows(productionJson: unknown) {
@@ -656,6 +915,13 @@ export async function loadEpisodeRoomDesk(
       room,
       now,
     ),
+    vaultCandidates: await vaultCandidatesFor(
+      prisma,
+      production.project.id,
+      production.productionJson,
+      production.timelineJson,
+      room,
+    ),
     recordingSessions: await recordingSessionsFor(
       prisma,
       production.project.id,
@@ -666,6 +932,36 @@ export async function loadEpisodeRoomDesk(
     timelineClipCount: episodeRoomWatchTimelineRows(production.productionJson).length,
     canEdit,
   };
+}
+
+export async function loadEpisodeRoomVault(
+  projectSlug: string,
+  episodeSlug: string,
+): Promise<EpisodeRoomVaultCandidate[] | null> {
+  const prisma = getPrismaClient();
+  const production = await prisma.studioEpisodeProduction.findFirst({
+    where: {
+      slug: episodeSlug,
+      project: { slug: projectSlug },
+    },
+    select: {
+      projectId: true,
+      productionJson: true,
+      timelineJson: true,
+    },
+  });
+  if (!production) return null;
+  const room = productionRoomState(
+    production.productionJson,
+    new Date().toISOString(),
+  );
+  return vaultCandidatesFor(
+    prisma,
+    production.projectId,
+    production.productionJson,
+    production.timelineJson,
+    room,
+  );
 }
 
 export async function loadEpisodeRoomRuntime(
@@ -869,7 +1165,7 @@ export async function applyEpisodeRoomStoreCommand({
         if (!production) throw new EpisodeRoomCommandError("Episode production not found.");
 
         const acceptedAt = new Date().toISOString();
-        const currentProductionJson =
+        let currentProductionJson: JsonRecord =
           canonicalEpisodeProductionJson(
             production.productionJson,
             production.timelineJson,
@@ -923,7 +1219,54 @@ export async function applyEpisodeRoomStoreCommand({
           };
         }
         let command: EpisodeRoomCommand;
-        if (input.type === "ADD_CLIP") {
+        if (input.type === "IMPORT_VAULT_ASSET") {
+          const [vaultRow] = await vaultAssetsForProject(
+            tx,
+            production.projectId,
+            input.assetId,
+          );
+          if (!vaultRow) {
+            throw new EpisodeRoomCommandError(
+              "This Media Vault item is unavailable in this Nest.",
+            );
+          }
+          const existingImportedAsset = importedMedia(
+            currentProductionJson,
+            production.timelineJson,
+          ).find((asset) => asset.id === input.assetId);
+          const importedAsset = existingImportedAsset
+            ?? importedAssetFromVault(
+              vaultRow,
+              projectSlug,
+              episodeSlug,
+              actor.label,
+              acceptedAt,
+            );
+          if (!existingImportedAsset) {
+            currentProductionJson = {
+              ...currentProductionJson,
+              importedMedia: [
+                importedAsset,
+                ...importedMedia(
+                  currentProductionJson,
+                  production.timelineJson,
+                ),
+              ],
+              lastMediaImportAt: acceptedAt,
+              source: "quipsly-episode-room-media-vault",
+            };
+          }
+          command = {
+            type: "ADD_CLIP",
+            clientRequestId: input.clientRequestId,
+            expectedRevision: input.expectedRevision,
+            clip: clipFromImportedAsset(
+              importedAsset,
+              actor.label,
+              acceptedAt,
+            ),
+          };
+        } else if (input.type === "ADD_CLIP") {
           command = {
               type: "ADD_CLIP",
               clientRequestId: input.clientRequestId,
