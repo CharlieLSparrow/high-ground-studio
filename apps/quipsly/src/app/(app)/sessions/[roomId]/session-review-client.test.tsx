@@ -157,8 +157,8 @@ describe("Session review goal candidates", () => {
     ["notes"],
     ["work"],
     ["outputs"],
-  ] as const)("keeps the %s workspace independent from transcript requests", (mode) => {
-    const fetchMock = jest.fn();
+  ] as const)("keeps the %s workspace independent from transcript requests", async (mode) => {
+    const fetchMock = jest.fn().mockResolvedValue(jsonResponse({ ok: true }));
     global.fetch = fetchMock as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
@@ -168,7 +168,21 @@ describe("Session review goal candidates", () => {
     />);
 
     expect(screen.getByRole("link", { name: new RegExp(`^${mode}$`, "i") })).toHaveAttribute("aria-current", "page");
-    expect(fetchMock).not.toHaveBeenCalled();
+    if (mode === "outputs") {
+      await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/sessions/room-1/client-follow-up",
+        { cache: "no-store" },
+      );
+      expect(
+        await screen.findByRole("heading", { name: "Client follow-up unavailable" }),
+      ).toBeInTheDocument();
+    } else {
+      expect(fetchMock).not.toHaveBeenCalled();
+    }
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url).includes("/transcripts/")),
+    ).toBe(false);
   });
 
   it("builds the available review packet from the exact transcript without forcing a rebuild", async () => {
@@ -363,6 +377,7 @@ describe("Session review goal candidates", () => {
     expect(screen.getByRole("link", { name: "Open Episode 4 in Studio" })).toHaveAttribute("href", "/editor?project=high-ground&episode=episode-4");
     expect(screen.getByText(/provenance receipt—not proof that the take is substantial/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /promote|attach|send/i })).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Client follow-up unavailable" })).toBeInTheDocument();
   });
 
   it("keeps deliberate iPhone notes in Notes without mixing in tasks or goals", async () => {
@@ -640,7 +655,7 @@ describe("Session review goal candidates", () => {
     expect(screen.queryByText(/episode ready/i)).not.toBeInTheDocument();
   });
 
-  it("withholds production-spine output status for simulator-only media", () => {
+  it("withholds production-spine output status for simulator-only media", async () => {
     global.fetch = jest.fn().mockResolvedValue(jsonResponse(packet())) as typeof fetch;
     render(<SessionReviewClient
       roomId="room-1"
@@ -683,5 +698,6 @@ describe("Session review goal candidates", () => {
     expect(screen.getByText(/does not call any attached file a production spine/i)).toBeInTheDocument();
     expect(screen.getByText(/production-spine status withheld/i)).toBeInTheDocument();
     expect(screen.queryByText(/episode ready/i)).not.toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Client follow-up unavailable" })).toBeInTheDocument();
   });
 });
