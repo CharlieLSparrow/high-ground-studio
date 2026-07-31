@@ -24,9 +24,12 @@ Date: 2026-07-30
   produced a source `4–12` / duration `8` derivative and left its durable test
   history in place.
 - The saved-range slice is not in production yet. Build 18 cannot resolve the
-  new selected range identity, so the compatible Capture build must reach
-  TestFlight before the web projection is enabled. The evidence and rollout
-  order are in
+  new selected range identity. Candidate `579b80e6` advances Quipsly Capture
+  to 1.0 (19) and adds explicit Watch protocol negotiation: legacy builds keep
+  whole-source behavior and fail a selected range safely closed, while Build
+  19 receives exact ranges. This makes it safe to deploy the matching backend
+  before uploading the candidate, as the canonical runbook requires. The
+  evidence and rollout order are in
   `docs/coordination/2026-07-30-episode-room-saved-range-readiness.md`.
 
 ## What The Repo Is Right Now

@@ -6,6 +6,8 @@ Prepared: 2026-07-30 MDT / 2026-07-31 UTC
 
 - Feature commit:
   `c05ce5cd`
+- Protocol-compatible Capture 1.0 (19) candidate commit:
+  `579b80e6`
 - Branch:
   `codex/quipsly-product-20260724`
 - Current production remains:
@@ -15,9 +17,12 @@ Prepared: 2026-07-30 MDT / 2026-07-31 UTC
   Quipsly Capture Build 18
 
 This slice is committed and qualified but is intentionally not deployed yet.
-Build 18 predates the separate saved-range Watch identity. Enabling the web
-projection before a compatible Capture binary is available would let the old
-app receive a selected identity it cannot resolve.
+Build 18 predates the separate saved-range Watch identity. The candidate
+therefore adds an explicit native `watchProtocol=2` negotiation boundary.
+Build 18 continues receiving whole-source Watch clips. If a saved range is
+selected, the legacy projection removes the unsupported range, returns an idle
+read-only Watch, and sets `watchUpgradeRequired` instead of letting the old app
+play outside the range. Build 19 receives the canonical range projection.
 
 ## Product behavior
 
@@ -77,13 +82,12 @@ derivative remain intentionally retained for longitudinal regression testing.
 ## Safe release order
 
 1. Bump, archive, validate, and upload the compatible Quipsly Capture build.
-2. Confirm App Store Connect processing and TestFlight availability.
-3. Keep production Nest on `6d4bdbfd` until the native build is available.
-4. Build the web image from the exact committed saved-range source.
-5. Deploy at zero traffic, run authenticated generated-user and Episode Room
+2. Build the web image from exact commit `579b80e6`.
+3. Deploy at zero traffic, run authenticated generated-user and Episode Room
    acceptance, and verify exact source/image readback.
-6. Promote production only after the compatible native path and web preview
-   both pass.
+4. Promote the backward-compatible backend before uploading Build 19.
+5. Archive and upload Build 19 from that same exact commit.
+6. Confirm App Store Connect processing and TestFlight availability.
 7. Perform the real two-person iPhone/Mac rehearsal with a recording clock,
    exact saved range, receipt sync, and editor alignment.
 
