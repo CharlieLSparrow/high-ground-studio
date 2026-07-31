@@ -82,8 +82,27 @@ Reserved local-only identities:
 
 The seed script is
 `scripts/quipsly-retained-coaching-follow-up-seed.mjs`. It refuses non-loopback
-targets, writes credentials only to protected temporary files, and retains the
-stable `.test` identities and source corpus for longitudinal regression.
+targets and retains the stable `.test` identities and source corpus for
+longitudinal regression. Its portable default writes mode-`0600` credential
+packets below the operating-system temporary directory. Explicit macOS
+Keychain mode instead reuses exact, device-local generic-password items under
+service `com.quipsly.qa.retained-coaching`; generated passwords never appear in
+arguments, receipts, or Git.
+
+The Keychain-backed longitudinal login proof was run twice. All three items
+were reused (`keychainItemCreated: false`), each stored password was 38 bytes,
+the retained Session remained at two outputs, and no secret or external side
+effect was reported. A separate real-boundary smoke then proved:
+
+1. coach, client, and outsider all signed into the local Firebase emulator;
+2. all three tokens exchanged for their exact local Nest identity;
+3. the coach received the eligible coach projection;
+4. the client received only the released snapshot; and
+5. the retained producer/outsider received a private, non-cacheable concealed
+   `404`, with private, room-shared, and unreviewed markers absent.
+
+The repeatable command and credential boundary are documented in
+`docs/runbooks/quipsly-retained-dogfood.md`.
 
 The second retained released snapshot is:
 
@@ -128,6 +147,10 @@ same content SHA-256 as revision 2.
 - real PostgreSQL mobile Session projection tests: 4/4
 - reachable native/App Store static contract after recorder cleanup: 902/902
 - native retained client follow-up journey: 1/1
+- retained Keychain adapter unit tests: 7/7
+- two-run Keychain credential reuse and stable-corpus proof: pass
+- real coach/client/outsider Firebase-to-Nest Keychain smoke: 3/3
+- repository-wide Quipsly contract sweep after stale-contract repair: 168/168
 - full iPhone simulator compile with LiveKit linked: pass
 - serialized Capture, login, and Share extension UI journeys: 46/46
 

@@ -23,7 +23,6 @@ const [
   offlineView,
   playback,
   providerAudio,
-  mobileComponents,
 ] = await Promise.all([
   readFile(path.join(captureRoot, "AudioCaptureController.swift"), "utf8"),
   readFile(path.join(captureRoot, "VideoCaptureController.swift"), "utf8"),
@@ -35,7 +34,6 @@ const [
   readFile(path.join(captureRoot, "ContentView.swift"), "utf8"),
   readFile(path.join(captureRoot, "LocalRecordingPlaybackController.swift"), "utf8"),
   readFile(path.join(captureRoot, "ProviderAudioMasterRecorder.swift"), "utf8"),
-  readFile(path.join(captureRoot, "QuipslyMobileComponents.swift"), "utf8"),
 ]);
 
 const checks = [];
@@ -83,12 +81,13 @@ check(
     && audio.includes("waitUntilRecordingOrTerminal"),
 );
 check(
-  "every native session surface waits for confirmed PCM before claiming recording",
-  model.includes("await audioCapture.waitUntilRecordingOrTerminal()")
-    && mobileComponents.includes(
-      "let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()",
-    )
-    && mobileComponents.includes("if !audioStarted"),
+  "the reachable native session surface waits for confirmed PCM before claiming recording",
+  model.includes(
+    "let audioStarted = await audioCapture.waitUntilRecordingOrTerminal()",
+  )
+    && model.includes(
+      "guard audioStarted, audioCapture.captureState == .recording else",
+    ),
 );
 check(
   "provider start failure takes the terminal media cleanup path",

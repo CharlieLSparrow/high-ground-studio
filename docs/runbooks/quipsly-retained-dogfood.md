@@ -50,6 +50,43 @@ in an approved local credential store. If a harness cannot preserve a login
 secret safely, its retained records are evidence artifacts rather than a
 reusable interactive account.
 
+### Reusable local coaching identities
+
+The retained coaching seed remains ephemeral by default so CI and ordinary
+one-off runs do not silently create durable credentials. On a developer Mac,
+opt in to longitudinal reuse with:
+
+```bash
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio \
+QUIPSLY_RETAINED_COACHING_BASE_URL=http://127.0.0.1:3012 \
+QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE=keychain \
+node scripts/quipsly-retained-coaching-follow-up-seed.mjs
+```
+
+Keychain mode is macOS-only and accepts only the fixed reserved `.test`
+identities. It stores generated passwords in exact generic-password items under
+service `com.quipsly.qa.retained-coaching`, marks new items
+`AfterFirstUnlockThisDeviceOnly`, passes secrets through process standard input
+rather than command arguments, and never includes them in the seed receipt.
+Unexpected Keychain failures fail closed; only an exact item-not-found result
+permits credential creation.
+
+After seeding, prove all three retained identities through Firebase, the Nest
+session exchange, and the relationship-protected follow-up route:
+
+```bash
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+QUIPSLY_RETAINED_COACHING_BASE_URL=http://127.0.0.1:3012 \
+node scripts/quipsly-retained-coaching-keychain-smoke.mjs
+```
+
+This smoke is deliberately loopback-only. It prints role/status evidence, not
+passwords, tokens, cookies, or unredacted identities. The default `temporary`
+seed mode remains the portable CI path. Production QA accounts require a
+separate explicit credential and side-effect plan; local Keychain reuse does
+not authorize creating them.
+
 ## Environment boundaries
 
 ### Local and emulator

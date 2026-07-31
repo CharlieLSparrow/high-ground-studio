@@ -6,6 +6,8 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
+import { resolveRetainedQAPassword } from "./lib/retained-qa-keychain.mjs";
+
 const requireFromQuipsly = createRequire(
   new URL("../apps/quipsly/package.json", import.meta.url),
 );
@@ -29,6 +31,7 @@ const SHARED_NOTE_ID = "retained-follow-up-shared-note-20260731";
 const TASK_ID = "retained-follow-up-client-task-20260731";
 const CANDIDATE_TASK_ID = "retained-follow-up-candidate-task-20260731";
 const GOAL_ID = "retained-follow-up-client-goal-20260731";
+const KEYCHAIN_SERVICE = "com.quipsly.qa.retained-coaching";
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -73,6 +76,17 @@ function password() {
   return `Qp-${crypto.randomBytes(24).toString("base64url")}!26`;
 }
 
+function credentialStore() {
+  const value = String(
+    process.env.QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE || "temporary",
+  ).trim().toLowerCase();
+  assert(
+    value === "temporary" || value === "keychain",
+    "QUIPSLY_RETAINED_COACHING_CREDENTIAL_STORE must be temporary or keychain.",
+  );
+  return value;
+}
+
 async function upsertFirebaseUser(auth, input) {
   const current = await auth.getUser(input.uid).catch((error) => {
     if (error?.code === "auth/user-not-found") return null;
@@ -108,13 +122,14 @@ async function main() {
     "FIREBASE_AUTH_EMULATOR_HOST",
   );
   const databaseURL = requireLocalDatabase(process.env.DATABASE_URL || "");
+  const store = credentialStore();
   const credentials = [
     {
       role: "coach",
       uid: COACH_UID,
       email: COACH_EMAIL,
       name: "Quipsly Retained Coach",
-      password: password(),
+      password: store === "temporary" ? password() : null,
       file: credentialPath("coach"),
     },
     {
@@ -122,7 +137,7 @@ async function main() {
       uid: CLIENT_UID,
       email: CLIENT_EMAIL,
       name: "Quipsly Retained Client",
-      password: password(),
+      password: store === "temporary" ? password() : null,
       file: credentialPath("client"),
     },
     {
@@ -130,7 +145,7 @@ async function main() {
       uid: OUTSIDER_UID,
       email: OUTSIDER_EMAIL,
       name: "Quipsly Retained Room Producer",
-      password: password(),
+      password: store === "temporary" ? password() : null,
       file: credentialPath("outsider"),
     },
   ];
@@ -139,6 +154,16 @@ async function main() {
       /^[^\s@]+@[^\s@]+\.test$/.test(identity.email),
       "Retained coaching identities must use reserved .test email addresses.",
     );
+    if (store === "keychain") {
+      const resolved = resolveRetainedQAPassword({
+        service: KEYCHAIN_SERVICE,
+        account: identity.email,
+        generate: password,
+      });
+      identity.password = resolved.password;
+      identity.keychainCreated = resolved.created;
+    }
+    assert(identity.password, `No ${identity.role} QA password was resolved.`);
   }
 
   if (!getApps().length) initializeApp({ projectId: PROJECT_ID });
@@ -366,17 +391,19 @@ async function main() {
     });
 
     for (const identity of credentials) {
-      await writeFile(
-        identity.file,
-        JSON.stringify({
-          baseURL,
-          role: identity.role,
-          email: identity.email,
-          password: identity.password,
-          roomID: ROOM_ID,
-        }),
-        { mode: 0o600 },
-      );
+      if (store === "temporary") {
+        await writeFile(
+          identity.file,
+          JSON.stringify({
+            baseURL,
+            role: identity.role,
+            email: identity.email,
+            password: identity.password,
+            roomID: ROOM_ID,
+          }),
+          { mode: 0o600 },
+        );
+      }
     }
 
     const outputCount = await prisma.sessionOutput.count({
@@ -395,7 +422,11 @@ async function main() {
             role: identity.role,
             email: identity.email,
             uid: identity.uid,
-            credentialFile: identity.file,
+            credentialStore: store,
+            credentialFile: store === "temporary" ? identity.file : null,
+            keychainService: store === "keychain" ? KEYCHAIN_SERVICE : null,
+            keychainItemCreated:
+              store === "keychain" ? identity.keychainCreated === true : null,
           })),
           canonicalRecords: {
             clientSafeNoteID: CLIENT_SAFE_NOTE_ID,

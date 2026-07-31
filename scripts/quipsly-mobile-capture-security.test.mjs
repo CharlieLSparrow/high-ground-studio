@@ -182,7 +182,7 @@ test("ingest media refuses unauthenticated requests before loading source bytes"
   assert.equal(sourceLoaded, false, "unauthenticated media requests must not resolve source storage");
 });
 
-test("ingest media requires project read access for private assets", async () => {
+test("ingest media conceals private assets without project read access", async () => {
   const source = { id: "source-private", providerSourceId: "gcs://bucket/private.m4a", url: null };
   const base = {
     actor: { id: "user-a", email: "user-a@example.com", isStaff: false },
@@ -196,7 +196,8 @@ test("ingest media requires project read access for private assets", async () =>
     canReadProject: async () => false,
   });
   assert.equal(denied.allowed, false);
-  assert.equal(denied.status, 403);
+  assert.equal(denied.status, 404);
+  assert.equal(denied.error, "Source not found");
 
   const allowed = await authorizeIngestMediaSource({
     ...base,
