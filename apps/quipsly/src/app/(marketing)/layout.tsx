@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Merriweather } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import "../globals.css";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
@@ -32,6 +33,7 @@ export default function MarketingLayout({
     <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
       <body className="font-sans bg-[#032321] text-studio-ink antialiased">
         {children}
+        {process.env.QUIPSLY_GA_MEASUREMENT_ID && <GoogleAnalytics gaId={process.env.QUIPSLY_GA_MEASUREMENT_ID} />}
       </body>
     </html>
   );

@@ -9,10 +9,11 @@
     "typecheck": "next typegen && tsc --noEmit --incremental false"
   },
   "dependencies": {
-    "@google/genai": "^2.7.0",
     "@google-cloud/storage": "^7.19.0",
+    "@google/genai": "^2.7.0",
     "@high-ground/quipsly-domain": "workspace:*",
     "@high-ground/worldhub-domain": "workspace:*",
+    "@next/third-parties": "^16.2.12",
     "@prisma/adapter-pg": "^7.7.0",
     "@prisma/client": "^7.7.0",
     "@tiptap/react": "^3.23.5",
@@ -31,11 +32,11 @@
     "stripe": "^22.2.0"
   },
   "devDependencies": {
-    "@typescript/native": "npm:typescript@7.0.2",
     "@tailwindcss/postcss": "^4.2.2",
     "@types/node": "25.3.3",
     "@types/pg": "^8.20.0",
     "@types/react": "19.2.14",
+    "@typescript/native": "npm:typescript@7.0.2",
     "tailwindcss": "^4.2.2",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   }

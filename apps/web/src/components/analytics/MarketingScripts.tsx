@@ -1,4 +1,5 @@
 import Script from "next/script";
+import { GoogleAnalytics } from "@next/third-parties/google";
 
 function isEnabled(value: string | undefined) {
   return ["1", "true", "yes", "on"].includes(value?.trim().toLowerCase() ?? "");
@@ -12,22 +13,7 @@ export default function MarketingScripts() {
   return (
     <>
       {gaMeasurementId ? (
-        <>
-          <Script
-            src={`https://www.googletagmanager.com/gtag/js?id=${encodeURIComponent(
-              gaMeasurementId,
-            )}`}
-            strategy="afterInteractive"
-          />
-          <Script id="hgo-google-analytics" strategy="afterInteractive">
-            {`
-              window.dataLayer = window.dataLayer || [];
-              function gtag(){window.dataLayer.push(arguments);}
-              gtag('js', new Date());
-              gtag('config', ${JSON.stringify(gaMeasurementId)});
-            `}
-          </Script>
-        </>
+        <GoogleAnalytics gaId={gaMeasurementId} />
       ) : null}
 
       {adsenseClient && adsenseEnabled ? (

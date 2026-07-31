@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Inter, Merriweather } from "next/font/google";
+import { GoogleAnalytics } from "@next/third-parties/google";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import "../globals.css";
 import { SidebarLayout } from "@/components/SidebarLayout";
@@ -104,6 +105,7 @@ export default async function RootLayout({
       <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#fdfaf6] antialiased">
           <NestSignInGate />
+          {process.env.QUIPSLY_GA_MEASUREMENT_ID && <GoogleAnalytics gaId={process.env.QUIPSLY_GA_MEASUREMENT_ID} />}
         </body>
       </html>
     );
@@ -115,6 +117,7 @@ export default async function RootLayout({
       <html lang="en" className={`${inter.variable} ${merriweather.variable}`}>
         <body className="font-sans bg-[#fdfaf6] antialiased">
           <BetaAccessView email={session?.user?.email || "supporter@example.com"} />
+          {process.env.QUIPSLY_GA_MEASUREMENT_ID && <GoogleAnalytics gaId={process.env.QUIPSLY_GA_MEASUREMENT_ID} />}
         </body>
       </html>
     );
@@ -139,6 +142,7 @@ export default async function RootLayout({
         >
           {children}
         </SidebarLayout>
+        {process.env.QUIPSLY_GA_MEASUREMENT_ID && <GoogleAnalytics gaId={process.env.QUIPSLY_GA_MEASUREMENT_ID} />}
       </body>
     </html>
   );
