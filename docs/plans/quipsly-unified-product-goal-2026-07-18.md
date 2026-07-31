@@ -5299,3 +5299,47 @@ was restored.
   and same-ID Nest/Studio readback remain deliberately open. These physical
   gates must be crossed by doing the work on a real device, not inferred from
   simulator, signed-archive, or Apple-provider evidence.
+
+### 2026-07-31 longitudinal coaching continuity checkpoint
+
+- This is a committed local product-operation checkpoint, not production,
+  TestFlight Build 23, physical-iPhone, or completed real-coaching proof.
+- Exact implementation source `bc179c90286e4b62867b00a6f290da5115d4502f` makes a deliberately saved
+  actor-private continuity brief from an earlier accessible Session available
+  in the next Session only when canonical `projectId` and Session purpose both
+  match. It never infers continuity from titles, copies the brief into the next
+  Session, creates work, invokes AI, or triggers an external side effect.
+- Nest Prepare now shows either the exact prior Session, saved time, receipt,
+  body, and source route or an explicit no-saved-brief state. Capture decodes
+  the same projection, reveals it deliberately, and can switch to the exact
+  loaded source Session. Persisted body and snapshot SHA-256 receipts, actor,
+  source room, visibility, no-mutation, no-AI, and no-effect boundaries all
+  fail closed before projection.
+- Extended the retained coaching rehearsal corpus into one private canonical
+  Nest with two scheduled Sessions. The coach saved one source brief in
+  Session 1 and opened it from Session 2; client and non-author views at
+  `390x844` saw no coach-private title or body. Independent PostgreSQL readback
+  proved one retained source brief, zero copied briefs in Session 2, and exact
+  receipt `5d1654c69757f9d1704ea25440d6fa8e0198b744feb8102ca050868f91de60c3`.
+- The compiled iPhone 17 Pro simulator journey passed exactly 1/1 with no
+  skips: canonical Session 2 selection, deliberate brief reveal, visible
+  no-copy boundary, and exact Session 1 navigation. The preserved result is
+  `/private/tmp/quipsly-retained-native-coaching-continuity-1785540293189-66460.xcresult`;
+  the credential packet and lock were removed while the product records remain.
+- Focused continuity tests pass 6/6, continuity-card tests plus their focused
+  companion suite pass 24/24, mobile-session mapping passes 18/18, the opt-in
+  PostgreSQL integration passes 1/1, the native-operator contract passes 1/1,
+  TypeScript 7 passes, cross-surface mobile contracts pass, and the optimized
+  Quipsly build succeeds for all 150 routes.
+- The integration run exposes a Prisma 7 driver-adapter deprecation warning
+  because its nested relation plan issues concurrent reads on one interactive
+  `pg` transaction connection. Added continuity reads are sequential and the
+  transaction remains serializable; framework remediation remains tracked
+  before a future `pg` 9 adoption rather than being misreported as closed.
+- The first optimized build filled the system volume during standalone trace
+  copying. Exact reproducible Xcode DerivedData and Next cache trees were
+  preserved—not deleted—under
+  `/Volumes/My Passport/Quipsly QA Artifacts/DerivedData-20260731`, recovering
+  local capacity; the subsequent 150-route build passed cleanly. Production
+  preview/promotion, TestFlight packaging, and physical iPhone capture remain
+  the next gates.
