@@ -541,6 +541,87 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists, "A successful sync must not leave a retryable phone record behind.")
     }
 
+    private func saveProjectQuickEntry(
+        kind: String,
+        title: String,
+        body: String,
+        projectName: String,
+        tagLabel: String,
+        createsTag: Bool,
+        expectedMessage: String,
+        in app: XCUIApplication
+    ) {
+        let entryButton = app.buttons["CaptureWorkQuickEntry_\(kind)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(entryButton, in: app, timeout: 20, swipeAttempts: 10),
+            "Work should expose Quick \(kind.capitalized) for the newly selected project."
+        )
+        entryButton.tap()
+
+        let sheet = app.descendants(matching: .any)["CaptureQuickEntrySheet_\(kind)"].firstMatch
+        XCTAssertTrue(sheet.waitForExistence(timeout: 6))
+        XCTAssertTrue(app.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS %@", "Destination, \(projectName)")
+        ).firstMatch.waitForExistence(timeout: 4))
+
+        let titleField = app.textFields["CaptureQuickEntryTitle"].firstMatch
+        XCTAssertTrue(titleField.waitForExistence(timeout: 4))
+        titleField.tap()
+        titleField.typeText(title)
+        let keyboardDone = app.buttons["CaptureQuickEntryKeyboardDone"].firstMatch
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 4))
+        keyboardDone.tap()
+        let bodyField = app.textFields["CaptureQuickEntryBody"].firstMatch
+        XCTAssertTrue(bodyField.waitForExistence(timeout: 4))
+        bodyField.tap()
+        expectation(
+            for: NSPredicate(format: "hasKeyboardFocus == true"),
+            evaluatedWith: bodyField
+        )
+        waitForExpectations(timeout: 4)
+        bodyField.typeText(body)
+        XCTAssertTrue(keyboardDone.waitForExistence(timeout: 4))
+        keyboardDone.tap()
+
+        if createsTag {
+            let tagField = app.textFields["CaptureQuickEntryNewTagField"].firstMatch
+            for _ in 0..<10 where !tagField.isHittable { sheet.swipeUp() }
+            XCTAssertTrue(tagField.isHittable)
+            tagField.tap()
+            tagField.typeText(tagLabel)
+            let addTag = app.buttons["CaptureQuickEntryNewTagAdd"].firstMatch
+            XCTAssertTrue(addTag.waitForExistence(timeout: 4))
+            addTag.tap()
+            XCTAssertTrue(app.buttons["Remove new tag \(tagLabel)"].waitForExistence(timeout: 4))
+        } else {
+            let tag = app.buttons.matching(
+                NSPredicate(format: "label == %@ OR label CONTAINS %@", tagLabel, tagLabel)
+            ).firstMatch
+            for _ in 0..<10 where !tag.isHittable { sheet.swipeUp() }
+            XCTAssertTrue(tag.isHittable, "The Work projection should expose the tag created by the prior canonical capture.")
+            tag.tap()
+            expectation(for: NSPredicate(format: "value == %@", "Selected"), evaluatedWith: tag)
+            waitForExpectations(timeout: 4)
+        }
+
+        let save = app.buttons["CaptureQuickEntrySave"].firstMatch
+        XCTAssertTrue(save.isEnabled)
+        save.tap()
+        XCTAssertTrue(sheet.waitForNonExistence(timeout: 6))
+        let acknowledgement = app.staticTexts.matching(
+            NSPredicate(format: "label == %@", expectedMessage)
+        ).firstMatch
+        XCTAssertTrue(
+            acknowledgement.waitForExistence(timeout: 30),
+            "Nest should acknowledge the exact project-bound \(kind.lowercased())."
+        )
+        XCTAssertFalse(app.buttons["CaptureQuickEntryRetry"].exists)
+        XCTAssertTrue(
+            waitForRuntimeElement(app.staticTexts[title].firstMatch, in: app, timeout: 30, swipeAttempts: 10),
+            "Work should read the canonical \(kind.lowercased()) back from the same project."
+        )
+    }
+
     func testIPhoneCreatesReusableNestTagWithCanonicalTask() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
@@ -561,6 +642,86 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             newTagLabel: tagLabel,
             in: app
         )
+    }
+
+    func testIPhoneCreatesRetainedProjectAndOrganizesCanonicalWork() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let projectName = credentials.projectName,
+              !projectName.isEmpty,
+              let taskTitle = credentials.projectTaskTitle,
+              !taskTitle.isEmpty,
+              let tagLabel = credentials.projectTagLabel,
+              !tagLabel.isEmpty else {
+            throw XCTSkip("Project creation requires a unique retained project name, Task title, and tag label.")
+        }
+
+        let noteTitle = "\(taskTitle) · note"
+        let goalTitle = "\(taskTitle) · goal"
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Work", in: app)
+        XCTAssertTrue(app.scrollViews["CaptureWorkView"].waitForExistence(timeout: 20))
+
+        let newProject = app.buttons["CaptureWorkNewProjectInline"].firstMatch
+        XCTAssertTrue(newProject.waitForExistence(timeout: 10))
+        newProject.tap()
+        XCTAssertTrue(app.navigationBars["New project"].waitForExistence(timeout: 6))
+
+        let name = app.textFields["CaptureWorkProjectName"].firstMatch
+        XCTAssertTrue(name.waitForExistence(timeout: 4))
+        name.tap()
+        name.typeText(projectName)
+        let description = app.textFields["CaptureWorkProjectDescription"].firstMatch
+        XCTAssertTrue(description.waitForExistence(timeout: 4))
+        description.tap()
+        description.typeText("Durable product fixture for operating Quipsly Capture project, task, note, goal, and taxonomy workflows over time.")
+        let keyboardDone = app.buttons["Done"].firstMatch
+        if keyboardDone.waitForExistence(timeout: 2) { keyboardDone.tap() }
+        let productionKind = app.buttons["CaptureWorkProjectKind_production"].firstMatch
+        for _ in 0..<4 where !productionKind.isHittable { app.swipeUp() }
+        XCTAssertTrue(productionKind.isHittable)
+        productionKind.tap()
+
+        let create = app.buttons["CaptureWorkProjectCreate"].firstMatch
+        XCTAssertTrue(create.waitForExistence(timeout: 4))
+        XCTAssertTrue(create.isEnabled)
+        create.tap()
+        XCTAssertTrue(app.navigationBars["New project"].waitForNonExistence(timeout: 30))
+        XCTAssertTrue(
+            app.staticTexts[projectName].firstMatch.waitForExistence(timeout: 30),
+            "Work should select the exact canonical project created through the compiled app."
+        )
+
+        saveProjectQuickEntry(
+            kind: "TASK",
+            title: taskTitle,
+            body: "Operate the durable project through the real iPhone Capture surface and independently read it back from Nest.",
+            projectName: projectName,
+            tagLabel: tagLabel,
+            createsTag: true,
+            expectedMessage: "The task is saved in \(projectName) and assigned to you. Set its timing from Today, Work, or Calendar when useful.",
+            in: app
+        )
+        saveProjectQuickEntry(
+            kind: "NOTE",
+            title: noteTitle,
+            body: "This retained note records why the project exists and gives future product operations a real artifact to revisit.",
+            projectName: projectName,
+            tagLabel: tagLabel,
+            createsTag: false,
+            expectedMessage: "The private note is saved in \(projectName). Continue it from that Nest, Library, or Search.",
+            in: app
+        )
+        saveProjectQuickEntry(
+            kind: "GOAL",
+            title: goalTitle,
+            body: "Keep this project useful as a durable cross-device Quipsly Capture operating fixture.",
+            projectName: projectName,
+            tagLabel: tagLabel,
+            createsTag: false,
+            expectedMessage: "The goal is saved as active in \(projectName). Add progress evidence or supporting tasks when useful.",
+            in: app
+        )
+        attachRecordingIdentity(projectName, name: "Retained iPhone-created project")
     }
 
     func testIPhoneCapturesTaggedTaskDirectlyIntoWritableNest() throws {

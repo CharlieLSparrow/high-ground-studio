@@ -324,8 +324,25 @@ private struct CaptureWorkView: View {
     }
 
     private var captureDestination: MobileCaptureProjectDestination? {
-        guard let selectedProject else { return nil }
-        return model.captureProjects.first { $0.id == selectedProject.id }
+        guard let selectedProject,
+              workspace?.project.id == selectedProject.id else { return nil }
+        return MobileCaptureProjectDestination(
+            id: selectedProject.id,
+            slug: selectedProject.slug,
+            name: selectedProject.name,
+            role: selectedProject.role,
+            isHomeNest: selectedProject.isHomeNest,
+            availableTags: (workspace?.tags ?? [])
+                .filter(\.isActive)
+                .map {
+                    MobileCaptureTag(
+                        id: $0.id,
+                        slug: $0.slug,
+                        label: $0.label,
+                        isActive: $0.isActive
+                    )
+                }
+        )
     }
 
     private var normalizedQuery: String {
@@ -5563,6 +5580,7 @@ struct CaptureQuickEntrySheet: View {
 
     let kind: MobileQuickEntryKind
     let session: MobileCaptureSession?
+    let initialProject: MobileCaptureProjectDestination?
     @ObservedObject var model: CaptureExperienceModel
     @Environment(\.dismiss) private var dismiss
     @State private var title = ""
@@ -5594,6 +5612,7 @@ struct CaptureQuickEntrySheet: View {
     ) {
         self.kind = kind
         self.session = session
+        self.initialProject = initialProject
         self.model = model
         _destination = State(initialValue: initialProject.map { "NEST:\($0.id)" } ?? (session == nil ? "HOME_NEST" : "SESSION"))
     }
@@ -5603,7 +5622,13 @@ struct CaptureQuickEntrySheet: View {
     }
 
     private var projectDestinations: [MobileCaptureProjectDestination] {
-        model.captureProjects.filter { $0.isHomeNest == false }
+        var projects = model.captureProjects.filter { $0.isHomeNest == false }
+        if let initialProject,
+           initialProject.isHomeNest == false,
+           !projects.contains(where: { $0.id == initialProject.id }) {
+            projects.append(initialProject)
+        }
+        return projects
     }
 
     private var selectedProject: MobileCaptureProjectDestination? {
@@ -5611,6 +5636,9 @@ struct CaptureQuickEntrySheet: View {
         return model.captureProjects.first {
             destination == "NEST:\($0.id)"
         }
+            ?? initialProject.flatMap {
+                destination == "NEST:\($0.id)" ? $0 : nil
+            }
     }
 
     private var savesNoteToHomeNest: Bool {

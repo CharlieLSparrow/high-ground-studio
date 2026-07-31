@@ -64,6 +64,7 @@
     "quipsly:schema:release:test": "bash scripts/release/quipsly-schema-release.test.sh && node --test scripts/release/quipsly-cloud-sql-backup-readback.test.mjs",
     "quipsly:schema:fixture:local": "node scripts/quipsly-local-schema-fixture.mjs",
     "quipsly:retained:product-progress": "node scripts/quipsly-retained-product-progress-operation.mjs",
+    "quipsly:retained:native-project": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-project-operation.mjs",
     "quipsly:capture:app-store-metadata": "node scripts/release/quipsly-capture-app-store-metadata.mjs",
     "quipsly:capture:app-store-readback": "node scripts/release/quipsly-app-store-connect-readback.mjs",
     "quipsly:capture:app-store-readback:test": "node --test scripts/release/quipsly-app-store-connect-readback.test.mjs",

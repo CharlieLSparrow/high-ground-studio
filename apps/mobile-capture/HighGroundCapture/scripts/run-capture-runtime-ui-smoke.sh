@@ -207,6 +207,13 @@ case "$TEST_MODE" in
       exit 2
     fi
     ;;
+  project-create)
+    TEST_CASE="testIPhoneCreatesRetainedProjectAndOrganizesCanonicalWork"
+    if [[ -z "$TEST_PROJECT_NAME" || -z "$TEST_PROJECT_TASK_TITLE" || -z "$TEST_PROJECT_TAG_LABEL" ]]; then
+      echo "Project creation mode requires one unique retained project name, Task title, and tag label." >&2
+      exit 2
+    fi
+    ;;
   session-note-edit)
     TEST_CASE="testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox"
     if [[ -z "$TEST_SESSION_ID" ]]; then
@@ -215,7 +222,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, transcript-follow-through, client-follow-up, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, transcript-follow-through, client-follow-up, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, or session-note-edit)" >&2
     exit 2
     ;;
 esac
