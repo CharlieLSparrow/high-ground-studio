@@ -81,6 +81,7 @@ function continuity(saved: SessionContinuityState["saved"] = []): SessionContinu
       },
     },
     saved,
+    prior: null,
     canSave: true,
   };
 }
@@ -137,5 +138,36 @@ describe("SessionContinuityCard", () => {
     });
     expect(await screen.findByText(/private next-session brief saved with exact note, task, goal, and focus-block receipts/i)).toBeInTheDocument();
     expect(screen.getByText("1 saved private brief")).toBeInTheDocument();
+  });
+
+  it("shows an exact prior private brief without implying it changed the current Session", () => {
+    const state = continuity();
+    state.prior = {
+      sourceRoom: {
+        id: "room-previous",
+        title: "Previous coaching rehearsal",
+        purpose: "COACHING",
+        projectId: "project-1",
+        scheduledStart: "2026-07-18T16:00:00.000Z",
+        endedAt: "2026-07-18T17:00:00.000Z",
+      },
+      brief: {
+        id: "brief-previous",
+        title: "Next-session brief — Previous coaching rehearsal",
+        body: "Carry the exact protected rehearsal forward.",
+        snapshotSha256: "d".repeat(64),
+        createdAt: "2026-07-18T18:00:00.000Z",
+      },
+      relationship: "same-project-and-purpose",
+      currentSessionMutated: false,
+      externalSideEffects: false,
+    };
+
+    render(<SessionContinuityCard roomId="room-1" initial={state} />);
+
+    expect(screen.getByRole("heading", { name: "Previous coaching rehearsal" })).toBeInTheDocument();
+    expect(screen.getByText("Carry the exact protected rehearsal forward.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open source Session" })).toHaveAttribute("href", "/sessions/room-previous?mode=work");
+    expect(screen.getByText(/current Session unchanged · no AI or external side effects/i)).toBeInTheDocument();
   });
 });

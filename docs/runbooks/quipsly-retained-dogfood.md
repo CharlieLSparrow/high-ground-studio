@@ -102,6 +102,35 @@ checks the follow-up surface for horizontal overflow and browser exceptions,
 then explicitly clears each Nest session. Tracing and screenshots are disabled
 so an unredacted test identity or filled password does not become an artifact.
 
+To prove longitudinal preparation across two retained Sessions, first rerun
+the Keychain seed above, then operate the prior Session save and next Session
+Prepare projection through all three rendered identities:
+
+```bash
+QUIPSLY_RETAINED_COACHING_BASE_URL=http://127.0.0.1:3012 \
+pnpm quipsly:retained:coaching-continuity
+```
+
+The coach deliberately saves one actor-private brief in Session 1 and sees
+that exact receipt in Session 2 because both Sessions share one canonical Nest
+and purpose. Client and outsider views must show no prior brief. The operation
+then reads PostgreSQL back, proves nothing was copied into Session 2, and
+records no external side effect. Repeating the same snapshot reuses its saved
+brief instead of creating semantic duplicates.
+
+Run the same retained projection through the compiled iPhone app and preserve
+the exact XCTest result bundle:
+
+```bash
+pnpm quipsly:retained:native-coaching-continuity
+```
+
+This operator reads the coach password through the repository Keychain helper,
+selects Session 2 by canonical ID, reveals the carried-forward brief, checks
+the no-copy boundary, and switches to the exact source Session. It never prints
+credentials, and the runtime runner removes its short-lived credential packet
+on exit.
+
 ### Reusable local media-production identity
 
 The retained Capture-to-follow-through corpus has its own fixed Keychain

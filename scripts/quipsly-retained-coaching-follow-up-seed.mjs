@@ -19,6 +19,12 @@ const { getAuth } = requireFromQuipsly("firebase-admin/auth");
 const PROJECT_ID = "quipsly-reef";
 const ROOM_ID = "retained-coaching-follow-up-20260731";
 const BOOKING_ID = "retained-coaching-booking-20260731";
+const NEXT_ROOM_ID = "qa-retained-coaching-next-session-20260807";
+const NEXT_BOOKING_ID = "qa-retained-coaching-next-booking-20260807";
+const CONTINUITY_WORKSPACE_ID = "qa-retained-coaching-workspace";
+const CONTINUITY_WORKSPACE_SLUG = "qa-retained-coaching";
+const CONTINUITY_PROJECT_ID = "qa-retained-coaching-engagement";
+const CONTINUITY_PROJECT_SLUG = "qa-retained-coaching-engagement";
 const COACH_EMAIL = "quipsly-coach-retained-20260731@example.test";
 const CLIENT_EMAIL = "quipsly-client-retained-20260731@example.test";
 const OUTSIDER_EMAIL = "quipsly-followup-outsider-retained-20260731@example.test";
@@ -204,6 +210,78 @@ async function main() {
 
     const scheduledStart = new Date("2026-07-31T16:00:00.000Z");
     const scheduledEnd = new Date("2026-07-31T17:00:00.000Z");
+    const nextScheduledStart = new Date("2026-08-07T16:00:00.000Z");
+    const nextScheduledEnd = new Date("2026-08-07T17:00:00.000Z");
+    const workspace = await prisma.studioWorkspace.upsert({
+      where: { slug: CONTINUITY_WORKSPACE_SLUG },
+      update: {
+        name: "QA Retained · Coaching continuity",
+        description: "Private longitudinal coaching acceptance data.",
+        ownerLabel: COACH_EMAIL,
+        isPrivate: true,
+      },
+      create: {
+        id: CONTINUITY_WORKSPACE_ID,
+        slug: CONTINUITY_WORKSPACE_SLUG,
+        name: "QA Retained · Coaching continuity",
+        description: "Private longitudinal coaching acceptance data.",
+        ownerLabel: COACH_EMAIL,
+        isPrivate: true,
+      },
+    });
+    const continuityProject = await prisma.studioProject.upsert({
+      where: {
+        workspaceId_slug: {
+          workspaceId: workspace.id,
+          slug: CONTINUITY_PROJECT_SLUG,
+        },
+      },
+      update: {
+        name: "QA Retained · Coaching engagement",
+        description: "Two sequential Sessions proving private continuity without copied work.",
+        sourceLabel: "qa-retained-coaching-continuity",
+        isPrivate: true,
+      },
+      create: {
+        id: CONTINUITY_PROJECT_ID,
+        workspaceId: workspace.id,
+        slug: CONTINUITY_PROJECT_SLUG,
+        name: "QA Retained · Coaching engagement",
+        description: "Two sequential Sessions proving private continuity without copied work.",
+        sourceLabel: "qa-retained-coaching-continuity",
+        isPrivate: true,
+      },
+    });
+    for (const grant of [
+      { email: COACH_EMAIL, role: "OWNER" },
+      { email: CLIENT_EMAIL, role: "VIEWER" },
+      { email: OUTSIDER_EMAIL, role: "VIEWER" },
+    ]) {
+      await prisma.studioProjectAccessGrant.upsert({
+        where: {
+          projectId_email: {
+            projectId: continuityProject.id,
+            email: grant.email,
+          },
+        },
+        update: {
+          role: grant.role,
+          status: "ACTIVE",
+          createdByUserId: userByRole.coach.id,
+          createdByEmail: COACH_EMAIL,
+          note: "QA Retained · Coaching continuity rendered-operation access.",
+        },
+        create: {
+          projectId: continuityProject.id,
+          email: grant.email,
+          role: grant.role,
+          status: "ACTIVE",
+          createdByUserId: userByRole.coach.id,
+          createdByEmail: COACH_EMAIL,
+          note: "QA Retained · Coaching continuity rendered-operation access.",
+        },
+      });
+    }
     await prisma.coachingBooking.upsert({
       where: { id: BOOKING_ID },
       update: {
@@ -231,21 +309,27 @@ async function main() {
       update: {
         bookingId: BOOKING_ID,
         createdByUserId: userByRole.coach.id,
+        projectId: continuityProject.id,
         purpose: "COACHING",
         status: "ENDED",
         title: "Retained coaching follow-up rehearsal",
         scheduledStart,
         scheduledEnd,
+        nestSlug: CONTINUITY_PROJECT_SLUG,
+        projectSlug: CONTINUITY_PROJECT_SLUG,
       },
       create: {
         id: ROOM_ID,
         bookingId: BOOKING_ID,
         createdByUserId: userByRole.coach.id,
+        projectId: continuityProject.id,
         purpose: "COACHING",
         status: "ENDED",
         title: "Retained coaching follow-up rehearsal",
         scheduledStart,
         scheduledEnd,
+        nestSlug: CONTINUITY_PROJECT_SLUG,
+        projectSlug: CONTINUITY_PROJECT_SLUG,
       },
     });
 
@@ -277,6 +361,77 @@ async function main() {
         where: { id: participant.id },
         update: { roomId: ROOM_ID, ...participant },
         create: { roomId: ROOM_ID, ...participant },
+      });
+    }
+
+    await prisma.coachingBooking.upsert({
+      where: { id: NEXT_BOOKING_ID },
+      update: {
+        clientUserId: userByRole.client.id,
+        coachUserId: userByRole.coach.id,
+        status: "CONFIRMED",
+        scheduledStart: nextScheduledStart,
+        scheduledEnd: nextScheduledEnd,
+        timezone: "America/Denver",
+        paymentPolicy: "FREE",
+      },
+      create: {
+        id: NEXT_BOOKING_ID,
+        clientUserId: userByRole.client.id,
+        coachUserId: userByRole.coach.id,
+        status: "CONFIRMED",
+        scheduledStart: nextScheduledStart,
+        scheduledEnd: nextScheduledEnd,
+        timezone: "America/Denver",
+        paymentPolicy: "FREE",
+      },
+    });
+    await prisma.callRoom.upsert({
+      where: { id: NEXT_ROOM_ID },
+      update: {
+        bookingId: NEXT_BOOKING_ID,
+        createdByUserId: userByRole.coach.id,
+        projectId: continuityProject.id,
+        purpose: "COACHING",
+        status: "PLANNED",
+        title: "QA Retained · Coaching continuity Session 2",
+        scheduledStart: nextScheduledStart,
+        scheduledEnd: nextScheduledEnd,
+        nestSlug: CONTINUITY_PROJECT_SLUG,
+        projectSlug: CONTINUITY_PROJECT_SLUG,
+      },
+      create: {
+        id: NEXT_ROOM_ID,
+        bookingId: NEXT_BOOKING_ID,
+        createdByUserId: userByRole.coach.id,
+        projectId: continuityProject.id,
+        purpose: "COACHING",
+        status: "PLANNED",
+        title: "QA Retained · Coaching continuity Session 2",
+        scheduledStart: nextScheduledStart,
+        scheduledEnd: nextScheduledEnd,
+        nestSlug: CONTINUITY_PROJECT_SLUG,
+        projectSlug: CONTINUITY_PROJECT_SLUG,
+      },
+    });
+    for (const participant of participants) {
+      await prisma.callParticipant.upsert({
+        where: { id: `${NEXT_ROOM_ID}-${participant.role.toLowerCase()}` },
+        update: {
+          roomId: NEXT_ROOM_ID,
+          userId: participant.userId,
+          email: participant.email,
+          displayName: participant.displayName,
+          role: participant.role,
+        },
+        create: {
+          id: `${NEXT_ROOM_ID}-${participant.role.toLowerCase()}`,
+          roomId: NEXT_ROOM_ID,
+          userId: participant.userId,
+          email: participant.email,
+          displayName: participant.displayName,
+          role: participant.role,
+        },
       });
     }
 
@@ -417,6 +572,7 @@ async function main() {
           retained: true,
           baseURL,
           roomID: ROOM_ID,
+          nextRoomID: NEXT_ROOM_ID,
           bookingID: BOOKING_ID,
           identities: credentials.map((identity) => ({
             role: identity.role,
@@ -429,6 +585,9 @@ async function main() {
               store === "keychain" ? identity.keychainCreated === true : null,
           })),
           canonicalRecords: {
+            projectID: continuityProject.id,
+            priorRoomID: ROOM_ID,
+            nextRoomID: NEXT_ROOM_ID,
             clientSafeNoteID: CLIENT_SAFE_NOTE_ID,
             privateNoteID: PRIVATE_NOTE_ID,
             sharedNoteID: SHARED_NOTE_ID,

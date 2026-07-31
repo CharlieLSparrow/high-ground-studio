@@ -28,6 +28,7 @@ runLocalDatabaseSmoke("Session continuity local database smoke", () => {
   let workspaceId = "";
   let projectId = "";
   let roomId = "";
+  let nextRoomId = "";
   let taskId = "";
   let goalId = "";
 
@@ -64,9 +65,23 @@ runLocalDatabaseSmoke("Session continuity local database smoke", () => {
         title: "Private coaching continuity smoke",
         purpose: "COACHING",
         status: "ENDED",
+        scheduledStart: new Date("2026-07-20T16:00:00.000Z"),
+        scheduledEnd: new Date("2026-07-20T17:00:00.000Z"),
       },
     });
     roomId = room.id;
+    const nextRoom = await prisma.callRoom.create({
+      data: {
+        createdByUserId: actorUserId,
+        projectId,
+        title: "Private coaching continuity next Session",
+        purpose: "COACHING",
+        status: "PLANNED",
+        scheduledStart: new Date("2026-07-27T16:00:00.000Z"),
+        scheduledEnd: new Date("2026-07-27T17:00:00.000Z"),
+      },
+    });
+    nextRoomId = nextRoom.id;
     await prisma.coachingNote.create({
       data: {
         roomId,
@@ -132,7 +147,11 @@ runLocalDatabaseSmoke("Session continuity local database smoke", () => {
 
   afterAll(async () => {
     try {
-      if (roomId) await prisma.callRoom.deleteMany({ where: { id: roomId } });
+      if (roomId || nextRoomId) {
+        await prisma.callRoom.deleteMany({
+          where: { id: { in: [roomId, nextRoomId].filter(Boolean) } },
+        });
+      }
       if (goalId) await prisma.goal.deleteMany({ where: { id: goalId } });
       if (taskId) await prisma.actionItem.deleteMany({ where: { id: taskId } });
       if (workspaceId) await prisma.studioWorkspace.deleteMany({ where: { id: workspaceId } });
@@ -222,6 +241,30 @@ runLocalDatabaseSmoke("Session continuity local database smoke", () => {
         planBlockCount: 1,
       },
     });
+
+    const nextState = await loadSessionContinuityState({
+      prisma: prisma as never,
+      actor,
+      roomId: nextRoomId,
+      now: new Date("2026-07-24T18:00:00.000Z"),
+    });
+    expect(nextState?.prior).toMatchObject({
+      sourceRoom: {
+        id: roomId,
+        title: "Private coaching continuity smoke",
+        purpose: "COACHING",
+      },
+      brief: {
+        id: first.brief.id,
+        snapshotSha256: state!.current.snapshotSha256,
+      },
+    });
+    await expect(prisma.coachingNote.count({
+      where: {
+        roomId: nextRoomId,
+        kind: "FOLLOW_UP",
+      },
+    })).resolves.toBe(0);
 
     await expect(loadSessionContinuityState({
       prisma: prisma as never,

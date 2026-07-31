@@ -7,6 +7,7 @@ import { isUnreviewedTranscriptActionItemSource } from "@high-ground/quipsly-dom
 
 import {
   SESSION_CONTINUITY_SCHEMA,
+  type PriorSessionContinuity,
   type SavedSessionContinuityBrief,
   type SessionContinuityPlanBlock,
   type SessionContinuitySnapshot,
@@ -14,6 +15,7 @@ import {
   type SessionContinuitySummary,
 } from "@/app/(app)/sessions/[roomId]/session-continuity-model";
 import {
+  sessionActorAccessWhere,
   sessionAccessWhere,
   type SessionAccessActor,
 } from "@/lib/server/session-access";
@@ -121,10 +123,12 @@ function savedBrief(row: {
   body: string;
   sourceJson: unknown;
   createdAt: Date;
-}): SavedSessionContinuityBrief | null {
+}, expected?: { actorUserId: string; roomId: string }): SavedSessionContinuityBrief | null {
   const source = record(row.sourceJson);
   if (
     source.schema !== SESSION_CONTINUITY_SCHEMA
+    || (expected && source.actorUserId !== expected.actorUserId)
+    || (expected && source.roomId !== expected.roomId)
     || source.visibility !== "actor-private"
     || source.aiGenerated !== false
     || source.sourceMutated !== false
@@ -132,7 +136,12 @@ function savedBrief(row: {
   ) return null;
   const integrity = record(source.integrity);
   const fingerprint = text(integrity.snapshotSha256, 64);
-  if (!/^[a-f0-9]{64}$/.test(fingerprint)) return null;
+  const bodyFingerprint = text(integrity.bodySha256, 64);
+  if (
+    !/^[a-f0-9]{64}$/.test(fingerprint)
+    || !/^[a-f0-9]{64}$/.test(bodyFingerprint)
+    || sha256(row.body) !== bodyFingerprint
+  ) return null;
   return {
     id: row.id,
     title: row.title || "Next-session continuity brief",
@@ -140,6 +149,127 @@ function savedBrief(row: {
     snapshotSha256: fingerprint,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+type ContinuityRoomIdentity = {
+  id: string;
+  title: string | null;
+  purpose: string;
+  projectId: string | null;
+  scheduledStart: Date | null;
+  endedAt: Date | null;
+  createdAt: Date;
+};
+
+function chronology(room: ContinuityRoomIdentity) {
+  return [
+    (room.scheduledStart ?? room.createdAt).getTime(),
+    room.createdAt.getTime(),
+    room.id,
+  ] as const;
+}
+
+function isBefore(
+  candidate: ContinuityRoomIdentity,
+  target: ContinuityRoomIdentity,
+) {
+  const left = chronology(candidate);
+  const right = chronology(target);
+  if (left[0] !== right[0]) return left[0] < right[0];
+  if (left[1] !== right[1]) return left[1] < right[1];
+  return left[2] < right[2];
+}
+
+export async function loadPriorSessionContinuityByRoomId(input: {
+  prisma: ContinuityPrisma;
+  actor: SessionAccessActor;
+  rooms: ContinuityRoomIdentity[];
+}): Promise<Record<string, PriorSessionContinuity>> {
+  const targets = input.rooms.filter((room) => Boolean(room.projectId));
+  const projectIds = [...new Set(targets.flatMap((room) => room.projectId ? [room.projectId] : []))];
+  if (!input.actor.id || projectIds.length === 0) return {};
+
+  const candidates = await input.prisma.callRoom.findMany({
+    where: {
+      projectId: { in: projectIds },
+      ...sessionActorAccessWhere(input.actor),
+      notes: {
+        some: {
+          authorUserId: input.actor.id,
+          kind: "FOLLOW_UP",
+          visibility: "AUTHOR_PRIVATE",
+        },
+      },
+    },
+    select: {
+      id: true,
+      title: true,
+      purpose: true,
+      projectId: true,
+      scheduledStart: true,
+      endedAt: true,
+      createdAt: true,
+      notes: {
+        where: {
+          authorUserId: input.actor.id,
+          kind: "FOLLOW_UP",
+          visibility: "AUTHOR_PRIVATE",
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          title: true,
+          body: true,
+          sourceJson: true,
+          createdAt: true,
+        },
+      },
+    },
+  });
+
+  const result: Record<string, PriorSessionContinuity> = {};
+  for (const target of targets) {
+    const prior = candidates
+      .filter((candidate) => (
+        candidate.id !== target.id
+        && candidate.projectId === target.projectId
+        && String(candidate.purpose) === String(target.purpose)
+        && isBefore(candidate, target)
+      ))
+      .flatMap((candidate) => {
+        const brief = candidate.notes
+          .map((note) => savedBrief(note, {
+            actorUserId: input.actor.id,
+            roomId: candidate.id,
+          }))
+          .find((item): item is SavedSessionContinuityBrief => Boolean(item));
+        return brief ? [{ candidate, brief }] : [];
+      })
+      .sort((left, right) => {
+        const leftChronology = chronology(left.candidate);
+        const rightChronology = chronology(right.candidate);
+        return rightChronology[0] - leftChronology[0]
+          || rightChronology[1] - leftChronology[1]
+          || right.candidate.id.localeCompare(left.candidate.id);
+      })[0];
+    if (!prior || !prior.candidate.projectId) continue;
+    result[target.id] = {
+      sourceRoom: {
+        id: prior.candidate.id,
+        title: prior.candidate.title || "Untitled Session",
+        purpose: String(prior.candidate.purpose),
+        projectId: prior.candidate.projectId,
+        scheduledStart: prior.candidate.scheduledStart?.toISOString() ?? null,
+        endedAt: prior.candidate.endedAt?.toISOString() ?? null,
+      },
+      brief: prior.brief,
+      relationship: "same-project-and-purpose",
+      currentSessionMutated: false,
+      externalSideEffects: false,
+    };
+  }
+  return result;
 }
 
 function continuityNoteIdentity(actorUserId: string, clientRequestId: string) {
@@ -242,6 +372,9 @@ export async function loadSessionContinuityState(input: {
       purpose: true,
       status: true,
       projectId: true,
+      scheduledStart: true,
+      endedAt: true,
+      createdAt: true,
       updatedAt: true,
       notes: {
         where: { authorUserId: input.actor.id, kind: "SESSION_NOTE" },
@@ -350,6 +483,9 @@ export async function loadSessionContinuityState(input: {
     },
   });
   if (!room) return null;
+  // Interactive transactions use one driver connection. Keep these reads
+  // sequential so the pg adapter never dispatches concurrent queries on that
+  // connection (pg 9 will reject the legacy concurrent behavior).
   const savedRows = await input.prisma.coachingNote.findMany({
     where: {
       roomId: room.id,
@@ -365,6 +501,11 @@ export async function loadSessionContinuityState(input: {
       sourceJson: true,
       createdAt: true,
     },
+  });
+  const priorByRoomId = await loadPriorSessionContinuityByRoomId({
+    prisma: input.prisma,
+    actor: input.actor,
+    rooms: [room],
   });
 
   const sourceNotes = room.notes
@@ -485,7 +626,10 @@ export async function loadSessionContinuityState(input: {
   };
   const now = input.now ?? new Date();
   const saved = savedRows
-    .map(savedBrief)
+    .map((row) => savedBrief(row, {
+      actorUserId: input.actor.id,
+      roomId: room.id,
+    }))
     .filter((brief): brief is SavedSessionContinuityBrief => Boolean(brief));
 
   return {
@@ -495,6 +639,7 @@ export async function loadSessionContinuityState(input: {
       summary: summaryForSnapshot(snapshot, now),
     },
     saved,
+    prior: priorByRoomId[room.id] ?? null,
     canSave: snapshot.notes.length + snapshot.tasks.length + snapshot.goals.length > 0,
   };
 }
@@ -571,7 +716,10 @@ export async function saveSessionContinuityBrief(
             state,
           );
         }
-        const brief = savedBrief(existing);
+        const brief = savedBrief(existing, {
+          actorUserId: input.actor.id,
+          roomId: normalized.roomId,
+        });
         if (!brief) {
           throw new SessionContinuityError(
             "The saved continuity receipt is malformed and was not reused.",
@@ -598,6 +746,16 @@ export async function saveSessionContinuityBrief(
           "STALE_SNAPSHOT",
           state,
         );
+      }
+      const matchingSnapshot = state.saved.find(
+        (brief) => brief.snapshotSha256 === normalized.expectedSnapshotSha256,
+      );
+      if (matchingSnapshot) {
+        return {
+          brief: matchingSnapshot,
+          idempotentReplay: true,
+          state,
+        };
       }
 
       const body = renderSessionContinuityBrief(state.current.snapshot, now);
@@ -641,7 +799,10 @@ export async function saveSessionContinuityBrief(
           createdAt: true,
         },
       });
-      const brief = savedBrief(created);
+      const brief = savedBrief(created, {
+        actorUserId: input.actor.id,
+        roomId: normalized.roomId,
+      });
       if (!brief) {
         throw new SessionContinuityError(
           "The continuity brief was saved but its integrity receipt could not be read back.",
@@ -688,7 +849,10 @@ export async function saveSessionContinuityBrief(
           clientRequestId: normalized.clientRequestId,
           expectedSnapshotSha256: normalized.expectedSnapshotSha256,
         })
-        ? savedBrief(existing)
+        ? savedBrief(existing, {
+            actorUserId: input.actor.id,
+            roomId: normalized.roomId,
+          })
         : null;
       if (state && brief) {
         return {

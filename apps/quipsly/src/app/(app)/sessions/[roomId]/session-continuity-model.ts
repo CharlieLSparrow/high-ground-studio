@@ -101,6 +101,21 @@ export type SavedSessionContinuityBrief = {
   createdAt: string;
 };
 
+export type PriorSessionContinuity = {
+  sourceRoom: {
+    id: string;
+    title: string;
+    purpose: string;
+    projectId: string;
+    scheduledStart: string | null;
+    endedAt: string | null;
+  };
+  brief: SavedSessionContinuityBrief;
+  relationship: "same-project-and-purpose";
+  currentSessionMutated: false;
+  externalSideEffects: false;
+};
+
 export type SessionContinuityState = {
   current: {
     snapshot: SessionContinuitySnapshot;
@@ -108,5 +123,6 @@ export type SessionContinuityState = {
     summary: SessionContinuitySummary;
   };
   saved: SavedSessionContinuityBrief[];
+  prior: PriorSessionContinuity | null;
   canSave: boolean;
 };

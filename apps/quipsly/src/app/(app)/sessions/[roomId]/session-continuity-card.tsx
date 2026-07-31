@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import type {
+  PriorSessionContinuity,
   SavedSessionContinuityBrief,
   SessionContinuityState,
 } from "./session-continuity-model";
@@ -37,6 +38,50 @@ function statusTone(value: string) {
   if (/(DONE|COMPLETED|ACHIEVED)/.test(normalized)) return "border-emerald-200 bg-emerald-50 text-emerald-800";
   if (/(CANCELED|SKIPPED|ARCHIVED)/.test(normalized)) return "border-slate-200 bg-slate-50 text-slate-700";
   return "border-amber-200 bg-amber-50 text-amber-900";
+}
+
+export function PriorSessionContinuityCard({
+  prior,
+}: {
+  prior: PriorSessionContinuity | null;
+}) {
+  if (!prior) {
+    return (
+      <section className="rounded-2xl border border-dashed border-violet-200 bg-violet-50/35 p-5" aria-labelledby="prior-continuity-heading">
+        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">Longitudinal preparation</p>
+        <h2 id="prior-continuity-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">No saved prior brief</h2>
+        <p className="mt-2 max-w-3xl text-xs font-semibold leading-5 text-[#765f40]">
+          Quipsly carries forward only a private brief you deliberately saved from an earlier Session in this same Nest and Session purpose. It will not guess from titles, copy another person’s notes, or create new work.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-violet-300 bg-violet-50/60 p-5" aria-labelledby="prior-continuity-heading">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-800">From the previous Session</p>
+          <h2 id="prior-continuity-heading" className="mt-1 font-serif text-2xl font-black text-[#3d3122]">{prior.sourceRoom.title}</h2>
+          <p className="mt-1 text-xs font-black uppercase tracking-wide text-[#8a7354]">
+            Saved {dateTime(prior.brief.createdAt)} · {shortHash(prior.brief.snapshotSha256)}
+          </p>
+        </div>
+        <Link
+          href={sessionWorkspaceHref(prior.sourceRoom.id, "work")}
+          className="inline-flex min-h-11 items-center rounded-full border border-violet-300 bg-white px-4 py-2 text-xs font-black text-violet-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-700"
+        >
+          Open source Session
+        </Link>
+      </div>
+      <p className="mt-4 whitespace-pre-wrap rounded-xl border border-violet-100 bg-white p-4 text-sm font-semibold leading-6 text-[#5f4d37]">
+        {prior.brief.body}
+      </p>
+      <p className="mt-3 text-[10px] font-black uppercase tracking-wide text-violet-900">
+        Same Nest and purpose · private to this actor · current Session unchanged · no AI or external side effects
+      </p>
+    </section>
+  );
 }
 
 function SavedBrief({
@@ -156,6 +201,10 @@ export function SessionContinuityCard({
           {notice.message}
         </p>
       ) : null}
+
+      <div className="mt-4">
+        <PriorSessionContinuityCard prior={continuity.prior} />
+      </div>
 
       {summary.unresolvedPastBlockCount > 0 ? (
         <p role="status" className="mt-4 flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-xs font-black leading-5 text-amber-950">

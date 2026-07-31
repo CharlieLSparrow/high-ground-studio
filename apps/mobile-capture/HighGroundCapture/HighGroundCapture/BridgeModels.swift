@@ -511,6 +511,31 @@ struct MobileCaptureClientFollowUp: Codable, Identifiable, Hashable {
     let tasks: [MobileCaptureClientFollowUpTask]
 }
 
+struct MobileCapturePriorContinuityRoom: Codable, Hashable {
+    let id: String
+    let title: String
+    let purpose: String
+    let projectId: String
+    let scheduledStart: String?
+    let endedAt: String?
+}
+
+struct MobileCapturePriorContinuityBrief: Codable, Hashable {
+    let id: String
+    let title: String
+    let body: String
+    let snapshotSha256: String
+    let createdAt: String
+}
+
+struct MobileCapturePriorContinuity: Codable, Hashable {
+    let sourceRoom: MobileCapturePriorContinuityRoom
+    let brief: MobileCapturePriorContinuityBrief
+    let relationship: String
+    let currentSessionMutated: Bool
+    let externalSideEffects: Bool
+}
+
 struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let id: String
     let callRoomId: String
@@ -586,6 +611,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let coachingPacketFirstOpenActionItemId: String?
     let coachingPacketStatus: String?
     var clientFollowUp: MobileCaptureClientFollowUp? = nil
+    var priorContinuity: MobileCapturePriorContinuity? = nil
     var canUseProjectTeamNotes: Bool? = nil
     var sessionNotes: [MobileCaptureSessionNote]? = nil
     let afterCaptureNextAction: String?

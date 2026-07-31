@@ -802,6 +802,7 @@ export function mapMobileCaptureSessionsForUser(input: {
   env?: NodeJS.ProcessEnv;
   finalizationReceipts?: any[];
   captureMediaAssets?: any[];
+  priorContinuityByRoomId?: Record<string, unknown>;
 }) {
   const finalizationReceipts = Array.isArray(input.finalizationReceipts) ? input.finalizationReceipts : [];
   const captureMediaAssets = Array.isArray(input.captureMediaAssets) ? input.captureMediaAssets : [];
@@ -1149,6 +1150,7 @@ export function mapMobileCaptureSessionsForUser(input: {
         goals: clientFollowUpArray("goals"),
         tasks: clientFollowUpArray("tasks"),
       } : null,
+      priorContinuity: input.priorContinuityByRoomId?.[room.id] ?? null,
       canUseProjectTeamNotes: input.isStaff === true
         || (sessionProject.projectId != null && productionNoteProjectIds.has(sessionProject.projectId)),
       sessionNotes,

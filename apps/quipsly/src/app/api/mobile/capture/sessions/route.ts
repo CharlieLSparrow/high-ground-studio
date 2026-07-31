@@ -18,6 +18,7 @@ import {
 } from "@/lib/server/mobile-capture-session-schedule";
 import { mapMobileCaptureSessionsForUser } from "@/lib/server/mobile-capture-sessions";
 import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
+import { loadPriorSessionContinuityByRoomId } from "@/lib/server/session-continuity";
 import {
   mobileSessionNoteVisibilityWhere,
   SESSION_NOTE_VISIBLE_KINDS,
@@ -304,6 +305,19 @@ export async function GET(request: Request) {
     projectTags.push(tag);
     captureTagsByProject.set(tag.projectId, projectTags);
   }
+  const priorContinuityByRoomId = await loadPriorSessionContinuityByRoomId({
+    prisma,
+    actor: session.user,
+    rooms: rooms.map((room: any) => ({
+      id: room.id,
+      title: room.title,
+      purpose: room.purpose,
+      projectId: room.projectId,
+      scheduledStart: room.scheduledStart,
+      endedAt: room.endedAt,
+      createdAt: room.createdAt,
+    })),
+  });
 
   return NextResponse.json({
     ok: true,
@@ -337,6 +351,7 @@ export async function GET(request: Request) {
       productionNoteProjectIds: captureProjects.map((project) => project.id),
       finalizationReceipts,
       captureMediaAssets,
+      priorContinuityByRoomId,
     }),
     links: {
       today: "/api/mobile/capture/today",
@@ -509,6 +524,21 @@ export async function POST(request: Request) {
     userId,
     isStaff: session.user.isStaff === true,
     productionNoteProjectIds: createdRoom?.projectId ? [createdRoom.projectId] : [],
+    priorContinuityByRoomId: createdRoom
+      ? await loadPriorSessionContinuityByRoomId({
+          prisma,
+          actor: session.user,
+          rooms: [{
+            id: createdRoom.id,
+            title: createdRoom.title,
+            purpose: createdRoom.purpose,
+            projectId: createdRoom.projectId,
+            scheduledStart: createdRoom.scheduledStart,
+            endedAt: createdRoom.endedAt,
+            createdAt: createdRoom.createdAt,
+          }],
+        })
+      : {},
   });
 
   return NextResponse.json(

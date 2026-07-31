@@ -2486,6 +2486,56 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    func testPriorCoachingContinuityProjectsIntoExactNextSession() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty else {
+            throw XCTSkip("The coaching-continuity journey requires the exact next Session ID and title.")
+        }
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: app)
+        selectRequestedSession(in: app, credentials: credentials)
+
+        let card = app.descendants(matching: .any)["CapturePriorSessionContinuity"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(card, in: app, timeout: 40, swipeAttempts: 18),
+            "Capture should project the actor-private brief into the exact next coaching Session."
+        )
+        XCTAssertTrue(app.staticTexts["Retained coaching follow-up rehearsal"].firstMatch.exists)
+
+        let disclosure = app.buttons["Review carried-forward brief"].firstMatch
+        XCTAssertTrue(disclosure.waitForExistence(timeout: 8))
+        disclosure.tap()
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.staticTexts.matching(
+                    NSPredicate(format: "label CONTAINS %@", "Next-session continuity")
+                ).firstMatch,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 4
+            ),
+            "The native projection should reveal the exact saved continuity body on deliberate review."
+        )
+        let boundary = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "current Session unchanged")
+        ).firstMatch
+        XCTAssertTrue(boundary.exists, "Capture should disclose the no-copy and no-mutation boundary.")
+
+        let openSource = app.buttons["CapturePriorContinuityOpenSource"].firstMatch
+        XCTAssertTrue(openSource.waitForExistence(timeout: 8))
+        XCTAssertTrue(openSource.isEnabled)
+        openSource.tap()
+        XCTAssertTrue(
+            app.staticTexts["Retained coaching follow-up rehearsal"].firstMatch.waitForExistence(timeout: 12),
+            "Open source Session should switch Capture to the exact originating Session."
+        )
+        attachRecordingIdentity(
+            "\(sessionID)|\(sessionTitle)|retained-coaching-follow-up-20260731",
+            name: "Retained iPhone coaching continuity projection"
+        )
+    }
+
     func testConsentedProviderRoomJoinsAndLeavesWithoutStartingRecording() throws {
         let credentials = try runtimeSmokeCredentials()
         guard credentials.sessionID?.isEmpty == false,

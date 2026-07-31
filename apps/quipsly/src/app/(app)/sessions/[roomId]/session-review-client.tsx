@@ -16,7 +16,7 @@ import {
   type SessionReviewGoalCandidate,
   type SessionReviewPacket,
 } from "./session-review-model";
-import { SessionContinuityCard } from "./session-continuity-card";
+import { PriorSessionContinuityCard, SessionContinuityCard } from "./session-continuity-card";
 import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
 import type { SessionContinuityState } from "./session-continuity-model";
 import type { SessionPreparation } from "./session-preparation-model";
@@ -1038,6 +1038,7 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
 
       {mode === "prepare" ? <>
         {preparation ? <SessionPreparationCard preparation={preparation} /> : <WorkspaceEmptyState title="Preparation truth unavailable" detail="Quipsly could not derive this Session’s schedule, participant, or versioned-consent projection. No ready-to-record state is inferred." />}
+        <PriorSessionContinuityCard prior={sessionContinuity?.prior ?? null} />
         {sessionTaxonomy ? <SessionTaxonomyCard roomId={roomId} initial={sessionTaxonomy} /> : <WorkspaceEmptyState title="No project context" detail="This Session is not connected to an accessible Nest, so Quipsly has no shared tag vocabulary or Studio destination to show." />}
       </> : null}
 

@@ -1,6 +1,9 @@
+import { createHash } from "node:crypto";
+
 import type { PrismaClient } from "@prisma/client";
 
 import {
+  loadPriorSessionContinuityByRoomId,
   loadSessionContinuityState,
   renderSessionContinuityBrief,
   saveSessionContinuityBrief,
@@ -16,6 +19,10 @@ const ACTOR = {
 const NOW = new Date("2026-07-24T18:00:00.000Z");
 const REQUEST_ID = "41b1e8d2-9c4c-430d-af2e-8c912c127193";
 
+function sha256(value: string) {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
 function roomFixture() {
   return {
     id: "room-1",
@@ -23,6 +30,9 @@ function roomFixture() {
     purpose: "COACHING",
     status: "ENDED",
     projectId: "project-1",
+    scheduledStart: new Date("2026-07-20T15:00:00.000Z"),
+    endedAt: new Date("2026-07-20T17:00:00.000Z"),
+    createdAt: new Date("2026-07-19T16:00:00.000Z"),
     updatedAt: new Date("2026-07-20T16:00:00.000Z"),
     notes: [{
       id: "note-1",
@@ -116,6 +126,7 @@ function prismaHarness(options: { accessible?: boolean } = {}) {
           notes: Array.from(notes.values()),
         };
       }),
+      findMany: jest.fn(async () => []),
     },
     coachingNote: {
       findUnique: jest.fn(async ({ where }: { where: { id: string } }) => notes.get(where.id) ?? null),
@@ -194,6 +205,96 @@ describe("Session continuity", () => {
     expect(body).toContain(`Snapshot SHA-256 ${state!.current.snapshotSha256}`);
   });
 
+  it("selects only the latest actor-private brief from an earlier accessible Session in the same Nest and purpose", async () => {
+    const priorSource = {
+      schema: "quipsly-session-continuity-brief-v1",
+      actorUserId: ACTOR.id,
+      roomId: "room-previous",
+      visibility: "actor-private",
+      aiGenerated: false,
+      sourceMutated: false,
+      externalSideEffects: false,
+      integrity: {
+        snapshotSha256: "e".repeat(64),
+        bodySha256: sha256("Carry exact work forward."),
+      },
+    };
+    const findMany = jest.fn(async () => [
+      {
+        id: "room-previous",
+        title: "Previous coaching Session",
+        purpose: "COACHING",
+        projectId: "project-1",
+        scheduledStart: new Date("2026-07-18T16:00:00.000Z"),
+        endedAt: new Date("2026-07-18T17:00:00.000Z"),
+        createdAt: new Date("2026-07-17T16:00:00.000Z"),
+        notes: [{
+          id: "brief-previous",
+          title: "Next-session brief — Previous coaching Session",
+          body: "Carry exact work forward.",
+          sourceJson: priorSource,
+          createdAt: new Date("2026-07-18T18:00:00.000Z"),
+        }],
+      },
+      {
+        id: "room-tampered-body",
+        title: "Tampered coaching Session",
+        purpose: "COACHING",
+        projectId: "project-1",
+        scheduledStart: new Date("2026-07-19T16:00:00.000Z"),
+        endedAt: null,
+        createdAt: new Date("2026-07-19T15:00:00.000Z"),
+        notes: [{
+          id: "brief-tampered-body",
+          title: "Tampered body",
+          body: "This body does not match its integrity receipt.",
+          sourceJson: { ...priorSource, roomId: "room-tampered-body" },
+          createdAt: new Date("2026-07-19T18:00:00.000Z"),
+        }],
+      },
+      {
+        id: "room-wrong-purpose",
+        title: "Previous podcast Session",
+        purpose: "PODCAST",
+        projectId: "project-1",
+        scheduledStart: new Date("2026-07-19T16:00:00.000Z"),
+        endedAt: null,
+        createdAt: new Date("2026-07-19T15:00:00.000Z"),
+        notes: [{
+          id: "brief-wrong-purpose",
+          title: "Wrong purpose",
+          body: "Do not carry this.",
+          sourceJson: { ...priorSource, roomId: "room-wrong-purpose" },
+          createdAt: new Date("2026-07-19T18:00:00.000Z"),
+        }],
+      },
+    ]);
+    const target = roomFixture();
+
+    const result = await loadPriorSessionContinuityByRoomId({
+      prisma: { callRoom: { findMany } } as never,
+      actor: ACTOR,
+      rooms: [target],
+    });
+
+    expect(result["room-1"]).toMatchObject({
+      sourceRoom: { id: "room-previous", projectId: "project-1" },
+      brief: { id: "brief-previous", snapshotSha256: "e".repeat(64) },
+      relationship: "same-project-and-purpose",
+      currentSessionMutated: false,
+      externalSideEffects: false,
+    });
+    expect(JSON.stringify(result)).not.toContain("wrong-purpose");
+    expect(JSON.stringify(result)).not.toContain("tampered-body");
+    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        projectId: { in: ["project-1"] },
+        OR: expect.any(Array),
+        notes: expect.objectContaining({ some: expect.any(Object) }),
+      }),
+    }));
+  });
+
   it("saves one private source envelope and reuses the exact retry without duplication", async () => {
     const { prisma, tx } = prismaHarness();
     const state = await loadSessionContinuityState({
@@ -213,9 +314,15 @@ describe("Session continuity", () => {
 
     const saved = await saveSessionContinuityBrief(input);
     const replay = await saveSessionContinuityBrief(input);
+    const semanticReplay = await saveSessionContinuityBrief({
+      ...input,
+      clientRequestId: "293267fc-10e0-4216-952f-b60a5eed047f",
+    });
 
     expect(saved.idempotentReplay).toBe(false);
     expect(replay.idempotentReplay).toBe(true);
+    expect(semanticReplay.idempotentReplay).toBe(true);
+    expect(semanticReplay.brief.id).toBe(saved.brief.id);
     expect(replay.brief.id).toBe(saved.brief.id);
     expect(tx.coachingNote.create).toHaveBeenCalledTimes(1);
     expect(tx.coachingNote.create).toHaveBeenCalledWith(expect.objectContaining({

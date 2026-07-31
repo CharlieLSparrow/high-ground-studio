@@ -65,6 +65,8 @@
     "quipsly:schema:fixture:local": "node scripts/quipsly-local-schema-fixture.mjs",
     "quipsly:retained:product-progress": "node scripts/quipsly-retained-product-progress-operation.mjs",
     "quipsly:retained:native-project": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-native-project-operation.mjs",
+    "quipsly:retained:coaching-continuity": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-coaching-continuity-browser-smoke.mjs",
+    "quipsly:retained:native-coaching-continuity": "node scripts/quipsly-retained-native-coaching-continuity-operation.mjs",
     "quipsly:capture:app-store-metadata": "node scripts/release/quipsly-capture-app-store-metadata.mjs",
     "quipsly:capture:app-store-readback": "node scripts/release/quipsly-app-store-connect-readback.mjs",
     "quipsly:capture:app-store-readback:test": "node --test scripts/release/quipsly-app-store-connect-readback.test.mjs",

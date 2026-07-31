@@ -4806,6 +4806,23 @@ private struct CaptureRecorderView: View {
                         errorMessage: model.sessionClient.errorMessage
                     )
 
+                    if let priorContinuity = session.priorContinuity {
+                        MobilePriorSessionContinuityCard(
+                            prior: priorContinuity,
+                            sourceSessionAvailable: model.sessions.contains(where: {
+                                $0.id == priorContinuity.sourceRoom.id
+                            })
+                        ) {
+                            guard let sourceSession = model.sessions.first(where: {
+                                $0.id == priorContinuity.sourceRoom.id
+                            }) else {
+                                model.message = "Refresh Sessions to open the exact prior Session. This continuity snapshot remains unchanged."
+                                return
+                            }
+                            model.select(sourceSession)
+                        }
+                    }
+
                     if session.clientFollowUp != nil {
                         MobileClientFollowUpCard(
                             session: session,
@@ -5023,6 +5040,68 @@ private struct CaptureRecorderView: View {
                 await episodeWatch.prepareSelectedClip()
             }
         }
+    }
+}
+
+private struct MobilePriorSessionContinuityCard: View {
+    let prior: MobileCapturePriorContinuity
+    let sourceSessionAvailable: Bool
+    let onOpenSource: () -> Void
+    @State private var isExpanded = false
+
+    private var savedLabel: String {
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let date = fractional.date(from: prior.brief.createdAt)
+            ?? ISO8601DateFormatter().date(from: prior.brief.createdAt)
+        return date?.formatted(date: .abbreviated, time: .shortened) ?? "saved time unavailable"
+    }
+
+    private var receiptLabel: String {
+        let hash = prior.brief.snapshotSha256
+        guard hash.count == 64 else { return hash }
+        return "\(hash.prefix(10))…\(hash.suffix(8))"
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Label("From the previous Session", systemImage: "arrow.uturn.backward.circle.fill")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.purple)
+
+            Text(prior.sourceRoom.title)
+                .font(.headline)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Text("Saved \(savedLabel) · \(receiptLabel)")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            DisclosureGroup(isExpanded: $isExpanded) {
+                Text(prior.brief.body)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 8)
+            } label: {
+                Text("Review carried-forward brief")
+                    .font(.subheadline.weight(.semibold))
+            }
+
+            Button("Open source Session", action: onOpenSource)
+                .buttonStyle(.bordered)
+                .disabled(!sourceSessionAvailable)
+                .accessibilityIdentifier("CapturePriorContinuityOpenSource")
+
+            Text("Same Nest and purpose · private to this account · current Session unchanged · no AI or external side effects")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .captureCard()
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("CapturePriorSessionContinuity")
     }
 }
 
