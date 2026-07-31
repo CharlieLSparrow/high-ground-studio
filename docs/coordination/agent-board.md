@@ -90,7 +90,7 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
 - latest coherent feature commit:
-  `2ae9d07f docs(capture): record build 21 internal checkpoint`
+  `34354101 Stabilize Capture rehearsal accessibility gate`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
   - `apps/quipsly/src/app/api/mobile/capture/today`
@@ -108,80 +108,29 @@ Verified during the Codex application handoff prep on 2026-05-26.
     goals, notes, tags, annotations, sources, recording, and follow-through,
     while preserving exact-source release and physical-boundary evidence
 - current status:
-  - Quipsly Capture 1.0 (21), exact app source `0c88e037d48c`, passed two
-    independent 46/46 serialized iPhone/Share Extension runs, signed export,
-    App Store processing, exact build/group readback, and internal assignment;
-    Build 20 remains the public external target until its matching Nest schema
-    and runtime are proven
-  - the pending Nest release adds canonical client follow-up outputs and
-    delivery-event receipts through additive migration
-    `20260731120000_add_session_outputs_and_delivery_events`
-  - the schema release boundary is being replaced with one guarded lane:
-    disposable full-chain migration plus zero diff, immutable image digest,
-    successful on-demand production backup readback, `migrate deploy`, ledger
-    status, production zero diff, and a retained mode-0600 receipt; legacy
-    targeted syncs are no longer a CI release stage
-  - Quipsly Capture 1.0 (18), exact source `5a04798690`, is live through the
-    open public TestFlight link; physical install and rehearsal readback remain
-    open
-  - production Nest is `studio-00462-luc` at 100% traffic from exact web source
-    `041461d9ea`; generated-reviewer acceptance, cleanup, and the 108-check
-    mobile contract passed before promotion
-  - `3f55a5b1` adds canonical project-vocabulary rename, archive, and restore
-    to iPhone Work with aliases, assignment impact, optimistic revisions, and
-    a deliberate Nest handoff for higher-impact merge
-  - Build 18 passed 45/45 operated UI journeys, signed artifact verification,
-    App Store processing, external beta approval, group assignment, automatic
-    notification, and uncached public-link readback
-  - the released exact-source slice adds deliberate iPhone canonical vocabulary
-    authoring without a placeholder record: live grant recheck, serializable
-    create/reuse, append-only history, no assignment, immediate
-    permission-filtered Search discovery, and no offline replay
-  - durable local QA retained `Capture vocabulary dogfood` in
-    `High Ground real-work dogfood` under `quipsly.qa@local.test`; a second run
-    reused the same tag identity and left all five assignment counts unchanged
-  - the released exact-source slice replaces label-based tag navigation with
-    permission-filtered `/find?tag=<StudioTag.id>` focus across Work, Schedule,
-    Sessions, Nest projects, Search, and project-backed writing; same-label
-    Nests remain isolated and merge redirects preserve old URLs
-  - iPhone Work now names the exact selected tag and Nest with an accessible
-    selected state; real PostgreSQL coverage passes 13/13 and retained QA
-    reports `exactTagFocus:true`
-  - the app and Share Capture extension are approved as Build 18; exact-source
-    qualification, Nest preview, production promotion, upload, approval, group
-    assignment, and public-link readback all passed
-  - `c8f9b711` closes the Media Vault raw-ID authorization gap across direct
-    asset loading, clip mutations, bin/project attachment, canonical tags, and
-    Studio Cut export; direct project, media-bin project, and explicit
-    attachment scopes now share one parent-asset access boundary
-  - exact canonical tag focus now projects authorized media clips, excludes a
-    deliberately malformed cross-Nest clip link, and returns to the exact
-    highlighted logger row; standalone Nest vocabulary creation no longer
-    requires a placeholder Task, Goal, Note, document, Session, or clip
-  - operated local QA intentionally retains a dedicated test actor, Home Nest,
-    canonical tag, dummy asset, and 4.00s–12.00s clip as a long-term regression
-    fixture
-  - `b2313033` adds permission-correct annotation Resolve/Reopen on iPhone,
-    canonical tags, exact Nest Research links, and real-Firebase/local-Postgres
-    operated proof with complete cleanup
-  - `ff48c69c` adds a deliberate iPhone Inbox-to-Research filing workflow over
-    actor-owned private Snippets and Bookmarks, exact source revisions, a
-    protected account-partitioned outbox, canonical immutable Research sources,
-    and idempotent receipt readback without mutating the private capture
-  - `bb8d6a57` makes filing and a whole-source annotation one protected,
-    atomic decision using only the destination Nest's existing canonical tags;
-    full replay identity now includes the source, selector, body, visibility,
-    purpose, fingerprint, and tag set
-  - `804e42e2` turns one reviewed annotation into exactly one private canonical
-    writing document and citation block through a protected actor-partitioned
-    iPhone outbox, exact acknowledgement, serializable idempotent transaction,
-    and reversible human operation without changing the source
-  - current checks: focused media/action/access tests 47/47, real PostgreSQL
-    tag and media coverage 16/16, full Jest 937 active tests, release contracts
-    168/168, Capture-to-Nest evidence 10/10, pinned TypeScript 7, optimized
-    150-route Nest build, focused Work XCUITest, App Store static 947/947,
-    Build 18's 45/45 serialized UI journeys, signed IPA inspection,
-    authenticated production acceptance, and TestFlight readback all pass
+  - Build 1.0 (22) from exact native source
+    `34354101340bca41f31ff576393a6aea841befe3` is the canonical internal and
+    public TestFlight target. Its 47/47 serialized iPhone and Share Extension
+    journeys, signed archive/export, privacy, provisioning, entitlement,
+    upload, processing, group assignment, external approval, and anonymous
+    public-link handoff all passed.
+  - Provider build `81160b86-95c7-44b2-8cc9-4c29a7335929` is `VALID`,
+    internally and externally `IN_BETA_TESTING`, and beta-review `APPROVED`.
+    The distributed IPA is 21,287,598 bytes at SHA-256
+    `61e00fdd5ef385cebcd44a3ce3aa3e28befbb954bef300025395f3e6ee59ae49`.
+  - Production Nest is `studio-00472-wey` at 100% traffic from exact backend
+    source `12c97cbdfe8bfd19b74c557f7fba04dd935f5a23` and immutable image digest
+    `sha256:8d757ae0f6259ba39cbe5adfcde92d475b11f96316d9bbbfb711e60e0b3374c4`.
+    The guarded schema, backup, migration, zero-drift, authenticated preview,
+    promotion, and post-promotion Capture contract all passed.
+  - Build 22 fixes new-Session handoff from both iPhone creation paths while
+    preserving explicit consent, call, and recording boundaries. Build 20 is
+    now rollback history.
+  - retained `.test` QA artifacts remain authorized when they follow the
+    retained-dogfood policy and have no external effects.
+  - physical TestFlight installation, actual iPhone audio/video capture,
+    interruption recovery, upload, playback, and same-ID Nest/Studio readback
+    remain open and must not be inferred from provider or simulator evidence.
   - deploy status: Nest source `ed3b2dc6` is deployed as
     `studio-00464-sig` at 100%; Capture source `5a047986` remains distributed
     as approved Build 18
@@ -190,13 +139,13 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
   - no private HGO or coaching material in screenshots
-  - do not replace the known-good Build 18 rehearsal target during active human
+  - do not replace the known-good Build 22 rehearsal target during active human
     testing without a coordinated handoff
   - do not save legal, rating, DSA, pricing, territory, privacy, deletion, or
     reviewer-credential answers without account-holder approval
   - no physical-device or provider claim without readback from that boundary
-  - no new iOS binary was needed for this Nest-only release; do not imply that
-    web deployment proves physical TestFlight installation or recording
+  - do not imply that web deployment, App Store processing, or TestFlight
+    approval proves physical installation or recording
 
 ### 2026-05-25 Sub-Agent Fanout
 

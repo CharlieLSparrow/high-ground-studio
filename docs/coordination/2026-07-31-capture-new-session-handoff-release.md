@@ -80,8 +80,9 @@ candidate then passed:
   `/Volumes/My Passport/Quipsly Release Evidence/2026-07-31-build22-34f9e054-qualified`
 
 The copied IPA hash matches the qualified receipt. Independent result-bundle
-readback reports `Passed`, 47 tests, zero failures, and zero skips. No IPA from
-either candidate attempt has been uploaded yet.
+readback reports `Passed`, 47 tests, zero failures, and zero skips. This first
+qualified IPA was deliberately preserved without upload; it is historical
+candidate evidence rather than the distributed binary.
 
 ## First TestFlight promotion stopped safely
 
@@ -106,8 +107,41 @@ The corrected journey now requires the Watch preparation button itself to be
 fully hittable. Its audit suppresses a `textClipped` issue only when the exact
 reported element frame crosses the known navigation or tab-bar viewport
 boundary; any fully visible clipped text still fails. Two focused runs passed,
-including the stronger control-targeted run in 43.856 seconds. A fresh full
-exact-commit beta qualification remains required before upload.
+including the stronger control-targeted run in 43.856 seconds.
+
+## Final Build 22 distribution evidence
+
+The accessibility correction was committed and pushed in exact app source
+`34354101340bca41f31ff576393a6aea841befe3`. A new detached-source beta run
+then crossed the complete release boundary:
+
+- deterministic iPhone and Share Extension journeys: 47 passed, 0 failed,
+  0 skipped;
+- signed archive, App Store export, app and Share Extension signature,
+  provisioning, entitlement, privacy, and version/build inspection: passed;
+- upload-bound IPA: 21,287,598 bytes;
+- upload-bound IPA SHA-256:
+  `61e00fdd5ef385cebcd44a3ce3aa3e28befbb954bef300025395f3e6ee59ae49`;
+- durable receipt and artifacts:
+  `/Volumes/My Passport/Quipsly Release Evidence/2026-07-31-build22-upload-run/34354101340b/20260731T222209Z-35487`;
+- release receipt: `candidateQualified: true`,
+  `deterministicUITestPerformed: true`, `uploadAttempted: true`,
+  `uploadPerformed: true`, `uploadOutcome: returned-successfully`, and
+  `buildProcessingWaitReturned: true`.
+
+Independent App Store Connect readback identifies Build 1.0 (22) as provider
+build `81160b86-95c7-44b2-8cc9-4c29a7335929`, processing `VALID`, internally
+and externally `IN_BETA_TESTING`, and beta-review `APPROVED`. Build 22 is
+assigned to both **Quipsly Capture Internal** and **Quipsly Capture
+Rehearsal**. The public-link-only external plan is enabled for up to 100
+testers, and anonymous readback proved HTTP 200, the exact Quipsly title and
+beta heading, and Apple's `itms-beta` handoff at:
+
+`https://testflight.apple.com/join/XwRRcYUm`
+
+Provider processing, approval, assignment, and public-link availability are
+proved. The release receipt correctly keeps
+`physicalTestFlightInstallReadbackPerformed: false`.
 
 ## Retained QA and cleanup policy
 
@@ -127,7 +161,6 @@ retained product QA data were preserved. APFS readback afterward reported
 
 ## Open acceptance gates
 
-- App Store Connect upload/readback for the corrected build
 - physical iPhone TestFlight install
 - physical audio/video capture, interruption recovery, upload, playback, and
   same-ID Nest/Studio readback

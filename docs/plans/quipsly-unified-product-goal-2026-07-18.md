@@ -5263,3 +5263,39 @@ was restored.
   schema/backend promotion, a new TestFlight candidate, physical-iPhone
   recording/recovery/upload/playback, and genuine episode/coaching operation
   remain required.
+
+### 2026-07-31 production Nest and approved Build 22 release checkpoint
+
+- Released the additive Session-output and delivery-event schema through the
+  guarded production lane from exact backend source
+  `12c97cbdfe8bfd19b74c557f7fba04dd935f5a23`: fresh migration-chain proof,
+  successful on-demand backup `1785529000879`, migration
+  `20260731120000_add_session_outputs_and_delivery_events`, current ledger,
+  and zero production drift all passed.
+- Built and operated matching Nest revision `studio-00472-wey` at zero traffic,
+  then promoted it to 100% after authenticated Capture, Projects, account,
+  writing, editor, recorder, research, and publishing acceptance. Production
+  runs immutable image digest
+  `sha256:8d757ae0f6259ba39cbe5adfcde92d475b11f96316d9bbbfb711e60e0b3374c4`.
+- Full native qualification found and fixed a real new-Session handoff defect:
+  both creation entry points now land on the exact Session recorder without
+  granting consent, joining a call, or recording. A second run found a
+  viewport-sensitive accessibility test defect; the corrected audit targets
+  the actual Watch action and still fails any fully visible clipped text.
+- Exact native source `34354101340bca41f31ff576393a6aea841befe3`
+  passed all 47 serialized iPhone and Share Extension journeys plus signed
+  archive, App Store export, privacy, signature, provisioning, and entitlement
+  inspection. The distributed 21,287,598-byte IPA has SHA-256
+  `61e00fdd5ef385cebcd44a3ce3aa3e28befbb954bef300025395f3e6ee59ae49`.
+- App Store Connect independently reports Build 1.0 (22), provider build
+  `81160b86-95c7-44b2-8cc9-4c29a7335929`, as `VALID`, internally and
+  externally `IN_BETA_TESTING`, beta-review `APPROVED`, and assigned to both
+  internal and public rehearsal groups. Anonymous readback proves the open
+  100-person Quipsly Capture handoff at
+  `https://testflight.apple.com/join/XwRRcYUm`.
+- Build 22 is now the canonical TestFlight target and Build 20 is rollback
+  history. Provider readiness is closed; physical TestFlight installation,
+  real iPhone audio/video capture, interruption recovery, upload, playback,
+  and same-ID Nest/Studio readback remain deliberately open. These physical
+  gates must be crossed by doing the work on a real device, not inferred from
+  simulator, signed-archive, or Apple-provider evidence.

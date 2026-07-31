@@ -2,6 +2,43 @@
 
 Date: 2026-07-31
 
+## Build 22 production and TestFlight release checkpoint
+
+- The guarded production schema lane passed from exact backend source
+  `12c97cbdfe8bfd19b74c557f7fba04dd935f5a23`: disposable full-chain
+  migration, successful on-demand backup `1785529000879`, migration
+  `20260731120000_add_session_outputs_and_delivery_events`, current ledger,
+  and zero schema drift.
+- The matching Nest revision `studio-00472-wey` passed authenticated
+  zero-traffic acceptance before promotion and now serves 100% of production
+  from immutable image digest
+  `sha256:8d757ae0f6259ba39cbe5adfcde92d475b11f96316d9bbbfb711e60e0b3374c4`.
+- Full Capture qualification found and fixed a real Session-creation handoff:
+  canonical creation succeeded while the chooser stayed over Record. Both
+  creation entry points now land directly on the selected Session's recorder
+  without granting consent, joining a call, or starting recording.
+- A second qualification exposed nondeterministic viewport occlusion in the
+  largest-text rehearsal audit. The test now proves the actual Watch
+  preparation control is hittable and ignores clipped-text reports only when
+  the reported element frame crosses the known navigation/tab-bar viewport.
+  Fully visible clipped text still fails.
+- Exact native source `34354101340bca41f31ff576393a6aea841befe3`
+  passed all 47 serialized iPhone and Share Extension journeys, signed archive,
+  App Store export, privacy, entitlement, provisioning, and nested-signature
+  inspection. The upload-bound IPA is 21,287,598 bytes at SHA-256
+  `61e00fdd5ef385cebcd44a3ce3aa3e28befbb954bef300025395f3e6ee59ae49`.
+- Independent App Store Connect readback identifies Build 1.0 (22) as provider
+  build `81160b86-95c7-44b2-8cc9-4c29a7335929`, `VALID`, internally and
+  externally `IN_BETA_TESTING`, beta-review `APPROVED`, and included in both
+  controlled internal and public rehearsal groups.
+- Anonymous readback confirms the open 100-person public page and exact Apple
+  handoff at `https://testflight.apple.com/join/XwRRcYUm`. Build 22 is now the
+  canonical install target; Build 20 is rollback history.
+- Physical TestFlight installation, actual iPhone audio/video capture,
+  interruption recovery, upload, playback, and same-ID Nest/Studio readback
+  remain separate proof boundaries. Retained QA artifacts remain authorized
+  under `docs/runbooks/quipsly-retained-dogfood.md`.
+
 ## Retained Work progress operation checkpoint
 
 - Exact source `82c4223e1beb8ce936fa38b27b03ffac1b1d65db` adds a

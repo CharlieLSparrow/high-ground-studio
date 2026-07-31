@@ -8,11 +8,11 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (20)**
+- App: **Quipsly Capture 1.0 (22)**
 - Exact native source:
-  `d410e03e14ed723ff4b1f66c50e1c620ab65cb9f`
-- Qualified upload-bound IPA: 21,027,646 bytes, SHA-256
-  `20c4b689ffae7a50396f4ef31202395081367d1ac45ca3884ecb4137aee64502`
+  `34354101340bca41f31ff576393a6aea841befe3`
+- Qualified upload-bound IPA: 21,287,598 bytes, SHA-256
+  `61e00fdd5ef385cebcd44a3ce3aa3e28befbb954bef300025395f3e6ee59ae49`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -151,7 +151,48 @@ needs to prove.
   accepts pnpm's conventional argument separator instead of rejecting it
   before the readback. The focused CLI/receipt suite passes 6/6.
 
-## Approved Build 20 rehearsal lane
+## Approved Build 22 rehearsal lane
+
+Build 22 supersedes Build 20 for every new install and rehearsal. It preserves
+the coordinated podcast audio/video, protected Shared Watch, manuscript,
+Episode thread, source evidence, canonical tag focus, Work, Google identity,
+and recovery behavior from the prior public release. It additionally lands a
+newly created Session directly on its recorder and preserves the explicit
+consent/call/recording separation.
+
+Exact detached source `34354101340bca41f31ff576393a6aea841befe3`
+passed all 47 serialized iPhone and Share Extension journeys with zero
+failures. The upload-bound IPA is 21,287,598 bytes at SHA-256
+`61e00fdd5ef385cebcd44a3ce3aa3e28befbb954bef300025395f3e6ee59ae49`.
+Strict inspection passed for the app and Share Extension signatures,
+provisioning, entitlements, privacy manifests, camera/microphone descriptions,
+background modes, encryption declaration, and matching version/build.
+
+Independent App Store Connect readback reports:
+
+- build ID `81160b86-95c7-44b2-8cc9-4c29a7335929`;
+- processing state `VALID`;
+- internal and external state `IN_BETA_TESTING`;
+- beta review state `APPROVED`;
+- Build 22 included in **Quipsly Capture Internal** and
+  **Quipsly Capture Rehearsal**;
+- complete beta metadata, automatic notification, and open public-link
+  capacity for 100 testers;
+- the uncached public page exposes the exact Quipsly title, beta heading, and
+  `itms-beta` handoff.
+
+Production Nest serves the matching backend contract from exact source
+`12c97cbdfe8bfd19b74c557f7fba04dd935f5a23` at `studio-00472-wey`, immutable
+runtime image digest
+`sha256:8d757ae0f6259ba39cbe5adfcde92d475b11f96316d9bbbfb711e60e0b3374c4`.
+The guarded schema lane, zero-traffic authenticated acceptance, promotion,
+and post-promotion Capture contract all passed before Build 22 distribution.
+
+The release receipt still records no physical TestFlight install. Apple
+processing, approval, group assignment, and public-link readback do not prove
+a physical iPhone install or a real two-person recording.
+
+## Historical Build 20 rehearsal lane
 
 Build 20 supersedes Build 19 for every new install and rehearsal. It preserves
 the coordinated podcast audio/video, protected Shared Watch, manuscript,
@@ -197,7 +238,7 @@ a physical iPhone install or a real two-person recording.
 ## Historical Build 19 rehearsal lane
 
 Build 19 remains the rollback record for exact saved Media Vault range
-playback. New installs and rehearsals use Build 20.
+playback. New installs and rehearsals use Build 22.
 
 ## Historical Build 18 rehearsal lane
 
@@ -368,7 +409,7 @@ gates. The enabled public external-testing link is the canonical path:
 
 `https://testflight.apple.com/join/XwRRcYUm`
 
-As a redundant internal path, Build 20 was distributed to internal testers
+As a redundant internal path, Build 22 was distributed to internal testers
 when the upload completed. The public link remains the canonical recovery path
 when Apple's invitation email or TestFlight library refresh lags.
 
