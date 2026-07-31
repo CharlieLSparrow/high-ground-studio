@@ -4825,3 +4825,34 @@ was restored.
 - Media-clip and knowledge-node counts remain in audited taxonomy management,
   but their exact return destinations are not claimed here. Media navigation
   requires its own permission audit before tag focus links into it.
+
+### 2026-07-30 canonical tag focus production and Build 18 release
+
+- Exact web/runtime source `041461d9ea78419ae5d97f3869df802ec7ef0eb2`
+  built in Cloud Build operation `f2ba4e3a-51b8-4f54-bc2e-5acb5795db7f`
+  and deployed first as zero-traffic Nest revision `studio-00462-luc`.
+  Generated-reviewer acceptance covered the signed-in product and 108 mobile
+  contract checks; both grants, the temporary Home Nest, membership, database
+  actor, and Firebase actor were independently verified removed afterward.
+- Production traffic now points 100% to `studio-00462-luc` at immutable runtime
+  image digest
+  `sha256:5c3e62c58d2669b8541927e9691a3196a9fd103fbe415db0c99f103b8547ed7a`.
+- Exact native source `5a04798690dc6e71293919519b6a371d60e2416b`
+  passed all 45 serialized iPhone and Share Extension journeys. The first
+  exact-source run found a real reachability-test scroll overshoot; the shared
+  helper was bounded and the complete suite was rerun from the repaired
+  commit. Static App Store checks pass 947/947.
+- Signed archive/export and packaged-app verification produced the exact
+  upload-bound 20,894,573-byte IPA at SHA-256
+  `628c3bc3e2b1a89dc62155e1bee2a706ea775de7f55384178c186623090efd5d`.
+- App Store Connect build `084577b9-4fca-43b0-bb59-5f1a068e7ae8` processed
+  `VALID`, entered `IN_BETA_TESTING`, and received beta review `APPROVED`.
+  It is assigned to **Quipsly Capture Rehearsal** with automatic notification.
+  Independent public-link readback passed the exact title, open-beta heading,
+  and `itms-beta` handoff at `https://testflight.apple.com/join/XwRRcYUm`.
+- The dedicated `quipsly.qa@local.test` tag-focus artifact remains retained as
+  a long-lived regression workspace. Generated reviewer data was disposable
+  and was cleaned up; neither class of testing borrowed a real-user identity.
+- This closes deployed production and approved TestFlight delivery for exact
+  canonical tag focus. It does not claim physical TestFlight installation,
+  real two-person consent/capture, or the required HGO and coaching dogfood.

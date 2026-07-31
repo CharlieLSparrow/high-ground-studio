@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-31 00:56 UTC
+Last verified: 2026-07-31
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,11 +8,11 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (17)**
+- App: **Quipsly Capture 1.0 (18)**
 - Exact native source:
-  `b0211cf8a528ce248edb38725631279a2438d847`
-- Qualified upload-bound IPA: 20,891,711 bytes, SHA-256
-  `055bca4210bda089cf613a1618d97bfb6e96566efb3f7f289a917118148975d4`
+  `5a04798690dc6e71293919519b6a371d60e2416b`
+- Qualified upload-bound IPA: 20,894,573 bytes, SHA-256
+  `628c3bc3e2b1a89dc62155e1bee2a706ea775de7f55384178c186623090efd5d`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -151,37 +151,37 @@ needs to prove.
   accepts pnpm's conventional argument separator instead of rejecting it
   before the readback. The focused CLI/receipt suite passes 6/6.
 
-## Approved Build 17 rehearsal lane
+## Approved Build 18 rehearsal lane
 
-Build 17 supersedes Build 16 for every new install and rehearsal. It preserves
+Build 18 supersedes Build 17 for every new install and rehearsal. It preserves
 the coordinated podcast audio/video, protected Shared Watch, manuscript,
 source evidence, Work, Google identity, and recovery behavior qualified in
-earlier builds. It adds deliberate authoring of the same canonical Nest tag
-vocabulary directly from iPhone Work before a Task, Goal, Note, Session, or
-document exists. Creation reuses labels and historical aliases, records
-append-only revision evidence, and creates no assignment or external side
-effect.
+earlier builds. It adds exact canonical tag focus across iPhone Work and Nest:
+selection is by immutable tag ID, same-label tags in other Nests cannot bleed
+into results, merge redirects remain stable, and the native state names the
+selected tag and Nest accessibly.
 
-Exact detached source `b0211cf8a528ce248edb38725631279a2438d847`
+Exact detached source `5a04798690dc6e71293919519b6a371d60e2416b`
 passed all 45 serialized iPhone and Share Extension journeys and produced the
-exact upload-bound 20,891,711-byte IPA at SHA-256
-`055bca4210bda089cf613a1618d97bfb6e96566efb3f7f289a917118148975d4`.
+exact upload-bound 20,894,573-byte IPA at SHA-256
+`628c3bc3e2b1a89dc62155e1bee2a706ea775de7f55384178c186623090efd5d`.
 
 Independent App Store Connect readback reported:
 
-- build ID `e3d69f71-90b5-4da8-91c3-c597cb942994`;
+- build ID `084577b9-4fca-43b0-bb59-5f1a068e7ae8`;
 - processing state `VALID`;
 - external state `IN_BETA_TESTING`;
 - beta review state `APPROVED`;
-- Build 17 included in **Quipsly Capture Rehearsal**;
+- Build 18 included in **Quipsly Capture Rehearsal**;
 - complete beta metadata, automatic notification, and open public-link
   capacity for 100 testers;
 - the uncached public page exposes the exact Quipsly title, beta heading, and
   `itms-beta` handoff.
 
-Production Nest source matches this build at `studio-00460-tix`, immutable
+Production Nest runs the matching product slice from exact web/runtime source
+`041461d9ea78419ae5d97f3869df802ec7ef0eb2` at `studio-00462-luc`, immutable
 runtime image digest
-`sha256:2bf8ee96aeeec487929a6e0b582b0b10b15d74d1677234e8bc3739381ce2d5fb`.
+`sha256:5c3e62c58d2669b8541927e9691a3196a9fd103fbe415db0c99f103b8547ed7a`.
 A generated verified reviewer operated its authenticated workspace, episode,
 Sessions, writing, editor, recorder, research, and publishing paths plus the
 108-check mobile contract before the revision received production traffic. Its
@@ -195,6 +195,11 @@ has zero versions.
 The release receipt still records no physical TestFlight install. Apple
 processing, approval, group assignment, and public-link readback do not prove
 a physical iPhone install or a real two-person recording.
+
+## Historical Build 17 rehearsal lane
+
+Build 17 remains the rollback record for deliberate iPhone authoring of the
+canonical Nest tag vocabulary. New installs and rehearsals use Build 18.
 
 ## Historical Build 16 rehearsal lane
 
@@ -355,7 +360,7 @@ gates. The enabled public external-testing link is the canonical path:
 
 `https://testflight.apple.com/join/XwRRcYUm`
 
-As a redundant internal path, Build 17 was distributed to internal testers
+As a redundant internal path, Build 18 was distributed to internal testers
 when the upload completed. The public link remains the canonical recovery path
 when Apple's invitation email or TestFlight library refresh lags.
 

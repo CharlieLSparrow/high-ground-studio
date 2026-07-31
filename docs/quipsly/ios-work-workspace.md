@@ -195,7 +195,7 @@ The 2026-07-29 project-creation checkpoint additionally proved:
   kernel.
 
 Production deployment and TestFlight distribution are now proven by the
-Build 17 release checkpoint below. A signed physical-iPhone
+Build 18 release checkpoint below. A signed physical-iPhone
 creation/readback remains a release gate; this checkpoint does not claim it.
 
 The 2026-07-30 shared-vocabulary checkpoint additionally proves:
@@ -267,7 +267,7 @@ never borrow a real user's identity or silently target production data.
 
 ## Open release gates
 
-Build 17 and Nest revision `studio-00460-tix` close deployed production parity
+Build 18 and Nest revision `studio-00462-luc` close deployed production parity
 and external TestFlight distribution for this slice. The remaining boundaries
 are:
 
@@ -277,7 +277,46 @@ are:
 
 Those gates remain tracked in the unified product goal and App Store readiness runbook.
 
-## 2026-07-30 production and Build 17 release
+## 2026-07-30 exact tag focus production and Build 18 release
+
+- Exact committed web/runtime source
+  `041461d9ea78419ae5d97f3869df802ec7ef0eb2` built in Cloud Build operation
+  `f2ba4e3a-51b8-4f54-bc2e-5acb5795db7f`, then deployed first as zero-traffic
+  Nest revision `studio-00462-luc`.
+- A generated verified Firebase reviewer exercised public routes, authenticated
+  login, the private Home Nest, episode production, Sessions, Projects, account
+  switching, the admin boundary, writing, editor, recorder, research,
+  publishing, logout, and the 108-check mobile contract before traffic moved.
+  Its two grants, Home Nest, membership, database actor, and Firebase actor
+  were independently verified removed after acceptance.
+- Production now serves `studio-00462-luc` at 100% from immutable runtime image
+  digest
+  `sha256:5c3e62c58d2669b8541927e9691a3196a9fd103fbe415db0c99f103b8547ed7a`.
+- Build 18 was qualified from exact committed native source
+  `5a04798690dc6e71293919519b6a371d60e2416b`. Its only change after the
+  web/runtime source was a bounded XCUITest scrolling repair discovered by
+  the first exact-source qualification attempt; the complete rerun passed all
+  45 serialized iPhone and Share Extension journeys.
+- Signed archive/export, nested signature, entitlement, App Store profile,
+  privacy-manifest, and packaged-purpose-string inspection passed. The exact
+  upload-bound 20,894,573-byte IPA has SHA-256
+  `628c3bc3e2b1a89dc62155e1bee2a706ea775de7f55384178c186623090efd5d`.
+- App Store Connect build `084577b9-4fca-43b0-bb59-5f1a068e7ae8` is `VALID`,
+  `APPROVED`, and `IN_BETA_TESTING` in the external
+  **Quipsly Capture Rehearsal** group with automatic notification.
+- Independent public-link readback passed the exact app title, open-beta
+  heading, and `itms-beta` handoff at
+  `https://testflight.apple.com/join/XwRRcYUm`.
+- The released slice gives exact canonical tag focus across Nest and iPhone
+  Work, including same-label Nest isolation, merge redirects, separate-account
+  nondisclosure, and an explicit accessible native selection state.
+- The labeled durable QA artifact under `quipsly.qa@local.test` remains
+  intentionally retained with `exactTagFocus:true`, revision 1, and zero Task,
+  Goal, Session, Note, or document assignments.
+- Apple processing and public delivery do not prove a physical TestFlight
+  installation or a real two-person recording; those gates remain open.
+
+## Historical 2026-07-30 production and Build 17 release
 
 - Exact committed source
   `b0211cf8a528ce248edb38725631279a2438d847` built in Cloud Build operation

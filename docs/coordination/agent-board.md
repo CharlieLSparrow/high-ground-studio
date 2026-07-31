@@ -90,7 +90,7 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
 - latest coherent feature commit:
-  `b9ee70aa feat(capture): author canonical tag vocabulary`
+  `0930f0ca feat(quipsly): focus canonical tags by identity`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
   - `apps/quipsly/src/app/api/mobile/capture/today`
@@ -106,16 +106,16 @@ Verified during the Codex application handoff prep on 2026-05-26.
     goals, notes, tags, annotations, sources, recording, and follow-through,
     while preserving exact-source release and physical-boundary evidence
 - current status:
-  - Quipsly Capture 1.0 (17), exact source `b0211cf8a5`, is live through the
+  - Quipsly Capture 1.0 (18), exact source `5a04798690`, is live through the
     open public TestFlight link; physical install and rehearsal readback remain
     open
-  - production Nest is `studio-00460-tix` at 100% traffic from the same exact
-    source; generated-reviewer acceptance and the 108-check mobile contract
-    passed before promotion
+  - production Nest is `studio-00462-luc` at 100% traffic from exact web source
+    `041461d9ea`; generated-reviewer acceptance, cleanup, and the 108-check
+    mobile contract passed before promotion
   - `3f55a5b1` adds canonical project-vocabulary rename, archive, and restore
     to iPhone Work with aliases, assignment impact, optimistic revisions, and
     a deliberate Nest handoff for higher-impact merge
-  - Build 17 passed 45/45 operated UI journeys, signed artifact verification,
+  - Build 18 passed 45/45 operated UI journeys, signed artifact verification,
     App Store processing, external beta approval, group assignment, automatic
     notification, and uncached public-link readback
   - the released exact-source slice adds deliberate iPhone canonical vocabulary
@@ -125,14 +125,14 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - durable local QA retained `Capture vocabulary dogfood` in
     `High Ground real-work dogfood` under `quipsly.qa@local.test`; a second run
     reused the same tag identity and left all five assignment counts unchanged
-  - the next exact-source slice replaces label-based tag navigation with
+  - the released exact-source slice replaces label-based tag navigation with
     permission-filtered `/find?tag=<StudioTag.id>` focus across Work, Schedule,
     Sessions, Nest projects, Search, and project-backed writing; same-label
     Nests remain isolated and merge redirects preserve old URLs
   - iPhone Work now names the exact selected tag and Nest with an accessible
     selected state; real PostgreSQL coverage passes 13/13 and retained QA
     reports `exactTagFocus:true`
-  - the app and Share Capture extension are approved as Build 17; exact-source
+  - the app and Share Capture extension are approved as Build 18; exact-source
     qualification, Nest preview, production promotion, upload, approval, group
     assignment, and public-link readback all passed
   - `b2313033` adds permission-correct annotation Resolve/Reopen on iPhone,
@@ -150,18 +150,19 @@ Verified during the Codex application handoff prep on 2026-05-26.
     writing document and citation block through a protected actor-partitioned
     iPhone outbox, exact acknowledgement, serializable idempotent transaction,
     and reversible human operation without changing the source
-  - current checks: direct-create route 14/14, real PostgreSQL taxonomy 11/11,
-    durable QA 2/2 create/reuse operations, pinned TypeScript 7, mobile source
-    contract, focused Work XCUITest, App Store static 947/947, Build 17's 45/45
-    serialized UI journeys, signed IPA inspection, authenticated production
-    acceptance, and TestFlight readback all pass
-  - deploy status: exact source `b0211cf8` is deployed and distributed
-  - rollback: previous proven Nest revision is `studio-00458-xac`; Build 16
+  - current checks: focused tag projection 68/68, real PostgreSQL tag coverage
+    13/13, full Jest 922 active tests, pinned TypeScript 7, focused Work
+    XCUITest, App Store static 947/947, Build 18's 45/45 serialized UI journeys,
+    signed IPA inspection, authenticated production acceptance, and TestFlight
+    readback all pass
+  - deploy status: Nest source `041461d9` is deployed; Capture source
+    `5a047986` is distributed
+  - rollback: previous proven Nest revision is `studio-00460-tix`; Build 17
     remains documented and available historically in App Store Connect
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
   - no private HGO or coaching material in screenshots
-  - do not replace the known-good Build 17 rehearsal target during active human
+  - do not replace the known-good Build 18 rehearsal target during active human
     testing without a coordinated handoff
   - do not save legal, rating, DSA, pricing, territory, privacy, deletion, or
     reviewer-credential answers without account-holder approval
