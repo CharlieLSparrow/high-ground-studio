@@ -28,6 +28,11 @@ Date: 2026-07-31
   real-device media, and genuine two-person use remain open. Exact evidence is
   in
   `docs/coordination/2026-07-31-episode-collaboration-readiness.md`.
+- The retained local QA account also operated a complete rendered
+  Nest → note/tag/task/goal → linked work → progress → Calendar → Today flow.
+  Exact IDs, labels, UX observations, and the explicit local-only boundary are
+  in
+  `docs/coordination/2026-07-31-retained-capture-follow-through-dogfood.md`.
 
 ## Quipsly release checkpoint
 

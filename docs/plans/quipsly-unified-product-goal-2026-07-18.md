@@ -4998,3 +4998,23 @@ was restored.
   collaboration. It does not claim a physical install, genuine two-person
   consent/capture, real-device upload/playback/alignment, completion of a real
   episode or coaching session, or App Store production submission.
+
+### 2026-07-31 retained Capture-to-follow-through product operation
+
+- Used retained QA account `quipsly-media-ms8ct81g@example.test` in the
+  rendered product to create private media-production Nest
+  `qa-retained-capture-to-follow-through-lab`.
+- Created and retained one labeled note, one canonical `#rehearsal` tag, one
+  physical-rehearsal task, and one end-to-end episode-loop goal. Project Work,
+  global Work, and exact focused URLs read back the same record and tag IDs.
+- Linked the task to the goal as `CONTRIBUTES`, then recorded 25% progress with
+  explicit evidence that only infrastructure/software delivery is complete.
+  Neither record changed status by implication.
+- Planned a private 25-minute Calendar focus block for that exact task. Today
+  read back the chosen block and active goal with `#rehearsal`; Quipsly
+  explicitly reported that no provider event, task deadline, or goal target
+  changed.
+- The artifacts remain intentionally available as a longitudinal QA corpus.
+  This closes a real local notes/tasks/goals/tags/planning dogfood pass, not
+  physical-iPhone capture, production same-ID readback, a genuine two-person
+  episode/coaching session, or completed follow-through.
