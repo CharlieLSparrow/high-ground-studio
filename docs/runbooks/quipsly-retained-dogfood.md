@@ -132,6 +132,25 @@ results, opens project and global Work over the same IDs, and finishes on a
 phone-width Today surface. It performs no product mutation or external action,
 captures no screenshot or trace, and explicitly clears its Nest session.
 
+To create and retain a new project plus tagged Task, private document-kernel
+Note, and active Goal through the compiled iPhone app, use:
+
+```bash
+pnpm quipsly:retained:native-project -- \
+  --project "QA Retained · Native work <source> <run>" \
+  --task "QA Retained · Organize work <source> <run>" \
+  --tag "QA Retained · Longitudinal QA"
+```
+
+Set the documented local Firebase, Nest, and PostgreSQL environment variables
+before running it. The operation refuses non-loopback targets and duplicate
+exact project names. It retrieves the fixed media operator password from the
+same dedicated Keychain service, operates the compiled app, and independently
+checks the complete canonical graph. Successful and failed product artifacts
+are retained; only hashes and the local result-bundle path are printed.
+The first exact-commit operation and its retained fixture chronology are in
+`docs/coordination/2026-07-31-retained-native-project-operation.md`.
+
 ## Environment boundaries
 
 ### Local and emulator

@@ -5231,3 +5231,35 @@ was restored.
   remain as longitudinal QA state. It does not close cloud authorization,
   production schema/backend parity, TestFlight, physical-device recording, or
   genuine episode/coaching workflow gates.
+
+### 2026-07-31 retained native project operation checkpoint
+
+- Added a loopback-only longitudinal operator that drives the compiled
+  production iPhone shell with the retained media `.test` identity, creates a
+  private project, then creates a tagged Task, private document-kernel Note,
+  and active Goal. It independently reads the complete graph from PostgreSQL
+  and retains the product records plus `.xcresult` evidence.
+- Doing the work exposed a cross-client ownership defect: Work selected its
+  newly created project from the authoritative Work workspace, while quick
+  entry re-resolved it through Session's stale project catalog and silently
+  lost the destination. Work now carries the exact project and active tag
+  vocabulary into quick entry, and the sheet preserves that explicit
+  destination until shared catalogs refresh.
+- Preserved the initial project-only, focus-failure, and Task-only fixtures as
+  visible regression data. The first complete working-tree fixture and the
+  exact committed fixture remain available for longitudinal search, tagging,
+  archive, migration, and cross-surface continuity testing.
+- Operated clean committed source
+  `5538d01c6286c0c96a5f11c79d5248101491ee19`. The compiled iPhone journey
+  passed 1/1; independent readback proved one private project/OWNER grant,
+  exactly one Task/Note/Goal, one reused active tag, complete note operation,
+  human-committed source receipts, and zero external side effects.
+- Retained-operation tests pass 3/3, Quipsly typecheck and optimized 150-route
+  build pass, the media processor builds, and the repaired TypeScript 7 gate
+  registers and passes all 27 tracked projects on 7.0.2. Clean-parent
+  comparison proves the eight global mobile source-smoke failures are existing
+  baseline debt, not regressions from this slice.
+- This closes the local compiled-app project-organization slice. Production
+  schema/backend promotion, a new TestFlight candidate, physical-iPhone
+  recording/recovery/upload/playback, and genuine episode/coaching operation
+  remain required.
