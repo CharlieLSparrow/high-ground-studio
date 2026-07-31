@@ -5,15 +5,32 @@ import CryptoKit
 import SwiftUI
 
 struct MobileEpisodeWatchClip: Codable, Hashable, Identifiable {
+    let watchId: String?
     let assetId: String
     let sourceId: String?
     let title: String
     let kind: String
     let playbackUrl: String
     let durationSeconds: TimeInterval?
+    let rangeStartSeconds: TimeInterval?
+    let rangeEndSeconds: TimeInterval?
 
-    var id: String { assetId }
+    var id: String { watchId ?? assetId }
     var isVideo: Bool { kind.lowercased() == "video" }
+    var playbackStartSeconds: TimeInterval {
+        max(0, rangeStartSeconds ?? 0)
+    }
+    var playbackEndSeconds: TimeInterval? {
+        guard let end = rangeEndSeconds ?? durationSeconds else { return nil }
+        return max(playbackStartSeconds, end)
+    }
+
+    func clampedPlaybackPosition(_ value: TimeInterval) -> TimeInterval {
+        let lowerBound = playbackStartSeconds
+        let position = max(lowerBound, value)
+        guard let upperBound = playbackEndSeconds else { return position }
+        return min(position, upperBound)
+    }
 }
 
 struct MobileEpisodeWatchSession: Codable, Hashable {
@@ -56,7 +73,7 @@ struct MobileEpisodeWatchRoom: Codable, Hashable {
     let timelineSync: MobileEpisodeWatchTimelineSync?
 
     var selectedClip: MobileEpisodeWatchClip? {
-        clips.first { $0.assetId == selectedClipId }
+        clips.first { $0.id == selectedClipId }
     }
 
     var watchedSegments: [MobileEpisodeWatchSegment] {
@@ -198,7 +215,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
     var selectedClip: MobileEpisodeWatchClip? { room?.selectedClip }
     var isPrepared: Bool {
         guard let selectedClip else { return false }
-        return preparedAssetID == selectedClip.assetId
+        return preparedAssetID == selectedClip.id
             && preparedClipIdentity == selectedClip
             && player != nil
             && playerItemReady
@@ -302,32 +319,41 @@ final class MobileEpisodeWatchClient: ObservableObject {
             selectedClipId: "preview-be-curious",
             positionSeconds: 43.2,
             effectiveAt: ISO8601DateFormatter().string(from: Date()),
-            durationSeconds: 254.63,
+            durationSeconds: 51.2,
             session: watchSession,
             clips: [
                 MobileEpisodeWatchClip(
+                    watchId: "preview-be-curious",
                     assetId: "preview-be-curious",
                     sourceId: "preview-source-be-curious",
                     title: "Ted Lasso · Be Curious",
                     kind: "video",
                     playbackUrl: "/preview/be-curious.mp4",
-                    durationSeconds: 254.63
+                    durationSeconds: 254.63,
+                    rangeStartSeconds: 38.4,
+                    rangeEndSeconds: 51.2
                 ),
                 MobileEpisodeWatchClip(
+                    watchId: "preview-i-love-lucy",
                     assetId: "preview-i-love-lucy",
                     sourceId: "preview-source-i-love-lucy",
                     title: "I Love Lucy",
                     kind: "video",
                     playbackUrl: "/preview/i-love-lucy.mp4",
-                    durationSeconds: 135.35
+                    durationSeconds: 135.35,
+                    rangeStartSeconds: nil,
+                    rangeEndSeconds: nil
                 ),
                 MobileEpisodeWatchClip(
+                    watchId: "preview-lotr-ring-back",
                     assetId: "preview-lotr-ring-back",
                     sourceId: "preview-source-lotr-ring-back",
                     title: "LOTR · Ring Back",
                     kind: "video",
                     playbackUrl: "/preview/lotr-ring-back.mp4",
-                    durationSeconds: 240.91
+                    durationSeconds: 240.91,
+                    rangeStartSeconds: nil,
+                    rangeEndSeconds: nil
                 )
             ],
             segments: segments,
@@ -596,6 +622,18 @@ final class MobileEpisodeWatchClient: ObservableObject {
             try beginSharedAudioLease()
             localPreviewActive = true
             endedAssetID = nil
+            let current = player.currentTime().seconds
+            let target = selectedClip?.clampedPlaybackPosition(
+                current.isFinite ? current : 0
+            ) ?? 0
+            if !current.isFinite || abs(current - target) > 0.04 {
+                player.seek(
+                    to: CMTime(seconds: target, preferredTimescale: 600),
+                    toleranceBefore: .zero,
+                    toleranceAfter: .zero
+                )
+                displayPosition = target
+            }
             player.play()
             statusMessage = "Private iPhone preview · not added to the shared timeline."
             errorMessage = nil
@@ -661,7 +699,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             errorMessage = "Pause shared Watch before choosing the next clip."
             return
         }
-        guard selectedClip?.assetId != clip.assetId else {
+        guard selectedClip?.id != clip.id else {
             statusMessage = "\(clip.title) is already selected."
             errorMessage = nil
             return
@@ -670,7 +708,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             type: "SELECT_CLIP",
             session: session,
             positionSeconds: 0,
-            clipID: clip.assetId
+            clipID: clip.id
         )
     }
 
@@ -732,8 +770,11 @@ final class MobileEpisodeWatchClient: ObservableObject {
             return
         }
         let target = min(
-            max(0, displayPosition + delta),
-            selectedClip?.durationSeconds ?? .greatestFiniteMagnitude
+            max(
+                selectedClip?.playbackStartSeconds ?? 0,
+                displayPosition + delta
+            ),
+            selectedClip?.playbackEndSeconds ?? .greatestFiniteMagnitude
         )
         await sendCommand(
             type: "SEEK",
@@ -904,7 +945,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             }
         }
         player = nextPlayer
-        preparedAssetID = clip.assetId
+        preparedAssetID = clip.id
         preparedClipIdentity = clip
         itemStatusCancellable = item.publisher(for: \.status)
             .receive(on: DispatchQueue.main)
@@ -937,13 +978,22 @@ final class MobileEpisodeWatchClient: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if seconds.isFinite {
-                    self.displayPosition = max(0, seconds)
+                    let position = clip.clampedPlaybackPosition(seconds)
+                    self.displayPosition = position
+                    if let rangeEnd = clip.rangeEndSeconds,
+                       seconds >= rangeEnd - 0.04,
+                       self.endedAssetID != self.preparedAssetID {
+                        await self.handlePlaybackEnded()
+                    }
                 }
             }
         }
     }
 
     private func handlePlaybackEnded() async {
+        let completedIdentity = preparedAssetID
+        guard endedAssetID != completedIdentity else { return }
+        endedAssetID = completedIdentity
         player?.pause()
         endSharedAudioLease()
         if localPreviewActive {
@@ -952,13 +1002,12 @@ final class MobileEpisodeWatchClient: ObservableObject {
             return
         }
         guard room?.status == "playing",
-              endedAssetID != preparedAssetID,
               let currentSession else { return }
-        endedAssetID = preparedAssetID
         await sendCommand(
             type: "ENDED",
             session: currentSession,
-            positionSeconds: selectedClip?.durationSeconds ?? displayPosition
+            positionSeconds:
+                selectedClip?.playbackEndSeconds ?? displayPosition
         )
     }
 
@@ -1416,7 +1465,7 @@ struct MobileEpisodeWatchCard: View {
                                     )
                                 }
                             } label: {
-                                if candidate.assetId == clip.assetId {
+                                if candidate.id == clip.id {
                                     Label(
                                         candidate.title,
                                         systemImage: "checkmark"
@@ -1453,10 +1502,21 @@ struct MobileEpisodeWatchCard: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("CaptureEpisodeWatchClipTitle")
                     Text(
-                        "\(client.displayPosition.watchTimestamp) / \((clip.durationSeconds ?? 0).watchTimestamp)"
+                        "\(client.displayPosition.watchTimestamp) / \((clip.playbackEndSeconds ?? 0).watchTimestamp)"
                     )
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
+                    if let rangeStart = clip.rangeStartSeconds,
+                       let rangeEnd = clip.rangeEndSeconds {
+                        Text(
+                            "Saved range \(rangeStart.watchTimestamp)–\(rangeEnd.watchTimestamp)"
+                        )
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier(
+                            "CaptureEpisodeWatchRange"
+                        )
+                    }
                 }
 
                 if let player = client.player, client.isPrepared {

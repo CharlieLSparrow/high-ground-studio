@@ -46,6 +46,7 @@ import type {
   EpisodeRoomImportedCandidate,
   EpisodeRoomRecordingSession,
   EpisodeRoomVaultCandidate,
+  EpisodeRoomVaultSavedClip,
   EpisodeRoomWritingState,
 } from "@/lib/server/episode-room-store";
 
@@ -79,6 +80,7 @@ type CommandDraft = {
     | "ENDED"
     | "SYNC_TIMELINE";
   assetId?: string;
+  mediaClipId?: string;
   clipId?: string;
   recordingRoomId?: string;
   positionSeconds?: number;
@@ -113,7 +115,7 @@ function formatUncertainty(milliseconds: number | null) {
 }
 
 function selectedClip(room: EpisodeRoomState) {
-  return room.clips.find((clip) => clip.assetId === room.selectedClipId);
+  return room.clips.find((clip) => clip.watchId === room.selectedClipId);
 }
 
 function activityLabel(room: EpisodeRoomState) {
@@ -173,6 +175,7 @@ export default function EpisodeRoomClient({
   const [localPlaybackBlocked, setLocalPlaybackBlocked] = useState(false);
   const [dragPosition, setDragPosition] = useState<number | null>(null);
   const mediaRef = useRef<HTMLMediaElement | null>(null);
+  const rangeEndSentRef = useRef("");
   const fileRef = useRef<HTMLInputElement | null>(null);
 
   const projectSlug = initialPayload.project.slug;
@@ -292,6 +295,8 @@ export default function EpisodeRoomClient({
     }
     return null;
   }, [canEdit, endpoint, episodeSlug, refresh]);
+  const sendCommandRef = useRef(sendCommand);
+  sendCommandRef.current = sendCommand;
 
   const refreshVault = useCallback(async (quiet = false) => {
     setVaultLoading(true);
@@ -324,12 +329,16 @@ export default function EpisodeRoomClient({
     }
   }, [endpoint, episodeSlug]);
 
-  async function useVaultAsset(candidate: EpisodeRoomVaultCandidate) {
+  async function useVaultAsset(
+    candidate: EpisodeRoomVaultCandidate,
+    savedClip?: EpisodeRoomVaultSavedClip,
+  ) {
     const nextRoom = await sendCommand({
       type: "IMPORT_VAULT_ASSET",
       assetId: candidate.assetId,
+      ...(savedClip ? { mediaClipId: savedClip.mediaClipId } : {}),
     }, {
-      success: `${candidate.title} is attached to the episode and ready in Watch.`,
+      success: `${savedClip?.title || candidate.title} is attached to the episode and ready in Watch.`,
     });
     if (nextRoom) await refreshVault(true);
   }
@@ -347,6 +356,7 @@ export default function EpisodeRoomClient({
       media.currentTime = target;
     }
     if (room.status === "playing" && sharedClockIsLive) {
+      rangeEndSentRef.current = "";
       void media.play()
         .then(() => setLocalPlaybackBlocked(false))
         .catch(() => setLocalPlaybackBlocked(true));
@@ -360,11 +370,30 @@ export default function EpisodeRoomClient({
     const interval = window.setInterval(() => {
       const media = mediaRef.current;
       setClockNowMilliseconds(Date.now());
-      setDisplayPosition(media && !media.paused
+      const currentClip = selectedClip(roomRef.current);
+      const rangeEnd = currentClip?.rangeEndSeconds;
+      const projectedPosition = sharedClockIsLive
+        ? projectedEpisodeRoomPosition(roomRef.current)
+        : roomRef.current.positionSeconds;
+      const effectivePosition = media && !media.paused
         ? media.currentTime
-        : sharedClockIsLive
-          ? projectedEpisodeRoomPosition(roomRef.current)
-          : roomRef.current.positionSeconds);
+        : projectedPosition;
+      if (
+        rangeEnd !== undefined
+        && effectivePosition >= rangeEnd - 0.04
+        && roomRef.current.status === "playing"
+      ) {
+        media?.pause();
+        const endIdentity = `${roomRef.current.revision}:${currentClip?.watchId || ""}`;
+        if (rangeEndSentRef.current !== endIdentity) {
+          rangeEndSentRef.current = endIdentity;
+          void sendCommandRef.current({
+            type: "ENDED",
+            positionSeconds: rangeEnd,
+          });
+        }
+      }
+      setDisplayPosition(effectivePosition);
     }, 200);
     return () => window.clearInterval(interval);
   }, [sharedClockIsLive]);
@@ -510,8 +539,14 @@ export default function EpisodeRoomClient({
     });
   }
 
-  const duration = Math.max(0, localDuration || clip?.durationSeconds || room.durationSeconds || 0);
-  const sliderPosition = Math.min(duration || Number.MAX_SAFE_INTEGER, dragPosition ?? displayPosition);
+  const playbackStart = clip?.rangeStartSeconds ?? 0;
+  const playbackEnd = clip?.rangeEndSeconds
+    ?? (localDuration || clip?.durationSeconds || room.durationSeconds || 0);
+  const duration = Math.max(playbackStart, playbackEnd);
+  const sliderPosition = Math.min(
+    duration || Number.MAX_SAFE_INTEGER,
+    Math.max(playbackStart, dragPosition ?? displayPosition),
+  );
   const unattachedCandidates = candidates.filter((candidate) => !candidate.attached);
   const normalizedVaultQuery = vaultQuery.trim().toLowerCase();
   const visibleVaultCandidates = vaultCandidates.filter((candidate) => (
@@ -873,7 +908,7 @@ export default function EpisodeRoomClient({
                     <Film className="mx-auto h-14 w-14 text-[#d8ad56]" />
                     <p className="mt-4 font-serif text-2xl font-black">{clip.title}</p>
                     <audio
-                      key={clip.assetId}
+                      key={clip.watchId}
                       ref={(node) => { mediaRef.current = node; }}
                       src={clip.playbackUrl}
                       preload="metadata"
@@ -883,7 +918,7 @@ export default function EpisodeRoomClient({
                   </div>
                 ) : (
                   <video
-                    key={clip.assetId}
+                    key={clip.watchId}
                     ref={(node) => { mediaRef.current = node; }}
                     src={clip.playbackUrl}
                     preload="metadata"
@@ -920,15 +955,18 @@ export default function EpisodeRoomClient({
                     >
                       {room.status === "playing" ? <Pause size={21} fill="currentColor" /> : <Play size={21} fill="currentColor" />}
                     </button>
-                    <button type="button" disabled={!canEdit || !sharedClockIsLive} onClick={() => void seek(Math.max(0, displayPosition - 10))} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#40584c] disabled:opacity-40" aria-label="Back 10 seconds"><RotateCcw size={18} /></button>
+                    <button type="button" disabled={!canEdit || !sharedClockIsLive} onClick={() => void seek(Math.max(playbackStart, displayPosition - 10))} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#40584c] disabled:opacity-40" aria-label="Back 10 seconds"><RotateCcw size={18} /></button>
                     <div className="min-w-0 flex-1">
                       <input
                         type="range"
-                        min={0}
-                        max={Math.max(1, duration)}
+                        min={playbackStart}
+                        max={Math.max(playbackStart + 0.01, duration)}
                         step={0.01}
-                        value={Math.min(Math.max(0, sliderPosition), Math.max(1, duration))}
-                        disabled={!canEdit || !sharedClockIsLive || !duration}
+                        value={Math.min(
+                          Math.max(playbackStart, sliderPosition),
+                          Math.max(playbackStart + 0.01, duration),
+                        )}
+                        disabled={!canEdit || !sharedClockIsLive || duration <= playbackStart}
                         onChange={(event) => setDragPosition(Number(event.target.value))}
                         onPointerUp={(event) => void seek(Number(event.currentTarget.value))}
                         onKeyUp={(event) => {
@@ -941,7 +979,7 @@ export default function EpisodeRoomClient({
                       />
                       <div className="mt-1 flex justify-between text-[10px] font-black tabular-nums text-[#91a298]">
                         <span>{formatClock(sliderPosition)}</span>
-                        <span>{duration ? formatClock(duration) : "Duration loading"}</span>
+                        <span>{duration > playbackStart ? formatClock(duration) : "Duration loading"}</span>
                       </div>
                     </div>
                     <button type="button" disabled={!canEdit || !sharedClockIsLive} onClick={() => void seek(Math.min(duration || Number.MAX_SAFE_INTEGER, displayPosition + 10))} className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-[#40584c] disabled:opacity-40" aria-label="Forward 10 seconds"><RotateCw size={18} /></button>
@@ -958,14 +996,20 @@ export default function EpisodeRoomClient({
                   <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="font-black text-[#f4eedf]">{clip.title}</p>
-                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#91a298]">{clip.kind} · {room.segments.length} watched {room.segments.length === 1 ? "segment" : "segments"}</p>
+                      <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#91a298]">
+                        {clip.kind}
+                        {clip.rangeStartSeconds !== undefined && clip.rangeEndSeconds !== undefined
+                          ? ` · saved range ${formatClock(clip.rangeStartSeconds)}–${formatClock(clip.rangeEndSeconds)}`
+                          : ""}
+                        {" · "}{room.segments.length} watched {room.segments.length === 1 ? "segment" : "segments"}
+                      </p>
                     </div>
                     <button
                       type="button"
                       disabled={!canEdit}
                       onClick={() => void sendCommand({
                         type: "REMOVE_CLIP",
-                        clipId: clip.assetId,
+                        clipId: clip.watchId,
                         positionSeconds: mediaRef.current?.currentTime,
                       })}
                       className="inline-flex min-h-10 items-center gap-2 rounded-full border border-rose-400/30 px-3 text-[10px] font-black uppercase tracking-wide text-rose-200 disabled:opacity-40"
@@ -982,18 +1026,24 @@ export default function EpisodeRoomClient({
                   <div className="mt-2 flex gap-2 overflow-x-auto pb-2">
                     {room.clips.map((item) => (
                       <button
-                        key={item.assetId}
+                        key={item.watchId}
                         type="button"
-                        disabled={!canEdit || item.assetId === room.selectedClipId}
+                        disabled={!canEdit || item.watchId === room.selectedClipId}
                         onClick={() => void sendCommand({
                           type: "SELECT_CLIP",
-                          clipId: item.assetId,
+                          clipId: item.watchId,
                           positionSeconds: mediaRef.current?.currentTime,
                         })}
-                        className={`min-w-52 rounded-2xl border p-3 text-left transition ${item.assetId === room.selectedClipId ? "border-[#d8ad56] bg-[#d8ad56]/10" : "border-[#30483d] bg-[#17251e] hover:border-[#6b8376]"}`}
+                        className={`min-w-52 rounded-2xl border p-3 text-left transition ${item.watchId === room.selectedClipId ? "border-[#d8ad56] bg-[#d8ad56]/10" : "border-[#30483d] bg-[#17251e] hover:border-[#6b8376]"}`}
                       >
                         <span className="block truncate text-sm font-black">{item.title}</span>
-                        <span className="mt-1 block text-[10px] font-bold uppercase tracking-wide text-[#91a298]">{item.kind} · {isNativePlayable(item) ? "ready" : "source only"}</span>
+                        <span className="mt-1 block text-[10px] font-bold uppercase tracking-wide text-[#91a298]">
+                          {item.kind}
+                          {item.rangeStartSeconds !== undefined && item.rangeEndSeconds !== undefined
+                            ? ` · ${formatClock(item.rangeStartSeconds)}–${formatClock(item.rangeEndSeconds)}`
+                            : ""}
+                          {" · "}{isNativePlayable(item) ? "ready" : "source only"}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -1032,33 +1082,62 @@ export default function EpisodeRoomClient({
                 {visibleVaultCandidates.length ? (
                   <ul className="mt-3 grid gap-2 lg:grid-cols-2">
                     {visibleVaultCandidates.slice(0, 24).map((candidate) => (
-                      <li key={candidate.assetId} className="flex min-w-0 flex-col items-stretch gap-3 rounded-2xl border border-[#30483d] bg-[#07110d] p-3 sm:flex-row sm:items-center sm:justify-between">
-                        <div className="min-w-0">
-                          <p className="break-words text-sm font-black sm:truncate">{candidate.title}</p>
-                          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#91a298]">
-                            {candidate.kind} · {candidate.readinessLabel}
-                          </p>
-                          {candidate.savedClipCount ? (
-                            <p className="mt-1 break-words text-[10px] font-semibold text-[#d7c69d] sm:truncate">
-                              {candidate.savedClipCount} saved {candidate.savedClipCount === 1 ? "clip" : "clips"}
-                              {candidate.savedClipTitles.length
-                                ? ` · ${candidate.savedClipTitles.join(" · ")}`
-                                : ""}
+                      <li key={candidate.assetId} className="min-w-0 rounded-2xl border border-[#30483d] bg-[#07110d] p-3">
+                        <div className="flex min-w-0 flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="min-w-0">
+                            <p className="break-words text-sm font-black sm:truncate">{candidate.title}</p>
+                            <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-[#91a298]">
+                              {candidate.kind} · {candidate.readinessLabel}
                             </p>
-                          ) : null}
+                            {candidate.savedClipCount ? (
+                              <p className="mt-1 text-[10px] font-semibold text-[#d7c69d]">
+                                {candidate.savedClipCount} saved {candidate.savedClipCount === 1 ? "range" : "ranges"}
+                              </p>
+                            ) : null}
+                          </div>
+                          <button
+                            type="button"
+                            disabled={!canEdit || !candidate.canAddToWatch || status === "saving"}
+                            onClick={() => void useVaultAsset(candidate)}
+                            className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#d8ad56] px-3 text-[10px] font-black uppercase tracking-wide text-[#172018] disabled:opacity-40"
+                          >
+                            {candidate.attached ? (
+                              <><CheckCircle2 size={13} /> Whole source in Watch</>
+                            ) : (
+                              <><Plus size={13} /> Use whole source</>
+                            )}
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          disabled={!canEdit || !candidate.canAddToWatch || status === "saving"}
-                          onClick={() => void useVaultAsset(candidate)}
-                          className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full bg-[#d8ad56] px-3 text-[10px] font-black uppercase tracking-wide text-[#172018] disabled:opacity-40"
-                        >
-                          {candidate.attached ? (
-                            <><CheckCircle2 size={13} /> In Watch</>
-                          ) : (
-                            <><Plus size={13} /> Use in Watch</>
-                          )}
-                        </button>
+                        {candidate.savedClips.length ? (
+                          <div className="mt-3 border-t border-[#30483d] pt-3">
+                            <p className="text-[9px] font-black uppercase tracking-[0.16em] text-[#91a298]">Saved ranges</p>
+                            <ul className="mt-2 space-y-2">
+                              {candidate.savedClips.map((savedClip) => (
+                                <li key={savedClip.mediaClipId} className="flex flex-col gap-2 rounded-xl bg-[#17251e] p-2.5 sm:flex-row sm:items-center sm:justify-between">
+                                  <div className="min-w-0">
+                                    <p className="break-words text-xs font-black sm:truncate">{savedClip.title}</p>
+                                    <p className="mt-1 text-[9px] font-bold uppercase tracking-wide text-[#91a298]">
+                                      {formatClock(savedClip.rangeStartSeconds)}–{formatClock(savedClip.rangeEndSeconds)}
+                                      {" · "}{formatClock(savedClip.durationSeconds)}
+                                    </p>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    disabled={!canEdit || savedClip.attached || status === "saving"}
+                                    onClick={() => void useVaultAsset(candidate, savedClip)}
+                                    className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-full border border-[#d8ad56]/60 px-3 text-[10px] font-black uppercase tracking-wide text-[#f6d68f] disabled:opacity-40"
+                                  >
+                                    {savedClip.attached ? (
+                                      <><CheckCircle2 size={13} /> Range in Watch</>
+                                    ) : (
+                                      <><Scissors size={13} /> Use saved range</>
+                                    )}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        ) : null}
                       </li>
                     ))}
                   </ul>
@@ -1076,7 +1155,7 @@ export default function EpisodeRoomClient({
                 )}
                 {vaultCandidates.some((candidate) => candidate.savedClipCount > 0) ? (
                   <p className="mt-3 text-[10px] font-semibold leading-4 text-[#91a298]">
-                    Saved ranges stay preserved in the Media Vault. Watch uses the whole source for now; open the editor when you need an exact saved range.
+                    Saved ranges play from their exact in point to out point while the original source remains unchanged.
                   </p>
                 ) : null}
               </div>

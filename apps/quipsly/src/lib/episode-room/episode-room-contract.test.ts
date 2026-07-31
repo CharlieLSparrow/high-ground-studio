@@ -21,6 +21,7 @@ const actor: EpisodeRoomActor = {
 };
 
 const clip: EpisodeRoomClip = {
+  watchId: "asset-clip",
   assetId: "asset-clip",
   sourceId: "source-clip",
   title: "The clip we discuss",
@@ -76,6 +77,59 @@ function completedWatchState() {
 }
 
 describe("Episode Room contract", () => {
+  test("keeps saved range identity separate from its source and clamps shared playback", () => {
+    const savedRange: EpisodeRoomClip = {
+      ...clip,
+      watchId: "media-vault-clip:curiosity-opening",
+      title: "Curiosity opening",
+      rangeStartSeconds: 4,
+      rangeEndSeconds: 12,
+    };
+    let state = createEmptyEpisodeRoomState("2026-07-26T12:00:00.000Z");
+    state = apply(state, {
+      type: "ADD_CLIP",
+      clip: savedRange,
+      clientRequestId: "add-saved-range",
+      expectedRevision: 0,
+    }, "2026-07-26T12:00:01.000Z", "add-saved-range");
+    expect(state).toMatchObject({
+      selectedClipId: savedRange.watchId,
+      positionSeconds: 4,
+      durationSeconds: 12,
+    });
+
+    state = apply(state, {
+      type: "START_SESSION",
+      clientRequestId: "start-saved-range",
+      expectedRevision: 1,
+    }, "2026-07-26T12:01:00.000Z", "start-saved-range");
+    state = apply(state, {
+      type: "PLAY",
+      positionSeconds: 0,
+      clientRequestId: "play-saved-range",
+      expectedRevision: 2,
+    }, "2026-07-26T12:01:01.000Z", "play-saved-range");
+    state = apply(state, {
+      type: "PAUSE",
+      positionSeconds: 20,
+      clientRequestId: "pause-saved-range",
+      expectedRevision: 3,
+    }, "2026-07-26T12:01:09.000Z", "pause-saved-range");
+
+    expect(state.positionSeconds).toBe(12);
+    expect(state.segments[0]).toMatchObject({
+      clipId: savedRange.watchId,
+      sourceStartSeconds: 4,
+      sourceEndSeconds: 12,
+    });
+    expect(episodeRoomTimelineClips(state)[0]).toMatchObject({
+      assetId: clip.assetId,
+      sourceStart: 4,
+      sourceEnd: 12,
+      duration: 8,
+    });
+  });
+
   test("records shared play and pause as an aligned watch segment", () => {
     let state = createEmptyEpisodeRoomState("2026-07-26T12:00:00.000Z");
     state = apply(state, {

@@ -135,6 +135,15 @@ describe("EpisodeRoomClient shared writing", () => {
         updatedAt: "2026-07-30T10:00:00.000Z",
         savedClipCount: 1,
         savedClipTitles: ["Curiosity opening"],
+        savedClips: [{
+          mediaClipId: "media-clip-curiosity-opening",
+          watchId: "media-vault-clip:media-clip-curiosity-opening",
+          title: "Curiosity opening",
+          rangeStartSeconds: 4,
+          rangeEndSeconds: 12,
+          durationSeconds: 8,
+          attached: false,
+        }],
         imported: false,
         attached: false,
         canAddToWatch: true,
@@ -146,10 +155,12 @@ describe("EpisodeRoomClient shared writing", () => {
       name: "Add from this Nest’s Media Vault",
     })).toBeInTheDocument();
     expect(screen.getByText("Be Curious.mp4")).toBeInTheDocument();
-    expect(screen.getByText(/1 saved clip · Curiosity opening/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Use in Watch" })).toBeEnabled();
+    expect(screen.getByText("1 saved range")).toBeInTheDocument();
+    expect(screen.getByText("Curiosity opening")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use whole source" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Use saved range" })).toBeEnabled();
     expect(screen.getByText(
-      /Watch uses the whole source for now; open the editor when you need an exact saved range/i,
+      /Saved ranges play from their exact in point to out point/i,
     )).toBeInTheDocument();
   });
 
@@ -168,6 +179,15 @@ describe("EpisodeRoomClient shared writing", () => {
         updatedAt: "2026-07-30T10:00:00.000Z",
         savedClipCount: 1,
         savedClipTitles: ["Curiosity opening"],
+        savedClips: [{
+          mediaClipId: "media-clip-curiosity-opening",
+          watchId: "media-vault-clip:media-clip-curiosity-opening",
+          title: "Curiosity opening",
+          rangeStartSeconds: 4,
+          rangeEndSeconds: 12,
+          durationSeconds: 8,
+          attached: false,
+        }],
         imported: false,
         attached: false,
         canAddToWatch: true,
@@ -176,8 +196,10 @@ describe("EpisodeRoomClient shared writing", () => {
     }} />);
 
     expect(screen.getByText("Be Curious.mp4")).toBeInTheDocument();
-    expect(screen.getByText(/1 saved clip · Curiosity opening/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Use in Watch" })).toBeDisabled();
+    expect(screen.getByText("1 saved range")).toBeInTheDocument();
+    expect(screen.getByText("Curiosity opening")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Use whole source" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Use saved range" })).toBeDisabled();
   });
 
   it("shows a bound recording clock without leaking raw Capture-room access", () => {
@@ -226,6 +248,7 @@ describe("EpisodeRoomClient shared writing", () => {
         selectedClipId: "watch-clip-1",
         durationSeconds: 30,
         clips: [{
+          watchId: "watch-clip-1",
           assetId: "watch-clip-1",
           sourceId: "watch-source-1",
           title: "Reference clip",
@@ -278,6 +301,7 @@ describe("EpisodeRoomClient shared writing", () => {
         selectedClipId: "watch-clip-1",
         durationSeconds: 30,
         clips: [{
+          watchId: "watch-clip-1",
           assetId: "watch-clip-1",
           sourceId: "watch-source-1",
           title: "Reference clip",
@@ -369,5 +393,76 @@ describe("EpisodeRoomClient shared writing", () => {
 
     expect(screen.getByRole("button", { name: "Start rehearsal clock" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "Watch a clip to build timeline" })).toBeDisabled();
+  });
+
+  it("ends a saved range from the shared clock when local playback is blocked", async () => {
+    jest.setSystemTime(new Date("2026-07-30T10:00:09.000Z"));
+    jest.spyOn(HTMLMediaElement.prototype, "pause").mockImplementation(() => {});
+    jest.spyOn(HTMLMediaElement.prototype, "play").mockRejectedValue(
+      new DOMException("Autoplay blocked", "NotAllowedError"),
+    );
+    const playingRoom = {
+      ...initialPayload.room,
+      revision: 1,
+      status: "playing" as const,
+      selectedClipId: "media-vault-clip:curiosity-opening",
+      positionSeconds: 4,
+      durationSeconds: 12,
+      effectiveAt: "2026-07-30T10:00:00.000Z",
+      session: {
+        id: "rehearsal-range-pass",
+        startedAt: "2026-07-30T10:00:00.000Z",
+        startedBy: "Episode Host",
+      },
+      clips: [{
+        watchId: "media-vault-clip:curiosity-opening",
+        assetId: "asset-be-curious",
+        sourceId: "media-vault-asset:asset-be-curious",
+        title: "Curiosity opening",
+        kind: "video" as const,
+        playbackUrl: "/api/ingest/media/source-be-curious",
+        durationSeconds: 74,
+        rangeStartSeconds: 4,
+        rangeEndSeconds: 12,
+        addedAt: "2026-07-30T09:59:00.000Z",
+        addedBy: "Episode Host",
+      }],
+    };
+    const fetchMock = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        ok: true,
+        room: {
+          ...playingRoom,
+          revision: 2,
+          status: "ended",
+          positionSeconds: 12,
+          effectiveAt: "2026-07-30T10:00:09.000Z",
+        },
+      }),
+    } as Response);
+    globalThis.fetch = fetchMock;
+
+    render(<EpisodeRoomClient initialPayload={{
+      ...initialPayload,
+      room: playingRoom,
+    }} />);
+
+    await act(async () => {
+      jest.advanceTimersByTime(250);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    const [, request] = fetchMock.mock.calls.find(([, init]) => (
+      init?.method === "POST"
+    )) ?? [];
+    expect(request).toMatchObject({ method: "POST" });
+    expect(JSON.parse(String(request?.body))).toMatchObject({
+      type: "ENDED",
+      positionSeconds: 12,
+      expectedRevision: 1,
+    });
+    expect(screen.getByText("ended")).toBeInTheDocument();
   });
 });

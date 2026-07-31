@@ -32,6 +32,7 @@ runLocalDatabaseSmoke("Episode Room Media Vault local database smoke", () => {
   const editorEmail = `episode-vault-editor-${nonce}@example.test`;
   let workspaceId = "";
   let projectId = "";
+  let savedClipId = "";
   const assetIds: string[] = [];
 
   beforeAll(async () => {
@@ -156,6 +157,10 @@ runLocalDatabaseSmoke("Episode Room Media Vault local database smoke", () => {
       }),
     ]);
     assetIds.push(direct.id, binned.id, attached.id, foreign.id, global.id);
+    savedClipId = (await prisma.mediaClip.findFirstOrThrow({
+      where: { mediaAssetId: direct.id },
+      select: { id: true },
+    })).id;
   });
 
   afterAll(async () => {
@@ -188,6 +193,14 @@ runLocalDatabaseSmoke("Episode Room Media Vault local database smoke", () => {
     ))).toMatchObject({
       savedClipCount: 1,
       savedClipTitles: ["Durable curiosity range"],
+      savedClips: [{
+        mediaClipId: savedClipId,
+        watchId: `media-vault-clip:${savedClipId}`,
+        rangeStartSeconds: 4,
+        rangeEndSeconds: 12,
+        durationSeconds: 8,
+        attached: false,
+      }],
       imported: false,
       attached: false,
     });
@@ -250,6 +263,57 @@ runLocalDatabaseSmoke("Episode Room Media Vault local database smoke", () => {
     });
   });
 
+  it("adds an exact saved range without duplicating its preserved source", async () => {
+    const directAssetId = assetIds[0];
+    const input = {
+      type: "IMPORT_VAULT_ASSET" as const,
+      assetId: directAssetId,
+      mediaClipId: savedClipId,
+      clientRequestId: `episode-vault-range-${nonce}`,
+      expectedRevision: 1,
+    };
+    const first = await applyEpisodeRoomStoreCommand({
+      projectSlug,
+      episodeSlug,
+      input,
+      actor: {
+        email: editorEmail,
+        label: "Episode Vault QA editor",
+      },
+    });
+    const retry = await applyEpisodeRoomStoreCommand({
+      projectSlug,
+      episodeSlug,
+      input,
+      actor: {
+        email: editorEmail,
+        label: "Episode Vault QA editor",
+      },
+    });
+    const production = await prisma.studioEpisodeProduction.findUniqueOrThrow({
+      where: {
+        projectId_slug: {
+          projectId,
+          slug: episodeSlug,
+        },
+      },
+      select: { productionJson: true },
+    });
+    const productionJson = production.productionJson as Record<string, any>;
+
+    expect(first.room.revision).toBe(2);
+    expect(first.room.clips).toContainEqual(expect.objectContaining({
+      watchId: `media-vault-clip:${savedClipId}`,
+      assetId: directAssetId,
+      title: "Durable curiosity range",
+      rangeStartSeconds: 4,
+      rangeEndSeconds: 12,
+    }));
+    expect(retry.room.revision).toBe(2);
+    expect(productionJson.importedMedia).toHaveLength(1);
+    expect(productionJson.episodeRoom.clips).toHaveLength(2);
+  });
+
   it("does not disclose or attach an asset from another Nest", async () => {
     await expect(applyEpisodeRoomStoreCommand({
       projectSlug,
@@ -258,7 +322,7 @@ runLocalDatabaseSmoke("Episode Room Media Vault local database smoke", () => {
         type: "IMPORT_VAULT_ASSET",
         assetId: assetIds[3],
         clientRequestId: `episode-vault-foreign-${nonce}`,
-        expectedRevision: 1,
+        expectedRevision: 2,
       },
       actor: {
         email: editorEmail,

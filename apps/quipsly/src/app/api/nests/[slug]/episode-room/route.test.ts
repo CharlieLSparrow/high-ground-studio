@@ -179,6 +179,7 @@ describe("Episode Room command route", () => {
       episodeSlug: "episode-4-part-2",
       type: "IMPORT_VAULT_ASSET",
       assetId: "asset-in-this-nest",
+      mediaClipId: "saved-clip-opening",
       clientRequestId: "vault:request-1",
       expectedRevision: 2,
     }), params);
@@ -188,6 +189,7 @@ describe("Episode Room command route", () => {
       input: {
         type: "IMPORT_VAULT_ASSET",
         assetId: "asset-in-this-nest",
+        mediaClipId: "saved-clip-opening",
         clientRequestId: "vault:request-1",
         expectedRevision: 2,
       },
@@ -403,6 +405,15 @@ describe("Episode Room runtime route", () => {
       updatedAt: "2026-07-30T10:00:00.000Z",
       savedClipCount: 1,
       savedClipTitles: ["Opening exchange"],
+      savedClips: [{
+        mediaClipId: "media-clip-1",
+        watchId: "media-vault-clip:media-clip-1",
+        title: "Opening exchange",
+        rangeStartSeconds: 4,
+        rangeEndSeconds: 12,
+        durationSeconds: 8,
+        attached: false,
+      }],
       imported: false,
       attached: false,
       canAddToWatch: true,

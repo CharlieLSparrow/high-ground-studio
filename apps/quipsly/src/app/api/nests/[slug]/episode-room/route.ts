@@ -56,7 +56,16 @@ function parseCommand(body: Record<string, unknown>): EpisodeRoomCommandInput | 
   }
   if (type === "IMPORT_VAULT_ASSET") {
     const assetId = text(body.assetId);
-    return assetId ? { type, assetId, clientRequestId, expectedRevision: revision } : null;
+    const mediaClipId = text(body.mediaClipId);
+    return assetId
+      ? {
+          type,
+          assetId,
+          ...(mediaClipId ? { mediaClipId } : {}),
+          clientRequestId,
+          expectedRevision: revision,
+        }
+      : null;
   }
   if (type === "REMOVE_CLIP" || type === "SELECT_CLIP") {
     const clipId = text(body.clipId);

@@ -84,10 +84,21 @@ export type EpisodeRoomVaultCandidate = {
   updatedAt: string;
   savedClipCount: number;
   savedClipTitles: string[];
+  savedClips: EpisodeRoomVaultSavedClip[];
   imported: boolean;
   attached: boolean;
   canAddToWatch: boolean;
   readinessLabel: string;
+};
+
+export type EpisodeRoomVaultSavedClip = {
+  mediaClipId: string;
+  watchId: string;
+  title: string;
+  rangeStartSeconds: number;
+  rangeEndSeconds: number;
+  durationSeconds: number;
+  attached: boolean;
 };
 
 export type EpisodeRoomRecordingSession = {
@@ -167,6 +178,7 @@ export type EpisodeRoomCommandInput =
   | {
       type: "IMPORT_VAULT_ASSET";
       assetId: string;
+      mediaClipId?: string;
       clientRequestId: string;
       expectedRevision: number;
     }
@@ -230,6 +242,12 @@ function clipFromImportedAsset(
   asset: EpisodeImportedMediaAsset,
   actorLabel: string,
   now: string,
+  savedClip?: {
+    id: string;
+    title: string;
+    inTimecode: number;
+    outTimecode: number;
+  },
 ): EpisodeRoomClip {
   const proxyStatus = text(asset.proxy?.status).toLowerCase();
   const collaborativePlaybackReady =
@@ -252,15 +270,46 @@ function clipFromImportedAsset(
   if (asset.kind !== "audio" && asset.kind !== "video") {
     throw new EpisodeRoomCommandError("Episode Room supports audio and video watch clips.");
   }
+  const assetDuration = durationForImportedAsset(asset);
+  const rangeStartSeconds = savedClip
+    ? Math.max(0, optionalNumber(savedClip.inTimecode) ?? 0)
+    : undefined;
+  const proposedRangeEnd = savedClip
+    ? Math.max(0, optionalNumber(savedClip.outTimecode) ?? 0)
+    : undefined;
+  const rangeEndSeconds = proposedRangeEnd === undefined
+    ? undefined
+    : Math.min(assetDuration ?? Number.MAX_SAFE_INTEGER, proposedRangeEnd);
+  if (
+    savedClip
+    && (
+      rangeStartSeconds === undefined
+      || rangeEndSeconds === undefined
+      || rangeEndSeconds - rangeStartSeconds < 0.05
+    )
+  ) {
+    throw new EpisodeRoomCommandError(
+      "This saved Media Vault clip does not have a playable time range.",
+    );
+  }
   return {
+    watchId: savedClip
+      ? `media-vault-clip:${savedClip.id}`
+      : asset.id,
     assetId: asset.id,
     ...(asset.sourceId ? { sourceId: asset.sourceId } : {}),
-    title: asset.originalName || "Untitled watch clip",
+    title: savedClip?.title || asset.originalName || "Untitled watch clip",
     kind: asset.kind,
     playbackUrl,
-    ...(durationForImportedAsset(asset) === undefined
+    ...(assetDuration === undefined
       ? {}
-      : { durationSeconds: durationForImportedAsset(asset) }),
+      : { durationSeconds: assetDuration }),
+    ...(savedClip
+      ? {
+          rangeStartSeconds,
+          rangeEndSeconds,
+        }
+      : {}),
     ...(asset.importRole ? { importRole: asset.importRole } : {}),
     addedAt: now,
     addedBy: actorLabel,
@@ -328,6 +377,7 @@ function importedCandidate(
       : `${sourceStatus} · proxy ${proxyStatus}`;
 
   return {
+    watchId: asset.id,
     assetId: asset.id,
     ...(asset.sourceId ? { sourceId: asset.sourceId } : {}),
     title: asset.originalName || "Untitled source",
@@ -410,6 +460,7 @@ async function vaultAssetsForProject(
   prisma: any,
   projectId: string,
   assetId?: string,
+  mediaClipId?: string,
 ) {
   const assets = await prisma.studioMediaAsset.findMany({
     where: {
@@ -436,14 +487,18 @@ async function vaultAssetsForProject(
         },
       },
       clips: {
+        ...(mediaClipId ? { where: { id: mediaClipId } } : {}),
         orderBy: { updatedAt: "desc" },
-        take: 8,
+        take: mediaClipId ? 1 : 24,
         select: {
           id: true,
           title: true,
           inTimecode: true,
           outTimecode: true,
         },
+      },
+      _count: {
+        select: { clips: true },
       },
     },
     orderBy: { updatedAt: "desc" },
@@ -492,13 +547,13 @@ async function vaultCandidatesFor(
     importedMedia(productionJson, legacyTimelineJson)
       .map((asset) => asset.id),
   );
-  const attachedIds = new Set(room.clips.map((clip) => clip.assetId));
+  const attachedWatchIds = new Set(room.clips.map((clip) => clip.watchId));
   const rows = await vaultAssetsForProject(prisma, projectId);
   return rows.flatMap(({ asset, playbackUrl, hasProxy }: any) => {
     const kind = mediaKind(asset.mimeType, asset.filename);
     if (!kind || !playbackUrl) return [];
     const imported = importedIds.has(asset.id);
-    const attached = attachedIds.has(asset.id);
+    const attached = attachedWatchIds.has(asset.id);
     const durationSeconds = optionalNumber(asset.duration)
       ?? optionalNumber(asset.variants?.find((variant: any) => (
         optionalNumber(variant.duration) !== undefined
@@ -512,7 +567,32 @@ async function vaultCandidatesFor(
       ...(durationSeconds === undefined ? {} : { durationSeconds }),
       thumbnailUrl: text(asset.thumbnailUrl) || null,
       updatedAt: asset.updatedAt.toISOString(),
-      savedClipCount: asset.clips.length,
+      savedClipCount: asset._count.clips,
+      savedClips: asset.clips.flatMap((clip: any) => {
+        const rangeStartSeconds = Math.max(
+          0,
+          optionalNumber(clip.inTimecode) ?? 0,
+        );
+        const proposedRangeEnd = Math.max(
+          0,
+          optionalNumber(clip.outTimecode) ?? 0,
+        );
+        const rangeEndSeconds = Math.min(
+          durationSeconds ?? Number.MAX_SAFE_INTEGER,
+          proposedRangeEnd,
+        );
+        if (rangeEndSeconds - rangeStartSeconds < 0.05) return [];
+        const watchId = `media-vault-clip:${clip.id}`;
+        return [{
+          mediaClipId: clip.id,
+          watchId,
+          title: text(clip.title) || "Saved clip",
+          rangeStartSeconds,
+          rangeEndSeconds,
+          durationSeconds: rangeEndSeconds - rangeStartSeconds,
+          attached: attachedWatchIds.has(watchId),
+        }];
+      }),
       savedClipTitles: asset.clips
         .map((clip: any) => text(clip.title))
         .filter(Boolean)
@@ -1224,6 +1304,7 @@ export async function applyEpisodeRoomStoreCommand({
             tx,
             production.projectId,
             input.assetId,
+            input.mediaClipId,
           );
           if (!vaultRow) {
             throw new EpisodeRoomCommandError(
@@ -1242,6 +1323,16 @@ export async function applyEpisodeRoomStoreCommand({
               actor.label,
               acceptedAt,
             );
+          const savedClip = input.mediaClipId
+            ? vaultRow.asset.clips.find((clip: any) => (
+              clip.id === input.mediaClipId
+            ))
+            : undefined;
+          if (input.mediaClipId && !savedClip) {
+            throw new EpisodeRoomCommandError(
+              "This saved Media Vault clip is unavailable in this Nest.",
+            );
+          }
           if (!existingImportedAsset) {
             currentProductionJson = {
               ...currentProductionJson,
@@ -1264,6 +1355,7 @@ export async function applyEpisodeRoomStoreCommand({
               importedAsset,
               actor.label,
               acceptedAt,
+              savedClip,
             ),
           };
         } else if (input.type === "ADD_CLIP") {

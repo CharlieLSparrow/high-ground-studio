@@ -11,12 +11,15 @@ export type EpisodeRoomActor = {
 };
 
 export type EpisodeRoomClip = {
+  watchId: string;
   assetId: string;
   sourceId?: string;
   title: string;
   kind: "audio" | "video";
   playbackUrl: string;
   durationSeconds?: number;
+  rangeStartSeconds?: number;
+  rangeEndSeconds?: number;
   importRole?: string;
   addedAt: string;
   addedBy: string;
@@ -192,19 +195,56 @@ function normalizeClip(value: unknown, now: string): EpisodeRoomClip | null {
   const assetId = text(row.assetId);
   const playbackUrl = text(row.playbackUrl);
   if (!assetId || !playbackUrl) return null;
+  const durationSeconds = optionalFiniteNumber(row.durationSeconds) === undefined
+    ? undefined
+    : nonNegative(row.durationSeconds);
+  const proposedRangeStart = optionalFiniteNumber(row.rangeStartSeconds);
+  const proposedRangeEnd = optionalFiniteNumber(row.rangeEndSeconds);
+  const rangeStartSeconds = proposedRangeStart === undefined
+    ? undefined
+    : nonNegative(proposedRangeStart);
+  const boundedRangeEnd = proposedRangeEnd === undefined
+    ? undefined
+    : Math.min(
+      durationSeconds ?? Number.MAX_SAFE_INTEGER,
+      nonNegative(proposedRangeEnd),
+    );
+  const hasRange = rangeStartSeconds !== undefined
+    && boundedRangeEnd !== undefined
+    && boundedRangeEnd - rangeStartSeconds >= 0.05;
   return {
+    watchId: text(row.watchId) || assetId,
     assetId,
     ...(text(row.sourceId) ? { sourceId: text(row.sourceId) } : {}),
     title: text(row.title) || "Untitled watch clip",
     kind: clipKind(row.kind),
     playbackUrl,
-    ...(optionalFiniteNumber(row.durationSeconds) === undefined
-      ? {}
-      : { durationSeconds: nonNegative(row.durationSeconds) }),
+    ...(durationSeconds === undefined ? {} : { durationSeconds }),
+    ...(hasRange
+      ? {
+          rangeStartSeconds,
+          rangeEndSeconds: boundedRangeEnd,
+        }
+      : {}),
     ...(text(row.importRole) ? { importRole: text(row.importRole) } : {}),
     addedAt: isoOr(row.addedAt, now),
     addedBy: text(row.addedBy) || "Unknown collaborator",
   };
+}
+
+function clipStart(clip: EpisodeRoomClip | undefined) {
+  return clip?.rangeStartSeconds ?? 0;
+}
+
+function clipEnd(clip: EpisodeRoomClip | undefined) {
+  return clip?.rangeEndSeconds ?? clip?.durationSeconds;
+}
+
+function clampClipPosition(clip: EpisodeRoomClip | undefined, value: unknown) {
+  const start = clipStart(clip);
+  const end = clipEnd(clip);
+  const position = Math.max(start, finiteNumber(value, start));
+  return end === undefined ? position : Math.min(position, end);
 }
 
 function normalizeSession(value: unknown, now: string): EpisodeRoomSession | undefined {
@@ -300,7 +340,7 @@ export function normalizeEpisodeRoomState(value: unknown, now = new Date().toISO
     ? row.clips.map((clip) => normalizeClip(clip, now)).filter((clip): clip is EpisodeRoomClip => Boolean(clip))
     : [];
   const selectedClipId = text(row.selectedClipId);
-  const selected = clips.find((clip) => clip.assetId === selectedClipId);
+  const selected = clips.find((clip) => clip.watchId === selectedClipId);
   const receipts = Array.isArray(row.receipts)
     ? row.receipts.map(normalizeReceipt).filter((receipt): receipt is EpisodeRoomReceipt => Boolean(receipt)).slice(-300)
     : [];
@@ -332,10 +372,10 @@ export function normalizeEpisodeRoomState(value: unknown, now = new Date().toISO
     version: EPISODE_ROOM_VERSION,
     revision: Math.max(0, Math.trunc(finiteNumber(row.revision))),
     status: selected ? status : "idle",
-    ...(selected ? { selectedClipId: selected.assetId } : {}),
-    positionSeconds: selected ? nonNegative(row.positionSeconds) : 0,
+    ...(selected ? { selectedClipId: selected.watchId } : {}),
+    positionSeconds: selected ? clampClipPosition(selected, row.positionSeconds) : 0,
     effectiveAt: isoOr(row.effectiveAt, now),
-    ...(selected?.durationSeconds === undefined ? {} : { durationSeconds: selected.durationSeconds }),
+    ...(clipEnd(selected) === undefined ? {} : { durationSeconds: clipEnd(selected) }),
     ...(session ? { session } : {}),
     ...(activeSegment ? { activeSegment } : {}),
     clips,
@@ -364,14 +404,16 @@ function episodeSeconds(session: EpisodeRoomSession | undefined, at: string) {
 }
 
 function selectedClip(state: EpisodeRoomState) {
-  return state.clips.find((clip) => clip.assetId === state.selectedClipId);
+  return state.clips.find((clip) => clip.watchId === state.selectedClipId);
 }
 
 function selectedPosition(state: EpisodeRoomState, commandPosition: number | undefined, at: string) {
   const supplied = optionalFiniteNumber(commandPosition);
-  const position = supplied === undefined ? projectedEpisodeRoomPosition(state, at) : Math.max(0, supplied);
-  const duration = selectedClip(state)?.durationSeconds;
-  return duration === undefined ? position : Math.min(position, duration);
+  const clip = selectedClip(state);
+  const position = supplied === undefined
+    ? projectedEpisodeRoomPosition(state, at)
+    : supplied;
+  return clampClipPosition(clip, position);
 }
 
 function closeActiveSegment(
@@ -495,40 +537,41 @@ export function applyEpisodeRoomCommand(
   } else if (command.type === "ADD_CLIP") {
     const normalized = normalizeClip(command.clip, at);
     if (!normalized) throw new EpisodeRoomCommandError("The imported media is not playable.");
-    const existing = state.clips.find((clip) => clip.assetId === normalized.assetId);
+    const existing = state.clips.find((clip) => clip.watchId === normalized.watchId);
     const clips = existing
-      ? state.clips.map((clip) => clip.assetId === normalized.assetId ? { ...clip, ...normalized } : clip)
+      ? state.clips.map((clip) => clip.watchId === normalized.watchId ? { ...clip, ...normalized } : clip)
       : [...state.clips, normalized];
+    const initialPosition = clipStart(normalized);
     next = {
       ...state,
       clips,
-      selectedClipId: state.selectedClipId || normalized.assetId,
+      selectedClipId: state.selectedClipId || normalized.watchId,
       status: state.selectedClipId ? state.status : "paused",
-      positionSeconds: state.selectedClipId ? state.positionSeconds : 0,
+      positionSeconds: state.selectedClipId ? state.positionSeconds : initialPosition,
       durationSeconds: state.selectedClipId
         ? state.durationSeconds
-        : normalized.durationSeconds,
+        : clipEnd(normalized),
       effectiveAt: at,
     };
     position = next.positionSeconds;
   } else if (command.type === "REMOVE_CLIP") {
-    if (!state.clips.some((clip) => clip.assetId === command.clipId)) {
+    if (!state.clips.some((clip) => clip.watchId === command.clipId)) {
       throw new EpisodeRoomCommandError("That watch clip is no longer in the Episode Room.");
     }
     const wasSelected = command.clipId === state.selectedClipId;
-    const clips = state.clips.filter((clip) => clip.assetId !== command.clipId);
+    const clips = state.clips.filter((clip) => clip.watchId !== command.clipId);
     const fallback = wasSelected ? clips[0] : selectedClip(state);
     const closeAt = selectedPosition(state, command.positionSeconds, at);
     next = {
       ...state,
       clips,
-      ...(fallback ? { selectedClipId: fallback.assetId } : { selectedClipId: undefined }),
+      ...(fallback ? { selectedClipId: fallback.watchId } : { selectedClipId: undefined }),
       status: fallback ? "paused" : "idle",
-      positionSeconds: wasSelected ? 0 : closeAt,
+      positionSeconds: wasSelected ? clipStart(fallback) : closeAt,
       effectiveAt: at,
-      ...(fallback?.durationSeconds === undefined
+      ...(clipEnd(fallback) === undefined
         ? { durationSeconds: undefined }
-        : { durationSeconds: fallback.durationSeconds }),
+        : { durationSeconds: clipEnd(fallback) }),
       segments: wasSelected
         ? closeActiveSegment(state, at, closeAt, context.receiptId)
         : state.segments,
@@ -536,22 +579,23 @@ export function applyEpisodeRoomCommand(
     };
     position = next.positionSeconds;
   } else if (command.type === "SELECT_CLIP") {
-    const clip = state.clips.find((candidate) => candidate.assetId === command.clipId);
+    const clip = state.clips.find((candidate) => candidate.watchId === command.clipId);
     if (!clip) throw new EpisodeRoomCommandError("Choose a clip already attached to this episode.");
     const closeAt = selectedPosition(state, command.positionSeconds, at);
+    const initialPosition = clipStart(clip);
     next = {
       ...state,
-      selectedClipId: clip.assetId,
+      selectedClipId: clip.watchId,
       status: "paused",
-      positionSeconds: 0,
+      positionSeconds: initialPosition,
       effectiveAt: at,
-      ...(clip.durationSeconds === undefined
+      ...(clipEnd(clip) === undefined
         ? { durationSeconds: undefined }
-        : { durationSeconds: clip.durationSeconds }),
+        : { durationSeconds: clipEnd(clip) }),
       segments: closeActiveSegment(state, at, closeAt, context.receiptId),
       activeSegment: undefined,
     };
-    position = 0;
+    position = initialPosition;
   } else if (command.type === "SYNC_TIMELINE") {
     if (state.status === "playing") {
       throw new EpisodeRoomCommandError("Pause the shared clip before syncing watched segments.");
@@ -644,7 +688,7 @@ export type EpisodeRoomTimelineClip = {
 };
 
 export function episodeRoomTimelineClips(state: EpisodeRoomState): EpisodeRoomTimelineClip[] {
-  const clipsById = new Map(state.clips.map((clip) => [clip.assetId, clip]));
+  const clipsById = new Map(state.clips.map((clip) => [clip.watchId, clip]));
   const currentSessionId = state.session?.id;
   if (!currentSessionId) return [];
   return state.segments

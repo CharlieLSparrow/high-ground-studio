@@ -163,6 +163,34 @@ check(
     && watch.includes("preparedClipIdentity = nil"),
 );
 check(
+  "saved Watch ranges keep playback identity separate from immutable source identity",
+  watch.includes("let watchId: String?")
+    && watch.includes("var id: String { watchId ?? assetId }")
+    && watch.includes("preparedAssetID == selectedClip.id")
+    && watch.includes("preparedClipIdentity == selectedClip"),
+);
+check(
+  "native seeks and private previews cannot escape a saved source range",
+  watch.includes("var playbackStartSeconds: TimeInterval")
+    && watch.includes("var playbackEndSeconds: TimeInterval?")
+    && watch.includes("func clampedPlaybackPosition(")
+    && watch.includes("selectedClip?.playbackStartSeconds")
+    && watch.includes("selectedClip?.playbackEndSeconds"),
+);
+check(
+  "saved ranges end shared playback at their out point instead of file EOF",
+  watch.includes("if let rangeEnd = clip.rangeEndSeconds")
+    && watch.includes("seconds >= rangeEnd - 0.04")
+    && watch.includes("await self.handlePlaybackEnded()")
+    && watch.includes("selectedClip?.playbackEndSeconds ?? displayPosition"),
+);
+check(
+  "saved ranges reuse the source cache without duplicating protected media",
+  watch.includes("receipt.sourceId == clip.sourceId")
+    && watch.includes("receipt.playbackUrl == clip.playbackUrl")
+    && watch.includes('preparedAssetID = clip.id'),
+);
+check(
   "private preview is explicitly outside shared state",
   watch.includes("Private iPhone preview · not added to the shared timeline.")
     && watch.includes("Shared Watch did not change.")
