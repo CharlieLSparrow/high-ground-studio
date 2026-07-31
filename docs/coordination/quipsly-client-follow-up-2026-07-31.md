@@ -150,6 +150,7 @@ same content SHA-256 as revision 2.
 - retained Keychain adapter unit tests: 7/7
 - two-run Keychain credential reuse and stable-corpus proof: pass
 - real coach/client/outsider Firebase-to-Nest Keychain smoke: 3/3
+- rendered login, Session navigation, responsive follow-up, and sign-out: 3/3
 - repository-wide Quipsly contract sweep after stale-contract repair: 168/168
 - full iPhone simulator compile with LiveKit linked: pass
 - serialized Capture, login, and Share extension UI journeys: 46/46

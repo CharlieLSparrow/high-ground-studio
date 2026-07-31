@@ -87,6 +87,21 @@ seed mode remains the portable CI path. Production QA accounts require a
 separate explicit credential and side-effect plan; local Keychain reuse does
 not authorize creating them.
 
+To operate the rendered product rather than stopping at route proof, run:
+
+```bash
+QUIPSLY_RETAINED_COACHING_BASE_URL=http://127.0.0.1:3012 \
+node scripts/quipsly-retained-coaching-browser-smoke.mjs
+```
+
+This Playwright journey uses the real email/password login form, follows the
+visible Session navigation from Overview to Outputs, and checks the coach,
+released-client, and concealed-outsider projections. Coach runs at a desktop
+viewport; client and outsider run at a phone-sized `390x844` viewport. It
+checks the follow-up surface for horizontal overflow and browser exceptions,
+then explicitly clears each Nest session. Tracing and screenshots are disabled
+so an unredacted test identity or filled password does not become an artifact.
+
 ## Environment boundaries
 
 ### Local and emulator
