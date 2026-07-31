@@ -1078,6 +1078,61 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     }
 
+    func testTranscriptFollowThroughReturnsToExactSourceOnIPhone() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let taskID = credentials.taskID, !taskID.isEmpty,
+              let goalID = credentials.goalID, !goalID.isEmpty,
+              let sessionID = credentials.sessionID, !sessionID.isEmpty else {
+            throw XCTSkip("The transcript follow-through journey requires exact Session, task, and goal IDs.")
+        }
+        let app = try launchSignedInCaptureApp()
+
+        let task = app.descendants(matching: .any)["CaptureTodayTask_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(task, in: app, timeout: 30, swipeAttempts: 8),
+            "Today should render the exact recent transcript-derived task identity."
+        )
+        let taskSource = app.descendants(matching: .any)["CaptureTodayTaskSourceLink_\(taskID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(taskSource, in: app, timeout: 15, swipeAttempts: 8),
+            "The transcript-derived task should expose its exact source-return control."
+        )
+        XCTAssertTrue(taskSource.label.contains("0:03"))
+        XCTAssertTrue(taskSource.label.contains("0:04"))
+
+        let goal = app.descendants(matching: .any)["CaptureTodayGoal_\(goalID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(goal, in: app, timeout: 15, swipeAttempts: 10),
+            "Today should render the exact transcript-derived goal identity."
+        )
+        let goalSource = app.descendants(matching: .any)["CaptureTodayGoalSourceLink_\(goalID)"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(goalSource, in: app, timeout: 15, swipeAttempts: 10),
+            "The transcript-derived goal should preserve the same source-return control."
+        )
+        XCTAssertTrue(goalSource.label.contains("0:03"))
+        XCTAssertTrue(goalSource.label.contains("0:04"))
+
+        taskSource.tap()
+        XCTAssertTrue(
+            app.scrollViews["CaptureTranscriptReviewView"].waitForExistence(timeout: 30),
+            "Returning from the task should open the protected transcript review."
+        )
+        let sourceBoundary = app.descendants(matching: .any).matching(
+            NSPredicate(format: "identifier BEGINSWITH %@", "CaptureTranscriptSourceBoundary_")
+        ).firstMatch
+        XCTAssertTrue(sourceBoundary.waitForExistence(timeout: 10))
+        XCTAssertFalse(
+            sourceBoundary.identifier.contains(sessionID),
+            "The source boundary should identify the immutable segment, not substitute the room identity."
+        )
+        XCTAssertTrue(app.staticTexts["Welcome, everybody."].firstMatch.waitForExistence(timeout: 15))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTranscriptReviewOnlyBoundary"].firstMatch.exists,
+            "A different iPhone must remain review-only when it does not hold the exact local recording asset."
+        )
+    }
+
     func testOneTimeTaskReminderCancelsAndReactivatesThroughNest() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let taskID = credentials.taskID, !taskID.isEmpty else {

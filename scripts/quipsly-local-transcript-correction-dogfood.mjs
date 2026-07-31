@@ -13,6 +13,12 @@ import {
   createTranscriptCorrection,
   readTranscriptCorrectionDesk,
 } from "../apps/quipsly/src/lib/server/transcript-corrections.ts";
+import {
+  MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+  MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+  MOBILE_CAPTURE_CONSENT_TEXT,
+  MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+} from "../apps/quipsly/src/lib/mobile-capture-consent-policy.js";
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const APPLY = process.argv.includes("--apply");
@@ -28,9 +34,13 @@ const SOURCE_ID = "local-transcript-source-episode-4";
 const MEDIA_ASSET_ID = "local-transcript-media-episode-4";
 const UPLOAD_SESSION_ID = "73a7b32a-f1cc-4a83-883e-e64132ebfc10";
 const CAPTURE_ID = "75461430-c470-4447-96d0-4eb50cf4da29";
+const PARTICIPANT_ID = "local-transcript-participant-episode-4-charlie";
+const CONSENT_ID = "local-transcript-consent-episode-4-charlie";
 const REPO_ROOT = fileURLToPath(new URL("../", import.meta.url));
-const SOURCE_AUDIO = path.join(REPO_ROOT, "apps/QuipslyStudio/.transcript-smoke/charlie-680-740.wav");
-const SOURCE_TRANSCRIPT = path.join(REPO_ROOT, "apps/QuipslyStudio/.transcript-smoke/charlie-680-740.json");
+const DEFAULT_SOURCE_AUDIO = path.join(REPO_ROOT, "apps/QuipslyStudio/.transcript-smoke/charlie-680-740.wav");
+const DEFAULT_SOURCE_TRANSCRIPT = path.join(REPO_ROOT, "apps/QuipslyStudio/.transcript-smoke/charlie-680-740.json");
+const SOURCE_AUDIO = path.resolve(process.env.QUIPSLY_DOGFOOD_SOURCE_AUDIO || DEFAULT_SOURCE_AUDIO);
+const SOURCE_TRANSCRIPT = path.resolve(process.env.QUIPSLY_DOGFOOD_SOURCE_TRANSCRIPT || DEFAULT_SOURCE_TRANSCRIPT);
 const LOCAL_MEDIA_ROOT = path.join(tmpdir(), "quipsly-media-ingest", "transcript-dogfood");
 const LOCAL_AUDIO = path.join(LOCAL_MEDIA_ROOT, "episode-4-charlie-680-740.wav");
 
@@ -44,6 +54,21 @@ function assertLocalDatabase(connectionString) {
 
 function sha256(buffer) {
   return createHash("sha256").update(buffer).digest("hex");
+}
+
+async function inspectSource(pathname) {
+  try {
+    const source = await stat(pathname);
+    return {
+      exists: source.isFile(),
+      sizeBytes: source.isFile() ? source.size : null,
+    };
+  } catch (error) {
+    if (error && typeof error === "object" && error.code === "ENOENT") {
+      return { exists: false, sizeBytes: null };
+    }
+    throw error;
+  }
 }
 
 function publicSegment(segment, index) {
@@ -66,30 +91,84 @@ function publicSegment(segment, index) {
   };
 }
 
+function publicWords(sourceSegments) {
+  const words = [];
+  for (const [segmentIndex, segment] of sourceSegments.entries()) {
+    for (const word of Array.isArray(segment.words) ? segment.words : []) {
+      const startSeconds = Number(word.start);
+      const endSeconds = Number(word.end);
+      const text = String(word.word || "").trim();
+      if (!text || !Number.isFinite(startSeconds) || !Number.isFinite(endSeconds)) continue;
+      const providerWordIndex = words.length;
+      words.push({
+        id: `local-transcript-word-episode-4-${providerWordIndex + 1}`,
+        transcriptJobId: JOB_ID,
+        segmentId: `local-transcript-segment-episode-4-${segmentIndex + 1}`,
+        providerWordIndex,
+        startSeconds,
+        endSeconds,
+        word: text.replace(/[.,!?;:]+$/u, "") || text,
+        punctuatedWord: text,
+        confidence: typeof word.confidence === "number" ? word.confidence : null,
+        speakerLabel: segment.speaker || null,
+        channel: null,
+        metadataJson: {
+          source: "quipsly-local-transcript-correction-dogfood",
+          provider: "mlx-whisper-local",
+          model: "mlx-community/whisper-large-v3-turbo",
+          providerTimingSource: word.source || null,
+          sourceWindowSeconds: { start: 680, end: 740 },
+          immutableProviderEvidence: true,
+        },
+      });
+    }
+  }
+  return words;
+}
+
 async function main() {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(OPERATOR_EMAIL)) {
     throw new Error("QUIPSLY_DOGFOOD_ACTOR_EMAIL must be a valid email address.");
   }
+  const [audioSource, transcriptSource] = await Promise.all([
+    inspectSource(SOURCE_AUDIO),
+    inspectSource(SOURCE_TRANSCRIPT),
+  ]);
   if (!APPLY) {
+    const sourceReady = audioSource.exists && transcriptSource.exists;
     console.log(JSON.stringify({
-      ready: true,
+      ready: sourceReady,
       applyRequired: true,
       localOnly: true,
       actorEmail: OPERATOR_EMAIL,
-      sourceAudio: SOURCE_AUDIO,
-      sourceTranscript: SOURCE_TRANSCRIPT,
+      sources: {
+        audio: { path: SOURCE_AUDIO, ...audioSource },
+        transcript: { path: SOURCE_TRANSCRIPT, ...transcriptSource },
+      },
       effect: "Creates one Episode 4 playback/correction fixture and one quarantined AI speaker proposal. It does not accept the proposal or claim a human listen.",
+      nextAction: sourceReady
+        ? "Run again with --apply after confirming the local database target."
+        : "Provide QUIPSLY_DOGFOOD_SOURCE_AUDIO and QUIPSLY_DOGFOOD_SOURCE_TRANSCRIPT paths to an authorized local fixture before using --apply.",
     }, null, 2));
+    if (!sourceReady) process.exitCode = 2;
     return;
   }
 
   assertLocalDatabase(DATABASE_URL);
+  if (!audioSource.exists || !transcriptSource.exists) {
+    throw new Error(
+      "Transcript dogfood source is unavailable. Set QUIPSLY_DOGFOOD_SOURCE_AUDIO and "
+      + "QUIPSLY_DOGFOOD_SOURCE_TRANSCRIPT to authorized local fixture files.",
+    );
+  }
 
   const [audioBytes, transcriptBytes] = await Promise.all([readFile(SOURCE_AUDIO), readFile(SOURCE_TRANSCRIPT)]);
   const transcript = JSON.parse(transcriptBytes.toString("utf8"));
-  const segments = Array.isArray(transcript.segments)
-    ? transcript.segments.map(publicSegment).filter((segment) => segment.text && Number.isFinite(segment.startSeconds) && Number.isFinite(segment.endSeconds))
+  const sourceSegments = Array.isArray(transcript.segments) ? transcript.segments : [];
+  const segments = sourceSegments.length
+    ? sourceSegments.map(publicSegment).filter((segment) => segment.text && Number.isFinite(segment.startSeconds) && Number.isFinite(segment.endSeconds))
     : [];
+  const words = publicWords(sourceSegments);
   if (!segments.length) throw new Error("Episode 4 transcript fixture has no usable segments.");
 
   await mkdir(LOCAL_MEDIA_ROOT, { recursive: true });
@@ -99,6 +178,20 @@ async function main() {
 
   const prisma = new PrismaClient({ adapter: new PrismaPg(DATABASE_URL), log: ["error"] });
   try {
+    const existingTranscriptJob = await prisma.transcriptJob.findUnique({
+      where: { id: JOB_ID },
+      select: { resultJson: true },
+    });
+    const existingTranscriptSha256 = existingTranscriptJob?.resultJson
+      && typeof existingTranscriptJob.resultJson === "object"
+      && !Array.isArray(existingTranscriptJob.resultJson)
+      ? existingTranscriptJob.resultJson.sourceTranscriptSha256
+      : null;
+    if (existingTranscriptSha256 && existingTranscriptSha256 !== sha256(transcriptBytes)) {
+      throw new Error(
+        "Refusing to rewrite immutable provider transcript evidence. Use new fixture identities for a different source transcript.",
+      );
+    }
     const actor = await prisma.user.upsert({
       where: { primaryEmail: FIXTURE_ACTOR_EMAIL },
       update: {},
@@ -151,6 +244,84 @@ async function main() {
           sourceWindowSeconds: { start: 680, end: 740 },
           localOnly: true,
           notAProductionRecordingReceipt: true,
+        },
+      },
+    });
+    await prisma.callParticipant.upsert({
+      where: { id: PARTICIPANT_ID },
+      update: {
+        roomId: ROOM_ID,
+        userId: actor.id,
+        displayName: "Charlie",
+        email: FIXTURE_ACTOR_EMAIL,
+        role: "HOST",
+        deviceLabel: "Authorized local transcript fixture",
+      },
+      create: {
+        id: PARTICIPANT_ID,
+        roomId: ROOM_ID,
+        userId: actor.id,
+        displayName: "Charlie",
+        email: FIXTURE_ACTOR_EMAIL,
+        role: "HOST",
+        deviceLabel: "Authorized local transcript fixture",
+        joinedAt: new Date("2026-07-18T23:00:00.000Z"),
+        leftAt: new Date("2026-07-18T23:01:00.000Z"),
+      },
+    });
+    await prisma.recordingConsent.upsert({
+      where: { id: CONSENT_ID },
+      update: {
+        roomId: ROOM_ID,
+        participantId: PARTICIPANT_ID,
+        userId: actor.id,
+        status: "GRANTED",
+        consentText: MOBILE_CAPTURE_CONSENT_TEXT,
+        policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+        canRecordAudio: true,
+        canRecordVideo: false,
+        canTranscribe: true,
+        consentedAt: new Date("2026-07-18T23:00:00.000Z"),
+        declinedAt: null,
+        revokedAt: null,
+        metadataJson: {
+          source: "quipsly-local-transcript-correction-dogfood",
+          localOnly: true,
+          consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+          consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+          recordingChoiceExplicit: true,
+          transcriptionChoiceExplicit: true,
+          allAudibleParticipantsNotifiedAndAgreed: true,
+          presentationEvidence: {
+            version: 1,
+            surface: "quipsly-capture-consent-v2",
+          },
+        },
+      },
+      create: {
+        id: CONSENT_ID,
+        roomId: ROOM_ID,
+        participantId: PARTICIPANT_ID,
+        userId: actor.id,
+        status: "GRANTED",
+        consentText: MOBILE_CAPTURE_CONSENT_TEXT,
+        policyVersion: MOBILE_CAPTURE_CONSENT_POLICY_VERSION,
+        canRecordAudio: true,
+        canRecordVideo: false,
+        canTranscribe: true,
+        consentedAt: new Date("2026-07-18T23:00:00.000Z"),
+        metadataJson: {
+          source: "quipsly-local-transcript-correction-dogfood",
+          localOnly: true,
+          consentEvidenceVersion: MOBILE_CAPTURE_CONSENT_EVIDENCE_VERSION,
+          consentTextHash: MOBILE_CAPTURE_CONSENT_TEXT_SHA256,
+          recordingChoiceExplicit: true,
+          transcriptionChoiceExplicit: true,
+          allAudibleParticipantsNotifiedAndAgreed: true,
+          presentationEvidence: {
+            version: 1,
+            surface: "quipsly-capture-consent-v2",
+          },
         },
       },
     });
@@ -210,6 +381,7 @@ async function main() {
       where: { id: ASSET_ID },
       update: {
         roomId: ROOM_ID,
+        participantId: PARTICIPANT_ID,
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
         fileName: path.basename(LOCAL_AUDIO),
@@ -240,6 +412,7 @@ async function main() {
       create: {
         id: ASSET_ID,
         roomId: ROOM_ID,
+        participantId: PARTICIPANT_ID,
         kind: "LOCAL_AUDIO",
         status: "VERIFIED",
         fileName: path.basename(LOCAL_AUDIO),
@@ -379,6 +552,28 @@ async function main() {
         create: segment,
       });
     }
+    for (const word of words) {
+      await prisma.transcriptWord.upsert({
+        where: {
+          transcriptJobId_providerWordIndex: {
+            transcriptJobId: word.transcriptJobId,
+            providerWordIndex: word.providerWordIndex,
+          },
+        },
+        update: {
+          segmentId: word.segmentId,
+          startSeconds: word.startSeconds,
+          endSeconds: word.endSeconds,
+          word: word.word,
+          punctuatedWord: word.punctuatedWord,
+          confidence: word.confidence,
+          speakerLabel: word.speakerLabel,
+          channel: word.channel,
+          metadataJson: word.metadataJson,
+        },
+        create: word,
+      });
+    }
 
     const operatorActor = { id: operator.id, email: OPERATOR_EMAIL, isStaff: false };
     const deskBefore = await readTranscriptCorrectionDesk({
@@ -387,7 +582,13 @@ async function main() {
       actor: operatorActor,
     });
     const first = deskBefore.segments[0];
-    if (!first) throw new Error("Correction desk did not return transcript segments.");
+    if (!first) {
+      throw new Error(
+        `Correction desk did not return transcript segments: ${
+          deskBefore.gate?.error || deskBefore.transcriptStatus || "unknown transcript gate"
+        }`,
+      );
+    }
     const proposal = await createTranscriptCorrection({
       prisma,
       actor: { id: actor.id, email: FIXTURE_ACTOR_EMAIL, isStaff: true },
@@ -413,6 +614,19 @@ async function main() {
       roomId: ROOM_ID,
       actor: operatorActor,
     });
+    const reviewedProposal = deskAfter.segments[0]?.correctionHistory.find((correction) => (
+      correction.origin === "ai"
+      && correction.status !== "proposed"
+      && correction.correctedText === proposal.correction.correctedText
+      && correction.correctedSpeakerLabel === proposal.correction.correctedSpeakerLabel
+      && correction.reason === proposal.correction.reason
+    )) ?? null;
+    const visibleProposal = deskAfter.segments[0]?.proposals.find((correction) => (
+      correction.correctedText === proposal.correction.correctedText
+      && correction.correctedSpeakerLabel === proposal.correction.correctedSpeakerLabel
+      && correction.reason === proposal.correction.reason
+    )) ?? null;
+    const proposalState = reviewedProposal ?? visibleProposal ?? proposal.correction;
 
     console.log(JSON.stringify({
       ok: true,
@@ -423,16 +637,21 @@ async function main() {
       playback: deskAfter.playback,
       transcriptJobId: deskAfter.transcriptJobId,
       segmentCount: deskAfter.segments.length,
+      wordCount: deskAfter.segments.reduce((total, segment) => total + segment.words.length, 0),
       firstSegment: {
         id: first.id,
         mediaTime: [first.startSeconds, first.endSeconds],
         providerText: first.providerText,
         providerSpeakerLabel: first.providerSpeakerLabel,
       },
-      proposal: proposal.correction,
-      proposalAccepted: false,
+      proposalRequestReceipt: proposal.correction,
+      proposalState,
+      proposalAccepted: proposalState.status === "accepted",
+      proposalPending: Boolean(visibleProposal),
       humanListenPerformed: false,
-      nextAction: "Open the signed-in session review, play the timestamp, then accept or reject the speaker proposal. No script is allowed to claim that listen.",
+      nextAction: visibleProposal
+        ? "Open the signed-in session review, play the timestamp, then accept or reject the speaker proposal. No script is allowed to claim that listen."
+        : "The prior proposal decision remains preserved. This script will not revive an identical decided proposal or claim a new human listen.",
       sourceEvidence: {
         repositoryAudio: path.relative(REPO_ROOT, SOURCE_AUDIO),
         repositoryTranscript: path.relative(REPO_ROOT, SOURCE_TRANSCRIPT),

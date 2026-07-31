@@ -11,8 +11,10 @@ const { initializeApp, getApps } = requireFromQuipsly("firebase-admin/app");
 const { getAuth } = requireFromQuipsly("firebase-admin/auth");
 
 const PROJECT_ID = "quipsly-reef";
-const EMAIL = "quipsly.qa@local.test";
-const UID = "native-capture-vault-dogfood-20260719";
+const EMAIL = String(process.env.QUIPSLY_CAPTURE_UI_TEST_EMAIL || "quipsly.qa@local.test")
+  .trim()
+  .toLowerCase();
+const UID = String(process.env.QUIPSLY_CAPTURE_UI_TEST_UID || "native-capture-vault-dogfood-20260719").trim();
 const DEFAULT_CREDENTIALS_PATH = path.join(os.tmpdir(), "quipsly-capture-runtime-ui-smoke-credentials.json");
 
 function loopbackHost(value) {
@@ -48,6 +50,12 @@ function confinedCredentialsPath(value) {
 }
 
 async function prepare() {
+  if (!/^[^\s@]+@[^\s@]+\.test$/.test(EMAIL)) {
+    throw new Error("Native Capture local credentials require a reserved .test email address.");
+  }
+  if (!/^[a-zA-Z0-9._-]{6,128}$/.test(UID)) {
+    throw new Error("Native Capture local credentials require a bounded Firebase test UID.");
+  }
   const emulatorHost = requireLoopbackOrigin(
     `http://${process.env.FIREBASE_AUTH_EMULATOR_HOST || ""}`,
     "FIREBASE_AUTH_EMULATOR_HOST",

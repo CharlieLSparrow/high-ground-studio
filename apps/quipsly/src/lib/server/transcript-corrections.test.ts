@@ -109,7 +109,10 @@ function mutationHarness(options: { promoted?: boolean; active?: { id: string } 
     },
   };
   const prisma = {
-    callRoom: { findFirst: jest.fn(async () => accessibleRoom({ promoted: options.promoted })) },
+    callRoom: {
+      findFirst: jest.fn(async () => accessibleRoom({ promoted: options.promoted })),
+      findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+    },
     mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
     transcriptCorrection: {
       findUnique: jest.fn(async () => null),
@@ -132,7 +135,10 @@ describe("transcript correction desk", () => {
       reason: "Verified against playback",
     }, [{ revision: 1, operation: "created-and-accepted-after-playback", createdAt: new Date() }]);
     const prisma = {
-      callRoom: { findFirst: jest.fn(async () => accessibleRoom({ corrections: [accepted] })) },
+      callRoom: {
+        findFirst: jest.fn(async () => accessibleRoom({ corrections: [accepted] })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
+      },
       mobileCaptureFinalizationReceipt: { findMany: jest.fn(async () => [{ id: "receipt-1" }]) },
     };
 
@@ -186,6 +192,7 @@ describe("transcript correction desk", () => {
         findFirst: jest.fn(async () => accessibleRoom({
           corrections: [retryByAnotherActor, first],
         })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
       },
       mobileCaptureFinalizationReceipt: {
         findMany: jest.fn(async () => [{ id: "receipt-1" }]),
@@ -227,6 +234,7 @@ describe("transcript correction desk", () => {
         findFirst: jest.fn(async () => accessibleRoom({
           corrections: [pendingRetry, rejected],
         })),
+        findUnique: jest.fn(async () => ({ id: "room-1", participants: [], recordingConsents: [] })),
       },
       mobileCaptureFinalizationReceipt: {
         findMany: jest.fn(async () => [{ id: "receipt-1" }]),

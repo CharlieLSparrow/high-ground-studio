@@ -5018,3 +5018,33 @@ was restored.
   This closes a real local notes/tasks/goals/tags/planning dogfood pass, not
   physical-iPhone capture, production same-ID readback, a genuine two-person
   episode/coaching session, or completed follow-through.
+
+### 2026-07-31 retained transcript-to-follow-through product operation
+
+- Materialized an authorized 60-second Episode 4 source window as immutable
+  local recording and transcript evidence: 5 segments, 12 provider-timed
+  words, explicit current-policy consent, and stable source identities. The
+  materializer now accepts explicit authorized paths, refuses non-local
+  databases, reports unavailable evidence before apply, and rejects
+  same-identity transcript rewrites with a different provider hash.
+- Fixed a production consent-gate defect that made correctly finalized capture
+  evidence impossible to open in the correction desk. Finalization receipts
+  and current room participant/consent evidence are now loaded together; the
+  real local-PostgreSQL privacy integration proves the released transcript
+  remains exact and becomes reviewable only after current consent is restored.
+- Operated the rendered product under retained QA identity
+  `quipsly-media-ms8ct81g@example.test`: played exact protected source audio,
+  rejected an insufficiently evidenced AI speaker proposal, then created one
+  exact-source task, one exact-source goal, and one private writing page with a
+  pinned transcript-evidence block. The artifacts remain retained.
+- Added and passed an iPhone runtime acceptance that finds those exact task and
+  goal IDs on Today, verifies their 0:03–0:04 source controls, returns to the
+  protected transcript, reads **Welcome, everybody.**, and honestly remains
+  review-only because that simulator does not hold the immutable local
+  recording. Result: 1 passed, 0 failed, 0 skipped.
+- TypeScript, 8 transcript-correction unit tests, the real local-database
+  privacy/correction integration, and all 955 native/App Store static checks
+  pass. This is local rendered-web and simulator proof—not a physical-device
+  recording, real two-person consent, human-confirmed speaker identity,
+  production same-ID readback, TestFlight execution of this source, completed
+  HGO/coaching workflow, or App Store submission.

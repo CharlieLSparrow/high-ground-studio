@@ -22,6 +22,7 @@ import {
 } from "@/lib/server/mobile-capture-consent-readiness.js";
 
 import { reconcileCaptureTranscriptJob } from "./capture-transcript-reconciliation";
+import { readTranscriptCorrectionDesk } from "./transcript-corrections";
 
 jest.mock("@/lib/server/gcs", () => ({
   getMediaBucket: jest.fn(),
@@ -270,6 +271,24 @@ runLocalDatabaseSmoke("transcript consent quarantine local database proof", () =
     });
     expect(releasedSegments).toEqual(originalSegments);
     expect(releasedWords).toEqual(originalWords);
+
+    await expect(readTranscriptCorrectionDesk({
+      prisma,
+      roomId,
+      actor: {
+        id: userId,
+        email: `transcript-privacy-${nonce}@example.test`,
+        isStaff: false,
+      },
+    })).resolves.toMatchObject({
+      gate: { allowed: true },
+      playback: null,
+      segments: [{
+        text: "Private proof.",
+        startSeconds: 0.25,
+        endSeconds: 0.8,
+      }],
+    });
   });
 
   function currentConsentData() {

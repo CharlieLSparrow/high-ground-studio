@@ -79,16 +79,16 @@ function playbackFromAsset(asset: any) {
 }
 
 async function transcriptProcessingGate(prisma: any, recordingAsset: any) {
-  const receipts = await prisma.mobileCaptureFinalizationReceipt.findMany({
-    where: { recordingAssetId: recordingAsset.id },
-    orderBy: { createdAt: "asc" },
-  });
-  const room = receipts.length === 0
-    ? await prisma.callRoom.findUnique({
-        where: { id: recordingAsset.roomId },
-        include: { participants: true, recordingConsents: true },
-      })
-    : null;
+  const [receipts, room] = await Promise.all([
+    prisma.mobileCaptureFinalizationReceipt.findMany({
+      where: { recordingAssetId: recordingAsset.id },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.callRoom.findUnique({
+      where: { id: recordingAsset.roomId },
+      include: { participants: true, recordingConsents: true },
+    }),
+  ]);
   return mobileCaptureProcessingGateFromEvidence({
     recordingAsset,
     receipts,
