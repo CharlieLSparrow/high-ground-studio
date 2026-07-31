@@ -1,5 +1,12 @@
 # Release runbook index
 
+Retained product-operation and test-data policy:
+
+- [`quipsly-retained-dogfood.md`](./quipsly-retained-dogfood.md) defines how
+  useful QA users and artifacts remain available for longitudinal web,
+  TestFlight, and physical-device acceptance without leaking secrets or
+  implying external side effects.
+
 Use the runbook for the surface being delivered. A green pull request is not a
 release receipt.
 

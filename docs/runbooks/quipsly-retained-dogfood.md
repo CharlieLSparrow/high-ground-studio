@@ -1,0 +1,111 @@
+# Retained Quipsly dogfood data
+
+Quipsly acceptance work should leave behind useful longitudinal product state.
+The goal is to operate the same notes, tasks, goals, projects, tags, sources,
+Sessions, recordings, and follow-through over multiple releases instead of
+proving only that a disposable fixture can be created once.
+
+This policy applies to local development, Firebase emulators, preview
+revisions, production QA accounts, TestFlight, and physical-device rehearsals.
+It does not turn QA data into customer data or authorize external side effects.
+
+## Default
+
+- Retain useful QA identities and product artifacts unless a harness is
+  explicitly testing deletion or disposable-account cleanup.
+- Operate the rendered web or native product whenever practical. API and
+  database readback prove the boundary after the user-visible journey; they do
+  not replace it.
+- Reuse the retained corpus to test upgrades, search, tagging, portability,
+  account switching, offline recovery, schema migrations, and cross-surface
+  continuity.
+- Never mark an artifact complete, delivered, published, transcribed, synced,
+  or shared unless that exact state was produced and read back.
+
+## Identity and naming
+
+Every retained identity must be a dedicated QA identity, never a real
+collaborator's login. Every retained artifact must be obvious in ordinary UI:
+
+- Display title prefix: `QA Retained ·`
+- Slug prefix: `qa-retained-`
+- Machine-generated request or run ID prefix: `qa-retained-`
+- Recommended tag: `#qa-retained`
+
+The receipt for a retained journey records, when available:
+
+- environment and canonical origin;
+- Quipsly user ID and a redacted identity label;
+- app version/build and exact source commit;
+- backend revision and exact source commit;
+- simulator or physical-device boundary;
+- artifact IDs, hashes, and canonical URLs;
+- external side effects requested and observed;
+- outsider-denial and second-account isolation results.
+
+Passwords, bearer tokens, session cookies, API keys, database URLs, OAuth
+secrets, private signing material, and unredacted credentials never belong in a
+receipt, Git, screenshots, or test content. Store durable QA credentials only
+in an approved local credential store. If a harness cannot preserve a login
+secret safely, its retained records are evidence artifacts rather than a
+reusable interactive account.
+
+## Environment boundaries
+
+### Local and emulator
+
+Local QA is the broadest retained lane. It may exercise complete notes, tasks,
+goals, projects, tags, annotations, Session context, capture recovery, uploads,
+portability, and editor handoff using clearly labeled synthetic content.
+
+The canonical retained local corpus and its verified portability package are
+documented in
+`docs/coordination/2026-07-31-retained-capture-follow-through-dogfood.md`.
+
+### Preview and production
+
+Production QA data remains private to a dedicated test user and private test
+Nest. A production journey must:
+
+1. target an exact zero-traffic preview revision before promotion;
+2. avoid real client, collaborator, or customer identities;
+3. disable email, SMS, calendar, payment, publication, and invitation side
+   effects unless the exact external action is the approved subject of the
+   test;
+4. prove an unrelated authenticated account cannot discover the retained
+   private objects;
+5. record the exact deployed source and schema state;
+6. read the canonical records back after the rendered journey.
+
+`scripts/quipsly-mobile-capture-generated-auth-smoke.mjs` supports
+`--keep-artifacts=1`, but its default generated password is intentionally not
+printed. Use that option for retained production evidence only; do not mistake
+it for a reusable longitudinal login until the credential is deliberately
+stored through an approved secure workflow.
+
+### TestFlight and physical devices
+
+Simulator evidence does not become physical-device evidence. Retain the app's
+local receipt, source hash, upload state, recovery state, and corresponding
+private Nest records after a physical rehearsal. Preserve original recording
+sources; create versioned derivatives rather than overwriting them.
+
+## Retention and removal
+
+- Do not automatically delete a healthy retained corpus at the end of a test.
+- Prefer soft archive or a dedicated archived QA Nest when artifacts become
+  noisy in normal product views.
+- Preserve release receipts and small manifests in managed evidence storage;
+  keep large media in managed media storage rather than Git.
+- A test that proves permanent deletion may delete only its exact predeclared
+  QA targets and must independently confirm the rest of the retained corpus is
+  unchanged.
+- Purge retained data only for a clear privacy, security, cost, or product
+  reason. Record what was removed and whether recovery remains possible.
+
+## Acceptance standard
+
+A retained dogfood journey passes only when the user-visible flow works, the
+canonical state matches it, another account is denied, no unapproved external
+effect occurred, and the evidence can be tied to an exact source/build. A row
+insert, mocked preview, or screenshot alone is not a product acceptance test.
