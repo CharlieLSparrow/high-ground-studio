@@ -170,6 +170,60 @@ describe("Work Queue interactions", () => {
     expect(screen.getByText("Homer: Build a repeatable coaching review habit.")).toBeInTheDocument();
   });
 
+  it("distinguishes a restored goal copy from same-titled current work", () => {
+    const title = "Prove one complete Capture-to-Nest episode loop";
+    const baseGoal = {
+      title,
+      description: "Preserved acceptance evidence.",
+      status: "ACTIVE" as const,
+      targetAt: null,
+      achievedAt: null,
+      progressPercent: 25,
+      progressNote: "One boundary passed.",
+      provenance: "Canonical goal" as const,
+      updatedAt: "2026-07-18T18:00:00.000Z",
+      roomId: null,
+      sessionTitle: null,
+      sessionStart: null,
+      project: null,
+      tags: [],
+      canManageTags: true,
+      parent: null,
+      childCount: 0,
+      linkedTasks: [],
+      sourceAnchor: null,
+    };
+    const goalSnapshot: WorkSnapshot = {
+      ...snapshot,
+      goals: [
+        { ...baseGoal, id: "goal-current" },
+        {
+          ...baseGoal,
+          id: "goal-restored",
+          restoredFromPortableBackup: true,
+        },
+      ],
+      counts: { ...snapshot.counts, activeGoals: 2 },
+    };
+
+    render(<WorkClient initialSnapshot={goalSnapshot} />);
+
+    expect(
+      screen.getByRole("heading", {
+        name: /^Prove one complete Capture-to-Nest episode loop$/,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", {
+        name: /^Prove one complete Capture-to-Nest episode loop — Restored copy$/,
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Restored copy")).toBeInTheDocument();
+    expect(
+      screen.getByText(/keeps its own Quipsly identity and history/i),
+    ).toBeInTheDocument();
+  });
+
   it("edits a canonical goal without implying progress, task, or calendar changes", async () => {
     const user = userEvent.setup();
     const goalSnapshot: WorkSnapshot = {

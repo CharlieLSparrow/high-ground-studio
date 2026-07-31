@@ -205,6 +205,35 @@ describe("Work Queue model", () => {
     });
   });
 
+  it("marks a restored portable goal as a distinct retained copy", () => {
+    const snapshot = buildWorkSnapshot({
+      now,
+      tasks: [],
+      goals: [],
+      canonicalGoals: [{
+        id: "portable-goal-1",
+        title: "Prove one complete Capture-to-Nest episode loop",
+        description: "Preserved recovery evidence.",
+        status: "ACTIVE",
+        sourceJson: {
+          schema: "quipsly-portable-goal-restore-v1",
+          manifestSha256: "a".repeat(64),
+          originalGoalId: "goal-1",
+        },
+        createdAt: now,
+        updatedAt: now,
+      }],
+      commitments: [],
+    });
+
+    expect(snapshot.goals).toHaveLength(1);
+    expect(snapshot.goals[0]).toMatchObject({
+      id: "portable-goal-1",
+      provenance: "Canonical goal",
+      restoredFromPortableBackup: true,
+    });
+  });
+
   it("returns a canonical goal to its exact room-matched transcript source", () => {
     const sourceJson = {
       schema: "quipsly-transcript-derived-goal-v1",

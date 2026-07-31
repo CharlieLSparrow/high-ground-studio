@@ -180,6 +180,7 @@ export type WorkGoal = {
   progressPercent: number | null;
   progressNote: string | null;
   provenance: "Canonical goal" | "Legacy Session Plan projection";
+  restoredFromPortableBackup?: boolean;
   updatedAt: string;
   roomId: string | null;
   sessionTitle: string | null;
@@ -385,6 +386,7 @@ export function buildWorkSnapshot(input: {
     .map((goal) => {
       const room = goal.room || goal.booking?.callRoom || null;
       const progress = goal.progressReceipts?.[0] ?? null;
+      const source = safeRecord(goal.sourceJson);
       const parsedSourceAnchor = readTranscriptDerivedGoalSource(goal.sourceJson);
       const sourceAnchor = parsedSourceAnchor?.roomId === room?.id ? parsedSourceAnchor : null;
       return {
@@ -397,6 +399,8 @@ export function buildWorkSnapshot(input: {
         progressPercent: typeof progress?.progressPercent === "number" ? Math.max(0, Math.min(100, progress.progressPercent)) : goal.status === "ACHIEVED" ? 100 : null,
         progressNote: clean(progress?.note) || null,
         provenance: "Canonical goal" as const,
+        restoredFromPortableBackup:
+          source.schema === "quipsly-portable-goal-restore-v1",
         updatedAt: iso(goal.updatedAt) || now,
         roomId: room?.id ?? null,
         sessionTitle: sessionTitle(goal),
@@ -426,6 +430,7 @@ export function buildWorkSnapshot(input: {
         progressPercent: null,
         progressNote: null,
         provenance: "Legacy Session Plan projection" as const,
+        restoredFromPortableBackup: false,
         updatedAt: iso(goal.updatedAt) || now,
         roomId: room?.id ?? null,
         sessionTitle: sessionTitle(goal),
