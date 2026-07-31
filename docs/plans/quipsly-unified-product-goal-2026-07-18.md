@@ -4766,9 +4766,31 @@ was restored.
   Task, Goal, Session, Note, and document assignment counts remained unchanged
   at zero. This clearly labeled artifact is intentionally retained for future
   cross-surface regression and real-work testing.
-- This checkpoint is local product proof. Build 16 remains the current
-  production/TestFlight target until this exact source is committed, receives
-  full release qualification, is deployed at zero traffic, and passes the
-  external beta readback.
-- The app and Share Capture extension now share candidate build number 17.
-  This is only a unique release identity; it is not yet a distribution claim.
+- The app and Share Capture extension share Build 17. Its production and
+  TestFlight release evidence is recorded below.
+
+### 2026-07-30 canonical tag authoring production and Build 17 release
+
+- Exact source `b0211cf8a528ce248edb38725631279a2438d847` built in Cloud Build
+  operation `d3bd1555-b320-4ceb-acd7-318e18649c36`, deployed as zero-traffic
+  `studio-00460-tix`, and passed the generated verified-reviewer journey plus
+  all 108 mobile contract checks before promotion.
+- Production traffic now points 100% to `studio-00460-tix` at immutable runtime
+  image digest
+  `sha256:2bf8ee96aeeec487929a6e0b582b0b10b15d74d1677234e8bc3739381ce2d5fb`.
+  The temporary reviewer's grants, Nest, memberships, database actor, and
+  Firebase actor were independently verified absent after acceptance.
+- The transcript provider remains held: no provider environment or worker Job
+  is live. The reserved Deepgram secret resource has zero versions.
+- Detached exact-source qualification passed 45/45 serialized iPhone and Share
+  Extension journeys plus signed archive/export and packaged-app inspection.
+  The exact upload-bound 20,891,711-byte IPA has SHA-256
+  `055bca4210bda089cf613a1618d97bfb6e96566efb3f7f289a917118148975d4`.
+- App Store Connect build `e3d69f71-90b5-4da8-91c3-c597cb942994` processed
+  `VALID`, entered `IN_BETA_TESTING`, and received beta review `APPROVED`.
+  It is assigned to the existing external **Quipsly Capture Rehearsal** group
+  with automatic notification. Independent uncached public-link readback
+  passed the exact title, open-beta heading, and `itms-beta` handoff.
+- This is deployed production and approved TestFlight proof for the canonical
+  tag-authoring slice. Physical installation, real two-person consent/capture,
+  and end-to-end HGO and coaching dogfood remain mandatory human-present gates.

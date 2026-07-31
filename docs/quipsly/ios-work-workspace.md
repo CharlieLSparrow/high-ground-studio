@@ -195,7 +195,7 @@ The 2026-07-29 project-creation checkpoint additionally proved:
   kernel.
 
 Production deployment and TestFlight distribution are now proven by the
-Build 16 release checkpoint below. A signed physical-iPhone
+Build 17 release checkpoint below. A signed physical-iPhone
 creation/readback remains a release gate; this checkpoint does not claim it.
 
 The 2026-07-30 shared-vocabulary checkpoint additionally proves:
@@ -244,7 +244,7 @@ writable QA Nest already exist.
 
 ## Open release gates
 
-Build 16 and Nest revision `studio-00458-xac` close deployed production parity
+Build 17 and Nest revision `studio-00460-tix` close deployed production parity
 and external TestFlight distribution for this slice. The remaining boundaries
 are:
 
@@ -254,7 +254,45 @@ are:
 
 Those gates remain tracked in the unified product goal and App Store readiness runbook.
 
-## 2026-07-30 production and Build 16 release
+## 2026-07-30 production and Build 17 release
+
+- Exact committed source
+  `b0211cf8a528ce248edb38725631279a2438d847` built in Cloud Build operation
+  `d3bd1555-b320-4ceb-acd7-318e18649c36`, then deployed first as zero-traffic
+  Nest revision `studio-00460-tix`.
+- A generated verified Firebase reviewer exercised public routes, authenticated
+  login, the private Home Nest, episode production, Sessions, Projects, account
+  switching, the admin boundary, writing, editor, recorder, research,
+  publishing, logout, and the 108-check mobile contract before traffic moved.
+- Production now serves `studio-00460-tix` at 100% from immutable runtime image
+  digest
+  `sha256:2bf8ee96aeeec487929a6e0b582b0b10b15d74d1677234e8bc3739381ce2d5fb`.
+  Reviewer grants, Home Nest, memberships, database actor, and Firebase actor
+  were independently verified removed after acceptance.
+- Build 17 passed all 45 serialized iPhone and Share Extension journeys,
+  signed archive/export, nested signature, entitlement, App Store profile,
+  privacy-manifest, and packaged-purpose-string inspection.
+- The exact upload-bound 20,891,711-byte IPA has SHA-256
+  `055bca4210bda089cf613a1618d97bfb6e96566efb3f7f289a917118148975d4`.
+  App Store Connect build `e3d69f71-90b5-4da8-91c3-c597cb942994` is `VALID`,
+  `APPROVED`, and `IN_BETA_TESTING` in the external
+  **Quipsly Capture Rehearsal** group with automatic notification.
+- Independent public-link readback passed the exact app title, open-beta
+  heading, and `itms-beta` handoff at
+  `https://testflight.apple.com/join/XwRRcYUm`.
+- The transcript provider remains deliberately held: the live Nest revision
+  has no transcript-provider environment and no transcript worker Job exists.
+  Secret resource `quipsly-deepgram-api-key` exists for future controlled
+  activation but has zero secret versions, so no provider credential can be
+  consumed.
+- This release makes deliberate creation and reuse of the canonical Nest tag
+  vocabulary available in iPhone Work without placeholder records or hidden
+  assignments. The labeled durable QA artifact under
+  `quipsly.qa@local.test` remains intentionally retained.
+- Apple processing and public delivery do not prove a physical TestFlight
+  installation or a real two-person recording; those gates remain open.
+
+## Historical 2026-07-30 production and Build 16 release
 
 - Exact committed source
   `356f6d821eafac018c5116cb4d888425c442cf42` deployed first as zero-traffic
@@ -262,7 +300,7 @@ Those gates remain tracked in the unified product goal and App Store readiness r
 - A generated verified Firebase reviewer exercised the private Home Nest,
   Sessions, writing, editor, recorder, research, publishing, admin boundary,
   logout, and the 108-check mobile contract before traffic changed.
-- Production now serves `studio-00458-xac` at 100% from immutable image digest
+- At that checkpoint production served `studio-00458-xac` at 100% from immutable image digest
   `sha256:5126998e2c6f490a1b0e76fd4c172dcf4afced2139216ae9f93b664629a2a66a`.
   Reviewer grants, Home Nest, membership, database actor, and Firebase actor
   were independently verified removed after acceptance.
@@ -277,6 +315,4 @@ Those gates remain tracked in the unified product goal and App Store readiness r
 - Independent public-link readback passed the exact app title, open-beta
   heading, and `itms-beta` handoff at
   `https://testflight.apple.com/join/XwRRcYUm`.
-- The transcript provider remains deliberately held: the live Nest revision
-  has no transcript-provider environment, no transcript worker Job exists,
-  and no Deepgram secret exists.
+- The transcript provider remained deliberately held at that checkpoint.

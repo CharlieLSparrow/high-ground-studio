@@ -101,7 +101,11 @@ test("defaults to the canonical current TestFlight release", () => {
     QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
   );
   assert.equal(parsed.buildNumber, QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber);
-  assert.equal(parsed.groupKind, "internal");
+  assert.equal(
+    parsed.groupName,
+    QUIPSLY_CAPTURE_RELEASE_TARGET.externalGroupName,
+  );
+  assert.equal(parsed.groupKind, "external");
 });
 
 test("redacts the tester email and proves the exact internal build contract", () => {

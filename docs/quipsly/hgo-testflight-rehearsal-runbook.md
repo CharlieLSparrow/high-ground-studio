@@ -1,6 +1,6 @@
 # High Ground Odyssey TestFlight Rehearsal
 
-Last verified: 2026-07-30 23:36 UTC
+Last verified: 2026-07-31 00:56 UTC
 
 This is the operator runbook for the first Charlie-and-Homer Quipsly Capture
 rehearsal. It distinguishes what is ready now from what the rehearsal still
@@ -8,11 +8,11 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (16)**
+- App: **Quipsly Capture 1.0 (17)**
 - Exact native source:
-  `356f6d821eafac018c5116cb4d888425c442cf42`
-- Qualified IPA: 20,866,985 bytes, SHA-256
-  `237cb1e8e286d06b23744d42a4d7193fec3f04b0edd4699fd2df47a6e00cf7ca`
+  `b0211cf8a528ce248edb38725631279a2438d847`
+- Qualified upload-bound IPA: 20,891,711 bytes, SHA-256
+  `055bca4210bda089cf613a1618d97bfb6e96566efb3f7f289a917118148975d4`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -151,7 +151,52 @@ needs to prove.
   accepts pnpm's conventional argument separator instead of rejecting it
   before the readback. The focused CLI/receipt suite passes 6/6.
 
-## Approved Build 16 rehearsal lane
+## Approved Build 17 rehearsal lane
+
+Build 17 supersedes Build 16 for every new install and rehearsal. It preserves
+the coordinated podcast audio/video, protected Shared Watch, manuscript,
+source evidence, Work, Google identity, and recovery behavior qualified in
+earlier builds. It adds deliberate authoring of the same canonical Nest tag
+vocabulary directly from iPhone Work before a Task, Goal, Note, Session, or
+document exists. Creation reuses labels and historical aliases, records
+append-only revision evidence, and creates no assignment or external side
+effect.
+
+Exact detached source `b0211cf8a528ce248edb38725631279a2438d847`
+passed all 45 serialized iPhone and Share Extension journeys and produced the
+exact upload-bound 20,891,711-byte IPA at SHA-256
+`055bca4210bda089cf613a1618d97bfb6e96566efb3f7f289a917118148975d4`.
+
+Independent App Store Connect readback reported:
+
+- build ID `e3d69f71-90b5-4da8-91c3-c597cb942994`;
+- processing state `VALID`;
+- external state `IN_BETA_TESTING`;
+- beta review state `APPROVED`;
+- Build 17 included in **Quipsly Capture Rehearsal**;
+- complete beta metadata, automatic notification, and open public-link
+  capacity for 100 testers;
+- the uncached public page exposes the exact Quipsly title, beta heading, and
+  `itms-beta` handoff.
+
+Production Nest source matches this build at `studio-00460-tix`, immutable
+runtime image digest
+`sha256:2bf8ee96aeeec487929a6e0b582b0b10b15d74d1677234e8bc3739381ce2d5fb`.
+A generated verified reviewer operated its authenticated workspace, episode,
+Sessions, writing, editor, recorder, research, and publishing paths plus the
+108-check mobile contract before the revision received production traffic. Its
+temporary Nest, grants, membership, database actor, and Firebase actor were
+then independently verified removed.
+
+The transcript provider remains deliberately held. Production has no provider
+environment or transcript worker Job; the reserved Deepgram secret resource
+has zero versions.
+
+The release receipt still records no physical TestFlight install. Apple
+processing, approval, group assignment, and public-link readback do not prove
+a physical iPhone install or a real two-person recording.
+
+## Historical Build 16 rehearsal lane
 
 Build 16 supersedes Build 15 for every new install and rehearsal. It adds
 native management of the same canonical project vocabulary used by Nest:
@@ -254,12 +299,12 @@ not distributed in Build 13. It is no longer an unuploaded candidate:
 - the exact public page is open and exposes the Quipsly title, beta heading,
   and `itms-beta` TestFlight handoff.
 
-During a Build 16 rehearsal, expect the same project creation, task
+During a Build 17 rehearsal, expect the same project creation, task
 creation/completion and title/detail/due editing, goal
 title/definition/target editing, project-note body editing, tags, notes, and
-recurring-task controls, plus the Build 16 vocabulary additions above. The release still
+recurring-task controls, plus the Build 16 and Build 17 vocabulary additions above. The release still
 requires physical-device readback; simulator and provider state do not prove
-Scott installed or operated Build 16.
+Scott installed or operated Build 17.
 
 Historical Build 13 recovery: Fastlane's first upload handoff split the external-volume path at
 `My Passport` and exited before transferring any bytes. App Store Connect
@@ -270,7 +315,7 @@ processed successfully. The pipeline now performs this verified temporary
 staging automatically while preserving the canonical artifact on the release
 volume.
 
-Build 16's **Podcast audio + video** mode creates two immutable local masters
+Build 17's **Podcast audio + video** mode creates two immutable local masters
 under one capture-group identity: a microphone AAC source and a video-only MOV
 source. During a LiveKit call, LiveKit stays the single microphone hardware
 owner and Quipsly records its already-owned local-input PCM instead of opening
@@ -310,7 +355,7 @@ gates. The enabled public external-testing link is the canonical path:
 
 `https://testflight.apple.com/join/XwRRcYUm`
 
-As a redundant internal path, Build 16 was distributed to internal testers
+As a redundant internal path, Build 17 was distributed to internal testers
 when the upload completed. The public link remains the canonical recovery path
 when Apple's invitation email or TestFlight library refresh lags.
 

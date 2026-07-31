@@ -13,8 +13,8 @@ const DEFAULTS = Object.freeze({
   bundleId: QUIPSLY_CAPTURE_RELEASE_TARGET.bundleId,
   marketingVersion: QUIPSLY_CAPTURE_RELEASE_TARGET.marketingVersion,
   buildNumber: QUIPSLY_CAPTURE_RELEASE_TARGET.buildNumber,
-  groupName: "Quipsly Capture Internal",
-  groupKind: "internal",
+  groupName: QUIPSLY_CAPTURE_RELEASE_TARGET.externalGroupName,
+  groupKind: "external",
 });
 
 function fail(message) {

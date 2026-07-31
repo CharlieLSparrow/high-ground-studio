@@ -90,7 +90,7 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
 - latest coherent feature commit:
-  `356f6d82 test(transcripts): enforce durable worker architecture`
+  `b9ee70aa feat(capture): author canonical tag vocabulary`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
   - `apps/quipsly/src/app/api/mobile/capture/today`
@@ -106,28 +106,28 @@ Verified during the Codex application handoff prep on 2026-05-26.
     goals, notes, tags, annotations, sources, recording, and follow-through,
     while preserving exact-source release and physical-boundary evidence
 - current status:
-  - Quipsly Capture 1.0 (16), exact source `356f6d821e`, is live through the
+  - Quipsly Capture 1.0 (17), exact source `b0211cf8a5`, is live through the
     open public TestFlight link; physical install and rehearsal readback remain
     open
-  - production Nest is `studio-00458-xac` at 100% traffic from the same exact
+  - production Nest is `studio-00460-tix` at 100% traffic from the same exact
     source; generated-reviewer acceptance and the 108-check mobile contract
     passed before promotion
   - `3f55a5b1` adds canonical project-vocabulary rename, archive, and restore
     to iPhone Work with aliases, assignment impact, optimistic revisions, and
     a deliberate Nest handoff for higher-impact merge
-  - Build 16 passed 45/45 operated UI journeys, signed artifact verification,
+  - Build 17 passed 45/45 operated UI journeys, signed artifact verification,
     App Store processing, external beta approval, group assignment, automatic
     notification, and uncached public-link readback
-  - the next exact-source slice adds deliberate iPhone canonical vocabulary
+  - the released exact-source slice adds deliberate iPhone canonical vocabulary
     authoring without a placeholder record: live grant recheck, serializable
     create/reuse, append-only history, no assignment, immediate
     permission-filtered Search discovery, and no offline replay
   - durable local QA retained `Capture vocabulary dogfood` in
     `High Ground real-work dogfood` under `quipsly.qa@local.test`; a second run
     reused the same tag identity and left all five assignment counts unchanged
-  - the app and Share Capture extension are staged at candidate build 17;
-    Build 16 remains canonical until exact-source qualification, Nest preview,
-    upload, approval, group assignment, and public-link readback all pass
+  - the app and Share Capture extension are approved as Build 17; exact-source
+    qualification, Nest preview, production promotion, upload, approval, group
+    assignment, and public-link readback all passed
   - `b2313033` adds permission-correct annotation Resolve/Reopen on iPhone,
     canonical tags, exact Nest Research links, and real-Firebase/local-Postgres
     operated proof with complete cleanup
@@ -145,16 +145,16 @@ Verified during the Codex application handoff prep on 2026-05-26.
     and reversible human operation without changing the source
   - current checks: direct-create route 14/14, real PostgreSQL taxonomy 11/11,
     durable QA 2/2 create/reuse operations, pinned TypeScript 7, mobile source
-    contract, focused Work XCUITest, App Store static 947/947, Build 16's 45/45
+    contract, focused Work XCUITest, App Store static 947/947, Build 17's 45/45
     serialized UI journeys, signed IPA inspection, authenticated production
     acceptance, and TestFlight readback all pass
-  - deploy status: exact source `356f6d82` is deployed and distributed
-  - rollback: previous proven Nest revision is `studio-00454-kom`; Build 15
+  - deploy status: exact source `b0211cf8` is deployed and distributed
+  - rollback: previous proven Nest revision is `studio-00458-xac`; Build 16
     remains documented and available historically in App Store Connect
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
   - no private HGO or coaching material in screenshots
-  - do not replace the known-good Build 16 rehearsal target during active human
+  - do not replace the known-good Build 17 rehearsal target during active human
     testing without a coordinated handoff
   - do not save legal, rating, DSA, pricing, territory, privacy, deletion, or
     reviewer-credential answers without account-holder approval
