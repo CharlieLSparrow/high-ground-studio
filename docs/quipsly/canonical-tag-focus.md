@@ -153,3 +153,13 @@ Current evidence:
 
 These checks do not prove a physical TestFlight install. That remains a
 separate release boundary.
+
+## 2026-07-30 media-focus production continuation
+
+Exact source `ed3b2dc6bc746d220459b3911a53b7cfc4db4a3d` is deployed as
+`studio-00464-sig` at 100% traffic from immutable runtime image digest
+`sha256:dc4bd769ef4c12240e0cd68048b368524855c0eb6a617e59ab37c6d1c24b0cca`.
+The release used a zero-traffic preview, two generated-reviewer passes with
+verified Firebase/database cleanup, exact source readback, guarded promotion,
+and post-promotion production status. Build 18 remains the compatible
+TestFlight binary because no native source changed.

@@ -4903,8 +4903,23 @@ was restored.
   exact clip under `/find?tag=<StudioTag.id>`, and reopened the exact highlighted
   logger row. These clearly labeled local artifacts remain intentionally
   retained for long-term regression testing.
-- This is a local production-quality checkpoint, not active-goal completion.
-  Exact committed-source qualification and zero-traffic Nest deployment still
-  precede production promotion. Physical TestFlight installation, genuine
-  two-person consent/capture, real episode and coaching completion, and App
-  Store submission remain open boundaries.
+- Exact committed source
+  `ed3b2dc6bc746d220459b3911a53b7cfc4db4a3d` built in Cloud Build
+  `0e8a5f37-16c6-49f9-8801-1dd9b6fdfdb7`, whose final image verified all six
+  required route bundles. It deployed first as 0%-traffic revision
+  `studio-00464-sig`.
+- The generated signed-in reviewer passed against the preview, and promotion
+  deliberately reran the exact-commit preflight plus reviewer. Each run
+  independently verified deletion of two grants, one Home Nest, one
+  membership, one database actor, and one Firebase actor.
+- Production now serves `studio-00464-sig` at 100% from immutable runtime image
+  digest
+  `sha256:dc4bd769ef4c12240e0cd68048b368524855c0eb6a617e59ab37c6d1c24b0cca`.
+  Independent `/api/health` readback reports the exact source and revision.
+  Production status passes billing, Cloud SQL, domain/certificate routing,
+  public routes, 108 mobile checks, and recent billing-error logs.
+- No native source changed, so approved Quipsly Capture Build 18 remains the
+  compatible TestFlight binary. This production release is not active-goal
+  completion: physical TestFlight installation, genuine two-person
+  consent/capture, real episode and coaching completion, and App Store
+  submission remain open boundaries.

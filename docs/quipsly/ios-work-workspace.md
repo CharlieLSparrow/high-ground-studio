@@ -332,6 +332,10 @@ Those gates remain tracked in the unified product goal and App Store readiness r
   and 4.00s–12.00s clip remain intentionally retained as a long-term
   regression fixture. This does not replace physical TestFlight and genuine
   recording proof.
+- The Nest continuation is deployed from exact source
+  `ed3b2dc6bc746d220459b3911a53b7cfc4db4a3d` as `studio-00464-sig` at 100%.
+  Build 18 needs no replacement for this web-only contract and remains the
+  current approved TestFlight binary.
 
 ## Historical 2026-07-30 production and Build 17 release
 

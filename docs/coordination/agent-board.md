@@ -167,9 +167,10 @@ Verified during the Codex application handoff prep on 2026-05-26.
     150-route Nest build, focused Work XCUITest, App Store static 947/947,
     Build 18's 45/45 serialized UI journeys, signed IPA inspection,
     authenticated production acceptance, and TestFlight readback all pass
-  - deploy status: Nest source `041461d9` is deployed; Capture source
-    `5a047986` is distributed
-  - rollback: previous proven Nest revision is `studio-00460-tix`; Build 17
+  - deploy status: Nest source `ed3b2dc6` is deployed as
+    `studio-00464-sig` at 100%; Capture source `5a047986` remains distributed
+    as approved Build 18
+  - rollback: previous proven Nest revision is `studio-00462-luc`; Build 17
     remains documented and available historically in App Store Connect
 - current guardrails:
   - DEBUG screenshot fixtures remain ineligible for submission
@@ -179,9 +180,8 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - do not save legal, rating, DSA, pricing, territory, privacy, deletion, or
     reviewer-credential answers without account-holder approval
   - no physical-device or provider claim without readback from that boundary
-  - `c8f9b711` is a committed local Nest candidate; do not claim production
-    parity until its zero-traffic preview, authenticated smoke, immutable
-    source readback, promotion, and production status all pass
+  - no new iOS binary was needed for this Nest-only release; do not imply that
+    web deployment proves physical TestFlight installation or recording
 
 ### 2026-05-25 Sub-Agent Fanout
 
