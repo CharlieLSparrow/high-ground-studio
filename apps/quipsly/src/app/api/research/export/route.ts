@@ -9,21 +9,33 @@ import { resolveStudioProjectAccess } from "@/lib/server/studio-project-access";
 
 export const dynamic = "force-dynamic";
 
+const PRIVATE_RESPONSE_HEADERS = {
+  "cache-control": "private, no-store",
+  Vary: "Authorization, Cookie",
+};
+
+function privateJson(body: unknown, status: number) {
+  return NextResponse.json(body, {
+    status,
+    headers: PRIVATE_RESPONSE_HEADERS,
+  });
+}
+
 export async function GET(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user?.id) {
-    return NextResponse.json({ ok: false, error: "Sign in before exporting private research." }, { status: 401 });
+    return privateJson({ ok: false, error: "Sign in before exporting private research." }, 401);
   }
   const url = new URL(request.url);
   const projectSlug = (url.searchParams.get("project") || "").trim().slice(0, 160);
-  if (!projectSlug) return NextResponse.json({ ok: false, error: "Choose one Nest to export." }, { status: 400 });
+  if (!projectSlug) return privateJson({ ok: false, error: "Choose one Nest to export." }, 400);
   const actorEmail = (session.user.primaryEmail || session.user.email || "").trim().toLowerCase();
-  if (!actorEmail) return NextResponse.json({ ok: false, error: "The signed-in account has no verified email identity." }, { status: 401 });
+  if (!actorEmail) return privateJson({ ok: false, error: "The signed-in account has no verified email identity." }, 401);
 
   const prisma = getPrismaClient();
   const access = await resolveStudioProjectAccess({ projectSlug, email: actorEmail, action: "read", prisma });
   if (!access.allowed || !access.projectId) {
-    return NextResponse.json({ ok: false, error: "That Nest is unavailable to the signed-in account." }, { status: 404 });
+    return privateJson({ ok: false, error: "That Nest is unavailable to the signed-in account." }, 404);
   }
 
   try {
@@ -31,7 +43,7 @@ export async function GET(request: Request) {
       where: { id: access.projectId },
       select: { id: true, slug: true, name: true, updatedAt: true },
     });
-    if (!project) return NextResponse.json({ ok: false, error: "That Nest no longer exists." }, { status: 404 });
+    if (!project) return privateJson({ ok: false, error: "That Nest no longer exists." }, 404);
 
     const [sources, tags, annotations, uses] = await Promise.all([
       prisma.studioSourceUnit.findMany({
@@ -153,11 +165,11 @@ export async function GET(request: Request) {
       headers: {
         "content-type": "application/json; charset=utf-8",
         "content-disposition": `attachment; filename="${filename.replace(/[^a-zA-Z0-9._-]/g, "-")}"`,
-        "cache-control": "private, no-store",
+        ...PRIVATE_RESPONSE_HEADERS,
       },
     });
   } catch (error) {
     console.error("[research-export] failed", error);
-    return NextResponse.json({ ok: false, error: "Quipsly could not verify and export this private research bundle." }, { status: 503 });
+    return privateJson({ ok: false, error: "Quipsly could not verify and export this private research bundle." }, 503);
   }
 }

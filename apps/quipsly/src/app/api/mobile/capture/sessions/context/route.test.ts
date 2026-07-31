@@ -37,6 +37,11 @@ function getRequest() {
   return new Request(`http://localhost/api/mobile/capture/sessions/context?callRoomId=${ROOM_ID}`);
 }
 
+function expectPrivateResponse(response: Response) {
+  expect(response.headers.get("cache-control")).toBe("private, no-store");
+  expect(response.headers.get("vary")).toBe("Authorization, Cookie");
+}
+
 function createInMemoryPrisma(initialContext: unknown = {}) {
   let sequence = 0;
   let room = {
@@ -152,6 +157,7 @@ describe("capture session context v2", () => {
     const response = await POST(request({ note: "private note", goals: [], tasks: [] }));
 
     expect(response.status).toBe(401);
+    expectPrivateResponse(response);
     await expect(response.json()).resolves.toMatchObject({ ok: false, code: "UNAUTHORIZED" });
     expect(getPrismaClient).not.toHaveBeenCalled();
   });
@@ -238,6 +244,7 @@ describe("capture session context v2", () => {
     const response = await POST(request({ note: "private note", goals: [], tasks: [] }));
 
     expect(response.status).toBe(404);
+    expectPrivateResponse(response);
     await expect(response.json()).resolves.toMatchObject({ ok: false, code: "CALL_ROOM_NOT_FOUND" });
     expect(state.prisma.coachingNote.create).not.toHaveBeenCalled();
     expect(state.prisma.actionItem.create).not.toHaveBeenCalled();
@@ -255,6 +262,8 @@ describe("capture session context v2", () => {
 
     const first = await GET(getRequest());
     const second = await GET(getRequest());
+    expectPrivateResponse(first);
+    expectPrivateResponse(second);
     const firstBody = await first.json();
     const secondBody = await second.json();
 

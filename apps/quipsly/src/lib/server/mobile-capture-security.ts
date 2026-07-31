@@ -193,7 +193,7 @@ export async function authorizeIngestMediaSource(input: {
 
   return {
     allowed: false,
-    status: 403,
-    error: "You do not have access to this Quipsly media source.",
+    status: 404,
+    error: "Source not found",
   };
 }

@@ -1133,6 +1133,47 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         )
     }
 
+    func testOutsiderCannotSeeRetainedTranscriptFollowThrough() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let taskID = credentials.taskID, !taskID.isEmpty,
+              let goalID = credentials.goalID, !goalID.isEmpty,
+              let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let sessionTitle = credentials.sessionTitle, !sessionTitle.isEmpty else {
+            throw XCTSkip("The account-isolation journey requires exact Session, task, and goal identities.")
+        }
+        let app = try launchSignedInCaptureApp()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureTodayFollowThroughEmpty"].waitForExistence(timeout: 30),
+            "The outsider's canonical Today request should finish with an explicitly empty private workspace."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTodayTask_\(taskID)"].exists,
+            "Another account must not see the retained transcript-derived task."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureTodayGoal_\(goalID)"].exists,
+            "Another account must not see the retained transcript-derived goal."
+        )
+
+        tapRootTab("Record", in: app)
+        let sessionChooser = app.buttons["CaptureSessionChooser"].firstMatch
+        XCTAssertTrue(sessionChooser.waitForExistence(timeout: 15))
+        sessionChooser.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSessionPickerEmpty"].waitForExistence(timeout: 15),
+            "The outsider's Session chooser should finish with no accessible Session rows."
+        )
+        XCTAssertFalse(
+            app.descendants(matching: .any)["CaptureSessionPicker_\(sessionID)"].exists,
+            "Another account must not receive the private Session identity."
+        )
+        XCTAssertFalse(
+            app.staticTexts[sessionTitle].firstMatch.exists,
+            "Another account must not receive the private Session title."
+        )
+    }
+
     func testOneTimeTaskReminderCancelsAndReactivatesThroughNest() throws {
         let credentials = try runtimeSmokeCredentials()
         guard let taskID = credentials.taskID, !taskID.isEmpty else {

@@ -5048,3 +5048,36 @@ was restored.
   recording, real two-person consent, human-confirmed speaker identity,
   production same-ID readback, TestFlight execution of this source, completed
   HGO/coaching workflow, or App Store submission.
+
+### 2026-07-31 retained separate-account privacy operation
+
+- Retained a reserved outsider `.test` account and operated it through the
+  rendered Nest against the exact transcript Session, task, goal, private
+  writing page, search terms, media source, and export target. Direct Session
+  access concealed the record with 404; writing returned to the outsider's
+  accessible Nest picker; Work named the unavailable task/goal without
+  disclosing content; Search returned zero accessible matches in every
+  category.
+- Added a reusable loopback-only outsider harness over real Firebase-emulator
+  sign-in, Quipsly session exchange, private APIs, PostgreSQL, notification
+  intents, protected media, and research export. Sessions, Today, and Work
+  returned only the outsider's bounded workspace. Session context, correction
+  desk, source evidence, media, and export all returned private 404 responses.
+  Database readback proved zero grant/participant/ownership crossover while
+  retaining 5 transcript segments and 12 words.
+- Dogfooding found and fixed three server privacy defects: actor-scoped Session
+  context responses now consistently send private/no-store and authorization
+  vary headers; protected media no longer distinguishes nonexistent sources
+  from real inaccessible ones; and research-export errors now share the
+  private response contract already used by successful exports.
+- Added and operated a native outsider journey. The iPhone 17 Pro / iOS 26.3.1
+  simulator showed an explicitly empty Today, no exact private task or goal,
+  and an empty Session chooser with neither the private ID nor title. Result:
+  1 passed, 0 failed, 0 skipped. Stable accessible empty-state identities were
+  added for ordinary users and automation.
+- Full verification passes: 190 Quipsly suites / 956 tests, TypeScript, 15/15
+  native account-partition checks, 955/955 native/App Store invariants, 17/17
+  focused privacy tests, retained API/database dogfood, and explicit diff
+  checks. This is local and simulator proof—not a production or physical
+  iPhone outsider attempt, real coach/client role matrix, TestFlight operation,
+  provider notification delivery, or public/private publication proof.

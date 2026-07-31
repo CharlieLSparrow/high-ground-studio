@@ -17,7 +17,27 @@ describe("portable research export", () => {
     jest.mocked(getQuipslySessionFromRequest).mockResolvedValue(null as any);
     const response = await GET(new Request("http://localhost/api/research/export?project=high-ground"));
     expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("vary")).toBe("Authorization, Cookie");
     expect(getPrismaClient).not.toHaveBeenCalled();
+  });
+
+  it("conceals an inaccessible Nest in a private non-cacheable response", async () => {
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
+      user: { id: "outsider", primaryEmail: "outsider@example.test" },
+    } as any);
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({ allowed: false } as any);
+    jest.mocked(getPrismaClient).mockReturnValue({} as any);
+
+    const response = await GET(new Request("http://localhost/api/research/export?project=high-ground"));
+
+    expect(response.status).toBe(404);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("vary")).toBe("Authorization, Cookie");
+    await expect(response.json()).resolves.toEqual({
+      ok: false,
+      error: "That Nest is unavailable to the signed-in account.",
+    });
   });
 
   it("exports preserved source text with actor-scoped overlays and integrity evidence", async () => {
@@ -60,6 +80,8 @@ describe("portable research export", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("vary")).toBe("Authorization, Cookie");
     expect(response.headers.get("content-disposition")).toContain("quipsly-high-ground-research-");
     expect(body).toMatchObject({
       schemaVersion: "quipsly-research-export-v1",

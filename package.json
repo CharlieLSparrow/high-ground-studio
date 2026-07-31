@@ -144,6 +144,7 @@
     "studio:collab:room:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/studio-collaboration-room-identity.test.mjs",
     "studio:collab:agentic-smoke": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/agentic-studio-collab-lab-smoke.mjs",
     "quipsly:transcript:dogfood": "node --env-file-if-exists=apps/quipsly/.env.local --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs scripts/quipsly-local-transcript-correction-dogfood.mjs",
+    "quipsly:privacy:retained-dogfood": "node --env-file-if-exists=apps/quipsly/.env.local scripts/quipsly-retained-account-privacy-dogfood.mjs",
     "hgo:projection:browser-smoke": "node --experimental-strip-types scripts/agentic-hgo-projection-browser-smoke.mjs",
     "hgo:projection:visual-smoke": "node scripts/agentic-hgo-projection-visual-smoke.mjs",
     "hgo:artifact:test": "node --experimental-strip-types --import ./scripts/register-ts-extension-loader.mjs --test scripts/hgo-staged-artifact.test.mjs",

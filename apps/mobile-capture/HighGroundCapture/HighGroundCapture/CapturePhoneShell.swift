@@ -2043,6 +2043,7 @@ struct TodayFollowThroughCard: View {
                 Text("No committed follow-through is available yet. Add a task, goal, focus block, weekly plan, or source annotation in Nest; Today will use the same canonical record.")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("CaptureTodayFollowThroughEmpty")
             }
 
             if let error = client.errorMessage {
@@ -8548,6 +8549,7 @@ private struct SessionPickerSheet: View {
             List {
                 if model.sessions.isEmpty {
                     ContentUnavailableView("No sessions", systemImage: "calendar", description: Text("Create a session to keep consent and recordings together."))
+                        .accessibilityIdentifier("CaptureSessionPickerEmpty")
                 } else {
                     ForEach(model.sessions) { session in
                         Button {

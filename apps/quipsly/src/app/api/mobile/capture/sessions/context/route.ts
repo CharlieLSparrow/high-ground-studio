@@ -17,6 +17,17 @@ import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 export const runtime = "nodejs";
 
 const SOURCE_OF_TRUTH = "Quipsly CallRoom.metadataJson.captureSessionContext";
+const PRIVATE_RESPONSE_HEADERS = {
+  "Cache-Control": "private, no-store",
+  Vary: "Authorization, Cookie",
+};
+
+function privateJson(body: unknown, status = 200) {
+  return NextResponse.json(body, {
+    status,
+    headers: PRIVATE_RESPONSE_HEADERS,
+  });
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -48,9 +59,9 @@ async function authenticate(request: Request) {
   const session = await getQuipslySessionFromRequest(request);
   if (!session?.user) {
     return {
-      response: NextResponse.json(
+      response: privateJson(
         { ok: false, code: "UNAUTHORIZED", error: "Sign in before syncing capture session context." },
-        { status: 401 },
+        401,
       ),
     };
   }
@@ -67,14 +78,14 @@ async function findRoom(prisma: any, callRoomId: string, user: any) {
 
 function missingRoomResponse(callRoomId: string) {
   if (!callRoomId) {
-    return NextResponse.json(
+    return privateJson(
       { ok: false, code: "CALL_ROOM_REQUIRED", error: "Choose a Quipsly capture room before syncing notes, goals, or tasks." },
-      { status: 400 },
+      400,
     );
   }
-  return NextResponse.json(
+  return privateJson(
     { ok: false, code: "CALL_ROOM_NOT_FOUND", error: "You do not have access to this capture room." },
-    { status: 404 },
+    404,
   );
 }
 
@@ -161,7 +172,7 @@ export async function GET(request: Request) {
   const room = await findRoom(prisma, callRoomId, auth.user);
   if (!room) return missingRoomResponse(callRoomId);
 
-  return NextResponse.json(contextPayload(room));
+  return privateJson(contextPayload(room));
 }
 
 export async function POST(request: Request) {
@@ -174,9 +185,9 @@ export async function POST(request: Request) {
 
   const replacement = validateCaptureSessionContextReplacement(body);
   if (!replacement.ok) {
-    return NextResponse.json(
+    return privateJson(
       { ok: false, code: replacement.code, error: replacement.error, localDraftAllowed: true },
-      { status: 400 },
+      400,
     );
   }
 
@@ -246,10 +257,10 @@ export async function POST(request: Request) {
 
     if (result.kind === "missing") return missingRoomResponse(callRoomId);
     if (result.kind === "conflict") {
-      return NextResponse.json(conflictPayload(result.room, body, auth.user.id), { status: 409 });
+      return privateJson(conflictPayload(result.room, body, auth.user.id), 409);
     }
 
-    return NextResponse.json(contextPayload(result.room, {
+    return privateJson(contextPayload(result.room, {
       saved: true,
       unchanged: result.unchanged,
       projectionStats: result.projectionStats,
@@ -261,14 +272,14 @@ export async function POST(request: Request) {
     if (error instanceof ConcurrentSessionContextWrite || error?.code === "P2034") {
       const latestRoom = await findRoom(prisma, callRoomId, auth.user);
       if (!latestRoom) return missingRoomResponse(callRoomId);
-      return NextResponse.json(
+      return privateJson(
         conflictPayload(latestRoom, body, auth.user.id, "concurrent-room-write"),
-        { status: 409 },
+        409,
       );
     }
 
     console.error("Capture session context save failed", error);
-    return NextResponse.json(
+    return privateJson(
       {
         ok: false,
         code: "SESSION_CONTEXT_SAVE_FAILED",
@@ -276,7 +287,7 @@ export async function POST(request: Request) {
         localDraftAllowed: true,
         externalSideEffects: false,
       },
-      { status: 503 },
+      503,
     );
   }
 }
