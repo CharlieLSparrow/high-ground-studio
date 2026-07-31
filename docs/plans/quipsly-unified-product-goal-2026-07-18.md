@@ -4968,3 +4968,33 @@ was restored.
   production deploy, next TestFlight build, physical-iPhone run, or genuine
   two-person rehearsal. Build 19 remains the approved external candidate until
   this exact source completes the guarded release train.
+
+### 2026-07-31 canonical episode collaboration production and Build 20 release
+
+- Committed the collaboration slice as `da4204ec` and prepared exact release
+  source `d410e03e14ed723ff4b1f66c50e1c620ab65cb9f`.
+- Cloud Build `1a9872c0-05aa-48ed-81e0-f8aeecd88dea` succeeded. Zero-traffic
+  revision `studio-00470-has` passed authenticated release smoke before
+  promotion; production now sends 100% traffic to that ready revision at
+  immutable image digest
+  `sha256:5f2a5b2381ba2523bcfb1c0898873ce1c4e8a1ddbb5757cdf749d71fc7e38fad`.
+- Retained production QA account `codex@dev.test` posted a clearly labeled
+  message to exact canonical episode
+  `home-codex-at-dev-test / release-smoke`. Exact UUID retry returned message
+  `chat_dcb98d25a20a411ea6178fdfce76d458` with
+  `idempotentReplay: true`; a fresh read returned one copy. The labeled
+  artifact remains intentionally available for longitudinal regression.
+- The independent upload lane passed all 46 serialized iPhone and Share
+  Extension tests, archive/export, nested signatures, provisioning, privacy,
+  entitlements, package metadata, and version consistency. Its upload-bound
+  21,027,646-byte IPA has SHA-256
+  `20c4b689ffae7a50396f4ef31202395081367d1ac45ca3884ecb4137aee64502`.
+- Apple processed Quipsly Capture 1.0 (20) as build ID
+  `34176ece-cbb8-4e64-9440-dc0a3e02ae77`. Independent readback reports
+  `VALID`, beta review `APPROVED`, external state `IN_BETA_TESTING`, inclusion
+  in **Quipsly Capture Rehearsal**, automatic notifications, and the exact
+  open public TestFlight handoff for up to 100 testers.
+- This closes production and external TestFlight delivery for episode
+  collaboration. It does not claim a physical install, genuine two-person
+  consent/capture, real-device upload/playback/alignment, completion of a real
+  episode or coaching session, or App Store production submission.

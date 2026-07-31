@@ -8,11 +8,11 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (19)**
+- App: **Quipsly Capture 1.0 (20)**
 - Exact native source:
-  `579b80e6c0d21cbc35e88df856d169ac93bc34c1`
-- Qualified upload-bound IPA: 20,902,385 bytes, SHA-256
-  `b6c407919c6b5fdd8015266120658c94d311937f828b78b47762f0adada14bd4`
+  `d410e03e14ed723ff4b1f66c50e1c620ab65cb9f`
+- Qualified upload-bound IPA: 21,027,646 bytes, SHA-256
+  `20c4b689ffae7a50396f4ef31202395081367d1ac45ca3884ecb4137aee64502`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -151,42 +151,40 @@ needs to prove.
   accepts pnpm's conventional argument separator instead of rejecting it
   before the readback. The focused CLI/receipt suite passes 6/6.
 
-## Approved Build 19 rehearsal lane
+## Approved Build 20 rehearsal lane
 
-Build 19 supersedes Build 18 for every new install and rehearsal. It preserves
+Build 20 supersedes Build 19 for every new install and rehearsal. It preserves
 the coordinated podcast audio/video, protected Shared Watch, manuscript,
 source evidence, canonical tag focus, Work, Google identity, and recovery
-behavior qualified in earlier builds. It adds an explicit Watch protocol 2
-boundary for exact saved Media Vault ranges. Build 19 plays only the selected
-in-to-out span, while an older client safely receives whole-source behavior or
-an upgrade-required hold instead of playing beyond the saved range.
+behavior qualified in earlier builds. It adds the canonical Episode Room
+conversation beside Manuscript and Watch in an episode-bound recorder session.
+Opening the thread does not start recording or playback; Editor posts use
+stable retry identity and the offline copy is read-only and account protected.
 
-Exact detached source `579b80e6c0d21cbc35e88df856d169ac93bc34c1`
-passed all 45 serialized iPhone and Share Extension journeys twice and
-produced the exact upload-bound 20,902,385-byte IPA at SHA-256
-`b6c407919c6b5fdd8015266120658c94d311937f828b78b47762f0adada14bd4`.
+Exact detached source `d410e03e14ed723ff4b1f66c50e1c620ab65cb9f`
+passed all 46 serialized iPhone and Share Extension journeys with zero
+failures and produced the exact upload-bound 21,027,646-byte IPA at SHA-256
+`20c4b689ffae7a50396f4ef31202395081367d1ac45ca3884ecb4137aee64502`.
 
 Independent App Store Connect readback reported:
 
-- build ID `035197ff-36a1-4658-b5a7-b45a910eac16`;
+- build ID `34176ece-cbb8-4e64-9440-dc0a3e02ae77`;
 - processing state `VALID`;
 - external state `IN_BETA_TESTING`;
 - beta review state `APPROVED`;
-- Build 19 included in **Quipsly Capture Rehearsal**;
+- Build 20 included in **Quipsly Capture Rehearsal**;
 - complete beta metadata, automatic notification, and open public-link
   capacity for 100 testers;
 - the uncached public page exposes the exact Quipsly title, beta heading, and
   `itms-beta` handoff.
 
 Production Nest runs the matching product slice from exact source
-`579b80e6c0d21cbc35e88df856d169ac93bc34c1` at `studio-00468-bav`, immutable
+`d410e03e14ed723ff4b1f66c50e1c620ab65cb9f` at `studio-00470-has`, immutable
 runtime image digest
-`sha256:180f73aa1a4221a4796dbae7e0c059bc2a678be49476b00719fdc56fb36364b4`.
-A generated verified reviewer operated its authenticated workspace, episode,
-Sessions, writing, editor, recorder, research, and publishing paths plus the
-108-check mobile contract before the revision received production traffic. Its
-temporary Nest, grants, membership, database actor, and Firebase actor were
-then independently verified removed.
+`sha256:5f2a5b2381ba2523bcfb1c0898873ce1c4e8a1ddbb5757cdf749d71fc7e38fad`.
+The zero-traffic preview passed authenticated smoke before promotion.
+Post-promotion recovery, billing, SQL, domain, public-page, and 108-check
+mobile-contract readbacks pass against the exact production revision.
 
 The transcript provider remains deliberately held. Production has no provider
 environment or transcript worker Job; the reserved Deepgram secret resource
@@ -196,10 +194,15 @@ The release receipt still records no physical TestFlight install. Apple
 processing, approval, group assignment, and public-link readback do not prove
 a physical iPhone install or a real two-person recording.
 
+## Historical Build 19 rehearsal lane
+
+Build 19 remains the rollback record for exact saved Media Vault range
+playback. New installs and rehearsals use Build 20.
+
 ## Historical Build 18 rehearsal lane
 
 Build 18 remains the rollback record for exact canonical tag focus across
-iPhone Work and Nest. New installs and rehearsals use Build 19.
+iPhone Work and Nest.
 
 ## Historical Build 17 rehearsal lane
 
@@ -365,7 +368,7 @@ gates. The enabled public external-testing link is the canonical path:
 
 `https://testflight.apple.com/join/XwRRcYUm`
 
-As a redundant internal path, Build 19 was distributed to internal testers
+As a redundant internal path, Build 20 was distributed to internal testers
 when the upload completed. The public link remains the canonical recovery path
 when Apple's invitation email or TestFlight library refresh lags.
 

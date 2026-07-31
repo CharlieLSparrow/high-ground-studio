@@ -2,7 +2,7 @@
 
 Date: 2026-07-31
 
-## Episode collaboration checkpoint
+## Episode collaboration release
 
 - Capture now exposes the canonical Episode Room conversation beside Manuscript
   and Watch in an episode-bound recorder session.
@@ -12,29 +12,30 @@ Date: 2026-07-31
 - Web and iPhone posts carry stable retry identities. The native app keeps a
   read-only, account-partitioned, file-protected offline copy and clears it on
   account change or signout.
-- A retained local QA user operated the rendered Episode Room, posted one
-  clearly labeled durable regression message, and verified exact persistence
-  after navigation reload.
-- The release-target ledger and rehearsal runbook now correctly identify
-  approved external Build 19 instead of the superseded Build 18. Their 27
-  release-automation checks pass, and fresh App Store Connect plus anonymous
-  public-link readback confirms that exact build is still available.
+- Retained local and production QA users operated the rendered Episode Room,
+  posted clearly labeled durable regression messages, retried one production
+  post with the same UUID, and verified exactly one persisted copy.
+- The release-target ledger and rehearsal runbook identify approved external
+  Build 20. Fresh App Store Connect and anonymous public-link readback confirms
+  it is `VALID`, `APPROVED`, externally `IN_BETA_TESTING`, assigned to the
+  rehearsal group, and publicly available.
 - Focused route and PostgreSQL retry/collision tests, complete Quipsly Jest, TypeScript 7,
   cross-surface contracts, the optimized 150-route build, App Store static
   checks, a native simulator build, and all 46 serialized deterministic iPhone
   and Share Extension journeys pass.
-- This is a local qualified checkpoint, not production or TestFlight delivery.
-  Build 19 remains the approved external build. Exact evidence and remaining
-  boundaries are in
+- Exact source `d410e03e14ed723ff4b1f66c50e1c620ab65cb9f` is deployed to
+  production and distributed through TestFlight as Build 20. Physical install,
+  real-device media, and genuine two-person use remain open. Exact evidence is
+  in
   `docs/coordination/2026-07-31-episode-collaboration-readiness.md`.
 
 ## Quipsly release checkpoint
 
-- `nest.quipsly.com` is serving Cloud Run revision `studio-00468-bav` from
-  source `579b80e6c0d21cbc35e88df856d169ac93bc34c1`, built by Cloud Build
-  `0c4370ab-37f1-4aa7-8983-49ad23e87f39` and pinned to immutable image
+- `nest.quipsly.com` is serving Cloud Run revision `studio-00470-has` from
+  source `d410e03e14ed723ff4b1f66c50e1c620ab65cb9f`, built by Cloud Build
+  `1a9872c0-05aa-48ed-81e0-f8aeecd88dea` and pinned to immutable image
   digest
-  `sha256:180f73aa1a4221a4796dbae7e0c059bc2a678be49476b00719fdc56fb36364b4`.
+  `sha256:5f2a5b2381ba2523bcfb1c0898873ce1c4e8a1ddbb5757cdf749d71fc7e38fad`.
 - Episode Room can project an existing, same-Nest audio or video source from
   the canonical Media Vault into shared Watch without duplicating source
   bytes. Editors can control Watch and explicitly sync receipt-backed watched
@@ -43,7 +44,7 @@ Date: 2026-07-31
   Watch to timeline regression journey. The exact release evidence and scope
   boundary are in
   `docs/coordination/2026-07-30-episode-room-media-vault-watch-release.md`.
-- Quipsly Capture 1.0 (19) is valid, approved, and externally
+- Quipsly Capture 1.0 (20) is valid, approved, and externally
   `IN_BETA_TESTING`. It is assigned to the `Quipsly Capture Rehearsal`
   external group and available through the open 100-person public link at
   `https://testflight.apple.com/join/XwRRcYUm`.
@@ -53,14 +54,14 @@ Date: 2026-07-31
   non-destructive timeline materialization. The retained local QA journey
   produced a source `4–12` / duration `8` derivative and left its durable test
   history in place.
-- The saved-range slice is now in production. Build 19 negotiates Watch
+- The saved-range slice is in production. Build 20 negotiates Watch
   protocol 2 and receives exact saved ranges. Legacy Build 18 keeps
   whole-source behavior and fails a selected range safely closed. The exact
   backend was previewed, reviewed with a generated real account, promoted, and
   read back before Build 19 was archived and uploaded.
-- Build 19 passed 45/45 deterministic UI tests twice from independent detached
-  worktrees, plus distribution-signature, provisioning, privacy, entitlement,
-  and IPA inspection. App Store Connect independently reports the build
+- Build 20 passed 46/46 deterministic UI tests from an independent detached
+  release worktree, plus distribution-signature, provisioning, privacy,
+  entitlement, and IPA inspection. App Store Connect independently reports it
   `VALID`, beta-review `APPROVED`, and externally `IN_BETA_TESTING`.
 - Physical TestFlight installation and real two-person camera, microphone,
   call, consent, saved-range Watch, upload, and editor-alignment rehearsal

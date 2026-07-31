@@ -78,21 +78,38 @@ their acceptance runs.
   stays disabled, and opening chat does not start capture.
 - The complete serialized deterministic iPhone and Share Extension suite
   passes 46/46 with zero failures.
-- Release-preparation review found that the machine-readable TestFlight ledger
-  and operator runbook still named superseded Build 18 even though Build 19
-  was already approved and public. They now identify exact Build 19, App Store
-  Connect build ID, source SHA, IPA size/hash, production revision, and public
-  handoff. The related release automation suite passes 27/27. Fresh App Store
-  Connect readback reports Build 19 `VALID` / `IN_BETA_TESTING`, included in
-  the external group, and the uncached Apple page returns the exact open
-  Quipsly Capture handoff.
+- Exact committed release source
+  `d410e03e14ed723ff4b1f66c50e1c620ab65cb9f` passed an independent 46/46
+  serialized iPhone and Share Extension run, signed archive/export, strict
+  nested-signature inspection, distribution provisioning, entitlement,
+  privacy-manifest, version, and packaged-purpose-string checks.
+- The upload-bound 21,027,646-byte IPA has SHA-256
+  `20c4b689ffae7a50396f4ef31202395081367d1ac45ca3884ecb4137aee64502`.
+  Apple processed it as Quipsly Capture 1.0 (20), build ID
+  `34176ece-cbb8-4e64-9440-dc0a3e02ae77`.
+- Independent App Store Connect readback reports Build 20 `VALID`,
+  beta-review `APPROVED`, externally `IN_BETA_TESTING`, and included in
+  **Quipsly Capture Rehearsal**. The uncached public page returns the exact
+  open Quipsly Capture handoff for up to 100 testers. The complete focused
+  App Store/TestFlight automation suite passes 34/34.
+- Production is 100% on ready Cloud Run revision `studio-00470-has`, exact
+  source `d410e03e14ed723ff4b1f66c50e1c620ab65cb9f`, from successful Cloud
+  Build `1a9872c0-05aa-48ed-81e0-f8aeecd88dea`, pinned to immutable digest
+  `sha256:5f2a5b2381ba2523bcfb1c0898873ce1c4e8a1ddbb5757cdf749d71fc7e38fad`.
+- Signed-in production QA used `codex@dev.test` and the canonical
+  `home-codex-at-dev-test / release-smoke` episode to post the retained,
+  clearly labeled message
+  `QA retained · production episode collaboration 2026-07-31 · exact Build 20 backend boundary.`
+  Exact retry returned the same message ID
+  `chat_dcb98d25a20a411ea6178fdfce76d458` with
+  `idempotentReplay: true`; a fresh read returned exactly one copy.
 - Git whitespace validation passed.
 
 ## Release boundary
 
-This checkpoint proves local web, real-database authorization, retained
-rendered-product use, and simulator behavior. It does not yet claim production
-deployment, a new TestFlight binary, physical-iPhone use, push notification
-delivery, or a real two-person episode rehearsal. Build 19 remains the approved
-external binary until this source is committed, independently release-qualified,
-deployed behind a zero-traffic preview, and packaged as the next Capture build.
+This checkpoint now proves production deployment, retained production
+episode-chat operation, and approved external TestFlight delivery of Build 20.
+It still does not claim physical-iPhone installation, notification receipt,
+genuine two-person consent/capture, upload/playback/alignment on real devices,
+or a completed High Ground Odyssey episode or coaching session. Those remain
+human-operated acceptance boundaries, not facts inferred from provider state.
