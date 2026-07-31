@@ -116,6 +116,9 @@ Focused verification passed:
 
 - portability contract, API, and UI: 4 suites / 14 tests
 - real PostgreSQL restore integration: 1 suite / 1 test
+- two-run Keychain and Firebase identity recovery: pass
+- rendered Nest to canonical tag to project/global Work to Today: pass
+- phone-width Today overflow and browser-exception check: pass
 
 ## UX observations
 
@@ -136,9 +139,15 @@ Focused verification passed:
 
 ## Boundary
 
+The emulator identity is reproducible from the canonical database UID and an
+exact `.test` password stored under macOS Keychain service
+`com.quipsly.qa.retained-product`. No password packet or unredacted identity is
+written to the receipt.
+
 This is retained local authenticated product operation. It does not prove
 production persistence for these exact IDs, physical TestFlight installation,
 device capture, a real two-person session, external calendar behavior, or
-completion of the rehearsal task or goal. The Firebase Auth Emulator identity
-is disposable and may be recreated; the PostgreSQL QA corpus and exported
-package are the retained longitudinal artifacts.
+completion of the rehearsal task or goal. The Firebase Auth Emulator process
+is disposable and may be recreated; the PostgreSQL QA corpus, canonical UID,
+local Keychain item, and exported package are the retained longitudinal
+artifacts.

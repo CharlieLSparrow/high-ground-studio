@@ -102,6 +102,36 @@ checks the follow-up surface for horizontal overflow and browser exceptions,
 then explicitly clears each Nest session. Tracing and screenshots are disabled
 so an unredacted test identity or filled password does not become an artifact.
 
+### Reusable local media-production identity
+
+The retained Capture-to-follow-through corpus has its own fixed Keychain
+service, `com.quipsly.qa.retained-product`. Reconcile its canonical PostgreSQL
+identity, emulator login, and active Nest grant with:
+
+```bash
+FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 \
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio \
+node scripts/quipsly-retained-product-keychain-seed.mjs
+```
+
+The seed refuses non-local Firebase and database targets, requires the exact
+retained `.test` identity and Nest, preserves the canonical Firebase UID, and
+does not mutate product records. It may recreate the emulator user after an
+emulator reset, but never prints the password or writes a credential packet.
+
+Operate its persisted note, task, goal, tag, relationship, plan, and Today
+projections through the rendered product with:
+
+```bash
+QUIPSLY_RETAINED_PRODUCT_BASE_URL=http://127.0.0.1:3012 \
+node scripts/quipsly-retained-product-browser-smoke.mjs
+```
+
+This journey follows the canonical `#rehearsal` tag across note, task, and goal
+results, opens project and global Work over the same IDs, and finishes on a
+phone-width Today surface. It performs no product mutation or external action,
+captures no screenshot or trace, and explicitly clears its Nest session.
+
 ## Environment boundaries
 
 ### Local and emulator
