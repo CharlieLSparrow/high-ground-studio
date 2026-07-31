@@ -4923,3 +4923,48 @@ was restored.
   completion: physical TestFlight installation, genuine two-person
   consent/capture, real episode and coaching completion, and App Store
   submission remain open boundaries.
+
+### 2026-07-31 canonical episode collaboration checkpoint
+
+- Closed the split-conversation defect between iPhone Capture and the Nest
+  Episode Room. An episode-bound recorder session now exposes the same
+  collaboration thread beside Manuscript and Watch, with explicit language
+  that opening chat never starts recording or playback.
+- The server no longer trusts a caller-authored episode thread key. It derives
+  `episode:<slug>` only after verifying the exact `StudioEpisodeProduction`
+  belongs to the authorized Nest. Owner and Editor grants can post; Viewer
+  grants can read; an outsider cannot disclose the episode or create an
+  invented shadow thread.
+- Web and iPhone posts carry a stable UUID. Exact retries return the original
+  message, while identity reuse with different evidence fails closed. Message
+  provenance retains canonical episode, thread, and allowlisted client-surface
+  identity.
+- Capture uses the verified native authentication boundary, rejects
+  cross-origin responses, polls while the recorder surface is active, and
+  retains a 30-day read-only offline copy in account-partitioned,
+  complete-file-protection storage excluded from backup. Account changes and
+  signout clear the cache.
+- Operated the rendered local Episode Room as retained QA identity
+  `quipsly-media-ms8ct81g@example.test`, posted one clearly labeled
+  `QA retained · Episode collaboration 2026-07-31` message, navigated away,
+  reloaded, and verified exactly one durable copy. This artifact is
+  intentionally retained for longitudinal Manuscript/Watch/chat regression;
+  disposable authorization fixtures remain separately cleaned.
+- Focused route tests pass 7/7, including collision and concurrent-race
+  behavior; the real PostgreSQL authorization/retry suite passes 3/3;
+  complete Quipsly Jest passes 189 active suites / 952 tests,
+  cross-surface contracts pass 168/168, App Store static checks pass 955/955,
+  TypeScript 7 and the optimized 150-route build pass, the native simulator
+  build succeeds, and the complete serialized deterministic iPhone and Share
+  Extension suite passes 46/46 with no failures.
+- Release preparation caught a stale machine-readable handoff: the canonical
+  TestFlight target and operator runbook still named Build 18 after Build 19
+  had been approved. Both now identify Build 19's exact source, App Store
+  Connect ID, IPA size/hash, production revision, and public handoff; the
+  related release automation suite passes 27/27. Fresh App Store Connect and
+  anonymous public-link readback confirms Build 19 remains `VALID`,
+  `IN_BETA_TESTING`, assigned to the external group, and publicly open.
+- This is local, real-database, rendered-product, and simulator proof—not a
+  production deploy, next TestFlight build, physical-iPhone run, or genuine
+  two-person rehearsal. Build 19 remains the approved external candidate until
+  this exact source completes the guarded release train.

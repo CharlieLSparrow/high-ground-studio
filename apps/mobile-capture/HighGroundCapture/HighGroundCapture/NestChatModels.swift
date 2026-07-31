@@ -14,15 +14,31 @@ struct NestChatProject: Codable, Hashable {
     let name: String
 }
 
-struct NestChatThread: Codable, Hashable {
+struct NestChatEpisode: Codable, Hashable {
+    let id: String
+    let slug: String
     let title: String
+    let status: String
+}
+
+struct NestChatThread: Codable, Hashable {
+    let key: String?
+    let title: String
+}
+
+struct NestChatActor: Codable, Hashable {
+    let email: String?
+    let name: String?
+    let role: String?
 }
 
 struct NestChatLoadResponse: Codable {
     let ok: Bool
     let error: String?
     let project: NestChatProject?
+    let episode: NestChatEpisode?
     let thread: NestChatThread?
+    let actor: NestChatActor?
     let messages: [NestChatMessage]?
 }
 

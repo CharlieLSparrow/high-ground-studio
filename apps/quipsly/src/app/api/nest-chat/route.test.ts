@@ -9,7 +9,7 @@ import {
   resolveStudioProjectAccess,
 } from "@/lib/server/studio-project-access";
 
-import { POST } from "./route";
+import { GET, POST } from "./route";
 
 jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
@@ -30,12 +30,17 @@ function request(body: unknown) {
 
 const createdAt = new Date("2026-07-26T21:51:34.993Z");
 const prisma = {
+  studioEpisodeProduction: {
+    findUnique: jest.fn(),
+  },
   studioNestChatThread: {
     upsert: jest.fn(),
   },
   studioNestChatMessage: {
     updateMany: jest.fn(),
     findFirst: jest.fn(),
+    findMany: jest.fn(),
+    findUnique: jest.fn(),
     create: jest.fn(),
   },
 };
@@ -66,6 +71,14 @@ describe("scoped Nest chat threads", () => {
     });
     prisma.studioNestChatMessage.updateMany.mockResolvedValue({ count: 0 });
     prisma.studioNestChatMessage.findFirst.mockResolvedValue({ id: "seed-1" });
+    prisma.studioNestChatMessage.findUnique.mockResolvedValue(null);
+    prisma.studioNestChatMessage.findMany.mockResolvedValue([]);
+    prisma.studioEpisodeProduction.findUnique.mockResolvedValue({
+      id: "episode-production-1",
+      slug: "episode-4-part-2",
+      title: "Episode 4 Part 2",
+      status: "READY_TO_RECORD",
+    });
     prisma.studioNestChatMessage.create.mockResolvedValue({
       id: "message-1",
       projectId: "project-1",
@@ -94,8 +107,10 @@ describe("scoped Nest chat threads", () => {
 
     const response = await POST(request({
       projectSlug: "high-ground-odyssey",
-      threadKey: "episode:episode-4-part-2",
+      episodeSlug: "episode-4-part-2",
       body: "The clip is ready for rehearsal.",
+      clientMessageId: "018f97c6-b7bf-7b2e-8f76-0b482e9f5e93",
+      clientSurface: "capture-ios",
     }));
 
     expect(response.status).toBe(200);
@@ -129,8 +144,164 @@ describe("scoped Nest chat threads", () => {
         metadataJson: expect.objectContaining({
           threadKey: "episode:episode-4-part-2",
           episodeSlug: "episode-4-part-2",
+          episodeId: "episode-production-1",
+          source: "capture-ios",
+          clientMessageId: "018f97c6-b7bf-7b2e-8f76-0b482e9f5e93",
         }),
       }),
+    });
+  });
+
+  it("does not create an invented episode thread inside an accessible Nest", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as never);
+    prisma.studioEpisodeProduction.findUnique.mockResolvedValue(null);
+
+    const response = await POST(request({
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "invented-episode",
+      body: "This must not create a shadow episode thread.",
+    }));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: "Episode chat is not available.",
+    });
+    expect(prisma.studioNestChatThread.upsert).not.toHaveBeenCalled();
+    expect(prisma.studioNestChatMessage.create).not.toHaveBeenCalled();
+  });
+
+  it("returns the exact episode identity with the authorized thread", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "VIEWER",
+    } as never);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nest-chat?projectSlug=high-ground-odyssey&episodeSlug=episode-4-part-2",
+    ));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      episode: {
+        id: "episode-production-1",
+        slug: "episode-4-part-2",
+      },
+      actor: { role: "VIEWER" },
+      thread: { key: "episode:episode-4-part-2" },
+    });
+  });
+
+  it("replays the same client message identity without a duplicate insert", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as never);
+    prisma.studioNestChatMessage.findUnique.mockResolvedValue({
+      id: "chat_018f97c6b7bf7b2e8f760b482e9f5e93",
+      projectId: "project-1",
+      threadId: "thread-1",
+      authorEmail: "editor@example.test",
+      authorName: "Episode Editor",
+      body: "The clip is ready for rehearsal.",
+      gifUrl: null,
+      metadataJson: {},
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    const response = await POST(request({
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "episode-4-part-2",
+      body: "The clip is ready for rehearsal.",
+      clientMessageId: "018f97c6-b7bf-7b2e-8f76-0b482e9f5e93",
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      message: { id: "chat_018f97c6b7bf7b2e8f760b482e9f5e93" },
+    });
+    expect(prisma.studioNestChatMessage.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects reuse of a client message identity for different evidence", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as never);
+    prisma.studioNestChatMessage.findUnique.mockResolvedValue({
+      id: "chat_018f97c6b7bf7b2e8f760b482e9f5e93",
+      projectId: "project-1",
+      threadId: "thread-1",
+      authorEmail: "editor@example.test",
+      authorName: "Episode Editor",
+      body: "The original episode decision.",
+      gifUrl: null,
+      metadataJson: {},
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    const response = await POST(request({
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "episode-4-part-2",
+      body: "A different episode decision.",
+      clientMessageId: "018f97c6-b7bf-7b2e-8f76-0b482e9f5e93",
+    }));
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: false,
+      error: "This message retry identity is already in use.",
+    });
+    expect(prisma.studioNestChatMessage.create).not.toHaveBeenCalled();
+  });
+
+  it("converges an exact concurrent insert race onto the persisted message", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as never);
+    const persisted = {
+      id: "chat_018f97c6b7bf7b2e8f760b482e9f5e93",
+      projectId: "project-1",
+      threadId: "thread-1",
+      authorEmail: "editor@example.test",
+      authorName: "Episode Editor",
+      body: "The clip is ready for rehearsal.",
+      gifUrl: null,
+      metadataJson: {},
+      createdAt,
+      updatedAt: createdAt,
+    };
+    prisma.studioNestChatMessage.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(persisted);
+    prisma.studioNestChatMessage.create.mockRejectedValue({ code: "P2002" });
+
+    const response = await POST(request({
+      projectSlug: "high-ground-odyssey",
+      episodeSlug: "episode-4-part-2",
+      body: "The clip is ready for rehearsal.",
+      clientMessageId: "018f97c6-b7bf-7b2e-8f76-0b482e9f5e93",
+    }));
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      idempotentReplay: true,
+      message: { id: persisted.id },
     });
   });
 

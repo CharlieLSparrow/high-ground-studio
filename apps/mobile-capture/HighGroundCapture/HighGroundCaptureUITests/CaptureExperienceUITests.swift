@@ -216,6 +216,48 @@ final class CaptureExperienceUITests: XCTestCase {
         )
     }
 
+    func testEpisodeThreadKeepsCollaborationBesideTheRecorderWithoutStartingCapture() {
+        app.tabBars.buttons["Record"].tap()
+
+        let card = app.descendants(matching: .any)["CaptureEpisodeChatCard"]
+        reveal(card)
+        XCTAssertTrue(
+            card.waitForExistence(timeout: 5),
+            "An episode-bound Capture session should expose its canonical collaboration thread beside Manuscript and Watch."
+        )
+        XCTAssertTrue(app.staticTexts["Homer"].exists)
+        XCTAssertTrue(
+            app.staticTexts["CaptureEpisodeChatLatestMessage"].label
+                .contains("I’ll open with the swear jar story")
+        )
+
+        let open = app.buttons["CaptureEpisodeChatOpenButton"]
+        XCTAssertTrue(open.isHittable)
+        open.tap()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureEpisodeChatThread"]
+                .waitForExistence(timeout: 5)
+        )
+        let boundary = app.descendants(matching: .any)["CaptureEpisodeChatBoundary"]
+        XCTAssertTrue(boundary.label.contains("Canonical episode conversation"))
+        XCTAssertTrue(boundary.label.contains("never start from chat"))
+        XCTAssertTrue(app.staticTexts["Charlie"].exists)
+        XCTAssertTrue(app.staticTexts["Homer"].exists)
+        XCTAssertFalse(
+            app.buttons["CaptureEpisodeChatSendButton"].isEnabled,
+            "Deterministic preview must show the production composer without pretending to author canonical chat."
+        )
+        XCTAssertFalse(
+            app.buttons["Refresh episode thread"].isEnabled,
+            "Deterministic preview must never imply a canonical network refresh."
+        )
+        XCTAssertFalse(
+            app.staticTexts["Recording audio"].exists,
+            "Opening collaboration must not start local capture."
+        )
+    }
+
     func testRehearsalReadinessMakesEveryPhysicalBoundaryVisibleBeforeRecord() {
         app.tabBars.buttons["Record"].tap()
 

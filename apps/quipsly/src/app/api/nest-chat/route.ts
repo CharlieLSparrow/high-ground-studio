@@ -15,6 +15,12 @@ const BELIEVE_GIF_URL = "https://media.giphy.com/media/DEZA7FlHbMesUF1jm9/giphy.
 const LEGACY_BELIEVE_GIF_ID = "5B925WaCAIWojy3KMG";
 const MAX_MESSAGE_LENGTH = 4_000;
 const MAX_THREAD_KEY_LENGTH = 120;
+const CLIENT_MESSAGE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const CLIENT_SURFACES = new Set([
+  "capture-ios",
+  "episode-room-web",
+  "nest-chat-web",
+]);
 
 type ChatMessageRow = {
   id: string;
@@ -46,6 +52,45 @@ function normalizeThreadKey(input: unknown) {
     .replace(/^-|-$/g, "")
     .slice(0, MAX_THREAD_KEY_LENGTH);
   return safe || DEFAULT_THREAD_KEY;
+}
+
+function normalizeEpisodeSlug(input: unknown) {
+  const raw = String(input ?? "").trim().toLowerCase();
+  if (!raw) return "";
+  return raw
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, MAX_THREAD_KEY_LENGTH - "episode:".length);
+}
+
+function resolveThreadScope(threadKeyInput: unknown, episodeSlugInput: unknown) {
+  const explicitEpisodeSlug = normalizeEpisodeSlug(episodeSlugInput);
+  const key = explicitEpisodeSlug
+    ? `episode:${explicitEpisodeSlug}`
+    : normalizeThreadKey(threadKeyInput);
+  const episodeSlug = key.startsWith("episode:")
+    ? normalizeEpisodeSlug(key.slice("episode:".length))
+    : "";
+  return {
+    key: episodeSlug ? `episode:${episodeSlug}` : key,
+    episodeSlug: episodeSlug || null,
+  };
+}
+
+function normalizeClientMessageId(input: unknown) {
+  const value = String(input ?? "").trim().toLowerCase();
+  return CLIENT_MESSAGE_ID.test(value) ? value : null;
+}
+
+function persistedMessageId(clientMessageId: string) {
+  return `chat_${clientMessageId.replaceAll("-", "")}`;
+}
+
+function normalizeClientSurface(input: unknown, episodeSlug: string | null) {
+  const value = String(input ?? "").trim().toLowerCase();
+  if (CLIENT_SURFACES.has(value)) return value;
+  return episodeSlug ? "episode-room-web" : "nest-chat-web";
 }
 
 function threadTitle(projectName: string, key: string) {
@@ -227,7 +272,7 @@ async function ensureThread(projectId: string, projectName: string, key: string)
 async function loadThread(
   projectSlug: string,
   actorEmail: string,
-  key: string,
+  scope: ReturnType<typeof resolveThreadScope>,
   action: "read" | "write",
 ) {
   const prisma = getPrismaClient();
@@ -247,13 +292,36 @@ async function loadThread(
     return { ok: false as const, status: 404, error: "Nest not found." };
   }
 
-  const thread = await ensureThread(project.id, project.name, key);
-  return { ok: true as const, project, thread, access };
+  const episode = scope.episodeSlug
+    ? await prisma.studioEpisodeProduction.findUnique({
+        where: {
+          projectId_slug: {
+            projectId: project.id,
+            slug: scope.episodeSlug,
+          },
+        },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          status: true,
+        },
+      })
+    : null;
+  if (scope.episodeSlug && !episode) {
+    return { ok: false as const, status: 404, error: "Episode chat is not available." };
+  }
+
+  const thread = await ensureThread(project.id, project.name, scope.key);
+  return { ok: true as const, project, episode, thread, access };
 }
 
 export async function GET(request: NextRequest) {
   const projectSlug = normalizeProjectSlug(request.nextUrl.searchParams.get("projectSlug"));
-  const key = normalizeThreadKey(request.nextUrl.searchParams.get("threadKey"));
+  const scope = resolveThreadScope(
+    request.nextUrl.searchParams.get("threadKey"),
+    request.nextUrl.searchParams.get("episodeSlug"),
+  );
   const actor = await resolveActor(request);
 
   if (!projectSlug) {
@@ -265,7 +333,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const loaded = await loadThread(projectSlug, actor.email, key, "read");
+    const loaded = await loadThread(projectSlug, actor.email, scope, "read");
     if (!loaded.ok) {
       return NextResponse.json({ ok: false, error: loaded.error }, { status: loaded.status });
     }
@@ -284,6 +352,7 @@ export async function GET(request: NextRequest) {
         slug: loaded.project.slug,
         name: loaded.project.name,
       },
+      episode: loaded.episode,
       thread: {
         id: loaded.thread.id,
         key: loaded.thread.key,
@@ -305,10 +374,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const projectSlug = normalizeProjectSlug(String(body.projectSlug || request.nextUrl.searchParams.get("projectSlug") || ""));
-  const key = normalizeThreadKey(body.threadKey || request.nextUrl.searchParams.get("threadKey"));
+  const scope = resolveThreadScope(
+    body.threadKey || request.nextUrl.searchParams.get("threadKey"),
+    body.episodeSlug || request.nextUrl.searchParams.get("episodeSlug"),
+  );
   const message = cleanMessage(body.body);
   const explicitGifUrl = normalizeGifUrl(body.gifUrl);
   const gifUrl = explicitGifUrl || firstGifUrlFromText(message);
+  const clientMessageId = normalizeClientMessageId(body.clientMessageId);
+  const messageId = clientMessageId ? persistedMessageId(clientMessageId) : null;
+  const clientSurface = normalizeClientSurface(body.clientSurface, scope.episodeSlug);
   const actor = await resolveActor(request);
 
   if (!projectSlug) {
@@ -324,30 +399,87 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const loaded = await loadThread(projectSlug, actor.email, key, "write");
+    const loaded = await loadThread(projectSlug, actor.email, scope, "write");
     if (!loaded.ok) {
       return NextResponse.json({ ok: false, error: loaded.error }, { status: loaded.status });
     }
 
     const prisma = getPrismaClient();
-    const created = await prisma.studioNestChatMessage.create({
-      data: {
-        projectId: loaded.project.id,
-        threadId: loaded.thread.id,
-        authorEmail: actor.email,
-        authorName: actor.name,
-        body: message || gifUrl || "",
-        gifUrl,
-        metadataJson: {
-          source: "nest-chat-panel",
-          pastedGif: Boolean(gifUrl),
-          threadKey: key,
-          ...(key.startsWith("episode:") ? { episodeSlug: key.slice("episode:".length) } : {}),
-        },
+    const data = {
+      ...(messageId ? { id: messageId } : {}),
+      projectId: loaded.project.id,
+      threadId: loaded.thread.id,
+      authorEmail: actor.email,
+      authorName: actor.name,
+      body: message || gifUrl || "",
+      gifUrl,
+      metadataJson: {
+        source: clientSurface,
+        pastedGif: Boolean(gifUrl),
+        threadKey: scope.key,
+        ...(scope.episodeSlug ? {
+          episodeId: loaded.episode?.id,
+          episodeSlug: scope.episodeSlug,
+        } : {}),
+        ...(clientMessageId ? { clientMessageId } : {}),
       },
-    });
+    };
 
-    return NextResponse.json({ ok: true, message: serializeMessage(created) });
+    if (messageId) {
+      const existing = await prisma.studioNestChatMessage.findUnique({
+        where: { id: messageId },
+      });
+      if (existing) {
+        const exactRetry = existing.projectId === data.projectId
+          && existing.threadId === data.threadId
+          && normalizeAccessEmail(existing.authorEmail) === actor.email
+          && existing.body === data.body
+          && existing.gifUrl === data.gifUrl;
+        if (!exactRetry) {
+          return NextResponse.json(
+            { ok: false, error: "This message retry identity is already in use." },
+            { status: 409 },
+          );
+        }
+        return NextResponse.json({
+          ok: true,
+          idempotentReplay: true,
+          message: serializeMessage(existing),
+        });
+      }
+    }
+
+    try {
+      const created = await prisma.studioNestChatMessage.create({ data });
+      return NextResponse.json({ ok: true, message: serializeMessage(created) });
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : "";
+      if (messageId && code === "P2002") {
+        const raced = await prisma.studioNestChatMessage.findUnique({
+          where: { id: messageId },
+        });
+        const exactRetry = raced
+          && raced.projectId === data.projectId
+          && raced.threadId === data.threadId
+          && normalizeAccessEmail(raced.authorEmail) === actor.email
+          && raced.body === data.body
+          && raced.gifUrl === data.gifUrl;
+        if (raced && exactRetry) {
+          return NextResponse.json({
+            ok: true,
+            idempotentReplay: true,
+            message: serializeMessage(raced),
+          });
+        }
+        return NextResponse.json(
+          { ok: false, error: "This message retry identity is already in use." },
+          { status: 409 },
+        );
+      }
+      throw error;
+    }
   } catch (error) {
     if (isPrismaConnectionPressure(error)) return chatUnavailableResponse();
     throw error;

@@ -39,6 +39,7 @@ const files = {
   videoCaptureService: path.join(sourceRoot, "VideoCaptureService.swift"),
   captureAudioSessionCoordinator: path.join(sourceRoot, "CaptureAudioSessionCoordinator.swift"),
   episodeWatch: path.join(sourceRoot, "MobileEpisodeWatch.swift"),
+  episodeChat: path.join(sourceRoot, "MobileEpisodeChat.swift"),
   uploadManager: path.join(sourceRoot, "UploadManager.swift"),
   uploadLedgerStore: path.join(sourceRoot, "UploadLedgerStore.swift"),
   providerRoomController: path.join(sourceRoot, "ProviderRoomController.swift"),
@@ -71,6 +72,7 @@ const files = {
   coachingCalendarReadinessRoute: path.join(root, "apps/quipsly/src/app/api/coaching/calendar/readiness/route.ts"),
   coachingCalendarAdapter: path.join(root, "apps/quipsly/src/lib/server/coaching-google-calendar.ts"),
   accountDeletionRoute: path.join(root, "apps/quipsly/src/app/api/account/deletion-request/route.ts"),
+  nestChatRoute: path.join(root, "apps/quipsly/src/app/api/nest-chat/route.ts"),
   privacyPage: path.join(root, "apps/quipsly/src/app/(marketing)/privacy/page.tsx"),
   deletionPage: path.join(root, "apps/quipsly/src/app/(marketing)/privacy/account-deletion/page.tsx"),
   coachingPage: path.join(root, "apps/quipsly/src/app/(app)/coaching/page.tsx"),
@@ -167,6 +169,7 @@ const videoCaptureControllerText = read(files.videoCaptureController);
 const videoCaptureServiceText = read(files.videoCaptureService);
 const captureAudioSessionCoordinatorText = read(files.captureAudioSessionCoordinator);
 const episodeWatchText = read(files.episodeWatch);
+const episodeChatText = read(files.episodeChat);
 const uploadText = read(files.uploadManager);
 const uploadLedgerText = read(files.uploadLedgerStore);
 const providerRoomText = read(files.providerRoomController);
@@ -199,6 +202,7 @@ const mediaVaultReadinessRouteText = read(files.mediaVaultReadinessRoute);
 const coachingCalendarReadinessRouteText = read(files.coachingCalendarReadinessRoute);
 const coachingCalendarAdapterText = read(files.coachingCalendarAdapter);
 const deletionRouteText = read(files.accountDeletionRoute);
+const nestChatRouteText = read(files.nestChatRoute);
 const privacyPageText = read(files.privacyPage);
 const deletionPageText = read(files.deletionPage);
 const coachingPageText = read(files.coachingPage);
@@ -487,6 +491,14 @@ requireIncludes(episodeWatchText, 'type: "START_SESSION"', "shared Watch binds t
 requireIncludes(episodeWatchText, "serverClockOffsetSeconds", "shared Watch projects the server clock instead of trusting device wall time");
 requireIncludes(episodeWatchText, "Shared Watch lost contact with Nest.", "shared Watch exposes stale connectivity");
 requireIncludes(episodeWatchText, "CaptureEpisodeWatchPlayPauseButton", "shared Watch has a reachable native play and pause control");
+requireIncludes(episodeChatText, "authenticatedData(", "episode chat uses the verified native account request boundary");
+requireIncludes(episodeChatText, "FileProtectionType.complete", "episode chat cache is protected while the iPhone is locked");
+requireIncludes(episodeChatText, "stableOwnerSnapshot()", "episode chat cache is partitioned by stable account owner");
+requireIncludes(episodeChatText, '"clientMessageId": requestID.uuidString.lowercased()', "episode chat retries preserve one client message identity");
+requireIncludes(episodeChatText, "CaptureEpisodeChatOpenButton", "episode chat is reachable beside the primary recorder");
+requireIncludes(episodeChatText, "Recording and playback never start from chat.", "episode chat states the non-capture boundary");
+requireIncludes(nestChatRouteText, "studioEpisodeProduction.findUnique", "episode chat validates the canonical parent episode");
+requireIncludes(nestChatRouteText, "idempotentReplay: true", "episode chat server deduplicates exact message retries");
 
 const authCombined = `${authText}\n${loginText}`;
 requireIncludes(authText, "SecItemUpdate(lookup as CFDictionary, replacement as CFDictionary)", "Keychain rotation updates by stable item identity instead of matching the replacement secret value");

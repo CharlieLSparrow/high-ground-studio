@@ -34,9 +34,9 @@ export default function EpisodeRoomChat({
   episodeSlug: string;
   canEdit: boolean;
 }) {
-  const threadKey = `episode:${episodeSlug}`;
   const [messages, setMessages] = useState<Message[]>([]);
   const [draft, setDraft] = useState("");
+  const [pendingMessage, setPendingMessage] = useState<{ body: string; id: string } | null>(null);
   const [status, setStatus] = useState<"loading" | "idle" | "sending" | "error">("loading");
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -44,7 +44,7 @@ export default function EpisodeRoomChat({
   const refresh = useCallback(async (quiet = false) => {
     if (!quiet) setStatus("loading");
     try {
-      const params = new URLSearchParams({ projectSlug, threadKey });
+      const params = new URLSearchParams({ projectSlug, episodeSlug });
       const response = await fetch(`/api/nest-chat?${params}`, { cache: "no-store" });
       const payload = await response.json().catch(() => ({})) as ChatResponse;
       if (!response.ok || !payload.ok) throw new Error(payload.error || "Episode chat could not load.");
@@ -57,7 +57,7 @@ export default function EpisodeRoomChat({
         setStatus("error");
       }
     }
-  }, [projectSlug, threadKey]);
+  }, [episodeSlug, projectSlug]);
 
   useEffect(() => {
     void refresh();
@@ -75,11 +75,21 @@ export default function EpisodeRoomChat({
     if (!body || status === "sending" || !canEdit) return;
     setStatus("sending");
     setError("");
+    const clientMessageId = pendingMessage?.body === body
+      ? pendingMessage.id
+      : crypto.randomUUID();
+    setPendingMessage({ body, id: clientMessageId });
     try {
       const response = await fetch("/api/nest-chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectSlug, threadKey, body }),
+        body: JSON.stringify({
+          projectSlug,
+          episodeSlug,
+          body,
+          clientMessageId,
+          clientSurface: "episode-room-web",
+        }),
       });
       const payload = await response.json().catch(() => ({})) as ChatResponse;
       if (!response.ok || !payload.ok || !payload.message) {
@@ -89,6 +99,7 @@ export default function EpisodeRoomChat({
         ? current
         : [...current, payload.message as Message]);
       setDraft("");
+      setPendingMessage(null);
       setStatus("idle");
     } catch (nextError) {
       setError(nextError instanceof Error ? nextError.message : "Message could not send.");

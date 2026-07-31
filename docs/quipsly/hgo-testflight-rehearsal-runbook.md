@@ -8,11 +8,11 @@ needs to prove.
 
 ## Current release state
 
-- App: **Quipsly Capture 1.0 (18)**
+- App: **Quipsly Capture 1.0 (19)**
 - Exact native source:
-  `5a04798690dc6e71293919519b6a371d60e2416b`
-- Qualified upload-bound IPA: 20,894,573 bytes, SHA-256
-  `628c3bc3e2b1a89dc62155e1bee2a706ea775de7f55384178c186623090efd5d`
+  `579b80e6c0d21cbc35e88df856d169ac93bc34c1`
+- Qualified upload-bound IPA: 20,902,385 bytes, SHA-256
+  `b6c407919c6b5fdd8015266120658c94d311937f828b78b47762f0adada14bd4`
 - External TestFlight group: **Quipsly Capture Rehearsal**
 - TestFlight Apple Account: `shomers@icloud.com`
 - Quipsly Google identity: `shomers@gmail.com`
@@ -151,37 +151,37 @@ needs to prove.
   accepts pnpm's conventional argument separator instead of rejecting it
   before the readback. The focused CLI/receipt suite passes 6/6.
 
-## Approved Build 18 rehearsal lane
+## Approved Build 19 rehearsal lane
 
-Build 18 supersedes Build 17 for every new install and rehearsal. It preserves
+Build 19 supersedes Build 18 for every new install and rehearsal. It preserves
 the coordinated podcast audio/video, protected Shared Watch, manuscript,
-source evidence, Work, Google identity, and recovery behavior qualified in
-earlier builds. It adds exact canonical tag focus across iPhone Work and Nest:
-selection is by immutable tag ID, same-label tags in other Nests cannot bleed
-into results, merge redirects remain stable, and the native state names the
-selected tag and Nest accessibly.
+source evidence, canonical tag focus, Work, Google identity, and recovery
+behavior qualified in earlier builds. It adds an explicit Watch protocol 2
+boundary for exact saved Media Vault ranges. Build 19 plays only the selected
+in-to-out span, while an older client safely receives whole-source behavior or
+an upgrade-required hold instead of playing beyond the saved range.
 
-Exact detached source `5a04798690dc6e71293919519b6a371d60e2416b`
-passed all 45 serialized iPhone and Share Extension journeys and produced the
-exact upload-bound 20,894,573-byte IPA at SHA-256
-`628c3bc3e2b1a89dc62155e1bee2a706ea775de7f55384178c186623090efd5d`.
+Exact detached source `579b80e6c0d21cbc35e88df856d169ac93bc34c1`
+passed all 45 serialized iPhone and Share Extension journeys twice and
+produced the exact upload-bound 20,902,385-byte IPA at SHA-256
+`b6c407919c6b5fdd8015266120658c94d311937f828b78b47762f0adada14bd4`.
 
 Independent App Store Connect readback reported:
 
-- build ID `084577b9-4fca-43b0-bb59-5f1a068e7ae8`;
+- build ID `035197ff-36a1-4658-b5a7-b45a910eac16`;
 - processing state `VALID`;
 - external state `IN_BETA_TESTING`;
 - beta review state `APPROVED`;
-- Build 18 included in **Quipsly Capture Rehearsal**;
+- Build 19 included in **Quipsly Capture Rehearsal**;
 - complete beta metadata, automatic notification, and open public-link
   capacity for 100 testers;
 - the uncached public page exposes the exact Quipsly title, beta heading, and
   `itms-beta` handoff.
 
-Production Nest runs the matching product slice from exact web/runtime source
-`041461d9ea78419ae5d97f3869df802ec7ef0eb2` at `studio-00462-luc`, immutable
+Production Nest runs the matching product slice from exact source
+`579b80e6c0d21cbc35e88df856d169ac93bc34c1` at `studio-00468-bav`, immutable
 runtime image digest
-`sha256:5c3e62c58d2669b8541927e9691a3196a9fd103fbe415db0c99f103b8547ed7a`.
+`sha256:180f73aa1a4221a4796dbae7e0c059bc2a678be49476b00719fdc56fb36364b4`.
 A generated verified reviewer operated its authenticated workspace, episode,
 Sessions, writing, editor, recorder, research, and publishing paths plus the
 108-check mobile contract before the revision received production traffic. Its
@@ -196,10 +196,15 @@ The release receipt still records no physical TestFlight install. Apple
 processing, approval, group assignment, and public-link readback do not prove
 a physical iPhone install or a real two-person recording.
 
+## Historical Build 18 rehearsal lane
+
+Build 18 remains the rollback record for exact canonical tag focus across
+iPhone Work and Nest. New installs and rehearsals use Build 19.
+
 ## Historical Build 17 rehearsal lane
 
 Build 17 remains the rollback record for deliberate iPhone authoring of the
-canonical Nest tag vocabulary. New installs and rehearsals use Build 18.
+canonical Nest tag vocabulary.
 
 ## Historical Build 16 rehearsal lane
 
@@ -360,7 +365,7 @@ gates. The enabled public external-testing link is the canonical path:
 
 `https://testflight.apple.com/join/XwRRcYUm`
 
-As a redundant internal path, Build 18 was distributed to internal testers
+As a redundant internal path, Build 19 was distributed to internal testers
 when the upload completed. The public link remains the canonical recovery path
 when Apple's invitation email or TestFlight library refresh lags.
 

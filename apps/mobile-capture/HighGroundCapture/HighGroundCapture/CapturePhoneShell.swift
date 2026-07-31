@@ -4400,6 +4400,7 @@ private struct CaptureRecorderView: View {
     @State private var isRunningRehearsalCheck = false
     @StateObject private var episodeManuscript = MobileEpisodeManuscriptClient()
     @StateObject private var episodeWatch = MobileEpisodeWatchClient()
+    @StateObject private var episodeChat = MobileEpisodeChatClient()
 
     var body: some View {
         ScrollView {
@@ -4478,6 +4479,24 @@ private struct CaptureRecorderView: View {
                             }
                         }
                         .onDisappear { episodeWatch.stop() }
+
+                        MobileEpisodeChatCard(
+                            client: episodeChat,
+                            session: session,
+                            previewOnly: model.usesPreviewData
+                        )
+                        .task(
+                            id:
+                                "chat|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                        ) {
+                            if model.usesPreviewData {
+                                episodeChat.loadPreview(session: session)
+                            } else {
+                                await episodeChat.load(session: session)
+                                episodeChat.startPolling(session: session)
+                            }
+                        }
+                        .onDisappear { episodeChat.stopPolling() }
                     }
 
                     ConsentStrip(

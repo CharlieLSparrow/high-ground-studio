@@ -1,6 +1,32 @@
 # Current State
 
-Date: 2026-07-30
+Date: 2026-07-31
+
+## Episode collaboration checkpoint
+
+- Capture now exposes the canonical Episode Room conversation beside Manuscript
+  and Watch in an episode-bound recorder session.
+- The server derives the thread from a verified parent episode inside the
+  authorized Nest. Editors can post, Viewers can read, and outsiders cannot
+  disclose an episode or create an invented shadow thread.
+- Web and iPhone posts carry stable retry identities. The native app keeps a
+  read-only, account-partitioned, file-protected offline copy and clears it on
+  account change or signout.
+- A retained local QA user operated the rendered Episode Room, posted one
+  clearly labeled durable regression message, and verified exact persistence
+  after navigation reload.
+- The release-target ledger and rehearsal runbook now correctly identify
+  approved external Build 19 instead of the superseded Build 18. Their 27
+  release-automation checks pass, and fresh App Store Connect plus anonymous
+  public-link readback confirms that exact build is still available.
+- Focused route and PostgreSQL retry/collision tests, complete Quipsly Jest, TypeScript 7,
+  cross-surface contracts, the optimized 150-route build, App Store static
+  checks, a native simulator build, and all 46 serialized deterministic iPhone
+  and Share Extension journeys pass.
+- This is a local qualified checkpoint, not production or TestFlight delivery.
+  Build 19 remains the approved external build. Exact evidence and remaining
+  boundaries are in
+  `docs/coordination/2026-07-31-episode-collaboration-readiness.md`.
 
 ## Quipsly release checkpoint
 
