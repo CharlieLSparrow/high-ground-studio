@@ -316,6 +316,23 @@ Those gates remain tracked in the unified product goal and App Store readiness r
 - Apple processing and public delivery do not prove a physical TestFlight
   installation or a real two-person recording; those gates remain open.
 
+## 2026-07-30 media tag-focus continuation
+
+- Nest exact tag focus now projects authorized media clips as well as canonical
+  Work, Session, writing, source, and annotation records. Clip links reopen the
+  exact logger row and preserve the tag-focused return path.
+- Media access is rechecked independently from tag access across the asset's
+  direct project, media-bin project, and explicit project attachments.
+  Viewer access is read-only; legacy global assets remain read-only; an
+  inaccessible ID discloses no asset or clip identity.
+- Nest Owners and Editors can now create reusable vocabulary directly from the
+  vocabulary manager without creating or tagging a placeholder record. The
+  action remains live-only and makes no iPhone outbox or assignment claim.
+- A clearly labeled local QA identity, Home Nest, dummy asset, canonical tag,
+  and 4.00s–12.00s clip remain intentionally retained as a long-term
+  regression fixture. This does not replace physical TestFlight and genuine
+  recording proof.
+
 ## Historical 2026-07-30 production and Build 17 release
 
 - Exact committed source

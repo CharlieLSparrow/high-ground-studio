@@ -4856,3 +4856,52 @@ was restored.
 - This closes deployed production and approved TestFlight delivery for exact
   canonical tag focus. It does not claim physical TestFlight installation,
   real two-person consent/capture, or the required HGO and coaching dogfood.
+
+### 2026-07-30 media authorization and exact clip-focus checkpoint
+
+- Auditing the next canonical-tag destination exposed a real ownership defect:
+  the Media Vault list was permission-filtered, but direct asset loading,
+  clip mutations, media-bin/project attachment, canonical tagging, and Studio
+  Cut export trusted raw asset or clip IDs after the signed-in application
+  shell. Those paths now share one parent-asset authorization boundary.
+- Asset scope is the union of direct project ownership, media-bin project, and
+  active asset attachments. Owner/Editor grants can mutate; Viewer grants are
+  read-only. Missing and inaccessible identities share the same unavailable
+  boundary. Legacy global assets remain readable but cannot be silently
+  appropriated or edited.
+- Every clip mutation rechecks its parent asset. Canonical tags are accepted
+  only from writable parent-asset Nests. Attaching to another Nest requires
+  write access to both the source asset and destination. Development dummy
+  assets are Home-Nest scoped rather than global.
+- Exact tag focus now includes permission-filtered media clips. It requires the
+  exact tag's Nest to match the parent asset's direct, bin, or attachment
+  scope, excluding even a deliberately malformed legacy cross-Nest clip link.
+  The result returns to the exact clip, scrolls it into view, marks it with
+  `aria-current=true`, and preserves the exact tag-focus back path.
+- Nest vocabulary management now supports deliberate standalone tag creation.
+  The UI names the selected Nest and states that it creates vocabulary only;
+  it invents no Task, Goal, Note, document, Session, or clip assignment.
+- Focused rendered/action/access/search tests pass 47/47. Real PostgreSQL
+  canonical-tag and media-access suites pass 16/16, including Viewer
+  read-only behavior, outsider nondisclosure, direct/bin/attachment scopes,
+  global read-only behavior, same-label Nest separation, and malformed
+  cross-Nest clip exclusion. The complete Quipsly run passes 189 active suites
+  / 937 tests, the cross-surface release contract passes 168/168, the
+  Capture-to-Nest source-evidence contract passes 10/10, Quipsly TypeScript 7
+  passes, and the optimized 150-route production build succeeds.
+- The broad local release gate reports `LOCAL SOURCE READY`; its pre-existing
+  coaching/capture target-schema readiness probe remains a runtime warning and
+  must be resolved or independently proved by the authenticated full release
+  check before production traffic moves.
+- Operated the actual signed-in local product with the retained
+  `quipsly-media-ms8ct81g@example.test` QA identity. It created canonical tag
+  `Media clip QA ms8ct81g` without assignment, applied it to a retained
+  4.00s–12.00s clip on the retained Big Buck Bunny dummy asset, found the
+  exact clip under `/find?tag=<StudioTag.id>`, and reopened the exact highlighted
+  logger row. These clearly labeled local artifacts remain intentionally
+  retained for long-term regression testing.
+- This is a local production-quality checkpoint, not active-goal completion.
+  Exact committed-source qualification and zero-traffic Nest deployment still
+  precede production promotion. Physical TestFlight installation, genuine
+  two-person consent/capture, real episode and coaching completion, and App
+  Store submission remain open boundaries.

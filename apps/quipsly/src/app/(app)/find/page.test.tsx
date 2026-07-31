@@ -34,6 +34,7 @@ describe("Search All page", () => {
       studioDocument: { findMany: jest.fn().mockResolvedValue([{ id: "document-1", title: "Episode outline", sourceLabel: "document-kind:note", projectionStatus: "private", project: { name: "High Ground", slug: "high-ground" }, blocks: [{ id: "block-1", title: null, body: "The opening needs a human proof-listen." }], tagLinks: [{ tag: { id: "tag-1", slug: "episode-seed", label: "Episode seed", isActive: true } }] }]) },
       studioSourceUnit: { findMany: jest.fn().mockResolvedValue([{ id: "source-1", title: "Episode transcript", kind: "transcript", author: "Charlie", project: { name: "High Ground", slug: "high-ground" } }]) },
       studioSourceAnnotation: { findMany: jest.fn().mockResolvedValue([{ id: "annotation-1", kind: "quote", body: "Episode evidence", exactText: "Episode exact words", visibility: "private", sourceUnit: { title: "Episode transcript" }, project: { name: "High Ground", slug: "high-ground" } }]) },
+      mediaClip: { findMany: jest.fn().mockResolvedValue([]) },
       studioTag: { findMany: jest.fn().mockResolvedValue([{ id: "tag-1", slug: "episode-seed", label: "Episode seed", description: "Material for a future episode", category: "source", isPrivate: true, aliases: [], project: { name: "High Ground", slug: "high-ground" } }]) },
     } as any);
 
@@ -80,6 +81,21 @@ describe("Search All page", () => {
       studioDocument: { findMany: empty },
       studioSourceUnit: { findMany: empty },
       studioSourceAnnotation: { findMany: empty },
+      mediaClip: {
+        findMany: jest.fn().mockResolvedValue([{
+          id: "clip-1",
+          title: "Opening reaction",
+          description: "A precise reusable beat.",
+          inTimecode: 4,
+          outTimecode: 12,
+          mediaAsset: {
+            id: "asset-1",
+            filename: "episode-reference.mp4",
+            duration: 60,
+            isGlobal: false,
+          },
+        }]),
+      },
     } as any);
 
     render(await FindPage({ searchParams: Promise.resolve({ tag: "tag-1" }) }));
@@ -87,7 +103,11 @@ describe("Search All page", () => {
     expect(screen.getByRole("heading", { name: "#Episode production" })).toBeInTheDocument();
     expect(screen.getByText(/Same-label tags in other Nests are not mixed in/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Episode production High Ground/ })).toHaveAttribute("href", "/find?tag=tag-1");
-    expect(screen.getByRole("status")).toHaveTextContent("1 accessible result. Searched 2 accessible Nests.");
+    expect(screen.getByRole("link", { name: "Opening reaction A precise reusable beat. episode-reference.mp4 · 4.00s–12.00s" })).toHaveAttribute(
+      "href",
+      "/media/asset-1?source=find&tag=tag-1&clip=clip-1#clip-clip-1",
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("2 accessible results. Searched 2 accessible Nests.");
     expect(screen.getByRole("searchbox")).toHaveValue("");
   });
 });

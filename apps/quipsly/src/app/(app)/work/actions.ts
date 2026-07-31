@@ -12,7 +12,7 @@ import { listProjectsVisibleToEmail } from "@/lib/server/home-nest";
 import { applyWorkTagMerge, previewWorkTagMerge, type WorkTagMergePreview } from "@/lib/server/work-tag-merge";
 import { applyWorkTagMergeRollback, previewWorkTagMergeRollback, type WorkTagMergeRollbackPreview } from "@/lib/server/work-tag-merge-rollback";
 import { mutateWorkTagCandidate, type WorkTagCandidateOperation } from "@/lib/server/work-tag-candidates";
-import { createAndAssignWorkEntityTag, mutateWorkTagTaxonomy, replaceWorkEntityTags, type WorkTagEntityKind, type WorkTagTaxonomyOperation } from "@/lib/server/work-tags";
+import { createAndAssignWorkEntityTag, createWorkTagTaxonomy, mutateWorkTagTaxonomy, replaceWorkEntityTags, type WorkTagEntityKind, type WorkTagTaxonomyOperation } from "@/lib/server/work-tags";
 import { getQuipslySession } from "@/lib/server/quipsly-session";
 import { setTaskReminderInTransaction } from "@/lib/server/task-reminders";
 import {
@@ -70,6 +70,18 @@ export type CreateAndAssignWorkTagActionResult =
       receiptId: string;
     }
   | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "PROJECT_REQUIRED" | "FORBIDDEN" | "CONFLICT" | "SLUG_CONFLICT" | "ARCHIVED" | "UNAVAILABLE"; error: string };
+
+export type CreateWorkTagTaxonomyActionResult =
+  | {
+      ok: true;
+      projectId: string;
+      tag: { id: string; label: string; slug: string; isActive: boolean; archivedAt: string | null; updatedAt: string };
+      aliases: Array<{ id: string; label: string; slug: string }>;
+      created: boolean;
+      revision: number;
+      receiptId: string | null;
+    }
+  | { ok: false; code: "AUTH_REQUIRED" | "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "ARCHIVED" | "SLUG_CONFLICT" | "UNAVAILABLE"; error: string };
 
 export type MutateWorkTagTaxonomyActionResult =
   | {
@@ -1287,6 +1299,46 @@ export async function createAndAssignWorkTag(input: {
   } catch (error) {
     console.error("[work] failed to create and assign private tag", error);
     return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not create this tag. No existing vocabulary or record was changed." };
+  }
+}
+
+export async function createWorkVocabularyTag(input: {
+  projectId: string;
+  label: string;
+}): Promise<CreateWorkTagTaxonomyActionResult> {
+  const session = await getQuipslySession();
+  const actorEmail = cleanText(session?.user?.primaryEmail || session?.user?.email, 320).toLowerCase();
+  if (!session?.user?.id || !actorEmail) return { ok: false, code: "AUTH_REQUIRED", error: "Sign in before creating private vocabulary." };
+  const projectId = cleanId(input?.projectId);
+  const label = normalizedText(input?.label);
+  if (!projectId || !label || label.length > 80) {
+    return { ok: false, code: "INVALID_INPUT", error: "Enter a reusable tag name of 80 characters or fewer." };
+  }
+  try {
+    const result = await createWorkTagTaxonomy({
+      prisma: getPrismaClient(),
+      actorUserId: session.user.id,
+      actorEmail,
+      projectId,
+      label,
+    });
+    if (!result.ok) return result;
+    revalidatePath("/work");
+    revalidatePath("/today");
+    revalidatePath("/find");
+    revalidatePath("/research");
+    revalidatePath("/media");
+    return {
+      ...result,
+      tag: {
+        ...result.tag,
+        archivedAt: result.tag.archivedAt?.toISOString() ?? null,
+        updatedAt: result.tag.updatedAt.toISOString(),
+      },
+    };
+  } catch (error) {
+    console.error("[work] failed to create Nest vocabulary", error);
+    return { ok: false, code: "UNAVAILABLE", error: "Quipsly could not create this reusable tag. Existing vocabulary and records stayed unchanged." };
   }
 }
 

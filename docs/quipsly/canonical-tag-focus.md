@@ -58,18 +58,39 @@ The exact focus includes:
 - active, visibility-permitted source annotations through
   `StudioSourceAnnotationTag`;
 - source records only when one of those visible annotations carries the exact
-  tag.
+  tag;
+- media clips through `StudioMediaClipTag`, after independently rechecking
+  access to the parent `StudioMediaAsset`.
 
 Unreviewed transcript-inferred Tasks remain quarantined. Personal writing
 ownership, Session participation, coaching-note audience, project grants, and
 annotation visibility remain independent checks; possession of a tag ID never
 broadens access.
 
-Media clips and knowledge-node counts remain visible in the audited vocabulary
-merge tools, but exact-focus navigation does not yet link them. Media routes
-need a separate permission audit before they become canonical return
-destinations. This gap must not be hidden with a label search or an unscoped
-media URL.
+For a media clip to appear, the exact tag's Nest must also be one of the parent
+asset's direct, media-bin, or explicit attachment scopes. A globally readable
+legacy asset may appear, but remains read-only. A clip carrying a malformed
+cross-Nest tag link is excluded even when the actor can see both Nests.
+Opening a result returns to the exact clip and preserves the exact tag-focus
+back path.
+
+Knowledge-node counts remain visible in audited vocabulary tools but do not
+yet have a canonical return destination.
+
+## Vocabulary-only authoring
+
+An Owner or Editor can create reusable vocabulary directly in
+`/work?manage=tags`, without inventing a Task, Goal, Note, document, Session,
+or clip. The action:
+
+1. names the exact destination Nest;
+2. rechecks an active Owner/Editor grant inside the serializable transaction;
+3. creates or reuses the canonical identity;
+4. records append-only revision evidence for a newly created tag;
+5. creates no assignment and no external side effect.
+
+The UI states this boundary before and after creation. Exact-label retry reuses
+the existing identity instead of creating a duplicate.
 
 ## iPhone behavior
 
@@ -100,19 +121,30 @@ The acceptance contract requires:
 - text search still finds aliases without becoming the identity contract;
 - Work, Schedule, Session review, Session notes, Nest project tags, Search tag
   results, and project-backed writing tags all link by exact ID;
+- media results recheck the parent asset, exclude a same-ID malformed
+  cross-Nest clip link, and return to the exact highlighted clip;
 - iPhone Work visibly and accessibly reports the selected exact tag focus;
 - no record, assignment, message, calendar event, provider call, or
   publication is created by opening the focus.
 
 Current evidence:
 
+- focused media/access/action/rendered Jest: 47/47;
 - focused Jest: 68/68;
-- real PostgreSQL canonical tag suite: 13/13;
+- real PostgreSQL canonical tag and media-access suites: 16/16;
 - retained durable QA:
   `Capture vocabulary dogfood` / `cms8666060000x6xlax1zfsxi` resolves at
   revision 1 with `exactTagFocus:true` and zero Task, Goal, Session, Note, or
   document assignments;
+- operated local media QA retained a dedicated test account, Home Nest,
+  canonical tag, parent asset, and 4.00s–12.00s clip. The actual UI created the
+  tag without an assignment, applied it to the clip, returned the clip under
+  exact tag focus, and reopened the exact logger row with `aria-current=true`;
 - Quipsly TypeScript 7 typecheck passed;
+- complete Quipsly Jest: 189 active suites / 937 tests;
+- cross-surface release contracts: 168/168;
+- Capture-to-Nest source-evidence contract: 10/10;
+- optimized 150-route Nest production build passed;
 - mobile source and production-boundary contract passed;
 - App Store static contract passed 947/947;
 - operated

@@ -2,7 +2,7 @@ import React from "react";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, editWorkGoal, editWorkTask, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, updateWorkTaskStatus } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, createWorkVocabularyTag, editTaskRecurrence, editWorkGoal, editWorkTask, previewTagMerge, previewTagMergeRollback, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, updateWorkTaskStatus } from "./actions";
 import { WorkClient } from "./work-client";
 import type { WorkSnapshot } from "./work-model";
 
@@ -13,6 +13,7 @@ jest.mock("./actions", () => ({
   applyTagMergeRollback: jest.fn(),
   changeWorkTagTaxonomy: jest.fn(),
   createAndAssignWorkTag: jest.fn(),
+  createWorkVocabularyTag: jest.fn(),
   createWorkGoal: jest.fn(),
   createWorkTask: jest.fn(),
   editTaskRecurrence: jest.fn(),
@@ -386,6 +387,44 @@ describe("Work Queue interactions", () => {
       expectedUpdatedAt: "2026-07-18T18:00:00.000Z",
     });
     expect(await screen.findByRole("status")).toHaveTextContent("former name remains a reusable alias");
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("creates reusable Nest vocabulary without attaching it to a record", async () => {
+    const user = userEvent.setup();
+    const project = {
+      id: "project-1",
+      name: "High Ground Odyssey",
+      slug: "high-ground",
+      role: "EDITOR",
+      canWrite: true,
+      tags: [],
+    };
+    jest.mocked(createWorkVocabularyTag).mockResolvedValue({
+      ok: true,
+      projectId: "project-1",
+      tag: {
+        id: "tag-media",
+        label: "Media clip QA",
+        slug: "media-clip-qa",
+        isActive: true,
+        archivedAt: null,
+        updatedAt: "2026-07-30T18:00:01.000Z",
+      },
+      aliases: [],
+      created: true,
+      revision: 1,
+      receiptId: "create-tag-receipt",
+    });
+    render(<WorkClient initialSnapshot={snapshot} projectOptions={[project]} manageTags />);
+    await user.type(screen.getByRole("textbox", { name: "New reusable tag" }), "Media clip QA");
+    await user.click(screen.getByRole("button", { name: "Create tag" }));
+    expect(createWorkVocabularyTag).toHaveBeenCalledWith({
+      projectId: "project-1",
+      label: "Media clip QA",
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("no record was tagged automatically");
+    expect(screen.getByRole("textbox", { name: "New reusable tag" })).toHaveValue("");
     expect(refresh).toHaveBeenCalled();
   });
 

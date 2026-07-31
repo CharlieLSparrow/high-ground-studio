@@ -100,6 +100,19 @@ describe("permission-filtered workspace search", () => {
     const sourceFindMany = jest.fn().mockResolvedValue([]);
     const documentFindMany = jest.fn().mockResolvedValue([]);
     const annotationFindMany = jest.fn().mockResolvedValue([]);
+    const mediaClipFindMany = jest.fn().mockResolvedValue([{
+      id: "clip-1",
+      title: "Proof opening",
+      description: null,
+      inTimecode: 4,
+      outTimecode: 12,
+      mediaAsset: {
+        id: "asset-1",
+        filename: "episode.mov",
+        duration: 120,
+        isGlobal: false,
+      },
+    }]);
     const tagFindMany = jest.fn();
     const prisma = {
       studioTag: { findFirst: tagFindFirst, findMany: tagFindMany },
@@ -110,6 +123,7 @@ describe("permission-filtered workspace search", () => {
       studioSourceUnit: { findMany: sourceFindMany },
       studioDocument: { findMany: documentFindMany },
       studioSourceAnnotation: { findMany: annotationFindMany },
+      mediaClip: { findMany: mediaClipFindMany },
     } as any;
 
     const result = await searchWorkspace(prisma, {
@@ -130,6 +144,7 @@ describe("permission-filtered workspace search", () => {
       project: { id: "project-1" },
     });
     expect(result.tags.map((tag) => tag.id)).toEqual(["tag-project-1"]);
+    expect(result.mediaClips.map((clip) => clip.id)).toEqual(["clip-1"]);
     expect(result.boundaries).toMatchObject({ actorScoped: true, exactTagIdentity: true });
     expect(tagFindFirst).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: "tag-project-1", projectId: { in: ["project-1", "project-2"] } },
@@ -142,12 +157,26 @@ describe("permission-filtered workspace search", () => {
       sourceFindMany,
       documentFindMany,
       annotationFindMany,
+      mediaClipFindMany,
     ]) {
       const where = JSON.stringify(query.mock.calls[0][0].where);
       expect(where).toContain("tag-project-1");
       expect(where).not.toContain("tag-project-2");
       expect(where).not.toContain("Episode production");
     }
+    expect(mediaClipFindMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        tags: { some: { id: "tag-project-1" } },
+        mediaAsset: {
+          OR: [
+            { isGlobal: true },
+            { projects: { some: { id: "project-1" } } },
+            { mediaBin: { projectId: "project-1" } },
+            { assetAttachments: { some: { projectId: "project-1" } } },
+          ],
+        },
+      },
+    }));
     expect(tagFindMany).not.toHaveBeenCalled();
   });
 
@@ -192,6 +221,7 @@ describe("permission-filtered workspace search", () => {
       studioSourceUnit: { findMany: empty },
       studioDocument: { findMany: empty },
       studioSourceAnnotation: { findMany: empty },
+      mediaClip: { findMany: empty },
     } as any;
 
     const result = await searchWorkspace(prisma, {

@@ -124,6 +124,14 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
   const isMobileSource = source === 'iphone';
   const selectedProject = selectedProjectId !== 'all' ? projectById.get(selectedProjectId) : null;
   const selectedProjectIsHome = selectedProject?.sourceLabel === sourceLabelForNestKind('home');
+  const writableProjectIds = new Set(
+    projects
+      .filter((project) => project.role === "OWNER" || project.role === "EDITOR")
+      .map((project) => project.id),
+  );
+  const selectedProjectCanWrite = Boolean(
+    selectedProjectId !== "all" && writableProjectIds.has(selectedProjectId),
+  );
 
   const selectedTag = selectedTagSlug
     ? mediaTags.find((tag) => tag.slug.toLowerCase() === selectedTagSlug)
@@ -149,12 +157,16 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
             OR: [
               { isGlobal: true },
               { projects: { some: { id: { in: accessibleProjectIds } } } },
+              { mediaBin: { projectId: { in: accessibleProjectIds } } },
+              { assetAttachments: { some: { projectId: { in: accessibleProjectIds } } } },
             ],
           }
         : {
             OR: [
               { isGlobal: true },
               { projects: { some: { id: selectedProjectId } } },
+              { mediaBin: { projectId: selectedProjectId } },
+              { assetAttachments: { some: { projectId: selectedProjectId } } },
             ],
           }),
       ...(selectedProjectId !== 'all' && selectedBinId !== 'all'
@@ -181,6 +193,12 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
       },
       projects: {
         select: { id: true, name: true, sourceLabel: true },
+      },
+      mediaBin: {
+        select: { projectId: true },
+      },
+      assetAttachments: {
+        select: { projectId: true },
       },
       mediaTags: true,
     },
@@ -281,7 +299,7 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
               Clear filters
             </Link>
 
-            <form
+            {(selectedProjectId === "all" || selectedProjectCanWrite) ? <form
               action={async () => {
                 'use server';
                 if (selectedProjectId && selectedProjectId !== 'all') {
@@ -299,7 +317,11 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
               >
                 <Plus size={18} /> Add dummy asset
               </button>
-            </form>
+            </form> : (
+              <span className="ml-auto rounded-lg border border-zinc-300 bg-zinc-50 px-4 py-2 text-xs font-bold text-zinc-500">
+                Viewer access · test creation unavailable
+              </span>
+            )}
           </div>
 
           <div className="mt-2 flex flex-wrap gap-2 items-center">
@@ -436,6 +458,12 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
                   selectedProjectIsHome && belongsToProject && (asset.projects?.length || 0) <= 1;
                 const attachedHomeCount = asset.projects?.filter((project: any) => project.sourceLabel === sourceLabelForNestKind('home')).length || 0;
                 const attachedWorkingCount = Math.max((asset.projects?.length || 0) - attachedHomeCount, 0);
+                const assetScopeProjectIds = new Set([
+                  ...(asset.projects ?? []).map((project: { id: string }) => project.id),
+                  ...(asset.mediaBin?.projectId ? [asset.mediaBin.projectId] : []),
+                  ...(asset.assetAttachments ?? []).map((attachment: { projectId: string }) => attachment.projectId),
+                ]);
+                const assetCanWrite = [...assetScopeProjectIds].some((projectId) => writableProjectIds.has(projectId));
 
                 return (
                   <article
@@ -506,7 +534,7 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
                         ))}
                       </div>
 
-                      {mediaTags.length > 0 ? (
+                      {mediaTags.length > 0 && assetCanWrite ? (
                         <div className="mt-2">
                           <p className="text-[10px] uppercase tracking-wide text-zinc-500 mb-2">Quick tag review labels</p>
                           <div className="flex flex-wrap gap-1">
@@ -549,7 +577,7 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
                       ) : null}
 
                       <div className="mt-3 flex gap-2">
-                        {selectedProjectId !== 'all' && (
+                        {selectedProjectId !== 'all' && selectedProjectCanWrite && assetCanWrite && (
                           <>
                             {isLastHomeAttachment ? (
                               <span className="text-xs px-2 py-1 rounded border text-zinc-500">
@@ -570,6 +598,12 @@ export default async function MediaLibraryPage({ searchParams }: { searchParams:
                             )}
                           </>
                         )}
+
+                        {!assetCanWrite ? (
+                          <span className="text-xs px-2 py-1 rounded border border-sky-200 bg-sky-50 text-sky-800">
+                            Review only
+                          </span>
+                        ) : null}
 
                         <span className="text-[10px] px-2 py-1 rounded border text-zinc-500">
                           in {asset.projects?.length || 0} nest(s)

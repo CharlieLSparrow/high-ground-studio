@@ -162,6 +162,40 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
         },
       },
     });
+    const [matchingAsset, wrongNestAsset] = await Promise.all([
+      prisma.studioMediaAsset.create({
+        data: {
+          filename: "matching-nest.mov",
+          url: `/work-tags/${nonce}/matching`,
+          projects: { connect: { id: projectId } },
+          clips: {
+            create: {
+              title: "Matching-Nest tagged clip",
+              inTimecode: 4,
+              outTimecode: 12,
+              tags: { connect: { id: tagId } },
+            },
+          },
+        },
+        include: { clips: true },
+      }),
+      prisma.studioMediaAsset.create({
+        data: {
+          filename: "wrong-nest.mov",
+          url: `/work-tags/${nonce}/wrong-nest`,
+          projects: { connect: { id: otherProjectId } },
+          clips: {
+            create: {
+              title: "Cross-Nest legacy tag defect",
+              inTimecode: 8,
+              outTimecode: 16,
+              tags: { connect: { id: tagId } },
+            },
+          },
+        },
+        include: { clips: true },
+      }),
+    ]);
     try {
       const result = await searchWorkspace(prisma, {
         actorUserId,
@@ -181,14 +215,24 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
       });
       expect(result.tasks.map((task) => task.id)).toContain(taskId);
       expect(result.tasks.map((task) => task.id)).not.toContain(otherTask.id);
+      expect(result.mediaClips.map((clip) => clip.id)).toEqual([
+        matchingAsset.clips[0].id,
+      ]);
+      expect(result.mediaClips.map((clip) => clip.id)).not.toContain(
+        wrongNestAsset.clips[0].id,
+      );
       expect(result.tags.map((tag) => tag.id)).toEqual([tagId]);
       expect(result.boundaries).toMatchObject({
         actorScoped: true,
         exactTagIdentity: true,
+        mediaClipAssetAccessRechecked: true,
         externalSideEffects: false,
       });
     } finally {
       await prisma.actionItem.delete({ where: { id: otherTask.id } });
+      await prisma.studioMediaAsset.deleteMany({
+        where: { id: { in: [matchingAsset.id, wrongNestAsset.id] } },
+      });
     }
   });
 

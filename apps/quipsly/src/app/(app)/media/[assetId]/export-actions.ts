@@ -1,9 +1,18 @@
 'use server'
 
 import { getPrismaClient } from '@/lib/prisma';
+import { getCurrentHomeNestActorEmail } from '@/lib/server/home-nest';
+import { requireStudioMediaAssetAccess } from '@/lib/server/studio-media-asset-access';
 
 export async function generateStudioCutPackage(assetId: string) {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  await requireStudioMediaAssetAccess({
+    prisma,
+    actorEmail,
+    assetId,
+    action: "write",
+  });
 
   const asset = await prisma.studioMediaAsset.findUnique({
     where: { id: assetId },

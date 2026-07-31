@@ -90,6 +90,7 @@ function emptyWorkspaceResult({
     sources: [],
     documents: [],
     annotations: [],
+    mediaClips: [],
     tags: [],
     projectCount,
     tagFocus: exactTagId
@@ -109,6 +110,7 @@ function emptyWorkspaceResult({
       minimumQueryLength: 2,
       perKindLimit: RESULT_LIMIT,
       unreviewedTranscriptCandidatesExcluded: true,
+      mediaClipAssetAccessRechecked: true,
       externalSideEffects: false,
     },
   };
@@ -231,7 +233,7 @@ export async function searchWorkspace(
     take: 12,
     select: { tag: { select: { id: true, slug: true, label: true, isActive: true } } },
   };
-  const [taskRows, goals, sessions, noteRows, sources, documents, annotations, tags] = await Promise.all([
+  const [taskRows, goals, sessions, noteRows, sources, documents, annotations, mediaClips, tags] = await Promise.all([
     prisma.actionItem.findMany({
       where: { AND: [{ OR: taskAccessWhere(input.actorUserId, projectIds) }, { OR: taskContentMatches }] },
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT + 10,
@@ -350,6 +352,36 @@ export async function searchWorkspace(
       orderBy: { updatedAt: "desc" }, take: RESULT_LIMIT,
       select: { id: true, kind: true, body: true, exactText: true, visibility: true, sourceUnit: { select: { title: true } }, project: { select: { name: true, slug: true } } },
     }) : Promise.resolve([]),
+    focusedTagId && resolvedTag ? prisma.mediaClip.findMany({
+      where: {
+        tags: { some: { id: focusedTagId } },
+        mediaAsset: {
+          OR: [
+            { isGlobal: true },
+            { projects: { some: { id: resolvedTag.project.id } } },
+            { mediaBin: { projectId: resolvedTag.project.id } },
+            { assetAttachments: { some: { projectId: resolvedTag.project.id } } },
+          ],
+        },
+      },
+      orderBy: { updatedAt: "desc" },
+      take: RESULT_LIMIT,
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        inTimecode: true,
+        outTimecode: true,
+        mediaAsset: {
+          select: {
+            id: true,
+            filename: true,
+            duration: true,
+            isGlobal: true,
+          },
+        },
+      },
+    }) : Promise.resolve([]),
     resolvedTag ? Promise.resolve([resolvedTag]) : projectIds.length ? prisma.studioTag.findMany({
       where: {
         projectId: { in: projectIds },
@@ -372,6 +404,7 @@ export async function searchWorkspace(
     sources,
     documents,
     annotations,
+    mediaClips,
     tags,
     projectCount: projects.length,
     tagFocus,
@@ -381,6 +414,7 @@ export async function searchWorkspace(
       minimumQueryLength: 2,
       perKindLimit: RESULT_LIMIT,
       unreviewedTranscriptCandidatesExcluded: true,
+      mediaClipAssetAccessRechecked: true,
       externalSideEffects: false,
     },
   };

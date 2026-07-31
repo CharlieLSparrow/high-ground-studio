@@ -14,6 +14,16 @@ type MediaTag = {
   color?: string | null;
 };
 
+type CanonicalTag = {
+  id: string;
+  label: string;
+  isActive: boolean;
+  project: {
+    id: string;
+    name: string;
+  };
+};
+
 type ClipRecord = {
   id: string;
   title: string;
@@ -21,6 +31,7 @@ type ClipRecord = {
   inTimecode: number;
   outTimecode: number;
   mediaTags: MediaTag[];
+  tags: CanonicalTag[];
 };
 
 type ClipLoggerAsset = {
@@ -79,11 +90,17 @@ function uniqueById<T extends { id: string }>(items: T[]): T[] {
 export function ClipLoggerClient({
   asset,
   mediaTagCatalog,
+  canonicalTagCatalog,
   backHref = '/media',
+  canWrite = false,
+  focusedClipId,
 }: {
   asset: ClipLoggerAsset;
   mediaTagCatalog: MediaTag[];
+  canonicalTagCatalog: CanonicalTag[];
   backHref?: string;
+  canWrite?: boolean;
+  focusedClipId?: string;
 }) {
   const router = useRouter();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -100,6 +117,7 @@ export function ClipLoggerClient({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [selectedTagIds, setSelectedTagIds] = useState<string[]>([]);
+  const [selectedCanonicalTagIds, setSelectedCanonicalTagIds] = useState<string[]>([]);
   const [tagText, setTagText] = useState('');
 
   const [editingClipId, setEditingClipId] = useState<string | null>(null);
@@ -108,12 +126,13 @@ export function ClipLoggerClient({
   const [editingInPoint, setEditingInPoint] = useState('');
   const [editingOutPoint, setEditingOutPoint] = useState('');
   const [editingTagIds, setEditingTagIds] = useState<string[]>([]);
+  const [editingCanonicalTagIds, setEditingCanonicalTagIds] = useState<string[]>([]);
   const [editingTagText, setEditingTagText] = useState('');
 
   const [openEditPanel, setOpenEditPanel] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
 
-  const isReady = inPoint !== null && outPoint !== null && title.trim().length > 0 && !isPending;
+  const isReady = canWrite && inPoint !== null && outPoint !== null && title.trim().length > 0 && !isPending;
 
   const currentTagIds = useMemo(() => {
     const selected = dedupeStrings(selectedTagIds);
@@ -125,6 +144,17 @@ export function ClipLoggerClient({
   const currentClipCount = asset.clips.length;
 
   const hasTagCatalog = catalogTags.length > 0;
+
+  useEffect(() => {
+    if (!focusedClipId) return;
+    const clip = asset.clips.find((candidate) => candidate.id === focusedClipId);
+    if (!clip) return;
+    if (videoRef.current) videoRef.current.currentTime = clip.inTimecode;
+    document.getElementById(`clip-${focusedClipId}`)?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'center',
+    });
+  }, [asset.clips, focusedClipId]);
 
   const handleMarkIn = () => {
     if (videoRef.current) {
@@ -144,6 +174,7 @@ export function ClipLoggerClient({
     setTitle('');
     setDescription('');
     setSelectedTagIds([]);
+    setSelectedCanonicalTagIds([]);
     setTagText('');
     setOpenEditPanel(false);
   };
@@ -161,6 +192,7 @@ export function ClipLoggerClient({
         {
           mediaTagIds: currentTagIds,
           mediaTagLabels: customTagLabels,
+          studioTagIds: dedupeStrings(selectedCanonicalTagIds),
         }
       );
       clearClipDraft();
@@ -217,6 +249,7 @@ export function ClipLoggerClient({
     setEditingInPoint(String(clip.inTimecode));
     setEditingOutPoint(String(clip.outTimecode));
     setEditingTagIds(clip.mediaTags.map((tag) => tag.id));
+    setEditingCanonicalTagIds(clip.tags.map((tag) => tag.id));
     setEditingTagText('');
   };
 
@@ -227,6 +260,7 @@ export function ClipLoggerClient({
     setEditingInPoint('');
     setEditingOutPoint('');
     setEditingTagIds([]);
+    setEditingCanonicalTagIds([]);
     setEditingTagText('');
   };
 
@@ -246,6 +280,7 @@ export function ClipLoggerClient({
         outTimecode: nextOut,
         mediaTagIds: dedupeStrings(editingTagIds),
         mediaTagLabels: normalizeTagText(editingTagText),
+        studioTagIds: dedupeStrings(editingCanonicalTagIds),
       });
 
       cancelEdit();
@@ -292,10 +327,10 @@ export function ClipLoggerClient({
 
       switch (event.key.toLowerCase()) {
         case 'i':
-          handleMarkIn();
+          if (canWrite) handleMarkIn();
           break;
         case 'o':
-          handleMarkOut();
+          if (canWrite) handleMarkOut();
           break;
         case 'j':
           jumpBy(-0.5);
@@ -320,7 +355,7 @@ export function ClipLoggerClient({
     return () => {
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, []);
+  }, [canWrite]);
 
   return (
     <div className="flex h-screen bg-zinc-50 dark:bg-black">
@@ -344,13 +379,13 @@ export function ClipLoggerClient({
             </div>
           </div>
 
-          <button
-            onClick={handleExportToStudioCut}
-            className="flex items-center gap-2 px-4 py-2 bg-[#8c6b4a] hover:bg-[#7a5c40] text-white rounded-lg font-bold shadow-sm transition-colors"
-          >
-            <Send size={18} />
-            Send to Studio Cut
-          </button>
+          {canWrite ? <button
+              onClick={handleExportToStudioCut}
+              className="flex min-h-11 items-center gap-2 rounded-lg bg-[#8c6b4a] px-4 py-2 font-bold text-white shadow-sm transition-colors hover:bg-[#7a5c40]"
+            >
+              <Send size={18} />
+              Send to Studio Cut
+            </button> : null}
         </header>
 
         <div className="flex-1 bg-black rounded-2xl overflow-hidden shadow-lg relative flex flex-col justify-center">
@@ -384,7 +419,9 @@ export function ClipLoggerClient({
           <div className="flex flex-col items-center">
             <button
               onClick={handleMarkIn}
-              className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-indigo-500 hover:text-indigo-500 transition-colors shadow-sm"
+              disabled={!canWrite}
+              aria-label="Mark clip in point"
+              className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-indigo-500 hover:text-indigo-500 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Target size={24} />
             </button>
@@ -397,7 +434,9 @@ export function ClipLoggerClient({
           <div className="flex flex-col items-center">
             <button
               onClick={handleMarkOut}
-              className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-indigo-500 hover:text-indigo-500 transition-colors shadow-sm"
+              disabled={!canWrite}
+              aria-label="Mark clip out point"
+              className="p-4 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:border-indigo-500 hover:text-indigo-500 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Target size={24} />
             </button>
@@ -463,7 +502,7 @@ export function ClipLoggerClient({
           Log Clip
         </h2>
 
-        <div className="bg-zinc-50 dark:bg-zinc-950 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 mb-8 shadow-inner">
+        {canWrite ? <div className="bg-zinc-50 dark:bg-zinc-950 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 mb-8 shadow-inner">
           <div className="mb-4">
             <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Clip Title</label>
             <input
@@ -487,12 +526,12 @@ export function ClipLoggerClient({
           </div>
 
           <div className="mb-4">
-            <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Tags</label>
+            <label className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">Review labels</label>
             <input
               type="text"
               value={tagText}
               onChange={(e) => setTagText(e.target.value)}
-              placeholder="Add custom tag(s), comma-separated"
+              placeholder="Add custom review labels, comma-separated"
               className="w-full px-3 py-2 rounded-lg border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             {hasTagCatalog && (
@@ -518,6 +557,38 @@ export function ClipLoggerClient({
               </div>
             )}
           </div>
+
+          {canonicalTagCatalog.length > 0 ? (
+            <fieldset className="mb-4">
+              <legend className="block text-xs font-bold text-zinc-500 uppercase tracking-wider mb-2">
+                Canonical Nest tags
+              </legend>
+              <p className="mb-2 text-[11px] leading-4 text-zinc-500">
+                Reusable vocabulary from Nests where you can edit this asset.
+              </p>
+              <div className="flex flex-wrap gap-1">
+                {canonicalTagCatalog.map((tag) => {
+                  const selected = selectedCanonicalTagIds.includes(tag.id);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleTag(tag.id, selectedCanonicalTagIds, setSelectedCanonicalTagIds)}
+                      className={`min-h-11 rounded-full border px-3 py-1 text-[10px] font-bold ${
+                        selected
+                          ? 'border-fuchsia-700 bg-fuchsia-700 text-white'
+                          : 'border-fuchsia-200 bg-white text-fuchsia-900'
+                      }`}
+                      title={`${tag.project.name} · ${tag.label}`}
+                    >
+                      #{tag.label} · {tag.project.name}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          ) : null}
 
           <button
             onClick={() => setOpenEditPanel((value) => !value)}
@@ -557,7 +628,11 @@ export function ClipLoggerClient({
             <Save size={18} />
             {isPending ? 'Saving...' : 'Save Clip'}
           </button>
-        </div>
+        </div> : (
+          <div className="mb-8 rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold leading-6 text-sky-950" role="note">
+            This asset is available to review, but clip logging requires Owner or Editor access in an attached Nest.
+          </div>
+        )}
 
         <div className="flex-1">
           <h3 className="text-sm font-bold flex items-center gap-2 text-zinc-500 uppercase tracking-wider mb-4 border-b border-zinc-200 dark:border-zinc-800 pb-2">
@@ -572,7 +647,16 @@ export function ClipLoggerClient({
               asset.clips.map((clip) => {
                 const isEditing = editingClipId === clip.id;
                 return (
-                  <div key={clip.id} className="p-3 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg">
+                  <div
+                    key={clip.id}
+                    id={`clip-${clip.id}`}
+                    className={`p-3 bg-zinc-50 dark:bg-zinc-950 border rounded-lg scroll-mt-6 ${
+                      focusedClipId === clip.id
+                        ? 'border-fuchsia-500 ring-4 ring-fuchsia-100 dark:ring-fuchsia-950'
+                        : 'border-zinc-200 dark:border-zinc-800'
+                    }`}
+                    aria-current={focusedClipId === clip.id ? "true" : undefined}
+                  >
                     {isEditing ? (
                       <div className="space-y-3">
                         <input
@@ -629,6 +713,33 @@ export function ClipLoggerClient({
                             })}
                           </div>
                         )}
+                        {canonicalTagCatalog.length > 0 ? (
+                          <fieldset>
+                            <legend className="mb-1 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+                              Canonical Nest tags
+                            </legend>
+                            <div className="flex flex-wrap gap-1">
+                              {canonicalTagCatalog.map((tag) => {
+                                const selected = editingCanonicalTagIds.includes(tag.id);
+                                return (
+                                  <button
+                                    key={tag.id}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    onClick={() => toggleTag(tag.id, editingCanonicalTagIds, setEditingCanonicalTagIds)}
+                                    className={`min-h-11 rounded-full border px-3 py-1 text-[10px] font-bold ${
+                                      selected
+                                        ? 'border-fuchsia-700 bg-fuchsia-700 text-white'
+                                        : 'border-fuchsia-200 bg-white text-fuchsia-900'
+                                    }`}
+                                  >
+                                    #{tag.label} · {tag.project.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </fieldset>
+                        ) : null}
                         <div className="flex gap-2">
                           <button
                             onClick={() => saveEditClip(clip.id)}
@@ -648,7 +759,7 @@ export function ClipLoggerClient({
                       <>
                         <div className="flex items-start justify-between gap-2">
                           <h4 className="font-semibold text-zinc-900 dark:text-zinc-100 text-sm mb-1">{clip.title}</h4>
-                          <div className="flex gap-2">
+                          {canWrite ? <div className="flex gap-2">
                             <button
                               onClick={() => startEditClip(clip)}
                               className="text-xs font-medium text-zinc-500 hover:text-indigo-500 transition-colors"
@@ -662,7 +773,7 @@ export function ClipLoggerClient({
                               <Trash2 size={12} />
                               Delete
                             </button>
-                          </div>
+                          </div> : null}
                         </div>
 
                         <div className="flex justify-between items-center">
@@ -695,6 +806,25 @@ export function ClipLoggerClient({
                                 </span>
                               );
                             })}
+                          </div>
+                        ) : null}
+
+                        {clip.tags.length > 0 ? (
+                          <div className="mt-2 flex flex-wrap gap-1" aria-label={`Canonical Nest tags: ${clip.tags.map((tag) => tag.label).join(", ")}`}>
+                            {clip.tags.map((tag) => (
+                              <Link
+                                key={tag.id}
+                                href={`/find?tag=${encodeURIComponent(tag.id)}`}
+                                className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${
+                                  tag.isActive
+                                    ? 'border-fuchsia-200 bg-fuchsia-50 text-fuchsia-950'
+                                    : 'border-stone-300 bg-stone-100 text-stone-700'
+                                }`}
+                                title={tag.project.name}
+                              >
+                                #{tag.label}{tag.isActive ? "" : " · archived"}
+                              </Link>
+                            ))}
                           </div>
                         ) : null}
                       </>

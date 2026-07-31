@@ -7,7 +7,7 @@ import { Archive, BellRing, CalendarClock, Check, Circle, CircleSlash2, Flag, Li
 import type { LucideIcon } from "lucide-react";
 
 import { TagSearchChips } from "@/components/tag-search-chips";
-import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, editTaskRecurrence, editWorkGoal, editWorkTask, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
+import { applyTagMerge, applyTagMergeRollback, changeWorkTagTaxonomy, createAndAssignWorkTag, createWorkGoal, createWorkTask, createWorkVocabularyTag, editTaskRecurrence, editWorkGoal, editWorkTask, linkWorkGoalTask, previewTagMerge, previewTagMergeRollback, recordWorkGoalProgress, replaceWorkTags, reviewImportedWorkTag, saveWeeklyCommitment, setWorkTaskReminder, unlinkWorkGoalTask, updateTaskRecurrenceStatus, updateWorkGoalStatus, updateWorkTaskStatus, type SerializedWorkTagMergePreview, type SerializedWorkTagMergeRollbackPreview } from "./actions";
 import type { WorkCommitment, WorkGoal, WorkGoalStatus, WorkProjectOption, WorkSnapshot, WorkTag, WorkTagCandidate, WorkTask, WorkTaskStatus } from "./work-model";
 
 export type TaskFilter = "ATTENTION" | "OPEN" | "DONE" | "ALL";
@@ -327,6 +327,7 @@ function ImportedKeywordReview({ project, onRefresh }: { project: WorkProjectOpt
 function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId = null }: { projects: WorkProjectOption[]; onRefresh: () => void; expanded?: boolean; initialProjectId?: string | null }) {
   const writableProjects = projects.filter((project) => project.canWrite);
   const [pending, startTransition] = useTransition();
+  const [creating, startCreating] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState(
     writableProjects.some((project) => project.id === initialProjectId)
@@ -334,6 +335,7 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
       : writableProjects[0]?.id ?? "",
   );
   const [query, setQuery] = useState("");
+  const [newTagLabel, setNewTagLabel] = useState("");
   const [showArchived, setShowArchived] = useState(false);
   const [expandedTagId, setExpandedTagId] = useState<string | null>(null);
   if (!writableProjects.length) return null;
@@ -376,10 +378,45 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
     });
   }
 
+  function createTag() {
+    const label = newTagLabel.trim();
+    if (!label) {
+      setMessage("Enter a reusable tag name first.");
+      return;
+    }
+    setMessage(null);
+    startCreating(async () => {
+      const result = await createWorkVocabularyTag({
+        projectId: selectedProject.id,
+        label,
+      });
+      if (!result.ok) {
+        setMessage(result.error);
+        return;
+      }
+      setNewTagLabel("");
+      setQuery("");
+      setShowArchived(false);
+      setMessage(result.created
+        ? `Created #${result.tag.label} for ${selectedProject.name}. It is ready to assign; no record was tagged automatically.`
+        : `#${result.tag.label} already exists in ${selectedProject.name}. No duplicate was created.`);
+      onRefresh();
+    });
+  }
+
   return <section aria-labelledby="tag-vocabulary-heading" className="rounded-3xl border border-sky-200 bg-[linear-gradient(145deg,#f7fcff,#eef8ff)] p-5 shadow-sm md:p-6">
     <div className="flex items-start gap-3"><span className="rounded-xl bg-sky-100 p-2 text-sky-900"><Tags aria-hidden="true" /></span><div><p className="text-xs font-black uppercase tracking-[0.18em] text-sky-800">Shared organizing language</p><h2 id="tag-vocabulary-heading" className="font-serif text-2xl font-black">Nest vocabulary</h2><p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-sky-950">Rename without breaking older iPhone captures: Quipsly keeps the former name as an alias. Archive hides a tag from new choices while preserving every existing link.</p></div></div>
     <details open={expanded || undefined} className="mt-5 rounded-2xl border border-sky-200 bg-white/80 p-4">
       <summary className="cursor-pointer text-xs font-black uppercase tracking-wide text-sky-900">Manage vocabulary · {activeTagCount} active across {writableProjects.length} Nest{writableProjects.length === 1 ? "" : "s"}</summary>
+      <form action={createTag} className="mt-4 rounded-2xl border border-sky-200 bg-sky-50/70 p-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label className="min-w-[15rem] flex-1 text-[10px] font-black uppercase tracking-wide text-sky-900">New reusable tag
+            <input name="newTagLabel" required maxLength={80} value={newTagLabel} onChange={(event) => setNewTagLabel(event.target.value)} placeholder="Episode production…" className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal" />
+          </label>
+          <button type="submit" disabled={creating} className="min-h-11 rounded-full bg-sky-800 px-5 text-[10px] font-black uppercase tracking-wide text-white disabled:opacity-50">{creating ? "Creating…" : "Create tag"}</button>
+        </div>
+        <p className="mt-2 text-xs font-semibold leading-5 text-sky-950">Adds shared vocabulary to the selected Nest. It does not tag a task, goal, note, document, session, or clip by itself.</p>
+      </form>
       <div className="mt-4 grid gap-3 rounded-2xl border border-sky-100 bg-sky-50/50 p-4 md:grid-cols-[minmax(13rem,1fr)_minmax(15rem,2fr)_auto] md:items-end">
         <label className="text-[10px] font-black uppercase tracking-wide text-sky-900">Nest
           <select value={selectedProject.id} onChange={(event) => { setSelectedProjectId(event.target.value); setExpandedTagId(null); }} className="mt-1 min-h-11 w-full rounded-xl border border-sky-200 bg-white px-3 text-sm font-semibold normal-case tracking-normal">
@@ -414,7 +451,7 @@ function TagVocabulary({ projects, onRefresh, expanded = false, initialProjectId
               {!tag.mergedInto && <TagMergeControl source={tag} project={selectedProject} onRefresh={onRefresh} />}
             </div>}
           </li>;
-        })}</ul> : <p className="mt-4 rounded-xl border border-dashed border-sky-200 p-4 text-sm font-semibold text-sky-900">{normalizedQuery ? "No tags or former names match this search." : "Create the first reusable tag from a task, goal, or iPhone quick entry."}</p>}
+        })}</ul> : <p className="mt-4 rounded-xl border border-dashed border-sky-200 p-4 text-sm font-semibold text-sky-900">{normalizedQuery ? "No tags or former names match this search." : "Create the first reusable tag above."}</p>}
         <ImportedKeywordReview project={selectedProject} onRefresh={onRefresh} />
       </article>
       {message && <p role="status" className="mt-4 rounded-xl border border-sky-200 bg-white px-3 py-2 text-xs font-bold text-sky-950">{message}</p>}

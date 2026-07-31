@@ -1,7 +1,16 @@
 'use server'
 
 import { getPrismaClient } from '@/lib/prisma';
-import { ensureCurrentActorHomeNest } from '@/lib/server/home-nest';
+import {
+  ensureCurrentActorHomeNest,
+  getCurrentHomeNestActorEmail,
+} from '@/lib/server/home-nest';
+import {
+  requireStudioMediaAssetAccess,
+  requireStudioMediaClipWriteAccess,
+  requireStudioMediaProjectAccess,
+  StudioMediaAssetAccessError,
+} from '@/lib/server/studio-media-asset-access';
 import { revalidatePath } from 'next/cache';
 
 function slugify(value: string) {
@@ -38,18 +47,26 @@ function dedupeStrings(values: string[]) {
 
 async function resolveStudioTagRefs(
   prisma: ReturnType<typeof getPrismaClient>,
+  projectIds: string[],
   studioTagIds: string[] = [],
   studioTagSlugs: string[] = [],
 ) {
   const cleanIds = dedupeStrings(studioTagIds);
   const cleanSlugs = dedupeStrings(studioTagSlugs.map((value) => value.trim().toLowerCase()).filter(Boolean));
-  if (!cleanIds.length && !cleanSlugs.length) return [];
+  const allowedProjectIds = dedupeStrings(projectIds);
+  if (!allowedProjectIds.length || (!cleanIds.length && !cleanSlugs.length)) return [];
 
   const matches = await prisma.studioTag.findMany({
     where: {
-      OR: [
-        ...(cleanIds.length ? [{ id: { in: cleanIds } }] : []),
-        ...(cleanSlugs.length ? [{ slug: { in: cleanSlugs } }] : []),
+      AND: [
+        { projectId: { in: allowedProjectIds } },
+        { isActive: true },
+        {
+          OR: [
+            ...(cleanIds.length ? [{ id: { in: cleanIds } }] : []),
+            ...(cleanSlugs.length ? [{ slug: { in: cleanSlugs } }] : []),
+          ],
+        },
       ],
     },
     select: { id: true },
@@ -110,9 +127,12 @@ async function resolveMediaTagIds(prisma: ReturnType<typeof getPrismaClient>, me
   return dedupeStrings(resolved.map((tag) => tag.id)).map((id) => ({ id }));
 }
 
-async function reorderClipTimes(mediaAssetId: string, inTimecode: number, outTimecode: number) {
-  const prisma = getPrismaClient();
-
+async function reorderClipTimes(
+  prisma: ReturnType<typeof getPrismaClient>,
+  mediaAssetId: string,
+  inTimecode: number,
+  outTimecode: number,
+) {
   const duration = outTimecode - inTimecode;
   if (duration <= 0) {
     throw new Error("outTimecode must be greater than inTimecode.");
@@ -139,6 +159,13 @@ async function reorderClipTimes(mediaAssetId: string, inTimecode: number, outTim
 
 export async function createMediaBin(projectId: string, name: string, description?: string) {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  await requireStudioMediaProjectAccess({
+    prisma,
+    actorEmail,
+    projectId,
+    action: "write",
+  });
 
   await prisma.mediaBin.create({
     data: {
@@ -153,6 +180,17 @@ export async function createMediaBin(projectId: string, name: string, descriptio
 
 export async function createMediaTag(label: string, description?: string) {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  const homeNest = await ensureCurrentActorHomeNest(prisma);
+  if (!homeNest) {
+    throw new StudioMediaAssetAccessError(401, "Sign in to create a media tag.");
+  }
+  await requireStudioMediaProjectAccess({
+    prisma,
+    actorEmail,
+    projectId: homeNest.id,
+    action: "write",
+  });
   const normalized = label.trim();
   if (!normalized) return null;
   const slug = slugify(normalized);
@@ -174,6 +212,10 @@ export async function createMediaTag(label: string, description?: string) {
 
 export async function listMediaTags() {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  if (!actorEmail) {
+    throw new StudioMediaAssetAccessError(401, "Sign in to list media tags.");
+  }
 
   return prisma.studioMediaTag.findMany({
     orderBy: { label: 'asc' },
@@ -200,6 +242,13 @@ export async function createMediaClip(
   }
 ) {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  const access = await requireStudioMediaAssetAccess({
+    prisma,
+    actorEmail,
+    assetId: mediaAssetId,
+    action: "write",
+  });
 
   const normalizedTitle = title.trim();
   if (!normalizedTitle) {
@@ -213,7 +262,7 @@ export async function createMediaClip(
     throw new Error('Clip in/out times must be valid numbers.');
   }
 
-  const times = await reorderClipTimes(mediaAssetId, safeIn, safeOut);
+  const times = await reorderClipTimes(prisma, mediaAssetId, safeIn, safeOut);
   const mediaTags = await resolveMediaTagIds(
     prisma,
     options?.mediaTagIds ?? [],
@@ -224,7 +273,14 @@ export async function createMediaClip(
     ...(options?.studioTagIds ?? []),
     ...(options?.studioTagSlugs ?? []),
   ]).length > 0
-    ? { connect: await resolveStudioTagRefs(prisma, options?.studioTagIds ?? [], options?.studioTagSlugs ?? []) }
+    ? {
+        connect: await resolveStudioTagRefs(
+          prisma,
+          access.writableProjectIds,
+          options?.studioTagIds ?? [],
+          options?.studioTagSlugs ?? [],
+        ),
+      }
     : undefined;
 
   await prisma.mediaClip.create({
@@ -264,15 +320,12 @@ export async function updateMediaClip(
   }
 ) {
   const prisma = getPrismaClient();
-
-  const clip = await prisma.mediaClip.findUnique({
-    where: { id: clipId },
-    select: { id: true, mediaAssetId: true, inTimecode: true, outTimecode: true },
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  const { clip, access } = await requireStudioMediaClipWriteAccess({
+    prisma,
+    actorEmail,
+    clipId,
   });
-
-  if (!clip) {
-    throw new Error('Clip not found.');
-  }
 
   const data: Record<string, unknown> = {};
 
@@ -299,6 +352,7 @@ export async function updateMediaClip(
     const resolvedIn = normalizedIn ?? clip.inTimecode;
     const resolvedOut = normalizedOut ?? clip.outTimecode;
     const times = await reorderClipTimes(
+      prisma,
       clip.mediaAssetId,
       resolvedIn,
       resolvedOut
@@ -320,7 +374,12 @@ export async function updateMediaClip(
 
   if (payload.studioTagIds !== undefined || payload.studioTagSlugs !== undefined) {
     data.tags = {
-      set: await resolveStudioTagRefs(prisma, payload.studioTagIds ?? [], payload.studioTagSlugs ?? []),
+      set: await resolveStudioTagRefs(
+        prisma,
+        access.writableProjectIds,
+        payload.studioTagIds ?? [],
+        payload.studioTagSlugs ?? [],
+      ),
     };
   }
 
@@ -337,8 +396,12 @@ export async function updateMediaClip(
 
 export async function deleteMediaClip(clipId: string) {
   const prisma = getPrismaClient();
-  const clip = await prisma.mediaClip.findUnique({ where: { id: clipId }, select: { mediaAssetId: true } });
-  if (!clip) return;
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  const { clip } = await requireStudioMediaClipWriteAccess({
+    prisma,
+    actorEmail,
+    clipId,
+  });
 
   await prisma.mediaClip.delete({ where: { id: clipId } });
   revalidatePath(`/media/${clip.mediaAssetId}`);
@@ -347,12 +410,27 @@ export async function deleteMediaClip(clipId: string) {
 
 export async function assignAssetToBin(assetId: string, mediaBinId: string | null) {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  await requireStudioMediaAssetAccess({
+    prisma,
+    actorEmail,
+    assetId,
+    action: "write",
+  });
   const bin = mediaBinId
     ? await prisma.mediaBin.findUnique({
         where: { id: mediaBinId },
         select: { projectId: true },
       })
     : null;
+  if (bin) {
+    await requireStudioMediaProjectAccess({
+      prisma,
+      actorEmail,
+      projectId: bin.projectId,
+      action: "write",
+    });
+  }
 
   await prisma.studioMediaAsset.update({
     where: { id: assetId },
@@ -374,6 +452,21 @@ export async function assignAssetToBin(assetId: string, mediaBinId: string | nul
 
 export async function attachAssetToProject(assetId: string, projectId: string) {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  await Promise.all([
+    requireStudioMediaAssetAccess({
+      prisma,
+      actorEmail,
+      assetId,
+      action: "write",
+    }),
+    requireStudioMediaProjectAccess({
+      prisma,
+      actorEmail,
+      projectId,
+      action: "write",
+    }),
+  ]);
 
   await prisma.studioMediaAsset.update({
     where: { id: assetId },
@@ -390,6 +483,21 @@ export async function attachAssetToProject(assetId: string, projectId: string) {
 
 export async function detachAssetFromProject(assetId: string, projectId: string) {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  await Promise.all([
+    requireStudioMediaAssetAccess({
+      prisma,
+      actorEmail,
+      assetId,
+      action: "write",
+    }),
+    requireStudioMediaProjectAccess({
+      prisma,
+      actorEmail,
+      projectId,
+      action: "write",
+    }),
+  ]);
 
   const after = await prisma.studioMediaAsset.update({
     where: { id: assetId },
@@ -401,13 +509,30 @@ export async function detachAssetFromProject(assetId: string, projectId: string)
     include: {
       projects: {
         select: { id: true }
-      }
+      },
+      mediaBin: {
+        select: { projectId: true },
+      },
+      assetAttachments: {
+        select: { projectId: true },
+      },
     },
   });
 
-  if (after.projects.length === 0) {
+  const remainingScopeProjectIds = new Set([
+    ...after.projects.map((project) => project.id),
+    ...(after.mediaBin?.projectId ? [after.mediaBin.projectId] : []),
+    ...after.assetAttachments.map((attachment) => attachment.projectId),
+  ]);
+  if (remainingScopeProjectIds.size === 0) {
     const homeNest = await ensureCurrentActorHomeNest(prisma);
     if (homeNest) {
+      await requireStudioMediaProjectAccess({
+        prisma,
+        actorEmail,
+        projectId: homeNest.id,
+        action: "write",
+      });
       await prisma.studioMediaAsset.update({
         where: { id: assetId },
         data: {
@@ -417,12 +542,7 @@ export async function detachAssetFromProject(assetId: string, projectId: string)
           },
         }
       });
-    } else {
-      await prisma.studioMediaAsset.update({
-        where: { id: assetId },
-        data: { isGlobal: true }
-      });
-    }
+    } else throw new StudioMediaAssetAccessError(401, "Sign in to move this media record.");
   }
 
   revalidatePath('/media');
@@ -430,8 +550,18 @@ export async function detachAssetFromProject(assetId: string, projectId: string)
 
 export async function seedDummyVideo(projectId?: string) {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
   const homeNest = projectId ? null : await ensureCurrentActorHomeNest(prisma);
   const attachmentProjectId = projectId || homeNest?.id || null;
+  if (!attachmentProjectId) {
+    throw new StudioMediaAssetAccessError(401, "Sign in to create a test media record.");
+  }
+  await requireStudioMediaProjectAccess({
+    prisma,
+    actorEmail,
+    projectId: attachmentProjectId,
+    action: "write",
+  });
 
   const assetData = {
     filename: 'BigBuckBunny_Travel_Vlog.mp4',
@@ -441,8 +571,8 @@ export async function seedDummyVideo(projectId?: string) {
     resolution: '1920x1080',
     fps: 24,
     thumbnailUrl: 'https://storage.googleapis.com/gtv-videos-bucket/sample/images/BigBuckBunny.jpg',
-    isGlobal: !attachmentProjectId,
-    projects: attachmentProjectId ? { connect: { id: attachmentProjectId } } : undefined,
+    isGlobal: false,
+    projects: { connect: { id: attachmentProjectId } },
   } as const;
 
   const asset = await prisma.studioMediaAsset.create({ data: assetData });
@@ -476,6 +606,13 @@ export async function seedDummyVideo(projectId?: string) {
 
 export async function syncAssetMediaTags(assetId: string, tagIds: string[], tagLabels: string[]) {
   const prisma = getPrismaClient();
+  const actorEmail = await getCurrentHomeNestActorEmail();
+  await requireStudioMediaAssetAccess({
+    prisma,
+    actorEmail,
+    assetId,
+    action: "write",
+  });
   const mediaTags = await resolveMediaTagIds(prisma, tagIds, tagLabels);
 
   await prisma.studioMediaAsset.update({

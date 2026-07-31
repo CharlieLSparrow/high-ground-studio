@@ -2,7 +2,7 @@
 
 Status: active operating policy
 Owner: Quipsly product and media infrastructure
-Last reviewed: 2026-07-27
+Last reviewed: 2026-07-30
 
 ## Decision
 
@@ -32,6 +32,51 @@ app-owned record make the role explicit.
 Storage paths are never authorization. A valid object URI without an
 authorized app record does not grant access or prove episode meaning.
 Buckets are storage; Nests decide who can see and use assets.
+
+## Application authorization contract
+
+Every route and server action that accepts a `StudioMediaAsset.id` or
+`StudioMediaClip.id` must resolve the actor against the canonical parent asset
+before returning metadata or mutating state. A signed-in application shell is
+not authorization.
+
+An asset's current Nest scopes are the union of:
+
+- its direct legacy `projectId`;
+- its media bin's `projectId`;
+- every active `StudioAssetAttachment.projectId`.
+
+Read access requires visibility into at least one of those Nests. Write access
+requires an active Owner or Editor grant into at least one scope. A viewer can
+inspect and play an authorized asset but cannot change clips, review labels,
+canonical tags, bin placement, project attachments, or Studio Cut export
+state.
+
+Legacy global assets with no Nest scope remain readable to a signed-in user
+only for compatibility. They are always read-only and cannot silently become
+owned through a clip edit or unrelated attachment action. A deliberate
+authorized attachment workflow is required to establish Nest ownership.
+
+Clip access is never evaluated independently: the parent asset is resolved
+again at the mutation boundary. Missing and inaccessible asset or clip IDs
+share the same unavailable/404 response so IDs do not disclose another Nest's
+inventory.
+
+Attaching an asset to another Nest requires write access to both the source
+asset and the destination Nest. Detaching the last scope preserves the asset
+by moving it to the actor's authorized Home Nest rather than making it
+implicitly global. Development dummy assets are created in Home Nest, never
+global.
+
+Review labels (`StudioMediaTag`) remain media-specific workflow metadata.
+Canonical Nest tags (`StudioTag`) are separate stable identities. A clip may
+use canonical tags only from writable scopes of its parent asset.
+
+Exact tag focus rechecks both sides of that relationship: the requested
+canonical tag must be visible, the parent asset must be readable, and the
+tag's Nest must be one of the asset scopes unless the asset is explicitly
+global/read-only. Possession of a clip, tag, asset, or object ID never broadens
+access.
 
 ## Current bucket map
 
