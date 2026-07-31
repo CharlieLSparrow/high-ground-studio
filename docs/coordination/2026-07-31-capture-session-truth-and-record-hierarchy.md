@@ -77,9 +77,17 @@ auditable.
 - Reviewer runway static smoke: passed
 - Patch hygiene: passed
 
-AQ proves the current working-tree source in the local iPhone Simulator and
-local Nest environment. A fresh retained run against the exact committed SHA
-is required before this checkpoint is immutable release evidence.
+AQ first proved the working-tree source in the local iPhone Simulator and local
+Nest environment. Commit
+`cac6687e0047bcf525cf17e8c45ee288c676b00a` then passed a fresh immutable run
+with retained Session `QA Retained · Capture truth cac6687e AR`:
+
+- exact-commit result:
+  `/tmp/quipsly-capture-runtime-ui-session-create-surface-cac6687e-ar.xcresult`
+- result: 1 passed, 0 failed, 0 skipped
+- focused journey duration: 58.915 seconds
+
+The exact-commit run is the release-candidate source proof for this slice.
 
 ## Boundary
 
@@ -87,4 +95,3 @@ This does not prove a physical iPhone, TestFlight installation, production
 Nest, two-person call, captured audio/video, provider connection, server
 recording, transcript, or assembled timeline. No invitation, message, calendar
 event, charge, provider join, recording, or publication occurred.
-

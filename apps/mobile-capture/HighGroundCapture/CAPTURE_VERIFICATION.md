@@ -106,11 +106,15 @@ that exact Session, waited for canonical authority to settle, and read back
 consent, recorder, lifecycle, provider, CallKit, and recording-receipt boundaries
 without joining or recording. The focused runtime result passed 1/1 at
 `/tmp/quipsly-capture-runtime-ui-session-create-surface-20260731-visible-boundary-aq.xcresult`.
+Commit `cac6687e0047bcf525cf17e8c45ee288c676b00a` repeated the complete journey
+with retained Session `QA Retained · Capture truth cac6687e AR`: 1 passed,
+0 failed, 0 skipped at
+`/tmp/quipsly-capture-runtime-ui-session-create-surface-cac6687e-ar.xcresult`.
 The same operation found and closed a global-sign-out defect caused by an
 episode-chat feature denial; native chat now uses the shared bearer-or-cookie
 identity boundary, and a missing canonical thread stops background polling
-after its terminal 404. This is local Simulator/Nest working-tree evidence;
-exact-commit, physical-iPhone, TestFlight, and production proof remain open.
+after its terminal 404. This is exact-commit local Simulator/Nest evidence;
+physical-iPhone, TestFlight, and production proof remain open.
 
 ## External proof still required
 
