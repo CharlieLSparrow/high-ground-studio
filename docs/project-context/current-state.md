@@ -2,6 +2,38 @@
 
 Date: 2026-07-31
 
+## Capture accessibility and held Build 22 checkpoint
+
+- Exact source `10d5ba8d709ec8a6479979d72866212e555bf4f7` hardens
+  the shipping Today, Work, Library, Account, Record, consent, rehearsal, and
+  transcript-review surfaces for the largest accessibility text size and
+  Increase Contrast.
+- Work now has an app-owned self-sizing search control, explicit keyboard
+  dismissal, adaptive project identity/metrics, and a 44-point shared-tag
+  management target. The Account identity card has one human-readable
+  assistive-technology projection instead of exposing decorative or raw-email
+  elements.
+- The exact commit passes all 41 Capture Experience journeys and all 3
+  Safari/Share Extension journeys on iPhone 17 Pro / iOS 26.3.1, plus 902/902
+  native/App Store checks and 168/168 cross-surface contracts. The retained
+  Work journey types and clears a real task query before continuing through
+  the shared vocabulary and canonical project records.
+- Quipsly Capture 1.0 (22) is a qualified, signed candidate from frozen source
+  `8ec38f09cd5842ff67d346c0b8d6c41f557b8081`, but its receipt explicitly says
+  no upload was attempted. Fresh Apple readback confirms Build 22 is absent.
+  Its 21,141,551-byte IPA has SHA-256
+  `2804812646db6caa37dfc7fb8badb7d2134b0047ef0205ac284d12e47c4520c1`.
+- Build 22 stays held until the matching Nest schema/backend passes guarded
+  deployment and production readback. Current Google Cloud and Firebase
+  authorization checks require reauthentication. No physical iPhone is
+  visible through USB or CoreDevice, so physical install/capture/recovery and
+  same-ID Nest readback remain open.
+- Build 20 remains the canonical external target. Fresh App Store Connect and
+  anonymous public-link readback confirm it is valid, externally in beta,
+  included in the open rehearsal group, and exposes Apple's exact install
+  handoff. Exact evidence and loop-back commands are in
+  `docs/coordination/2026-07-31-capture-accessibility-build22-hold.md`.
+
 ## Capture Build 21 internal checkpoint
 
 - Quipsly Capture 1.0 (21) was built and uploaded from exact detached source

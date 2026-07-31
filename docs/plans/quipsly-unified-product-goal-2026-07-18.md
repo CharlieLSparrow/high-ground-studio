@@ -5141,3 +5141,36 @@ was restored.
   reusable local identity and rendered regression operation, not production
   account persistence, physical TestFlight execution, or a real episode or
   coaching session.
+
+### 2026-07-31 Capture shell accessibility and held Build 22 checkpoint
+
+- Committed and pushed exact source `10d5ba8d` with a self-sizing Work search
+  control, explicit search/scroll keyboard dismissal, adaptive project names,
+  roles, and metrics, a 44-point shared-tag management target, and one
+  human-readable Account identity projection.
+- Operated the retained Work corpus through the shipping iPhone shell: typed
+  `Proof-listen`, read back the exact retained task, cleared the query,
+  confirmed the keyboard released, and continued through shared tag
+  vocabulary, tasks, goals, notes, and tags.
+- Audited Today, Work, Library, and Account at
+  `UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge` with Increase
+  Contrast enabled for hit regions, sufficient descriptions, and clipped
+  text. Focused Record, consent, and rehearsal accessibility checks also pass.
+- The exact commit passes 41/41 Capture Experience journeys and 3/3
+  Safari/Share Extension journeys on iPhone 17 Pro / iOS 26.3.1. Native/App
+  Store static checks pass 902/902 and cross-surface contracts pass 168/168.
+- Frozen Build 22 source `8ec38f09` remains a qualified but deliberately
+  unuploaded candidate. Its 21,141,551-byte IPA has SHA-256
+  `2804812646db6caa37dfc7fb8badb7d2134b0047ef0205ac284d12e47c4520c1`;
+  its receipt says `uploadAttempted: false`, and fresh Apple readback finds no
+  Build 22. Evidence is preserved on the external release-evidence volume.
+- Build 22 depends on the matching Nest schema/backend and stays held until a
+  guarded schema/deploy, authenticated zero-traffic acceptance, promotion,
+  and exact production readback pass. Cloud/Firebase authorization currently
+  needs reauthentication. No physical iPhone is visible, so physical
+  TestFlight install, interruption/recovery, recording, upload, playback, and
+  same-ID Nest readback remain open.
+- Build 20 remains the verified external rehearsal target. Fresh App Store
+  Connect and anonymous public-link checks prove it is valid, externally in
+  beta, included in the open rehearsal group, and exposes Apple's exact
+  Quipsly Capture TestFlight handoff.
