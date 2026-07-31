@@ -1,694 +1,264 @@
-# Database Migrations
+# Database migrations
 
-## Current Repo Reality
-This repo uses Prisma 7, generates the Prisma client directly from
-`prisma/schema.prisma`, and maintains a replayable migration history under
-`prisma/migrations/`.
+This is the current operational contract for Quipsly database changes. Older
+feature notes that recommended `prisma db push` against shared databases are
+obsolete. Git history preserves those decisions; this document preserves only
+the workflow operators should use now.
 
-Current root scripts:
+## Authoritative state
+
+- ORM and migration engine: Prisma 7.
+- Schema: `prisma/schema.prisma`.
+- Prisma configuration: `prisma.config.ts`.
+- Replayable history: `prisma/migrations/`.
+- Production orchestrator: `scripts/release/quipsly-schema-release.sh`.
+- Exact schema job: `scripts/release/quipsly-schema-job.sh`.
+- Local clean-source fixture: `scripts/quipsly-local-schema-fixture.mjs`.
+- Baseline and drift recovery:
+  `docs/runbooks/prisma-migration-baseline.md`.
+
+At the 2026-07-31 checkpoint the complete history contains 33 migrations. The
+latest migration is
+`20260731120000_add_session_outputs_and_delivery_events`. Do not hard-code that
+count or name into automation; the fixture runner derives the expected count
+from the checked-in migration directories.
+
+## Non-negotiable boundaries
+
+1. Every shared schema change has a reviewed, forward-only migration.
+2. A fresh database must reach the checked-in schema with
+   `prisma migrate deploy`.
+3. Applying the migration chain a second time must be idempotent.
+4. `prisma migrate diff --from-config-datasource --to-schema
+   prisma/schema.prisma --exit-code` must report no difference.
+5. Runtime code that depends on a migration is not promoted before the schema
+   release and exact readback pass.
+6. Shared, retained-QA, preview, staging, and production databases never use
+   `prisma db push`.
+7. Production migration credentials stay inside the guarded Cloud Run schema
+   job. Do not export a production `DATABASE_URL` into a developer shell.
+8. A backup is mandatory evidence before production apply, but restoring it is
+   a separate destructive incident operation—not an automatic rollback step.
+
+`prisma db push` is allowed only for an explicitly disposable, isolated local
+experiment that has no retained QA or release value. It is never an easier
+substitute for creating a migration.
+
+## Developer workflow
+
+### 1. Change the schema
+
+Edit `prisma/schema.prisma`. Keep changes additive where possible:
+
+- add nullable columns or safe defaults before requiring new values;
+- add new tables and indexes before removing old readers;
+- preserve stable identifiers and source/provenance relationships;
+- avoid dropping or rewriting source-bearing data in the same release that
+  changes application behavior.
+
+### 2. Create the migration
+
+Run `migrate dev` only against an explicit disposable or development database:
 
 ```bash
-pnpm db:generate   # prisma generate
-pnpm db:push       # disposable local experiments only
-pnpm db:migrate    # prisma migrate dev
+DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/EXPLICIT_DEV_DATABASE' \
+  pnpm exec prisma migrate dev --name DESCRIPTIVE_MIGRATION_NAME
 ```
 
-### What exists today
-- Prisma schema file:
-  - `prisma/schema.prisma`
-- Prisma config:
-  - `prisma.config.ts`
-- Prisma client generation:
-  - root `postinstall`
-  - `pnpm db:generate`
+Never accept Prisma's reset prompt for a retained or shared database. If the
+target predates migration tracking or reports drift, stop and follow
+`docs/runbooks/prisma-migration-baseline.md`.
 
-## What This Means Operationally
-For every shared or production schema change:
+### 3. Review the generated SQL
 
-1. update `prisma/schema.prisma`
-2. create and commit a forward migration under `prisma/migrations/`
-3. replay the complete migration history against an empty disposable database
-4. require zero diff from `prisma/schema.prisma`
-5. validate the application build and affected runtime journey
-6. release through `scripts/release/quipsly-schema-release.sh`
+Review the new `migration.sql` as production code. Confirm:
 
-Do not assume production will pick up schema changes merely because app code
-was deployed. Schema release precedes traffic promotion for a dependent app
-revision.
+- target tables, types, columns, constraints, and indexes are exact;
+- defaults and backfills preserve existing rows;
+- foreign-key delete/update behavior matches the domain contract;
+- unique indexes cannot reject legitimate existing data;
+- locks and table rewrites are understood;
+- no destructive statement is present without a separately reviewed data and
+  rollback plan.
 
-## Coaching Request Change
-The coaching request intake feature added:
-- `ContactPreference` enum
-- `CoachingRequestStatus` enum
-- `CoachingRequest` model
-- `User` relations for coaching requests
-- optional `Appointment` back-reference for future conversion
+Do not edit a migration that has already been applied to any shared database.
+Repair it with a new forward migration.
 
-App code now expects the database to contain the new `CoachingRequest` table and related enum types.
-
-If production does not have the schema update, the new `/coaching` form submit path and `/team/coaching-requests` queue can fail at runtime when Prisma touches the missing table.
-
-## Disposable Local Development Flow
-From repo root:
+### 4. Generate and test the application
 
 ```bash
 pnpm db:generate
-pnpm db:push
-pnpm --filter web build
+pnpm --filter quipsly typecheck
+pnpm quipsly:contracts:test
 ```
 
-Use `db:push` only when an intentionally disposable local database needs to
-match the current schema. Shared, retained-QA, preview, staging, and production
-databases use migrations.
+Also run the focused route, integration, privacy, and rendered/native journeys
+that depend on the changed objects. A zero schema diff does not prove product
+behavior or authorization.
 
-## Create And Prove A Migration
+### 5. Replay the complete chain locally
 
-This repo's `db:migrate` script maps to Prisma `migrate dev`:
+Start Quipsly's local PostgreSQL service, then run the fail-closed helper from
+a clean committed `HEAD`:
 
 ```bash
-pnpm db:migrate
+DATABASE_URL='postgresql://postgres:postgres@127.0.0.1:5432/high_ground_studio' \
+  pnpm quipsly:schema:fixture:local \
+  --output /private/tmp/quipsly-local-schema-fixture.json
 ```
 
-That currently maps to:
+The helper:
+
+- accepts only `127.0.0.1`, `localhost`, or `::1` PostgreSQL URLs;
+- requires a clean current Git `HEAD`;
+- derives one `quipsly_fixture_<sha>_local` database name;
+- refuses to reuse or replace an existing database;
+- creates the exact disposable database;
+- applies every committed migration twice;
+- requires zero Prisma schema diff and the schema fixture contract;
+- removes only that exact database after success; and
+- writes a redacted mode-`0600` receipt without credentials.
+
+If verification fails, the fixture database is preserved for analysis. After
+the defect is understood, remove only that exact release-owned fixture. Use
+`--preserve` when deliberate post-success inspection is useful.
+
+## Production release
+
+### Plan
+
+From a clean, pushed commit:
 
 ```bash
-prisma migrate dev
-```
-
-Commit the generated migration directory. Before review, follow
-`docs/runbooks/prisma-migration-baseline.md` to replay the full chain and prove
-zero diff.
-
-## Production Apply Strategy
-
-Plan the exact clean commit first:
-
-```bash
-release_sha=$(git rev-parse HEAD)
+release_sha="$(git rev-parse HEAD)"
 bash scripts/release/quipsly-schema-release.sh \
   --revision "$release_sha" \
-  --confirm-target high-ground-odyssey/studio-postgres
+  --project high-ground-odyssey \
+  --region us-central1 \
+  --sql-instance high-ground-odyssey:us-central1:studio-postgres \
+  --output /private/tmp/quipsly-schema-plan.json
 ```
 
-Apply only after reviewing the receipt and confirming the exact target:
+Planning is non-mutating. Review the mode-`0600` receipt and confirm:
+
+- full source SHA and current `HEAD` match;
+- `dirtyAtStart` is false;
+- project, region, and SQL instance are exact;
+- the fixture, immutable-image, backup, migrate, status, and zero-diff steps
+  are all present;
+- neither legacy `db push` nor targeted sync is selected.
+
+### Authenticate
+
+```bash
+gcloud auth login --update-adc --brief
+gcloud auth application-default set-quota-project quipsly-reef
+bash scripts/release/quipsly-gcloud-auth-check.sh
+```
+
+Do not begin apply until every authorization check passes.
+
+### Apply
 
 ```bash
 bash scripts/release/quipsly-schema-release.sh \
   --revision "$release_sha" \
+  --project high-ground-odyssey \
+  --region us-central1 \
+  --sql-instance high-ground-odyssey:us-central1:studio-postgres \
+  --output /private/tmp/quipsly-schema-release.json \
   --apply \
   --confirm-target high-ground-odyssey/studio-postgres
 ```
 
-Never export a production `DATABASE_URL` merely to run a local `db:push`.
+The apply lane fails closed unless the selected revision is the clean current
+`HEAD`. It then:
 
-## How To Verify The CoachingRequest Table Exists
-Any one of these is acceptable.
+1. materializes and builds the exact committed schema source;
+2. proves the full migration chain and zero diff in a disposable Cloud SQL
+   database;
+3. resolves and pins one immutable Artifact Registry digest;
+4. creates an on-demand production backup and independently reads back its
+   exact successful ID;
+5. runs only `prisma migrate deploy` from that pinned image;
+6. requires `prisma migrate status` to be current; and
+7. requires production-to-schema diff to be zero.
 
-### Prisma Studio
+Preserve the passing receipt with the release evidence. It must contain the
+source SHA, immutable image digest, backup ID, fixture proof, migration status,
+and zero-diff result.
+
+## Application deployment after schema
+
+For application code that requires new objects:
+
+1. finish the schema release;
+2. deploy the same committed source to a zero-traffic Cloud Run revision;
+3. run authenticated release smoke against that revision;
+4. read back its source SHA and immutable image;
+5. promote traffic only after the exact contract passes; and
+6. retain rollback routing to the previously serving revision.
+
+Additive schema should remain compatible with the prior application revision
+so an application rollback does not require destructive schema rollback.
+
+## Verification queries
+
+Prisma commands are authoritative for migration and schema convergence:
+
 ```bash
-pnpm db:studio
+pnpm exec prisma migrate status
+pnpm exec prisma migrate diff \
+  --from-config-datasource \
+  --to-schema prisma/schema.prisma \
+  --exit-code
 ```
-Then confirm `CoachingRequest` appears in the model list.
 
-### SQL verification
-If you have direct SQL access, verify the table exists:
+Targeted SQL may supplement—not replace—those checks. For the current
+client-follow-up release:
 
 ```sql
 select table_name
 from information_schema.tables
 where table_schema = 'public'
-  and table_name = 'CoachingRequest';
-```
+  and table_name in ('SessionOutput', 'SessionOutputRevision', 'DeliveryEvent')
+order by table_name;
 
-Expected result:
-- one row for `CoachingRequest`
-
-You can also verify the new enums exist:
-
-```sql
 select typname
 from pg_type
-where typname in ('ContactPreference', 'CoachingRequestStatus');
+where typname in ('SessionOutputKind', 'SessionOutputStatus', 'DeliveryEventKind')
+order by typname;
 ```
 
-## Production Rollback Caution
-Migrations are forward-only. Rollback is normally an application rollback plus
-a compatible additive schema, not an improvised down migration.
+Expected result: all three tables and all three enum types. Runtime acceptance
+must additionally prove coach/client authorization, revision history,
+idempotent delivery receipts, outsider concealment, and native/web readback.
 
-That means:
-- do not casually apply schema changes to production without knowing which app version is live
-- do not drop the new table as a first reflex if app behavior changes
-- prefer rolling app code forward with compatible schema rather than trying to improvise destructive rollback SQL under pressure
+## Drift and repair
 
-In practice:
-- the `CoachingRequest` addition is additive and low-risk
-- additive schema changes are safer than destructive ones
-- keep them additive while the workflow stabilizes
+If migration status, schema diff, or runtime behavior disagree:
 
-## What Not To Do
-- Do **not** use fake `Appointment` rows with invented dates to represent unscheduled coaching interest.
-- Do **not** assume deploy-only means schema-ready.
-- Do **not** introduce ad hoc production SQL that diverges from `prisma/schema.prisma` unless you are explicitly repairing drift.
-- Do **not** treat `db push` as a substitute for a real migration history forever; it is the repo’s current reality, not its ideal final form.
+1. stop rollout;
+2. preserve the migration ledger, schema diff, runtime error, and a restorable
+   backup;
+3. do not edit applied migration SQL or run `db push`;
+4. create a new forward-only repair migration;
+5. prove it in an empty fixture and against a representative drift fixture;
+6. require zero diff and the affected runtime journey; and
+7. release the repair before dependent application traffic.
 
-## Live Story Drafts Change
-The Live Story Drafts Phase 1 rollout added:
+See `docs/runbooks/prisma-migration-baseline.md` for baseline adoption and the
+full applied-ledger/missing-object procedure.
 
-- `StoryDraftStatus` enum
-- `StoryDraft` model
-- `User` relations for created, updated, and reviewed Story Drafts
+## Rollback
 
-App code now expects the database to contain the `StoryDraft` table and `StoryDraftStatus` enum.
+Database migrations are forward-only. The ordinary rollback is:
 
-Because the repo still has no checked-in Prisma migration history, `prisma migrate dev --name live_story_drafts` detected drift against the existing database and asked to reset the public schema. That reset was not run.
+- stop or roll back the dependent application revision;
+- leave compatible additive schema in place;
+- diagnose with preserved receipts and backup evidence; and
+- release a reviewed forward repair if needed.
 
-The current repo-documented apply command remains:
-
-```bash
-pnpm db:push
-```
-
-Run it only in an environment where `DATABASE_URL` points at the intended target database.
-
-### How To Verify The StoryDraft Table Exists
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name = 'StoryDraft';
-```
-
-Expected result:
-
-- one row for `StoryDraft`
-
-Enum verification:
-
-```sql
-select typname
-from pg_type
-where typname = 'StoryDraftStatus';
-```
-
-## Studio Persistence Slice Change
-The Studio persistence slice added private authoring tables:
-
-- `StudioWorkspace`
-- `StudioProject`
-- `StudioDocument`
-- `StudioDocumentBlock`
-- `StudioTag`
-- `StudioTaggedSpan`
-- `StudioKnowledgeNode`
-
-It also added these Studio-only enums:
-
-- `StudioProjectionStatus`
-- `StudioTagCategory`
-- `StudioKnowledgeNodeType`
-
-These tables are private Studio authoring state. Public routes should not read
-from them directly. Future public output should come through approved projection
-tables or checked-in public content.
-
-The development seed helper writes only when `DATABASE_URL` points at a local
-database and `NODE_ENV` is not `production`. It should not be treated as a
-production seeding path.
-
-The Studio Writing Desk block-management slice later added archive metadata to
-`StudioDocumentBlock`:
-
-- `archivedAt`
-- `archivedByLabel`
-
-Those fields support private draft block archive behavior. They are not public
-content publication controls or public projection state and should not be
-interpreted as manuscript deletion.
-
-If a target environment should run the Studio persistence slice, apply the
-schema deliberately:
-
-```bash
-pnpm db:generate
-pnpm db:push
-```
-
-Do not run `pnpm db:push` against remote Neon or production data unless that
-target has been explicitly confirmed safe.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name in (
-    'StudioWorkspace',
-    'StudioProject',
-    'StudioDocument',
-    'StudioDocumentBlock',
-    'StudioTag',
-    'StudioTaggedSpan',
-    'StudioKnowledgeNode'
-  );
-```
-
-Expected result:
-
-- one row for each Studio table above
-
-## Studio Manuscript Library Change
-
-The Studio Manuscript Library MVP added:
-
-- `StudioManuscriptKind` enum
-- `StudioManuscript` model
-- optional `StudioManuscriptSnapshot.manuscriptId`
-- relation from `StudioManuscriptSnapshot` to `StudioManuscript`
-- indexes for owner/manuscript snapshot lookup
-
-This is an additive private Studio schema change. Existing snapshots with a
-null `manuscriptId` remain valid legacy/orphan snapshots.
-
-As with the earlier Studio persistence changes, this repo still has no
-checked-in Prisma migration history. Apply the schema to a target database only
-through the approved operator path for that environment:
-
-```bash
-pnpm db:generate
-pnpm db:push
-```
-
-Do not run this as part of ordinary local UI smoke testing unless the database
-target and rollback path are deliberate.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name in (
-    'StudioManuscript',
-    'StudioManuscriptSnapshot'
-  );
-```
-
-Expected result:
-
-- one row for each Studio manuscript table above
-
-Enum verification:
-
-```sql
-select typname
-from pg_type
-where typname = 'StudioManuscriptKind';
-```
-
-## Content Studio Workspace Snapshot Change
-
-The Content Studio checkpoint slice added:
-
-- `StudioContentWorkspaceSnapshot`
-
-This is an additive private Studio schema change. It stores explicit manual
-Content Studio workspace checkpoints as JSON so the browser-local board can be
-recovered across devices and handed to other agents without introducing
-autosave, provider calls, or public publishing behavior.
-
-Apply the schema to a target database only through the approved operator path
-for that environment:
-
-```bash
-pnpm db:generate
-pnpm db:push
-```
-
-For the live Studio Cloud Run database, prefer running `pnpm db:push` from a
-Cloud Run Job image that has the `studio-database-url` secret and the same Cloud
-SQL attachment as the `studio` service. That avoids pushing to the unrelated
-remote Neon URL that may be present in a local `.env`.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name = 'StudioContentWorkspaceSnapshot';
-```
-
-Expected result:
-
-- one row for `StudioContentWorkspaceSnapshot`
-
-## Content Studio Durable Project Change
-
-The Content Studio project persistence slice added:
-
-- `StudioContentProject`
-
-This is an additive private Studio schema change. It stores one durable
-project row per signed-in Studio owner and local Content Studio project id,
-including project JSON, derived handoff JSON, and derived production packet
-JSON. The table supports cross-device save/list/open for podcast, book, and
-episode-page working state. It does not autosave, publish public content, call
-providers, certify public safety, or replace HGO review gates.
-
-Live operator note from 2026-05-25: this schema was applied to the live Studio
-Cloud SQL database by Cloud Run Job `studio-db-push-6b12434`, execution
-`studio-db-push-6b12434-658xk`, using image
-`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:6b12434`.
-Logs reported that the database is now in sync with the Prisma schema.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name = 'StudioContentProject';
-```
-
-Expected result:
-
-- one row for `StudioContentProject`
-
-## HGO Private Staged Artifact Store Change
-
-The first private HGO staged artifact store slice added:
-
-- `HgoStagedProjectionArtifact`
-
-This is an additive private review-store schema change. It stores validated
-`hgo-staged-artifact-v1` review packets and server-side review metadata for
-signed-in team operators. The embedded browser artifact JSON remains a review
-packet with `persisted: false` and `published: false`; server persistence
-metadata lives outside that packet.
-
-The table does not publish public pages, replace `/episodes`, call providers,
-certify public-safety review, or store raw canonical manuscript files.
-
-Apply the schema to a target database only through the approved operator path
-for that environment:
-
-```bash
-pnpm db:generate
-pnpm db:push
-```
-
-For the live web Cloud Run database, prefer running `pnpm db:push` from a
-Cloud Run Job image that has the `web-database-url` secret and the same Cloud
-SQL attachment as the `web` service.
-
-Live operator note from 2026-05-24: the `web-database-url` secret used by
-Cloud Run Job `web-db-push-b07c73d` resolved to a Neon PostgreSQL pooler. The
-job still had the Cloud SQL attachment, but the secret controls the actual
-Prisma target. If the web app is moving fully onto Google Cloud SQL, plan that
-as an explicit database migration/cutover instead of assuming the Cloud SQL
-attachment means the web database is already Cloud SQL-backed.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name = 'HgoStagedProjectionArtifact';
-```
-
-Expected result:
-
-- one row for `HgoStagedProjectionArtifact`
-
-## HGO Episode Publish Candidate Change
-
-The private HGO publish-intent slice added:
-
-- relation field `HgoStagedProjectionArtifact.publishCandidates`
-- `HgoEpisodePublishCandidate`
-
-This is an additive private review-state schema change. It stores one durable
-episode-page publish intent for a saved staged artifact, including the generated
-candidate packet, review brief, draft packet, frontmatter, and MDX draft. The
-row is linked to the staged artifact and is unique per `ownerEmail` and source
-record id.
-
-The table does not publish public pages, create public route files, replace
-`/episodes`, call providers, certify citation/public-safety review, or store
-canonical manuscript source.
-
-Apply the schema to a target database only through the approved operator path
-for that environment:
-
-```bash
-pnpm db:generate
-pnpm db:push
-```
-
-For the live web Cloud Run database, prefer running `pnpm db:push` from a
-Cloud Run Job image that has the `web-cloudsql-database-url` secret and the
-same Cloud SQL attachment as the `web` service.
-
-Live operator note from 2026-05-24: this schema was applied to the live web
-Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-6416979`, execution
-`web-cloudsql-db-push-6416979-wjxmt`, using image
-`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:6416979`.
-Logs reported that the database is now in sync with the Prisma schema.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name = 'HgoEpisodePublishCandidate';
-```
-
-Expected result:
-
-- one row for `HgoEpisodePublishCandidate`
-
-## WorldHub Provider Integration Workspace Change
-
-The first provider integration workspace slice added:
-
-- `WorldHubProviderConnection`
-- `WorldHubProviderEvent`
-- `WorldHubProviderSyncJob`
-- `WorldHubCatalogItem`
-- `WorldHubOffer`
-- `WorldHubCart`
-- `WorldHubOrder`
-- `WorldHubFulfillmentJob`
-
-This is an additive business-infrastructure schema change. It creates an
-app-owned ledger for provider readiness, provider events, sync jobs, catalog
-items, offers, carts, orders, and merch fulfillment jobs.
-
-The tables do not store secret values, payment card data, raw provider payloads,
-or canonical creative source material. The current `/team/worldhub`
-initializer stores provider connection metadata and env-name readiness only.
-No checkout creation, Patreon sync, Google Calendar event creation, webhook
-handling, or merch fulfillment call is active just because the schema exists.
-
-Apply the schema to a target database only through the approved operator path
-for that environment:
-
-```bash
-pnpm db:generate
-pnpm db:push
-```
-
-For the live web Cloud Run database, prefer running `pnpm db:push` from a
-Cloud Run Job image that has the `web-cloudsql-database-url` secret and the
-same Cloud SQL attachment as the `web` service.
-
-Live operator note from 2026-05-25: this schema was applied to the live web
-Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-2d165a8`, execution
-`web-cloudsql-db-push-2d165a8-8zbxl`, using image
-`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:2d165a8`.
-Logs reported that the database is now in sync with the Prisma schema.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name in (
-    'WorldHubProviderConnection',
-    'WorldHubProviderEvent',
-    'WorldHubProviderSyncJob',
-    'WorldHubCatalogItem',
-    'WorldHubOffer',
-    'WorldHubCart',
-    'WorldHubOrder',
-    'WorldHubFulfillmentJob'
-  )
-order by table_name;
-```
-
-Expected result:
-
-- one row for each listed table
-
-## Coaching Weekly Commitments Change
-
-The first real coaching-tool data loop added:
-
-- enum `WeeklyCommitmentStatus`
-- relation fields from `User` to `WeeklyCommitment`
-- `WeeklyCommitment`
-
-This is an additive coaching/client schema change. It stores one client-owned
-weekly commitment entry per client/date key, with one to three commitments,
-support/progress notes, review status, coach notes, reviewer, and review
-timestamp. It is gated in application code by the existing
-`weekly_commitments` coaching feature grant. It does not call providers, send
-notifications, create subscription state, or publish public content.
-
-Live operator note from 2026-05-25: this schema was applied to the live web
-Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-6b12434`, execution
-`web-cloudsql-db-push-6b12434-49qpc`, using image
-`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:6b12434`.
-Logs reported that the database is now in sync with the Prisma schema.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name = 'WeeklyCommitment';
-```
-
-Expected result:
-
-- one row for `WeeklyCommitment`
-
-## WorldHub Growth Desk Change
-
-The first Growth desk slice added:
-
-- `WorldHubSeoBrief`
-- `WorldHubAnalyticsSnapshot`
-- `WorldHubMonetizationPlacement`
-- `WorldHubMonetizationResearchNote`
-
-This is an additive growth/monetization schema change. It creates app-owned
-records for SEO briefs, manual analytics snapshots, ad placements, affiliate
-links, book recommendations, direct sponsor slots, and monetization research
-notes.
-
-The tables do not call Google Analytics, Search Console, AdSense, affiliate
-networks, sponsor systems, or public publishing workflows. Public ads and
-affiliate links remain gated by env, provider readiness, disclosure review, and
-future public page work.
-
-Apply the schema to a target database only through the approved operator path
-for that environment:
-
-```bash
-pnpm db:generate
-pnpm db:push
-```
-
-For the live web Cloud Run database, prefer running `pnpm db:push` from a
-Cloud Run Job image that has the `web-cloudsql-database-url` secret and the
-same Cloud SQL attachment as the `web` service.
-
-Live operator note from 2026-05-24: this schema was applied to the live web
-Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-e4b8543`, execution
-`web-cloudsql-db-push-e4b8543-t9454`, using image
-`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:e4b8543`.
-Logs reported that the database is now in sync with the Prisma schema.
-
-Live operator note from 2026-05-25: the additive monetization research table
-was applied to the live web Cloud SQL database by Cloud Run Job
-`web-cloudsql-db-push-810e8ae`, execution
-`web-cloudsql-db-push-810e8ae-5xd7g`, using image
-`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:810e8ae`.
-Logs reported that the database is now in sync with the Prisma schema.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name in (
-    'WorldHubSeoBrief',
-    'WorldHubAnalyticsSnapshot',
-    'WorldHubMonetizationPlacement',
-    'WorldHubMonetizationResearchNote'
-  )
-order by table_name;
-```
-
-Expected result:
-
-- one row for each listed table
-
-## Exact Command For This CoachingRequest Rollout
-If production has not yet received the schema change, the next manual operator command should be:
-
-```bash
-pnpm db:push
-```
-
-Run it in an environment where `DATABASE_URL` points at the production database that backs `highgroundodyssey.com`.
-
-## Coaching Feature Access Change
-
-The coaching feature access slice added:
-
-- `CoachingFeature`
-- `CoachingFeatureGrant`
-
-This is an additive coaching/client schema change. It creates an app-owned
-catalog for coaching tools and manual client-specific feature grants that are
-independent of membership tiers.
-
-The tables do not call external providers, send notifications, create
-subscription state, or publish public content. `/team/clients` writes the grant
-rows, and `/dashboard` reads enabled client-visible grants.
-
-Live operator note from 2026-05-25: this schema was applied to the live web
-Cloud SQL database by Cloud Run Job `web-cloudsql-db-push-456cc68`, execution
-`web-cloudsql-db-push-456cc68-kxx65`, using image
-`us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/prisma-db-push:456cc68`.
-Logs reported that the database is now in sync with the Prisma schema.
-
-Apply the schema to a target database only through the approved operator path
-for that environment:
-
-```bash
-pnpm db:generate
-pnpm db:push
-```
-
-For the live web Cloud Run database, prefer running `pnpm db:push` from a
-Cloud Run Job image that has the `web-cloudsql-database-url` secret and the
-same Cloud SQL attachment as the `web` service.
-
-SQL verification:
-
-```sql
-select table_name
-from information_schema.tables
-where table_schema = 'public'
-  and table_name in (
-    'CoachingFeature',
-    'CoachingFeatureGrant'
-  )
-order by table_name;
-```
-
-Expected result:
-
-- one row for each listed table
+Dropping tables, restoring a backup, rewriting migration history, or marking a
+migration rolled back is an incident-level destructive action and requires an
+explicit recovery plan and authorization.
