@@ -185,6 +185,7 @@ const transcriptReviewText = read(files.transcriptReview);
 const localRecordingLibraryText = read(files.localRecordingLibrary);
 const localRecordingPlaybackText = read(files.localRecordingPlayback);
 const mobileText = read(files.mobileComponents);
+const shippingCaptureUIText = `${capturePhoneShellText}\n${mobileText}`;
 const bridgeText = read(files.bridgeModels);
 const mobileCaptureReadinessRouteText = read(files.mobileCaptureReadinessRoute);
 const mobileQuickEntryRouteText = read(files.mobileQuickEntryRoute);
@@ -392,6 +393,8 @@ requireIncludes(capturePhoneShellText, "Skip missed occurrence…", "Capture exp
 requireIncludes(capturePhoneShellText, 'decisionReason: "MISSED_OCCURRENCE_SKIPPED"', "Capture sends the exact bounded missed-occurrence decision reason");
 requireIncludes(capturePhoneShellText, "retain the overdue task and occurrence as skipped", "Capture confirmation explains immutable history before the missed-occurrence mutation");
 requireIncludes(capturePhoneShellText, "CaptureSessionFollowUpStatus", "the production phone recorder owns client follow-up readiness");
+assert(!mobileText.includes("struct RecorderControlBoard"), "the retired duplicate recorder board is absent from the shipping target");
+requireIncludes(capturePhoneShellText, "MobileClientFollowUpCard(", "the production phone recorder reaches the released client follow-up card");
 requireIncludes(mobileText, "CaptureClientFollowUpAcknowledge_", "the native follow-up card exposes an explicit acknowledgement control");
 requireIncludes(bridgeText, "/client-follow-up", "the native bridge reads and acknowledges the relationship-authorized follow-up route");
 requireIncludes(bridgeText, "ACKNOWLEDGE_OPEN", "the native bridge uses the bounded follow-up acknowledgement action");
@@ -735,49 +738,28 @@ for (const needle of [
 }
 
 for (const needle of [
-  "MobileCaptureRunwayPanel",
-  "MobileCaptureLifecycleCard",
-  "Capture lifecycle receipts",
-  "accessibilityIdentifier(\"MobileCaptureLifecycleCard\")",
-  "Recording is active and visible",
-  "Recording is visibly active",
-  "CaptureReadinessVerdictCard",
-  "accessibilityIdentifier(\"CaptureReadinessVerdictCard\")",
-  "captureReadinessIsSafeToRecord",
-  "payment-hold",
-  "Start recording only after every participant knows the call is being recorded and agrees.",
+  "CaptureRecordingModePicker",
+  "CaptureRehearsalReadinessCard",
+  "CaptureConsentConfirmationSheet",
+  "I confirm that everyone who may be seen or heard — including people who are not signed into Quipsly — was told about the audio, video, and transcription choices and agreed before recording starts.",
   "Consent needed",
-  "Decline",
+  "Button(\"Cancel\")",
   "Revoke",
-  "Retry \\(",
+  "Retry preserved uploads",
   "Request account deletion",
   "privacy/account-deletion",
-  "runTranscript",
-  "buildCoachingPacket",
-  "CaptureSessionReceiptCard",
-  "Capture receipt",
-  "ProviderReceiptSlotNotice",
-  "Provider receipt slot prepared",
-  "This is not a recording yet.",
-  "provider receipt is not media",
-  "provider receipt slot only",
-  "local original safe",
-  "server:",
-  "Local original preserved",
-  "CaptureDiagnosticsPanel",
-  "QuipslyCaptureDiagnosticsPanel",
-  "Capture diagnostics",
-  "preserved upload",
-  "repair available from uploaded recording",
-  "Background spine:",
-  "UploadManager.backgroundSessionIdentifier",
-  "latestRecordingAssetStatus",
-  "server verification:",
-  "local source preserved",
-  "Local source:",
-  "Original stays on device until Quipsly verifies upload and retention policy allows cleanup.",
+  "Review transcript",
+  "AI proposals stay outside transcript truth until you listen and decide.",
+  "CaptureLiveRoomDisclosure",
+  "CaptureProviderRoomControls",
+  "ProviderControlsCaptureLockNotice",
+  "CaptureStudioHandoffCard_",
+  "CaptureSourceTruthFootnote",
+  "CaptureLibraryJournalWarning",
+  "Local source is production truth",
+  "Capture success means saved locally. Upload and server verification are separate steps.",
 ]) {
-  requireAnyIncludes(mobileText, [needle, needle.replace("\\(", "(")], "capture reviewer UI");
+  requireAnyIncludes(shippingCaptureUIText, [needle, needle.replace("\\(", "(")], "reachable capture reviewer UI");
 }
 
 requireIncludes(contentViewText, "CapturePhoneShell()", "the app root opens the production capture-first shell");
@@ -1402,84 +1384,56 @@ requireIncludes(bridgeText, "Normal Phone or FaceTime calls are fallback/import 
 requireIncludes(bridgeText, "One-to-one coaching", "native coaching mode");
 requireIncludes(bridgeText, "Podcast capture", "native podcast mode");
 requireIncludes(bridgeText, "Research interview", "native research interview mode");
-requireIncludes(mobileText, "NativeCaptureContractPanel", "native capture contract panel");
-requireIncludes(mobileText, "accessibilityIdentifier(\"RecorderControlBoard\")", "native recorder board runtime accessibility");
-requireIncludes(mobileText, "accessibilityIdentifier(\"RoomSpinePanel\")", "native room spine runtime accessibility");
-requireIncludes(mobileText, "accessibilityIdentifier(\"CaptureInspectRoomReadinessButton\")", "native room readiness inspection button accessibility");
-requireIncludes(mobileText, "accessibilityIdentifier(\"CapturePrepareJoinKeyButton\")", "native prepare join key button accessibility");
-requireIncludes(mobileText, "accessibilityIdentifier(\"CaptureOpenRoomButton\")", "native open room button accessibility");
-requireIncludes(mobileText, "accessibilityIdentifier(\"CaptureEndRoomButton\")", "native end room button accessibility");
-requireIncludes(mobileText, "accessibilityIdentifier(\"ProviderRoomView\")", "native provider room runtime accessibility");
-requireIncludes(mobileText, "accessibilityIdentifier(\"ProviderJoinRoomButton\")", "native provider join room button accessibility");
-requireIncludes(mobileText, "accessibilityIdentifier(\"ProviderMuteButton\")", "native provider mute button accessibility");
-requireIncludes(mobileText, "accessibilityIdentifier(\"ProviderLeaveRoomButton\")", "native provider leave button accessibility");
-requireIncludes(mobileText, "readiness.providerEgressLabel", "native readiness shows server recording gate");
-requireIncludes(mobileText, "readiness.providerEgressDetail", "native readiness explains server recording gate");
-requireIncludes(mobileText, "readiness.providerReadiness?.sourceOfTruth", "native readiness shows provider media-vault truth");
-requireIncludes(mobileText, "readiness.mediaVaultReadiness?.sourceOfTruth", "native readiness shows direct media-vault truth");
-requireIncludes(mobileText, "CallKit presents the native iPhone call surface", "native room CallKit UI");
-requireIncludes(mobileText, "controller.nativeCallPresentationLabel", "native room CallKit status chip");
-requireIncludes(mobileText, "Native call surface active", "native room CallKit active readback");
-requireIncludes(mobileText, "ProviderJoinTokenBoundaryCard", "native provider join token boundary card");
-requireIncludes(mobileText, "accessibilityIdentifier(\"ProviderJoinTokenBoundaryCard\")", "native provider join token boundary accessibility");
-requireIncludes(mobileText, "Provider key boundary", "native provider join token boundary visible heading");
-requireIncludes(mobileText, "joinResponse.joinEffectsLine", "native provider join effects visible copy");
-requireIncludes(mobileText, "room-scoped", "native provider join room-scoped token chip");
-requireIncludes(mobileText, "consent first", "native provider join consent-first token chip");
-requireIncludes(mobileText, "no provider secret", "native provider join token no secret copy");
-requireIncludes(mobileText, "CallKitBoundaryCard", "native CallKit boundary card");
-requireIncludes(mobileText, "accessibilityIdentifier(\"CallKitBoundaryCard\")", "native CallKit boundary accessibility");
-requireIncludes(mobileText, "Native call presentation", "native CallKit boundary heading");
-requireIncludes(mobileText, "CallKit makes a Quipsly-owned room feel native on iPhone", "native CallKit is presentation copy");
-requireIncludes(mobileText, "not phone/FaceTime", "native CallKit not phone fallback chip");
-requireIncludes(mobileText, "join not recording", "native CallKit join is not recording chip");
-requireIncludes(mobileText, "Nest CallRoom truth", "native CallKit truth owner chip");
-requireIncludes(mobileText, "CallKit can present or end the live room, but it never creates recording evidence by itself.", "native CallKit never creates recording evidence");
-requireIncludes(mobileText, "RoomJoinDiagnosticsCard", "native room diagnostics card");
-requireIncludes(mobileText, "accessibilityIdentifier(\"RoomJoinDiagnosticsCard\")", "native room diagnostics accessibility");
-requireIncludes(mobileText, "Inspect readiness", "native inspect-readiness action");
-requireIncludes(mobileText, "Inspection checks access, payment evidence, consent, provider readiness, local fallback, token safety, and media-vault boundaries", "native room diagnostics scope copy");
-requireIncludes(mobileText, "ProviderRoomDiagnosticCard", "native provider diagnostic card");
-requireIncludes(mobileText, "accessibilityIdentifier(\"ProviderRoomDiagnosticCard\")", "native provider diagnostic accessibility");
-requireIncludes(mobileText, "Inspect readiness before preparing the provider join key. Inspection is safe; joining is an action.", "native provider diagnostics action boundary copy");
-requireIncludes(mobileText, "CaptureSessionContextPanel", "native session context panel");
-requireIncludes(mobileText, "Load Nest", "native session context load control");
-requireIncludes(mobileText, "Save Nest", "native session context save control");
-requireIncludes(mobileText, "Local changes not synced", "native session context local draft truth label");
-requireIncludes(mobileCaptureReadinessRouteText, "sessionContextBoundary", "mobile readiness session context boundary");
-requireIncludes(mobileText, "quipsly.capture.session-context", "native session context local persistence key");
-requireIncludes(mobileText, "Quick note", "native quick note field");
-requireIncludes(mobileText, "Goals", "native goals field");
-requireIncludes(mobileText, "Tasks", "native tasks field");
-requireIncludes(mobileText, "AppReviewProofPanel", "native App Review proof panel");
-requireIncludes(mobileText, "App Review proof path", "native App Review proof heading");
-requireIncludes(mobileText, "What App Review can verify without triggering hidden side effects.", "native App Review side-effect boundary");
-requireIncludes(mobileText, "NO HIDDEN RECORDING", "native no hidden recording badge");
-requireIncludes(mobileText, "Reviewer account", "native reviewer account proof line");
-requireIncludes(mobileText, "Joining a room is not recording.", "native join is not recording boundary");
-requireIncludes(mobileText, "Failed uploads become recoverable, not silent losses.", "native upload recovery proof line");
-requireIncludes(mobileText, "accessibilityIdentifier(\"AppReviewProofPanel\")", "native App Review proof accessibility");
-requireIncludes(mobileText, "readiness.calendarLabel", "native readiness calendar badge");
-requireIncludes(mobileText, "Google Calendar is evidence; Quipsly owns booking truth.", "native readiness calendar truth copy");
-requireIncludes(mobileText, "readiness.calendarReadiness?.sourceOfTruth", "native readiness calendar source of truth");
-requireIncludes(mobileText, "MobileCaptureActionPacketCard", "native action packet card");
-requireIncludes(mobileText, "accessibilityIdentifier(\"MobileCaptureActionPacketCard\")", "native action packet accessibility");
-requireIncludes(mobileText, "Packet truth", "native packet build truth panel");
-requireIncludes(mobileText, "MobileCapturePacketTruthPanel", "native packet truth accessibility");
-requireIncludes(mobileText, "Review lanes", "native packet review lanes visible");
-requireIncludes(mobileText, "MobileCapturePacketReviewLaneRow", "native packet review lane rows");
-requireIncludes(mobileText, "accessibilityIdentifier(\"MobileCapturePacketReviewLaneRow\")", "native packet review lane accessibility");
-requireIncludes(mobileText, "Safe next actions", "native lifecycle safe action heading");
-requireIncludes(mobileText, "Action boundary:", "native lifecycle safe action boundary");
-requireIncludes(mobileText, "accessibilityIdentifier(\"MobileCaptureLifecycleSafeActionRow\")", "native lifecycle safe action accessibility");
-requireIncludes(mobileText, "Provider recording is not started by joining", "native provider action-packet boundary");
-requireIncludes(mobileText, "Action packets", "native review digest action-packet section");
-requireIncludes(mobileText, "readinessClient.readiness?.nativeCaptureContract ?? .production", "server native capture contract preferred");
-requireIncludes(mobileText, "Production capture contract", "native capture contract title");
-requireIncludes(mobileText, "SOURCE-SAFE", "native source-safe badge");
-requireIncludes(mobileText, "if let primaryCallPath = contract.primaryCallPath", "native primary call path visible");
-requireIncludes(mobileText, "if let fallbackCallImport = contract.fallbackCallImport", "native fallback import visible");
-requireIncludes(mobileText, "accessibilityIdentifier(\"NativeCaptureContractPanel\")", "native capture contract accessibility");
+// The shipping iPhone recorder is CapturePhoneShell. Keep this contract tied to
+// controls and copy that are actually reachable from that root instead of
+// accepting strings from disconnected component prototypes.
+requireIncludes(capturePhoneShellText, "CaptureRecordingModePicker(", "shipping recorder exposes explicit audio and video modes");
+requireIncludes(capturePhoneShellText, "VideoRecorderHero(", "shipping recorder reaches local video capture");
+requireIncludes(capturePhoneShellText, "onSwitchCamera:", "shipping video recorder exposes deliberate camera switching");
+requireIncludes(capturePhoneShellText, "CaptureRehearsalReadinessCard(", "shipping recorder exposes a preflight check");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureLiveRoomDisclosure")', "shipping recorder exposes live room controls");
+requireIncludes(capturePhoneShellText, "ProviderRoomControls(", "shipping recorder reaches provider room controls");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureProviderRoomControls")', "shipping provider controls have a stable automation identity");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderJoinRoomButton")', "shipping provider join action is addressable");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderToggleMuteButton")', "shipping provider mute action is addressable");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("ProviderLeaveRoomButton")', "shipping provider leave action is addressable");
+requireIncludes(
+  capturePhoneShellText,
+  "The live room lets people hear each other. The local source records only this iPhone's selected microphone; remote provider audio requires separate participant tracks or verified provider egress.",
+  "shipping room controls state the remote-audio recording boundary",
+);
+requireIncludes(capturePhoneShellText, "Live room controls locked for this take", "shipping room controls cannot reconfigure active local capture");
+requireIncludes(capturePhoneShellText, "Joining never starts local recording.", "shipping live-room disclosure preserves explicit recording start");
+requireIncludes(capturePhoneShellText, "CaptureConsentConfirmationSheet(", "shipping recorder reaches explicit participant consent");
+requireIncludes(capturePhoneShellText, "Recording still starts separately.", "shipping consent does not imply recording");
+requireIncludes(capturePhoneShellText, "CaptureSessionContextPanel(", "shipping recorder reaches session context");
+requireIncludes(mobileText, "Load Nest", "native session context exposes an explicit canonical load");
+requireIncludes(mobileText, "Save Nest", "native session context exposes an explicit canonical save");
+requireIncludes(mobileText, "Local changes not synced", "native session context names unsynced local state");
+requireIncludes(mobileCaptureReadinessRouteText, "sessionContextBoundary", "mobile readiness publishes the session-context boundary");
+requireIncludes(mobileText, "quipsly.capture.session-context", "native session context has a stable local recovery key");
+requireIncludes(mobileText, "Quick note", "native session context exposes a quick note");
+requireIncludes(mobileText, "Goals", "native session context exposes goals");
+requireIncludes(mobileText, "Tasks", "native session context exposes tasks");
+requireIncludes(capturePhoneShellText, "UploadSummaryCard(model: model)", "shipping recorder reaches visible upload state");
+requireIncludes(capturePhoneShellText, "StudioHandoffCard(", "shipping recorder reaches the Studio handoff");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CaptureStudioHandoffCard_', "shipping Studio handoff has a stable automation identity");
+requireIncludes(capturePhoneShellText, "without deleting or changing any original", "shipping Studio handoff preserves immutable originals");
+requireIncludes(capturePhoneShellText, "CaptureSourceTruthFootnote", "shipping recorder reaches source-truth guidance");
+requireIncludes(capturePhoneShellText, "only a verified, released upload becomes editor input", "shipping recorder states the editor-input verification gate");
+for (const retiredRoot of [
+  "struct MobileCaptureRunwayPanel",
+  "struct MobileCaptureReviewDigestPanel",
+  "struct RoomSpinePanel",
+  "struct ProviderRoomView",
+  "struct MobileCaptureActionPacketCard",
+  "struct MobileCaptureLifecycleCard",
+  "struct CapturePostCaptureRunwayCard",
+]) {
+  assert(!mobileText.includes(retiredRoot), "Disconnected legacy recorder and reviewer roots must stay out of the shipping target.", {
+    forbidden: retiredRoot,
+  });
+}
 requireIncludes(
   capturePhoneShellText,
   "@Environment(\\.accessibilityReduceMotion) private var reduceMotion",
@@ -1656,9 +1610,9 @@ requireIncludes(reviewerChecklistText, "has no visible capture session", "review
 requireIncludes(reviewerChecklistText, "Create a visible reviewer capture session", "reviewer checklist visible-session setup");
 requireIncludes(reviewerChecklistText, "Production calls should happen inside Quipsly-owned session rooms", "reviewer checklist in-app room primary path");
 requireIncludes(reviewerChecklistText, "Regular Phone or FaceTime calls are fallback/import sources only", "reviewer checklist phone fallback boundary");
-requireIncludes(mobileText, "ReviewerDigestBoundaryCard", "native review digest read-only boundary card");
-requireIncludes(mobileText, "Read-only reviewer packet", "native review digest labels refresh as read-only");
-requireIncludes(mobileText, "does not join a room, start recording, charge, publish, schedule, invite, upload, or delete media", "native review digest no-side-effect boundary");
+requireIncludes(capturePhoneShellText, "Preview data — no server actions", "native preview mode visibly refuses server mutations");
+requireIncludes(capturePhoneShellText, 'accessibilityIdentifier("CapturePreviewModeBadge")', "native preview boundary has a stable automation identity");
+requireIncludes(capturePhoneShellText, "Preview data · no canonical work will change", "native work preview does not imply canonical mutation");
 
 requireIncludes(mobileCaptureReadinessRouteText, "calendarReadiness", "mobile capture exposes calendar readiness");
 requireIncludes(mobileCaptureReadinessRouteText, "/api/coaching/calendar/readiness", "mobile capture advertises coaching calendar readiness route");
@@ -1680,13 +1634,12 @@ requireIncludes(recordingMediaPromotionText, "room-composite-video", "recording 
 requireIncludes(recordingMediaPromotionText, "spine-audio-candidate", "recording promotion spine audio candidate role");
 requireIncludes(recordingMediaPromotionText, "mutatedOriginal: false", "recording promotion no original mutation");
 requireIncludes(recordingMediaPromotionText, "proxyStillNeededForVideo", "recording promotion video proxy readiness");
-requireIncludes(mobileText, "CapturePostCaptureRunwayCard", "native post-capture runway card");
-requireIncludes(mobileText, "Source evidence", "native post-capture source evidence step");
-requireIncludes(mobileText, "Studio attachment", "native post-capture Studio attachment step");
-requireIncludes(mobileText, "Attach to Studio does not publish", "native post-capture no-publication boundary");
-requireIncludes(mobileText, "whole-source episode-editor meaning", "native post-capture whole-source editor boundary");
-requireIncludes(mobileText, "media-vault proxy before collaborative editing", "native post-capture proxy readiness boundary");
-requireIncludes(mobileText, "CaptureRunwayStep", "native post-capture runway steps");
+requireIncludes(capturePhoneShellText, "StudioHandoffCard(", "shipping recorder exposes verified Studio attachment");
+requireIncludes(capturePhoneShellText, "CaptureOpenStudioReviewLink_", "shipping recorder can open exact Studio sync review");
+requireIncludes(capturePhoneShellText, "No media moves until you review waveform, drift, and placement.", "shipping Studio handoff requires human sync review");
+requireIncludes(capturePhoneShellText, "without deleting or changing any original", "shipping Studio handoff preserves immutable sources");
+requireIncludes(capturePhoneShellText, "CaptureSourceEvidenceLink_", "shipping Library exposes source evidence");
+requireIncludes(capturePhoneShellText, "CaptureTranscriptReviewLink_", "shipping Library exposes source-linked transcript review");
 requireIncludes(localEngineMediaVaultConfigText, "'high-ground-odyssey-media'", "local engine media-vault bucket fallback");
 assert(!localEngineMediaVaultConfigText.includes("'high-ground-raw-footage'"), "Local engine must not fall back to the legacy raw-footage bucket.");
 requireIncludes(localEngineMediaVaultConfigText, "'media-vault'", "local engine media-vault path root");

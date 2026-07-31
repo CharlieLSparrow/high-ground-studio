@@ -126,21 +126,25 @@ same content SHA-256 as revision 2.
 - focused route, projection, and rendered-card tests: 25/25
 - real PostgreSQL follow-up lifecycle/privacy test: 1/1
 - real PostgreSQL mobile Session projection tests: 4/4
-- native/App Store static contract: 963/963
+- reachable native/App Store static contract after recorder cleanup: 902/902
 - native retained client follow-up journey: 1/1
-- optimized iOS simulator compile: pass through the selected XCTest build
+- full iPhone simulator compile with LiveKit linked: pass
+- serialized Capture, login, and Share extension UI journeys: 46/46
 
-## Architecture finding
+## Architecture cleanup
 
-The iOS target still contains both `CapturePhoneShell` (the production phone
-entry point) and the older `RecorderControlBoard`. The first implementation
-placed the new card in the older board and the runtime proof correctly failed.
-The released feature now lives on `CapturePhoneShell`, and the App Store static
-contract asserts that ownership.
+`CapturePhoneShell` is the single production phone entry point. Repository-wide
+call-site inspection found that the older recorder, reviewer digest, provider
+room, action-packet, lifecycle, and post-capture runway roots in
+`QuipslyMobileComponents` had no consumer outside their own disconnected tree.
+The file is now reduced from 4,330 lines to 651 and keeps only the shared
+background, local-first Session context, released client follow-up, and their
+direct dependencies.
 
-Follow-up work should remove or explicitly demote the old recorder board after
-checking its remaining call sites. Until then, new phone UX belongs in
-`CapturePhoneShell`; shared cards may live in `QuipslyMobileComponents`.
+The App Store static contract now checks controls and copy reachable from
+`CapturePhoneShell`; it also fails if a disconnected legacy recorder/reviewer
+root returns. A real two-architecture simulator compile and all 46 serialized
+UI journeys pass after the removal.
 
 ## Truth boundary
 
