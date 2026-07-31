@@ -1,6 +1,6 @@
-# Episode Room saved-range readiness
+# Episode Room saved-range Watch release
 
-Prepared: 2026-07-30 MDT / 2026-07-31 UTC
+Released: 2026-07-30 MDT / 2026-07-31 UTC
 
 ## Exact source
 
@@ -10,19 +10,19 @@ Prepared: 2026-07-30 MDT / 2026-07-31 UTC
   `579b80e6`
 - Branch:
   `codex/quipsly-product-20260724`
-- Current production remains:
-  `6d4bdbfda5a39a275826502f872fb808aa78eda6` on
-  `studio-00466-lib`
-- Current TestFlight binary remains:
-  Quipsly Capture Build 18
+- Production source:
+  `579b80e6c0d21cbc35e88df856d169ac93bc34c1`
+- Production Cloud Run revision:
+  `studio-00468-bav`
+- TestFlight binary:
+  Quipsly Capture 1.0 (19), external state `IN_BETA_TESTING`
 
-This slice is committed and qualified but is intentionally not deployed yet.
-Build 18 predates the separate saved-range Watch identity. The candidate
-therefore adds an explicit native `watchProtocol=2` negotiation boundary.
-Build 18 continues receiving whole-source Watch clips. If a saved range is
-selected, the legacy projection removes the unsupported range, returns an idle
-read-only Watch, and sets `watchUpgradeRequired` instead of letting the old app
-play outside the range. Build 19 receives the canonical range projection.
+Build 18 predates the separate saved-range Watch identity. Build 19 therefore
+adds an explicit native `watchProtocol=2` negotiation boundary. Build 18
+continues receiving whole-source Watch clips. If a saved range is selected,
+the legacy projection removes the unsupported range, returns an idle read-only
+Watch, and sets `watchUpgradeRequired` instead of letting the old app play
+outside the range. Build 19 receives the canonical range projection.
 
 ## Product behavior
 
@@ -79,17 +79,46 @@ derivative remain intentionally retained for longitudinal regression testing.
   linked.
 - Git whitespace validation passed.
 
-## Safe release order
+## Production and TestFlight evidence
 
-1. Bump, archive, validate, and upload the compatible Quipsly Capture build.
-2. Build the web image from exact commit `579b80e6`.
-3. Deploy at zero traffic, run authenticated generated-user and Episode Room
-   acceptance, and verify exact source/image readback.
-4. Promote the backward-compatible backend before uploading Build 19.
-5. Archive and upload Build 19 from that same exact commit.
-6. Confirm App Store Connect processing and TestFlight availability.
-7. Perform the real two-person iPhone/Mac rehearsal with a recording clock,
-   exact saved range, receipt sync, and editor alignment.
+- The full detached-worktree Capture preflight passed from exact source
+  `579b80e6c0d21cbc35e88df856d169ac93bc34c1`.
+- Cloud Build `0c4370ab-37f1-4aa7-8983-49ad23e87f39` built the bounded
+  111.3 MiB committed context and verified six required route bundles inside
+  the final image.
+- Cloud Run revision `studio-00468-bav` was deployed at zero traffic from
+  image
+  `us-central1-docker.pkg.dev/high-ground-odyssey/high-ground-studio/studio@sha256:180f73aa1a4221a4796dbae7e0c059bc2a678be49476b00719fdc56fb36364b4`.
+- The generated reviewer exercised Firebase login, native session exchange,
+  Home Nest, Sessions, Projects, writing, editor, recorder, Research,
+  Publishing, logout, and both public hosts against the immutable preview.
+  Cleanup independently verified deletion of the temporary Firebase and
+  PostgreSQL identity and its two grants, Home Nest, and membership.
+- Promotion moved only `studio-00468-bav` to 100% traffic. Post-promotion
+  recovery, domain, billing, Cloud SQL, public-route, recent-error-log, and
+  108-check mobile Capture contracts passed.
+- The no-upload candidate lane and the upload lane each passed 45/45
+  deterministic iPhone UI tests from separate detached worktrees.
+- The upload-lane IPA is 20,902,385 bytes with SHA-256
+  `b6c407919c6b5fdd8015266120658c94d311937f828b78b47762f0adada14bd4`.
+  App and Share extension signatures, App Store provisioning, privacy
+  manifests, usage descriptions, entitlements, and 1.0 (19) version parity
+  passed inspection.
+- App Store Connect build `035197ff-36a1-4658-b5a7-b45a910eac16` is `VALID`,
+  internal-ready, and `IN_BETA_TESTING` externally with no non-exempt
+  encryption.
+- External beta review is `APPROVED`. The build is assigned to the
+  `Quipsly Capture Rehearsal` group, auto-notify is enabled, and the
+  100-person public link remains open:
+  `https://testflight.apple.com/join/XwRRcYUm`.
+- Independent anonymous readback returned HTTP 200, matched the Quipsly
+  Capture title and heading, and exposed the exact Apple TestFlight handoff.
 
-Physical-device playback, a genuine two-person recording, TestFlight
-installation, and production deployment remain separate proof gates.
+## Remaining human proof
+
+The release is available for TestFlight installation. A physical install,
+real camera/microphone capture, genuine two-person call and consent flow,
+front/back camera operation, exact saved-range playback on both participants,
+receipt sync, upload, and editor alignment remain separate human rehearsal
+gates. They must not be inferred from simulator, Cloud Run, or App Store
+provider state.

@@ -4,8 +4,11 @@ Date: 2026-07-30
 
 ## Quipsly release checkpoint
 
-- `nest.quipsly.com` is serving Cloud Run revision `studio-00466-lib` from
-  source `6d4bdbfda5a39a275826502f872fb808aa78eda6`.
+- `nest.quipsly.com` is serving Cloud Run revision `studio-00468-bav` from
+  source `579b80e6c0d21cbc35e88df856d169ac93bc34c1`, built by Cloud Build
+  `0c4370ab-37f1-4aa7-8983-49ad23e87f39` and pinned to immutable image
+  digest
+  `sha256:180f73aa1a4221a4796dbae7e0c059bc2a678be49476b00719fdc56fb36364b4`.
 - Episode Room can project an existing, same-Nest audio or video source from
   the canonical Media Vault into shared Watch without duplicating source
   bytes. Editors can control Watch and explicitly sync receipt-backed watched
@@ -14,22 +17,28 @@ Date: 2026-07-30
   Watch to timeline regression journey. The exact release evidence and scope
   boundary are in
   `docs/coordination/2026-07-30-episode-room-media-vault-watch-release.md`.
-- Quipsly Capture Build 18 remains the approved TestFlight binary. The web
-  release is consumable by its existing native Watch contract and did not
-  require a new native build.
+- Quipsly Capture 1.0 (19) is valid, approved, and externally
+  `IN_BETA_TESTING`. It is assigned to the `Quipsly Capture Rehearsal`
+  external group and available through the open 100-person public link at
+  `https://testflight.apple.com/join/XwRRcYUm`.
 - Exact saved Media Vault range playback is implemented and qualified at
   `c05ce5cd`, including distinct Watch/source identity, web and iPhone range
   clamping, shared-clock out-point handling under autoplay denial, and
   non-destructive timeline materialization. The retained local QA journey
   produced a source `4–12` / duration `8` derivative and left its durable test
   history in place.
-- The saved-range slice is not in production yet. Build 18 cannot resolve the
-  new selected range identity. Candidate `579b80e6` advances Quipsly Capture
-  to 1.0 (19) and adds explicit Watch protocol negotiation: legacy builds keep
-  whole-source behavior and fail a selected range safely closed, while Build
-  19 receives exact ranges. This makes it safe to deploy the matching backend
-  before uploading the candidate, as the canonical runbook requires. The
-  evidence and rollout order are in
+- The saved-range slice is now in production. Build 19 negotiates Watch
+  protocol 2 and receives exact saved ranges. Legacy Build 18 keeps
+  whole-source behavior and fails a selected range safely closed. The exact
+  backend was previewed, reviewed with a generated real account, promoted, and
+  read back before Build 19 was archived and uploaded.
+- Build 19 passed 45/45 deterministic UI tests twice from independent detached
+  worktrees, plus distribution-signature, provisioning, privacy, entitlement,
+  and IPA inspection. App Store Connect independently reports the build
+  `VALID`, beta-review `APPROVED`, and externally `IN_BETA_TESTING`.
+- Physical TestFlight installation and real two-person camera, microphone,
+  call, consent, saved-range Watch, upload, and editor-alignment rehearsal
+  remain separate human proof boundaries. The exact evidence is in
   `docs/coordination/2026-07-30-episode-room-saved-range-readiness.md`.
 
 ## What The Repo Is Right Now
