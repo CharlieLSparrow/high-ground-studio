@@ -471,8 +471,9 @@ not incidental UI polish.
 When changing manuscript snapshot persistence:
 
 1. Choose the Studio database target.
-2. Apply the `StudioManuscriptSnapshot` schema through the approved Prisma
-   migration or schema-sync path for that target.
+2. Apply the `StudioManuscriptSnapshot` schema through a committed Prisma
+   migration and the guarded schema-release path for that exact target. A
+   targeted schema sync is incident recovery, not a deployment path.
 3. Store the database connection string through the approved Secret Manager
    path. Do not commit it.
 4. Update the `studio` Cloud Run service to provide `DATABASE_URL` from the

@@ -46,7 +46,7 @@ Automated build, security, accessibility, and contract evidence is recorded sepa
 - The iPad Session surface remains separate Studio work. It is not part of the iPhone-only Capture candidate.
 - `UploadManager` exposes a retry path for recoverable direct private-GCS resumable v2 uploads. Its non-secret phase ledger is protected and owner-partitioned; the secret resumable capability remains in this-device Keychain. Legacy job/source evidence remains readable, but old server-buffered multipart/chunk transport is disabled; a preserved source must be re-enqueued through v2.
 - Capability issuance writes a stable, exact-size Prisma reservation under per-account and per-Nest rolling-byte, issuance-rate, and active limits. Successful canonical finalize settles generation/size evidence and frees the active slot; retries cannot mutate their actor/project/object/type/size binding.
-- Room Start/Stop outcomes are persisted transactionally in `CaptureRoomStateReceipt`, including deterministic terminal rejection evidence. Upload issuance/settlement is persisted in `MediaVaultUploadReservation`. Because the existing CallRoom lane is provisioned by additive SQL rather than a normal Prisma migration, `ops/quipsly-coaching-capture-additive.sql` must be applied and `scripts/quipsly-coaching-capture-schema-sync.mjs` must pass against the target database before the corresponding backend deploy.
+- Room Start/Stop outcomes are persisted transactionally in `CaptureRoomStateReceipt`, including deterministic terminal rejection evidence. Upload issuance/settlement is persisted in `MediaVaultUploadReservation`. These objects are now covered by the committed Prisma migration history. A dependent backend revision cannot receive traffic until `scripts/release/quipsly-schema-release.sh` has produced a passing exact-source receipt with fixture replay, verified backup, current production migration ledger, and zero schema diff. The historical additive SQL and targeted coaching-capture sync are recovery references only.
 - In-app account deletion currently initiates a server request only. It is distinct from local-original deletion and is not a complete App Store deletion workflow until Quipsly has an approved retention matrix, disclosed completion timeframe, executor/anonymizer, and completion confirmation.
 - `scripts/quipsly-ios-capture-app-store-static-smoke.mjs` guards the App Store-readiness invariants that are easy to accidentally regress: no tracking, privacy data and required-reason categories, explicit microphone and dependency-required camera purpose strings, modern app target, Firebase reviewer auth, explicit consent gate, visible recording state, protected resumable uploads, capture-first iPhone UX, privacy/deletion routes, and reviewer docs.
 - `scripts/quipsly-mobile-capture-preflight.sh` is the default local health check for privacy manifest lint, Quipsly TypeScript, mobile capture contract syntax, iOS native auth invariants, App Store static invariants, upload idempotency, session evidence, and iOS simulator build.
@@ -509,7 +509,13 @@ remain red until approved screenshots and every delivery-layer proof exist.
 - Complete authenticated native lifecycle and separate-account privacy
   readback against the current exact-source production revision. Public
   production parity already passes all 104 mobile checks.
-- Apply `ops/quipsly-coaching-capture-additive.sql` and pass `scripts/quipsly-coaching-capture-schema-sync.mjs` against the target database before deploying backend code that reads or writes `CaptureRoomStateReceipt` or `MediaVaultUploadReservation`; upload capability issuance is launch-critical on the latter.
+- Apply the exact release commit's committed migrations through
+  `scripts/release/quipsly-schema-release.sh` before deploying backend code
+  that reads or writes `CaptureRoomStateReceipt` or
+  `MediaVaultUploadReservation`; upload capability issuance is launch-critical
+  on the latter. Preserve the guarded release receipt and require its
+  production ledger and zero-diff readbacks. Do not substitute the historical
+  additive SQL or targeted coaching-capture sync.
 - Apply or re-read the reviewed media-vault CORS policy and verify live bucket
   readback includes `x-goog-if-generation-match`. Google authorization now
   passes; source policy alone is still not deployment proof.
