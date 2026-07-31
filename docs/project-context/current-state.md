@@ -17,6 +17,17 @@ Date: 2026-07-30
 - Quipsly Capture Build 18 remains the approved TestFlight binary. The web
   release is consumable by its existing native Watch contract and did not
   require a new native build.
+- Exact saved Media Vault range playback is implemented and qualified at
+  `c05ce5cd`, including distinct Watch/source identity, web and iPhone range
+  clamping, shared-clock out-point handling under autoplay denial, and
+  non-destructive timeline materialization. The retained local QA journey
+  produced a source `4–12` / duration `8` derivative and left its durable test
+  history in place.
+- The saved-range slice is not in production yet. Build 18 cannot resolve the
+  new selected range identity, so the compatible Capture build must reach
+  TestFlight before the web projection is enabled. The evidence and rollout
+  order are in
+  `docs/coordination/2026-07-30-episode-room-saved-range-readiness.md`.
 
 ## What The Repo Is Right Now
 
