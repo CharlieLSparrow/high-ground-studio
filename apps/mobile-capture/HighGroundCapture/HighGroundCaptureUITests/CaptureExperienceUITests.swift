@@ -195,6 +195,7 @@ final class CaptureExperienceUITests: XCTestCase {
             open.waitForExistence(timeout: 5),
             "The visible manuscript card should expose its read-only reader control."
         )
+        reveal(open)
         XCTAssertTrue(open.isHittable)
         open.tap()
 
@@ -1460,8 +1461,14 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(create.isEnabled)
         create.tap()
 
+        XCTAssertTrue(
+            app.navigationBars["Record"].waitForExistence(timeout: 5),
+            "Creating a session should close the chooser and land on that session's recorder."
+        )
         XCTAssertTrue(app.otherElements["CaptureRecorderHero"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["CaptureConfirmConsentButton"].exists)
+        let confirmConsent = app.buttons["CaptureConfirmConsentButton"]
+        reveal(confirmConsent)
+        XCTAssertTrue(confirmConsent.exists)
         XCTAssertFalse(app.buttons["CaptureStartButton"].isEnabled)
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].exists)
     }

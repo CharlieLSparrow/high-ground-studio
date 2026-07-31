@@ -93,7 +93,14 @@ struct CapturePhoneShell: View {
             }
         }
         .sheet(isPresented: $showsNewSession) {
-            NewCaptureSessionSheet(model: model, isPresented: $showsNewSession)
+            NewCaptureSessionSheet(
+                model: model,
+                isPresented: $showsNewSession,
+                onCreated: {
+                    showsNewSession = false
+                    visibleTab = .record
+                }
+            )
                 .presentationDetents([.medium, .large])
         }
         .alert("Capture needs attention", isPresented: errorIsPresented) {
@@ -8994,7 +9001,14 @@ private struct SessionPickerSheet: View {
                 }
             }
             .sheet(isPresented: $showsNewSession) {
-                NewCaptureSessionSheet(model: model, isPresented: $showsNewSession)
+                NewCaptureSessionSheet(
+                    model: model,
+                    isPresented: $showsNewSession,
+                    onCreated: {
+                        showsNewSession = false
+                        isPresented = false
+                    }
+                )
                     .presentationDetents([.medium])
             }
         }
@@ -9004,6 +9018,7 @@ private struct SessionPickerSheet: View {
 private struct NewCaptureSessionSheet: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var isPresented: Bool
+    let onCreated: () -> Void
     @FocusState private var titleFocused: Bool
 
     var body: some View {
@@ -9038,7 +9053,7 @@ private struct NewCaptureSessionSheet: View {
                     Button(model.isCreatingSession ? "Creating…" : "Create") {
                         Task {
                             if await model.createSession() {
-                                isPresented = false
+                                onCreated()
                             }
                         }
                     }
