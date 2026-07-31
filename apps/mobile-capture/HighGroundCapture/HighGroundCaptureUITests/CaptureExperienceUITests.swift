@@ -332,6 +332,21 @@ final class CaptureExperienceUITests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any)["CaptureWorkProjectSummary"].exists)
         XCTAssertTrue(app.staticTexts["High Ground Odyssey"].exists)
 
+        let searchField = app.descendants(matching: .any)["CaptureWorkSearchField"]
+        XCTAssertTrue(searchField.waitForExistence(timeout: 3))
+        XCTAssertTrue(searchField.isHittable, "Project Work search must be directly usable on iPhone.")
+        searchField.tap()
+        searchField.typeText("Proof-listen")
+        XCTAssertTrue(
+            app.staticTexts["Proof-listen the episode opening"].waitForExistence(timeout: 3),
+            "Work search must filter the retained project corpus through the visible shipping control."
+        )
+        let clearSearch = app.buttons["Clear work search"]
+        XCTAssertTrue(clearSearch.isHittable)
+        clearSearch.tap()
+        XCTAssertEqual(searchField.value as? String, "Find work or a tag")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 3))
+
         let manageVocabulary = app.buttons["CaptureWorkManageTags"]
         reveal(manageVocabulary)
         XCTAssertTrue(manageVocabulary.isHittable, "Shared vocabulary management must be directly reachable from the tag lens.")
@@ -1460,6 +1475,39 @@ final class CaptureExperienceUITests: XCTestCase {
             .sufficientElementDescription,
             .textClipped,
         ])
+    }
+
+    func testCoreShellPassesAccessibilityAuditAtLargestTextSize() throws {
+        app.terminate()
+        app.launchArguments = [
+            "--capture-ui-preview",
+            "--capture-ui-preview-tab=today",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityExtraExtraExtraLarge",
+        ]
+        app.launch()
+
+        let tabBar = app.tabBars.firstMatch
+        XCTAssertTrue(tabBar.waitForExistence(timeout: 12))
+        let destinations: [(tab: String, root: XCUIElement)] = [
+            ("Today", app.scrollViews["CaptureTodayView"]),
+            ("Work", app.scrollViews["CaptureWorkView"]),
+            ("Library", app.scrollViews["CaptureLibraryView"]),
+            ("Account", app.navigationBars["Account"]),
+        ]
+
+        for destination in destinations {
+            tabBar.buttons[destination.tab].tap()
+            XCTAssertTrue(
+                destination.root.waitForExistence(timeout: 8),
+                "The \(destination.tab) destination must remain reachable at the largest accessibility text size."
+            )
+            try app.performAccessibilityAudit(for: [
+                .hitRegion,
+                .sufficientElementDescription,
+                .textClipped,
+            ])
+        }
     }
 
     func testRehearsalControlsRemainReachableAtLargestAccessibilityTextSize() throws {

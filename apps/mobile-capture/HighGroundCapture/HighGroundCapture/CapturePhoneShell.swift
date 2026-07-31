@@ -295,6 +295,7 @@ private struct CaptureWorkView: View {
     @ObservedObject private var client: CaptureWorkClient
     @State private var selectedProjectID: String?
     @State private var searchText = ""
+    @FocusState private var searchIsFocused: Bool
     @State private var selectedTagID: String?
     @State private var showsCompletedTasks = false
     @State private var showsTagVocabulary = false
@@ -476,10 +477,10 @@ private struct CaptureWorkView: View {
             .padding(.horizontal, 18)
             .padding(.bottom, 96)
         }
+        .scrollDismissesKeyboard(.interactively)
         .background(CaptureCanvas())
         .navigationTitle("Work")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Find work or a tag")
         .refreshable {
             await model.todayClient.load()
             await client.load(projectID: selectedProject?.id)
@@ -657,6 +658,49 @@ private struct CaptureWorkView: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                TextField(
+                    "Find work or a tag",
+                    text: $searchText,
+                    axis: .vertical
+                )
+                    .textFieldStyle(.plain)
+                    .lineLimit(1 ... 2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .submitLabel(.search)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .focused($searchIsFocused)
+                    .onSubmit { searchIsFocused = false }
+                    .accessibilityLabel("Find work or a tag")
+                    .accessibilityIdentifier("CaptureWorkSearchField")
+                if !searchText.isEmpty {
+                    Button {
+                        searchText = ""
+                        searchIsFocused = false
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear work search")
+                }
+            }
+            .padding(.leading, 14)
+            .padding(.trailing, 4)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 52)
+            .background(.background, in: RoundedRectangle(cornerRadius: 16))
+            .overlay {
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(.primary.opacity(0.1))
+            }
+
             HStack(alignment: .firstTextBaseline) {
                 Text("Your projects")
                     .font(.largeTitle.weight(.bold))
@@ -702,7 +746,7 @@ private struct CaptureWorkView: View {
                         Image(systemName: selectedProject?.isHomeNest == true ? "house.fill" : "square.grid.2x2.fill")
                         Text(selectedProject?.name ?? "Choose project")
                             .fontWeight(.bold)
-                            .lineLimit(1)
+                            .fixedSize(horizontal: false, vertical: true)
                         Spacer()
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.caption.weight(.bold))
@@ -726,30 +770,39 @@ private struct CaptureWorkView: View {
         let openTaskCount = workspace.tasks.filter { $0.status == "OPEN" }.count
         let activeGoalCount = workspace.goals.filter { $0.status == "ACTIVE" }.count
         return VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(workspace.project.isHomeNest ? "Private Home Nest" : "Project workspace")
-                        .font(.caption.weight(.bold))
-                        .foregroundStyle(.secondary)
-                    Text(workspace.project.name)
-                        .font(.title2.weight(.bold))
-                        .lineLimit(2)
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    projectSummaryTitle(workspace)
+                    Spacer(minLength: 0)
+                    projectRoleBadge(workspace.project.role)
                 }
-                Spacer()
-                Text(workspace.project.role.capitalized)
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(CapturePalette.accent.opacity(0.12), in: Capsule())
+                VStack(alignment: .leading, spacing: 8) {
+                    projectSummaryTitle(workspace)
+                    projectRoleBadge(workspace.project.role)
+                }
             }
-            HStack(spacing: 0) {
-                workMetric(value: openTaskCount, label: "Open tasks")
-                Divider().frame(height: 34)
-                workMetric(value: activeGoalCount, label: "Active goals")
-                Divider().frame(height: 34)
-                workMetric(value: workspace.notes.count, label: "Notes")
-                Divider().frame(height: 34)
-                workMetric(value: activeTags.count, label: "Tags")
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 0) {
+                    workMetric(value: openTaskCount, label: "Open tasks", preservesLabelWidth: true)
+                    Divider().frame(height: 34)
+                    workMetric(value: activeGoalCount, label: "Active goals", preservesLabelWidth: true)
+                    Divider().frame(height: 34)
+                    workMetric(value: workspace.notes.count, label: "Notes", preservesLabelWidth: true)
+                    Divider().frame(height: 34)
+                    workMetric(value: activeTags.count, label: "Tags", preservesLabelWidth: true)
+                }
+                LazyVGrid(
+                    columns: [
+                        GridItem(.flexible(minimum: 0), spacing: 12),
+                        GridItem(.flexible(minimum: 0), spacing: 12),
+                    ],
+                    spacing: 12
+                ) {
+                    workMetric(value: openTaskCount, label: "Open tasks", wrapsLabel: true)
+                    workMetric(value: activeGoalCount, label: "Active goals", wrapsLabel: true)
+                    workMetric(value: workspace.notes.count, label: "Notes", wrapsLabel: true)
+                    workMetric(value: activeTags.count, label: "Tags", wrapsLabel: true)
+                }
             }
         }
         .padding(16)
@@ -761,13 +814,43 @@ private struct CaptureWorkView: View {
         .accessibilityIdentifier("CaptureWorkProjectSummary")
     }
 
-    private func workMetric(value: Int, label: String) -> some View {
+    private func projectSummaryTitle(_ workspace: MobileCaptureWorkWorkspace) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(workspace.project.isHomeNest ? "Private Home Nest" : "Project workspace")
+                .font(.caption.weight(.bold))
+                .foregroundStyle(.secondary)
+            Text(workspace.project.name)
+                .font(.title2.weight(.bold))
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func projectRoleBadge(_ role: String) -> some View {
+        Text(role.capitalized)
+            .font(.caption2.weight(.bold))
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(CapturePalette.accent.opacity(0.12), in: Capsule())
+            .fixedSize(horizontal: true, vertical: true)
+    }
+
+    private func workMetric(
+        value: Int,
+        label: String,
+        wrapsLabel: Bool = false,
+        preservesLabelWidth: Bool = false
+    ) -> some View {
         VStack(spacing: 2) {
             Text("\(value)").font(.headline.weight(.bold))
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .lineLimit(wrapsLabel ? 2 : 1)
+                .multilineTextAlignment(.center)
+                .fixedSize(
+                    horizontal: preservesLabelWidth,
+                    vertical: wrapsLabel
+                )
         }
         .frame(maxWidth: .infinity)
     }
@@ -821,6 +904,8 @@ private struct CaptureWorkView: View {
                         showsTagVocabulary = true
                     }
                     .font(.caption.weight(.bold))
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
                     .accessibilityLabel("Manage shared tag vocabulary")
                     .accessibilityIdentifier("CaptureWorkManageTags")
                 }
@@ -6528,6 +6613,7 @@ private struct CaptureAccountView: View {
                     .foregroundStyle(CapturePalette.accent)
             }
             .frame(width: 54, height: 54)
+            .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(auth.userName ?? (model.usesPreviewData ? "Preview Creator" : "Quipsly creator"))
@@ -6539,6 +6625,11 @@ private struct CaptureAccountView: View {
             Spacer()
         }
         .captureCard()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Signed in account")
+        .accessibilityValue(
+            "\(auth.userName ?? (model.usesPreviewData ? "Preview Creator" : "Quipsly creator")), \(auth.userEmail ?? (model.usesPreviewData ? "preview@quipsly.local" : "Signed in"))"
+        )
     }
 
     private var totalLocalBytes: Int64 {
