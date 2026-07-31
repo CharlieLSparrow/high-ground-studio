@@ -5,6 +5,7 @@ import { Block, uniqueTagIds, canonicalBoundarySuggestion } from "./Tagger";
 import { useEditorExtensions } from "./registry/EditorExtensionRegistry";
 import CommandPalette from "./CommandPalette";
 import { EditorMargin } from "@/components/EditorMargin";
+import { tagFocusHref, tagSearchHref } from "@/components/tag-search-chips";
 
 const STRUCTURE_TAG_IDS = new Set(["chapter", "episode"]);
 
@@ -81,6 +82,8 @@ function BlockItemComponent({
 }: BlockItemProps) {
   const { tagDefinitions, blockAccents, blockCards } = useEditorExtensions();
   const findTagDef = (identifier: string) => tagDefinitions.find((tag) => tag.id === identifier);
+  const tagHref = (definition: (typeof tagDefinitions)[number] | undefined, label: string) =>
+    definition?.canonicalId ? tagFocusHref(definition.canonicalId) : tagSearchHref(label);
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const internalTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -269,7 +272,7 @@ function BlockItemComponent({
                 className={`inline-flex items-stretch overflow-hidden rounded-md border text-[10px] font-bold uppercase tracking-wider ${definition.color}`}
               >
                 <Link
-                  href={`/find?q=${encodeURIComponent(definition.label)}`}
+                  href={tagHref(definition, definition.label)}
                   aria-label={`Explore ${definition.label} tag in Quipsly Search`}
                   title={`Find work, writing, sources, and Sessions tagged ${definition.label}`}
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 transition-colors hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"
@@ -301,7 +304,7 @@ function BlockItemComponent({
                 className={`inline-flex max-w-full items-stretch overflow-hidden rounded-md border text-[10px] font-bold uppercase tracking-wider ${definition?.color ?? "border-[#d4c1a0] bg-white text-[#5e4b33]"}`}
               >
                 <Link
-                  href={`/find?q=${encodeURIComponent(tagLabel)}`}
+                  href={tagHref(definition, tagLabel)}
                   aria-label={`Explore ${tagLabel} tag in Quipsly Search`}
                   title={`Find work, writing, sources, and Sessions tagged ${tagLabel}`}
                   className="inline-flex min-w-0 items-center gap-1 px-1.5 py-0.5 transition-colors hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1"

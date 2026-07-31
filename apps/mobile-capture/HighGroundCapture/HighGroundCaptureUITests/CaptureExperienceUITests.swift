@@ -323,6 +323,10 @@ final class CaptureExperienceUITests: XCTestCase {
         for _ in 0..<8 where !episodeTag.isHittable { workScroll.swipeUp() }
         XCTAssertTrue(episodeTag.isHittable, "The Work tag lens must be visible and directly reachable in the project workspace.")
         episodeTag.tap()
+        let tagFocus = app.descendants(matching: .any)["CaptureWorkTagFocus"]
+        XCTAssertTrue(tagFocus.waitForExistence(timeout: 3))
+        XCTAssertTrue(tagFocus.label.contains("Showing #Episode 4 in High Ground Odyssey"))
+        XCTAssertEqual(episodeTag.value as? String, "Selected")
 
         let taskTitle = app.staticTexts["Proof-listen the episode opening"]
         reveal(taskTitle)

@@ -79,6 +79,160 @@ describe("permission-filtered workspace search", () => {
     expect(JSON.stringify(annotationFindMany.mock.calls[0][0].where)).toContain("createdByUserId");
   });
 
+  it("focuses one exact canonical tag without mixing the same label from another Nest", async () => {
+    const tagFindFirst = jest.fn().mockResolvedValue({
+      id: "tag-project-1",
+      projectId: "project-1",
+      slug: "episode-production",
+      label: "Episode production",
+      description: null,
+      category: "meaning",
+      isPrivate: true,
+      isActive: true,
+      mergedIntoTagId: null,
+      aliases: [],
+      project: { id: "project-1", name: "High Ground", slug: "high-ground" },
+    });
+    const actionItemFindMany = jest.fn().mockResolvedValue([]);
+    const goalFindMany = jest.fn().mockResolvedValue([]);
+    const roomFindMany = jest.fn().mockResolvedValue([]);
+    const noteFindMany = jest.fn().mockResolvedValue([]);
+    const sourceFindMany = jest.fn().mockResolvedValue([]);
+    const documentFindMany = jest.fn().mockResolvedValue([]);
+    const annotationFindMany = jest.fn().mockResolvedValue([]);
+    const tagFindMany = jest.fn();
+    const prisma = {
+      studioTag: { findFirst: tagFindFirst, findMany: tagFindMany },
+      actionItem: { findMany: actionItemFindMany },
+      goal: { findMany: goalFindMany },
+      callRoom: { findMany: roomFindMany },
+      coachingNote: { findMany: noteFindMany },
+      studioSourceUnit: { findMany: sourceFindMany },
+      studioDocument: { findMany: documentFindMany },
+      studioSourceAnnotation: { findMany: annotationFindMany },
+    } as any;
+
+    const result = await searchWorkspace(prisma, {
+      actorUserId: "user-1",
+      exactTagId: "tag-project-1",
+      visibleProjects: [
+        { id: "project-1", slug: "high-ground", name: "High Ground", role: "OWNER" },
+        { id: "project-2", slug: "coaching", name: "Coaching", role: "VIEWER" },
+      ],
+    });
+
+    expect(result.tagFocus).toMatchObject({
+      status: "resolved",
+      requestedTagId: "tag-project-1",
+      resolvedTagId: "tag-project-1",
+      redirected: false,
+      resolvedLabel: "Episode production",
+      project: { id: "project-1" },
+    });
+    expect(result.tags.map((tag) => tag.id)).toEqual(["tag-project-1"]);
+    expect(result.boundaries).toMatchObject({ actorScoped: true, exactTagIdentity: true });
+    expect(tagFindFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: "tag-project-1", projectId: { in: ["project-1", "project-2"] } },
+    }));
+    for (const query of [
+      actionItemFindMany,
+      goalFindMany,
+      roomFindMany,
+      noteFindMany,
+      sourceFindMany,
+      documentFindMany,
+      annotationFindMany,
+    ]) {
+      const where = JSON.stringify(query.mock.calls[0][0].where);
+      expect(where).toContain("tag-project-1");
+      expect(where).not.toContain("tag-project-2");
+      expect(where).not.toContain("Episode production");
+    }
+    expect(tagFindMany).not.toHaveBeenCalled();
+  });
+
+  it("follows a preserved merge redirect to the exact canonical target", async () => {
+    const studioTag = {
+      findFirst: jest.fn()
+        .mockResolvedValueOnce({
+          id: "tag-old",
+          projectId: "project-1",
+          slug: "old-name",
+          label: "Old name",
+          description: null,
+          category: "meaning",
+          isPrivate: true,
+          isActive: false,
+          mergedIntoTagId: "tag-current",
+          aliases: [],
+          project: { id: "project-1", name: "High Ground", slug: "high-ground" },
+        })
+        .mockResolvedValueOnce({
+          id: "tag-current",
+          projectId: "project-1",
+          slug: "current-name",
+          label: "Current name",
+          description: null,
+          category: "meaning",
+          isPrivate: true,
+          isActive: true,
+          mergedIntoTagId: null,
+          aliases: [{ label: "Former current name", slug: "former-current-name" }],
+          project: { id: "project-1", name: "High Ground", slug: "high-ground" },
+        }),
+      findMany: jest.fn(),
+    };
+    const empty = jest.fn().mockResolvedValue([]);
+    const prisma = {
+      studioTag,
+      actionItem: { findMany: empty },
+      goal: { findMany: empty },
+      callRoom: { findMany: empty },
+      coachingNote: { findMany: empty },
+      studioSourceUnit: { findMany: empty },
+      studioDocument: { findMany: empty },
+      studioSourceAnnotation: { findMany: empty },
+    } as any;
+
+    const result = await searchWorkspace(prisma, {
+      actorUserId: "user-1",
+      exactTagId: "tag-old",
+      visibleProjects: [{ id: "project-1", slug: "high-ground", name: "High Ground", role: "EDITOR" }],
+    });
+
+    expect(result.tagFocus).toMatchObject({
+      status: "resolved",
+      requestedTagId: "tag-old",
+      resolvedTagId: "tag-current",
+      redirected: true,
+      requestedLabel: "Old name",
+      resolvedLabel: "Current name",
+    });
+    expect(result.tags.map((tag) => tag.id)).toEqual(["tag-current"]);
+    expect(JSON.stringify(studioTag.findFirst.mock.calls[1][0].where)).toContain("tag-current");
+  });
+
+  it("discloses no record identities when the exact tag is outside visible Nests", async () => {
+    const actionItemFindMany = jest.fn();
+    const prisma = {
+      studioTag: { findFirst: jest.fn().mockResolvedValue(null) },
+      actionItem: { findMany: actionItemFindMany },
+    } as any;
+
+    const result = await searchWorkspace(prisma, {
+      actorUserId: "user-1",
+      exactTagId: "tag-private-other-nest",
+      visibleProjects: [{ id: "project-1", slug: "high-ground", name: "High Ground", role: "VIEWER" }],
+    });
+
+    expect(result.tagFocus).toMatchObject({
+      status: "not-found",
+      requestedTagId: "tag-private-other-nest",
+    });
+    expect(result.tasks).toEqual([]);
+    expect(actionItemFindMany).not.toHaveBeenCalled();
+  });
+
   it("normalizes whitespace and caps query bytes exposed to Prisma", () => {
     expect(normalizeWorkspaceSearchQuery(`  ${"word ".repeat(80)}  `).length).toBe(120);
   });

@@ -134,7 +134,7 @@ describe("Schedule page truth states", () => {
     expect(screen.getByText(/Source: Reviewed transcript timestamp/)).toBeInTheDocument();
     expect(screen.getByText("Source: iPhone capture")).toBeInTheDocument();
     expect(screen.getByLabelText("Tags: Coaching follow-up")).toHaveTextContent("#Coaching follow-up");
-    expect(screen.getByRole("link", { name: "Find all accessible work tagged Coaching follow-up" })).toHaveAttribute("href", "/find?q=Coaching%20follow-up");
+    expect(screen.getByRole("link", { name: "Find all accessible work tagged Coaching follow-up" })).toHaveAttribute("href", "/find?tag=tag-1");
     expect(screen.getByText(/^Reminder .+Jul 20/)).toBeInTheDocument();
     expect(screen.getByText("Homer: Keep one clear next move.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Return to 0:03–0:04" })).toHaveAttribute(

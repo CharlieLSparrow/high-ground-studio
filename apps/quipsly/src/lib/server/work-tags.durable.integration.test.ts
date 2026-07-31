@@ -112,11 +112,21 @@ runDurableQa("durable canonical tag vocabulary dogfood", () => {
     });
     if (!result.ok) throw new Error(result.error);
 
-    const [afterCounts, search, createRevision] = await Promise.all([
+    const [afterCounts, search, exactFocus, createRevision] = await Promise.all([
       assignmentCounts(prisma, result.tag.id),
       searchWorkspace(prisma, {
         actorUserId: actor.id,
         query: label,
+        visibleProjects: [{
+          id: grant.project.id,
+          slug: grant.project.slug,
+          name: grant.project.name,
+          role: "OWNER",
+        }],
+      }),
+      searchWorkspace(prisma, {
+        actorUserId: actor.id,
+        exactTagId: result.tag.id,
         visibleProjects: [{
           id: grant.project.id,
           slug: grant.project.slug,
@@ -141,6 +151,20 @@ runDurableQa("durable canonical tag vocabulary dogfood", () => {
         label,
       }),
     );
+    expect(exactFocus.tagFocus).toMatchObject({
+      status: "resolved",
+      requestedTagId: result.tag.id,
+      resolvedTagId: result.tag.id,
+      redirected: false,
+      resolvedLabel: label,
+      project: { id: grant.project.id },
+    });
+    expect(exactFocus.tags.map((tag) => tag.id)).toEqual([result.tag.id]);
+    expect(exactFocus.boundaries).toMatchObject({
+      actorScoped: true,
+      exactTagIdentity: true,
+      externalSideEffects: false,
+    });
     expect(createRevision).toMatchObject({
       operation: "create",
       actorUserId: actor.id,
@@ -162,6 +186,7 @@ runDurableQa("durable canonical tag vocabulary dogfood", () => {
       created: result.created,
       revision: result.revision,
       assignmentCounts: afterCounts,
+      exactTagFocus: true,
       retained: true,
     }));
   });

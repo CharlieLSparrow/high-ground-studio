@@ -45,7 +45,49 @@ describe("Search All page", () => {
     expect(screen.getByRole("link", { name: "Episode outline The opening needs a human proof-listen. High Ground · note · private Tags: Episode seed" })).toHaveAttribute("href", "/create?project=high-ground&document=document-1&block=block-1");
     expect(screen.getByRole("link", { name: "Episode transcript High Ground · transcript · Charlie" })).toHaveAttribute("href", "/research?query=Episode%20transcript");
     expect(screen.getByRole("link", { name: "Episode exact words Episode transcript · High Ground · private" })).toHaveAttribute("href", "/research?query=Episode%20exact%20words");
-    expect(screen.getByRole("link", { name: "Episode seed High Ground · source · private taxonomy Material for a future episode" })).toHaveAttribute("href", "/find?q=Episode%20seed");
+    expect(screen.getByRole("link", { name: "Episode seed High Ground · source · private taxonomy Material for a future episode" })).toHaveAttribute("href", "/find?tag=tag-1");
     expect(screen.getByRole("status")).toHaveTextContent("8 accessible results. Searched 1 accessible Nest.");
+  });
+
+  it("renders an exact canonical tag focus without converting identity back to label search", async () => {
+    jest.mocked(auth).mockResolvedValue({ user: { id: "user-1", primaryEmail: "Person@Example.com" } } as any);
+    jest.mocked(listProjectsVisibleToEmail).mockResolvedValue([
+      { id: "project-1", slug: "high-ground", name: "High Ground", role: "OWNER" },
+      { id: "project-2", slug: "coaching", name: "Coaching", role: "VIEWER" },
+    ] as any);
+    const empty = jest.fn().mockResolvedValue([]);
+    jest.mocked(getPrismaClient).mockReturnValue({
+      studioTag: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: "tag-1",
+          projectId: "project-1",
+          slug: "episode-production",
+          label: "Episode production",
+          description: "Work on one exact episode taxonomy.",
+          category: "meaning",
+          isPrivate: true,
+          isActive: true,
+          mergedIntoTagId: null,
+          aliases: [],
+          project: { id: "project-1", name: "High Ground", slug: "high-ground" },
+        }),
+        findMany: jest.fn(),
+      },
+      actionItem: { findMany: empty },
+      goal: { findMany: empty },
+      callRoom: { findMany: empty },
+      coachingNote: { findMany: empty },
+      studioDocument: { findMany: empty },
+      studioSourceUnit: { findMany: empty },
+      studioSourceAnnotation: { findMany: empty },
+    } as any);
+
+    render(await FindPage({ searchParams: Promise.resolve({ tag: "tag-1" }) }));
+
+    expect(screen.getByRole("heading", { name: "#Episode production" })).toBeInTheDocument();
+    expect(screen.getByText(/Same-label tags in other Nests are not mixed in/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Episode production High Ground/ })).toHaveAttribute("href", "/find?tag=tag-1");
+    expect(screen.getByRole("status")).toHaveTextContent("1 accessible result. Searched 2 accessible Nests.");
+    expect(screen.getByRole("searchbox")).toHaveValue("");
   });
 });

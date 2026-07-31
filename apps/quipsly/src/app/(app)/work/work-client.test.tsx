@@ -350,7 +350,7 @@ describe("Work Queue interactions", () => {
     jest.mocked(replaceWorkTags).mockResolvedValue({ ok: true, entityKind: "task", entityId: "task-1", projectId: "project-1", tagIds: ["tag-proof", "tag-episode"], updatedAt: "2026-07-18T18:00:01.000Z", receiptId: "tag-receipt" });
     render(<WorkClient initialSnapshot={taggedSnapshot} projectOptions={[project]} />);
     expect(screen.getAllByText("#Proof listen")).toHaveLength(1);
-    expect(screen.getByRole("link", { name: "Find all accessible work tagged Proof listen" })).toHaveAttribute("href", "/find?q=Proof%20listen");
+    expect(screen.getByRole("link", { name: "Find all accessible work tagged Proof listen" })).toHaveAttribute("href", "/find?tag=tag-proof");
     await user.click(screen.getByText("Edit High Ground Odyssey tags"));
     await user.click(screen.getByRole("checkbox", { name: "Episode 4" }));
     await user.click(screen.getByRole("button", { name: "Save tags" }));

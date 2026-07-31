@@ -25,6 +25,7 @@ import type { Block } from "../Tagger";
 
 export type TagDefinition = {
   id: string;
+  canonicalId?: string;
   label: string;
   category: string;
   icon: LucideIcon;
@@ -106,6 +107,7 @@ function definitionForProjectTag(tag: WorkbenchTagPayload): TagDefinition {
   if (builtIn) {
     return {
       ...builtIn,
+      canonicalId: tag.id,
       label: tag.label,
       category: tag.category,
       isProjectTag: true,
@@ -114,6 +116,7 @@ function definitionForProjectTag(tag: WorkbenchTagPayload): TagDefinition {
   }
   return {
     id: tag.slug,
+    canonicalId: tag.id,
     label: tag.label,
     category: tag.category,
     description: tag.description,

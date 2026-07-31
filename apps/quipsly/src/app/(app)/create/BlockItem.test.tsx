@@ -20,6 +20,7 @@ jest.mock("./registry/EditorExtensionRegistry", () => ({
     tagDefinitions: [
       {
         id: "proof-listen",
+        canonicalId: "tag-proof",
         label: "Proof listen",
         category: "workflow",
         icon: () => <span aria-hidden="true">#</span>,
@@ -27,6 +28,7 @@ jest.mock("./registry/EditorExtensionRegistry", () => ({
       },
       {
         id: "episode-8",
+        canonicalId: "tag-episode",
         label: "Episode 8",
         category: "meaning",
         icon: () => <span aria-hidden="true">#</span>,
@@ -101,11 +103,11 @@ describe("applied writing tags", () => {
 
     expect(screen.getByRole("link", { name: "Explore Proof listen tag in Quipsly Search" })).toHaveAttribute(
       "href",
-      "/find?q=Proof%20listen",
+      "/find?tag=tag-proof",
     );
     expect(screen.getByRole("link", { name: "Explore Episode 8 tag in Quipsly Search" })).toHaveAttribute(
       "href",
-      "/find?q=Episode%208",
+      "/find?tag=tag-episode",
     );
     expect(screen.queryByRole("button", { name: "Proof listen" })).not.toBeInTheDocument();
 

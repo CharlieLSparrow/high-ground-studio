@@ -915,6 +915,7 @@ function checkTranscriptCorrectionContractSources() {
   const nestFollowThroughText = sourceText("apps/quipsly/src/lib/server/nest-project-follow-through.ts");
   const workspaceSearchText = sourceText("apps/quipsly/src/lib/server/workspace-search.ts");
   const workspaceSearchPageText = sourceText("apps/quipsly/src/app/(app)/find/page.tsx");
+  const tagSearchChipsText = sourceText("apps/quipsly/src/components/tag-search-chips.tsx");
   const researchLibraryModelText = sourceText("apps/quipsly/src/app/(app)/research/research-library-model.ts");
   const sidebarText = sourceText("apps/quipsly/src/components/SidebarLayout.tsx");
   const todayRouteText = sourceText("apps/quipsly/src/app/api/mobile/capture/today/route.ts");
@@ -1511,6 +1512,10 @@ function checkTranscriptCorrectionContractSources() {
       && workspaceSearchText.includes("isUnreviewedTranscriptActionItem")
       && workspaceSearchText.includes("createdByUserId: input.actorUserId")
       && workspaceSearchText.includes("perKindLimit: RESULT_LIMIT")
+      && workspaceSearchText.includes("normalizeWorkspaceTagId")
+      && workspaceSearchText.includes("exactTagIdentity: Boolean(focusedTagId)")
+      && workspaceSearchText.includes("requestedTag.mergedIntoTagId")
+      && workspaceSearchText.includes("tagLinks: { some: { tagId: focusedTagId } }")
       && workspaceSearchText.includes("prisma.studioTag.findMany")
       && workspaceSearchText.includes("isActive: true")
       && workspaceSearchPageText.includes('redirectTo="/find"')
@@ -1518,7 +1523,10 @@ function checkTranscriptCorrectionContractSources() {
       && workspaceSearchPageText.includes('href={`/work?goal=${encodeURIComponent(item.id)}`}')
       && workspaceSearchPageText.includes('href={`/sessions/${encodeURIComponent(item.id)}`}')
       && workspaceSearchPageText.includes('ResultSection title="Tags"')
-      && workspaceSearchPageText.includes("tagSearchHref(item.label)")
+      && workspaceSearchPageText.includes("tagFocusHref(item.id)")
+      && workspaceSearchPageText.includes("Same-label tags in other Nests are not mixed in.")
+      && workspaceSearchPageText.includes("No record identities were disclosed.")
+      && tagSearchChipsText.includes("tagFocusHref(tag.id)")
       && researchLibraryModelText.includes("tagCatalog: ResearchSourceTag[]")
       && researchLibraryModelText.includes("...source.annotations.flatMap")
       && !researchLibraryModelText.includes("...source.tags.map")
@@ -1526,7 +1534,7 @@ function checkTranscriptCorrectionContractSources() {
       && sidebarText.includes('href="/find"')
       && sidebarText.includes('aria-label="Search all Quipsly"'),
     "permissionFilteredCanonicalWorkspaceSearch",
-    "Search All is authenticated, permission-filtered, bounded, candidate-safe, and returns task/goal/session identities plus visible project tags without side effects.",
+    "Search All is authenticated, permission-filtered, bounded, candidate-safe, and focuses exact canonical tag identities across work and evidence without same-label mixing or side effects.",
   );
 }
 

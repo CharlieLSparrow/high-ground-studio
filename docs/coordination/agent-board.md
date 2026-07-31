@@ -125,6 +125,13 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - durable local QA retained `Capture vocabulary dogfood` in
     `High Ground real-work dogfood` under `quipsly.qa@local.test`; a second run
     reused the same tag identity and left all five assignment counts unchanged
+  - the next exact-source slice replaces label-based tag navigation with
+    permission-filtered `/find?tag=<StudioTag.id>` focus across Work, Schedule,
+    Sessions, Nest projects, Search, and project-backed writing; same-label
+    Nests remain isolated and merge redirects preserve old URLs
+  - iPhone Work now names the exact selected tag and Nest with an accessible
+    selected state; real PostgreSQL coverage passes 13/13 and retained QA
+    reports `exactTagFocus:true`
   - the app and Share Capture extension are approved as Build 17; exact-source
     qualification, Nest preview, production promotion, upload, approval, group
     assignment, and public-link readback all passed

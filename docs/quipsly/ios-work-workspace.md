@@ -229,6 +229,22 @@ The direct-vocabulary-authoring follow-on additionally proves:
   independent before/after counts remained zero for Task, Goal, Session, Note,
   and document assignments.
 
+The exact-tag-focus follow-on additionally proves:
+
+- iPhone Work filters by the selected `StudioTag.id` and now exposes an
+  explicit, accessible `Showing #tag in Nest` state;
+- Nest tag entry points use `/find?tag=<StudioTag.id>` rather than turning the
+  label back into a text query;
+- exact focus reapplies Task, Goal, Session, note, document, writing,
+  annotation, and source visibility rules after resolving the tag;
+- two visible Nests can carry the same human label without mixing results;
+- a tag outside the actor's visible Nest set discloses no identity;
+- merge redirects preserve the old tag URL and visibly resolve to the
+  canonical target.
+
+The full contract and current media-navigation boundary are recorded in
+[`canonical-tag-focus.md`](./canonical-tag-focus.md).
+
 Run the durable dogfood check only against the dedicated local QA database:
 
 ```bash
@@ -241,6 +257,13 @@ pnpm --filter quipsly exec jest --runInBand \
 The artifact is intentionally retained. The check neither creates a user nor
 falls back to a production account; it fails unless the dedicated QA actor and
 writable QA Nest already exist.
+
+Durable QA artifacts are a maintained regression workspace, not automatic
+cleanup debt. Keep useful records clearly labeled and isolated under dedicated
+test identities so later releases can prove continuity, rename stability, and
+cross-surface behavior against the same canonical IDs. Generated disposable
+smoke identities may still be deleted by their owning harness; durable QA must
+never borrow a real user's identity or silently target production data.
 
 ## Open release gates
 

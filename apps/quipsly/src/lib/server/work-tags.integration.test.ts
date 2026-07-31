@@ -60,7 +60,7 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     await prisma.studioProjectAccessGrant.create({ data: { projectId, email: actorEmail, role: "EDITOR", status: "ACTIVE", createdByUserId: actorUserId, createdByEmail: actorEmail } });
     const [tag, otherTag] = await Promise.all([
       prisma.studioTag.create({ data: { projectId, slug: `proof-listen-${nonce}`, label: "Proof listen" } }),
-      prisma.studioTag.create({ data: { projectId: otherProjectId, slug: `private-${nonce}`, label: "Other private tag" } }),
+      prisma.studioTag.create({ data: { projectId: otherProjectId, slug: `proof-listen-${nonce}`, label: "Proof listen" } }),
     ]);
     tagId = tag.id;
     otherTagId = otherTag.id;
@@ -135,6 +135,86 @@ runLocalDatabaseSmoke("canonical work and session tags local database smoke", ()
     expect(note?.tagLinks.map((link) => link.tag.label)).toEqual(["Proof listen"]);
     expect(note?.sourceJson).toMatchObject({ lastTagReceipt: { externalSideEffects: false, projectId, tagIds: [tagId] } });
     expect(task?.sourceJson).toMatchObject({ lastTagReceipt: { externalSideEffects: false, projectId, tagIds: [tagId] } });
+  });
+
+  it("focuses the exact tag identity without mixing a same-label tag from another visible Nest", async () => {
+    await prisma.studioProjectAccessGrant.create({
+      data: {
+        projectId: otherProjectId,
+        email: actorEmail,
+        role: "VIEWER",
+        status: "ACTIVE",
+        createdByUserId: actorUserId,
+        createdByEmail: actorEmail,
+      },
+    });
+    const otherTask = await prisma.actionItem.create({
+      data: {
+        assignedUserId: actorUserId,
+        projectId: otherProjectId,
+        title: "Same label but different canonical tag",
+        tagLinks: {
+          create: {
+            tagId: otherTagId,
+            createdByUserId: actorUserId,
+            sourceJson: { source: "exact-tag-focus-integration" },
+          },
+        },
+      },
+    });
+    try {
+      const result = await searchWorkspace(prisma, {
+        actorUserId,
+        exactTagId: tagId,
+        visibleProjects: [
+          { id: projectId, slug: `work-tags-main-${nonce}`, name: "High Ground Odyssey", role: "EDITOR" },
+          { id: otherProjectId, slug: `work-tags-other-${nonce}`, name: "Other private Nest", role: "VIEWER" },
+        ],
+      });
+      expect(result.tagFocus).toMatchObject({
+        status: "resolved",
+        requestedTagId: tagId,
+        resolvedTagId: tagId,
+        redirected: false,
+        resolvedLabel: "Proof listen",
+        project: { id: projectId },
+      });
+      expect(result.tasks.map((task) => task.id)).toContain(taskId);
+      expect(result.tasks.map((task) => task.id)).not.toContain(otherTask.id);
+      expect(result.tags.map((tag) => tag.id)).toEqual([tagId]);
+      expect(result.boundaries).toMatchObject({
+        actorScoped: true,
+        exactTagIdentity: true,
+        externalSideEffects: false,
+      });
+    } finally {
+      await prisma.actionItem.delete({ where: { id: otherTask.id } });
+    }
+  });
+
+  it("does not disclose an exact tag identity outside the actor's visible Nest set", async () => {
+    const result = await searchWorkspace(prisma, {
+      actorUserId: otherUserId,
+      exactTagId: tagId,
+      visibleProjects: [{
+        id: otherProjectId,
+        slug: `work-tags-other-${nonce}`,
+        name: "Other private Nest",
+        role: "VIEWER",
+      }],
+    });
+    expect(result.tagFocus).toMatchObject({
+      status: "not-found",
+      requestedTagId: tagId,
+      resolvedTagId: null,
+    });
+    expect(result.tags).toEqual([]);
+    expect(result.tasks).toEqual([]);
+    expect(result.boundaries).toMatchObject({
+      actorScoped: true,
+      exactTagIdentity: true,
+      externalSideEffects: false,
+    });
   });
 
   it("locks document classification on its own revision and rejects a superseded replay", async () => {

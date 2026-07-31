@@ -387,6 +387,11 @@ private struct CaptureWorkView: View {
         (workspace?.tags ?? []).filter(\.isActive)
     }
 
+    private var selectedTag: MobileCaptureWorkTag? {
+        guard let selectedTagID else { return nil }
+        return (workspace?.tags ?? []).first { $0.id == selectedTagID }
+    }
+
     private var retiredTags: [MobileCaptureWorkTag] {
         (workspace?.tags ?? []).filter { !$0.isActive }
     }
@@ -839,9 +844,20 @@ private struct CaptureWorkView: View {
                                 )
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Show work tagged \(tag.label) in \(selectedProject?.name ?? "this Nest")")
+                            .accessibilityValue(selectedTagID == tag.id ? "Selected" : "Not selected")
                             .accessibilityIdentifier("CaptureWorkTag_\(tag.id)")
                         }
                     }
+                }
+                if let selectedTag {
+                    Label(
+                        "Showing #\(selectedTag.label) in \(selectedProject?.name ?? "this Nest")",
+                        systemImage: "line.3.horizontal.decrease.circle.fill"
+                    )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(CapturePalette.accent)
+                    .accessibilityIdentifier("CaptureWorkTagFocus")
                 }
                 if !retiredTags.isEmpty {
                     Text("\(retiredTags.count) retired tag\(retiredTags.count == 1 ? "" : "s") remain preserved for history.")

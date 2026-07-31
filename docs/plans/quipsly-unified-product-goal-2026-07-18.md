@@ -4794,3 +4794,34 @@ was restored.
 - This is deployed production and approved TestFlight proof for the canonical
   tag-authoring slice. Physical installation, real two-person consent/capture,
   and end-to-end HGO and coaching dogfood remain mandatory human-present gates.
+
+### 2026-07-30 exact canonical tag focus checkpoint
+
+- Closed the label-as-identity defect in Nest navigation. Canonical tag chips
+  now open `/find?tag=<StudioTag.id>` from Work, Schedule, Session review,
+  Session notes, Nest project pages, Search results, and project-backed writing
+  tags. Text search remains available for discovery but is no longer the tag
+  identity contract.
+- The shared projection resolves the requested ID only inside the actor's
+  visible Nests, follows a preserved same-Nest merge redirect, then queries
+  exact join relations while reapplying each record family's access policy.
+  Renames remain stable; same-label tags in other Nests cannot bleed into the
+  result.
+- Exact focus covers Tasks, Goals, Sessions, visibility-permitted Session
+  notes, permission-filtered documents and writing spans, source annotations,
+  and sources backed by a visible tagged annotation. Unreviewed transcript
+  candidates remain quarantined.
+- iPhone Work already used canonical IDs. Its tag lens now names the exact
+  selected tag and Nest and exposes a selected accessibility value rather than
+  relying on pill color alone.
+- Focused Jest passes 68/68, real PostgreSQL tag coverage passes 13/13
+  including same-label isolation and separate-account nondisclosure, Quipsly
+  TypeScript 7 passes, mobile contracts pass, and App Store static checks pass
+  947/947. The complete Work journey passed on iPhone 17 Pro / iOS 26.3.1.
+- The retained `quipsly.qa@local.test` artifact reused
+  `cms8666060000x6xlax1zfsxi` at revision 1, returned
+  `exactTagFocus:true`, and still has zero Task, Goal, Session, Note, or
+  document assignments.
+- Media-clip and knowledge-node counts remain in audited taxonomy management,
+  but their exact return destinations are not claimed here. Media navigation
+  requires its own permission audit before tag focus links into it.
