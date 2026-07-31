@@ -38,7 +38,8 @@ The Cloud Run workflow is manual-only while the repository recovery branch is
 being integrated. Schema-owned releases require explicit approval and use
 `scripts/release/quipsly-schema-release.sh`. The guarded lane first proves the
 entire migration chain and zero schema diff in a disposable database, pins one
-exact schema-image digest, creates and independently reads back a successful
+exact schema-image digest, uses source-scoped Cloud Run jobs so concurrent
+releases cannot replace one another, creates and independently reads back a successful
 on-demand Cloud SQL backup, applies `prisma migrate deploy`, then requires both
 an up-to-date migration ledger and zero production schema diff. It produces a
 mode-0600 receipt and never invokes the legacy targeted syncs. Run it without

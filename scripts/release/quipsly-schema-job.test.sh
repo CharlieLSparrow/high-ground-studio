@@ -17,6 +17,12 @@ grep -Fq -- '--image="${IMAGE_REFERENCE}"' \
   exit 1
 }
 
+grep -Fq 'job_name="quipsly-schema-${job_suffix}-${source_sha:0:12}"' \
+  "${repo_root}/scripts/release/quipsly-schema-job.sh" || {
+  echo "Schema jobs must be source-scoped so concurrent releases cannot replace one another." >&2
+  exit 1
+}
+
 set +e
 MODE=unknown-schema-mode \
   PROJECT_ID=quipsly-schema-job-test \

@@ -149,7 +149,7 @@ if [[ "${MODE}" == "fixture" ]]; then
 fi
 
 job_suffix="${MODE//[^a-zA-Z0-9-]/-}"
-job_name="quipsly-schema-${job_suffix}"
+job_name="quipsly-schema-${job_suffix}-${source_sha:0:12}"
 
 echo "Deploying ${job_name} in ${MODE} mode from ${source_sha}."
 gcloud run jobs deploy "${job_name}" \
