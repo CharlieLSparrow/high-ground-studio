@@ -1,6 +1,22 @@
 # Current State
 
-Date: 2026-05-26
+Date: 2026-07-30
+
+## Quipsly release checkpoint
+
+- `nest.quipsly.com` is serving Cloud Run revision `studio-00466-lib` from
+  source `6d4bdbfda5a39a275826502f872fb808aa78eda6`.
+- Episode Room can project an existing, same-Nest audio or video source from
+  the canonical Media Vault into shared Watch without duplicating source
+  bytes. Editors can control Watch and explicitly sync receipt-backed watched
+  spans to the episode timeline; viewers remain read-only.
+- A retained local QA identity has an operated Media Vault to Episode Room to
+  Watch to timeline regression journey. The exact release evidence and scope
+  boundary are in
+  `docs/coordination/2026-07-30-episode-room-media-vault-watch-release.md`.
+- Quipsly Capture Build 18 remains the approved TestFlight binary. The web
+  release is consumable by its existing native Watch contract and did not
+  require a new native build.
 
 ## What The Repo Is Right Now
 
