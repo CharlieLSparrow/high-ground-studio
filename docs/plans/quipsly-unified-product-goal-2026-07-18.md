@@ -5343,3 +5343,31 @@ was restored.
   local capacity; the subsequent 150-route build passed cleanly. Production
   preview/promotion, TestFlight packaging, and physical iPhone capture remain
   the next gates.
+
+### 2026-07-31 coaching continuity production checkpoint
+
+- Exact pushed source `0ec3986468d3121176b828e0bc13969e066047cb` passed the
+  dependency-closed Cloud release preflight, including the 30/30 Session
+  evidence suite, pinned TypeScript 7, and the optimized 150-route production
+  build. Cloud Build `3af974d9-4a38-4b82-b019-da54bc7229c3` produced immutable
+  image digest
+  `sha256:a30e76a747ceb4f039f3702a3e4c8896b60ab95108b8a89d307fab83e512085e`.
+- Revision `studio-00474-gel` was deployed at zero traffic and operated through
+  authenticated reviewer, native-session, Capture, Projects, account, writing,
+  editor, recorder, research, and publishing checks before promotion. The
+  guarded lane then moved exactly that revision to 100% production traffic.
+- Independent production readback proves Cloud Run readiness, pinned traffic,
+  domain mapping and certificate health, public support/privacy routes, Cloud
+  SQL health, no recent billing-disabled errors, and all 111 production mobile
+  Capture contract checks. A second generated reviewer completed the real
+  `https://nest.quipsly.com` journey; its Firebase identity and database graph
+  were independently verified absent after bounded cleanup.
+- The retained local coaching corpus remains intentionally preserved for
+  longitudinal regression use. No private retained coaching fixture was copied
+  into production, and the production reviewer did not leave product data.
+- Build 23 now carries the matching native continuity client version. Build 22
+  remains the canonical public TestFlight target until Build 23 is qualified,
+  uploaded, processed, assigned, approved, and independently read back. No
+  physical iPhone currently enumerates, so TestFlight installation, real
+  capture, interruption recovery, upload, playback, and same-ID Nest readback
+  remain explicit human/device gates.
