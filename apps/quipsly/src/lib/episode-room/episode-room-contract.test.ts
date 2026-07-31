@@ -7,6 +7,7 @@ import {
   episodeRoomTimelineIsCurrent,
   episodeRoomTimelineMaterializationIsCurrent,
   episodeRoomTimelineClips,
+  projectEpisodeRoomForLegacyWatch,
   projectedEpisodeRoomPosition,
   type EpisodeRoomActor,
   type EpisodeRoomClip,
@@ -128,6 +129,67 @@ describe("Episode Room contract", () => {
       sourceEnd: 12,
       duration: 8,
     });
+  });
+
+  test("keeps legacy native Watch safe when a saved range is selected", () => {
+    const savedRange: EpisodeRoomClip = {
+      ...clip,
+      watchId: "media-vault-clip:curiosity-opening",
+      title: "Curiosity opening",
+      rangeStartSeconds: 4,
+      rangeEndSeconds: 12,
+    };
+    const projection = projectEpisodeRoomForLegacyWatch({
+      ...createEmptyEpisodeRoomState("2026-07-30T10:00:00.000Z"),
+      revision: 7,
+      status: "playing",
+      selectedClipId: savedRange.watchId,
+      positionSeconds: 8,
+      durationSeconds: 12,
+      activeSegment: {
+        id: "active-range-segment",
+        sessionId: "range-session",
+        clipId: savedRange.watchId,
+        startedAt: "2026-07-30T10:00:01.000Z",
+        sourceStartSeconds: 4,
+        episodeStartSeconds: 1,
+        startReceiptId: "range-play-receipt",
+      },
+      clips: [clip, savedRange],
+    });
+
+    expect(projection.selectedRangeUnsupported).toBe(true);
+    expect(projection.room).toMatchObject({
+      revision: 7,
+      status: "idle",
+      positionSeconds: 0,
+      clips: [clip],
+    });
+    expect(projection.room.selectedClipId).toBeUndefined();
+    expect(projection.room.durationSeconds).toBeUndefined();
+    expect(projection.room.activeSegment).toBeUndefined();
+  });
+
+  test("legacy native Watch keeps controlling a selected whole source", () => {
+    const projection = projectEpisodeRoomForLegacyWatch({
+      ...createEmptyEpisodeRoomState("2026-07-30T10:00:00.000Z"),
+      status: "paused",
+      selectedClipId: clip.watchId,
+      durationSeconds: clip.durationSeconds,
+      clips: [
+        clip,
+        {
+          ...clip,
+          watchId: "media-vault-clip:curiosity-opening",
+          rangeStartSeconds: 4,
+          rangeEndSeconds: 12,
+        },
+      ],
+    });
+
+    expect(projection.selectedRangeUnsupported).toBe(false);
+    expect(projection.room.selectedClipId).toBe(clip.watchId);
+    expect(projection.room.clips).toEqual([clip]);
   });
 
   test("records shared play and pause as an aligned watch segment", () => {

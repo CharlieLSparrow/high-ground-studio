@@ -89,6 +89,11 @@ export type EpisodeRoomState = {
   };
 };
 
+export type EpisodeRoomLegacyWatchProjection = {
+  room: EpisodeRoomState;
+  selectedRangeUnsupported: boolean;
+};
+
 type EpisodeRoomCommandBase = {
   clientRequestId: string;
   expectedRevision: number;
@@ -405,6 +410,38 @@ function episodeSeconds(session: EpisodeRoomSession | undefined, at: string) {
 
 function selectedClip(state: EpisodeRoomState) {
   return state.clips.find((clip) => clip.watchId === state.selectedClipId);
+}
+
+export function projectEpisodeRoomForLegacyWatch(
+  state: EpisodeRoomState,
+): EpisodeRoomLegacyWatchProjection {
+  const clips = state.clips.filter((clip) => clip.watchId === clip.assetId);
+  const selectedRangeUnsupported = Boolean(
+    state.selectedClipId
+    && !clips.some((clip) => clip.watchId === state.selectedClipId),
+  );
+  if (!selectedRangeUnsupported) {
+    return {
+      room: {
+        ...state,
+        clips,
+      },
+      selectedRangeUnsupported: false,
+    };
+  }
+  const room: EpisodeRoomState = {
+    ...state,
+    status: "idle",
+    positionSeconds: 0,
+    clips,
+  };
+  delete room.selectedClipId;
+  delete room.durationSeconds;
+  delete room.activeSegment;
+  return {
+    room,
+    selectedRangeUnsupported: true,
+  };
 }
 
 function selectedPosition(state: EpisodeRoomState, commandPosition: number | undefined, at: string) {

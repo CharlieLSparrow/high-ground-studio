@@ -432,6 +432,7 @@ final class MobileEpisodeWatchClient: ObservableObject {
             components?.queryItems = [
                 URLQueryItem(name: "episode", value: context.episodeSlug),
                 URLQueryItem(name: "watch", value: "1"),
+                URLQueryItem(name: "watchProtocol", value: "2"),
             ]
             guard let url = components?.url else { throw URLError(.badURL) }
             var request = URLRequest(url: url)

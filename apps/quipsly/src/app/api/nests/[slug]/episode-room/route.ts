@@ -15,6 +15,7 @@ import {
 import { resolveEpisodeProductionAccess } from "@/lib/server/episode-production-access";
 import { getPrismaClient } from "@/lib/prisma";
 import { roleAllowsAction } from "@/lib/server/studio-project-access";
+import { projectEpisodeRoomForLegacyWatch } from "@/lib/episode-room/episode-room-contract";
 
 export const dynamic = "force-dynamic";
 
@@ -155,13 +156,25 @@ export async function GET(
     if (!runtime) {
       return NextResponse.json({ ok: false, error: "Episode production not found." }, { status: 404 });
     }
+    const supportsSavedRanges = (
+      request.nextUrl.searchParams.get("watchProtocol") === "2"
+    );
+    const projection = supportsSavedRanges
+      ? {
+          room: runtime.room,
+          selectedRangeUnsupported: false,
+        }
+      : projectEpisodeRoomForLegacyWatch(runtime.room);
     const canEdit = readAccess.access.role
       ? roleAllowsAction(readAccess.access.role, "write")
       : false;
     return NextResponse.json({
       ok: true,
       ...runtime,
-      canEdit,
+      room: projection.room,
+      canEdit: canEdit && !projection.selectedRangeUnsupported,
+      watchProtocol: supportsSavedRanges ? 2 : 1,
+      watchUpgradeRequired: projection.selectedRangeUnsupported,
       serverNow: new Date().toISOString(),
     });
   }

@@ -355,7 +355,16 @@ describe("Episode Room runtime route", () => {
       },
     } as never);
     jest.mocked(loadEpisodeRoomWatchRuntime).mockResolvedValue({
-      room: { revision: 8, status: "paused" },
+      room: {
+        version: "quipsly-episode-room.v1",
+        revision: 8,
+        status: "paused",
+        positionSeconds: 0,
+        effectiveAt: "2026-07-29T10:00:00.000Z",
+        clips: [],
+        segments: [],
+        receipts: [],
+      },
       updatedAt: "2026-07-29T10:00:00.000Z",
     } as never);
 
@@ -374,7 +383,140 @@ describe("Episode Room runtime route", () => {
       ok: true,
       canEdit: true,
       room: { revision: 8, status: "paused" },
+      watchProtocol: 1,
+      watchUpgradeRequired: false,
       serverNow: expect.any(String),
+    });
+  });
+
+  it("serves exact saved ranges only to the negotiated native Watch protocol", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: true,
+      actor: {
+        id: "user-1",
+        email: "editor@example.test",
+        name: "Episode Editor",
+        isStaff: false,
+        source: "firebase-bearer",
+      },
+      access: {
+        allowed: true,
+        projectId: "project-1",
+        role: "EDITOR",
+      },
+    } as never);
+    const rangeRoom = {
+      version: "quipsly-episode-room.v1",
+      revision: 9,
+      status: "paused",
+      selectedClipId: "media-vault-clip:range-1",
+      positionSeconds: 4,
+      effectiveAt: "2026-07-29T10:00:00.000Z",
+      durationSeconds: 12,
+      clips: [{
+        watchId: "media-vault-clip:range-1",
+        assetId: "asset-1",
+        title: "Opening exchange",
+        kind: "video",
+        playbackUrl: "/api/ingest/media/source-1",
+        durationSeconds: 74,
+        rangeStartSeconds: 4,
+        rangeEndSeconds: 12,
+        addedAt: "2026-07-29T09:59:00.000Z",
+        addedBy: "Episode Editor",
+      }],
+      segments: [],
+      receipts: [],
+    };
+    jest.mocked(loadEpisodeRoomWatchRuntime).mockResolvedValue({
+      room: rangeRoom,
+      updatedAt: "2026-07-29T10:00:00.000Z",
+    } as never);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nests/high-ground-odyssey/episode-room?episode=episode-4-part-2&watch=1&watchProtocol=2",
+      { headers: { authorization: "Bearer firebase-id-token" } },
+    ), params);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      canEdit: true,
+      watchProtocol: 2,
+      watchUpgradeRequired: false,
+      room: {
+        status: "paused",
+        selectedClipId: "media-vault-clip:range-1",
+        positionSeconds: 4,
+        clips: [{
+          watchId: "media-vault-clip:range-1",
+          rangeStartSeconds: 4,
+          rangeEndSeconds: 12,
+        }],
+      },
+    });
+  });
+
+  it("fails legacy native Watch safely closed while an exact range is selected", async () => {
+    jest.mocked(resolveEpisodeProductionAccess).mockResolvedValue({
+      allowed: true,
+      actor: {
+        id: "user-1",
+        email: "editor@example.test",
+        name: "Episode Editor",
+        isStaff: false,
+        source: "firebase-bearer",
+      },
+      access: {
+        allowed: true,
+        projectId: "project-1",
+        role: "EDITOR",
+      },
+    } as never);
+    jest.mocked(loadEpisodeRoomWatchRuntime).mockResolvedValue({
+      room: {
+        version: "quipsly-episode-room.v1",
+        revision: 9,
+        status: "playing",
+        selectedClipId: "media-vault-clip:range-1",
+        positionSeconds: 8,
+        effectiveAt: "2026-07-29T10:00:00.000Z",
+        durationSeconds: 12,
+        clips: [{
+          watchId: "media-vault-clip:range-1",
+          assetId: "asset-1",
+          title: "Opening exchange",
+          kind: "video",
+          playbackUrl: "/api/ingest/media/source-1",
+          durationSeconds: 74,
+          rangeStartSeconds: 4,
+          rangeEndSeconds: 12,
+          addedAt: "2026-07-29T09:59:00.000Z",
+          addedBy: "Episode Editor",
+        }],
+        segments: [],
+        receipts: [],
+      },
+      updatedAt: "2026-07-29T10:00:00.000Z",
+    } as never);
+
+    const response = await GET(new NextRequest(
+      "http://localhost/api/nests/high-ground-odyssey/episode-room?episode=episode-4-part-2&watch=1",
+      { headers: { authorization: "Bearer firebase-id-token" } },
+    ), params);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      canEdit: false,
+      watchProtocol: 1,
+      watchUpgradeRequired: true,
+      room: {
+        revision: 9,
+        status: "idle",
+        positionSeconds: 0,
+        clips: [],
+      },
     });
   });
 

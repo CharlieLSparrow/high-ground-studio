@@ -80,7 +80,11 @@ check(
 check(
   "one-second native polls use a lightweight projection instead of the manuscript runtime",
   watch.includes('URLQueryItem(name: "watch", value: "1")')
+    && watch.includes('URLQueryItem(name: "watchProtocol", value: "2")')
     && episodeRoute.includes('searchParams.get("watch") === "1"')
+    && episodeRoute.includes('searchParams.get("watchProtocol") === "2"')
+    && episodeRoute.includes("projectEpisodeRoomForLegacyWatch")
+    && episodeRoute.includes("watchUpgradeRequired")
     && episodeRoute.includes("loadEpisodeRoomWatchRuntime")
     && episodeStore.includes("export async function loadEpisodeRoomWatchRuntime")
     && episodeStore.includes("select: {\n      productionJson: true,\n      updatedAt: true,")
