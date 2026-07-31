@@ -2,6 +2,28 @@
 
 Date: 2026-07-31
 
+## Retained Work progress operation checkpoint
+
+- Exact source `82c4223e1beb8ce936fa38b27b03ffac1b1d65db` adds a
+  loopback-only rendered mutation lane for the fixed retained `.test` media
+  operator and its durable Capture-to-Nest goal.
+- Real operation exposed two same-titled goals whose current-versus-restored
+  identity was unclear. Portable restore copies now have a visible **Restored
+  copy** badge, recovery explanation, and distinct accessible heading while
+  both histories remain intact.
+- The same operation exposed unstable accessible names on the compact progress
+  form and nondeterministic database readback across the two identities. The
+  controls now have explicit names, canonical readback requires the one
+  non-restored goal, and exact latest-note replay is refused.
+- Operated the exact committed Work UI and appended one real 25% progress
+  receipt. Independent readback proved count 3 to 4, actor/note/percentage and
+  embedded/source receipt agreement, zero browser exceptions, clean session
+  removal, no secrets/screenshots, no external effects, and preserved QA data.
+- Focused Work tests pass 39/39, retained-operation tests pass 3/3,
+  cross-surface contracts pass 176/176, TypeScript 7 passes, and the optimized
+  150-route Quipsly build succeeds. Exact evidence is in
+  `docs/coordination/2026-07-31-retained-work-progress-operation.md`.
+
 ## Schema pipeline hardening checkpoint
 
 - Exact source `30264d5cbb8094f175c36fcd7693639648d3810f` replaces the

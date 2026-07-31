@@ -5203,3 +5203,31 @@ was restored.
   Firebase authorization, exact guarded schema apply, matching zero-traffic
   Nest acceptance and promotion, fresh native qualification, and real-device
   capture/recovery/upload/playback with same-ID Nest readback.
+
+### 2026-07-31 retained Work progress operation checkpoint
+
+- Converted the durable-test-artifact policy into a separate loopback-only
+  rendered operation. The fixed retained `.test` media operator now records
+  real goal progress through the visible Work UI, preserves the receipt, clears
+  its session, and independently reads canonical PostgreSQL state back.
+- Doing the work exposed a current goal and portable-restore copy with the same
+  title and no useful identity distinction. Work now marks portable restores
+  with a visible **Restored copy** badge, explains their separate preserved
+  history, and gives the heading a distinct accessible name without deleting
+  or merging either record.
+- The operation also found unstable accessible naming on the compact progress
+  controls and nondeterministic readback across the two database identities.
+  Controls now have explicit names; readback selects exactly one non-restored
+  current goal and refuses an accidental replay of the same latest note.
+- Operated clean committed source
+  `82c4223e1beb8ce936fa38b27b03ffac1b1d65db`. One visible 25% progress
+  save advanced the append-only receipt count from 3 to 4. Actor, note,
+  percentage, row evidence, goal source receipt, session cleanup, and no-effect
+  boundaries all independently agree; the artifact remains retained.
+- Focused Work tests pass 39/39, retained-operation boundary tests pass 3/3,
+  cross-surface contracts pass 176/176, TypeScript 7 passes, explicit diff
+  checks pass, and the optimized Quipsly build succeeds for all 150 routes.
+- This local retained operation proves useful work can improve the product and
+  remain as longitudinal QA state. It does not close cloud authorization,
+  production schema/backend parity, TestFlight, physical-device recording, or
+  genuine episode/coaching workflow gates.
