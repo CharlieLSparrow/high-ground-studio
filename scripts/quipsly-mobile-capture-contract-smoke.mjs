@@ -225,8 +225,18 @@ function checkMeetingSpineContractSources() {
   const lifecycleText = sourceText("packages/quipsly-domain/src/coaching-lifecycle.ts");
   const bridgeText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/BridgeModels.swift");
   const componentsText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/QuipslyMobileComponents.swift");
+  const capturePhoneShellText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/CapturePhoneShell.swift");
+  const captureRecorderViewText = capturePhoneShellText.slice(
+    capturePhoneShellText.indexOf("private struct CaptureRecorderView: View"),
+    capturePhoneShellText.indexOf("private struct CaptureSessionFollowUpStatus: View"),
+  );
   const providerRoomText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/ProviderRoomController.swift");
+  const authManagerText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/AuthManager.swift");
+  const episodeChatText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCapture/MobileEpisodeChat.swift");
+  const nestChatRouteText = sourceText("apps/quipsly/src/app/api/nest-chat/route.ts");
   const liveKitEgressText = sourceText("apps/quipsly/src/lib/server/coaching-livekit-egress.ts");
+  const runtimeUITestText = sourceText("apps/mobile-capture/HighGroundCapture/HighGroundCaptureUITests/CaptureRoomRuntimeSmokeTests.swift");
+  const runtimeRunnerText = sourceText("apps/mobile-capture/HighGroundCapture/scripts/run-capture-runtime-ui-smoke.sh");
 
   expect(
     roomJoinText.includes("buildQuipslyMeetingJoinSpine")
@@ -292,8 +302,9 @@ function checkMeetingSpineContractSources() {
     bridgeText.includes("liveKitEgressStartEnabled")
       && bridgeText.includes("providerEgressLabel")
       && bridgeText.includes("Configured, but held until LIVEKIT_EGRESS_ENABLED=true. Joining is not recording.")
-      && componentsText.includes("readiness.providerEgressLabel")
-      && componentsText.includes("readiness.providerReadiness?.sourceOfTruth"),
+      && capturePhoneShellText.includes("readiness.providerEgressLabel")
+      && capturePhoneShellText.includes("readiness.providerEgressDetail")
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureProviderRecordingBoundary")'),
     "nativeReadinessShowsProviderEgressGate",
     "Native Capture readback distinguishes provider join readiness from server-recording start readiness.",
   );
@@ -305,14 +316,28 @@ function checkMeetingSpineContractSources() {
       && providerRoomText.includes("reportOutgoingCall")
       && providerRoomText.includes("nativeCallPresentationLabel")
       && providerRoomText.includes("Quipsly recording truth remains separate")
-      && componentsText.includes("CallKitBoundaryCard")
-      && componentsText.includes("CallKit makes a Quipsly-owned room feel native on iPhone")
-      && componentsText.includes("CallKit can present or end the live room, but it never creates recording evidence by itself.")
-      && componentsText.includes("not phone/FaceTime")
-      && componentsText.includes("join not recording")
-      && componentsText.includes("Nest CallRoom truth"),
+      && capturePhoneShellText.includes("model.providerRoom.nativeCallPresentationLabel")
+      && capturePhoneShellText.includes("CallKit only presents the Quipsly-owned live room on iPhone")
+      && capturePhoneShellText.includes("Joining, CallKit, consent, local recording, and server recording remain separate states in Nest."),
     "nativeCallKitPresentationBoundary",
     "Native Capture protects CallKit as iPhone presentation for a Quipsly-owned room, never as recording, consent, transcript, or packet truth.",
+  );
+  expect(
+    authManagerText.includes("the denial belongs to that feature")
+      && authManagerText.includes("own decoding and handling every returned HTTP status.")
+      && !authManagerText.includes("AuthenticatedRequestError.sessionRejected")
+      && nestChatRouteText.includes('import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";')
+      && nestChatRouteText.includes("const session = await getQuipslySessionFromRequest(request);"),
+    "nativeFeatureAuthorizationCannotEvictValidAccount",
+    "A feature-scoped denial cannot evict a canonically verified native account, and episode chat accepts the shared Firebase bearer-or-cookie identity boundary.",
+  );
+  expect(
+    episodeChatText.includes("pollingDisabledForMissingThread")
+      && episodeChatText.includes("responseCode == 404")
+      && episodeChatText.includes("Episode thread unavailable")
+      && episodeChatText.includes("guard !self.pollingDisabledForMissingThread else { return }"),
+    "nativeMissingEpisodeThreadStopsBackgroundPolling",
+    "A Session without a canonical episode thread stops background polling after the terminal 404 while preserving explicit manual refresh.",
   );
   expect(
     roomJoinDiagnosticsText.includes("diagnosticOnly: true")
@@ -386,18 +411,28 @@ function checkMeetingSpineContractSources() {
   expect(
     bridgeText.includes("struct MobileCaptureSessionCreateResponse")
       && bridgeText.includes("func createQuickSession(title: String, purpose: String, provider: String = \"livekit\")")
-      && componentsText.includes("QuickCaptureSessionCreator")
-      && componentsText.includes("CaptureWorkflowMapCard")
-      && componentsText.includes("Create session")
-      && componentsText.includes("Grant consent")
-      && componentsText.includes("Record locally")
-      && componentsText.includes("Build packet")
-      && componentsText.includes("joining a room is not recording")
-      && componentsText.includes("Create Quipsly session")
-      && componentsText.includes("quickSessionPurpose")
-      && componentsText.includes("createQuickCaptureSession()"),
+      && capturePhoneShellText.includes("NewCaptureSessionSheet")
+      && capturePhoneShellText.includes("showsNewSession")
+      && capturePhoneShellText.includes('accessibilityIdentifier("NewCaptureSessionCreateButton")')
+      && capturePhoneShellText.includes("Recording will still wait for explicit consent.")
+      && capturePhoneShellText.includes("await model.createSession()")
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureOpenNextSessionButton")')
+      && capturePhoneShellText.includes("TabView(selection: $visibleTab)")
+      && capturePhoneShellText.includes("@Binding var visibleTab: CaptureRootTab")
+      && capturePhoneShellText.includes("visibleTab = .record")
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureRecorderView")')
+      && runtimeUITestText.includes("testIPhoneCreatesRetainedSessionAndReadsRecordingTruth")
+      && runtimeUITestText.includes('app.buttons["CaptureOpenNextSessionButton"]')
+      && runtimeRunnerText.includes("session-create-surface)"),
     "nativeCaptureCanCreateSafeQuickSession",
     "Native Capture exposes a first-class create-session action before recording consent and recording controls.",
+  );
+  expect(
+    captureRecorderViewText.indexOf("ConsentStrip(") >= 0
+      && captureRecorderViewText.indexOf("RecorderHero(") > captureRecorderViewText.indexOf("ConsentStrip(")
+      && captureRecorderViewText.indexOf("CaptureQuickEntryBar(") > captureRecorderViewText.indexOf("RecorderHero("),
+    "nativeRecordHierarchyKeepsCapturePrimary",
+    "The shipping Record hierarchy keeps consent and the local recorder ahead of quick entry and follow-through tools.",
   );
   expect(
     bridgeText.includes("struct ProviderJoin: Codable")
@@ -444,8 +479,9 @@ function checkMeetingSpineContractSources() {
       && sessionsText.includes("substantial-recording-evidence-needed")
       && bridgeText.includes("struct MobileCaptureContentReadiness")
       && bridgeText.includes("let substantialRecordingCount: Int?")
-      && componentsText.includes("MobileCaptureContentReadiness")
-      && componentsText.includes("Proof only"),
+      && capturePhoneShellText.includes("session.contentReadiness")
+      && capturePhoneShellText.includes("Proof only")
+      && capturePhoneShellText.includes("content.evidenceLine"),
     "capturePlumbingDoesNotImplyProductionContent",
     "Nest and native Capture distinguish receipt/upload plumbing from substantial non-simulator source content without changing consent or processing gates.",
   );
@@ -470,21 +506,19 @@ function checkMeetingSpineContractSources() {
     "Native capture app decodes and labels the mobile session journey summary.",
   );
   expect(
-    componentsText.includes("struct MobileCaptureJourneyCard")
-      && componentsText.includes("MobileCaptureJourneyCard(session:")
-      && componentsText.includes("accessibilityIdentifier(\"MobileCaptureJourneyCard\")"),
+    capturePhoneShellText.includes("CaptureSessionTruthPanel")
+      && capturePhoneShellText.includes("session.journeyStageLabel")
+      && capturePhoneShellText.includes("session.journeyNextAction")
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureSessionTruthPanel")'),
     "nativeCaptureShowsJourneySummary",
     "Native capture UI shows the journey summary beside readiness and safety state.",
   );
   expect(
-    componentsText.includes("struct ProviderRecordingCard")
-      && componentsText.includes("ProviderRecordingCard(")
-      && componentsText.includes("onPrepareProviderRecording")
-      && componentsText.includes("Prepare receipt slot")
-      && componentsText.includes("Provider recording is separate from joining the live room")
-      && componentsText.includes("Nest has receipt/start/stop/reconcile routes")
-      && componentsText.includes("start and stop stay explicit and operator-gated")
-      && componentsText.includes("accessibilityIdentifier(\"ProviderRecordingCard\")"),
+    capturePhoneShellText.includes("CaptureProviderRecordingBoundary")
+      && capturePhoneShellText.includes("Prepare server-recording receipt")
+      && capturePhoneShellText.includes("It does not join the room or start recording.")
+      && capturePhoneShellText.includes("session.providerReceiptActionLabel")
+      && capturePhoneShellText.includes("readiness.providerEgressLabel"),
     "nativeCaptureShowsProviderRecordingBoundary",
     "Native capture UI shows provider recording as a separate explicit receipt-backed state, not a hidden side effect of joining.",
   );
@@ -508,7 +542,8 @@ function checkMeetingSpineContractSources() {
       && providerRecordingRouteText.includes("status: \"HELD\"")
       && bridgeText.includes("struct MobileProviderRecordingResponse")
       && bridgeText.includes("prepareProviderRecordingReceiptSlot")
-      && componentsText.includes("prepareProviderRecordingReceiptSlot()"),
+      && capturePhoneShellText.includes("prepareProviderRecordingReceipt()")
+      && capturePhoneShellText.includes("model.sessionClient.prepareProviderRecordingReceiptSlot(for: session)"),
     "providerRecordingReceiptSlotRoute",
     "Provider recording has a Nest-owned route for receipt slots plus staff-only provider egress start/stop/reconcile controls while native capture remains local-first.",
   );
@@ -744,35 +779,16 @@ function checkReviewDigestContractSources() {
     "Native capture decodes the authenticated review digest, per-session action packets, shared lifecycle safe actions, and side-effect-free boundary in app language.",
   );
   expect(
-    componentsText.includes("struct MobileCaptureReviewDigestPanel")
-      && componentsText.includes("CaptureReviewDigestClient")
-      && componentsText.includes("Most common blockers")
-      && componentsText.includes("Next safe actions")
-      && componentsText.includes("Action packets")
-      && componentsText.includes("struct MobileCaptureActionPacketCard")
-      && componentsText.includes("MobileCaptureActionPacketCard(session:")
-      && componentsText.includes("Provider recording is not started by joining")
-      && componentsText.includes("Safe next actions")
-      && componentsText.includes("Action boundary:")
-      && componentsText.includes("Room state evidence")
-      && componentsText.includes("RoomStateEvidenceCard")
-      && componentsText.includes("Transcript evidence")
-      && componentsText.includes("TranscriptRunEvidenceCard")
-      && componentsText.includes("Packet truth")
-      && componentsText.includes("MobileCapturePacketTruthPanel")
-      && componentsText.includes("Review lanes")
-      && componentsText.includes("MobileCapturePacketReviewLaneRow")
-      && componentsText.includes("MobileCapturePacketReviewLaneControls")
-      && componentsText.includes("APPROVED_FOR_INTERNAL_USE")
-      && componentsText.includes("NEEDS_REVISION")
-      && componentsText.includes("REJECTED_BY_HUMAN")
-      && componentsText.includes("accessibilityIdentifier(\"MobileCaptureLifecycleSafeActionRow\")")
-      && componentsText.includes("accessibilityIdentifier(\"MobileCaptureActionPacketCard\")")
-      && componentsText.includes("accessibilityIdentifier(\"MobileCapturePacketReviewLaneRow\")")
-      && componentsText.includes("Visible session receipts")
-      && componentsText.includes("accessibilityIdentifier(\"MobileCaptureReviewDigestPanel\")"),
-    "nativeReviewDigestPanelVisible",
-    "Native capture UI exposes the review digest, safe action packets, and lifecycle safe actions as first-class reviewer and agent readback surfaces.",
+    capturePhoneShellText.includes("CaptureSessionTruthPanel")
+      && capturePhoneShellText.includes("Lifecycle receipts")
+      && capturePhoneShellText.includes("session.lifecycleReceiptLine")
+      && capturePhoneShellText.includes("Safe next actions")
+      && capturePhoneShellText.includes("session.lifecycleSafeActions.prefix(3)")
+      && capturePhoneShellText.includes("Boundary: \\(action.boundary)")
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureLifecycleSafeAction_\\(action.id)")')
+      && capturePhoneShellText.includes('accessibilityIdentifier("CaptureSessionTruthDisclosure")'),
+    "nativeSessionTruthPanelVisible",
+    "The shipping native Capture shell exposes journey, lifecycle receipt, safe-action, source-quality, and recording-boundary truth without restoring the disconnected reviewer control board.",
   );
   expect(
     contentViewText.includes("CapturePhoneShell()")

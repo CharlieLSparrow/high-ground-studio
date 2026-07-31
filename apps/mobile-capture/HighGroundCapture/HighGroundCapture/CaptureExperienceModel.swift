@@ -150,7 +150,6 @@ enum CaptureLaunchConfiguration {
 
 @MainActor
 final class CaptureExperienceModel: ObservableObject {
-    @Published var selectedTab: CaptureRootTab = .today
     @Published var selectedSessionID: String?
     @Published var isRefreshing = false
     @Published var isCreatingSession = false
@@ -208,10 +207,6 @@ final class CaptureExperienceModel: ObservableObject {
     init(usesPreviewData: Bool? = nil) {
         self.usesPreviewData = usesPreviewData ?? CaptureLaunchConfiguration.usesPreviewData
         observedReceiptOwnerAccountID = normalizedOwnerAccountID(AuthManager.currentStoredOwnerID())
-        if self.usesPreviewData, let previewTab = CaptureLaunchConfiguration.previewTab {
-            selectedTab = previewTab
-        }
-
         sessionClient.objectWillChange
             .sink { [weak self] _ in self?.objectWillChange.send() }
             .store(in: &cancellables)
@@ -684,7 +679,7 @@ final class CaptureExperienceModel: ObservableObject {
         }
     }
 
-    func select(_ session: MobileCaptureSession, openRecorder: Bool = false) {
+    func select(_ session: MobileCaptureSession) {
         if isSessionContextLocked, selectedSession?.id != session.id {
             errorMessage = "Stop and save the active recording or leave the live room before changing sessions."
             return
@@ -693,9 +688,6 @@ final class CaptureExperienceModel: ObservableObject {
         preparedRoomJoin = nil
         message = nil
         errorMessage = nil
-        if openRecorder {
-            selectedTab = .record
-        }
         guard !usesPreviewData else { return }
         Task { [weak self] in
             await self?.sessionClient.refreshClientFollowUp(forSessionID: session.id)
@@ -728,7 +720,6 @@ final class CaptureExperienceModel: ObservableObject {
             sessionClient.sessions.insert(created, at: 0)
             selectedSessionID = created.id
             newSessionTitle = ""
-            selectedTab = .record
             message = "Session created. Confirm consent when everyone is ready."
             return true
         }
@@ -743,7 +734,6 @@ final class CaptureExperienceModel: ObservableObject {
 
         selectedSessionID = created.id
         newSessionTitle = ""
-        selectedTab = .record
         message = "Session created. Confirm consent when everyone is ready."
         return true
     }

@@ -64,6 +64,13 @@ case "$TEST_MODE" in
   surface)
     TEST_CASE="testSignedInCaptureRoomSurfacesAreVisible"
     ;;
+  session-create-surface)
+    TEST_CASE="testIPhoneCreatesRetainedSessionAndReadsRecordingTruth"
+    if [[ "$TEST_SESSION_TITLE" != "QA Retained · "* ]]; then
+      echo "Retained Session truth mode requires one unique title beginning with 'QA Retained · '." >&2
+      exit 2
+    fi
+    ;;
   transcript-follow-through)
     TEST_CASE="testTranscriptFollowThroughReturnsToExactSourceOnIPhone"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_GOAL_ID" ]]; then
@@ -222,7 +229,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, transcript-follow-through, client-follow-up, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, session-create-surface, transcript-follow-through, client-follow-up, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, project-create, or session-note-edit)" >&2
     exit 2
     ;;
 esac

@@ -2,8 +2,8 @@
 
 import { NextRequest } from "next/server";
 
-import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 import {
   findStudioProjectForAccess,
   resolveStudioProjectAccess,
@@ -11,8 +11,10 @@ import {
 
 import { GET, POST } from "./route";
 
-jest.mock("@/auth", () => ({ auth: jest.fn() }));
 jest.mock("@/lib/prisma", () => ({ getPrismaClient: jest.fn() }));
+jest.mock("@/lib/server/quipsly-session", () => ({
+  getQuipslySessionFromRequest: jest.fn(),
+}));
 jest.mock("@/lib/server/studio-project-access", () => ({
   findStudioProjectForAccess: jest.fn(),
   normalizeAccessEmail: (value: unknown) =>
@@ -48,7 +50,7 @@ const prisma = {
 describe("scoped Nest chat threads", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    jest.mocked(auth).mockResolvedValue({
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: {
         id: "user-1",
         primaryEmail: "Editor@Example.Test",
@@ -196,6 +198,23 @@ describe("scoped Nest chat threads", () => {
       actor: { role: "VIEWER" },
       thread: { key: "episode:episode-4-part-2" },
     });
+  });
+
+  it("uses the shared Firebase bearer-or-cookie session boundary for native chat", async () => {
+    jest.mocked(resolveStudioProjectAccess).mockResolvedValue({
+      allowed: true,
+      projectId: "project-1",
+      role: "EDITOR",
+    } as never);
+    const nativeRequest = new NextRequest(
+      "http://localhost/api/nest-chat?projectSlug=high-ground-odyssey&episodeSlug=episode-4-part-2",
+      { headers: { authorization: "Bearer retained-native-token" } },
+    );
+
+    const response = await GET(nativeRequest);
+
+    expect(response.status).toBe(200);
+    expect(getQuipslySessionFromRequest).toHaveBeenCalledWith(nativeRequest);
   });
 
   it("replays the same client message identity without a duplicate insert", async () => {

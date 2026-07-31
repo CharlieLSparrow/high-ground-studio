@@ -4,12 +4,14 @@ import { randomUUID } from "node:crypto";
 
 import { NextRequest } from "next/server";
 
-import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import { GET, POST } from "./route";
 
-jest.mock("@/auth", () => ({ auth: jest.fn() }));
+jest.mock("@/lib/server/quipsly-session", () => ({
+  getQuipslySessionFromRequest: jest.fn(),
+}));
 
 const runLocalDatabaseSmoke =
   process.env.QUIPSLY_LOCAL_DB_SMOKE === "1" ? describe : describe.skip;
@@ -138,7 +140,7 @@ runLocalDatabaseSmoke("episode collaboration local database smoke", () => {
   });
 
   it("persists one exact episode message and deduplicates the retry", async () => {
-    jest.mocked(auth).mockResolvedValue({
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: {
         id: "episode-chat-editor",
         primaryEmail: editorEmail,
@@ -180,7 +182,7 @@ runLocalDatabaseSmoke("episode collaboration local database smoke", () => {
   });
 
   it("lets a Viewer read the canonical thread but never author it", async () => {
-    jest.mocked(auth).mockResolvedValue({
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: {
         id: "episode-chat-viewer",
         primaryEmail: viewerEmail,
@@ -212,7 +214,7 @@ runLocalDatabaseSmoke("episode collaboration local database smoke", () => {
   });
 
   it("does not disclose the episode or create a shadow thread for an outsider", async () => {
-    jest.mocked(auth).mockResolvedValue({
+    jest.mocked(getQuipslySessionFromRequest).mockResolvedValue({
       user: {
         id: "episode-chat-outsider",
         primaryEmail: outsiderEmail,

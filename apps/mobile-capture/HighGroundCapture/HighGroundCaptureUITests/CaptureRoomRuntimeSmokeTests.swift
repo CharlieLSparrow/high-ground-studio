@@ -219,7 +219,8 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
 
     private func launchSignedInCaptureApp(
         baseURLOverride: String? = nil,
-        expectProtectedOfflineShell: Bool = false
+        expectProtectedOfflineShell: Bool = false,
+        initialTab: String = "today"
     ) throws -> XCUIApplication {
         let credentials = try runtimeSmokeCredentials()
         let app = XCUIApplication()
@@ -228,6 +229,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             app.launchEnvironment["QUIPSLY_CAPTURE_UI_TEST_CREDENTIALS_FILE"] = credentialsPath
         }
         app.launchArguments.append("--quipsly-capture-runtime-smoke")
+        if initialTab != "today" {
+            app.launchArguments.append("--capture-ui-preview-tab=\(initialTab)")
+        }
         app.launch()
 
         if expectProtectedOfflineShell {
@@ -239,9 +243,24 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         }
 
         signInIfNeeded(app, credentials: credentials)
+        let initialSurfaceIdentifier: String
+        switch initialTab {
+        case "record": initialSurfaceIdentifier = "CaptureRecorderView"
+        case "work": initialSurfaceIdentifier = "CaptureWorkView"
+        case "library": initialSurfaceIdentifier = "CaptureLibraryView"
+        case "account": initialSurfaceIdentifier = "CaptureAccountView"
+        default: initialSurfaceIdentifier = "CaptureTodayView"
+        }
+        if initialTab != "today" {
+            let expectedTitle = initialTab.capitalized
+            XCTAssertTrue(
+                app.navigationBars[expectedTitle].waitForExistence(timeout: 60),
+                "The requested root tab should be visibly selected; a hidden TabView descendant is not launch proof."
+            )
+        }
         XCTAssertTrue(
-            app.scrollViews["CaptureTodayView"].waitForExistence(timeout: 60),
-            "The native auth transaction should finish and load the signed-in Today surface before workflow navigation begins."
+            app.descendants(matching: .any)[initialSurfaceIdentifier].waitForExistence(timeout: 60),
+            "The native auth transaction should finish and load the requested signed-in root surface before workflow navigation begins."
         )
         return app
     }
@@ -253,6 +272,7 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             // login form while XCTest is resolving it. Only type into a form
             // that remains present after that startup transition settles.
             RunLoop.current.run(until: Date().addingTimeInterval(1))
+            if app.tabBars.firstMatch.exists { return }
             guard emailField.exists else { return }
             if (emailField.value as? String) != credentials.email {
                 emailField.tap()
@@ -262,7 +282,14 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             }
 
             let passwordField = app.secureTextFields["QuipslyCapturePasswordField"]
-            XCTAssertTrue(passwordField.waitForExistence(timeout: 4), "Password field should be visible on the real native login surface.")
+            if !passwordField.waitForExistence(timeout: 4) {
+                XCTAssertTrue(
+                    app.tabBars.firstMatch.exists,
+                    "The restored session should reach Capture if its transient password field disappears."
+                )
+                return
+            }
+            if app.tabBars.firstMatch.exists { return }
             let currentPassword = passwordField.value as? String
             if currentPassword == nil || currentPassword?.isEmpty == true || currentPassword == "Password" {
                 passwordField.tap()
@@ -270,7 +297,15 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             }
 
             let signInButton = app.buttons["QuipslyCaptureSignInButton"]
-            XCTAssertTrue(signInButton.waitForExistence(timeout: 4), "Sign-in button should be visible on the real native login surface.")
+            if app.tabBars.firstMatch.exists { return }
+            if !signInButton.waitForExistence(timeout: 4) {
+                XCTAssertTrue(
+                    app.tabBars.firstMatch.exists,
+                    "The restored session should reach Capture if its transient sign-in surface disappears."
+                )
+                return
+            }
+            if app.tabBars.firstMatch.exists { return }
             signInButton.tap()
         }
     }
@@ -2220,6 +2255,34 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             "The local recorder start control should have a stable accessibility identity."
         )
 
+        let sessionTruth = app.buttons["CaptureSessionTruthDisclosure"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(sessionTruth, in: app, timeout: 8, swipeAttempts: 4),
+            "Record should expose one calm expandable summary of source, lifecycle, and recording truth."
+        )
+        sessionTruth.tap()
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.staticTexts["Journey"].firstMatch,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 3
+            )
+        )
+        let recordingBoundaryCopy = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Joining, CallKit, consent, local recording, and server recording remain separate states")
+        ).firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                recordingBoundaryCopy,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 6
+            ),
+            "CallKit, room join, consent, local recording, and server recording should remain visibly separate."
+        )
+        sessionTruth.tap()
+
         let liveRoom = app.descendants(matching: .any)["CaptureLiveRoomDisclosure"].firstMatch
         XCTAssertTrue(waitForRuntimeElement(liveRoom, in: app), "Provider-room controls should be subordinate to the local recorder.")
         liveRoom.tap()
@@ -2230,6 +2293,133 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Library"].firstMatch.exists)
         XCTAssertTrue(app.tabBars.buttons["Account"].firstMatch.exists)
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists, "A recording-in-progress banner must not appear before a take starts.")
+    }
+
+    func testIPhoneCreatesRetainedSessionAndReadsRecordingTruth() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionTitle = credentials.sessionTitle,
+              sessionTitle.hasPrefix("QA Retained · ") else {
+            throw XCTSkip("Retained Session truth requires one unique visibly retained Session title.")
+        }
+        var app = try launchSignedInCaptureApp()
+
+        let newSession = app.buttons["New session"].firstMatch
+        XCTAssertTrue(newSession.waitForExistence(timeout: 20))
+        newSession.tap()
+        XCTAssertTrue(app.navigationBars["New session"].waitForExistence(timeout: 6))
+
+        let title = app.textFields["NewCaptureSessionTitleField"].firstMatch
+        XCTAssertTrue(title.waitForExistence(timeout: 4))
+        title.tap()
+        title.typeText(sessionTitle)
+        let create = app.buttons["NewCaptureSessionCreateButton"].firstMatch
+        XCTAssertTrue(create.isEnabled)
+        create.tap()
+
+        XCTAssertTrue(
+            app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 30),
+            "The compiled app should select the exact retained Session it created."
+        )
+        XCTAssertTrue(app.navigationBars["New session"].waitForNonExistence(timeout: 8))
+        let prepareSession = app.buttons["CaptureOpenNextSessionButton"].firstMatch
+        XCTAssertTrue(
+            prepareSession.waitForExistence(timeout: 8),
+            "A newly created Session should become the explicit next Session to prepare."
+        )
+        XCTAssertTrue(prepareSession.isEnabled)
+        XCTAssertTrue(prepareSession.isHittable)
+
+        app.terminate()
+        app = try launchSignedInCaptureApp(initialTab: "record")
+        let authorityStatus = app.descendants(matching: .any)["CaptureSessionAuthorityStatus"].firstMatch
+        let authorityDeadline = Date().addingTimeInterval(90)
+        var authorityAbsentSince: Date?
+        var authoritySettled = false
+        while Date() < authorityDeadline {
+            if authorityStatus.exists {
+                authorityAbsentSince = nil
+            } else if let authorityAbsentSince,
+                      Date().timeIntervalSince(authorityAbsentSince) >= 2 {
+                authoritySettled = true
+                break
+            } else if authorityAbsentSince == nil {
+                authorityAbsentSince = Date()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        }
+        XCTAssertTrue(
+            authoritySettled,
+            "Record should settle its protected Session snapshot against authoritative Nest before capture decisions continue."
+        )
+        if !app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 10) {
+            let chooser = app.buttons["CaptureSessionChooser"].firstMatch
+            XCTAssertTrue(chooser.waitForExistence(timeout: 8))
+            chooser.tap()
+            let retainedSession = app.buttons.matching(
+                NSPredicate(format: "label CONTAINS %@", sessionTitle)
+            ).firstMatch
+            XCTAssertTrue(retainedSession.waitForExistence(timeout: 20))
+            retainedSession.tap()
+        }
+        XCTAssertTrue(app.staticTexts[sessionTitle].firstMatch.waitForExistence(timeout: 8))
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.descendants(matching: .any)["CaptureConsentStrip"].firstMatch,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 2
+            )
+        )
+        XCTAssertTrue(
+            waitForRuntimeElement(
+                app.descendants(matching: .any)["CaptureRecorderHero"].firstMatch,
+                in: app,
+                timeout: 8,
+                swipeAttempts: 4
+            )
+        )
+        XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists)
+
+        let sessionTruth = app.descendants(matching: .any)["CaptureSessionTruthDisclosure"].firstMatch
+        XCTAssertTrue(
+            sessionTruth.waitForExistence(timeout: 8),
+            "The retained Session should expose its compact recording truth before the primary Record control."
+        )
+        let truthFrame = sessionTruth.frame
+        let appFrame = app.frame
+        XCTAssertFalse(truthFrame.isEmpty)
+        app.coordinate(
+            withNormalizedOffset: CGVector(
+                dx: truthFrame.midX / appFrame.width,
+                dy: truthFrame.midY / appFrame.height
+            )
+        ).tap()
+        XCTAssertEqual(sessionTruth.value as? String, "Expanded")
+        XCTAssertTrue(
+            app.descendants(matching: .any)["CaptureSessionTruthPanel"].firstMatch.waitForExistence(timeout: 8),
+            "Session readiness should expose the actual truth panel, not satisfy assertions from a hidden tab subtree."
+        )
+        XCTAssertTrue(
+            app.staticTexts["Journey"].firstMatch.waitForExistence(timeout: 8)
+        )
+        let recordingBoundaryCopy = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", "Joining, CallKit, consent, local recording, and server recording remain separate states")
+        ).firstMatch
+        XCTAssertTrue(recordingBoundaryCopy.waitForExistence(timeout: 8))
+        let providerRecordingBoundary = app.staticTexts["CaptureProviderRecordingBoundary"].firstMatch
+        for _ in 0..<8 where !providerRecordingBoundary.isHittable {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.78))
+                .press(
+                    forDuration: 0.05,
+                    thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.58))
+                )
+            RunLoop.current.run(until: Date().addingTimeInterval(0.35))
+        }
+        XCTAssertTrue(
+            providerRecordingBoundary.isHittable,
+            "Provider recording should remain a separate receipt-backed section after the readiness disclosure opens."
+        )
+        XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists)
     }
 
     func testReleasedClientFollowUpAppearsAndAcknowledgesInCapture() throws {

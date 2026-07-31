@@ -98,6 +98,20 @@ The final local run records exact results after all hardening changes settled. S
 | Visual QA | Today, Record, Work, Library, Account; light/dark, large type, and accessibility XXXL | PASS — focused navigation and Work journeys plus signed local Work operation; physical TestFlight inspection remains open |
 | Patch hygiene | tracked-worktree `git diff --check` | PASS |
 
+## Retained Session-truth operation (2026-07-31)
+
+The retained QA account created `QA Retained · Capture truth visible boundary AQ`
+through the shipping iPhone shell, terminated and relaunched the app, restored
+that exact Session, waited for canonical authority to settle, and read back
+consent, recorder, lifecycle, provider, CallKit, and recording-receipt boundaries
+without joining or recording. The focused runtime result passed 1/1 at
+`/tmp/quipsly-capture-runtime-ui-session-create-surface-20260731-visible-boundary-aq.xcresult`.
+The same operation found and closed a global-sign-out defect caused by an
+episode-chat feature denial; native chat now uses the shared bearer-or-cookie
+identity boundary, and a missing canonical thread stops background polling
+after its terminal 404. This is local Simulator/Nest working-tree evidence;
+exact-commit, physical-iPhone, TestFlight, and production proof remain open.
+
 ## External proof still required
 
 These checks cannot be substituted with source inspection or Simulator output:

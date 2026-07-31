@@ -30,6 +30,7 @@ final class MobileEpisodeChatClient: ObservableObject {
     private var accountCancellable: AnyCancellable?
     private var pendingMessageBody: String?
     private var pendingMessageID: UUID?
+    private var pollingDisabledForMissingThread = false
 
     init() {
         let rawBaseURL = normalizedNestBaseURL(
@@ -92,6 +93,11 @@ final class MobileEpisodeChatClient: ObservableObject {
             reset()
             currentContextKey = context.key
             _ = restoreProtectedCache(context: context)
+        }
+        if forceRefresh {
+            pollingDisabledForMissingThread = false
+        } else if quietly, pollingDisabledForMissingThread {
+            return
         }
         guard !isLoading else { return }
         guard AuthManager.shared.networkActionsAllowed else {
@@ -156,14 +162,24 @@ final class MobileEpisodeChatClient: ObservableObject {
                 : "\(messages.count) \(messages.count == 1 ? "message" : "messages")"
             persist(context: context)
         } catch {
+            let responseCode = (error as NSError).code
             if messages.isEmpty {
                 _ = restoreProtectedCache(context: context)
             }
+            if responseCode == 404 {
+                pollingDisabledForMissingThread = true
+                canEdit = false
+                statusMessage = messages.isEmpty
+                    ? "Episode thread unavailable"
+                    : "Episode thread unavailable · protected copy"
+            }
             if !messages.isEmpty {
                 isUsingProtectedCache = true
-                statusMessage = quietly
-                    ? statusMessage
-                    : "Nest is unavailable · protected offline copy"
+                if responseCode != 404 {
+                    statusMessage = quietly
+                        ? statusMessage
+                        : "Nest is unavailable · protected offline copy"
+                }
                 if !quietly { errorMessage = nil }
             } else if !quietly {
                 errorMessage = error.localizedDescription
@@ -177,6 +193,7 @@ final class MobileEpisodeChatClient: ObservableObject {
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(5))
                 guard !Task.isCancelled, let self else { return }
+                guard !self.pollingDisabledForMissingThread else { return }
                 await self.load(session: session, quietly: true)
             }
         }
@@ -303,6 +320,7 @@ final class MobileEpisodeChatClient: ObservableObject {
         errorMessage = nil
         pendingMessageBody = nil
         pendingMessageID = nil
+        pollingDisabledForMissingThread = false
     }
 
     @discardableResult

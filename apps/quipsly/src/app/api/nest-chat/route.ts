@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { auth } from "@/auth";
 import { getPrismaClient } from "@/lib/prisma";
+import { getQuipslySessionFromRequest } from "@/lib/server/quipsly-session";
 
 import {
   findStudioProjectForAccess,
@@ -166,8 +166,8 @@ function cleanString(value: unknown, fallback = "") {
   return typeof value === "string" ? value : fallback;
 }
 
-async function resolveActor(_request: NextRequest) {
-  const session = await auth();
+async function resolveActor(request: NextRequest) {
+  const session = await getQuipslySessionFromRequest(request);
   const email = normalizeAccessEmail(
     session?.user?.primaryEmail
       || session?.user?.email,

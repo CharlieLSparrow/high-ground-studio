@@ -79,7 +79,6 @@ final class AuthManager: ObservableObject {
     private enum AuthenticatedRequestError: LocalizedError {
         case signInRequired
         case refreshFailed
-        case sessionRejected
         case offlineAccess
         case accountChanged
 
@@ -89,8 +88,6 @@ final class AuthManager: ObservableObject {
                 return "Sign in to continue."
             case .refreshFailed:
                 return "Your Quipsly session could not be refreshed. Sign in again to continue."
-            case .sessionRejected:
-                return "Your Quipsly session expired. Sign in again to continue."
             case .offlineAccess:
                 return "Nest is unavailable. Quipsly opened the protected local Library; network actions remain disabled until your session is verified again."
             case .accountChanged:
@@ -639,7 +636,11 @@ final class AuthManager: ObservableObject {
     /// Every call is bound to the verified owner and account generation present
     /// at entry. A server-side 401 triggers at most one same-owner refresh and
     /// replay; account switches abort instead of inheriting the new token.
-    /// Callers still own decoding and handling all non-authentication HTTP statuses.
+    /// The forced refresh verifies the identity against Quipsly's canonical
+    /// session-check endpoint before the replay. If one feature endpoint still
+    /// returns 401 after that verification, the denial belongs to that feature;
+    /// it must not evict an otherwise valid account from the entire app. Callers
+    /// own decoding and handling every returned HTTP status.
     func authenticatedData(
         for originalRequest: URLRequest,
         session: URLSession = .shared,
@@ -729,19 +730,14 @@ final class AuthManager: ObservableObject {
             throw error
         }
         try validateAuthenticatedOwnerBinding(ownerBinding)
-        guard retryResult.1.statusCode != 401 else {
-            signOut()
-            errorMessage = AuthenticatedRequestError.sessionRejected.localizedDescription
-            throw AuthenticatedRequestError.sessionRejected
-        }
         return retryResult
     }
 
     /// Downloads a potentially large authenticated source without first
     /// materializing its bytes in memory. The same verified-owner, proactive
-    /// refresh, one-time 401 replay, and account-switch rules as
-    /// authenticatedData apply. Callers must move or delete the returned
-    /// temporary file after validating the HTTP status.
+    /// refresh, one-time 401 replay, endpoint-scoped authorization, and
+    /// account-switch rules as authenticatedData apply. Callers must move or
+    /// delete the returned temporary file after validating the HTTP status.
     func authenticatedDownload(
         for originalRequest: URLRequest,
         session: URLSession = .shared,
@@ -836,12 +832,6 @@ final class AuthManager: ObservableObject {
         } catch {
             try? FileManager.default.removeItem(at: retryResult.0)
             throw error
-        }
-        guard retryResult.1.statusCode != 401 else {
-            try? FileManager.default.removeItem(at: retryResult.0)
-            signOut()
-            errorMessage = AuthenticatedRequestError.sessionRejected.localizedDescription
-            throw AuthenticatedRequestError.sessionRejected
         }
         return retryResult
     }

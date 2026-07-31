@@ -8,11 +8,20 @@ struct CapturePhoneShell: View {
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var model = CaptureExperienceModel()
     @State private var showsNewSession = false
+    @State private var visibleTab: CaptureRootTab
+
+    init() {
+        _visibleTab = State(initialValue: CaptureLaunchConfiguration.previewTab ?? .today)
+    }
 
     var body: some View {
-        TabView(selection: $model.selectedTab) {
+        TabView(selection: $visibleTab) {
             NavigationStack {
-                CaptureTodayView(model: model, showsNewSession: $showsNewSession)
+                CaptureTodayView(
+                    model: model,
+                    showsNewSession: $showsNewSession,
+                    visibleTab: $visibleTab
+                )
             }
             .tabItem { Label(CaptureRootTab.today.title, systemImage: CaptureRootTab.today.systemImage) }
             .tag(CaptureRootTab.today)
@@ -30,13 +39,13 @@ struct CapturePhoneShell: View {
             .tag(CaptureRootTab.work)
 
             NavigationStack {
-                CaptureLibraryView(model: model)
+                CaptureLibraryView(model: model, visibleTab: $visibleTab)
             }
             .tabItem { Label(CaptureRootTab.library.title, systemImage: CaptureRootTab.library.systemImage) }
             .tag(CaptureRootTab.library)
 
             NavigationStack {
-                CaptureAccountView(model: model)
+                CaptureAccountView(model: model, visibleTab: $visibleTab)
             }
             .tabItem { Label(CaptureRootTab.account.title, systemImage: CaptureRootTab.account.systemImage) }
             .tag(CaptureRootTab.account)
@@ -55,7 +64,7 @@ struct CapturePhoneShell: View {
                     isPulsing:
                         audioCapture.captureState == .recording
                         && videoCapture.state == .recording,
-                    action: { model.selectedTab = .record }
+                    action: { visibleTab = .record }
                 )
             } else if audioCaptureIsActive {
                 GlobalCaptureBanner(
@@ -67,7 +76,7 @@ struct CapturePhoneShell: View {
                     duration: audioCapture.currentDuration,
                     tint: audioCapture.captureState == .paused ? .orange : .red,
                     isPulsing: audioCapture.captureState == .recording,
-                    action: { model.selectedTab = .record }
+                    action: { visibleTab = .record }
                 )
             } else if videoCaptureIsActive {
                 GlobalCaptureBanner(
@@ -79,7 +88,7 @@ struct CapturePhoneShell: View {
                     duration: videoCapture.durationSeconds,
                     tint: videoCapture.state == .paused ? .orange : .red,
                     isPulsing: videoCapture.state == .recording,
-                    action: { model.selectedTab = .record }
+                    action: { visibleTab = .record }
                 )
             }
         }
@@ -91,6 +100,15 @@ struct CapturePhoneShell: View {
             Button("OK") { model.errorMessage = nil }
         } message: {
             Text(model.errorMessage ?? "Try again.")
+        }
+        .onAppear {
+            // SwiftUI can initially mount the first tab before applying a
+            // non-default State value on iOS 26. Reapply the DEBUG-only launch
+            // route after the TabView exists so deterministic UI journeys open
+            // the requested shipping surface rather than a hidden tab subtree.
+            if let requestedTab = CaptureLaunchConfiguration.previewTab {
+                visibleTab = requestedTab
+            }
         }
         .task {
             await model.load()
@@ -148,6 +166,7 @@ struct CapturePhoneShell: View {
 private struct CaptureTodayView: View {
     @ObservedObject var model: CaptureExperienceModel
     @Binding var showsNewSession: Bool
+    @Binding var visibleTab: CaptureRootTab
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var auth = AuthManager.shared
 
@@ -168,7 +187,8 @@ private struct CaptureTodayView: View {
 
                 if let next = model.nextSession {
                     NextCaptureCard(session: next) {
-                        model.select(next, openRecorder: true)
+                        model.select(next)
+                        visibleTab = .record
                     }
                     .disabled(model.isSessionContextLocked && model.selectedSession?.id != next.id)
                 } else if model.isRefreshing {
@@ -197,7 +217,7 @@ private struct CaptureTodayView: View {
                         detail: "\(model.uploadManager.recoverableUploadCount) recording\(model.uploadManager.recoverableUploadCount == 1 ? " is" : "s are") waiting to upload. The originals remain on this iPhone.",
                         buttonTitle: "Open Library"
                     ) {
-                        model.selectedTab = .library
+                        visibleTab = .library
                     }
                 }
 
@@ -223,7 +243,8 @@ private struct CaptureTodayView: View {
 
                         ForEach(laterSessions) { session in
                             SessionListRow(session: session, isSelected: session.id == model.selectedSession?.id) {
-                                model.select(session, openRecorder: true)
+                                model.select(session)
+                                visibleTab = .record
                             }
                             .disabled(model.isSessionContextLocked && model.selectedSession?.id != session.id)
                         }
@@ -4496,6 +4517,7 @@ private struct CaptureRecorderView: View {
     @State private var showsSessionPicker = false
     @State private var showsRoomDetails = false
     @State private var showsSessionContext = false
+    @State private var showsSessionReadiness = false
     @State private var showsConsentConfirmation = false
     @State private var quickEntryKind: MobileQuickEntryKind?
     @State private var recordingMode: CaptureRecordingMode = .audio
@@ -4513,107 +4535,21 @@ private struct CaptureRecorderView: View {
                 }
                 .disabled(model.isSessionContextLocked)
 
-                CaptureQuickEntryBar(session: model.selectedSession) { kind in
-                    quickEntryKind = kind
-                }
-
-                if model.quickEntryOutbox.hasRetryableEntries || model.quickEntrySyncMessage != nil {
-                    CaptureQuickEntrySyncCard(model: model)
+                if model.isRefreshing {
+                    Label("Verifying saved session with Nest…", systemImage: "arrow.trianglehead.2.clockwise.rotate.90")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("CaptureSessionAuthorityStatus")
+                } else if model.sessionClient.sessionsAreStale {
+                    Label("Protected offline session snapshot", systemImage: "lock.shield")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityIdentifier("CaptureSessionAuthorityStatus")
                 }
 
                 if let session = model.selectedSession {
-                    CaptureSessionNotesCard(
-                        session: session,
-                        model: model
-                    )
-
-                    CaptureSessionFollowUpStatus(
-                        session: session,
-                        errorMessage: model.sessionClient.errorMessage
-                    )
-
-                    if session.clientFollowUp != nil {
-                        MobileClientFollowUpCard(
-                            session: session,
-                            sessionClient: model.sessionClient
-                        )
-                    }
-
-                    DisclosureGroup(isExpanded: $showsSessionContext) {
-                        CaptureSessionContextPanel(
-                            session: session,
-                            sessionClient: model.sessionClient
-                        )
-                        .padding(.top, 12)
-                    } label: {
-                        HStack {
-                            Label("Session plan", systemImage: "note.text.badge.plus")
-                                .font(.headline)
-                            Spacer()
-                            Text("Notes, goals & tasks")
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .captureCard()
-                    .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls.")
-
-                    if session.projectSlug?.nonempty != nil,
-                       session.episodeSlug?.nonempty != nil {
-                        MobileEpisodeManuscriptCard(
-                            client: episodeManuscript,
-                            session: session,
-                            previewOnly: model.usesPreviewData
-                        )
-                        .task(
-                            id:
-                                "manuscript|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
-                        ) {
-                            if model.usesPreviewData {
-                                episodeManuscript.loadPreview(session: session)
-                            } else {
-                                await episodeManuscript.load(session: session)
-                            }
-                        }
-
-                        MobileEpisodeWatchCard(
-                            client: episodeWatch,
-                            session: session,
-                            captureIsActive: captureIsActive,
-                            previewOnly: model.usesPreviewData
-                        )
-                        .task(
-                            id:
-                                "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
-                        ) {
-                            if model.usesPreviewData {
-                                episodeWatch.loadPreview(session: session)
-                            } else {
-                                await episodeWatch.load(session: session)
-                                await episodeWatch.poll(session: session)
-                            }
-                        }
-                        .onDisappear { episodeWatch.stop() }
-
-                        MobileEpisodeChatCard(
-                            client: episodeChat,
-                            session: session,
-                            previewOnly: model.usesPreviewData
-                        )
-                        .task(
-                            id:
-                                "chat|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
-                        ) {
-                            if model.usesPreviewData {
-                                episodeChat.loadPreview(session: session)
-                            } else {
-                                await episodeChat.load(session: session)
-                                episodeChat.startPolling(session: session)
-                            }
-                        }
-                        .onDisappear { episodeChat.stopPolling() }
-                    }
-
                     ConsentStrip(
                         session: session,
                         isBusy: model.isChangingConsent,
@@ -4627,23 +4563,43 @@ private struct CaptureRecorderView: View {
                         isLocked: captureIsActive || model.isChangingCapture
                     )
 
-                    CaptureRehearsalReadinessCard(
-                        audioCapture: audioCapture,
-                        videoCapture: videoCapture,
-                        manuscript: episodeManuscript,
-                        watch: episodeWatch,
-                        session: session,
-                        mode: recordingMode,
-                        providerConnected: model.providerRoom.isConnected,
-                        previewOnly: model.usesPreviewData,
-                        isRunningCheck: isRunningRehearsalCheck,
-                        isCaptureActive: captureIsActive,
-                        onRunCheck: {
-                            Task {
-                                await runRehearsalCheck(for: session)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                showsSessionReadiness.toggle()
                             }
+                        } label: {
+                            HStack(spacing: 10) {
+                                Label("Session readiness", systemImage: "checklist.checked")
+                                    .font(.headline)
+                                Spacer()
+                                Text(session.journeyStageLabel)
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.secondary)
+                                    .multilineTextAlignment(.trailing)
+                                Image(systemName: "chevron.right")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(.secondary)
+                                    .rotationEffect(.degrees(showsSessionReadiness ? 90 : 0))
+                                    .accessibilityHidden(true)
+                            }
+                            .contentShape(Rectangle())
                         }
-                    )
+                        .buttonStyle(.plain)
+                        .accessibilityValue(showsSessionReadiness ? "Expanded" : "Collapsed")
+                        .accessibilityHint("Shows source quality, lifecycle receipts, safe next actions, and the boundary between joining and recording.")
+                        .accessibilityIdentifier("CaptureSessionTruthDisclosure")
+
+                        if showsSessionReadiness {
+                            CaptureSessionTruthPanel(
+                                session: session,
+                                model: model
+                            )
+                            .padding(.top, 12)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                    .captureCard()
 
                     if recordingMode == .audio {
                         RecorderHero(
@@ -4755,6 +4711,46 @@ private struct CaptureRecorderView: View {
                         }
                     }
 
+                    CaptureRehearsalReadinessCard(
+                        audioCapture: audioCapture,
+                        videoCapture: videoCapture,
+                        manuscript: episodeManuscript,
+                        watch: episodeWatch,
+                        session: session,
+                        mode: recordingMode,
+                        providerConnected: model.providerRoom.isConnected,
+                        previewOnly: model.usesPreviewData,
+                        isRunningCheck: isRunningRehearsalCheck,
+                        isCaptureActive: captureIsActive,
+                        onRunCheck: {
+                            Task {
+                                await runRehearsalCheck(for: session)
+                            }
+                        }
+                    )
+
+                    if session.projectSlug?.nonempty != nil,
+                       session.episodeSlug?.nonempty != nil {
+                        MobileEpisodeWatchCard(
+                            client: episodeWatch,
+                            session: session,
+                            captureIsActive: captureIsActive,
+                            previewOnly: model.usesPreviewData
+                        )
+                        .task(
+                            id:
+                                "\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                        ) {
+                            if model.usesPreviewData {
+                                episodeWatch.loadPreview(session: session)
+                            } else {
+                                await episodeWatch.load(session: session)
+                                await episodeWatch.poll(session: session)
+                            }
+                        }
+                        .onDisappear { episodeWatch.stop() }
+                    }
+
                     if audioCapture.captureState == .paused,
                        let recorderMessage = audioCapture.lastErrorMessage,
                        !recorderMessage.isEmpty {
@@ -4784,6 +4780,87 @@ private struct CaptureRecorderView: View {
                         session: session,
                         captureIsActive: captureIsActive
                     )
+
+                    CaptureQuickEntryBar(session: session) { kind in
+                        quickEntryKind = kind
+                    }
+
+                    if model.quickEntryOutbox.hasRetryableEntries || model.quickEntrySyncMessage != nil {
+                        CaptureQuickEntrySyncCard(model: model)
+                    }
+
+                    CaptureSessionNotesCard(
+                        session: session,
+                        model: model
+                    )
+
+                    CaptureSessionFollowUpStatus(
+                        session: session,
+                        errorMessage: model.sessionClient.errorMessage
+                    )
+
+                    if session.clientFollowUp != nil {
+                        MobileClientFollowUpCard(
+                            session: session,
+                            sessionClient: model.sessionClient
+                        )
+                    }
+
+                    DisclosureGroup(isExpanded: $showsSessionContext) {
+                        CaptureSessionContextPanel(
+                            session: session,
+                            sessionClient: model.sessionClient
+                        )
+                        .padding(.top, 12)
+                    } label: {
+                        HStack {
+                            Label("Session plan", systemImage: "note.text.badge.plus")
+                                .font(.headline)
+                            Spacer()
+                            Text("Notes, goals & tasks")
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .captureCard()
+                    .accessibilityHint("Opens the local-first session note, goals, tasks, and Nest revision controls.")
+
+                    if session.projectSlug?.nonempty != nil,
+                       session.episodeSlug?.nonempty != nil {
+                        MobileEpisodeManuscriptCard(
+                            client: episodeManuscript,
+                            session: session,
+                            previewOnly: model.usesPreviewData
+                        )
+                        .task(
+                            id:
+                                "manuscript|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                        ) {
+                            if model.usesPreviewData {
+                                episodeManuscript.loadPreview(session: session)
+                            } else {
+                                await episodeManuscript.load(session: session)
+                            }
+                        }
+
+                        MobileEpisodeChatCard(
+                            client: episodeChat,
+                            session: session,
+                            previewOnly: model.usesPreviewData
+                        )
+                        .task(
+                            id:
+                                "chat|\(session.id)|\(session.projectSlug ?? "")|\(session.episodeSlug ?? "")"
+                        ) {
+                            if model.usesPreviewData {
+                                episodeChat.loadPreview(session: session)
+                            } else {
+                                await episodeChat.load(session: session)
+                                episodeChat.startPolling(session: session)
+                            }
+                        }
+                        .onDisappear { episodeChat.stopPolling() }
+                    }
 
                     DisclosureGroup(isExpanded: $showsRoomDetails) {
                         ProviderRoomControls(
@@ -4822,6 +4899,7 @@ private struct CaptureRecorderView: View {
             .padding(.top, 14)
             .padding(.bottom, 96)
         }
+        .accessibilityIdentifier("CaptureRecorderView")
         .background(CaptureCanvas())
         .navigationTitle("Record")
         .navigationBarTitleDisplayMode(.inline)
@@ -4968,6 +5046,166 @@ private struct CaptureSessionFollowUpStatus: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .fixedSize(horizontal: false, vertical: true)
         .accessibilityIdentifier("CaptureSessionSyncStatus")
+    }
+}
+
+private struct CaptureSessionTruthPanel: View {
+    let session: MobileCaptureSession
+    @ObservedObject var model: CaptureExperienceModel
+    @State private var isPreparingProviderReceipt = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            truthSection(
+                title: "Journey",
+                systemImage: "point.topleft.down.to.point.bottomright.curvepath",
+                status: session.journeyStageLabel,
+                detail: session.journeyNextAction,
+                tint: session.captureReadinessIsSafeToRecord ? .green : .orange
+            )
+
+            if let content = session.contentReadiness {
+                truthSection(
+                    title: "Source quality",
+                    systemImage: "waveform.badge.magnifyingglass",
+                    status: content.label ?? (content.isSubstantial ? "Production source" : "Proof only"),
+                    detail: "\(content.detail ?? content.nextAction ?? "Review the retained source before transcription.") \(content.evidenceLine)",
+                    tint: content.isSubstantial ? .green : .orange
+                )
+            }
+
+            truthSection(
+                title: "Lifecycle receipts",
+                systemImage: "checkmark.seal",
+                status: session.lifecycleReceiptLine,
+                detail: session.lifecycleNextAction,
+                tint: session.lifecycle?.readyForCapture == true ? .green : .orange
+            )
+
+            if !session.lifecycleSafeActions.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Safe next actions")
+                        .font(.caption.weight(.bold))
+                        .foregroundStyle(.secondary)
+                    ForEach(session.lifecycleSafeActions.prefix(3)) { action in
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: action.enabled ? "checkmark.circle.fill" : "clock.badge.exclamationmark")
+                                .foregroundStyle(action.enabled ? Color.green : Color.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(action.label)
+                                    .font(.subheadline.weight(.semibold))
+                                Text(action.why)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("Boundary: \(action.boundary)")
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("CaptureLifecycleSafeAction_\(action.id)")
+                    }
+                }
+            }
+
+            Divider()
+
+            VStack(alignment: .leading, spacing: 8) {
+                Label("Live room and server recording", systemImage: "person.2.wave.2")
+                    .font(.subheadline.weight(.bold))
+                    .accessibilityIdentifier("CaptureProviderRecordingBoundary")
+                Text(model.providerRoom.nativeCallPresentationLabel)
+                    .font(.caption.weight(.semibold))
+                Text("CallKit only presents the Quipsly-owned live room on iPhone. Joining, CallKit, consent, local recording, and server recording remain separate states in Nest.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if let readiness = model.readinessClient.readiness {
+                    CaptureStatusPill(
+                        label: readiness.providerEgressLabel,
+                        systemImage: readiness.providerEgressReady ? "checkmark.circle.fill" : "lock.shield",
+                        tint: readiness.providerEgressReady ? .green : .orange
+                    )
+                    Text(readiness.providerEgressDetail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                CaptureStatusPill(
+                    label: session.hasProviderRecordingReceiptSlot
+                        ? "Receipt \(session.providerReceiptStatusLabel)"
+                        : "No server-recording receipt",
+                    systemImage: session.hasProviderRecordingReceiptSlot ? "doc.badge.checkmark" : "doc.badge.plus",
+                    tint: session.hasProviderRecordingReceiptSlot ? .green : .secondary
+                )
+                Text(session.providerReceiptActionLabel)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if session.actionPacket?.capabilities?.canPrepareProviderRecordingReceipt == true,
+                   !session.hasProviderRecordingReceiptSlot {
+                    Button {
+                        Task { await prepareProviderRecordingReceipt() }
+                    } label: {
+                        if isPreparingProviderReceipt {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                        } else {
+                            Label("Prepare server-recording receipt", systemImage: "doc.badge.plus")
+                                .frame(maxWidth: .infinity)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(isPreparingProviderReceipt || model.providerControlsLockedForLocalCapture)
+                    .accessibilityHint("Creates only the Nest receipt slot. It does not join the room or start recording.")
+                    .accessibilityIdentifier("CapturePrepareProviderRecordingReceipt")
+                }
+
+                if let error = model.sessionClient.errorMessage?.nonempty {
+                    CaptureInlineWarning(text: error)
+                }
+            }
+            .accessibilityElement(children: .contain)
+        }
+        .accessibilityIdentifier("CaptureSessionTruthPanel")
+    }
+
+    @ViewBuilder
+    private func truthSection(
+        title: String,
+        systemImage: String,
+        status: String,
+        detail: String,
+        tint: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline) {
+                Label(title, systemImage: systemImage)
+                    .font(.subheadline.weight(.bold))
+                Spacer()
+                Text(status)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .multilineTextAlignment(.trailing)
+            }
+            Text(detail)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func prepareProviderRecordingReceipt() async {
+        guard !isPreparingProviderReceipt else { return }
+        isPreparingProviderReceipt = true
+        defer { isPreparingProviderReceipt = false }
+        guard await model.sessionClient.prepareProviderRecordingReceiptSlot(for: session) else {
+            return
+        }
+        await model.load()
     }
 }
 
@@ -6245,6 +6483,7 @@ private struct CaptureTimeZonePickerSheet: View {
 
 private struct CaptureLibraryView: View {
     @ObservedObject var model: CaptureExperienceModel
+    @Binding var visibleTab: CaptureRootTab
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @StateObject private var library = LocalRecordingLibrary.shared
     @StateObject private var playback = LocalRecordingPlaybackController()
@@ -6307,7 +6546,7 @@ private struct CaptureLibraryView: View {
                             title: "No local recordings yet",
                             detail: "Your first completed take will appear here before any upload is considered complete.",
                             actionTitle: "Open recorder",
-                            action: { model.selectedTab = .record }
+                            action: { visibleTab = .record }
                         )
                     }
                 } else {
@@ -6449,6 +6688,7 @@ private struct CaptureLibraryPreviewSourceCard: View {
 
 private struct CaptureAccountView: View {
     @ObservedObject var model: CaptureExperienceModel
+    @Binding var visibleTab: CaptureRootTab
     @EnvironmentObject private var audioCapture: AudioCaptureController
     @EnvironmentObject private var videoCapture: VideoCaptureController
     @StateObject private var auth = AuthManager.shared
@@ -6622,7 +6862,7 @@ private struct CaptureAccountView: View {
         }
         .alert("Capture session is still active", isPresented: $showsSignOutWarning) {
             Button("Keep session active", role: .cancel) {}
-            Button("Open recorder") { model.selectedTab = .record }
+            Button("Open recorder") { visibleTab = .record }
         } message: {
             Text("Stop and save the local source and leave any live room before signing out.")
         }
