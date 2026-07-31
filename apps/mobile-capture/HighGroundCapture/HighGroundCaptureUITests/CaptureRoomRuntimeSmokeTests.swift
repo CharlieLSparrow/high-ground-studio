@@ -102,6 +102,9 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         let projectRetagLabel: String?
         let goalID: String?
         let planBlockID: String?
+        let clientFollowUpID: String?
+        let clientFollowUpTitle: String?
+        let clientFollowUpSHA256: String?
     }
 
     private func runtimeSmokeCredentials() throws -> RuntimeSmokeCredentials {
@@ -146,7 +149,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
                 projectTagLabel: environment["QUIPSLY_CAPTURE_UI_TEST_PROJECT_TAG_LABEL"],
                 projectRetagLabel: environment["QUIPSLY_CAPTURE_UI_TEST_PROJECT_RETAG_LABEL"],
                 goalID: environment["QUIPSLY_CAPTURE_UI_TEST_GOAL_ID"],
-                planBlockID: environment["QUIPSLY_CAPTURE_UI_TEST_PLAN_BLOCK_ID"]
+                planBlockID: environment["QUIPSLY_CAPTURE_UI_TEST_PLAN_BLOCK_ID"],
+                clientFollowUpID: environment["QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_ID"],
+                clientFollowUpTitle: environment["QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_TITLE"],
+                clientFollowUpSHA256: environment["QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_SHA256"]
             )
         }
 
@@ -204,7 +210,10 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
             projectTagLabel: payload["projectTagLabel"] as? String,
             projectRetagLabel: payload["projectRetagLabel"] as? String,
             goalID: payload["goalID"] as? String,
-            planBlockID: payload["planBlockID"] as? String
+            planBlockID: payload["planBlockID"] as? String,
+            clientFollowUpID: payload["clientFollowUpID"] as? String,
+            clientFollowUpTitle: payload["clientFollowUpTitle"] as? String,
+            clientFollowUpSHA256: payload["clientFollowUpSHA256"] as? String
         )
     }
 
@@ -2060,6 +2069,70 @@ final class CaptureRoomRuntimeSmokeTests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Library"].firstMatch.exists)
         XCTAssertTrue(app.tabBars.buttons["Account"].firstMatch.exists)
         XCTAssertFalse(app.otherElements["GlobalCaptureBanner"].firstMatch.exists, "A recording-in-progress banner must not appear before a take starts.")
+    }
+
+    func testReleasedClientFollowUpAppearsAndAcknowledgesInCapture() throws {
+        let credentials = try runtimeSmokeCredentials()
+        guard let sessionID = credentials.sessionID, !sessionID.isEmpty,
+              let outputID = credentials.clientFollowUpID, !outputID.isEmpty,
+              let outputTitle = credentials.clientFollowUpTitle, !outputTitle.isEmpty,
+              let contentSHA256 = credentials.clientFollowUpSHA256,
+              contentSHA256.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
+            throw XCTSkip("The client follow-up journey requires exact Session, released output, title, and SHA-256 identities.")
+        }
+        let app = try launchSignedInCaptureApp()
+        tapRootTab("Record", in: app)
+        selectRequestedSession(in: app, credentials: credentials)
+
+        let card = app.descendants(matching: .any)["CaptureClientFollowUp_\(outputID)"].firstMatch
+        let sessionSyncStatus = app.descendants(matching: .any)["CaptureSessionSyncStatus"].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(card, in: app, timeout: 40, swipeAttempts: 18),
+            "The intended client should receive the exact released follow-up on the selected iPhone Session. Session sync: \(sessionSyncStatus.exists ? sessionSyncStatus.label : "unavailable")."
+        )
+        XCTAssertTrue(
+            app.staticTexts[outputTitle].firstMatch.exists,
+            "Capture should render the exact released follow-up title."
+        )
+        let hash = app.staticTexts.matching(
+            NSPredicate(format: "label CONTAINS %@", contentSHA256)
+        ).firstMatch
+        XCTAssertTrue(
+            hash.exists,
+            "Capture should render the exact content hash before accepting client readback."
+        )
+        XCTAssertFalse(app.staticTexts["RETAINED PRIVATE MARKER: never release this formulation."].exists)
+        XCTAssertFalse(app.staticTexts["RETAINED SHARED MARKER: room visibility is not follow-up consent."].exists)
+        XCTAssertFalse(app.staticTexts["RETAINED UNREVIEWED MARKER"].exists)
+
+        let acknowledgeID = "CaptureClientFollowUpAcknowledge_\(outputID)"
+        let acknowledge = app.buttons[acknowledgeID].firstMatch
+        XCTAssertTrue(
+            waitForRuntimeElement(acknowledge, in: app, timeout: 15, swipeAttempts: 6),
+            "The intended client should receive an explicit in-app open confirmation control."
+        )
+        XCTAssertTrue(
+            acknowledge.isEnabled,
+            "This retained native proof requires a released follow-up without a prior open receipt."
+        )
+        acknowledge.tap()
+
+        let confirmed = app.buttons[acknowledgeID].firstMatch
+        let receipt = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label CONTAINS %@ AND enabled == false", "Open confirmed"),
+            object: confirmed
+        )
+        XCTAssertEqual(
+            XCTWaiter.wait(for: [receipt], timeout: 30),
+            .completed,
+            "Nest readback should replace the iPhone action with a disabled exact-content open receipt."
+        )
+        XCTAssertTrue(app.staticTexts["Run one protected rehearsal"].firstMatch.exists)
+        XCTAssertTrue(app.staticTexts["Use a sustainable boundary"].firstMatch.exists)
+        attachRecordingIdentity(
+            "\(sessionID)|\(outputID)|\(contentSHA256)",
+            name: "Retained iPhone client follow-up readback"
+        )
     }
 
     func testConsentedProviderRoomJoinsAndLeavesWithoutStartingRecording() throws {

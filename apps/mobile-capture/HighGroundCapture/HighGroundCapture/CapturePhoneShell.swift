@@ -4425,6 +4425,18 @@ private struct CaptureRecorderView: View {
                         model: model
                     )
 
+                    CaptureSessionFollowUpStatus(
+                        session: session,
+                        errorMessage: model.sessionClient.errorMessage
+                    )
+
+                    if session.clientFollowUp != nil {
+                        MobileClientFollowUpCard(
+                            session: session,
+                            sessionClient: model.sessionClient
+                        )
+                    }
+
                     DisclosureGroup(isExpanded: $showsSessionContext) {
                         CaptureSessionContextPanel(
                             session: session,
@@ -4824,6 +4836,36 @@ private struct CaptureRecorderView: View {
                 await episodeWatch.prepareSelectedClip()
             }
         }
+    }
+}
+
+private struct CaptureSessionFollowUpStatus: View {
+    let session: MobileCaptureSession
+    let errorMessage: String?
+
+    var body: some View {
+        Label(
+            errorMessage
+                ?? (session.clientFollowUp == nil
+                    ? "Session current · no released client follow-up"
+                    : "Session current · released client follow-up ready"),
+            systemImage: errorMessage != nil
+                ? "exclamationmark.triangle"
+                : session.clientFollowUp == nil
+                    ? "checkmark.icloud"
+                    : "person.crop.circle.badge.checkmark"
+        )
+        .font(.caption.weight(.semibold))
+        .foregroundStyle(
+            errorMessage != nil
+                ? Color.orange
+                : session.clientFollowUp == nil
+                    ? Color.secondary
+                    : Color.green
+        )
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .accessibilityIdentifier("CaptureSessionSyncStatus")
     }
 }
 

@@ -369,6 +369,7 @@ requireIncludes(runtimeUISmokeRunnerText, 'goal-edit)', "runtime UI smoke can op
 requireIncludes(runtimeUISmokeRunnerText, 'recurrence-missed)', "runtime UI smoke can select the explicit missed-occurrence proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'session-note-edit)', "runtime UI smoke can select the protected Session-note edit and relaunch proof mode");
 requireIncludes(runtimeUISmokeRunnerText, 'source-inbox-filing)', "runtime UI smoke can select the private-source-to-Research filing proof mode");
+requireIncludes(runtimeUISmokeRunnerText, 'client-follow-up)', "runtime UI smoke can select the retained client follow-up delivery proof mode");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInCaptureRoomSurfacesAreVisible", "runtime UI smoke implements the signed-in surface proof");
 requireIncludes(runtimeUISmokeTestsText, "func testConsentedCapturePlaybackAndCrashRecovery", "runtime UI smoke implements real consented capture, playback, and crash recovery");
 requireIncludes(runtimeUISmokeTestsText, "func testSignedInIPhoneAuthorsCanonicalWeeklyRecurrence", "runtime UI smoke authors recurrence through signed-in iPhone controls and reads it back from Today");
@@ -379,6 +380,9 @@ requireIncludes(runtimeUISmokeTestsText, "func testCanonicalGoalEditRoundTripsAn
 requireIncludes(runtimeUISmokeTestsText, "func testIPhoneExplicitlySkipsMissedOccurrenceAndContinuesSeries", "runtime UI smoke explicitly preserves one missed occurrence and proves the canonical series continues");
 requireIncludes(runtimeUISmokeTestsText, "func testClientSafeDecisionCreatesEditsAndRelaunchesFromProtectedIPhoneOutbox", "runtime UI smoke creates, edits, and relaunches one exact canonical Session note");
 requireIncludes(runtimeUISmokeTestsText, "func testPrivateSourceInboxFilesIntoCanonicalResearch", "runtime UI smoke files one exact private iPhone source into canonical Nest Research");
+requireIncludes(runtimeUISmokeTestsText, "func testReleasedClientFollowUpAppearsAndAcknowledgesInCapture", "runtime UI smoke reads and acknowledges one exact released client follow-up");
+requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUp_", "runtime UI smoke addresses the exact released follow-up artifact");
+requireIncludes(runtimeUISmokeTestsText, "CaptureClientFollowUpAcknowledge_", "runtime UI smoke addresses the explicit client open acknowledgement");
 requireIncludes(runtimeUISmokeTestsText, "func testGoogleSignInOpensProtectedGoogleWebAuthenticationWithoutCredentials", "runtime UI smoke opens Apple's protected Google handoff without typing a credential");
 requireIncludes(runtimeUISmokeTestsText, '"google.com"', "Google handoff proof asserts the exact external provider before leaving Quipsly");
 requireIncludes(runtimeUISmokeTestsText, "hold duplicate auth attempts", "Google handoff proof keeps duplicate identity attempts disabled");
@@ -387,6 +391,10 @@ requireIncludes(sessionNoteEditOutboxText, "ownerAccountID", "Session-note edit 
 requireIncludes(capturePhoneShellText, "Skip missed occurrence…", "Capture exposes an explicit missed-occurrence decision instead of an unattended scheduler");
 requireIncludes(capturePhoneShellText, 'decisionReason: "MISSED_OCCURRENCE_SKIPPED"', "Capture sends the exact bounded missed-occurrence decision reason");
 requireIncludes(capturePhoneShellText, "retain the overdue task and occurrence as skipped", "Capture confirmation explains immutable history before the missed-occurrence mutation");
+requireIncludes(capturePhoneShellText, "CaptureSessionFollowUpStatus", "the production phone recorder owns client follow-up readiness");
+requireIncludes(mobileText, "CaptureClientFollowUpAcknowledge_", "the native follow-up card exposes an explicit acknowledgement control");
+requireIncludes(bridgeText, "/client-follow-up", "the native bridge reads and acknowledges the relationship-authorized follow-up route");
+requireIncludes(bridgeText, "ACKNOWLEDGE_OPEN", "the native bridge uses the bounded follow-up acknowledgement action");
 requireIncludes(canonicalTaskStatusText, 'CanonicalTaskDecisionReason = "MISSED_OCCURRENCE_SKIPPED"', "canonical task status bounds the missed-occurrence decision vocabulary");
 requireIncludes(canonicalTaskStatusText, 'kind: "quipsly-task-occurrence-resolution-v1"', "canonical missed-occurrence resolution writes an inspectable occurrence receipt");
 requireIncludes(canonicalTaskStatusText, "historicalRecordPreserved: true", "canonical missed-occurrence receipts declare preserved history");

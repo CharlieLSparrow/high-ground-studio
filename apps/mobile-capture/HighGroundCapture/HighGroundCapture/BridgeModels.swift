@@ -471,6 +471,46 @@ struct MobileCaptureSourceSummary: Codable, Identifiable, Hashable {
     }
 }
 
+struct MobileCaptureClientFollowUpNote: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String?
+    let body: String
+    let kind: String
+}
+
+struct MobileCaptureClientFollowUpGoal: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let description: String?
+    let status: String
+    let targetAt: String?
+}
+
+struct MobileCaptureClientFollowUpTask: Codable, Identifiable, Hashable {
+    let id: String
+    let title: String
+    let detail: String?
+    let status: String
+    let dueAt: String?
+}
+
+struct MobileCaptureClientFollowUp: Codable, Identifiable, Hashable {
+    let id: String
+    let status: String
+    let title: String
+    let intro: String?
+    let nextSessionFocus: String?
+    let contentSha256: String
+    let revision: Int
+    let releasedAt: String?
+    let recipientLabel: String
+    let openedAt: String?
+    let canAcknowledge: Bool
+    let notes: [MobileCaptureClientFollowUpNote]
+    let goals: [MobileCaptureClientFollowUpGoal]
+    let tasks: [MobileCaptureClientFollowUpTask]
+}
+
 struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let id: String
     let callRoomId: String
@@ -545,6 +585,7 @@ struct MobileCaptureSession: Codable, Identifiable, Hashable {
     let coachingPacketLatestActivityAt: String?
     let coachingPacketFirstOpenActionItemId: String?
     let coachingPacketStatus: String?
+    var clientFollowUp: MobileCaptureClientFollowUp? = nil
     var canUseProjectTeamNotes: Bool? = nil
     var sessionNotes: [MobileCaptureSessionNote]? = nil
     let afterCaptureNextAction: String?
@@ -958,6 +999,68 @@ struct MobileCaptureSessionsResponse: Codable {
     let error: String?
     let captureProjects: [MobileCaptureProjectDestination]?
     let sessions: [MobileCaptureSession]?
+}
+
+private struct MobileCaptureClientFollowUpMutationResponse: Codable {
+    let ok: Bool
+    let error: String?
+    let idempotentReplay: Bool?
+}
+
+private struct MobileCaptureClientFollowUpReadResponse: Decodable {
+    struct Party: Decodable {
+        let label: String
+    }
+
+    struct Delivery: Decodable {
+        let kind: String
+        let occurredAt: String
+    }
+
+    struct Body: Decodable {
+        let notes: [MobileCaptureClientFollowUpNote]
+        let goals: [MobileCaptureClientFollowUpGoal]
+        let tasks: [MobileCaptureClientFollowUpTask]
+    }
+
+    struct Output: Decodable {
+        let id: String
+        let status: String
+        let title: String
+        let intro: String?
+        let nextSessionFocus: String?
+        let contentSha256: String
+        let revision: Int
+        let releasedAt: String?
+        let recipient: Party
+        let body: Body
+        let deliveryEvents: [Delivery]
+    }
+
+    let ok: Bool
+    let error: String?
+    let role: String?
+    let output: Output?
+
+    var followUp: MobileCaptureClientFollowUp? {
+        guard let output, output.status == "RELEASED" else { return nil }
+        return MobileCaptureClientFollowUp(
+            id: output.id,
+            status: output.status,
+            title: output.title,
+            intro: output.intro,
+            nextSessionFocus: output.nextSessionFocus,
+            contentSha256: output.contentSha256,
+            revision: output.revision,
+            releasedAt: output.releasedAt,
+            recipientLabel: output.recipient.label,
+            openedAt: output.deliveryEvents.last(where: { $0.kind == "OPENED_IN_APP" })?.occurredAt,
+            canAcknowledge: role == "CLIENT",
+            notes: output.body.notes,
+            goals: output.body.goals,
+            tasks: output.body.tasks
+        )
+    }
 }
 
 struct MobileCaptureTodayTranscriptSourceAnchor: Codable, Hashable {
@@ -5042,6 +5145,9 @@ final class CaptureSessionClient: ObservableObject {
             captureProjects = payload.captureProjects ?? []
             isUsingCachedSessions = false
             cachedSessionsSavedAt = Date()
+            if let selectedSessionID = authoritativeSessionID ?? sessions.first?.id {
+                await refreshClientFollowUp(forSessionID: selectedSessionID)
+            }
             persistProtectedSessionCache()
             status = sessions.isEmpty ? "No sessions yet" : "Ready"
 
@@ -6106,6 +6212,114 @@ final class CaptureSessionClient: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    func acknowledgeClientFollowUp(for session: MobileCaptureSession) async -> Bool {
+        guard let followUp = session.clientFollowUp else {
+            status = "No released follow-up"
+            errorMessage = "The assigned coach has not released a client follow-up to this account."
+            return false
+        }
+        guard let encodedRoomID = session.callRoomId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(
+                string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/sessions/\(encodedRoomID)/client-follow-up"
+              ) else {
+            status = "Bad Nest URL"
+            errorMessage = "The configured Nest URL is not valid."
+            return false
+        }
+
+        status = "Confirming follow-up open"
+        errorMessage = nil
+        do {
+            var request = URLRequest(url: url)
+            request.httpMethod = "POST"
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            request.httpBody = try JSONSerialization.data(withJSONObject: [
+                "action": "ACKNOWLEDGE_OPEN",
+                "outputId": followUp.id,
+                "clientRequestId": Self.clientFollowUpOpenRequestID(outputID: followUp.id),
+            ])
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpMutationResponse.self, from: data)
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureSessions",
+                    code: 34,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            payload.error ?? "The client follow-up open receipt was not confirmed.",
+                    ]
+                )
+            }
+            status = payload.idempotentReplay == true ? "Follow-up open already confirmed" : "Follow-up open confirmed"
+            errorMessage = nil
+            await refreshClientFollowUp(forSessionID: session.id)
+            return true
+        } catch {
+            status = "Needs attention"
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func refreshClientFollowUp(forSessionID sessionID: String) async {
+        guard let index = sessions.firstIndex(where: { $0.id == sessionID }) else { return }
+        let roomID = sessions[index].callRoomId
+        guard let encodedRoomID = roomID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(
+                string: "\(baseURL.trimmingCharacters(in: .whitespacesAndNewlines))/api/sessions/\(encodedRoomID)/client-follow-up"
+              ) else {
+            return
+        }
+
+        do {
+            var request = URLRequest(
+                url: url,
+                cachePolicy: .reloadIgnoringLocalAndRemoteCacheData
+            )
+            request.httpMethod = "GET"
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            let (data, response) = try await AuthManager.shared.authenticatedData(for: request)
+            let payload = try JSONDecoder().decode(MobileCaptureClientFollowUpReadResponse.self, from: data)
+            if response.statusCode == 404 {
+                var refreshedSession = sessions[index]
+                refreshedSession.clientFollowUp = nil
+                sessions[index] = refreshedSession
+                return
+            }
+            guard response.statusCode < 400, payload.ok else {
+                throw NSError(
+                    domain: "CaptureSessions",
+                    code: 35,
+                    userInfo: [
+                        NSLocalizedDescriptionKey:
+                            payload.error ?? "The client follow-up could not be refreshed.",
+                    ]
+                )
+            }
+            var refreshedSession = sessions[index]
+            refreshedSession.clientFollowUp = payload.followUp
+            sessions[index] = refreshedSession
+        } catch {
+            errorMessage = "Session loaded, but its private follow-up could not be refreshed: \(error.localizedDescription)"
+        }
+    }
+
+    private static func clientFollowUpOpenRequestID(outputID: String) -> String {
+        let owner = AuthManager.shared.userEmail?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? "signed-in-account"
+        var bytes = Array(SHA256.hash(data: Data("client-follow-up-open|\(owner)|\(outputID)".utf8)).prefix(16))
+        bytes[6] = (bytes[6] & 0x0F) | 0x50
+        bytes[8] = (bytes[8] & 0x3F) | 0x80
+        let uuid = UUID(uuid: (
+            bytes[0], bytes[1], bytes[2], bytes[3],
+            bytes[4], bytes[5], bytes[6], bytes[7],
+            bytes[8], bytes[9], bytes[10], bytes[11],
+            bytes[12], bytes[13], bytes[14], bytes[15]
+        ))
+        return uuid.uuidString.lowercased()
     }
 
     func reviewPacketLane(for session: MobileCaptureSession, laneId: String, reviewStatus: String, note: String? = nil) async -> Bool {

@@ -17,6 +17,7 @@ import {
   type SessionReviewPacket,
 } from "./session-review-model";
 import { SessionContinuityCard } from "./session-continuity-card";
+import { SessionClientFollowUpCard } from "./session-client-follow-up-card";
 import type { SessionContinuityState } from "./session-continuity-model";
 import type { SessionPreparation } from "./session-preparation-model";
 import type { SessionSourceEvidence } from "./session-source-evidence-model";
@@ -1060,9 +1061,12 @@ export function SessionReviewClient({ roomId, sessionTitle, mode = "overview", n
       </> : null}
 
       {mode === "outputs" ? (
-        studioHandoff
-          ? <SessionStudioHandoffCard handoff={studioHandoff} contentReadiness={contentReadiness} />
-          : <WorkspaceEmptyState title="No output context" detail="This Session has no accessible Nest output boundary. Quipsly will not invent a Studio handoff or publication receipt." />
+        <div className="space-y-5">
+          <SessionClientFollowUpCard roomId={roomId} />
+          {studioHandoff
+            ? <SessionStudioHandoffCard handoff={studioHandoff} contentReadiness={contentReadiness} />
+            : <WorkspaceEmptyState title="No Studio output context" detail="This Session has no accessible Nest Studio boundary. Quipsly will not invent a media handoff or publication receipt." />}
+        </div>
       ) : null}
 
       {mode === "transcript" ? (loading ? <section className="rounded-2xl border border-[#e5d5b7] bg-white p-8 text-sm font-bold text-[#765f40]"><LoaderCircle className="mr-2 inline animate-spin" size={18} aria-hidden="true" />Reading the Session’s transcript evidence…</section> : !packet ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-8" role="status"><CircleAlert className="text-amber-700" aria-hidden="true" /><h2 className="mt-3 font-serif text-2xl font-black text-[#3d3122]">Transcript workspace is unavailable.</h2><p className="mt-2 font-semibold text-[#765f40]">No sample transcript or tasks are substituted. Your saved Session was not changed.</p></section> : <>

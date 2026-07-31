@@ -42,6 +42,9 @@ TEST_PROJECT_NAME="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_NAME:-}"
 TEST_PROJECT_TASK_TITLE="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_TASK_TITLE:-}"
 TEST_PROJECT_TAG_LABEL="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_TAG_LABEL:-}"
 TEST_PROJECT_RETAG_LABEL="${QUIPSLY_CAPTURE_UI_TEST_PROJECT_RETAG_LABEL:-}"
+TEST_CLIENT_FOLLOW_UP_ID="${QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_ID:-}"
+TEST_CLIENT_FOLLOW_UP_TITLE="${QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_TITLE:-}"
+TEST_CLIENT_FOLLOW_UP_SHA256="${QUIPSLY_CAPTURE_UI_TEST_CLIENT_FOLLOW_UP_SHA256:-}"
 TIMEOUT_SECONDS="${QUIPSLY_CAPTURE_UI_TEST_TIMEOUT_SECONDS:-900}"
 TEST_MODE="${QUIPSLY_CAPTURE_UI_TEST_MODE:-surface}"
 DERIVED_DATA_PATH="${QUIPSLY_CAPTURE_UI_TEST_DERIVED_DATA_PATH:-}"
@@ -65,6 +68,13 @@ case "$TEST_MODE" in
     TEST_CASE="testTranscriptFollowThroughReturnsToExactSourceOnIPhone"
     if [[ -z "$TEST_SESSION_ID" || -z "$TEST_TASK_ID" || -z "$TEST_GOAL_ID" ]]; then
       echo "Transcript follow-through mode requires exact Session, task, and goal IDs." >&2
+      exit 2
+    fi
+    ;;
+  client-follow-up)
+    TEST_CASE="testReleasedClientFollowUpAppearsAndAcknowledgesInCapture"
+    if [[ -z "$TEST_SESSION_ID" || -z "$TEST_SESSION_TITLE" || -z "$TEST_CLIENT_FOLLOW_UP_ID" || -z "$TEST_CLIENT_FOLLOW_UP_TITLE" || -z "$TEST_CLIENT_FOLLOW_UP_SHA256" ]]; then
+      echo "Client-follow-up mode requires exact Session, released output, title, and content-hash identities." >&2
       exit 2
     fi
     ;;
@@ -205,7 +215,7 @@ case "$TEST_MODE" in
     fi
     ;;
   *)
-    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, transcript-follow-through, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
+    echo "Unknown QUIPSLY_CAPTURE_UI_TEST_MODE: $TEST_MODE (expected google-handoff, surface, transcript-follow-through, client-follow-up, account-isolation, room-join, capture-recovery, reminder, task-edit, goal-edit, note-edit, annotation-review, annotation-writing, source-inbox-filing, recurrence, recurrence-authoring, recurrence-offline-authoring, recurrence-edit, recurrence-missed, tag-authoring, tag-edit, tag-edit-offline, project-work, or session-note-edit)" >&2
     exit 2
     ;;
 esac
@@ -279,11 +289,11 @@ if [[ "$REQUIRES_PASSWORD_CREDENTIALS" == true ]]; then
     exit 3
   fi
   umask 077
-  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_TASK_EDIT_SOURCE_TITLE" "$TEST_TASK_EDIT_UPDATED_TITLE" "$TEST_GOAL_ID" "$TEST_GOAL_EDIT_SOURCE_TITLE" "$TEST_GOAL_EDIT_UPDATED_TITLE" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" "$TEST_NOTE_ID" "$TEST_NOTE_BODY_BLOCK_ID" "$TEST_NOTE_EDIT_SOURCE_TITLE" "$TEST_NOTE_EDIT_UPDATED_TITLE" "$TEST_NOTE_EDIT_SOURCE_BODY" "$TEST_NOTE_EDIT_UPDATED_BODY" "$TEST_ANNOTATION_ID" "$TEST_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_CAPTURE_ID" "$TEST_SOURCE_INBOX_TITLE" "$TEST_SOURCE_INBOX_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_TAG_LABEL" <<'PY'
+  python3 - "$SMOKE_CREDENTIALS_FILE" "$BASE_URL" "$TEST_EMAIL" "$TEST_PASSWORD" "$TEST_SESSION_ID" "$TEST_SESSION_TITLE" "$TEST_TASK_ID" "$TEST_TASK_EDIT_SOURCE_TITLE" "$TEST_TASK_EDIT_UPDATED_TITLE" "$TEST_GOAL_ID" "$TEST_GOAL_EDIT_SOURCE_TITLE" "$TEST_GOAL_EDIT_UPDATED_TITLE" "$TEST_RECURRENCE_SERIES_ID" "$TEST_RECURRENCE_LOCAL_DATE" "$TEST_RECURRENCE_AUTHORING_TITLE" "$TEST_RECURRENCE_EDIT_SOURCE_TITLE" "$TEST_RECURRENCE_EDIT_FUTURE_TITLE" "$TEST_RECURRENCE_EDIT_TIMEZONE" "$TEST_TAGGED_TASK_TITLE" "$TEST_TAG_LABEL" "$TEST_PROJECT_NAME" "$TEST_PROJECT_TASK_TITLE" "$TEST_PROJECT_TAG_LABEL" "$TEST_PROJECT_RETAG_LABEL" "$TEST_NOTE_ID" "$TEST_NOTE_BODY_BLOCK_ID" "$TEST_NOTE_EDIT_SOURCE_TITLE" "$TEST_NOTE_EDIT_UPDATED_TITLE" "$TEST_NOTE_EDIT_SOURCE_BODY" "$TEST_NOTE_EDIT_UPDATED_BODY" "$TEST_ANNOTATION_ID" "$TEST_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_CAPTURE_ID" "$TEST_SOURCE_INBOX_TITLE" "$TEST_SOURCE_INBOX_ANNOTATION_BODY" "$TEST_SOURCE_INBOX_TAG_LABEL" "$TEST_CLIENT_FOLLOW_UP_ID" "$TEST_CLIENT_FOLLOW_UP_TITLE" "$TEST_CLIENT_FOLLOW_UP_SHA256" <<'PY'
 import json
 import sys
 
-path, base_url, email, password, session_id, session_title, task_id, task_edit_source_title, task_edit_updated_title, goal_id, goal_edit_source_title, goal_edit_updated_title, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label, note_id, note_body_block_id, note_edit_source_title, note_edit_updated_title, note_edit_source_body, note_edit_updated_body, annotation_id, annotation_body, source_inbox_capture_id, source_inbox_title, source_inbox_annotation_body, source_inbox_tag_label = sys.argv[1:37]
+path, base_url, email, password, session_id, session_title, task_id, task_edit_source_title, task_edit_updated_title, goal_id, goal_edit_source_title, goal_edit_updated_title, recurrence_series_id, recurrence_local_date, recurrence_authoring_title, recurrence_edit_source_title, recurrence_edit_future_title, recurrence_edit_timezone, tagged_task_title, tag_label, project_name, project_task_title, project_tag_label, project_retag_label, note_id, note_body_block_id, note_edit_source_title, note_edit_updated_title, note_edit_source_body, note_edit_updated_body, annotation_id, annotation_body, source_inbox_capture_id, source_inbox_title, source_inbox_annotation_body, source_inbox_tag_label, client_follow_up_id, client_follow_up_title, client_follow_up_sha256 = sys.argv[1:40]
 with open(path, "w", encoding="utf-8") as handle:
     json.dump(
         {
@@ -322,6 +332,9 @@ with open(path, "w", encoding="utf-8") as handle:
             "sourceInboxTitle": source_inbox_title or None,
             "sourceInboxAnnotationBody": source_inbox_annotation_body or None,
             "sourceInboxTagLabel": source_inbox_tag_label or None,
+            "clientFollowUpID": client_follow_up_id or None,
+            "clientFollowUpTitle": client_follow_up_title or None,
+            "clientFollowUpSHA256": client_follow_up_sha256 or None,
         },
         handle,
     )

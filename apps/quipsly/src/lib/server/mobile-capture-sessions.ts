@@ -58,6 +58,24 @@ export function canonicalMobileSessionEpisodeSlug(room: any) {
     || room?.id;
 }
 
+export function releasedClientFollowUpForUser(
+  room: any,
+  userId: string,
+) {
+  const booking = room?.booking;
+  return (Array.isArray(room?.outputs) ? room.outputs : []).find(
+    (output: any) => (
+      output?.kind === "CLIENT_FOLLOW_UP"
+      && output?.status === "RELEASED"
+      && (
+        output.recipientUserId === userId
+        || output.createdByUserId === userId
+        || booking?.coachUserId === userId
+      )
+    ),
+  ) || null;
+}
+
 function consentNextAction(status: string | null | undefined) {
   if (status === "GRANTED") return "Ready for consented capture.";
   if (status === "DECLINED") return "Consent declined. Do not record this session.";
@@ -795,6 +813,11 @@ export function mapMobileCaptureSessionsForUser(input: {
       ? latestMobileCaptureConsentForParticipant(participant, room.recordingConsents)
       : null;
     const booking = room.booking;
+    const clientFollowUp = releasedClientFollowUpForUser(room, input.userId);
+    const clientFollowUpBody = sourceJson(clientFollowUp?.bodyJson);
+    const clientFollowUpArray = (key: string) => (
+      Array.isArray(clientFollowUpBody[key]) ? clientFollowUpBody[key] : []
+    );
     const latestCheckout = booking?.paymentRecord?.checkoutSessionLedgers?.[0] || null;
     const provider = providerReadinessForMobileCaptureSession(room, input.env);
     const latestTranscriptJob = room.transcriptJobs[0] || null;
@@ -1107,6 +1130,25 @@ export function mapMobileCaptureSessionsForUser(input: {
           : latestTranscriptStatus === "COMPLETED"
             ? "PACKET_READY_TO_BUILD"
             : "NOT_READY",
+      clientFollowUp: clientFollowUp ? {
+        id: clientFollowUp.id,
+        status: clientFollowUp.status,
+        title: clientFollowUp.title,
+        intro: clientFollowUp.intro,
+        nextSessionFocus: clientFollowUp.nextSessionFocus,
+        contentSha256: clientFollowUp.contentSha256,
+        revision: clientFollowUp.revision,
+        releasedAt: clientFollowUp.releasedAt?.toISOString?.() ?? null,
+        recipientLabel:
+          clientFollowUp.recipient?.name
+          || clientFollowUp.recipient?.primaryEmail
+          || "Client",
+        openedAt: clientFollowUp.deliveries?.[0]?.occurredAt?.toISOString?.() ?? null,
+        canAcknowledge: clientFollowUp.recipientUserId === input.userId,
+        notes: clientFollowUpArray("notes"),
+        goals: clientFollowUpArray("goals"),
+        tasks: clientFollowUpArray("tasks"),
+      } : null,
       canUseProjectTeamNotes: input.isStaff === true
         || (sessionProject.projectId != null && productionNoteProjectIds.has(sessionProject.projectId)),
       sessionNotes,

@@ -42,6 +42,8 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
   let staffUserId = "";
   let projectId = "";
   let roomId = "";
+  const clientFollowUpId = `client-follow-up-${nonce}`;
+  const clientFollowUpSha256 = "a".repeat(64);
   const noteIds = {
     ownerPrivate: `privacy-owner-${nonce}`,
     viewerPrivate: `privacy-viewer-${nonce}`,
@@ -154,6 +156,34 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
         },
       ],
     });
+    await prisma.sessionOutput.create({
+      data: {
+        id: clientFollowUpId,
+        roomId,
+        createdByUserId: ownerUserId,
+        recipientUserId: viewerUserId,
+        kind: "CLIENT_FOLLOW_UP",
+        status: "RELEASED",
+        title: "Exact released mobile follow-up",
+        bodyJson: {
+          notes: [{
+            id: noteIds.clientSafe,
+            title: "Client-safe decision",
+            body: "This is safe for the coaching participant to review.",
+          }],
+          goals: [],
+          tasks: [],
+        },
+        sourceManifestJson: {
+          noteIds: [noteIds.clientSafe],
+          goalIds: [],
+          taskIds: [],
+        },
+        contentSha256: clientFollowUpSha256,
+        revision: 2,
+        releasedAt: new Date(),
+      },
+    });
   });
 
   afterAll(async () => {
@@ -244,6 +274,18 @@ runLocalDatabaseSmoke("iPhone Session note privacy projection", () => {
       kind: "DECISION",
       visibility: "CLIENT_SAFE",
       isMine: false,
+    });
+    expect(session.clientFollowUp).toMatchObject({
+      id: clientFollowUpId,
+      status: "RELEASED",
+      title: "Exact released mobile follow-up",
+      contentSha256: clientFollowUpSha256,
+      revision: 2,
+      canAcknowledge: true,
+      notes: [{
+        id: noteIds.clientSafe,
+        title: "Client-safe decision",
+      }],
     });
     expect(session.canUseProjectTeamNotes).toBe(false);
   });

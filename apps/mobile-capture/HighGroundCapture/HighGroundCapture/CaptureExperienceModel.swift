@@ -696,6 +696,10 @@ final class CaptureExperienceModel: ObservableObject {
         if openRecorder {
             selectedTab = .record
         }
+        guard !usesPreviewData else { return }
+        Task { [weak self] in
+            await self?.sessionClient.refreshClientFollowUp(forSessionID: session.id)
+        }
     }
 
     func createSession() async -> Bool {

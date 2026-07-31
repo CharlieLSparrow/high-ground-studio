@@ -267,6 +267,23 @@ enum CoachingNoteVisibility {
   PROJECT_TEAM
 }
 
+enum SessionOutputKind {
+  CLIENT_FOLLOW_UP
+}
+
+enum SessionOutputStatus {
+  DRAFT
+  RELEASED
+  REVOKED
+}
+
+enum DeliveryEventKind {
+  RELEASED_IN_APP
+  OPENED_IN_APP
+  REVOKED
+  EXPORTED
+}
+
 enum ActionItemStatus {
   OPEN
   DONE
@@ -476,6 +493,11 @@ model User {
   coachingNotesAuthored         CoachingNote[]                       @relation("CoachingNoteAuthor")
   coachingNoteRevisionsAuthored CoachingNoteRevision[]               @relation("CoachingNoteRevisionActor")
   coachingNoteTagsCreated       CoachingNoteTagLink[]                @relation("CoachingNoteTagCreatedBy")
+  sessionOutputsCreated         SessionOutput[]                      @relation("SessionOutputCreatedBy")
+  sessionOutputsReceived        SessionOutput[]                      @relation("SessionOutputRecipient")
+  sessionOutputRevisions        SessionOutputRevision[]              @relation("SessionOutputRevisionActor")
+  deliveryEventsActed           DeliveryEvent[]                      @relation("DeliveryEventActor")
+  deliveryEventsReceived        DeliveryEvent[]                      @relation("DeliveryEventRecipient")
   documentTagsCreated           StudioDocumentTagLink[]              @relation("StudioDocumentTagCreatedBy")
   personalWritingDocuments      StudioDocument[]                     @relation("StudioDocumentPersonalOwner")
   actionItemsAssigned           ActionItem[]                         @relation("ActionItemAssignedTo")
@@ -1237,6 +1259,8 @@ model CallRoom {
   transcriptJobs        TranscriptJob[]
   transcriptCorrections TranscriptCorrection[]
   notes                 CoachingNote[]
+  outputs               SessionOutput[]
+  deliveryEvents        DeliveryEvent[]
   actionItems           ActionItem[]
   goals                 Goal[]
   calendarLinks         CalendarEventLink[]
@@ -1649,6 +1673,82 @@ model CoachingNoteRevision {
 
   @@unique([noteId, revision])
   @@index([actorUserId, createdAt])
+}
+
+// A Session output is a reviewed, recipient-bound snapshot assembled from
+// canonical records. Releasing it changes in-app visibility only; delivery
+// receipts record what Quipsly actually did without implying email or message
+// delivery.
+model SessionOutput {
+  id                 String              @id
+  roomId             String
+  createdByUserId    String
+  recipientUserId    String
+  kind               SessionOutputKind   @default(CLIENT_FOLLOW_UP)
+  status             SessionOutputStatus @default(DRAFT)
+  title              String
+  intro              String?
+  nextSessionFocus   String?
+  bodyJson           Json                @default("{}")
+  sourceManifestJson Json                @default("{}")
+  contentSha256      String
+  revision           Int                 @default(1)
+  releasedAt         DateTime?
+  revokedAt          DateTime?
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  room       CallRoom                @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdBy  User                    @relation("SessionOutputCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  recipient  User                    @relation("SessionOutputRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+  revisions  SessionOutputRevision[]
+  deliveries DeliveryEvent[]
+
+  @@index([roomId, kind, status, updatedAt])
+  @@index([recipientUserId, status, releasedAt])
+  @@index([createdByUserId, status, updatedAt])
+}
+
+model SessionOutputRevision {
+  id           String   @id @db.Uuid
+  outputId     String
+  revision     Int
+  operation    String
+  actorUserId  String
+  snapshotJson Json
+  createdAt    DateTime @default(now())
+
+  output SessionOutput @relation(fields: [outputId], references: [id], onDelete: Cascade)
+  actor  User          @relation("SessionOutputRevisionActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@unique([outputId, revision])
+  @@index([actorUserId, createdAt])
+}
+
+model DeliveryEvent {
+  id              String            @id @db.Uuid
+  outputId        String
+  roomId          String
+  actorUserId     String
+  recipientUserId String
+  kind            DeliveryEventKind
+  destination     String            @default("quipsly-session")
+  status          String            @default("CONFIRMED")
+  contentSha256   String
+  clientRequestId String            @db.Uuid
+  metadataJson    Json              @default("{}")
+  occurredAt      DateTime
+  createdAt       DateTime          @default(now())
+
+  output    SessionOutput @relation(fields: [outputId], references: [id], onDelete: Cascade)
+  room      CallRoom      @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  actor     User          @relation("DeliveryEventActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  recipient User          @relation("DeliveryEventRecipient", fields: [recipientUserId], references: [id], onDelete: Restrict)
+
+  @@unique([actorUserId, clientRequestId])
+  @@index([outputId, kind, occurredAt])
+  @@index([roomId, kind, occurredAt])
+  @@index([recipientUserId, kind, occurredAt])
 }
 
 model ActionItem {
@@ -2318,18 +2418,18 @@ model StudioProjectAccessGrant {
 }
 
 model StudioDocument {
-  id               String                 @id @default(cuid())
-  projectId        String
+  id                  String                 @id @default(cuid())
+  projectId           String
   personalOwnerUserId String?
-  stableId         String                 @unique
-  title            String
-  sourceLabel      String?
-  sourcePath       String?
-  projectionStatus StudioProjectionStatus @default(private)
-  isPrivate        Boolean                @default(true)
-  tagRevision      Int                    @default(0)
-  createdAt        DateTime               @default(now())
-  updatedAt        DateTime               @updatedAt
+  stableId            String                 @unique
+  title               String
+  sourceLabel         String?
+  sourcePath          String?
+  projectionStatus    StudioProjectionStatus @default(private)
+  isPrivate           Boolean                @default(true)
+  tagRevision         Int                    @default(0)
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
 
   project              StudioProject               @relation(fields: [projectId], references: [id], onDelete: Cascade)
   personalOwner        User?                       @relation("StudioDocumentPersonalOwner", fields: [personalOwnerUserId], references: [id], onDelete: Restrict)

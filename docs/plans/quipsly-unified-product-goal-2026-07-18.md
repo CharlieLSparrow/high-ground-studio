@@ -5081,3 +5081,30 @@ was restored.
   checks. This is local and simulator proof—not a production or physical
   iPhone outsider attempt, real coach/client role matrix, TestFlight operation,
   provider notification delivery, or public/private publication proof.
+
+### 2026-07-31 retained coach-to-client follow-up operation
+
+- Added a revisioned `SessionOutput` aggregate with immutable revisions and an
+  idempotent delivery ledger. The first output kind is a deliberately released
+  client follow-up; it does not mutate source notes, goals, or tasks.
+- Enforced the exact assigned coach/client relationship on every read and
+  mutation. Client-safe notes and client-owned work are eligible; private,
+  merely room-shared, coach-owned, and unreviewed transcript candidates remain
+  ineligible. Drafts are coach-only and inaccessible Sessions remain concealed.
+- Operated retained coach, client, and outsider `.test` identities through the
+  rendered product. The coach released revision 2 with SHA-256
+  `af31f60567488d5ada4a34abf6e2cc688c7b5e54254cde41c1526ff233bfa6cb`;
+  the client opened it; the coach saw the matching receipt; and the outsider
+  learned nothing.
+- Operated the same exact handoff in the production iPhone shell on an iPhone
+  17 Pro / iOS 26.3.1 simulator. Native sign-in, Session selection, content and
+  hash readback, forbidden-marker exclusion, acknowledgement, and confirmed
+  state passed 1/1.
+- Dogfooding exposed duplicate recorder ownership: the older
+  `RecorderControlBoard` is not the shipping phone entry point. The feature now
+  lives on `CapturePhoneShell`, and static release checks pin that boundary for
+  future work.
+- TypeScript, 25 focused tests, 1/1 real-database lifecycle/privacy, 4/4
+  real-database mobile projection, and 963/963 native/App Store invariants
+  pass. This is not yet a production schema deploy, TestFlight build,
+  physical-device client acknowledgement, or real coaching-session handoff.

@@ -12,6 +12,7 @@ import {
   captureSourceSummaries,
   canonicalMobileSessionEpisodeSlug,
   canonicalMobileSessionProject,
+  releasedClientFollowUpForUser,
   registeredParticipantConsentSummary,
 } from "./mobile-capture-sessions";
 import {
@@ -72,6 +73,49 @@ describe("mobile Session canonical episode projection", () => {
       booking: { offering: { slug: "legacy-offering" } },
     })).toBe("legacy-offering");
     expect(canonicalMobileSessionEpisodeSlug({ id: "room-2" })).toBe("room-2");
+  });
+});
+
+describe("mobile client follow-up projection", () => {
+  const room = {
+    booking: { coachUserId: "coach-1" },
+    outputs: [
+      {
+        id: "wrong-kind",
+        kind: "OTHER_OUTPUT",
+        status: "RELEASED",
+        createdByUserId: "coach-1",
+        recipientUserId: "client-1",
+      },
+      {
+        id: "draft",
+        kind: "CLIENT_FOLLOW_UP",
+        status: "DRAFT",
+        createdByUserId: "coach-1",
+        recipientUserId: "client-1",
+      },
+      {
+        id: "released",
+        kind: "CLIENT_FOLLOW_UP",
+        status: "RELEASED",
+        createdByUserId: "coach-1",
+        recipientUserId: "client-1",
+      },
+    ],
+  };
+
+  it("returns the released recipient-bound snapshot to its client and assigned coach", () => {
+    expect(releasedClientFollowUpForUser(room, "client-1")).toMatchObject({
+      id: "released",
+    });
+    expect(releasedClientFollowUpForUser(room, "coach-1")).toMatchObject({
+      id: "released",
+    });
+  });
+
+  it("does not broaden follow-up visibility to staff or another Session participant", () => {
+    expect(releasedClientFollowUpForUser(room, "producer-1")).toBeNull();
+    expect(releasedClientFollowUpForUser(room, "staff-1")).toBeNull();
   });
 });
 

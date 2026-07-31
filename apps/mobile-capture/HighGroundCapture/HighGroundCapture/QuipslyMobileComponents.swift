@@ -826,6 +826,9 @@ struct RecorderControlBoard: View {
                         Button {
                             Task {
                                 await sessionClient.load()
+                                if let sessionID = selectedSessionId ?? sessionClient.sessions.first?.id {
+                                    await sessionClient.refreshClientFollowUp(forSessionID: sessionID)
+                                }
                                 await readinessClient.load()
                             }
                         } label: {
@@ -886,6 +889,11 @@ struct RecorderControlBoard: View {
                                 roomJoinOwnerSnapshot = nil
                                 roomJoinDiagnostic = nil
                                 roomJoinMessage = nil
+                                if let sessionID = $0 {
+                                    Task {
+                                        await sessionClient.refreshClientFollowUp(forSessionID: sessionID)
+                                    }
+                                }
                             }
                         )) {
                             ForEach(sessionClient.sessions) { session in
@@ -909,10 +917,35 @@ struct RecorderControlBoard: View {
                                 Text(session.nextAction ?? "Confirm consent before recording.")
                                     .font(.caption.bold())
                                     .foregroundStyle(session.recordingConsentGranted ? .green : .orange)
+                                if let errorMessage = sessionClient.errorMessage {
+                                    Label(errorMessage, systemImage: "exclamationmark.triangle")
+                                        .font(.caption2)
+                                        .foregroundStyle(.orange)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                        .accessibilityIdentifier("CaptureSessionSyncStatus")
+                                } else {
+                                    Label(
+                                        session.clientFollowUp == nil
+                                            ? "Session current · no released client follow-up"
+                                            : "Session current · released client follow-up ready",
+                                        systemImage: session.clientFollowUp == nil
+                                            ? "checkmark.icloud"
+                                            : "person.crop.circle.badge.checkmark"
+                                    )
+                                    .font(.caption2.bold())
+                                    .foregroundStyle(session.clientFollowUp == nil ? Color.secondary : Color.green)
+                                    .accessibilityIdentifier("CaptureSessionSyncStatus")
+                                }
                                 CaptureReadinessVerdictCard(session: session)
                                 MobileCaptureJourneyCard(session: session)
                                 MobileCaptureLifecycleCard(session: session)
                                 CaptureSessionContextPanel(session: session, sessionClient: sessionClient)
+                                if session.clientFollowUp != nil {
+                                    MobileClientFollowUpCard(
+                                        session: session,
+                                        sessionClient: sessionClient
+                                    )
+                                }
                                 RoomSpinePanel(
                                     session: session,
                                     roomJoinResponse: roomJoinResponse,
@@ -1311,9 +1344,7 @@ struct RecorderControlBoard: View {
             }
         }
         .task {
-            if sessionClient.sessions.isEmpty {
-                await sessionClient.load()
-            }
+            _ = await sessionClient.load()
             if readinessClient.readiness == nil {
                 await readinessClient.load()
             }
@@ -3681,6 +3712,176 @@ struct CaptureSessionReceiptCard: View {
         .padding(8)
         .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .accessibilityIdentifier("CaptureSessionReceiptCard")
+    }
+}
+
+struct MobileClientFollowUpCard: View {
+    let session: MobileCaptureSession
+    @ObservedObject var sessionClient: CaptureSessionClient
+    @State private var isExpanded = true
+    @State private var isConfirmingOpen = false
+
+    private var followUp: MobileCaptureClientFollowUp? {
+        session.clientFollowUp
+    }
+
+    private func nonempty(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    var body: some View {
+        if let followUp {
+            DisclosureGroup(isExpanded: $isExpanded) {
+                VStack(alignment: .leading, spacing: 10) {
+                    if let intro = followUp.intro?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !intro.isEmpty {
+                        Text(intro)
+                            .font(.caption)
+                            .foregroundStyle(.primary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    if !followUp.notes.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("What we want to keep")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(followUp.notes) { note in
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(nonempty(note.title) ?? "Session note")
+                                        .font(.caption.bold())
+                                    Text(note.body)
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(8)
+                                .background(Color.green.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                            }
+                        }
+                    }
+
+                    if !followUp.goals.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Goals", systemImage: "target")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(followUp.goals) { goal in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: "circle")
+                                        .font(.caption2)
+                                        .padding(.top, 2)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(goal.title)
+                                            .font(.caption.bold())
+                                        Text(goal.status.replacingOccurrences(of: "_", with: " ").capitalized)
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !followUp.tasks.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Label("Commitments", systemImage: "checklist")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(followUp.tasks) { task in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Image(systemName: task.status == "DONE" ? "checkmark.circle.fill" : "circle")
+                                        .font(.caption)
+                                        .foregroundStyle(task.status == "DONE" ? .green : .secondary)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(task.title)
+                                            .font(.caption.bold())
+                                        if let detail = nonempty(task.detail) {
+                                            Text(detail)
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if let next = followUp.nextSessionFocus?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !next.isEmpty {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Bring into the next Session")
+                                .font(.caption2.bold())
+                                .foregroundStyle(.purple)
+                            Text(next)
+                                .font(.caption)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(8)
+                        .background(Color.purple.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
+                    }
+
+                    HStack(spacing: 8) {
+                        StatusChip(label: "revision \(followUp.revision)", tint: .green)
+                        StatusChip(
+                            label: followUp.openedAt == nil ? "open not confirmed" : "open confirmed",
+                            tint: followUp.openedAt == nil ? .orange : .green
+                        )
+                    }
+
+                    if followUp.canAcknowledge {
+                        Button {
+                            isConfirmingOpen = true
+                            Task {
+                                _ = await sessionClient.acknowledgeClientFollowUp(for: session)
+                                isConfirmingOpen = false
+                            }
+                        } label: {
+                            Label(
+                                followUp.openedAt != nil
+                                    ? "Open confirmed"
+                                    : isConfirmingOpen
+                                        ? "Confirming"
+                                        : "Confirm I opened this",
+                                systemImage: followUp.openedAt != nil ? "checkmark.seal.fill" : "eye"
+                            )
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                        .disabled(followUp.openedAt != nil || isConfirmingOpen)
+                        .accessibilityIdentifier("CaptureClientFollowUpAcknowledge_\(followUp.id)")
+                        .accessibilityHint("Records an in-app open receipt for this exact follow-up. It does not complete any task or goal.")
+                    }
+
+                    Text("This released snapshot contains only deliberately client-safe notes and client-owned goals or tasks. It is not an email, public post, calendar action, or proof that any commitment is complete.")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("SHA-256 \(followUp.contentSha256)")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                .padding(.top, 8)
+            } label: {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Client follow-up", systemImage: "person.crop.circle.badge.checkmark")
+                        .font(.caption.bold())
+                        .foregroundStyle(.green)
+                    Text(followUp.title)
+                        .font(.subheadline.bold())
+                    Text("Released to \(followUp.recipientLabel) in Quipsly")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .contain)
+                .accessibilityIdentifier("CaptureClientFollowUp_\(followUp.id)")
+            }
+            .padding(10)
+            .background(Color.green.opacity(0.08), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
     }
 }
 

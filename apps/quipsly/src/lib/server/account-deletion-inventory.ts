@@ -195,7 +195,7 @@ export async function buildAccountDeletionInventory(input: {
     {
       category: "shared-authored-content",
       reason:
-        "Transcript corrections, coaching notes, story drafts, and source annotations are user-generated content in shared records.",
+        "Transcript corrections, coaching notes, released session outputs and receipts, story drafts, and source annotations are user-generated content in shared records.",
       read: async () =>
         (await prisma.transcriptCorrection.count({
           where: {
@@ -207,6 +207,25 @@ export async function buildAccountDeletionInventory(input: {
         })) +
         (await prisma.coachingNote.count({
           where: { authorUserId: subject.id },
+        })) +
+        (await prisma.sessionOutput.count({
+          where: {
+            OR: [
+              { createdByUserId: subject.id },
+              { recipientUserId: subject.id },
+            ],
+          },
+        })) +
+        (await prisma.sessionOutputRevision.count({
+          where: { actorUserId: subject.id },
+        })) +
+        (await prisma.deliveryEvent.count({
+          where: {
+            OR: [
+              { actorUserId: subject.id },
+              { recipientUserId: subject.id },
+            ],
+          },
         })) +
         (await prisma.storyDraft.count({
           where: {
