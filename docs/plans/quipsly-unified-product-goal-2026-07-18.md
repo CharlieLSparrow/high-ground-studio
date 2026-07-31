@@ -5174,3 +5174,32 @@ was restored.
   Connect and anonymous public-link checks prove it is valid, externally in
   beta, included in the open rehearsal group, and exposes Apple's exact
   Quipsly Capture TestFlight handoff.
+
+### 2026-07-31 schema pipeline hardening checkpoint
+
+- Replaced the canonical migration document's mixed current and obsolete
+  instructions with one Prisma 7 migration-first release contract. The
+  previous live/shared `db push` advice is retired; every shared change now
+  requires a forward migration, fresh replay, idempotent second deploy, zero
+  schema diff, and guarded schema-before-app release evidence.
+- Added `pnpm quipsly:schema:fixture:local`, a loopback-only proof runner that
+  requires a clean current commit, derives one exact source-bound database,
+  refuses reuse/replacement, and writes a redacted mode-`0600` no-overwrite
+  receipt. A failed fixture is retained for analysis; a passing disposable
+  fixture is removed by exact validated identity.
+- Operated exact committed source `30264d5cbb8094f175c36fcd7693639648d3810f`
+  against local PostgreSQL. All 33 migrations applied, the second deploy was
+  idempotent, Prisma reported zero difference, the transcript schema contract
+  passed, and independent database readback proved the exact fixture was
+  absent after success. The receipt contains no credential fields.
+- Migration/helper tests pass 5/5, the full cross-surface contract passes
+  173/173, TypeScript 7 typechecking passes, and explicit diff checks pass.
+- The user's durable-test-artifact authorization remains implemented through
+  the separate retained-dogfood policy: dedicated `.test` identities and
+  clearly labeled QA product records persist across releases, while disposable
+  schema databases and destructive/external-effect tests stay tightly scoped.
+- This does not satisfy the production schema, backend parity, TestFlight, or
+  physical-iPhone gates. Required loop-back remains restored Google Cloud and
+  Firebase authorization, exact guarded schema apply, matching zero-traffic
+  Nest acceptance and promotion, fresh native qualification, and real-device
+  capture/recovery/upload/playback with same-ID Nest readback.

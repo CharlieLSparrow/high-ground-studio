@@ -2,6 +2,34 @@
 
 Date: 2026-07-31
 
+## Schema pipeline hardening checkpoint
+
+- Exact source `30264d5cbb8094f175c36fcd7693639648d3810f` replaces the
+  contradictory chronological database instructions with one Prisma 7,
+  migration-first operator contract. Shared, retained-QA, preview, staging,
+  and production databases explicitly prohibit `db push`.
+- Added a loopback-only, clean-commit fixture runner that derives one
+  source-bound database, refuses reuse or replacement, replays every committed
+  migration twice, requires zero schema diff and the transcript schema
+  contract, then drops only that exact database after success.
+- The committed runner passed against local PostgreSQL: all 33 migrations,
+  idempotent replay, zero diff, 15 required transcript columns, 2 cascading
+  foreign keys, and 4 indexes. Independent readback confirmed the exact
+  fixture database was absent afterward.
+- The redacted receipt is mode `0600`, contains no credential fields, and is
+  bound to the exact commit. Documentation/helper tests pass 5/5, the complete
+  cross-surface contract passes 173/173, and Quipsly TypeScript 7 typechecking
+  passes.
+- Disposable schema databases remain separate from retained product QA. The
+  user explicitly permits durable `.test` identities and clearly labeled QA
+  product artifacts for longitudinal operation under
+  `docs/runbooks/quipsly-retained-dogfood.md`.
+- This is local release-pipeline proof, not a production migration. Google
+  Cloud authorization, guarded schema apply, matching zero-traffic Nest
+  deployment, production parity, a fresh TestFlight candidate, and physical
+  iPhone acceptance remain open. Exact evidence is in
+  `docs/coordination/2026-07-31-schema-pipeline-hardening.md`.
+
 ## Capture accessibility and held Build 22 checkpoint
 
 - Exact source `10d5ba8d709ec8a6479979d72866212e555bf4f7` hardens
