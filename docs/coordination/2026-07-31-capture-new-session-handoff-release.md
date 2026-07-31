@@ -83,6 +83,32 @@ The copied IPA hash matches the qualified receipt. Independent result-bundle
 readback reports `Passed`, 47 tests, zero failures, and zero skips. No IPA from
 either candidate attempt has been uploaded yet.
 
+## First TestFlight promotion stopped safely
+
+The guarded beta lane reran the same 47-test qualification before upload. It
+stopped with 46 passed and one rehearsal accessibility failure, before archive
+or upload:
+
+- result:
+  `/tmp/quipsly-capture-ui-tests/34f9e0543c3c/20260731T214553Z-26405/HighGroundCapture.xcresult`
+- failing journey:
+  `testRehearsalControlsRemainReachableAtLargestAccessibilityTextSize`
+- provider readback immediately before the run: Build 1.0 (22) absent
+- upload performed: no
+
+The complete audit attachment identified the latest Episode thread message.
+The message's multiline text was not internally truncated; the long rehearsal
+test had scrolled part of the next card behind the floating tab bar. The test
+also tried to reveal the whole Watch card even though the actual acceptance
+boundary is the Watch preparation action.
+
+The corrected journey now requires the Watch preparation button itself to be
+fully hittable. Its audit suppresses a `textClipped` issue only when the exact
+reported element frame crosses the known navigation or tab-bar viewport
+boundary; any fully visible clipped text still fails. Two focused runs passed,
+including the stronger control-targeted run in 43.856 seconds. A fresh full
+exact-commit beta qualification remains required before upload.
+
 ## Retained QA and cleanup policy
 
 Useful synthetic Sessions, projects, notes, tasks, goals, tags, recordings,
