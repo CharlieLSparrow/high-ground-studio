@@ -5,6 +5,18 @@ repo_root="$(git rev-parse --show-toplevel)"
 output_file="$(mktemp)"
 trap 'rm -f "${output_file}"' EXIT
 
+grep -Fq 'pnpm prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code' \
+  "${repo_root}/scripts/release/quipsly-schema-job.sh" || {
+  echo "Schema diff mode must fail when production differs from the committed schema." >&2
+  exit 1
+}
+
+grep -Fq -- '--image="${IMAGE_REFERENCE}"' \
+  "${repo_root}/scripts/release/quipsly-schema-job.sh" || {
+  echo "Schema jobs must support an immutable digest image reference." >&2
+  exit 1
+}
+
 set +e
 MODE=unknown-schema-mode \
   PROJECT_ID=quipsly-schema-job-test \

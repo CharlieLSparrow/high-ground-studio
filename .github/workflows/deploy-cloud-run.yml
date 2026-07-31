@@ -14,7 +14,7 @@ on:
           - studio
           - auto
       apply_schema_changes:
-        description: Apply committed migrations and targeted additive schema syncs
+        description: Guard, back up, apply, and verify committed Prisma migrations
         required: true
         default: false
         type: boolean
@@ -253,31 +253,29 @@ jobs:
         if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes != true
         run: |
           echo "This release includes schema-owned changes." >&2
-          echo "Re-run manually with apply_schema_changes enabled after reviewing committed migrations and targeted syncs." >&2
+          echo "Re-run manually with apply_schema_changes enabled after reviewing the committed migrations and guarded schema-release plan." >&2
           exit 1
 
-      - name: Apply committed Prisma migrations
+      - name: Guard and apply committed Prisma migrations
         if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes == true
         env:
           PROJECT_ID: ${{ env.GCP_PROJECT }}
           REGION: ${{ env.GCP_REGION }}
-          MODE: migrate
         run: |
-          IMAGE_TAG="$RELEASE_SOURCE_SHA" \
-            SOURCE_REF="$RELEASE_SOURCE_SHA" \
-            bash scripts/release/quipsly-schema-job.sh
+          bash scripts/release/quipsly-schema-release.sh \
+            --revision "$RELEASE_SOURCE_SHA" \
+            --output "$RUNNER_TEMP/quipsly-schema-release.json" \
+            --apply \
+            --confirm-target "${GCP_PROJECT}/studio-postgres"
 
-      - name: Apply targeted additive schema syncs
-        if: needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes == true
-        env:
-          PROJECT_ID: ${{ env.GCP_PROJECT }}
-          REGION: ${{ env.GCP_REGION }}
-          MODE: targeted
-          SKIP_BUILD: "1"
-        run: |
-          IMAGE_TAG="$RELEASE_SOURCE_SHA" \
-            SOURCE_REF="$RELEASE_SOURCE_SHA" \
-            bash scripts/release/quipsly-schema-job.sh
+      - name: Preserve schema release receipt
+        if: always() && needs.plan.outputs.schema == 'true' && inputs.apply_schema_changes == true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: quipsly-schema-release-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/quipsly-schema-release.json
+          if-no-files-found: error
+          retention-days: 90
 
       - name: Build Studio Image
         run: |

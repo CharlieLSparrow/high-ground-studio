@@ -18,13 +18,14 @@ preserve_fixture="${PRESERVE_FIXTURE_DATABASE:-0}"
 reuse_fixture="${REUSE_FIXTURE_DATABASE:-0}"
 IMAGE_TAG="${IMAGE_TAG:-schema-${source_sha:0:12}}"
 IMAGE_URI="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}:${IMAGE_TAG}"
+IMAGE_REFERENCE="${IMAGE_REFERENCE:-${IMAGE_URI}}"
 
 case "${MODE}" in
   status)
     job_command="pnpm prisma migrate status"
     ;;
   diff)
-    job_command="pnpm prisma migrate diff --from-schema=prisma/schema.prisma --to-config-datasource"
+    job_command="pnpm prisma migrate diff --from-config-datasource --to-schema=prisma/schema.prisma --exit-code"
     ;;
   baseline-audit)
     job_command="node scripts/quipsly-foundation-baseline-audit.mjs"
@@ -107,7 +108,21 @@ if [[ "${SKIP_BUILD:-0}" != "1" ]]; then
     --substitutions="_REGION=${REGION},_REPOSITORY=${REPOSITORY},_IMAGE_NAME=${IMAGE_NAME},_IMAGE_TAG=${IMAGE_TAG}" \
     "${schema_context}"
 else
-  echo "Using existing schema image ${IMAGE_URI}."
+  echo "Using existing schema image ${IMAGE_REFERENCE}."
+fi
+
+if [[ "${SKIP_BUILD:-0}" != "1" && "${IMAGE_REFERENCE}" != "${IMAGE_URI}" ]]; then
+  echo "A newly built schema job must deploy the image tag it just built." >&2
+  exit 2
+fi
+if [[ "${IMAGE_REFERENCE}" != "${IMAGE_URI}" ]]; then
+  image_digest_prefix="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/${IMAGE_NAME}@"
+  image_digest="${IMAGE_REFERENCE#"${image_digest_prefix}"}"
+  if [[ "${IMAGE_REFERENCE}" != "${image_digest_prefix}${image_digest}" ]] \
+    || [[ ! "${image_digest}" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+    echo "Unsafe schema image reference '${IMAGE_REFERENCE}'." >&2
+    exit 2
+  fi
 fi
 
 sql_instance_name="${SQL_INSTANCE##*:}"
@@ -140,7 +155,7 @@ echo "Deploying ${job_name} in ${MODE} mode from ${source_sha}."
 gcloud run jobs deploy "${job_name}" \
   --project="${PROJECT_ID}" \
   --region="${REGION}" \
-  --image="${IMAGE_URI}" \
+  --image="${IMAGE_REFERENCE}" \
   --service-account="${SERVICE_ACCOUNT}" \
   --set-cloudsql-instances="${SQL_INSTANCE}" \
   --set-secrets="DATABASE_URL=${DATABASE_SECRET}" \

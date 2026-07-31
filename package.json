@@ -60,6 +60,8 @@
     "quipsly:cloudrun:traffic": "bash scripts/release/quipsly-traffic.sh",
     "quipsly:cloudrun:logs": "bash scripts/release/quipsly-logs.sh studio",
     "quipsly:production:status": "bash scripts/release/quipsly-production-status.sh",
+    "quipsly:schema:release": "bash scripts/release/quipsly-schema-release.sh",
+    "quipsly:schema:release:test": "bash scripts/release/quipsly-schema-release.test.sh && node --test scripts/release/quipsly-cloud-sql-backup-readback.test.mjs",
     "quipsly:capture:app-store-metadata": "node scripts/release/quipsly-capture-app-store-metadata.mjs",
     "quipsly:capture:app-store-readback": "node scripts/release/quipsly-app-store-connect-readback.mjs",
     "quipsly:capture:app-store-readback:test": "node --test scripts/release/quipsly-app-store-connect-readback.test.mjs",

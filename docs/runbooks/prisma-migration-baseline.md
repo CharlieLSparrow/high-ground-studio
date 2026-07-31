@@ -87,3 +87,31 @@ reverse the migration.
 - Use `prisma migrate deploy` for shared, staging, and production databases.
 - Reserve `prisma db push` for intentionally disposable experiments; it is not
   a release or deployment workflow.
+
+## Production release command
+
+Plan the exact production change first:
+
+```bash
+scripts/release/quipsly-schema-release.sh \
+  --revision COMMITTED_SHA \
+  --output /private/tmp/quipsly-schema-plan.json
+```
+
+After reviewing the plan and confirming the printed target, apply it with the
+same committed SHA:
+
+```bash
+scripts/release/quipsly-schema-release.sh \
+  --revision COMMITTED_SHA \
+  --output /private/tmp/quipsly-schema-release.json \
+  --apply \
+  --confirm-target high-ground-odyssey/studio-postgres
+```
+
+The apply lane requires a clean current `HEAD`; this prevents a changed local
+orchestration script from operating on a different selected source. A passing
+receipt contains the immutable schema image digest, exact successful on-demand
+backup ID, fixture proof, migration status, and production zero-diff proof. A
+backup is a recovery boundary, not an automatic rollback instruction: restoring
+it is a separate destructive operation that requires incident review.

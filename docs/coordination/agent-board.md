@@ -1,6 +1,6 @@
 # Agent Board
 
-Last updated: 2026-07-30
+Last updated: 2026-07-31
 
 Use this board as the async coordination surface for concurrent Codex work.
 Keep entries short and current.
@@ -90,7 +90,7 @@ Verified during the Codex application handoff prep on 2026-05-26.
 - owner: Codex in this thread
 - branch: `codex/quipsly-product-20260724`
 - latest coherent feature commit:
-  `c8f9b711 feat(quipsly): secure media tag focus`
+  `2ae9d07f docs(capture): record build 21 internal checkpoint`
 - owned paths:
   - `apps/mobile-capture/HighGroundCapture`
   - `apps/quipsly/src/app/api/mobile/capture/today`
@@ -100,12 +100,27 @@ Verified during the Codex application handoff prep on 2026-05-26.
   - `scripts/dev/quipsly-generated-mobile-dogfood.sh`
   - `scripts/quipsly-mobile-capture-generated-auth-smoke.mjs`
   - `scripts/release/quipsly-capture-*`
+  - `scripts/release/quipsly-schema-*`
+  - `.github/workflows/deploy-cloud-run.yml`
   - Capture release, App Store readiness, and unified-product blueprint docs
 - current goal:
   - advance coherent production iPhone/Nest slices over canonical tasks,
     goals, notes, tags, annotations, sources, recording, and follow-through,
     while preserving exact-source release and physical-boundary evidence
 - current status:
+  - Quipsly Capture 1.0 (21), exact app source `0c88e037d48c`, passed two
+    independent 46/46 serialized iPhone/Share Extension runs, signed export,
+    App Store processing, exact build/group readback, and internal assignment;
+    Build 20 remains the public external target until its matching Nest schema
+    and runtime are proven
+  - the pending Nest release adds canonical client follow-up outputs and
+    delivery-event receipts through additive migration
+    `20260731120000_add_session_outputs_and_delivery_events`
+  - the schema release boundary is being replaced with one guarded lane:
+    disposable full-chain migration plus zero diff, immutable image digest,
+    successful on-demand production backup readback, `migrate deploy`, ledger
+    status, production zero diff, and a retained mode-0600 receipt; legacy
+    targeted syncs are no longer a CI release stage
   - Quipsly Capture 1.0 (18), exact source `5a04798690`, is live through the
     open public TestFlight link; physical install and rehearsal readback remain
     open

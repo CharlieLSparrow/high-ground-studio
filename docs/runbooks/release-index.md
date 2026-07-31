@@ -35,12 +35,20 @@ Required stages:
 6. rollback path retained.
 
 The Cloud Run workflow is manual-only while the repository recovery branch is
-being integrated. Schema-owned releases require explicit approval, then build
-a 30 MiB-capped schema image from the selected committed SHA, apply committed
-Prisma migrations, and run the targeted additive syncs. The older
-`quipsly-schema-sync.sh` bridge still uses Prisma
+being integrated. Schema-owned releases require explicit approval and use
+`scripts/release/quipsly-schema-release.sh`. The guarded lane first proves the
+entire migration chain and zero schema diff in a disposable database, pins one
+exact schema-image digest, creates and independently reads back a successful
+on-demand Cloud SQL backup, applies `prisma migrate deploy`, then requires both
+an up-to-date migration ledger and zero production schema diff. It produces a
+mode-0600 receipt and never invokes the legacy targeted syncs. Run it without
+`--apply` for a non-mutating plan; apply requires the exact `PROJECT/INSTANCE`
+confirmation printed by that plan.
+
+The older `quipsly-schema-sync.sh` bridge uses Prisma
 `db push --accept-data-loss`; it is fail-closed, is not part of the workflow,
-and must not be enabled merely to make a deploy proceed.
+and must not be enabled merely to make a deploy proceed. The targeted schema
+job modes remain recovery tools only and are not a release stage.
 
 Generated reviewer entry points:
 

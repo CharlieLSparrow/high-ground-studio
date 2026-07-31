@@ -25,6 +25,7 @@ let verified = false;
 try {
   migrate(fixtureUrl.toString());
   migrate(fixtureUrl.toString());
+  assertZeroSchemaDiff(fixtureUrl.toString());
 
   const client = new Client({ connectionString: fixtureUrl.toString() });
   await client.connect();
@@ -156,6 +157,7 @@ try {
       foreignKeyCount: foreignKeys.length,
       indexCount: indexes.rows.length,
       migrateReplay: "idempotent",
+      schemaDiff: "zero",
       transcriptContract: "verified",
     }));
   } finally {
@@ -200,6 +202,32 @@ function migrate(url) {
   if (result.status !== 0) {
     throw new Error(
       `Prisma fixture migration failed with exit ${result.status ?? "signal"}.`,
+    );
+  }
+}
+
+function assertZeroSchemaDiff(url) {
+  const result = spawnSync(
+    "pnpm",
+    [
+      "prisma",
+      "migrate",
+      "diff",
+      "--from-config-datasource",
+      "--to-schema=prisma/schema.prisma",
+      "--exit-code",
+    ],
+    {
+      cwd: new URL("..", import.meta.url),
+      env: { ...process.env, DATABASE_URL: url },
+      encoding: "utf8",
+    },
+  );
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+  if (result.status !== 0) {
+    throw new Error(
+      `Prisma fixture schema diff failed with exit ${result.status ?? "signal"}.`,
     );
   }
 }

@@ -146,6 +146,9 @@ jobs:
           bash scripts/release/quipsly-schema-sync.test.sh
           bash scripts/release/quipsly-schema-context.test.sh
           bash scripts/release/quipsly-schema-job.test.sh
+          bash -n scripts/release/quipsly-schema-release.sh
+          bash scripts/release/quipsly-schema-release.test.sh
+          node --test scripts/release/quipsly-cloud-sql-backup-readback.test.mjs
           bash -n scripts/release/quipsly-deploy-preview.sh
           bash -n scripts/release/quipsly-promote-preview.sh
           bash scripts/release/materialize-release-context.test.sh nest
